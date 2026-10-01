@@ -90,6 +90,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.LongKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -2116,6 +2117,74 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.info(LTag.APS, "AdbWirelessStarter.attemptStart ($reason): ok=$ok $detail")
         addCarePortalNote(if (ok) "AdbStOk" else "AdbStNg")
         sendSms("ADB wireless start attempt: $detail")
+    }
+
+    // WiFi-drop recovery (2026-10-05, per explicit request): A15 is WiFi-only (no cellular
+    // fallback) and has shown a failure mode where the WiFi radio stays associated to the AP but
+    // Android's own network-connected state gets stuck false for 60-90+ minutes, silently blocking
+    // all BG reception until the user manually toggles WiFi off/on -- see this session's own
+    // investigation (A15 logcat, 2026-10-01 ~18:21-19:20: GDH's alarms kept firing and AAPS stayed
+    // alive and Doze-whitelisted the whole time, but mIsWifiConnected stayed false throughout).
+    // This automates that exact manual fix via Shizuku's elevated shell access (see
+    // ShizukuAaps333Installer.toggleWifiOffOn() -- WifiManager.setWifiEnabled() has been blocked
+    // for ordinary apps since Android 10).
+    //
+    // VirtualPump-only (A15 runs VirtualPump) -- same restriction attemptAdbWirelessStart()/
+    // AdbWirelessStarter already use elsewhere in this file: no ADB/Shizuku-driven automation on
+    // the real dosing device (Live/Client).
+    //
+    // Trigger: last BG reading >=5 min old. At this setup's real GDH/BGSOURCE cadence (~1 min per
+    // reading, confirmed from live A15 logcat -- not the generic 5-min-CGM-cycle case), 5 min is 5
+    // consecutive missed cycles, not routine single-blip noise. Throttled to one attempt per 5 min
+    // via readyToRun while still stale.
+    //
+    // Up to 3 attempts per episode (IntNonKey.WifiRecoverAttemptCount), then stops entirely -- no
+    // more toggling, no more SMS -- until a fresh BG reading arrives and resets the counter. A
+    // problem a WiFi toggle can't fix by the 3rd try (e.g. a genuine router/ISP outage) won't be
+    // fixed by a 10th, and indefinite silent flapping would be its own nuisance. SMS fires on the
+    // 1st and 3rd attempt only (not the 2nd), per explicit request, so the user knows when it
+    // started and when it's giving up without being spammed every 5 min in between.
+    private fun checkAndAttemptWifiRecovery(now: Long) {
+        if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) return
+        val lastBgAt = iobCobCalculator.ads.lastBg()?.timestamp ?: return
+        val staleMinutes = (now - lastBgAt) / 60_000.0
+        if (staleMinutes < 5.0) {
+            if (preferences.get(IntNonKey.WifiRecoverAttemptCount) != 0) preferences.put(IntNonKey.WifiRecoverAttemptCount, 0)
+            return
+        }
+        val attempt = preferences.get(IntNonKey.WifiRecoverAttemptCount)
+        if (attempt >= 3) return
+        if (!readyToRun("WifiRecover", 5)) return
+        markRun("WifiRecover")
+        val nextAttempt = attempt + 1
+        preferences.put(IntNonKey.WifiRecoverAttemptCount, nextAttempt)
+
+        var shizukuUp = ShizukuAaps333Installer.shizukuRunning() && ShizukuAaps333Installer.hasPermission()
+        var restarted = false
+        if (!shizukuUp) {
+            AdbWirelessStarter.attemptStart(context, preferences.get(IntKey.ApsAutoIsfAdbConnectPort))
+            repeat(4) {
+                Thread.sleep(400L)
+                shizukuUp = ShizukuAaps333Installer.shizukuRunning() && ShizukuAaps333Installer.hasPermission()
+                if (shizukuUp) return@repeat
+            }
+            restarted = shizukuUp
+        }
+
+        val message: String
+        if (!shizukuUp) {
+            message = "WiFi recovery attempt $nextAttempt/3: BG stale ${round(staleMinutes, 0)}min, Shizuku not reachable " +
+                "(tried restart) -- check Shizuku/wireless debugging manually"
+            addCarePortalNote("WifiRxSz")
+        } else {
+            val (ok, detail) = ShizukuAaps333Installer.toggleWifiOffOn()
+            aapsLogger.info(LTag.APS, "WiFi recovery toggle: $detail")
+            message = "WiFi recovery attempt $nextAttempt/3: BG stale ${round(staleMinutes, 0)}min, " +
+                "${if (restarted) "restarted Shizuku then " else ""}toggled WiFi off/on (ok=$ok)"
+            addCarePortalNote(if (ok) "WifiRxOk" else "WifiRxFl")
+        }
+        aapsLogger.info(LTag.APS, message)
+        if (nextAttempt == 1 || nextAttempt == 3) sendSms(message)
     }
 
     // 15-min auto stage+install on Live and Virtual (not Client). Quiet stage so a matching
@@ -9676,6 +9745,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(LongNonKey.LastLoRebAppliedAt, dateUtil.now())
             addCarePortalNote("LoReb")
         }
+
+        checkAndAttemptWifiRecovery(now)
 
         autoIsfValues.timestamp = now
         autoIsfValues.smbDeliveryRatio = smb_delivery_ratio

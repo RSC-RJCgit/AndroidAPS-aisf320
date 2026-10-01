@@ -223,6 +223,21 @@ internal object ShizukuAaps333Installer {
         f.absolutePath
     }
 
+    // WiFi off/on recovery toggle (2026-10-05, per explicit request): automates the manual fix for
+    // the A15's "WiFi radio stays associated to the AP but Android's own network-connected state
+    // gets stuck false" failure mode (diagnosed via live logcat on 2026-10-01 -- GDH's alarms kept
+    // firing and AAPS stayed alive the whole time, but mIsWifiConnected stayed false ~60-90 min
+    // until the user manually toggled WiFi off/on). WifiManager.setWifiEnabled() has been blocked
+    // for ordinary apps since Android 10, hence routing through Shizuku's elevated shell exactly
+    // like the APK-install commands above. 5s pause between off/on mirrors a normal manual toggle
+    // (long enough for the radio to fully drop before re-enabling).
+    fun toggleWifiOffOn(): Pair<Boolean, String> {
+        val (offCode, offOut) = exec(arrayOf("svc", "wifi", "disable"))
+        Thread.sleep(5000L)
+        val (onCode, onOut) = exec(arrayOf("svc", "wifi", "enable"))
+        return (offCode == 0 && onCode == 0) to "off=$offCode:$offOut on=$onCode:$onOut".trim()
+    }
+
     private fun exec(cmd: Array<String>): Pair<Int, String> {
         val method = Shizuku::class.java.getDeclaredMethod(
             "newProcess",
