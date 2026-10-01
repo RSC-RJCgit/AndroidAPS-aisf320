@@ -92,34 +92,91 @@ fun rememberTimeFormatter(minTimestamp: Long): CartesianValueFormatter {
             val timestamp = minTimestamp + (value * 60000).toLong()
             // Always 24 hour, as SimpleDateFormat("HH") was: on an axis a bare 12 hour label would
             // not say which half of the day it belongs to.
-            Instant.fromEpochMilliseconds(timestamp)
+            val local = Instant.fromEpochMilliseconds(timestamp)
                 .toLocalDateTime(TimeZone.currentSystemDefault())
-                .hour.toString().padStart(2, '0')
+            timeAxisLabel(local.hour, local.minute)
         }
     }
 }
 
 /**
- * Creates an item placer for X-axis that shows labels at whole hour intervals.
- *
- * Calculates offset from minTimestamp to align labels with whole hours (e.g., 12:00, 13:00).
- *
- * @param minTimestamp The reference timestamp for calculating hour alignment
- * @return HorizontalAxis.ItemPlacer with 60-minute spacing aligned to whole hours
+ * Label step for the overview time axis, in minutes.
+ * Two hours or less uses 15. Three hours or less uses 30. Longer ranges stay on the hour.
+ * A long range can still widen to every 2 hours when the hour labels no longer fit.
  */
+internal fun timeAxisStepMinutes(visibleMinutes: Double): Int = when {
+    visibleMinutes <= 120.0 -> 15
+    visibleMinutes <= 180.0 -> 30
+    else -> 60
+}
+
+/** Hour label, or hour and minute when the tick is not on the hour. */
+internal fun timeAxisLabel(hour: Int, minute: Int): String {
+    val hourText = hour.toString().padStart(2, '0')
+    if (minute == 0) return hourText
+    return hourText + ":" + minute.toString().padStart(2, '0')
+}
+
 @OptIn(ExperimentalTime::class)
+internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int): Int {
+    val minute = Instant.fromEpochMilliseconds(minTimestamp)
+        .toLocalDateTime(TimeZone.currentSystemDefault())
+        .minute
+    val intoStep = minute % stepMinutes
+    return if (intoStep == 0) 0 else stepMinutes - intoStep
+}
+
+/**
+ * Time labels for the overview graphs.
+ * Short ranges use 15 or 30 minute steps. Longer ranges stay on the hour.
+ */
 @Composable
 fun rememberBottomAxisItemPlacer(minTimestamp: Long): HorizontalAxis.ItemPlacer {
     return remember(minTimestamp) {
-        val instant = Instant.fromEpochMilliseconds(minTimestamp)
-        val localDateTime = instant.toLocalDateTime(TimeZone.currentSystemDefault())
-        val minutesIntoHour = localDateTime.minute
-        val offsetToNextHour = if (minutesIntoHour == 0) 0 else 60 - minutesIntoHour
-
-        HorizontalAxis.ItemPlacer.aligned(
-            spacing = { 60 },  // 60 minutes between labels
-            offset = { offsetToNextHour }
+        ShortRangeTimeAxisPlacer(
+            hourly = alignedTimePlacer(minTimestamp, 60, padExtremes = true),
+            halfHour = alignedTimePlacer(minTimestamp, 30, padExtremes = false),
+            quarterHour = alignedTimePlacer(minTimestamp, 15, padExtremes = false),
         )
+    }
+}
+
+private fun alignedTimePlacer(
+    minTimestamp: Long,
+    stepMinutes: Int,
+    padExtremes: Boolean,
+): HorizontalAxis.ItemPlacer {
+    val offset = minutesUntilNextStep(minTimestamp, stepMinutes)
+    return HorizontalAxis.ItemPlacer.aligned(
+        spacing = { stepMinutes },
+        offset = { offset },
+        addExtremeLabelPadding = padExtremes,
+    )
+}
+
+/**
+ * Picks the 15, 30, or 60 minute placer from the range on screen.
+ * Measurement stays on the hourly placer, so a long range can still drop to every 2 hours.
+ */
+private class ShortRangeTimeAxisPlacer(
+    private val hourly: HorizontalAxis.ItemPlacer,
+    private val halfHour: HorizontalAxis.ItemPlacer,
+    private val quarterHour: HorizontalAxis.ItemPlacer,
+) : HorizontalAxis.ItemPlacer by hourly {
+
+    override fun getLabelValues(
+        context: CartesianDrawingContext,
+        visibleXRange: ClosedFloatingPointRange<Double>,
+        fullXRange: ClosedFloatingPointRange<Double>,
+        maxLabelWidth: Float,
+    ): List<Double> {
+        val minutes = visibleXRange.endInclusive - visibleXRange.start
+        val placer = when (timeAxisStepMinutes(minutes)) {
+            15 -> quarterHour
+            30 -> halfHour
+            else -> hourly
+        }
+        return placer.getLabelValues(context, visibleXRange, fullXRange, maxLabelWidth)
     }
 }
 
