@@ -19,6 +19,7 @@ import androidx.preference.SwitchPreference
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SC
@@ -2788,6 +2789,65 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             { error -> aapsLogger.error(LTag.APS, "Failed to save AutoISF CarePortal note: $note", error) }
         )
     }
+
+    // Documentary-only "calc" entry for a real Tier 3 UAM Boost SMB >= 1.0U (2026-10-04, per explicit
+    // request). A BCR is just a plain DB row -- unlike a real Bolus/Carbs entry, nothing elsewhere
+    // reads it back into dosing/IOB/COB math (confirmed: BolusWizard.kt itself already inserts
+    // standalone BCR rows for 0U/cancelled/split-leftover doses with no matching new Bolus each time).
+    // So this only ever inserts a BCR -- never a second Bolus or Carbs record -- the real Tier 3 SMB
+    // already went through the normal loop delivery path moments earlier; a second dose/carb entry
+    // here would double-count both IOB and COB.
+    // "10g carbs" is a FIXED placeholder every time, regardless of the real SMB size -- per explicit
+    // instruction, not a reverse-calculated equivalent. Same 1.0x/1.5x fat/protein ratios
+    // WizardDialog.autoFillProteinFatFromCarbs() uses for its own non-"unreliable" default path.
+    // BCR has no separate fat/protein columns (the real wizard's own FPU plan is text-only in its BCR
+    // note too -- see splitProjectionNote()'s "Protein+Fat ...U over ...min" line), so the FPU
+    // equivalent here is likewise note-text only, never fed into any carbsInsulin/dosing field.
+    private fun insertUamTier3PseudoWizardEntry(smbDelivered: Double) {
+        val profile = profileFunction.getProfile() ?: return
+        val ic = profile.getIc()
+        val pseudoCarbs = 10.0
+        val pseudoFatG = 10
+        val pseudoProteinG = 15
+        val bcr = BCR(
+            timestamp = dateUtil.now(),
+            targetBGLow = profile.getTargetLowMgdl(),
+            targetBGHigh = profile.getTargetHighMgdl(),
+            isf = profile.getIsfMgdl("UamTier3PseudoWizard"),
+            ic = ic,
+            bolusIOB = 0.0,
+            wasBolusIOBUsed = false,
+            basalIOB = 0.0,
+            wasBasalIOBUsed = false,
+            glucoseValue = glucoseStatusProvider.glucoseStatusData?.glucose ?: 0.0,
+            wasGlucoseUsed = true,
+            glucoseDifference = 0.0,
+            glucoseInsulin = 0.0,
+            glucoseTrend = 0.0,
+            wasTrendUsed = false,
+            trendInsulin = 0.0,
+            cob = 0.0,
+            wasCOBUsed = false,
+            cobInsulin = 0.0,
+            carbs = pseudoCarbs,
+            wereCarbsUsed = true,
+            carbsInsulin = if (ic > 0.0) pseudoCarbs / ic else 0.0,
+            otherCorrection = 0.0,
+            wasSuperbolusUsed = false,
+            superbolusInsulin = 0.0,
+            wasTempTargetUsed = false,
+            totalInsulin = smbDelivered,
+            percentageCorrection = 100,
+            profileName = profileFunction.getProfileName(),
+            note = "UAM Tier3 pseudo-wizard: equiv ${pseudoCarbs.toInt()}g carbs, FPU fat=${pseudoFatG}g/protein=${pseudoProteinG}g " +
+                "(not actually entered/dosed) -- real Tier3 SMB ${round(smbDelivered, 2)}U delivered via loop"
+        )
+        disposable += persistenceLayer.insertOrUpdateBolusCalculatorResult(bcr).subscribe(
+            { },
+            { error -> aapsLogger.error(LTag.APS, "Failed to save UamTier3 pseudo-wizard BCR", error) }
+        )
+    }
+
     private fun todOffsetCarePortalNote(value: Double): String {
         val roundedValue = round(value, 1).let { if (it == 0.0) 0.0 else it }
         val sign = if (roundedValue >= 0.0) "+" else ""
@@ -9593,6 +9653,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("UamBst")
             addGraphAnnouncement("B")   // graph-only marker alongside the note above; no extra SMS/alert
             markRun("UamBst")
+            // Pseudo-wizard "calc" entry (2026-10-04, per explicit request): a documentary-only BCR
+            // row for a real Tier 3 SMB big enough to matter, so it shows up in Treatments/history
+            // with the same kind of carb+FPU annotation a real wizard entry would carry. BCR-only --
+            // see insertUamTier3PseudoWizardEntry()'s own doc comment for why no Bolus/Carbs record
+            // is inserted alongside it.
+            (lastAPSResult?.smb ?: 0.0).let { smbDelivered -> if (smbDelivered >= 1.0) insertUamTier3PseudoWizardEntry(smbDelivered) }
         }
         // T3AcceISF CarePortal note removed 2026-08-27 (block itself removed in DetermineBasalAutoISF.kt,
         // per explicit instruction -- no longer wanted).
