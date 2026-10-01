@@ -20,7 +20,7 @@ class TimeAsXAxisLabelFormatter(
     override fun formatLabel(value: Double, isValueX: Boolean): String =
         if (isValueX) {
             val dateFormat: DateFormat = SimpleDateFormat(format, Locale.getDefault())
-            val time = dateFormat.format(value.toLong())
+            val time = dateFormat.format(roundToDisplayGranularity(value.toLong()))
             if (hideTickIndices.isEmpty() || numHorizontalLabels < 2 || endTime <= fromTime) time
             else {
                 val span = (endTime - fromTime).toDouble()
@@ -43,4 +43,19 @@ class TimeAsXAxisLabelFormatter(
                 ""
             }
         }
+
+    // Tick positions are evenly spaced across the window, not aligned to a clock boundary, so a
+    // 6h window can land a label on e.g. 09:18. Round the displayed text (not the tick's X
+    // position) to the nearest 15min on short windows, or the nearest hour on longer ones.
+    private fun roundToDisplayGranularity(millis: Long): Long {
+        val granularity = if (endTime > fromTime && endTime - fromTime <= SIX_HOURS_MS) FIFTEEN_MIN_MS else ONE_HOUR_MS
+        return Math.round(millis / granularity.toDouble()) * granularity
+    }
+
+    companion object {
+
+        private const val FIFTEEN_MIN_MS = 15 * 60 * 1000L
+        private const val ONE_HOUR_MS = 60 * 60 * 1000L
+        private const val SIX_HOURS_MS = 6 * 60 * 60 * 1000L
+    }
 }
