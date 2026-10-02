@@ -1137,6 +1137,9 @@
     <string name="dura_isf_shortname" comment="Short label for the duration ISF graph line">DURA</string>
     <string name="final_isf_shortname" comment="Short label for the final ISF graph line">FINAL</string>
     <string name="iob_threshold_shortname" comment="Short label for the IOB threshold graph line">iobTH</string>
+    <string name="graph_smb_delivery_scale" comment="Short label for the SMB delivery line in the bottom half of the IOB threshold graph. The scale is 0 to 1.">SMB 0–1</string>
+    <string name="graph_acce_weight_scale" comment="Short label for the acceleration ISF weight setting line. The scale is 0 to 100 percent.">AW 0–100%</string>
+    <string name="graph_pp_weight_scale" comment="Short label for the post-meal ISF weight setting line. The scale is 0 to 0.15.">PP 0–0.15</string>
     <string name="basal_shortname" comment="Short label for Basal, used in graph labels">BAS</string>
     <!-- Graph series short names (used as graph labels, keep very short) -->
     <string name="deviation_shortname" comment="Short label for Deviations graph series">DEV</string>

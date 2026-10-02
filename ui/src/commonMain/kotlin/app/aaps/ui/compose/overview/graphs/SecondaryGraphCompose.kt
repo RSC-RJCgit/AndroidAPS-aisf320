@@ -36,9 +36,11 @@ import app.aaps.core.interfaces.overview.graph.DeviationType
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TreatmentGraphData
+import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.stringResource
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
@@ -442,6 +444,19 @@ fun SecondaryGraphCompose(
         processPoints(secondaryLineData, minTimestamp, minX, maxX)
     }
 
+    // SMB delivery, acceleration weight, and post-meal weight. Drawn only on the graph that shows
+    // the IOB threshold, in the bottom half of that axis. Each line has its own fixed scale.
+    val iobThOnLeft = SeriesType.IOB_TH in primaryTypes
+    val iobThOnRight = isDualAxis && secondaryType == SeriesType.IOB_TH
+    val bottomHalfRaw = remember(autoIsfData, stableTimeRange, iobThOnLeft, iobThOnRight) {
+        if (!hasRealTimeRange || autoIsfData == null || (!iobThOnLeft && !iobThOnRight)) return@remember null
+        BottomHalfRaw(
+            smb = processPoints(autoIsfData.smbDelivery, minTimestamp, minX, maxX),
+            acce = processPoints(autoIsfData.acceWeight, minTimestamp, minX, maxX),
+            pp = processPoints(autoIsfData.ppWeight, minTimestamp, minX, maxX),
+        )
+    }
+
     // Visible-window bounds (same x-unit as processed* points — minutes from minTimestamp) for
     // windowing the Y-axis scale to only the currently scrolled/zoomed portion of this graph's
     // own chart, instead of the full loaded time range.
@@ -505,6 +520,10 @@ fun SecondaryGraphCompose(
         processedCobOverlay,
         showSmbDoseLabels,
         treatmentData,
+        bottomHalfRaw,
+        iobThOnLeft,
+        settledMinX,
+        settledMaxX,
     ) {
         buildList {
             // Deviation lines (per-type step lines) — first so other series draw on top
@@ -540,7 +559,15 @@ fun SecondaryGraphCompose(
                 add(PrimarySeriesSpec(actPred.map { it.first }, actPred.map { it.second }, SeriesSlot.ActivityOverlay))
             if (processedCobOverlay.isNotEmpty())
                 add(PrimarySeriesSpec(processedCobOverlay.map { it.first }, processedCobOverlay.map { it.second }, SeriesSlot.CobLine))
+            if (iobThOnLeft && bottomHalfRaw != null) {
+                val axisSource = processedSimpleSeries.firstOrNull { it.first == SeriesType.IOB_TH }?.second.orEmpty()
+                addAll(bottomHalfSpecs(bottomHalfRaw, axisSource, settledMinX, settledMaxX))
+            }
         }
+    }
+    val rightOverlays = remember(bottomHalfRaw, iobThOnRight, processedSecondary, settledMinX, settledMaxX) {
+        if (!iobThOnRight || bottomHalfRaw == null) emptyList()
+        else bottomHalfSpecs(bottomHalfRaw, processedSecondary, settledMinX, settledMaxX)
     }
     val hasPrimaryData = primarySeries.isNotEmpty()
 
@@ -561,6 +588,7 @@ fun SecondaryGraphCompose(
         processedSecondary,
         processedActivityOverlay,
         processedCobOverlay,
+        rightOverlays,
         maxX,
         settledMinX,
         settledMaxX
@@ -607,6 +635,7 @@ fun SecondaryGraphCompose(
                     } else {
                         series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     }
+                    rightOverlays.forEach { spec -> series(x = spec.x, y = spec.y) }
                     // Normalizer for end axis layer
                     series(x = normalizerX(maxX), y = NORMALIZER_Y)
                 }
@@ -662,6 +691,9 @@ fun SecondaryGraphCompose(
                         SeriesSlot.SmbDoseLabel     -> smbDoseLine
                         SeriesSlot.DevSlopeMin      -> createDevSlopeMinLine()
                         SeriesSlot.ActivityOverlay  -> createSeriesLine(SeriesType.ACTIVITY, seriesColors)
+                        SeriesSlot.SmbDelivery      -> bottomHalfLine(SMB_DELIVERY_COLOR)
+                        SeriesSlot.AcceWeight       -> bottomHalfLine(seriesColors.acceIsf)
+                        SeriesSlot.PpWeight         -> bottomHalfLine(seriesColors.ppIsf)
                         is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
                     }
                 )
@@ -1052,7 +1084,22 @@ fun SecondaryGraphCompose(
             )
         )
     }
-    val secondaryAxisLines = remember(secondaryAxisLine, normalizerLine) { listOf(secondaryAxisLine, normalizerLine) }
+    val secondaryAxisLines = remember(secondaryAxisLine, rightOverlays, seriesColors, normalizerLine) {
+        buildList {
+            add(secondaryAxisLine)
+            rightOverlays.forEach { spec ->
+                add(
+                    when (spec.slot) {
+                        SeriesSlot.SmbDelivery -> bottomHalfLine(SMB_DELIVERY_COLOR)
+                        SeriesSlot.AcceWeight  -> bottomHalfLine(seriesColors.acceIsf)
+                        SeriesSlot.PpWeight    -> bottomHalfLine(seriesColors.ppIsf)
+                        else                   -> secondaryAxisLine
+                    }
+                )
+            }
+            add(normalizerLine)
+        }
+    }
     // Secondary range: zero-aligned counterpart to primary when available, otherwise auto-range.
     val secondaryRangeProvider = remember(maxX, dualAxisRanges) {
         if (dualAxisRanges != null)
@@ -1105,6 +1152,34 @@ fun SecondaryGraphCompose(
         insulinLabelsFor(samples, start, end)
     }
     Column(modifier = modifier.fillMaxWidth()) {
+        if (iobThOnLeft || iobThOnRight) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = stringResource(CoreUiStrings.graph_smb_delivery_scale),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = SMB_DELIVERY_COLOR,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+                Text(
+                    text = stringResource(CoreUiStrings.graph_acce_weight_scale),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = seriesColors.acceIsf,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+                Text(
+                    text = stringResource(CoreUiStrings.graph_pp_weight_scale),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = seriesColors.ppIsf,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+            }
+        }
         val chartModifier = Modifier.fillMaxWidth().weight(1f)
         if (hasBasalLayer) {
             val basalLayer = rememberLineCartesianLayer(
@@ -1214,6 +1289,49 @@ private sealed class SeriesSlot {
     data class SimpleLine(val type: SeriesType) : SeriesSlot()
     data object DevSlopeMin : SeriesSlot()
     data object ActivityOverlay : SeriesSlot()
+    data object SmbDelivery : SeriesSlot()
+    data object AcceWeight : SeriesSlot()
+    data object PpWeight : SeriesSlot()
+}
+
+private class BottomHalfRaw(
+    val smb: List<Pair<Double, Double>>,
+    val acce: List<Pair<Double, Double>>,
+    val pp: List<Pair<Double, Double>>,
+)
+
+private val SMB_DELIVERY_COLOR = Color(0xFFFF9800)
+
+private fun bottomHalfLine(color: Color): LineCartesianLayer.Line =
+    LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(color)),
+        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+        areaFill = null
+    )
+
+/** Map the three readings onto the bottom half of the IOB threshold axis that [axisSource] uses. */
+private fun bottomHalfSpecs(
+    raw: BottomHalfRaw,
+    axisSource: List<Pair<Double, Double>>,
+    minX: Double?,
+    maxX: Double?,
+): List<PrimarySeriesSpec> {
+    val axisMin = -iobThPeak(windowedY(axisSource, minX, maxX))
+    return buildList {
+        fun add(points: List<Pair<Double, Double>>, scaleMax: Double, slot: SeriesSlot) {
+            if (points.size < 2) return
+            add(
+                PrimarySeriesSpec(
+                    points.map { it.first },
+                    points.map { bottomHalfY(it.second, scaleMax, axisMin) },
+                    slot
+                )
+            )
+        }
+        add(raw.smb, SMB_DELIVERY_SCALE_MAX, SeriesSlot.SmbDelivery)
+        add(raw.acce, ACCE_WEIGHT_SCALE_MAX, SeriesSlot.AcceWeight)
+        add(raw.pp, PP_WEIGHT_SCALE_MAX, SeriesSlot.PpWeight)
+    }
 }
 
 // =========================================================================

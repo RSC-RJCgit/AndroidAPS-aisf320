@@ -927,9 +927,38 @@ fun isfAxis(peak: Double): NiceScale {
  * so zero stays in the middle, the same way the UK IOB threshold line is scaled.
  */
 fun iobThAxis(min: Double, max: Double): NiceScale {
-    val raw = maxOf(abs(min), abs(max))
-    val peak = if (raw.isFinite()) raw.coerceAtLeast(0.1) else 0.1
+    val peak = iobThPeak(listOf(min, max))
     return NiceScale(-peak, peak, (2.0 * peak) / (SECONDARY_GRAPH_TICK_COUNT - 1).toDouble())
+}
+
+/** SMB delivery ratio fills the bottom half at 1.0. */
+const val SMB_DELIVERY_SCALE_MAX = 1.0
+
+/** Acceleration weight is stored as 0 to 1. 1.0 is 100% and fills the bottom half. */
+const val ACCE_WEIGHT_SCALE_MAX = 1.0
+
+/** Post-meal weight setting. 0.15 fills the bottom half. */
+const val PP_WEIGHT_SCALE_MAX = 0.15
+
+/**
+ * Largest absolute IOB threshold in [values], at least 0.1.
+ * That peak is the top and the bottom of [iobThAxis], so zero stays in the middle.
+ */
+fun iobThPeak(values: List<Double>): Double {
+    val raw = values.maxOfOrNull { abs(it) } ?: 0.1
+    return if (raw.isFinite()) raw.coerceAtLeast(0.1) else 0.1
+}
+
+/**
+ * Place one reading in the bottom half of an IOB threshold axis.
+ * Zero sits on the bottom edge. [scaleMax] sits on the middle, where the IOB threshold is zero.
+ * A value past [scaleMax] stays on that middle line.
+ */
+fun bottomHalfY(value: Double, scaleMax: Double, axisMin: Double): Double {
+    if (!value.isFinite() || !scaleMax.isFinite() || scaleMax <= 0.0 || !axisMin.isFinite()) return axisMin
+    val fraction = (value / scaleMax).coerceIn(0.0, 1.0)
+    if (fraction == 1.0) return 0.0
+    return axisMin * (1.0 - fraction)
 }
 
 /** AutoISF factor lines. They sit around 1.0, so the axis is centered there. */
