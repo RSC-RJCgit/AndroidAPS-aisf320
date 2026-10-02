@@ -1727,6 +1727,14 @@ class BolusWizard @Inject constructor(
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
+            // Not due yet: keep polling. Only "bolus stopped"/"superseded" (above) cancel early; the profile/
+            // pump/superbolus checks below run only when this dose is actually due, so a transient condition
+            // (e.g. a short 50% profile switch) can't cancel doses that aren't due for hours -- previously
+            // fpu1..fpu4 (due 1h apart) were all cancelled together by one switch minutes after scheduling.
+            if (dateUtil.now() < deliverAt) {
+                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt, isLast)
+                return@postDelayed
+            }
             val pct = activeProfileSwitchPct()
             if (pct < 100) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): profile switch at $pct% (scheduled at $schedulingPct%) — cancelling ${dose}U")
@@ -1744,10 +1752,6 @@ class BolusWizard @Inject constructor(
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): superbolus active — cancelling ${dose}U")
                 cancelDoseNote(dose, "$label dose: superbolus active", label, iobBaseline)
                 decrementWarsawPendingRemaining(dose)
-                return@postDelayed
-            }
-            if (dateUtil.now() < deliverAt) {
-                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt, isLast)
                 return@postDelayed
             }
             val gs = glucoseStatusProvider.glucoseStatusData
