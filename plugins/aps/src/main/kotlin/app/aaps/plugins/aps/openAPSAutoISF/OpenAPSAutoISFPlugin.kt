@@ -3716,7 +3716,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // matches bg3's own self-throttle.
                 && readyToRun("BolusGivenBg3", 5)
                 // Movement guard: same reasoning as bg3's mirror check above.
-                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                && recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
                 // Sub-7.5mmol delivery-rate ceiling, added 2026-08-14 after two real hypos (4.4mmol and
                 // a sustained 4.5mmol) both traced to this exact mechanism: BG still under 7.5mmol (not
                 // genuinely high), a strong rise confirmed, mild fires and keeps re-arming every couple
@@ -3824,7 +3824,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // (BS.Type.NORMAL), never SMB -- without this, bg3's own IOB bump from a mild fire
                 // ~minutes ago could sit inside bg3's next 5-min iobChange5 window.
                 && readyToRun("BolusGivenMild", 5)
-                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                && recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
                 // 2026-09-26, per explicit request: the 60-min steps bar is dropped when the last 30 min were quiet
                 // (steps30 <= 100). 26 Sep Live 13:08-13:28: steps60 sat at 311 (a few minutes of walking, all of
                 // it before 13:08) with steps30 0-73, and this bar alone kept bg3 off for the whole 5.3->9 rise.
@@ -4735,7 +4735,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val baselineAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
             val lowBg = glucoseStatus.glucose < 153.1 /* 8.5 mmol */
-            val activeMovement = recentSteps5Minutes > 100 || recentSteps30Minutes > 200 || recentSteps60Minutes > 300
+            val activeMovement = recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300
             // No genuine recent high (raw Libre >12.0mmol within 48h) is also grounds to revert -- the
             // elevated PP/acce weights are calibrated against a genuinely-occurring high, not a stale one.
             val noRecentHigh = !recentLibreOver12(48)
@@ -6527,7 +6527,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && smbSum10Min() < 0.6
                 && !checkAutomationState("LowBG", "50recent")
                 && !mjActive()
-                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                && recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
             if (fire) {
                 markRun("NightFrSkip")
                 sendSms("NightFrSkip: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} d=${String.format(Locale.getDefault(), "%.2f", d / 18.016)} iob=${round(iobNow, 2)}")
@@ -7131,7 +7131,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && smbCount20Min() == 0                  // genuine silence, not just a normal gap
                 && readyToRun("BolusGivenBg3", 5)        // cross-cooldown, same as BolusGivenMild
                 && readyToRun("BolusGivenMild", 5)       // and with BolusGivenMild itself
-                && recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                && recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
             if (fire) {
                 // Flat delivery boost, matching BolusGivenMild above (2026-08-31, was the same 3-way
                 // BGL-tiered when). One value on every fire.
@@ -7161,7 +7161,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val profileName = profileFunction.getProfileName()
             val outerGuardOk = profile_percentage == 100 && activeTtMgdl() == null
                 && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
-            val movementOk = recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+            val movementOk = recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
             val rawDelta1FloorOkBg3 = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
                 && g >= 117.1 && d >= 0.0
@@ -7281,7 +7281,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
                 readyToRun("BolusGivenBg3", 5) &&
-                recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200 &&
+                recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100 &&
                 !(g < 135.1 && mildIobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
 
             val which = when { off2 -> "off2"; off3 -> "off3"; off4 -> "off4"; off5 -> "off5"; off1 -> "off1"; else -> null }
@@ -7361,7 +7361,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
                 profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
-                recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200
+                recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
             ) {
                 if (activeTtMgdl() != null) cancelCurrentTempTarget()
                 preferences.put(BooleanKey.ApsAutoIsfMildOffsetZeroActive, true)
@@ -7767,7 +7767,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // recentSteps30Minutes<=200 -- see e.g. the movementOk/activeMovement checks above) is
             // true. recentSteps30Minutes<=600 stays as the outer floor either way.
             val stepsOk = recentSteps30Minutes <= 600 &&
-                (recentSteps60Minutes <= 1000 || (recentSteps5Minutes <= 100 && recentSteps30Minutes <= 200))
+                (recentSteps60Minutes <= 1000 || (recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100))
             if (g >= 81.1 /* 4.5 mmol */
                 && cannulaOrStateOk
                 && stepsOk
