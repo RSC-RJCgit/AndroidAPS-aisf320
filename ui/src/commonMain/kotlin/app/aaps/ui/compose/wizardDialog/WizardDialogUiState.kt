@@ -37,9 +37,9 @@ data class WizardDialogUiState(
     val useIOB: Boolean = true,
     val useCOB: Boolean = false,
     val walkingSoon: Boolean = false,
-    /** Fat and protein later, instead of extended carbs. Fat is 1 times the carb grams. Protein is 1.5 times. */
+    /** Ticked accepts automatic fat and protein later. Fat equals the carb grams. Protein is 1.5 times. Unticked leaves typed grams. Grams above 0 still schedule hourly doses. */
     val fpuInstead: Boolean = false,
-    /** When the fall caution holds insulin back, give that part later as hourly doses. On by default. */
+    /** Ticked delays the part of the bolus the fall caution removed, as hourly boluses. On by default. Unticked, that part is not given. */
     val giveRestLater: Boolean = true,
     /** Same later doses, with larger fat and protein, wizard percent 90, and the saved max bolus. */
     val unreliableSmb: Boolean = false,
