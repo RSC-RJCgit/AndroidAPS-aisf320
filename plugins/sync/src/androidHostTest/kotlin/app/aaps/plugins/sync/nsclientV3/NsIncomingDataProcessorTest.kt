@@ -150,7 +150,9 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         val result = processor.processSgvs(sgvList, doFullSync = false, fromLiveSite = true)
 
         assertTrue(result)
-        verify(storeDataForDb).addToGlucoseValues(any())
+        verify(storeDataForDb).addToGlucoseValues(argThat {
+            size == 1 && get(0).ids.nightscoutId == null
+        })
     }
 
     @Test
@@ -180,7 +182,9 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
 
         assertTrue(result)
         verify(storeDataForDb).addToGlucoseValues(argThat {
-            size == 1 && get(0).value == 110.0
+            size == 1 &&
+                get(0).value == 110.0 &&
+                get(0).ids.nightscoutId == null
         })
     }
 

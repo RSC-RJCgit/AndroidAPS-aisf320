@@ -124,6 +124,11 @@ class NsIncomingDataProcessor(
 
             for (i in 0 until sgvs.size) {
                 val sgv = (sgvs[i] as NSSgvV3).toGV()
+                // The id on a live-site reading belongs to that other Nightscout.
+                // The uploader skips any glucose that already has an id, so the
+                // main site never receives it. Drop the other id here. A later
+                // upload then stores this site's own id on the same row.
+                if (fromLiveSite) sgv.ids.nightscoutId = null
                 if (sgv.timestamp < dateUtil.now() + T.mins(1).msecs() && sgv.timestamp > latestDateInReceivedData) {
                     latestDateInReceivedData = sgv.timestamp
                     glucoseValues += sgv
