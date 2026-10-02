@@ -380,6 +380,15 @@
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText,RtlSymmetry" />
 
+                    <CheckBox
+                        android:id="@+id/auto_fpu_checkbox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="Auto fat/protein from carbs (untick to stop carbs overwriting these boxes)"
+                        android:textAppearance="?android:attr/textAppearanceSmall"
+                        tools:ignore="HardcodedText,RtlSymmetry" />
+
                 </LinearLayout>
 
             </TableRow>

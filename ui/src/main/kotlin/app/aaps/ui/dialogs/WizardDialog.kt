@@ -138,7 +138,9 @@ class WizardDialog : DaggerDialogFragment() {
     // unreliableSmb): whenever carbs changes, Fat/Protein auto-populate from it (fat=carbs×1.0,
     // protein=carbs×1.5, or ×1.5/×2.0 if Unreliable SMBs) -- same pattern as the other pre-fill defaults
     // above. A manual edit to either box wins and sticks until carbs itself changes again, at which
-    // point a fresh suggestion overwrites it (see autoFillProteinFatFromCarbs()).
+    // point a fresh suggestion overwrites it (see autoFillProteinFatFromCarbs()). The autoFpuCheckbox
+    // (added same day) is the sticky alternative -- unticking it stops auto-fill outright, surviving
+    // carbs edits, so you don't have to keep re-editing the boxes by hand.
     private var proteinFatManuallyOverridden = false
     private var applyingAutoFpu = false
 
@@ -279,6 +281,16 @@ class WizardDialog : DaggerDialogFragment() {
         binding.proteinInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
         binding.fatInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
         binding.unreliableSmbsCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
+        // Auto FPU on/off (2026-10-02, per explicit request): unlike proteinFatManuallyOverridden (which a
+        // later carbs edit silently resets, see carbsInput's listener above), this checkbox is the sticky
+        // "leave my Fat/Protein boxes alone" switch -- autoFillProteinFatFromCarbs() checks it directly and
+        // no-ops while unticked, regardless of carbs changes. Re-ticking re-applies the suggestion immediately.
+        binding.autoFpuCheckbox.setOnCheckedChangeListener { _, checked ->
+            if (checked) {
+                proteinFatManuallyOverridden = false
+                autoFillProteinFatFromCarbs()
+            }
+        }
 
         // If there is no BG using % lower that 100% leads to high BGs
         // because loop doesn't add missing insulin
@@ -662,7 +674,7 @@ class WizardDialog : DaggerDialogFragment() {
     // carb-percentage concept ported, parked for later per that same discussion). No-op once the user
     // has directly edited either box (proteinFatManuallyOverridden) -- see that field's own doc comment.
     private fun autoFillProteinFatFromCarbs() {
-        if (proteinFatManuallyOverridden) return
+        if (proteinFatManuallyOverridden || !binding.autoFpuCheckbox.isChecked) return
         val carbsValue = binding.carbsInput.value
         val unreliable = binding.unreliableSmbsCheckbox.isChecked
         val fatRatio = if (unreliable) 1.5 else 1.0
