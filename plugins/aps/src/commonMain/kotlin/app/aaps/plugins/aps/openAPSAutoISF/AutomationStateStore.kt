@@ -111,7 +111,7 @@ internal fun nightFrSkipShouldFire(
         delta >= 4.5 && shortDelta >= 2.7 && rawDelta5 >= 4.5 &&
         iob <= 1.0 && smbSum10 < 0.6 &&
         !lowBgRecent && !mjActive &&
-        steps5 <= 100 && steps30 <= 200
+        steps5 <= 20 && steps30 <= 100
 }
 
 /** The names 3.2.1 reads. Defaults are the off values, so a new store does not look active. */

@@ -39,7 +39,7 @@ internal fun ppAcceWeightRevert(
     recentBoost: Boolean,
 ): WeightRevertDecision {
     val lowBg = glucoseMgdl < 153.1
-    val activeMovement = steps5 > 100 || steps30 > 200 || steps60 > 300
+    val activeMovement = steps5 > 20 || steps30 > 100 || steps60 > 300
     val trigger = lowBg || activeMovement || noRecentHigh
     val restorePp = !weightNear(currentPp, baselinePp) && trigger && !recentBoost
     val restoreAcce = currentAcce > baselineAcce && trigger && !recentBoost

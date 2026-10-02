@@ -33,7 +33,7 @@ internal fun persistentRiseShouldFire(
 ): Boolean {
     if (!ready || !boostOn || !holding || onLowCurrent || mjActive) return false
     if (persistentMinutes < 10.0) return false
-    if (steps5 > 100 || steps30 > 200) return false
+    if (steps5 > 20 || steps30 > 100) return false
     val daytime = minuteInWindow(minuteOfDay, 8 * 60 + 30, 0)
     return daytime || daytimeBypass
 }

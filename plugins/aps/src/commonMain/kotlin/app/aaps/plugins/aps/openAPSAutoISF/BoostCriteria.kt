@@ -65,8 +65,8 @@ internal fun mildBoostShouldFire(
         !onLowProfile &&
         !mjActive &&
         readyBg3 &&
-        steps5 <= 100 &&
-        steps30 <= 200 &&
+        steps5 <= 20 &&
+        steps30 <= 100 &&
         !(bg < 135.1 && iobChange5 > 0.8) &&
         (riseHold || iob < 2.5)
 }
@@ -112,8 +112,8 @@ internal fun bg3BoostShouldFire(
         !onLowProfile &&
         !mjActive &&
         readyMild &&
-        steps5 <= 100 &&
-        steps30 <= 200 &&
+        steps5 <= 20 &&
+        steps30 <= 100 &&
         steps60 < 300 &&
         (deliverySuppressed || longDelta > 7.2)
 }
@@ -150,8 +150,8 @@ internal fun mildFailsafeShouldFire(
         longDelta >= 3.6 &&
         iob <= 0.20 &&
         smbCount20 == 0 &&
-        steps5 <= 100 &&
-        steps30 <= 200
+        steps5 <= 20 &&
+        steps30 <= 100
 }
 
 /** True when a bg3 fire must not be marked. Matches the 60 minute re-arm and the IOB ceilings. */

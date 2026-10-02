@@ -24,7 +24,7 @@ internal fun iobProfileRevert(
     recentBoost: Boolean,
 ): DoseRevertDecision {
     val lowBg = glucoseMgdl < 153.1
-    val activeMovement = steps5 > 100 || steps30 > 200 || steps60 > 300
+    val activeMovement = steps5 > 20 || steps30 > 100 || steps60 > 300
     val trigger = lowBg || activeMovement || noRecentHigh
     val restoreIobTh = currentIobTh > baselineIobTh && trigger && !recentBoost
     val restoreProfilePercent = currentProfilePercent > baselineProfilePercent && trigger && !recentBoost

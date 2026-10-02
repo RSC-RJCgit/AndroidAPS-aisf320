@@ -96,7 +96,7 @@ internal fun tt57MildConfirmed(
         rawDelta5 >= 5.4 * stackK && rawDelta5 < 14.4 * stackK &&
         rawFloor && rawDelta1 < 14.4 * stackK &&
         !onLowProfile && !mjActive && readyBg3 &&
-        steps5 <= 100 && steps30 <= 200 &&
+        steps5 <= 20 && steps30 <= 100 &&
         !(bg < 135.1 && iobChange5 > 0.8)
 }
 
