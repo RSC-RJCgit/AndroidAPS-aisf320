@@ -132,7 +132,10 @@ class NsIncomingDataProcessor(
             }
         }
         if (glucoseValues.isNotEmpty()) {
-            if (preferences.get(BooleanKey.FslApplySmoothing) && !config.AAPSCLIENT) applyLibre(glucoseValues)
+            // xDrip on this phone is already dropped while the live site supplies BG.
+            // Do not run that slope on the live site's own glucose. The number would
+            // follow the slope switch and look like an xDrip reading.
+            if (!fromLiveSite && preferences.get(BooleanKey.FslApplySmoothing) && !config.AAPSCLIENT) applyLibre(glucoseValues)
             nsClient.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
             // Was that sgv more less 5 mins ago ?
             if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {

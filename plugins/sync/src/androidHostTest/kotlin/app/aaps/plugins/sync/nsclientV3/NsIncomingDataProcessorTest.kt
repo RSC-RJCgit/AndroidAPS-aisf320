@@ -154,6 +154,37 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
     }
 
     @Test
+    fun `processSgvs from the live site keeps the site value when Libre slope is on`() {
+        whenever(nsClientSource.isEnabled()).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientAcceptCgmData)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.FslApplySmoothing)).thenReturn(true)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        val sgvTime = now - T.mins(1).msecs()
+        val sgvList = listOf(
+            NSSgvV3(
+                device = "share2",
+                date = sgvTime,
+                identifier = "live-slope",
+                utcOffset = null,
+                isValid = true,
+                units = NsUnits.MG_DL,
+                sgv = 110.0,
+                direction = Direction.FLAT,
+                noise = 1.0,
+                filtered = 110.0,
+                unfiltered = 110.0
+            )
+        )
+
+        val result = processor.processSgvs(sgvList, doFullSync = false, fromLiveSite = true)
+
+        assertTrue(result)
+        verify(storeDataForDb).addToGlucoseValues(argThat {
+            size == 1 && get(0).value == 110.0
+        })
+    }
+
+    @Test
     fun `processSgvs ignores SGV with future timestamp`() {
         val futureTime = now + T.mins(5).msecs()
         val sgvList = listOf(
