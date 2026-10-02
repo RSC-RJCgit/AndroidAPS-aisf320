@@ -582,6 +582,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)) secondGraphData.addUamCarbImpact(if (useUAMForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)) secondGraphData.addCombinedCarbs(if (useCombinedCarbsForScale) 1.0 else 0.8)
+            // SMB / acce ISF weight / pp ISF weight lines in graph4's empty IOB_TH bottom half -- same line as OverviewFragment.
+            if (g == 3 && overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB_TH.ordinal)) secondGraphData.addIobThBottomLines()
             // Bottom-row annotations, ported from OverviewFragment's secondary-graph loop (which had
             // acquired all of these while this copy was left behind) so the two screens show the same
             // thing. Placement conditions and ordering are kept identical to that loop rather than

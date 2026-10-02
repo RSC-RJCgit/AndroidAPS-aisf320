@@ -160,6 +160,9 @@ class OverviewDataImpl @Inject constructor(
         maxIobThValueFound = 0.0
         minIobThValueFound = 0.0
         iobThSeries = LineGraphSeries<ScaledDataPoint>()
+        bottomSmbSeries = LineGraphSeries<ScaledDataPoint>()
+        bottomAcceWtSeries = LineGraphSeries<ScaledDataPoint>()
+        bottomPpWtSeries = LineGraphSeries<ScaledDataPoint>()
     }
 
     override fun initRange() {
@@ -327,6 +330,10 @@ class OverviewDataImpl @Inject constructor(
     override var minIobThValueFound = 0.0
     override val iobThScale = Scale()
     override var iobThSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override val bottomHalfScale = Scale()
+    override var bottomSmbSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var bottomAcceWtSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var bottomPpWtSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
 
     override var maxIobValueFound = Double.MIN_VALUE
     override val iobScale = Scale()

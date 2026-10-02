@@ -213,6 +213,12 @@ interface OverviewData {
     var minIobThValueFound: Double
     val iobThScale: Scale
     var iobThSeries: SeriesData
+    /** Bottom-half lines on the IOB_TH panel (graph4): per-cycle SMB (0..1U), acce ISF weight (0..1), pp ISF weight (0..0.15).
+     *  Data points are pre-normalised to -(value/fullScale), i.e. -1..0; bottomHalfScale.multiplier is set to the panel's maxY. */
+    val bottomHalfScale: Scale
+    var bottomSmbSeries: SeriesData
+    var bottomAcceWtSeries: SeriesData
+    var bottomPpWtSeries: SeriesData
     var maxAcceIsfValueFound: Double
     var minAcceIsfValueFound: Double
     val acceIsfScale: Scale

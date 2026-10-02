@@ -3298,6 +3298,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)) secondGraphData.addUamCarbImpact(if (useUAMForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)) secondGraphData.addCombinedCarbs(if (useCombinedCarbsForScale) 1.0 else 0.8)
+            // SMB / acce ISF weight / pp ISF weight lines in the empty bottom half of graph4's IOB_TH panel.
+            // After every scale-setting series above so maxY is final. Keep in sync with HistoryBrowseActivity.kt.
+            if (g == 3 && overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB_TH.ordinal)) secondGraphData.addIobThBottomLines()
             // CarePortal notes: swapped from graph2 to graph4 (g==3) — was on graph2, swapped positions
             // with the SMB stacked labels below. Same TREAT toggle source as before.
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()

@@ -823,6 +823,42 @@ class PrepareIobAutosensGraphDataWorker(
             it.thickness = 3
         }
 
+        // IOB_TH panel (graph4) bottom-half lines, per AIV cycle: SMB delivered (0..1.0 U, spikes), acce ISF weight
+        // (the setting, 0..1.0 = 100%) and pp ISF weight (the setting, 0..0.15). Each is stored as -(value / fullScale),
+        // i.e. -1..0; GraphData.addIobThBottomLines() sets bottomHalfScale.multiplier to the panel's maxY so they fill
+        // the negative (bottom) half that the IOB_TH line leaves empty. pp weight is not a persisted AIV field -- it is
+        // parsed from the nearest APSResult reason text (same source AutoIsfHistoryExporter.ppWeightStr uses).
+        run {
+            val bottomScale = data.overviewData.bottomHalfScale
+            val smbArr: MutableList<ScaledDataPoint> = ArrayList()
+            val acceWtArr: MutableList<ScaledDataPoint> = ArrayList()
+            val ppWtArr: MutableList<ScaledDataPoint> = ArrayList()
+            val ppWeightRegex = Regex("""pp_ISF_weight\s+is\s+([0-9.]+)""", RegexOption.IGNORE_CASE)
+            val ppPoints = apsResults
+                .mapNotNull { r -> ppWeightRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull()?.let { v -> r.date to v } }
+                .sortedBy { it.first }
+            var pi = 0
+            autoIsfResults.forEach { aiv ->
+                smbArr.add(ScaledDataPoint(aiv.timestamp, -aiv.smbDelivered.coerceIn(0.0, 1.0), bottomScale))
+                acceWtArr.add(ScaledDataPoint(aiv.timestamp, -aiv.acceIsfWeight.coerceIn(0.0, 1.0), bottomScale))
+                while (pi + 1 < ppPoints.size && abs(ppPoints[pi + 1].first - aiv.timestamp) <= abs(ppPoints[pi].first - aiv.timestamp)) pi++
+                if (ppPoints.isNotEmpty() && abs(ppPoints[pi].first - aiv.timestamp) <= 3 * 60 * 1000L)
+                    ppWtArr.add(ScaledDataPoint(aiv.timestamp, -(ppPoints[pi].second.coerceIn(0.0, 0.15) / 0.15), bottomScale))
+            }
+            data.overviewData.bottomSmbSeries = LineGraphSeries(Array(smbArr.size) { i -> smbArr[i] }).also {
+                it.color = android.graphics.Color.parseColor("#4A9EFF")
+                it.thickness = 3
+            }
+            data.overviewData.bottomAcceWtSeries = LineGraphSeries(Array(acceWtArr.size) { i -> acceWtArr[i] }).also {
+                it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.acceIsfColor)
+                it.thickness = 3
+            }
+            data.overviewData.bottomPpWtSeries = LineGraphSeries(Array(ppWtArr.size) { i -> ppWtArr[i] }).also {
+                it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.ppIsfColor)
+                it.thickness = 3
+            }
+        }
+
         // AUTO_ISF
         // BG PARABOLA
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal)) {

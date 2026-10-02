@@ -330,6 +330,17 @@ class GraphData @Inject constructor(
         //addSeries(overviewData.iobPredictions2Series)
     }
 
+    // SMB / acce ISF weight / pp ISF weight lines in the bottom (negative) half of the IOB_TH panel. Must be called
+    // AFTER the panel's own scale-setting series (addIob/addIobTh) so maxY is final. Only drawn when the panel has the
+    // symmetric IOB-style range (minY < 0) -- with a pure ISF-factor range (minY ~ 1) there is no empty bottom half.
+    fun addIobThBottomLines() {
+        if (minY >= 0.0) return
+        overviewData.bottomHalfScale.multiplier = maxY
+        addSeries(overviewData.bottomSmbSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.bottomAcceWtSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.bottomPpWtSeries as LineGraphSeries<ScaledDataPoint>)
+    }
+
     // scale in % of vertical size (like 0.3)
     fun addIob(useForScale: Boolean, scale: Double, maxCommonIob: Double) {
         if (maxCommonIob>0.0) {
