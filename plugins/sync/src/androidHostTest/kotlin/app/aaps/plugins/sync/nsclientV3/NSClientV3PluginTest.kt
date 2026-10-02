@@ -179,12 +179,11 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
     }
 
     /**
-     * On a client, masterReachable requires ALL of: live WS, a fresh master heartbeat, a current
-     * pairing, and not being orphaned. It FAILS CLOSED before the first heartbeat (no optimistic
-     * enable at boot) and times out to stale if heartbeats later stop.
+     * On a client, the live link stays up while paired, authorized, and remote control is on.
+     * Silence and a down websocket do not end it.
      */
     @Test
-    fun masterReachableGatedByPairingAuthorizationAndFreshnessOnClient() {
+    fun masterReachableStaysUpThroughSilenceAndWebsocketDown() {
         val fixedNow = 1_700_000_000_000L
         whenever(dateUtil.now()).thenReturn(fixedNow)
         whenever(config.AAPSCLIENT).thenReturn(true)
@@ -207,13 +206,13 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
         runBlocking {
             val collector = launch(Dispatchers.Default) { client.masterReachable.collect { } }
             try {
-                awaitValue(client.masterReachable, false)                         // unpaired + no heartbeat → gated
+                awaitValue(client.masterReachable, false)                         // unpaired → gated
                 pairedFlow.value = "client-id"
-                awaitValue(client.masterReachable, false)                         // paired but NO heartbeat yet → stays gated (fail-closed)
-                client.bumpDevicestatusHeartbeat(fixedNow - 10 * 60_000L)         // catch-up pulls a STALE historical devicestatus (created 10 min ago)
-                awaitValue(client.masterReachable, false)                         // stale heartbeat must NOT unlock (the app-restart-with-offline-master bug)
-                client.bumpDevicestatusHeartbeat(fixedNow)                        // a genuinely fresh master heartbeat confirms it alive
-                awaitValue(client.masterReachable, true)                          // ws + fresh + paired + authorized
+                awaitValue(client.masterReachable, true)                          // paired, no heartbeat yet → stays up
+                wsConnectedState.value = false
+                awaitValue(client.masterReachable, true)                          // websocket down → stays up
+                client.bumpDevicestatusHeartbeat(fixedNow - 10 * 60_000L)         // an old status does not end the link
+                awaitValue(client.masterReachable, true)
                 authorizedFlow.value = false
                 awaitValue(client.masterReachable, false)                         // revoked / orphaned → gated
                 authorizedFlow.value = true

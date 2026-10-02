@@ -39,7 +39,6 @@ import org.mockito.Mock
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argThat
-import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -132,7 +131,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        verify(nsDeviceStatusHandler).handleNewData(any(), any())
+        verify(nsDeviceStatusHandler).handleNewData(any())
     }
 
     @Test
@@ -147,7 +146,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        verify(nsDeviceStatusHandler, never()).handleNewData(any(), any())
+        verify(nsDeviceStatusHandler, never()).handleNewData(any())
     }
 
     @Test
@@ -246,8 +245,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        // live = false: the catch-up worker load must NOT bump the master-alive heartbeat (only live WS pushes do).
-        verify(nsDeviceStatusHandler).handleNewData(argThat { size == 2 }, eq(false))
+        verify(nsDeviceStatusHandler).handleNewData(argThat { size == 2 })
     }
 
     @Test

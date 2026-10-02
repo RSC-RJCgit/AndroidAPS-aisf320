@@ -102,11 +102,8 @@ class NSDeviceStatusHandler(
     private val profileUtil: ProfileUtil,
 ) {
 
-    /**
-     * @param live true only for a real-time WS push (a devicestatus the master just created), false for the
-     *   REST catch-up/initial batch load. Only a live push bumps the master-alive heartbeat — see below.
-     */
-    fun handleNewData(deviceStatuses: Array<NSDeviceStatus>, live: Boolean = false) {
+    /** A live push and a downloaded batch both count. The status time is what the 9-minute check uses. */
+    fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]
             if (config.AAPSCLIENT) {
@@ -122,20 +119,13 @@ class NSDeviceStatusHandler(
             }
         }
         if (config.AAPSCLIENT && deviceStatuses.isNotEmpty()) {
-            // Master-alive heartbeat — gates scene/edit controls when master goes silent, even while the
-            // local WS to NS is still up. Bump ONLY for a live WS push: a brand-new devicestatus arriving in
-            // real time proves the master is online NOW. The catch-up/initial worker load must NOT bump — at
-            // app start it pulls the master's LAST historical devicestatus off NS, which can be only a few
-            // minutes old (inside the 9-min window) yet the master may already be offline. Per the agreed
-            // design the client fails closed after start and waits for the first live ping.
-            // (created_at, not receipt time, is still used as a second guard: skip an unparseable/absent
-            // record rather than crashing, and never fall back to now().)
-            if (live) {
-                val newestCreatedAt = deviceStatuses
-                    .mapNotNull { ds -> ds.createdAt?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() } ?: ds.date }
-                    .maxOrNull() ?: 0L
-                if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
-            }
+            // One missed live push must not end the link. A downloaded status counts too.
+            // The time on the status is used, not the time it was received. A status with no
+            // time is skipped. A time older than 9 minutes does not keep the master reachable.
+            val newestCreatedAt = deviceStatuses
+                .mapNotNull { ds -> ds.createdAt?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() } ?: ds.date }
+                .maxOrNull() ?: 0L
+            if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
             rxBus.send(EventNsClientStatusUpdated())
         }
     }

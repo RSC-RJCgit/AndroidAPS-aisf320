@@ -318,10 +318,9 @@ class ClientControlRoundTrip(
                     if (p !is ActionProgress.Applied && p !is ActionProgress.Prepared) _pending.value = PendingAction(p, label)
                 }
             }
-            // No ack came back (timeout / connection lost) → we don't actually know the master's state.
-            // Flip offline so the app-level probe pings + re-pulls and the real result reconciles, rather
-            // than leaving a stale optimistic guess. Self-heals on the next pong/heartbeat.
-            if (terminal is ActionProgress.Unconfirmed) nsClientV3Plugin().markMasterUnreachable()
+            // No answer. The command stays unanswered. It does not end the live link.
+            // Ask again. The master's answer resets the clock if the master is there.
+            if (terminal is ActionProgress.Unconfirmed) nsClientV3Plugin().requestMasterProbe()
             if (terminal is ActionProgress.Applied || terminal is ActionProgress.Prepared) {
                 val visibleMs = dateUtil.now() - shownAt
                 if (visibleMs < ClientControlActionDispatcher.MIN_MODAL_VISIBLE_MS)

@@ -49,7 +49,6 @@ import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.clientcontrol.ClientState
 import app.aaps.core.nssdk.remotemodel.LastModified
-import app.aaps.core.objects.extensions.freshness
 import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.preference.libreSpecialSettings
@@ -97,7 +96,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,7 +111,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.job
@@ -291,11 +288,17 @@ class NSClientV3Plugin(
                     }
                 }
         }
-        // Client: probe the master the moment the WS (re)connects — the pong clears the offline banner
-        // fast, and the bundled config re-fetch picks up anything missed while disconnected.
+        // Client: ask the master when the websocket connects, and again every 3 minutes while it
+        // stays up. One missed answer does not end the link. The master's answer resets the 9 minutes.
         if (config.AAPSCLIENT) {
             scope.launch {
                 wsConnectedFlow.collect { connected -> if (connected) requestMasterProbe() }
+            }
+            scope.launch {
+                while (isActive) {
+                    delay(linkProbeIntervalMs)
+                    if (wsConnectedFlow.value) requestMasterProbe()
+                }
             }
         }
         rxBus.toFlow(EventAppExit::class)
@@ -511,15 +514,9 @@ class NSClientV3Plugin(
     // rebinds, so UI subscribers persist across them.
     override val wsConnectedFlow: StateFlow<Boolean> get() = nsConnection.connected
 
-    // Heartbeat from master's devicestatus stream. Stays 0L until the first batch arrives; combined
-    // with freshness(pristine=false) this FAILS CLOSED at boot — masterReachable stays false until a
-    // first master heartbeat positively confirms the master is alive, instead of optimistically
-    // enabling. (A 0L seed + pristine=true, or any non-zero seed, would let a client that boots while
-    // the master is offline edit for the whole stale window and silently lose those edits; the WS term
-    // can't catch that, since WS is client↔NS, not client↔master.) On AAPSCLIENT, NSDeviceStatusHandler
-    // bumps this from the newest devicestatus's own created_at — but ONLY for a LIVE WS push (live=true),
-    // never the catch-up/initial worker load, so a stale historical devicestatus pulled at boot can't mark
-    // a long-offline master alive. So the client waits for the master's first real-time devicestatus.
+    // Heartbeat from the master's device status. Stays 0 until the first status arrives, so the
+    // client waits. A live push and a download both count. The 9-minute check uses the time on
+    // the status, so an old status does not keep the master reachable.
     private val _lastDevicestatusReceivedAt = MutableStateFlow(0L)
     override val lastDevicestatusReceivedAt: StateFlow<Long> = _lastDevicestatusReceivedAt.asStateFlow()
 
@@ -532,10 +529,8 @@ class NSClientV3Plugin(
         bumpMasterSignal(heartbeatAt)
     }
 
-    // Unified liveness clock: the newest of ANY authenticated, real-time master signal — a devicestatus
-    // heartbeat, a verified Client-Control ACK/pong, or a live config republish. [masterReachable]'s
-    // freshness term reads THIS (not devicestatus alone), so an active PING-PONG clears the offline
-    // banner without waiting for the next devicestatus push. Same fail-closed seed (0L) + pristine=false.
+    // Newest master signal: a device status, a verified answer, or a live config republish.
+    // The live link does not read this. A missed command does not clear it.
     private val _lastMasterSignalAt = MutableStateFlow(0L)
 
     /** Bump the liveness clock from a real-time master signal (pong / live republish / heartbeat). Monotonic. */
@@ -544,60 +539,27 @@ class NSClientV3Plugin(
         _lastMasterSignalAt.update { maxOf(it, at) }
     }
 
-    /**
-     * Force [masterReachable] offline by staling the liveness clock. Called when a client-control action
-     * gets no ack (Unconfirmed): we don't actually know the master is alive, so flip offline — that drives
-     * the app-level probe to ping + re-pull, reconciling the real state instead of leaving a stale guess.
-     * Self-heals: a pong/heartbeat bumps the clock fresh again within seconds if the master is up.
-     */
-    internal suspend fun markMasterUnreachable() {
-        _lastMasterSignalAt.value = 0L
-    }
+    // While the websocket stays up, ask the master this often. The answer is not required
+    // to keep the live link.
+    private val linkProbeIntervalMs = 3 * 60_000L
 
-    // Grace before flagging offline on a WS drop — swallows brief flaps (reconnect storms during NS
-    // restarts), short enough that a real outage surfaces in seconds.
-    private val wsDisconnectGraceMs = 5_000L
-
-    // Heartbeat staleness threshold (~1.8 loop cycles): one missed devicestatus publication of grace.
-    private val heartbeatStaleMs = 9 * 60_000L
-    private val heartbeatTickMs = 60_000L
-
-    // App-lifetime scope for [masterReachable] — independent of the restartable [scope] so the derived
-    // signal (and its freshness ticker) survives service stop/start.
+    // App-lifetime scope for [masterReachable]. It survives a service stop and start.
     private val reachableScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    // See [NsClient.masterReachable]. Master: always reachable. Client: ALL of — live WS (falling-edge
-    // grace), a fresh master devicestatus heartbeat, a current Client-Control pairing, and not being
-    // orphaned (master still lists us in its authorizedClients roster). The pairing + authorized terms
-    // matter because a client→master edit rides the signed Client-Control channel: an unpaired (but
-    // NS-connected) client looks "reachable" yet has every edit dropped (nextSignedEnvelope returns null
-    // when unpaired), and a revoked/orphaned client would have its commands rejected by the master.
-    // NsClientControlClientId is the canonical paired marker (see ClientPairingRepository.isPaired),
-    // observed so pairing/unpairing updates live; OrphanDetector.authorized is the roster signal
-    // (optimistic until a doc proves us excluded). The heartbeat term uses pristine=false so a client
-    // FAILS CLOSED before its first master heartbeat (disabled until the master is positively confirmed
-    // alive — see the _lastDevicestatusReceivedAt seed above) and times out to stale if heartbeats later
-    // stop. Single shared flow (WhileSubscribed) — consumers no longer each rebuild the combine on their own scope.
-    @OptIn(ExperimentalCoroutinesApi::class)
+    // See [NsClient.masterReachable]. Master: always reachable. Client: paired, still on the
+    // master's list, and remote control on. Silence does not end the link. A down websocket
+    // does not end the link. A missed command does not end the link.
     override val masterReachable: StateFlow<Boolean> =
         if (!config.AAPSCLIENT) MutableStateFlow(true).asStateFlow()
         else combine(
-            wsConnectedFlow.transformLatest { connected ->
-                if (connected) emit(true) else {
-                    delay(wsDisconnectGraceMs); emit(false)
-                }
-            },
-            _lastMasterSignalAt.freshness(thresholdMs = heartbeatStaleMs, scope = reachableScope, tickMs = heartbeatTickMs, pristine = false, now = dateUtil::now),
             preferences.observe(StringNonKey.NsClientControlClientId).map { it.isNotEmpty() },
             orphanDetector.authorized,
             // Master's "allow client control" switch, synced master→client (effective value — see
             // RunningConfigurationImpl). Off ⇒ master silently drops commands, so block fast here instead.
             preferences.observe(BooleanKey.NsClientAllowClientControl)
-        ) { ws, fresh, paired, authorized, controlAllowed ->
-            val reachable = ws && fresh && paired && authorized && controlAllowed
-            // Diagnostic (lazy — string built only when NSCLIENT logging is on): shows WHICH term gates.
-            // heartbeatAgeMs > heartbeatStaleMs (9 min) ⇒ fresh=false.
-            aapsLogger.debug(LTag.NSCLIENT) { "masterReachable=$reachable (ws=$ws fresh=$fresh paired=$paired authorized=$authorized controlAllowed=$controlAllowed heartbeatAgeMs=${dateUtil.now() - lastDevicestatusReceivedAt.value})" }
+        ) { paired, authorized, controlAllowed ->
+            val reachable = paired && authorized && controlAllowed
+            aapsLogger.debug(LTag.NSCLIENT) { "masterReachable=$reachable (paired=$paired authorized=$authorized controlAllowed=$controlAllowed)" }
             reachable
         }
             // Seed FALSE (fail-closed): before the combine first computes — and on a cold start / WS

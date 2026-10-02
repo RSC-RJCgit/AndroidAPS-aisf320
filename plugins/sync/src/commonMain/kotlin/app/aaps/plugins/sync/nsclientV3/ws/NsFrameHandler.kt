@@ -106,7 +106,7 @@ class NsFrameHandler(
         }
 
         when (collection) {
-            "devicestatus" -> nsDeviceStatusHandler.handleNewData(arrayOf(docString.toNSDeviceStatus()), live = true)
+            "devicestatus" -> nsDeviceStatusHandler.handleNewData(arrayOf(docString.toNSDeviceStatus()))
 
             "entries"      -> {
                 // The full app and a client ignore main-site glucose when the second site supplies it.
