@@ -90,6 +90,16 @@ android {
             versionName = Versions.appVersion + "-aapsclient2"
             manifestPlaceholders["appIcon"] = "@mipmap/ic_blueowl"
         }
+        // Mirrors app/build.gradle.kts's full2 flavor (2026-10-05) -- needed so CI's combined
+        // ":app:assemble... :wear:assemble..." commands can find a matching wear task for full2,
+        // even though this instance has no wear companion installed.
+        create("full2") {
+            applicationId = "info.nightscout.androidaps.uk3426"
+            dimension = "standard"
+            resValue("string", "app_name", "AAPS UK3426")
+            versionName = Versions.appVersion + "-uk3426"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+        }
     }
     buildFeatures {
         buildConfig = true
