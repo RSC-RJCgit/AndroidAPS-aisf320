@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.12.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.13.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,22 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .12, 2026-10-02)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .13, 2026-10-03)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.12.patch
-  git apply bolus-calculator-on-3426-aisf321.12.patch
+  git apply --check bolus-calculator-on-3426-aisf321.13.patch
+  git apply bolus-calculator-on-3426-aisf321.13.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .13 (2026-10-03):
+- Fix: the protein/fat (Warsaw FPU) doses fpu1..fpuN, due an hour apart, were all cancelled together
+  minutes after scheduling. Each dose polls every 2 min and ran its profile/pump/superbolus cancel
+  checks BEFORE checking whether it was due, so one short 50% profile switch killed doses not due for
+  hours. Now only "bolus stopped" and "superseded by a newer entry" cancel early; profile, pump,
+  superbolus, BG-safety and IOB checks run only when that dose is actually due
+  (BolusWizard.scheduleSingleDelayedDose).
+- Retains all patch .12 changes below.
 
 Changes in patch .12 (2026-10-02):
 - New wizard checkbox "Auto fat/protein from carbs" (checked by default, below "Unreliable SMBs").
