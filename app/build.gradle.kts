@@ -165,18 +165,6 @@ allprojects {
     }
 }
 
-// full2 has its own applicationId (info.nightscout.androidaps.uk3426) that was never registered as
-// a Firebase/Google Services client -- registering it would need Firebase console access this repo
-// doesn't need for a side-install build. Skip just this variant's Google Services processing rather
-// than failing the whole build; full2 simply won't have Crashlytics wired up at runtime, same as any
-// app without Firebase configured. Does not touch CI's own Google Drive upload step, which is a
-// separate OAuth2/curl mechanism with no relation to this plugin.
-tasks.configureEach {
-    if (name.contains("Full2") && name.contains("GoogleServices")) {
-        enabled = false
-    }
-}
-
 // Android already ships org.json; jsonassert (test + androidTest) pulls it transitively and
 // Studio flags DuplicatePlatformClasses even when a single dependency exclude is set — the
 // test-app-dependencies plugin also adds jsonassert on testImplementation without an exclude.
