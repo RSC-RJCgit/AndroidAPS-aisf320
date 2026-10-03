@@ -272,9 +272,13 @@ class ChipsViewModel(
             preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
             activePlugin.activePump.selectedActivePump() is VirtualPump
         val steps = persistenceLayer.getStepsCountFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
-        return persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
+        val aivRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
             .sortedByDescending { it.timestamp }
+        // Profile basal at each row's time (not the running/temp rate). Looked up here because the lookup is suspend.
+        val profileBasal = aivRows.associate { it.timestamp to profileFunction.getProfile(it.timestamp)?.getBasal(it.timestamp) }
+        return aivRows
             .autoIsfHistoryRows(
+                profileBasalAt = { profileBasal[it] },
                 timeText = { dateUtil.timeString(it) },
                 glucoseText = { profileUtil.fromMgdlToStringInUnits(it, units) },
                 deltaText = { profileUtil.fromMgdlToSignedStringInUnits(it, units) },

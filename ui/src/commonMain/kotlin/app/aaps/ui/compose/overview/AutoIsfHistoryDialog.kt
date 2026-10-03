@@ -77,7 +77,8 @@ fun AutoIsfHistoryDialog(
                 } else {
                     val headerColor = MaterialTheme.colorScheme.onSurfaceVariant
                     val vertical = rememberScrollState()
-                    Column(modifier = Modifier.weight(1f).verticalScroll(vertical)) {
+                    // Header row stays fixed above the vertical scroll; it shares the horizontal scroll with the data rows.
+                    Column(modifier = Modifier.weight(1f)) {
                         Row {
                             HistoryCell(stringResource(UiStrings.autoisf_history_time), headerColor, bold = true)
                             HistoryLine(
@@ -87,16 +88,18 @@ fun AutoIsfHistoryDialog(
                                 scroll = horizontal
                             )
                         }
-                        shown.forEach { row ->
-                            val colors = rowColors(row)
-                            Row {
-                                HistoryCell(row.time, colors.first(), bold = false)
-                                HistoryLine(
-                                    values = row.scrollingCells(),
-                                    colors = colors.drop(1),
-                                    bold = false,
-                                    scroll = horizontal
-                                )
+                        Column(modifier = Modifier.weight(1f).verticalScroll(vertical)) {
+                            shown.forEach { row ->
+                                val colors = rowColors(row)
+                                Row {
+                                    HistoryCell(row.time, colors.first(), bold = false)
+                                    HistoryLine(
+                                        values = row.scrollingCells(),
+                                        colors = colors.drop(1),
+                                        bold = false,
+                                        scroll = horizontal
+                                    )
+                                }
                             }
                         }
                     }
@@ -133,6 +136,7 @@ private fun historyHeaders(): List<String> = listOf(
     stringResource(UiStrings.autoisf_history_slope),
     stringResource(UiStrings.autoisf_history_cob),
     stringResource(UiStrings.autoisf_history_basal),
+    stringResource(UiStrings.autoisf_history_profile_basal),
     stringResource(UiStrings.autoisf_history_note),
     stringResource(UiStrings.autoisf_history_steps_5),
     stringResource(UiStrings.autoisf_history_steps_15),
@@ -144,7 +148,7 @@ private fun historyHeaders(): List<String> = listOf(
 private fun AutoIsfHistoryRow.scrollingCells(): List<String> = listOf(
     glucose, ukf, ukfDelta5, ukfDelta15, finalIsf, acceIsf, bgIsf, ppIsf, duraIsf,
     acceleration, delta, shortDelta, longDelta, iob, iob5, iobTh, smb,
-    target, uam, smbRatio, acceWeight, ppWeight, slope, cob, basal, note,
+    target, uam, smbRatio, acceWeight, ppWeight, slope, cob, basal, profileBasal, note,
     steps5, steps15, steps30, steps60, steps180
 )
 
@@ -173,6 +177,7 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
         insulin,
         factorColor(row.smbFactor, insulin),
         glucose,
+        insulin,
         insulin,
         insulin,
         insulin,

@@ -54,6 +54,7 @@ data class AutoIsfHistoryRow(
     val slope: String,
     val cob: String,
     val basal: String,
+    val profileBasal: String,
     val note: String,
     val smbFactor: AutoIsfFactor,
     val hasSmb: Boolean,
@@ -110,7 +111,8 @@ fun List<AIV>.autoIsfHistoryRows(
     format2: (Double) -> String,
     steps: List<SC> = emptyList(),
     fromLivePhone: Boolean = false,
-    ownDevice: String = ""
+    ownDevice: String = "",
+    profileBasalAt: (Long) -> Double? = { null }
 ): List<AutoIsfHistoryRow> = mapIndexed { index, row ->
     val factor = dominantAutoIsfFactor(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)
     val sample = LiveSteps.sampleFor(row.timestamp, steps, fromLivePhone, ownDevice)
@@ -142,6 +144,7 @@ fun List<AIV>.autoIsfHistoryRows(
         slope = autoIsfAmountText(row.fslCalSlope, format2),
         cob = autoIsfAmountText(row.cob, format2),
         basal = autoIsfAmountText(row.basal, format2),
+        profileBasal = profileBasalAt(row.timestamp)?.let { format2(it) } ?: "--",
         note = row.note.ifBlank { "--" },
         smbFactor = if (row.smbDelivered == 0.0) AutoIsfFactor.NONE else factor,
         hasSmb = row.smbDelivered > 0.0,

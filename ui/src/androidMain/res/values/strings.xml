@@ -230,7 +230,8 @@
     <string name="autoisf_history_pp_weight" comment="Post-prandial ISF weight in force for this loop. Example: 0.25">ppWt</string>
     <string name="autoisf_history_slope" comment="Libre calibration slope in force for this loop. Example: 1.00">slope</string>
     <string name="autoisf_history_cob" comment="Carbs still on board, in grams.">COB</string>
-    <string name="autoisf_history_basal" comment="Running basal rate, in U/h. Example: 0.80">basal</string>
+    <string name="autoisf_history_basal" comment="Running basal rate (temp basal in force), in U/h. Example: 0.80">TBR</string>
+    <string name="autoisf_history_profile_basal" comment="Basal rate the active profile has at this time, in U/h. Example: 0.80">Basal</string>
     <string name="autoisf_history_note" comment="Care-portal notes written during this loop.">notes</string>
     <string name="autoisf_history_smb">SMB</string>
     <string name="autoisf_history_steps_5" comment="Steps in the last 5 minutes.">S5</string>
