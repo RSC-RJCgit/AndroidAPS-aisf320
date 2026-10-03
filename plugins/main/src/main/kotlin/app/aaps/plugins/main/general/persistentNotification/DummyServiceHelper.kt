@@ -53,7 +53,13 @@ class DummyServiceHelper @Inject constructor(
             // Just call startForegroundService instead since we cannot bind a service to a
             // broadcast receiver context. The service also have to call startForeground in
             // this case.
-            context.startForegroundService(Intent(context, DummyService::class.java))
+            try {
+                context.startForegroundService(Intent(context, DummyService::class.java))
+            } catch (ignored: RuntimeException) {
+                // Android 12+ refuses a background foreground-service start (ForegroundServiceStartNotAllowedException,
+                // e.g. boot/package-replaced receiver on a freshly installed app with no battery-optimisation
+                // exemption). Uncaught here it killed the whole app process; the service starts normally once the app opens.
+            }
         }
     }
 
