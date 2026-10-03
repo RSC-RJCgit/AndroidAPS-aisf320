@@ -108,6 +108,8 @@
     <color name="duraIsfColor">#FF8800</color>
     <color name="finalIsfColor">#00FFFF</color>
     <color name="iobThColor">#00FFFF</color>
+    <color name="smbDelColor">#FF40C0</color>
+    <color name="profileBasalColor">#FFA040</color>
 
     <color name="ribbonDefault">#8C8C8C</color>
     <color name="daySelected">#D000FF00</color>

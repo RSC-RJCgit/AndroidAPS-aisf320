@@ -247,6 +247,8 @@
         <item name="duraIsfColor">@color/duraIsfColor</item>
         <item name="finalIsfColor">@color/finalIsfColor</item>
         <item name="iobThColor">@color/iobThColor</item>
+        <item name="smbDelColor">@color/smbDelColor</item>
+        <item name="profileBasalColor">@color/profileBasalColor</item>
         <!---Popupmenu TextColor -->
         <item name="menuTextColor">@color/black</item>
         <item name="menuTextColorInverse">@color/white</item>

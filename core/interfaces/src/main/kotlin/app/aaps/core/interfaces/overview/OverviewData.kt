@@ -219,6 +219,8 @@ interface OverviewData {
     var bottomSmbSeries: SeriesData
     var bottomAcceWtSeries: SeriesData
     var bottomPpWtSeries: SeriesData
+    /** Active profile's basal rate per cycle, scaled 0..30% of max IOB (-1..0 like the other bottom-half lines). */
+    var bottomProfileBasalSeries: SeriesData
     var maxAcceIsfValueFound: Double
     var minAcceIsfValueFound: Double
     val acceIsfScale: Scale

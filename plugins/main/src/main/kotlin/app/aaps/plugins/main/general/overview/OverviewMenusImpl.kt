@@ -93,6 +93,11 @@ class OverviewMenusImpl @Inject constructor(
         // Combined Carbs -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
         // timestamps. See PrepareIobAutosensGraphDataWorker.kt (combinedCarbsSeries) / GraphData.addCombinedCarbs().
         COMBINED_CARBS(R.string.overview_show_combined_carbs, app.aaps.core.ui.R.attr.combinedCarbsColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.combined_carbs_shortname),
+        // Bottom-half lines on any secondary graph (see GraphData.addBottomHalfLines()). Appended last, same order as OverviewMenus.CharType.
+        SMB_DEL(R.string.overview_show_smb_del, app.aaps.core.ui.R.attr.smbDelColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.smb_del_shortname),
+        ACCE_WT(R.string.overview_show_acce_wt, app.aaps.core.ui.R.attr.acceIsfColor, app.aaps.core.ui.R.attr.menuTextColorInverse, primary = false, secondary = true, shortnameId = R.string.acce_wt_shortname),
+        PP_WT(R.string.overview_show_pp_wt, app.aaps.core.ui.R.attr.ppIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.pp_wt_shortname),
+        PROFILE_BASAL(R.string.overview_show_profile_basal, app.aaps.core.ui.R.attr.profileBasalColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.profile_basal_shortname),
     }
 
     private val runningAutoIsf: Boolean
@@ -191,6 +196,10 @@ class OverviewMenusImpl @Inject constructor(
             m == CharTypeData.BG_ISF.ordinal    -> masterAutoIsf
             m == CharTypeData.PP_ISF.ordinal    -> masterAutoIsf
             m == CharTypeData.DUR_ISF.ordinal   -> masterAutoIsf
+            m == CharTypeData.SMB_DEL.ordinal       -> masterAutoIsf
+            m == CharTypeData.ACCE_WT.ordinal       -> masterAutoIsf
+            m == CharTypeData.PP_WT.ordinal         -> masterAutoIsf
+            m == CharTypeData.PROFILE_BASAL.ordinal -> masterAutoIsf
             m == CharTypeData.HR.ordinal        -> !config.AAPSCLIENT
             // Steps used to be unconditionally hidden on client builds (no local StepsCount sync),
             // but PrepareBgDataWorker.kt/PrepareTreatmentsDataWorker.kt now fall back to parsing step
@@ -219,10 +228,17 @@ class OverviewMenusImpl @Inject constructor(
         val sts = preferences.get(OverviewStringKey.GraphConfig)
         if (sts.isNotEmpty()) {
             _setting = Gson().fromJson(sts, Array<Array<Boolean>>::class.java).toMutableList()
-            // reset when new CharType added
+            // New CharTypes are only ever appended, so a saved array that is SHORTER than the current enum is padded
+            // with "off" for the new entries and every existing selection survives. A longer array (a downgrade) or any
+            // other mismatch still resets to defaults, as before.
+            val expected = OverviewMenus.CharType.entries.size
+            _setting = _setting.map { s ->
+                if (s.size < expected) Array(expected) { i -> if (i < s.size) s[i] else false } else s
+            }.toMutableList()
             for (s in _setting)
-                if (s.size != OverviewMenus.CharType.entries.size) {
-                    _setting = ArrayList<Array<Boolean>>().also { it.add(Array(OverviewMenus.CharType.entries.size) { CharTypeData.entries[it].enabledByDefault }) }
+                if (s.size != expected) {
+                    _setting = ArrayList<Array<Boolean>>().also { it.add(Array(expected) { CharTypeData.entries[it].enabledByDefault }) }
+                    break
                 }
         } else {
             _setting = ArrayList<Array<Boolean>>().also { it.add(Array(OverviewMenus.CharType.entries.size) { CharTypeData.entries[it].enabledByDefault }) }

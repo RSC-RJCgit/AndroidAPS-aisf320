@@ -386,6 +386,14 @@
     <string name="uam_carb_impact_shortname">UAMci</string>
     <string name="overview_show_combined_carbs">Combined Carbs (abs + UAM)</string>
     <string name="combined_carbs_shortname">CmbC</string>
+    <string name="overview_show_smb_del">SMB delivered (bottom, 0-1U)</string>
+    <string name="smb_del_shortname">SMBd</string>
+    <string name="overview_show_acce_wt">Acce ISF weight (bottom, 0-100%)</string>
+    <string name="acce_wt_shortname">aWt</string>
+    <string name="overview_show_pp_wt">PP ISF weight (bottom, 0-0.15)</string>
+    <string name="pp_wt_shortname">pWt</string>
+    <string name="overview_show_profile_basal">Profile basal (bottom, 0-30% max IOB)</string>
+    <string name="profile_basal_shortname">pBas</string>
     <string name="simple_mode_enabled">Simple mode enabled</string>
 
 </resources>

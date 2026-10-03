@@ -22,6 +22,7 @@ import app.aaps.core.graph.data.Shape
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
@@ -825,14 +826,18 @@ class PrepareIobAutosensGraphDataWorker(
 
         // IOB_TH panel (graph4) bottom-half lines, per AIV cycle: SMB delivered (0..1.0 U, spikes), acce ISF weight
         // (the setting, 0..1.0 = 100%) and pp ISF weight (the setting, 0..0.15). Each is stored as -(value / fullScale),
-        // i.e. -1..0; GraphData.addIobThBottomLines() sets bottomHalfScale.multiplier to the panel's maxY so they fill
+        // i.e. -1..0; GraphData.addBottomHalfLines() sets bottomHalfScale.multiplier to the panel's maxY so they fill
         // the negative (bottom) half that the IOB_TH line leaves empty. pp weight is not a persisted AIV field -- it is
         // parsed from the nearest APSResult reason text (same source AutoIsfHistoryExporter.ppWeightStr uses).
+        // Profile basal (the active profile's basal rate at each cycle, step-like) is scaled 0..30% of the max-IOB
+        // setting (DoubleKey.ApsSmbMaxIob), clamped to that range.
         run {
             val bottomScale = data.overviewData.bottomHalfScale
             val smbArr: MutableList<ScaledDataPoint> = ArrayList()
             val acceWtArr: MutableList<ScaledDataPoint> = ArrayList()
             val ppWtArr: MutableList<ScaledDataPoint> = ArrayList()
+            val profileBasalArr: MutableList<ScaledDataPoint> = ArrayList()
+            val basalFullScale = 0.30 * preferences.get(DoubleKey.ApsSmbMaxIob)
             val ppWeightRegex = Regex("""pp_ISF_weight\s+is\s+([0-9.]+)""", RegexOption.IGNORE_CASE)
             val ppPoints = apsResults
                 .mapNotNull { r -> ppWeightRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull()?.let { v -> r.date to v } }
@@ -844,9 +849,13 @@ class PrepareIobAutosensGraphDataWorker(
                 while (pi + 1 < ppPoints.size && abs(ppPoints[pi + 1].first - aiv.timestamp) <= abs(ppPoints[pi].first - aiv.timestamp)) pi++
                 if (ppPoints.isNotEmpty() && abs(ppPoints[pi].first - aiv.timestamp) <= 3 * 60 * 1000L)
                     ppWtArr.add(ScaledDataPoint(aiv.timestamp, -(ppPoints[pi].second.coerceIn(0.0, 0.15) / 0.15), bottomScale))
+                if (basalFullScale > 0.0)
+                    profileFunction.getProfile(aiv.timestamp)?.getBasal(aiv.timestamp)?.let { basal ->
+                        profileBasalArr.add(ScaledDataPoint(aiv.timestamp, -(basal / basalFullScale).coerceIn(0.0, 1.0), bottomScale))
+                    }
             }
             data.overviewData.bottomSmbSeries = LineGraphSeries(Array(smbArr.size) { i -> smbArr[i] }).also {
-                it.color = android.graphics.Color.parseColor("#4A9EFF")
+                it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.smbDelColor)
                 it.thickness = 3
             }
             data.overviewData.bottomAcceWtSeries = LineGraphSeries(Array(acceWtArr.size) { i -> acceWtArr[i] }).also {
@@ -855,6 +864,10 @@ class PrepareIobAutosensGraphDataWorker(
             }
             data.overviewData.bottomPpWtSeries = LineGraphSeries(Array(ppWtArr.size) { i -> ppWtArr[i] }).also {
                 it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.ppIsfColor)
+                it.thickness = 3
+            }
+            data.overviewData.bottomProfileBasalSeries = LineGraphSeries(Array(profileBasalArr.size) { i -> profileBasalArr[i] }).also {
+                it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.profileBasalColor)
                 it.thickness = 3
             }
         }

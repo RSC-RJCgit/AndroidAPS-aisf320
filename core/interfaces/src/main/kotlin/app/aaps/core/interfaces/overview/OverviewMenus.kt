@@ -41,6 +41,13 @@ interface OverviewMenus {
         // Combined Carbs -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
         // timestamps. Same ordinal-stability/migration-reset notes as above.
         COMBINED_CARBS,
+        // Bottom-half lines (per AIV cycle) on any secondary graph: SMB delivered (0..1U), acce ISF weight
+        // (0..1), pp ISF weight (0..0.15), profile basal (0..30% of max IOB). Appended at the end for ordinal
+        // stability; OverviewMenusImpl.loadGraphConfig() now pads older saved configs instead of resetting them.
+        SMB_DEL,
+        ACCE_WT,
+        PP_WT,
+        PROFILE_BASAL,
     }
 
     val setting: List<Array<Boolean>>

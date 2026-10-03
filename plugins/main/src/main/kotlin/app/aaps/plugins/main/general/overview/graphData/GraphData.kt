@@ -330,15 +330,23 @@ class GraphData @Inject constructor(
         //addSeries(overviewData.iobPredictions2Series)
     }
 
-    // SMB / acce ISF weight / pp ISF weight lines in the bottom (negative) half of the IOB_TH panel. Must be called
-    // AFTER the panel's own scale-setting series (addIob/addIobTh) so maxY is final. Only drawn when the panel has the
-    // symmetric IOB-style range (minY < 0) -- with a pure ISF-factor range (minY ~ 1) there is no empty bottom half.
-    fun addIobThBottomLines() {
+    // SMB / acce ISF weight / pp ISF weight / profile basal lines in the bottom (negative) half of a secondary panel,
+    // each only when its own menu option is ticked for that graph. Must be called AFTER the panel's own scale-setting
+    // series (addIob/addIobTh/...) so maxY is final. If nothing else set a range yet (minY still unset), the panel gets
+    // a plain -1..1 range so these lines can stand alone. With a pure ISF-factor range (minY >= 0) there is no empty
+    // bottom half, so nothing is drawn.
+    fun addBottomHalfLines(smb: Boolean, acceWt: Boolean, ppWt: Boolean, profileBasal: Boolean) {
+        if (!(smb || acceWt || ppWt || profileBasal)) return
+        if (minY == Double.MAX_VALUE) {
+            maxY = 1.0
+            minY = -1.0
+        }
         if (minY >= 0.0) return
         overviewData.bottomHalfScale.multiplier = maxY
-        addSeries(overviewData.bottomSmbSeries as LineGraphSeries<ScaledDataPoint>)
-        addSeries(overviewData.bottomAcceWtSeries as LineGraphSeries<ScaledDataPoint>)
-        addSeries(overviewData.bottomPpWtSeries as LineGraphSeries<ScaledDataPoint>)
+        if (smb) addSeries(overviewData.bottomSmbSeries as LineGraphSeries<ScaledDataPoint>)
+        if (acceWt) addSeries(overviewData.bottomAcceWtSeries as LineGraphSeries<ScaledDataPoint>)
+        if (ppWt) addSeries(overviewData.bottomPpWtSeries as LineGraphSeries<ScaledDataPoint>)
+        if (profileBasal) addSeries(overviewData.bottomProfileBasalSeries as LineGraphSeries<ScaledDataPoint>)
     }
 
     // scale in % of vertical size (like 0.3)
