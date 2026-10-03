@@ -15,6 +15,12 @@ class DeliveryRestoreTest {
     }
 
     @Test
+    fun aBoostHoldKeepsTheRatioEvenWithNoTarget() {
+        assertFalse(restore(currentRatio = 0.35, boostHoldActive = true))
+        assertTrue(restore(currentRatio = 0.35, boostHoldActive = false))
+    }
+
+    @Test
     fun stackingAtTheLowerTargetIsLeftAlone() {
         assertFalse(restore(currentRatio = 0.11, atHardStackTarget = true, smbStacking = true))
         assertTrue(restore(currentRatio = 0.11, atHardStackTarget = true, smbStacking = false))
@@ -44,7 +50,8 @@ class DeliveryRestoreTest {
         atHardStackTarget: Boolean = false,
         smbStacking: Boolean = false,
         recentDeliveryBoost: Boolean = false,
-    ) = delOffShouldRestore(currentRatio, restingBaseline, tempTargetSet, atHardStackTarget, smbStacking, recentDeliveryBoost)
+        boostHoldActive: Boolean = false,
+    ) = delOffShouldRestore(currentRatio, restingBaseline, tempTargetSet, atHardStackTarget, smbStacking, recentDeliveryBoost, boostHoldActive)
 
     private fun reduce(
         atHardStackTarget: Boolean = false,

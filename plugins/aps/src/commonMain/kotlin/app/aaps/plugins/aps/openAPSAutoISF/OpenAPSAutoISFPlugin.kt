@@ -603,6 +603,9 @@ open class OpenAPSAutoISFPlugin(
             now = now,
             tempTargetSet = isTempTarget,
             mealCob = mealData.mealCOB,
+            iob = iobData.iob,
+            maxIob = oapsProfile.max_iob,
+            shortDelta = glucoseStatus.shortAvgDelta,
         )
         applyOldPodBoost(
             now = now,
@@ -1816,7 +1819,11 @@ open class OpenAPSAutoISFPlugin(
     // While four or more SMBs land inside 65 seconds, and the meal is under 9 g, the ratio goes to
     // baseline minus 0.03 instead. A boost mark from the last 3 minutes is left alone.
     // This runs before the boost marks, so a later write in the same loop is not undone here.
-    private suspend fun applyDeliveryRestore(now: Long, tempTargetSet: Boolean, mealCob: Double) {
+    private suspend fun applyDeliveryRestore(now: Long, tempTargetSet: Boolean, mealCob: Double, iob: Double, maxIob: Double, shortDelta: Double) {
+        // Time-based boost hold: defer the reset while a StuckHighRescue/StuckRisingSlowly hold runs, even if its temp
+        // target was cancelled early. Released if IOB reaches 40% of max or glucose is no longer rising.
+        val boostHoldActive = now < smbBoostHoldUntil && iob < 0.40 * maxIob && shortDelta >= 0.0
+        if (!boostHoldActive) smbBoostHoldUntil = 0L
         if (!tempTargetSet && preferences.get(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive)) {
             preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, false)
         }
@@ -1835,6 +1842,7 @@ open class OpenAPSAutoISFPlugin(
                 recentDeliveryBoost = runMarks.recent(RunMark.BOLUS_GIVEN, 2, now) ||
                     runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 2, now) ||
                     runMarks.recent(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 2, now),
+                boostHoldActive = boostHoldActive,
             )
         ) {
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, resting)
@@ -1861,6 +1869,9 @@ open class OpenAPSAutoISFPlugin(
     private var todOffsetNegClearSince = 0L
     private var todOffsetPosClearSince = 0L
     private var smbBoostedThisCycle = false
+    // In-memory only: time until which a StuckHighRescue (30 min) or night StuckRisingSlowly (6 min) boost is held
+    // against the DelOff reset, whatever happens to its temp target.
+    private var smbBoostHoldUntil = 0L
     private var lastCycleSmb = 0.0
     private var lastCycleSmbAt = 0L
     private var lastCycleInsulinReq: Double? = null
@@ -2494,11 +2505,13 @@ open class OpenAPSAutoISFPlugin(
             maxIob = maxIob,
             hp = hp,
             targetMmol = targetBg / 18.0182,
+            nightRising = minuteInWindow(minuteOfDay, 20 * 60, 6 * 60) && shortDelta > 0.0 && longDelta > 0.0,
         )
         if (branch == StuckHighBranch.RATIO) {
             val boosted = stuckHighRatio(smb_delivery_ratio, smb_delivery_ratio_max)
             if (!deliveryNear(smb_delivery_ratio, boosted)) {
                 preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, boosted)
+                smbBoostHoldUntil = now + 30 * 60_000L
                 startBrakeTarget(now, targetBg, "AutoISF: stuck high ratio", 30)
                 escalateToStuckHighTierC(now)
                 runMarks.mark(RunMark.STUCK_HIGH, now)
@@ -4509,6 +4522,16 @@ open class OpenAPSAutoISFPlugin(
         ) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
             runMarks.mark(RunMark.STUCK_RISING, now)
+            // From 20:00 until 06:00 the ratio also steps up by 0.15, held for 6 minutes so a cancelled 5-minute
+            // target cannot drop it early. The reset puts it back once the hold ends.
+            if (minuteInWindow(minuteOfDay, 20 * 60, 6 * 60)) {
+                val current = smb_delivery_ratio
+                val boosted = (current + 0.15).coerceAtMost(smb_delivery_ratio_max)
+                if (!deliveryNear(current, boosted)) {
+                    preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, boosted)
+                    smbBoostHoldUntil = now + 6 * 60_000L
+                }
+            }
             sendAutoSms("StuckRisingSlowly Acce")
             aapsLogger.debug(LTag.APS, "Stuck rising 4.2 mmol for 5 min")
         }

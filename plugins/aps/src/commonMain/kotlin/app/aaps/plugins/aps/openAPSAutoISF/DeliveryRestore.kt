@@ -18,6 +18,8 @@ internal fun smbIsStacking(intervalSec: Double, count5: Int): Boolean =
  * Leave it for 2 minutes after a rise boost. A temp target holds it as well.
  * Leave it while SMBs are stacking and the ratio is already at the lower stacking target.
  * The caller does not add the higher-tier bump. That ladder is not in this app.
+ * [boostHoldActive] is a time-based hold set by StuckHighRescue and StuckRisingSlowly. It keeps the ratio
+ * even when their temp target was cancelled early.
  */
 internal fun delOffShouldRestore(
     currentRatio: Double,
@@ -26,8 +28,9 @@ internal fun delOffShouldRestore(
     atHardStackTarget: Boolean,
     smbStacking: Boolean,
     recentDeliveryBoost: Boolean,
+    boostHoldActive: Boolean = false,
 ): Boolean {
-    if (tempTargetSet || recentDeliveryBoost) return false
+    if (tempTargetSet || recentDeliveryBoost || boostHoldActive) return false
     if (atHardStackTarget && smbStacking) return false
     return !deliveryNear(currentRatio, restingBaseline)
 }

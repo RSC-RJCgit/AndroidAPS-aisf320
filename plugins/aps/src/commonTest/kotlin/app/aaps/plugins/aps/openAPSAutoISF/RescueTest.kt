@@ -31,6 +31,17 @@ class RescueTest {
     }
 
     @Test
+    fun stuckHighBarDropsToSevenAndAHalfWhileRisingAtNight() {
+        // 140 mg/dL is about 7.8 mmol: under the 8.5 bar, over the 7.5 night bar.
+        assertNull(stuckHighBranch(ready = true, bg = 140.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0))
+        assertEquals(
+            StuckHighBranch.RATIO,
+            stuckHighBranch(ready = true, bg = 140.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0, nightRising = true),
+        )
+        assertNull(stuckHighBranch(ready = true, bg = 130.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0, nightRising = true))
+    }
+
+    @Test
     fun poorResponseStage1IsTheEarlyWindow() {
         assertEquals(1, poorResponseStage(7.0, 6.0, stillRising = true, noDecel = true, iobRoom = true, stage1Ready = true, stage2Ready = true))
         assertEquals(2, poorResponseStage(15.0, 10.0, stillRising = true, noDecel = true, iobRoom = true, stage1Ready = true, stage2Ready = true))
