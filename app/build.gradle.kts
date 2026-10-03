@@ -139,8 +139,10 @@ android {
         // including another "full") on the same phone -- same mechanism that already lets
         // aapsclient/aapsclient2/pumpcontrol coexist with "full" today. Unlike those three, this is
         // NOT named "aapsclient"/"aapsclient2"/"pumpcontrol", so ConfigImpl.kt's AAPSCLIENT/
-        // PUMPCONTROL flavor-name checks don't match it -- it runs the real closed-loop/AutoISF
-        // dosing exactly like "full", just under a different package name and app-drawer label.
+        // PUMPCONTROL flavor-name checks don't match it. ConfigImpl.APS/PUMPDRIVERS are explicitly
+        // extended to include "full2" (they used to test for "full" only, which left this flavor
+        // as no mode at all), so it runs the real closed-loop/AutoISF dosing like "full", just
+        // under a different package name and app-drawer label.
         create("full2") {
             applicationId = "info.nightscout.androidaps.uk3426"
             dimension = "standard"
