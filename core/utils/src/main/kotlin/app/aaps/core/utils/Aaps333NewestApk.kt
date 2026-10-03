@@ -16,9 +16,10 @@ object Aaps333NewestApk {
 
     private val ARCHIVE_NAMES = listOf("AAPS333", "AAPS3")
     private val DROP_NAMES = listOf("ApkDownload", "APKdownload", "apkdownload")
-    private val skipName = Regex("aapsclient|wear|pumpcontrol|aapsNewestAPK", RegexOption.IGNORE_CASE)
+    private val skipName = Regex("aapsclient|wear|pumpcontrol|full2|uk3426|aapsNewestAPK", RegexOption.IGNORE_CASE)
     // Old names: 3.4.2.6+aisf321UK_NNN; current names: 3426+ai321_NNN (also -full2 / -uk3426 suffixes).
-    private val featureNumberRe = Regex("""(?:aisf321UK|ai321)_(\d+)""")
+    // "+ai<anything>_NNN" so a future ai322_/aiXYZ_ prefix still parses without another edit.
+    private val featureNumberRe = Regex("""(?:aisf321UK|\+ai\w*)_(\d+)""")
     private val nnnLineRe = Regex("""(?:^|\R)nnn=(\d+)""")
     // Drive/CI names seen on the card: aaps-3.4.2.6+aisf321UK_783.apk,
     // folder 3.4.2.6+aisf321UK_782/, not the short aisf321UK_N.apk probe we used to use.
