@@ -301,6 +301,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val higher_ISFrange_weight; get() = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
     private val dura_ISF_weight; get() = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
     private val smb_delivery_ratio; get() = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatio)
+    // 2026-10-03: time-based hold on a boosted SMB delivery ratio, set by StuckHighRescue [ratio] (30 min) and the night
+    // StuckRisingSlowly boost (6 min). DelOff normally resets the ratio the moment no TT is active, but 3 Oct 23:20 Live a
+    // StuckHighRescue 30-min TT was cancelled ~13 s after creation by an unidentified automation, so its boost lasted ~1 min.
+    // While this is in the future DelOff defers regardless of TT state (see DelOff). In-memory only: a restart drops the hold
+    // and DelOff resets to baseline as before.
+    private var smbBoostHoldUntilMs = 0L
     private val smb_delivery_ratio_min; get() = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioMin)
     private val smb_delivery_ratio_max; get() = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryRatioMax)
     private val smb_delivery_ratio_bg_range
@@ -6259,7 +6265,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // already >6.5 with IOB well under the ceiling, but BG sat at 8.7-8.8mmol -- just under
             // the old 9.0 bar -- so this automation stayed silent through exactly the window it exists
             // for, only engaging once BG happened to cross 9.0 a bit later in each episode.
-            val highEnough = g >= 153.1 /* 8.5 mmol */
+            // 2026-10-03, per explicit request ("too gentle"): between 20:00 and 06:00 the bar drops to 7.5mmol, but only
+            // while BG is genuinely rising (shortAvgDelta and longAvgDelta both > 0). 3 Oct 22:30-23:20 Live: BG 7.2 -> 8.5
+            // with deltas all positive, HP2 6.8-7.3 (> 6.5, ratio branch qualifies) and IOB only 0.5-1.0 (far under the
+            // ceiling below), yet nothing stronger than 0.05U SMBs at ratio 0.10 until the 8.5 bar was reached at 23:20.
+            val nightRising = isTimeBetween(20, 0, 6, 0) && glucoseStatus.shortAvgDelta > 0.0 && glucoseStatus.longAvgDelta > 0.0
+            val highEnough = g >= 153.1 /* 8.5 mmol */ || (nightRising && g >= 135.1 /* 7.5 mmol */)
             // 2026-09-26, per explicit request: ceiling 0.30 -> 0.40 * max_iob (StuckHighRescue only; PoorResponseRescue below
             // keeps 0.30). 26 Sep Live: BG >= 8.5 from 13:34 and plateaued 10.0-10.1 from 13:55, but total IOB sat at 3.3-3.9
             // (about 1.8 of it basal IOB from 5 U/h temp basals) against the old 2.85 ceiling, so this only fired at 14:19 when
@@ -6282,6 +6293,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     val boosted = (smb_delivery_ratio + 0.20).coerceAtMost(smb_delivery_ratio_max)
                     if (!fuzzyEquals(smb_delivery_ratio, boosted)) {
                         setSmbDeliveryRatio(boosted)
+                        smbBoostHoldUntilMs = dateUtil.now() + 30 * 60_000L
                         startTempTargetIfNeeded(targetBg, 30)
                         escalateToStuckHighTierC()
                         sendSms("StuckHighRescue [ratio]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} SMBdel -> ${round(boosted, 2)}")
@@ -6853,7 +6865,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             listOf(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
         )
         val restingDeliveryBaseline = (deliveryBaseline + (if (standardRoleRung >= 1) 0.15 else 0.0)).coerceAtMost(smb_delivery_ratio_max)
-        if (!fuzzyEquals(smb_delivery_ratio, restingDeliveryBaseline) && activeTtMgdl() == null && !(atHardStackTarget && smbStacking)) {
+        // Time-based boost hold (2026-10-03): defer the reset while a StuckHighRescue/StuckRisingSlowly boost's hold is
+        // running, even if its TT was cancelled. Released early if IOB reached the StuckHighRescue ceiling (0.40*maxIob)
+        // or BG is no longer rising; HardStackDelOff and the hypo/overnight resets still override it directly.
+        val boostHoldActive = dateUtil.now() < smbBoostHoldUntilMs
+            && iobData.iob < 0.40 * constraintsChecker.getMaxIOBAllowed().value()
+            && glucoseStatus.shortAvgDelta >= 0.0
+        if (!boostHoldActive) smbBoostHoldUntilMs = 0L
+        if (!fuzzyEquals(smb_delivery_ratio, restingDeliveryBaseline) && activeTtMgdl() == null && !boostHoldActive && !(atHardStackTarget && smbStacking)) {
             setSmbDeliveryRatio(restingDeliveryBaseline)
             addCarePortalNote("DelOff")   // delivery ratio settled back to the (tier-aware) resting baseline
         }
@@ -8566,6 +8585,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 ) && startTempTargetIfNeeded(4.2 * 18.0, 5)
             ) {
                 markRun("StuckRisingSlowly")
+                // 2026-10-03, per explicit request ("too gentle"): from 20:00 this also steps the SMB delivery ratio up
+                // by 0.15 (0.10 -> 0.25) instead of only lowering the target. 3 Oct 22:36-23:16 Live: Req 0.6-1.2U but
+                // ratio 0.10 gave 0.05U SMBs. The 5-min 4.2mmol TT just created holds the boost; the DelOff block
+                // restores the baseline the moment that TT ends, and this re-arms every 5 min while the slow-rise
+                // criteria still hold (same pattern as StuckHighRescue's ratio branch).
+                if (isTimeBetween(20, 0, 6, 0)) {
+                    val boosted = (smb_delivery_ratio + 0.15).coerceAtMost(smb_delivery_ratio_max)
+                    if (!fuzzyEquals(smb_delivery_ratio, boosted)) {
+                        setSmbDeliveryRatio(boosted)
+                        smbBoostHoldUntilMs = dateUtil.now() + 6 * 60_000L
+                    }
+                }
                 sendSms("StuckRisingSlowly Acce${if (!recentDelayedBolus) " (gentle)" else ""}")
                 aapsLogger.debug(LTag.APS, "StuckRisingSlowly: requested TT 4.2mmol@5min, S60=$steps60 S180=$steps180 recentDelayedBolus=$recentDelayedBolus")
             }
