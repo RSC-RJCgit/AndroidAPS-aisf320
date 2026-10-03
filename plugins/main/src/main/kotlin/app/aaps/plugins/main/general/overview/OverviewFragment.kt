@@ -82,6 +82,7 @@ import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
 import app.aaps.core.interfaces.rx.events.EventInitializationChanged
 import app.aaps.core.interfaces.rx.events.EventMobileToWear
 import app.aaps.core.interfaces.rx.events.EventMjUserAction
+import app.aaps.core.interfaces.rx.events.EventNewHistoryData
 import app.aaps.core.interfaces.rx.events.EventNewOpenLoopNotification
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
@@ -447,6 +448,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // once confirmed either way.
         aapsLogger.debug(LTag.CORE, "OverviewFragment.onResume: calling runOnScaleChanged for fresh graph data")
         calculationWorkflow.runOnScaleChanged(iobCobCalculator, overviewData)
+        // The range-dropdown path (IobCobCalculatorPlugin, RangeToDisplay change) does initRange + runOnScaleChanged
+        // (both above) AND sends EventNewHistoryData(0, false). That last step was the only part resume did not
+        // repeat, and a dropdown click refreshes the graph immediately -- so do the same here.
+        rxBus.send(EventNewHistoryData(0, false))
         updatePumpStatus()
         updateCalcProgress()
         if (config.AAPSCLIENT) tryFlushPendingRelayTts()

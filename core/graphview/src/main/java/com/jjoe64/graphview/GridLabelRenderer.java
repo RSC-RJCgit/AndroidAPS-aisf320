@@ -79,6 +79,10 @@ public class GridLabelRenderer {
      */
     private Paint mPaintLabel;
     /**
+     * scale applied to the horizontal (time) labels only; 1 = same size as the vertical labels
+     */
+    private float mHorizontalTextScale = 1f;
+    /**
      * the paint to draw axis titles
      */
     private Paint mPaintAxisTitle;
@@ -852,6 +856,8 @@ public class GridLabelRenderer {
     protected void drawHorizontalSteps(Canvas canvas) {
         // draw horizontal steps (vertical lines and horizontal labels)
         mPaintLabel.setColor(getHorizontalLabelsColor());
+        final float baseLabelSize = mPaintLabel.getTextSize();
+        mPaintLabel.setTextSize(baseLabelSize * mHorizontalTextScale);
         int i = 0;
         for (Map.Entry<Integer, Double> e : mStepsHorizontal.entrySet()) {
             // draw line
@@ -888,6 +894,21 @@ public class GridLabelRenderer {
             }
             i++;
         }
+        mPaintLabel.setTextSize(baseLabelSize);
+    }
+
+    /**
+     * @param scale scale (1 = unchanged) applied to the horizontal time labels only
+     */
+    public void setHorizontalTextScale(float scale) {
+        mHorizontalTextScale = scale;
+    }
+
+    /**
+     * @return scale applied to the horizontal time labels only
+     */
+    public float getHorizontalTextScale() {
+        return mHorizontalTextScale;
     }
 
     /**

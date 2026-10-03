@@ -20,7 +20,8 @@ class TimeAsXAxisLabelFormatter(
     override fun formatLabel(value: Double, isValueX: Boolean): String =
         if (isValueX) {
             val dateFormat: DateFormat = SimpleDateFormat(format, Locale.getDefault())
-            val time = dateFormat.format(roundToDisplayGranularity(value.toLong()))
+            // Whole hours drop the minutes ("10:00" -> "10"); the ticks are rounded to 15 min so :00 is unambiguous.
+            val time = dateFormat.format(roundToDisplayGranularity(value.toLong())).removeSuffix(":00")
             if (hideTickIndices.isEmpty() || numHorizontalLabels < 2 || endTime <= fromTime) time
             else {
                 val span = (endTime - fromTime).toDouble()

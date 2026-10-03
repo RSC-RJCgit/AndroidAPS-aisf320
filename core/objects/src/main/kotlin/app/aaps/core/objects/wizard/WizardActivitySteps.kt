@@ -23,8 +23,11 @@ object WizardActivitySteps {
     const val STILL_NOW_S5 = 100
     const val MOVING_PERCENT = 70.0
 
-    fun stillMovingNow(steps5min: Int, steps30min: Int): Boolean =
-        steps30min >= STILL_NOW_S30 || steps5min >= STILL_NOW_S5
+    // S30 alone lingers ~25 min after you stop (3 Oct 14:00: S30=315 while S5=S15=0 for 15 min ticked Walking soon).
+    // So S30 only counts while S15 or S5 shows recent steps. Missing S15 (null) keeps the old S30-only behaviour.
+    fun stillMovingNow(steps5min: Int, steps30min: Int, steps15min: Int? = null): Boolean =
+        steps5min >= STILL_NOW_S5 ||
+            (steps30min >= STILL_NOW_S30 && (steps15min == null || steps15min > 0 || steps5min > 0))
 
     fun walkingSoonImmediatePercent(walkingSoon: Boolean, standingPct: Double): Double {
         if (!walkingSoon) return standingPct
@@ -36,8 +39,10 @@ object WizardActivitySteps {
         val values = source.latest(now, if (mirrored) LiveStepsMirror.MAX_AGE_MS else 15 * 60_000L)
             ?: return if (mirrored) null else false
         val s5 = values[5]
+        val s15 = values[15]
         val s30 = values[30]
-        if ((s5 != null && s5 >= STILL_NOW_S5) || (s30 != null && s30 >= STILL_NOW_S30)) return true
+        if (s5 != null && s5 >= STILL_NOW_S5) return true
+        if (s30 != null && s30 >= STILL_NOW_S30 && (s15 == null || s15 > 0 || (s5 ?: 0) > 0)) return true
         return if (s5 != null && s30 != null) false else null
     }
 }

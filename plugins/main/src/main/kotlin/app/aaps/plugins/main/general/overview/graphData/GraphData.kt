@@ -478,10 +478,11 @@ class GraphData @Inject constructor(
             fromTime = fromTime,
             endTime = endTime,
             numHorizontalLabels = 7,
-            // 7 even-spaced HH:mm ticks collide on a 6h rolling window. Drop 2nd and 6th
-            // (keep 1st, 3rd, 4th, 5th, 7th) rather than stagger rows or truncate to "12:4".
-            hideTickIndices = setOf(1, 5)
+            // All 7 ticks now show: instead of hiding the 2nd and 6th to avoid collisions, the time labels
+            // (only) are drawn smaller via horizontalTextScale below, and whole hours print as "10", not "10:00".
+            hideTickIndices = emptySet()
         )
+        graph.gridLabelRenderer.horizontalTextScale = 0.75f
         graph.gridLabelRenderer.numHorizontalLabels = 7 // only 7 because of the space
     }
 
