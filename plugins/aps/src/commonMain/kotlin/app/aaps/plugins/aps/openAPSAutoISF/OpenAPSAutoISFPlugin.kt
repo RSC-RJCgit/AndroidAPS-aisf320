@@ -109,6 +109,7 @@ import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import dev.zacsweers.metro.Provider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -3918,7 +3919,7 @@ open class OpenAPSAutoISFPlugin(
             aapsLogger.info(LTag.APS, "APK stage skipped on a client ($reason)")
             return StageOutcome(ok = false, copiedByApp = false, detail = "client", featureNumber = null)
         }
-        val outcome = withContext(Dispatchers.IO) { apkInstall.stageNewest() }
+        val outcome = withContext(Dispatchers.Default) { apkInstall.stageNewest() }
         outcome.featureNumber?.let { preferences.put(LongNonKey.ApsAutoIsfApkNewestNnn, it.toLong()) }
         if (notify) {
             if (outcome.ok) {
@@ -3941,7 +3942,7 @@ open class OpenAPSAutoISFPlugin(
         }
         val stage = alreadyStaged ?: stageNewestApk(reason, notify = true)
         if (activePlugin.activePump is VirtualPump) {
-            val (started, detail) = withContext(Dispatchers.IO) {
+            val (started, detail) = withContext(Dispatchers.Default) {
                 apkInstall.attemptAdbStart(preferences.get(IntKey.ApsAutoIsfAdbConnectPort))
             }
             aapsLogger.info(LTag.APS, "ADB wireless start before install: started=$started $detail")
@@ -3949,10 +3950,7 @@ open class OpenAPSAutoISFPlugin(
         var shizukuUp = apkInstall.shizukuRunning()
         if (!shizukuUp) {
             repeat(4) {
-                try {
-                    Thread.sleep(400L)
-                } catch (_: InterruptedException) {
-                }
+                delay(400L)
                 shizukuUp = apkInstall.shizukuRunning()
                 if (shizukuUp) return@repeat
             }
@@ -3990,7 +3988,7 @@ open class OpenAPSAutoISFPlugin(
             else -> apk.path
         }
         sendAutoSms("Shizuku APK install starting: $nnn ($reason)")
-        val (ok, detail) = withContext(Dispatchers.IO) { apkInstall.installStaged() }
+        val (ok, detail) = withContext(Dispatchers.Default) { apkInstall.installStaged() }
         aapsLogger.info(LTag.APS, "Shizuku APK install ${apk.path}: $detail")
         if (ok) {
             carePortalNote("ApkOk")
@@ -4007,7 +4005,7 @@ open class OpenAPSAutoISFPlugin(
             aapsLogger.info(LTag.APS, "ADB wireless start skipped: virtual pump only ($reason)")
             return
         }
-        val (ok, detail) = withContext(Dispatchers.IO) {
+        val (ok, detail) = withContext(Dispatchers.Default) {
             apkInstall.attemptAdbStart(preferences.get(IntKey.ApsAutoIsfAdbConnectPort))
         }
         aapsLogger.info(LTag.APS, "ADB wireless start ($reason): ok=$ok $detail")
