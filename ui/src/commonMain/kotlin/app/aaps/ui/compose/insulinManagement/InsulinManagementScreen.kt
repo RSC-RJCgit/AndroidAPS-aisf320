@@ -306,9 +306,11 @@ fun InsulinManagementScreen(
                             isSelected = itemState.isSelected
                         )
                     }
+                }
 
-                    // Editor section (only in EDIT mode)
-                    if (!isPlayMode) {
+                // Editor stays visible when the catalogue is empty. The Add button and Save
+                // create the first insulin. Hiding this block on an empty list left a blank page.
+                if (!isPlayMode) {
                         Column(
                             modifier = Modifier
                                 .weight(1f)
@@ -410,15 +412,15 @@ fun InsulinManagementScreen(
                             // Bottom spacing for floating toolbar
                             Spacer(modifier = Modifier.height(80.dp))
                         }
-                    } else {
-                        // In PLAY mode, fill the remaining space
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
+                } else {
+                    // In PLAY mode, fill the remaining space
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
 
-            // Floating toolbar + FAB at bottom
-            if (cardCount > 0) {
+            // Floating toolbar + FAB at bottom. Shown in edit mode even when there is no card,
+            // so Add is reachable on an empty catalogue.
+            if (cardCount > 0 || !isPlayMode) {
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)

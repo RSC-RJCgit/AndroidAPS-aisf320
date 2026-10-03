@@ -25,12 +25,20 @@ enum class SeriesType {
     HEART_RATE,
     STEPS,
     ACTIVITY,
-    PREDICTIONS
+    PREDICTIONS,
+    ACCE_ISF,
+    BG_ISF,
+    PP_ISF,
+    DURA_ISF,
+    FINAL_ISF,
+    IOB_TH,
+    RAW_BG,
+    UKF_BG
 }
 
 /**
  * Secondary graph entry: series list + per-graph height (dp).
- * Max 2 series per graph. Height is per-graph user-adjustable.
+ * Max 3 series per graph. Height is per-graph user-adjustable.
  */
 data class SecondaryGraph(
     val series: List<SeriesType>,
@@ -50,8 +58,8 @@ data class SecondaryGraph(
  * @param secondaryGraphs  Ordered list of user-configurable secondary graph configurations.
  *   IOB cannot appear here (it has a dedicated fixed slot). Each graph is a List (not Set) to
  *   preserve selection order:
- *   - list[0] = left axis (start), list[1] = right axis (end).
- *   Max 2 series per graph. FIFO: adding a 3rd deselects the oldest.
+ *   - list[0] = left axis (start), list[1] = right axis (end), list[2] shares the left axis.
+ *   Max 3 series per graph. FIFO: adding a 4th deselects the oldest.
  */
 data class GraphConfig(
     val bgOverlays: List<SeriesType> = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS),
@@ -73,6 +81,9 @@ data class GraphConfig(
 
         /** Maximum graph height in dp (2.5x default) */
         const val MAX_GRAPH_HEIGHT_DP = 250
+
+        /** Main glucose graph only. The other graphs stay at [MAX_GRAPH_HEIGHT_DP]. */
+        const val MAX_BG_GRAPH_HEIGHT_DP = 500
     }
 }
 

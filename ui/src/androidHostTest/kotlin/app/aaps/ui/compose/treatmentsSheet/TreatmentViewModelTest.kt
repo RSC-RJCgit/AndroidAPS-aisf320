@@ -76,7 +76,7 @@ internal class TreatmentViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState exposes the data-class defaults before refreshState runs`() {
+    fun defaultUiStateExposesTheDataClassDefaultsBeforeRefreshStateRuns() {
         val state = sut.uiState.value
         assertThat(state.showTreatment).isTrue()
         assertThat(state.showInsulin).isTrue()

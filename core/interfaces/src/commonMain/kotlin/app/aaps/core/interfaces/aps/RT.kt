@@ -18,7 +18,8 @@ import kotlin.time.Instant
 @Serializable
 data class RT(
     var algorithm: APSResult.Algorithm = APSResult.Algorithm.UNKNOWN,
-    var runningDynamicIsf: Boolean,
+    /** The live phone sends runningAutoIsf and often omits this older name. A missing value must not reject the whole result. */
+    var runningDynamicIsf: Boolean = false,
     @Serializable(with = TimestampToIsoSerializer::class)
     var timestamp: Long? = null,
     val temp: String = "absolute",
@@ -43,6 +44,13 @@ data class RT(
     var IOB: Double? = null,
     var variable_sens: Double? = null,
     var isfMgdlForCarbs: Double? = null, // used to pass to AAPS client
+    var autoIsfAcce: Double? = null,
+    var autoIsfBg: Double? = null,
+    var autoIsfPp: Double? = null,
+    var autoIsfDura: Double? = null,
+    var autoIsfFinal: Double? = null,
+    /** UKF-smoothed raw glucose, mg/dL, from the phone that ran the loop. */
+    var autoIsfUkfRawBgl: Double? = null,
 
     var consoleLog: MutableList<String>? = null,
     var consoleError: MutableList<String>? = null

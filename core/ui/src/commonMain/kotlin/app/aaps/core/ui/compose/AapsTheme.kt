@@ -86,10 +86,16 @@ val LocalAppIcon = compositionLocalOf<@Composable (Modifier) -> Unit> { {} }
 /**
  * CompositionLocal exposing whether the master phone is currently reachable (see
  * `NsClient.masterReachable`). Defaults to `true` so master, previews, and any non-client context
- * are never gated; the main activity provides the live value on a client. Used to disable
- * `Bidirectional` synced preference rows while the master is offline (their edits can't sync).
+ * are never gated; the main activity provides the live value on a client. A paired client uses it
+ * to disable bidirectional preference rows while the master is offline.
  */
 val LocalMasterReachable = compositionLocalOf { true }
+
+/**
+ * Whether this phone is paired with a master. Always true on a master. On a client it is true only
+ * after a pair is stored. Defaults to true so a screen that does not provide it keeps the old lock.
+ */
+val LocalClientPaired = compositionLocalOf { true }
 
 /**
  * Whether the master currently allows remote control (its stop/allow switch, see
@@ -104,14 +110,23 @@ val LocalMasterControlAllowed = compositionLocalOf { true }
  * Whether the user may make changes that need the master *right now*. On a master always `true` (no
  * gating). On a client, `true` only while [LocalMasterReachable] is `true` — i.e. the master is
  * reachable for the signed Client-Control channel that carries both config edits and remote actions.
- * Single source for the per-screen offline gate (`!(AAPSCLIENT && !masterReachable)`); gates BOTH
- * synced-config edits AND master-bound action buttons, so screens call this instead of re-spelling it.
+ * Single source for the per-screen offline gate (`!(AAPSCLIENT && !masterReachable)`). It gates
+ * master-bound action buttons. Preference rows use [settingsEditingEnabled] instead.
  * Returns `true` in `@Preview`/inspection — [LocalConfig] has no default (it would throw), and previews
  * should render the enabled, un-gated state anyway (matching the `true` defaults of the other locals).
  */
 @Composable
 fun masterEditingEnabled(): Boolean =
     LocalInspectionMode.current || !(LocalConfig.current.AAPSCLIENT && !LocalMasterReachable.current)
+
+/**
+ * Whether preference rows may be changed. A client that is not paired yet can still edit them: the
+ * value stays on this phone. A paired client still waits until the master can be reached, because
+ * that edit is sent to the master.
+ */
+@Composable
+fun settingsEditingEnabled(): Boolean =
+    LocalInspectionMode.current || !LocalConfig.current.AAPSCLIENT || !LocalClientPaired.current || LocalMasterReachable.current
 
 /**
  * CompositionLocal providing access to ProfileUtil for glucose unit conversions.

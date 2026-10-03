@@ -10,6 +10,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadDeviceStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadFoodsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryTreatmentsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadSettingsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
@@ -41,7 +42,7 @@ class AppWorkersGraphTest {
             // :workflow - recalculate and redraw the overview graph.
             PostCalculationWorker::class,
             PrepareGraphDataWorker::class,
-            // :plugins:sync - the nine nsclientV3 loaders, plus xdrip and SMS.
+            // :plugins:sync - the nsclientV3 loaders, plus xdrip and SMS.
             DataSyncWorker::class,
             LoadBgWorker::class,
             LoadDeviceStatusWorker::class,
@@ -51,6 +52,7 @@ class AppWorkersGraphTest {
             LoadSettingsWorker::class,
             LoadStatusWorker::class,
             LoadTreatmentsWorker::class,
+            LoadSecondaryTreatmentsWorker::class,
             XdripDataSyncWorker::class,
             SmsCommunicatorPlugin.SmsCommunicatorWorker::class
         )

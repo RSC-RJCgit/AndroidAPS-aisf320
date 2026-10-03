@@ -126,6 +126,8 @@ class AutomationComposeContent(
     ) {
         val state by holder.state.collectAsStateWithLifecycle()
         var deleteTarget by remember { mutableStateOf<Int?>(null) }
+        var showStates by remember { mutableStateOf(false) }
+        var stateRows by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
 
         val title = stringResource(AutomationStrings.automation)
         val backDesc = stringResource(CoreUiStrings.back)
@@ -139,6 +141,10 @@ class AutomationComposeContent(
                     settingsDesc = settingsDesc,
                     onBack = onNavigateBack,
                     onRun = onRun,
+                    onStates = {
+                        stateRows = plugin.currentAutomationStates()
+                        showStates = true
+                    },
                     // Run stays master-only (automation executes only on the master). Settings is shown on
                     // the client too: its sole pref (location-provider mode) is now a Bidirectional synced
                     // setting the client can change, and the screen resolves on a client (see BuiltInSearchables).
@@ -163,6 +169,13 @@ class AutomationComposeContent(
             onAddClick = { holder.openNew() },
             editingEnabled = editingEnabled
         )
+
+        if (showStates) {
+            AutomationStatesDialog(
+                rows = stateRows,
+                onClose = { showStates = false }
+            )
+        }
 
         deleteTarget?.let { pos ->
             val target = holder.eventAt(pos)
@@ -482,6 +495,7 @@ private fun buildListToolbar(
     settingsDesc: String,
     onBack: () -> Unit,
     onRun: () -> Unit,
+    onStates: () -> Unit,
     onSettings: (() -> Unit)?,
     showRun: Boolean
 ): ToolbarConfig = ToolbarConfig(
@@ -498,20 +512,29 @@ private fun buildListToolbar(
             }
         }
         // "Run now" is master-only — automation does not execute on a client.
-        if (showRun) AutomationOverflow(onRun)
+        AutomationOverflow(onRun = if (showRun) onRun else null, onStates = onStates)
     }
 )
 
 @Composable
-private fun AutomationOverflow(onRun: () -> Unit) {
+private fun AutomationOverflow(onRun: (() -> Unit)?, onStates: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }) {
         Icon(Icons.Default.MoreVert, contentDescription = null)
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         DropdownMenuItem(
-            text = { Text(stringResource(AutomationStrings.run_automations)) },
-            onClick = { expanded = false; onRun() }
+            text = { Text(stringResource(AutomationStrings.automation_states)) },
+            onClick = {
+                expanded = false
+                onStates()
+            }
         )
+        if (onRun != null) {
+            DropdownMenuItem(
+                text = { Text(stringResource(AutomationStrings.run_automations)) },
+                onClick = { expanded = false; onRun() }
+            )
+        }
     }
 }

@@ -2,6 +2,8 @@ package app.aaps.plugins.sync.nsclientV3.data
 
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
@@ -34,6 +36,8 @@ internal class NSDeviceStatusHandlerTest {
     @Mock private lateinit var calculationWorkflow: CalculationWorkflow
     @Mock private lateinit var rxBus: RxBus
     @Mock private lateinit var nsClientV3Plugin: NSClientV3Plugin
+    @Mock private lateinit var activePlugin: ActivePlugin
+    @Mock private lateinit var profileUtil: ProfileUtil
 
     private lateinit var sut: NSDeviceStatusHandler
 
@@ -44,7 +48,8 @@ internal class NSDeviceStatusHandlerTest {
         sut = NSDeviceStatusHandler(
             preferences, config, dateUtil, processedDeviceStatusData, aapsLogger,
             persistenceLayer, overviewData, calculationWorkflow, rxBus,
-            CoroutineScope(Dispatchers.Unconfined), { nsClientV3Plugin }
+            CoroutineScope(Dispatchers.Unconfined), { nsClientV3Plugin },
+            activePlugin, profileUtil
         )
     }
 
@@ -59,44 +64,42 @@ internal class NSDeviceStatusHandlerTest {
         whenever(dateUtil.fromISODateString("old")).thenReturn(1_000L)
         whenever(dateUtil.fromISODateString("new")).thenReturn(5_000L)
 
-        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "old"), NSDeviceStatus(createdAt = "new")), live = true)
+        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "old"), NSDeviceStatus(createdAt = "new")))
 
         verify(nsClientV3Plugin).bumpDevicestatusHeartbeat(5_000L)
         verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(9_999L)
     }
 
     /**
-     * Core of the agreed design: only a LIVE WS push proves the master is online now. The catch-up/initial
-     * batch load (live = false, the default) must NOT bump — otherwise the master's last historical
-     * devicestatus pulled at app start (a few minutes old, still inside the 9-min window) would mark the
-     * master reachable before any live ping and falsely unlock client editing.
+     * A downloaded status counts too. One missed live push must not end the link.
+     * The time on the status is what the 9-minute check uses.
      */
     @Test
-    fun doesNotBumpOnBatchLoad() {
+    fun bumpsHeartbeatOnDownloadedStatus() {
         whenever(dateUtil.fromISODateString("new")).thenReturn(5_000L)
-        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "new")))   // live defaults to false
-        verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(any())
+        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "new")))
+        verify(nsClientV3Plugin).bumpDevicestatusHeartbeat(5_000L)
     }
 
     /** A master device must not stamp a client heartbeat — even for a live push. */
     @Test
     fun doesNotBumpOnMaster() {
         whenever(config.AAPSCLIENT).thenReturn(false)
-        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "new")), live = true)
+        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "new")))
         verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(any())
     }
 
     /** created_at absent/unparseable but the numeric `date` (ms) is set → fall back to it. */
     @Test
     fun bumpsWithDateWhenCreatedAtAbsent() {
-        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = null, date = 7_000L)), live = true)
+        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = null, date = 7_000L)))
         verify(nsClientV3Plugin).bumpDevicestatusHeartbeat(7_000L)
     }
 
     /** Neither a parseable created_at nor a date → can't determine freshness → don't bump (fail-closed). */
     @Test
     fun doesNotBumpWhenNoTimestamp() {
-        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = null, date = null)), live = true)
+        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = null, date = null)))
         verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(any())
     }
 }

@@ -56,6 +56,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyLong
@@ -91,6 +92,21 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
     private lateinit var storeDataForDb: StoreDataForDbImpl
     private lateinit var sut: NSClientV3Plugin
 
+    // Every extra plugin a test builds through [buildPlugin]. The plugin starts a coroutine scope on
+    // the IO dispatcher the moment it is constructed, so one built inside a test keeps background
+    // work alive after the method ends. Mockito then disables the mocks, the leftover coroutine
+    // touches one, and the throw lands on whatever test runs next as UncaughtExceptionsBeforeTest.
+    private val extraPlugins = mutableListOf<NSClientV3Plugin>()
+
+    @AfterEach
+    fun stopPlugins() {
+        runBlocking {
+            if (::sut.isInitialized) sut.shutdownForTest()
+            extraPlugins.forEach { it.shutdownForTest() }
+        }
+        extraPlugins.clear()
+    }
+
     private var insulinConfiguration: ICfg = ICfg("Insulin", 360 * 60 * 1000, 60 * 60 * 1000)
 
     @BeforeEach
@@ -104,7 +120,7 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
                 aapsLogger, rh, preferences, rxBus,
                 receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
                 nsClientSource, storeDataForDb, decimalFormatter, l, nsClientRepository, uel,
-                mock(), mock(), mock(), mock(), mock(), mock(), profileRepository, nsConnection, nsLoadExecutor
+                mock(), mock(), mock(), mock(), mock(), mock(), profileRepository, nsConnection, nsLoadExecutor, mock()
             )
         whenever(nsConnection.connected).thenReturn(wsConnectedState)
         // idle is collected in onStart; a mock would hand back null and NPE there.
@@ -147,8 +163,8 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
             aapsLogger, rh, preferences, rxBus,
             receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
             nsClientSource, storeDataForDb, decimalFormatter, l, nsClientRepository, uel,
-            mock(), mock(), mock(), orphanDetector, mock(), mock(), profileRepository, nsConnection, nsLoadExecutor
-        )
+            mock(), mock(), mock(), orphanDetector, mock(), mock(), profileRepository, nsConnection, nsLoadExecutor, mock()
+        ).also { extraPlugins += it }
 
     /** Poll the (WhileSubscribed) flow's value until it settles to [expected]; a live collector keeps it computing. */
     private suspend fun awaitValue(flow: StateFlow<Boolean>, expected: Boolean) =
@@ -163,12 +179,11 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
     }
 
     /**
-     * On a client, masterReachable requires ALL of: live WS, a fresh master heartbeat, a current
-     * pairing, and not being orphaned. It FAILS CLOSED before the first heartbeat (no optimistic
-     * enable at boot) and times out to stale if heartbeats later stop.
+     * On a client, the live link stays up while paired, authorized, and remote control is on.
+     * Silence and a down websocket do not end it.
      */
     @Test
-    fun masterReachableGatedByPairingAuthorizationAndFreshnessOnClient() {
+    fun masterReachableStaysUpThroughSilenceAndWebsocketDown() {
         val fixedNow = 1_700_000_000_000L
         whenever(dateUtil.now()).thenReturn(fixedNow)
         whenever(config.AAPSCLIENT).thenReturn(true)
@@ -191,13 +206,13 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
         runBlocking {
             val collector = launch(Dispatchers.Default) { client.masterReachable.collect { } }
             try {
-                awaitValue(client.masterReachable, false)                         // unpaired + no heartbeat → gated
+                awaitValue(client.masterReachable, false)                         // unpaired → gated
                 pairedFlow.value = "client-id"
-                awaitValue(client.masterReachable, false)                         // paired but NO heartbeat yet → stays gated (fail-closed)
-                client.bumpDevicestatusHeartbeat(fixedNow - 10 * 60_000L)         // catch-up pulls a STALE historical devicestatus (created 10 min ago)
-                awaitValue(client.masterReachable, false)                         // stale heartbeat must NOT unlock (the app-restart-with-offline-master bug)
-                client.bumpDevicestatusHeartbeat(fixedNow)                        // a genuinely fresh master heartbeat confirms it alive
-                awaitValue(client.masterReachable, true)                          // ws + fresh + paired + authorized
+                awaitValue(client.masterReachable, true)                          // paired, no heartbeat yet → stays up
+                wsConnectedState.value = false
+                awaitValue(client.masterReachable, true)                          // websocket down → stays up
+                client.bumpDevicestatusHeartbeat(fixedNow - 10 * 60_000L)         // an old status does not end the link
+                awaitValue(client.masterReachable, true)
                 authorizedFlow.value = false
                 awaitValue(client.masterReachable, false)                         // revoked / orphaned → gated
                 authorizedFlow.value = true

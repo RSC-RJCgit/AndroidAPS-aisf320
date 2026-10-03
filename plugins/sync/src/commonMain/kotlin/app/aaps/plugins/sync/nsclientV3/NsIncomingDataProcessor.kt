@@ -4,6 +4,7 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.FD
 import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
@@ -23,10 +24,16 @@ import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.DoubleNonKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.utils.calibratedLibre
+import app.aaps.core.utils.libreSpecial
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.nssdk.localmodel.entry.NSMbgV3
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
@@ -44,6 +51,7 @@ import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
+import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.extensions.toCAL
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toEffectiveProfileSwitch
@@ -61,7 +69,8 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.serialization.json.JsonObject
 
 @SingleIn(AppScope::class)
-class NsIncomingDataProcessor @Inject constructor(
+@Inject
+class NsIncomingDataProcessor(
     private val aapsLogger: AAPSLogger,
     private val nsClientSource: NSClientSource,
     private val preferences: Preferences,
@@ -73,7 +82,8 @@ class NsIncomingDataProcessor @Inject constructor(
     private val config: Config,
     private val profileStoreProvider: () -> ProfileStore,
     private val notificationManager: NotificationManager,
-    private val nsClientRepository: NSClientRepository
+    private val nsClientRepository: NSClientRepository,
+    private val displayRawSmoothing: DisplayRawSmoothing,
 ) {
 
     /**
@@ -96,11 +106,15 @@ class NsIncomingDataProcessor @Inject constructor(
      *
      * @return true if there was an accepted SGV
      */
-    fun processSgvs(sgvs: Any, doFullSync: Boolean): Boolean {
+    fun processSgvs(sgvs: Any, doFullSync: Boolean, fromLiveSite: Boolean = false): Boolean {
         // Objective0
         preferences.put(BooleanNonKey.ObjectivesBgIsAvailableInNs, true)
 
-        if (!nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !doFullSync) return false
+        // The second site is the glucose source. Main-site readings are dropped.
+        // A full app often has xDrip selected and "Receive CGM" off, so a live-site
+        // batch must still be stored. Otherwise the switch downloads glucose and throws it away.
+        if (!fromLiveSite && !doFullSync && bgFromLiveSite()) return false
+        if (!fromLiveSite && !nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !doFullSync) return false
 
         var latestDateInReceivedData: Long = 0
         aapsLogger.debug(LTag.NSCLIENT, "Received NS Data: $sgvs")
@@ -110,6 +124,11 @@ class NsIncomingDataProcessor @Inject constructor(
 
             for (i in 0 until sgvs.size) {
                 val sgv = (sgvs[i] as NSSgvV3).toGV()
+                // The id on a live-site reading belongs to that other Nightscout.
+                // The uploader skips any glucose that already has an id, so the
+                // main site never receives it. Drop the other id here. A later
+                // upload then stores this site's own id on the same row.
+                if (fromLiveSite) sgv.ids.nightscoutId = null
                 if (sgv.timestamp < dateUtil.now() + T.mins(1).msecs() && sgv.timestamp > latestDateInReceivedData) {
                     latestDateInReceivedData = sgv.timestamp
                     glucoseValues += sgv
@@ -118,6 +137,10 @@ class NsIncomingDataProcessor @Inject constructor(
             }
         }
         if (glucoseValues.isNotEmpty()) {
+            // xDrip on this phone is already dropped while the live site supplies BG.
+            // Do not run that slope on the live site's own glucose. The number would
+            // follow the slope switch and look like an xDrip reading.
+            if (!fromLiveSite && preferences.get(BooleanKey.FslApplySmoothing) && !config.AAPSCLIENT) applyLibre(glucoseValues)
             nsClient.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
             // Was that sgv more less 5 mins ago ?
             if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {
@@ -127,6 +150,39 @@ class NsIncomingDataProcessor @Inject constructor(
             storeDataForDb.addToGlucoseValues(glucoseValues)
         }
         return glucoseValues.isNotEmpty()
+    }
+
+    private fun bgFromLiveSite(): Boolean = glucoseFromSecondarySite(
+        preferences.get(BooleanKey.NsClientSecondaryEnabled),
+        preferences.get(BooleanKey.NsClientBgFromLiveSite),
+    )
+
+    // Raw Libre becomes slope * value + offset, then LibreSpecial. UKF set 1 replaces that when the batch has two points.
+    private fun applyLibre(values: MutableList<GV>) {
+        val slope = preferences.get(DoubleKey.FslCalSlope)
+        val offset = preferences.get(DoubleKey.FslCalOffset)
+        val alpha = preferences.get(DoubleKey.FslSmoothAlpha)
+        val maxGap = preferences.get(IntNonKey.FslMaxSmoothGap).toDouble()
+        val unitFactor = if (profileFunction.getUnits() == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+        val useUkf = preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)
+        values.sortBy { it.timestamp }
+        val calibrated = values.map { calibratedLibre(it.value, slope, offset, unitFactor) }
+        val ukf = if (useUkf && values.size >= 2) {
+            displayRawSmoothing.smoothForDisplay(values.indices.reversed().map { values[it].timestamp to calibrated[it] }).asReversed()
+        } else null
+        var lastSmooth = preferences.get(DoubleNonKey.FslLastSmooth)
+        var lastTime = preferences.get(LongNonKey.FslSmoothLastTimeRaw)
+        values.forEachIndexed { index, gv ->
+            val elapsed = if (lastTime < 0L) 0.0 else (gv.timestamp - lastTime) / 60000.0
+            val special = libreSpecial(calibrated[index], lastSmooth, elapsed, alpha, maxGap)
+            gv.noise = gv.noise ?: gv.value
+            gv.raw = gv.raw ?: calibrated[index]
+            gv.value = ukf?.getOrNull(index) ?: special
+            lastSmooth = special
+            lastTime = gv.timestamp
+        }
+        preferences.put(DoubleNonKey.FslLastSmooth, lastSmooth)
+        preferences.put(LongNonKey.FslSmoothLastTimeRaw, lastTime)
     }
 
     /**
@@ -268,11 +324,15 @@ class NsIncomingDataProcessor @Inject constructor(
      * through [LongNonKey.LocalProfileLastChange]. An **unpaired client** has no other source and needs
      * profiles to display and calculate with, so it keeps accepting them (read-only — it cannot edit).
      * A **master** is unchanged: the user's `ns_receive_profile_store` setting decides.
+     * While a secondary Nightscout is on, the profile store comes from that site only.
      */
-    suspend fun processProfile(profileJson: JsonObject, doFullSync: Boolean) {
-        val accept =
-            if (config.AAPSCLIENT) !nsClient.masterOrPairedClientFlow.value
-            else preferences.get(BooleanKey.NsClientAcceptProfileStore) || doFullSync
+    suspend fun processProfile(profileJson: JsonObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
+        val accept = when {
+            fromSecondary -> true
+            preferences.get(BooleanKey.NsClientSecondaryEnabled) -> false
+            config.AAPSCLIENT -> !nsClient.masterOrPairedClientFlow.value
+            else -> preferences.get(BooleanKey.NsClientAcceptProfileStore) || doFullSync
+        }
         if (accept) {
             val store = profileStoreProvider().with(profileJson)
             val createdAt = store.getStartDate()

@@ -68,7 +68,7 @@ internal class QuickWizardManagementViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState exposes expected editor defaults`() {
+    fun defaultUiStateExposesExpectedEditorDefaults() {
         val state = sut.uiState.value
         assertThat(state.isLoading).isTrue()
         assertThat(state.editorMode).isEqualTo(QuickWizardMode.WIZARD)
@@ -81,7 +81,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `editor setters update the state and mark unsaved changes`() {
+    fun editorSettersUpdateTheStateAndMarkUnsavedChanges() {
         sut.updateButtonText("Breakfast")
         sut.updateInsulin(1.5)
         sut.updateCarbs(40)
@@ -100,7 +100,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `updateCarbTime auto-enables alarm when positive and disables when zero`() {
+    fun updateCarbTimeAutoEnablesAlarmWhenPositiveAndDisablesWhenZero() {
         sut.updateCarbTime(15)
         assertThat(sut.uiState.value.editorCarbTime).isEqualTo(15)
         assertThat(sut.uiState.value.editorUseAlarm).isTrue()
@@ -111,7 +111,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `updateUseCOB true auto-enables IOB`() {
+    fun updateUseCOBTrueAutoEnablesIOB() {
         sut.updateUseCOB(true)
 
         val state = sut.uiState.value
@@ -120,7 +120,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `updateUseIOB false clears COB and positive-IOB-only`() {
+    fun updateUseIOBFalseClearsCOBAndPositiveIOBOnly() {
         sut.updateUseCOB(true)              // turns COB (and IOB) on
         sut.updateUsePositiveIOBOnly(true)
 
@@ -133,7 +133,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `updateMode updates the editor mode`() {
+    fun updateModeUpdatesTheEditorMode() {
         sut.updateMode(QuickWizardMode.INSULIN)
 
         assertThat(sut.uiState.value.editorMode).isEqualTo(QuickWizardMode.INSULIN)
@@ -141,7 +141,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `setScreenMode switches the screen mode`() {
+    fun setScreenModeSwitchesTheScreenMode() {
         sut.setScreenMode(ScreenMode.PLAY)
 
         assertThat(sut.uiState.value.screenMode).isEqualTo(ScreenMode.PLAY)
@@ -168,12 +168,12 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `reorderOrder is null until reorder mode is entered`() {
+    fun reorderOrderIsNullUntilReorderModeIsEntered() {
         assertThat(sut.reorderOrder.value).isNull()
     }
 
     @Test
-    fun `canReorder needs more than one entry`() = runTest {
+    fun canReorderNeedsMoreThanOneEntry() = runTest {
         givenEntries("a")
         assertThat(sut.canReorder()).isFalse()
 
@@ -182,7 +182,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `entering reorder mode starts from the identity order`() = runTest {
+    fun enteringReorderModeStartsFromTheIdentityOrder() = runTest {
         givenEntries("a", "b", "c")
         sut.enterReorderMode()
 
@@ -190,7 +190,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `a non-adjacent move is applied as remove-then-insert, not a swap`() = runTest {
+    fun aNonAdjacentMoveIsAppliedAsRemoveThenInsertNotASwap() = runTest {
         givenEntries("a", "b", "c", "d")
         sut.enterReorderMode()
 
@@ -199,7 +199,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `moves that cannot apply are rejected so the carousel does not follow them`() = runTest {
+    fun movesThatCannotApplyAreRejectedSoTheCarouselDoesNotFollowThem() = runTest {
         givenEntries("a", "b", "c")
         sut.enterReorderMode()
 
@@ -210,7 +210,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `committing an unchanged order never writes the entries`() = runTest {
+    fun committingAnUnchangedOrderNeverWritesTheEntries() = runTest {
         givenEntries("a", "b", "c")
         sut.enterReorderMode()
 
@@ -223,7 +223,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `committing writes the working order exactly once`() = runTest {
+    fun committingWritesTheWorkingOrderExactlyOnce() = runTest {
         givenEntries("a", "b", "c", "d")
         whenever(quickWizard.reorder(any())).thenReturn(true)
         sut.enterReorderMode()
@@ -235,7 +235,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `committing settles on the entry that was moved`() = runTest {
+    fun committingSettlesOnTheEntryThatWasMoved() = runTest {
         givenEntries("a", "b", "c", "d")
         whenever(quickWizard.reorder(any())).thenReturn(true)
         sut.enterReorderMode()
@@ -246,7 +246,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `a replacement of the entry list aborts the commit`() = runTest {
+    fun aReplacementOfTheEntryListAbortsTheCommit() = runTest {
         whenever(rh.gs(any<Int>())).thenReturn("message")
         // The screens name their strings now, so the TextRef overload is the one they call.
         whenever(rh.gs(any<TextRef>())).thenReturn("message")
@@ -264,7 +264,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `cancelling leaves the entries untouched`() = runTest {
+    fun cancellingLeavesTheEntriesUntouched() = runTest {
         givenEntries("a", "b", "c")
         sut.enterReorderMode()
         sut.moveReorderItem(0, 2)
@@ -275,7 +275,7 @@ internal class QuickWizardManagementViewModelTest {
     }
 
     @Test
-    fun `moves and commits outside reorder mode do nothing`() = runTest {
+    fun movesAndCommitsOutsideReorderModeDoNothing() = runTest {
         givenEntries("a", "b")
         assertThat(sut.moveReorderItem(0, 1)).isFalse()
         assertThat(sut.commitReorder()).isNull()

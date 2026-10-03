@@ -7,10 +7,18 @@ import java.io.File
 interface FileListProvider : PrefsFileInfo {
 
     val resultPath: File
+
+    /** Documents/AAPS/aapsLogs. AutoISF history files are written in a subfolder per phone. */
+    val aapsLogsPath: File
+    fun ensureAapsLogsDirExists(): File
+
     fun ensurePreferenceDirExists(): DocumentFile?
     fun ensureExportDirExists(): DocumentFile?
     fun ensureTempDirExists(): DocumentFile?
     fun ensureExtraDirExists(): DocumentFile?
+
+    /** True when [filename] is in the extra folder. Uses the saved folder, then the real file path. */
+    fun extraFileExists(filename: String): Boolean
 
     fun newPreferenceFile(): DocumentFile?
     fun newExportCsvFile(): DocumentFile?

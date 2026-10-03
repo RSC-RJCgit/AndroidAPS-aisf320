@@ -112,6 +112,37 @@ class PrefsTransferTest {
     }
 
     @Test
+    fun `an import keeps the local folder and leaves automation states off`() {
+        store.putString("aaps_directory", "content://this-phone")
+        store.putBoolean("automation_states_enabled", true)
+        store.putString("units", "mmol")
+        val file = sut.exportContents(metadata, "password")
+        store.putString("aaps_directory", "content://keep-me")
+
+        sut.applyImported(assertIs<ImportDecryptResult.Success>(sut.importResult(file, "password", false)).prefs)
+
+        assertEquals("content://keep-me", store.getString("aaps_directory", ""))
+        assertEquals(false, store.getBoolean("automation_states_enabled", true))
+        assertEquals("mmol", store.getString("units", ""))
+    }
+
+    @Test
+    fun `a kept key survives even when the file has a different value`() {
+        store.putString("patient_name", "Ada")
+        store.putString("units", "mmol")
+        val file = sut.exportContents(metadata, "password")
+        store.putString("patient_name", "Keep")
+
+        sut.applyImported(
+            assertIs<ImportDecryptResult.Success>(sut.importResult(file, "password", false)).prefs,
+            preserve = { it == "patient_name" },
+        )
+
+        assertEquals("Keep", store.getString("patient_name", ""))
+        assertEquals("mmol", store.getString("units", ""))
+    }
+
+    @Test
     fun `a wrong password is reported as a wrong password`() {
         store.putString("units", "mmol")
 

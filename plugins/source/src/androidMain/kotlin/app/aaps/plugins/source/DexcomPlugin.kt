@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PermissionGroup
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
@@ -56,12 +57,14 @@ import kotlin.math.abs
 @IntKey(440)
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class, binding = binding<DexcomBoyda>())
-class DexcomPlugin @Inject constructor(
+@Inject
+class DexcomPlugin(
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
     private val context: Context,
     config: Config,
     preferences: Preferences,
+    notificationManager: NotificationManager
 ) : AbstractBgSourceWithSensorInsertLogPlugin(
     pluginDescription = PluginDescription()
         .mainType(PluginType.BGSOURCE)
@@ -77,7 +80,8 @@ class DexcomPlugin @Inject constructor(
         .description(TextRef.AndroidRes(R.string.description_source_dexcom)),
     aapsLogger = aapsLogger,
     rh = rh,
-    preferences = preferences
+    preferences = preferences,
+    notificationManager = notificationManager
 ), BgSource, DexcomBoyda {
 
     init {
@@ -114,7 +118,8 @@ class DexcomPlugin @Inject constructor(
 
     // cannot be inner class because of needed injection
 
-    class DexcomWorker @AssistedInject constructor(
+    @AssistedInject
+    class DexcomWorker(
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,

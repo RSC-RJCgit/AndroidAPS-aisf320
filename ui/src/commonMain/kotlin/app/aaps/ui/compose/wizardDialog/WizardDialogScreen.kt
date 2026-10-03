@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -192,6 +193,10 @@ fun WizardDialogScreen(
         unitsLabel = uiState.units.displayLabel,
         onBgChange = { viewModel.updateBg(it) },
         onCarbsChange = { viewModel.updateCarbs(it.toInt()) },
+        onProteinChange = { viewModel.updateProtein(it.toInt()) },
+        onFatChange = { viewModel.updateFat(it.toInt()) },
+        onWarsawDurationChange = { viewModel.updateWarsawDuration(it) },
+        onMaxBolusChange = { viewModel.updateMaxBolus(it) },
         onAddCarbs = viewModel::addCarbs,
         onCarbsTypeChange = viewModel::updateCarbsType,
         onPercentageChange = { viewModel.updatePercentage(it.toInt()) },
@@ -204,6 +209,10 @@ fun WizardDialogScreen(
         onTrendToggle = viewModel::toggleTrend,
         onIOBToggle = viewModel::toggleIOB,
         onCOBToggle = viewModel::toggleCOB,
+        onWalkingSoonToggle = viewModel::toggleWalkingSoon,
+        onFpuInsteadToggle = viewModel::toggleFpuInstead,
+        onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
+        onUnreliableSmbToggle = viewModel::toggleUnreliableSmb,
         onAlarmToggle = viewModel::toggleAlarm,
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
         onNavigateBack = onNavigateBack,
@@ -220,6 +229,10 @@ internal fun WizardDialogContent(
     unitsLabel: String,
     onBgChange: (Double) -> Unit,
     onCarbsChange: (Double) -> Unit,
+    onProteinChange: (Double) -> Unit = {},
+    onFatChange: (Double) -> Unit = {},
+    onWarsawDurationChange: (Double) -> Unit = {},
+    onMaxBolusChange: (Double) -> Unit = {},
     onAddCarbs: (Int) -> Unit,
     onCarbsTypeChange: (CarbsType) -> Unit,
     onPercentageChange: (Double) -> Unit,
@@ -232,6 +245,10 @@ internal fun WizardDialogContent(
     onTrendToggle: (Boolean) -> Unit,
     onIOBToggle: (Boolean) -> Unit,
     onCOBToggle: (Boolean) -> Unit,
+    onWalkingSoonToggle: (Boolean) -> Unit = {},
+    onFpuInsteadToggle: (Boolean) -> Unit = {},
+    onGiveRestLaterToggle: (Boolean) -> Unit = {},
+    onUnreliableSmbToggle: (Boolean) -> Unit = {},
     onAlarmToggle: (Boolean) -> Unit,
     onCalculationExpandToggle: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -491,6 +508,22 @@ internal fun WizardDialogContent(
                         }
                     }
 
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = uiState.walkingSoon,
+                            onCheckedChange = onWalkingSoonToggle
+                        )
+                        Text(
+                            text = stringResource(UiStrings.wizard_walking_soon),
+                            modifier = Modifier.clickable { onWalkingSoonToggle(!uiState.walkingSoon) }
+                        )
+                    }
+
                     AnimatedVisibility(
                         visible = uiState.calculationExpanded,
                         enter = expandVertically(),
@@ -614,6 +647,15 @@ internal fun WizardDialogContent(
                     // Carbs Input
                     Column(modifier = itemModifier) {
                         NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
+                            value = uiState.maxBolus,
+                            onValueChange = onMaxBolusChange,
+                            valueRange = 0.1..60.0,
+                            step = if (uiState.bolusStep > 0.0) uiState.bolusStep else 0.05,
+                            unitLabel = TextRef.Literal("U"),
+                            decimalPlaces = 2
+                        )
+                        NumberInputRow(
                             labelRef = InterfacesStrings.carbs,
                             value = uiState.carbs.toDouble(),
                             onValueChange = onCarbsChange,
@@ -627,6 +669,72 @@ internal fun WizardDialogContent(
                             increment3 = uiState.carbsButtonIncrement3,
                             onAddCarbs = onAddCarbs
                         )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_protein,
+                            value = uiState.protein.toDouble(),
+                            onValueChange = onProteinChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_fat,
+                            value = uiState.fat.toDouble(),
+                            onValueChange = onFatChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_fpu_duration,
+                            value = uiState.warsawDurationHours,
+                            onValueChange = onWarsawDurationChange,
+                            valueRange = 0.0..24.0,
+                            step = 0.5,
+                            unitLabel = TextRef.Literal("h"),
+                            decimalPlaces = 1
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.fpuInstead,
+                                onCheckedChange = onFpuInsteadToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_fpu_instead),
+                                modifier = Modifier.clickable { onFpuInsteadToggle(!uiState.fpuInstead) }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.giveRestLater,
+                                onCheckedChange = onGiveRestLaterToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_give_rest_later),
+                                modifier = Modifier.clickable { onGiveRestLaterToggle(!uiState.giveRestLater) }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.unreliableSmb,
+                                onCheckedChange = onUnreliableSmbToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_unreliable_smb),
+                                modifier = Modifier.clickable { onUnreliableSmbToggle(!uiState.unreliableSmb) }
+                            )
+                        }
 
                         // Carbs type selector
                         Row(

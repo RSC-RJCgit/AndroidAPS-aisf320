@@ -77,7 +77,8 @@ import kotlin.math.floor
 import kotlin.math.ln
 
 @SingleIn(AppScope::class)
-open class OpenAPSSMBPlugin @Inject constructor(
+@Inject
+open class OpenAPSSMBPlugin(
     aapsLogger: AAPSLogger,
     private val rxBus: RxBus,
     private val constraintsChecker: ConstraintsChecker,
@@ -95,7 +96,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
     private val glucoseStatusProvider: GlucoseStatusProvider,
     private val tddCalculator: TddCalculator,
     private val bgQualityCheck: BgQualityCheck,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     private val determineBasalSMB: DetermineBasalSMB,
     private val profiler: Profiler,
     private val glucoseStatusCalculatorSMB: GlucoseStatusCalculatorSMB,
@@ -121,7 +122,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
         .description(ApsStrings.description_smb)
         .setDefault(),
     ownPreferences = ApsIntentKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ), APS, PluginConstraints {
 
     override suspend fun onStart() {

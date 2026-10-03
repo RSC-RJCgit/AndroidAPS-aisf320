@@ -25,7 +25,7 @@ internal class GraphUtilsTest {
             "260.0, 300.0, 100.0",
             "310.0, 400.0, 100.0",
         )
-        fun `BG max rounds to the expected clean ceiling and step`(input: Double, expectedMax: Double, expectedStep: Double) {
+        fun bGMaxRoundsToTheExpectedCleanCeilingAndStep(input: Double, expectedMax: Double, expectedStep: Double) {
             val scale = niceScale(0.0, input)
             assertThat(scale.min).isEqualTo(0.0)
             assertThat(scale.max).isEqualTo(expectedMax)
@@ -33,7 +33,7 @@ internal class GraphUtilsTest {
         }
 
         @Test
-        fun `never clips the real data range`() {
+        fun neverClipsTheRealDataRange() {
             val scale = niceScale(12.39, 57.39)
             assertThat(scale.min).isEqualTo(10.0)
             assertThat(scale.max).isEqualTo(60.0)
@@ -41,7 +41,7 @@ internal class GraphUtilsTest {
         }
 
         @Test
-        fun `degenerate range (min equals max) still produces a usable non-empty scale`() {
+        fun degenerateRangeMinEqualsMaxStillProducesAUsableNonEmptyScale() {
             val scale = niceScale(5.0, 5.0)
             assertThat(scale.max).isGreaterThan(scale.min)
             assertThat(scale.step).isGreaterThan(0.0)
@@ -52,13 +52,13 @@ internal class GraphUtilsTest {
     inner class NiceUpTest {
 
         @Test
-        fun `non-positive values return zero`() {
+        fun nonPositiveValuesReturnZero() {
             assertThat(niceUp(0.0)).isEqualTo(0.0)
             assertThat(niceUp(-5.0)).isEqualTo(0.0)
         }
 
         @Test
-        fun `rounds up, never down, and never below the input`() {
+        fun roundsUpNeverDownAndNeverBelowTheInput() {
             assertThat(niceUp(82.0)).isEqualTo(100.0)
             assertThat(niceUp(82.0)).isAtLeast(82.0)
         }
@@ -68,19 +68,19 @@ internal class GraphUtilsTest {
     inner class NiceNegativeSliverTest {
 
         @Test
-        fun `non-negative values return zero`() {
+        fun nonNegativeValuesReturnZero() {
             assertThat(niceNegativeSliver(0.0)).isEqualTo(0.0)
             assertThat(niceNegativeSliver(5.0)).isEqualTo(0.0)
         }
 
         @Test
-        fun `rounds further negative, never toward zero`() {
+        fun roundsFurtherNegativeNeverTowardZero() {
             assertThat(niceNegativeSliver(-0.3)).isEqualTo(-0.5)
             assertThat(niceNegativeSliver(-0.07)).isEqualTo(-0.1)
         }
 
         @Test
-        fun `a value already nice is left unchanged`() {
+        fun aValueAlreadyNiceIsLeftUnchanged() {
             // 0.05 is itself on the 1/2/2.5/5/10 ladder, so it must not get bumped to 0.1
             assertThat(niceNegativeSliver(-0.05)).isEqualTo(-0.05)
         }
@@ -90,7 +90,7 @@ internal class GraphUtilsTest {
     inner class NiceScaleAroundPivotTest {
 
         @Test
-        fun `pivot always sits exactly at the midpoint regardless of input asymmetry`() {
+        fun pivotAlwaysSitsExactlyAtTheMidpointRegardlessOfInputAsymmetry() {
             val scale = niceScaleAroundPivot(min = 60.0, max = 108.0, pivot = 100.0)
             assertThat(scale.min).isEqualTo(40.0)
             assertThat(scale.max).isEqualTo(160.0)
@@ -98,21 +98,21 @@ internal class GraphUtilsTest {
         }
 
         @Test
-        fun `never clips the real data range`() {
+        fun neverClipsTheRealDataRange2() {
             val scale = niceScaleAroundPivot(min = 60.0, max = 108.0, pivot = 100.0)
             assertThat(scale.min).isAtMost(60.0)
             assertThat(scale.max).isAtLeast(108.0)
         }
 
         @Test
-        fun `DEV_SLOPE-style pivot at zero centers correctly`() {
+        fun dEVSLOPEStylePivotAtZeroCentersCorrectly() {
             val scale = niceScaleAroundPivot(min = -3.0, max = 1.0, pivot = 0.0)
             assertThat(scale.min).isEqualTo(-6.0)
             assertThat(scale.max).isEqualTo(6.0)
         }
 
         @Test
-        fun `SENS sitting flat on its pivot snaps to a fixed 95-100-105 scale, not a tight near-zero one`() {
+        fun sENSSittingFlatOnItsPivotSnapsToAFixed95100105ScaleNotATightNearZeroOne() {
             // Regression for the reported bug: a constant SENS at 100% used to produce something
             // like 99/99.5/100/100.5/101 instead of a clean 95%/100%/105%.
             val scale = niceScaleAroundPivot(min = 100.0, max = 100.0, pivot = 100.0, minDeviation = 5.0)
@@ -122,14 +122,14 @@ internal class GraphUtilsTest {
         }
 
         @Test
-        fun `deviation above the minDeviation floor ignores the floor and nice-ifies normally`() {
+        fun deviationAboveTheMinDeviationFloorIgnoresTheFloorAndNiceIfiesNormally() {
             val scale = niceScaleAroundPivot(min = 40.0, max = 160.0, pivot = 100.0, minDeviation = 5.0)
             assertThat(scale.min).isEqualTo(0.0)
             assertThat(scale.max).isEqualTo(200.0)
         }
 
         @Test
-        fun `requesting 3 ticks always produces exactly 3 (pivot guaranteed to be one of them)`() {
+        fun requesting3TicksAlwaysProducesExactly3PivotGuaranteedToBeOneOfThem() {
             // The SENS_PIVOT_TICK_COUNT fix: side-steps Vico's step-thinning entirely by never
             // requesting more ticks than always fit.
             val scale = niceScaleAroundPivot(min = 40.0, max = 160.0, pivot = 100.0, maxTickCount = 3)
@@ -143,14 +143,14 @@ internal class GraphUtilsTest {
     inner class ZeroFloorNiceRangeTest {
 
         @Test
-        fun `all-positive data floors at exactly zero`() {
+        fun allPositiveDataFloorsAtExactlyZero() {
             val scale = zeroFloorNiceRange(dataMin = 5.0, dataMax = 82.0)
             assertThat(scale.min).isEqualTo(0.0)
             assertThat(scale.max).isEqualTo(100.0)
         }
 
         @Test
-        fun `tiny negative excursion relative to a large positive side gets its own independent sliver`() {
+        fun tinyNegativeExcursionRelativeToALargePositiveSideGetsItsOwnIndependentSliver() {
             // ratio (8.0 / 0.05 = 160) is far above the default disparityRatio of 10 — the negative
             // sliver must stay tight (its own nice magnitude), not stretched to match the positive step.
             val scale = zeroFloorNiceRange(dataMin = -0.05, dataMax = 8.0)
@@ -159,7 +159,7 @@ internal class GraphUtilsTest {
         }
 
         @Test
-        fun `comparable-magnitude negative and positive share one unified nice scale`() {
+        fun comparableMagnitudeNegativeAndPositiveShareOneUnifiedNiceScale() {
             val scale = zeroFloorNiceRange(dataMin = -4.0, dataMax = 6.0)
             assertThat(scale.min).isEqualTo(-4.0)
             assertThat(scale.max).isEqualTo(6.0)
@@ -167,7 +167,7 @@ internal class GraphUtilsTest {
         }
 
         @Test
-        fun `right at the disparity ratio boundary takes the independent-sliver branch`() {
+        fun rightAtTheDisparityRatioBoundaryTakesTheIndependentSliverBranch() {
             // ratio == disparityRatio exactly (10.0 / 1.0 = 10.0) must take the ">=" sliver branch,
             // not silently fall through to the unified one.
             val scale = zeroFloorNiceRange(dataMin = -1.0, dataMax = 10.0)
@@ -177,7 +177,7 @@ internal class GraphUtilsTest {
         }
 
         @Test
-        fun `never clips real data even when the negative side is larger than the positive side`() {
+        fun neverClipsRealDataEvenWhenTheNegativeSideIsLargerThanThePositiveSide() {
             val scale = zeroFloorNiceRange(dataMin = -12.0, dataMax = 3.0)
             assertThat(scale.min).isAtMost(-12.0)
             assertThat(scale.max).isAtLeast(3.0)

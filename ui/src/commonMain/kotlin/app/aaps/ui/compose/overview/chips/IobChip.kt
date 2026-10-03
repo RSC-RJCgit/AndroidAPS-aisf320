@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.chips
 
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -32,6 +33,8 @@ import app.aaps.core.ui.compose.navigation.icon
 internal fun IobChip(
     state: IobUiState,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
+    onDoubleClick: () -> Unit = {},
     showIcon: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -41,10 +44,15 @@ internal fun IobChip(
     // compact height and stays vertically aligned with the (non-clickable) CobChip.
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
         Surface(
-            onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
             shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
             color = if (hasValue) ElementType.INSULIN.color().copy(alpha = 0.2f) else Color.Transparent,
-            modifier = modifier.heightIn(min = AapsSpacing.chipHeight)
+            modifier = modifier
+                .heightIn(min = AapsSpacing.chipHeight)
+                .combinedClickable(
+                    onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
+                    onLongClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLongClick() },
+                    onDoubleClick = onDoubleClick,
+                )
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

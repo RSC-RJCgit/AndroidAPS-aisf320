@@ -87,7 +87,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
     fun `entries document is processed as glucose and queued for storage`() = runTest {
         sut.onDataCreateUpdate(envelope("entries", sgvDoc()))
 
-        verify(nsIncomingDataProcessor).processSgvs(any(), eq(false))
+        verify(nsIncomingDataProcessor).processSgvs(any(), eq(false), eq(false))
         verify(storeDataForDb).requestStoreGlucoseValues()
     }
 
@@ -101,12 +101,12 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `devicestatus document goes to the device status handler as live data`() = runTest {
+    fun `devicestatus document goes to the device status handler`() = runTest {
         val doc = """{"identifier":"d1","srvModified":1000,"created_at":"2024-01-01T00:00:00Z"}"""
 
         sut.onDataCreateUpdate(envelope("devicestatus", doc))
 
-        verify(nsDeviceStatusHandler).handleNewData(any(), eq(true))
+        verify(nsDeviceStatusHandler).handleNewData(any())
     }
 
     /** Not covered on the Android side; pinned here so the merged version keeps it. */
@@ -116,7 +116,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
 
         sut.onDataCreateUpdate(envelope("profile", doc))
 
-        verify(nsIncomingDataProcessor).processProfile(any(), eq(false))
+        verify(nsIncomingDataProcessor).processProfile(any(), eq(false), eq(false))
     }
 
     /**
@@ -132,7 +132,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
 
         sut.onDataCreateUpdate(envelope("entries", """{"identifier":"abc","date":1000,"sgv":100}"""))
 
-        verify(nsIncomingDataProcessor, never()).processSgvs(any(), any())
+        verify(nsIncomingDataProcessor, never()).processSgvs(any(), any(), any())
         verify(nsClientV3Plugin, never()).storeLastLoadedSrvModified()
         assertThat(lastModified.collections.entries).isEqualTo(0L)
     }

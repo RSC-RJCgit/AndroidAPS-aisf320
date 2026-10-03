@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.wear
 
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.sync.SyncStrings
 import android.content.Context
@@ -7,6 +8,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Watch
+import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.configuration.Config
@@ -35,6 +37,7 @@ import app.aaps.core.interfaces.scenes.SceneAutomationApi
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
@@ -69,7 +72,8 @@ import kotlinx.coroutines.withContext
 @SingleIn(AppScope::class)
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
 @MetroIntKey(350)
-class WearPlugin @Inject constructor(
+@Inject
+class WearPlugin(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
     preferences: Preferences,
@@ -81,6 +85,7 @@ class WearPlugin @Inject constructor(
     private val bolusProgressData: BolusProgressData,
     private val persistenceLayer: PersistenceLayer,
     private val scenes: SceneAutomationApi,
+    notificationManager: NotificationManager,
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.SYNC)
@@ -89,7 +94,7 @@ class WearPlugin @Inject constructor(
         .shortName(SyncStrings.wear_shortname)
         .description(SyncStrings.description_wear)
         .composeContent { WearComposeContent() },
-    aapsLogger = aapsLogger, rh = rh, preferences = preferences
+    aapsLogger = aapsLogger, rh = rh, preferences = preferences, notificationManager = notificationManager
 ) {
 
     private var scope: CoroutineScope? = null
@@ -101,8 +106,17 @@ class WearPlugin @Inject constructor(
     private val _savedCustomWatchface = MutableStateFlow<CwfData?>(null)
     val savedCustomWatchface: StateFlow<CwfData?> = _savedCustomWatchface.asStateFlow()
 
+    /**
+     * What the watch last said about Watch Face Push: whether it has it, and which face it holds.
+     * Null until the watch reports, and again when it disconnects - a fresh watch must speak for
+     * itself, since the answer differs from one watch to the next.
+     */
+    private val _watchFacePushStatus = MutableStateFlow<EventData.WatchFacePushStatus?>(null)
+    val watchFacePushStatus: StateFlow<EventData.WatchFacePushStatus?> = _watchFacePushStatus.asStateFlow()
+
     fun updateConnectedDevice(deviceName: String?) {
         _connectedDevice.value = deviceName
+        if (deviceName == null) _watchFacePushStatus.value = null
     }
 
     fun updateSavedCustomWatchface(cwfData: CwfData?) {
@@ -151,6 +165,8 @@ class WearPlugin @Inject constructor(
             preferences.observe(StringNonKey.WearCwfWatchfaceName).drop(1).map {},
             preferences.observe(StringNonKey.WearCwfAuthorVersion).drop(1).map {},
             preferences.observe(StringNonKey.WearCwfFileName).drop(1).map {},
+            // Which Watch Face Format face the watch installs; the watch swaps its slot on arrival
+            preferences.observe(StringKey.WearPushedWatchface).drop(1).map {},
         ).collectResilient(newScope, aapsLogger, LTag.WEAR) {
             dataHandlerMobile.resendData("PreferenceChange")
             checkCustomWatchfacePreferences()
@@ -170,6 +186,13 @@ class WearPlugin @Inject constructor(
             .drop(1) // Skip initial emission on collection start
             .debounce(2_000L)
             .collectResilient(newScope, aapsLogger, LTag.WEAR) { dataHandlerMobile.resendData("TempTargetChange") }
+        // Push status to watch quickly when the running mode changes on the phone, so the
+        // running-mode complication and tile do not wait for the next loop run. A wear-side
+        // change already refreshes through handleRunningModeConfirmed.
+        persistenceLayer.observeChanges<RM>()
+            .drop(1) // Skip initial emission on collection start
+            .debounce(2_000L)
+            .collectResilient(newScope, aapsLogger, LTag.WEAR) { dataHandlerMobile.resendData("RunningModeChange") }
         // Refresh wear scene tile whenever the scene list changes (add / update / delete)
         scenes.scenesFlow
             .drop(1) // Skip initial replay on subscribe
@@ -191,6 +214,7 @@ class WearPlugin @Inject constructor(
                             checkCustomWatchfacePreferences()
                         }
                     }
+                    event.watchFacePushStatus?.let { _watchFacePushStatus.value = it }
                 }
             }
         rxBus.toFlow(EventMobileToWear::class)

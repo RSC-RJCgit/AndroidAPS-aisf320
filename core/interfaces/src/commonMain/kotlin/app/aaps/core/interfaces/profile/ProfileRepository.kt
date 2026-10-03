@@ -80,6 +80,18 @@ interface ProfileRepository {
     suspend fun add(profile: SingleProfile): Result<Unit>
 
     /**
+     * Append every [profiles] entry in one write. The profile screen stays where it was.
+     * [add] still moves the screen to the single new profile.
+     */
+    suspend fun addAll(profiles: List<SingleProfile>): Result<Unit>
+
+    /**
+     * Whether the profile screen should show a profile that was just appended.
+     * [add] and [clone] set this true. [addAll] sets it false.
+     */
+    val showAppendedProfile: Boolean
+
+    /**
      * Rearrange the profile list. [order] is the new arrangement expressed as *current* indices:
      * `order[newIndex] == oldIndex`. It must be a permutation of the current indices — no profile
      * is added, removed or duplicated here.

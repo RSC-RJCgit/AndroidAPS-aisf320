@@ -11,16 +11,20 @@ import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.TextResolver
+import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.interfaces.smoothing.Smoothing
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.smoothing.keys.UkfDoubleNonKey
 import app.aaps.plugins.smoothing.keys.UkfIntNonKey
 import app.aaps.plugins.smoothing.keys.UkfLongNonKey
 import dev.zacsweers.metro.AppScope
+import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.IntKey
@@ -73,12 +77,14 @@ import kotlin.time.Clock
 // Bound as PluginBase, not implicitly: these classes have two supertypes (PluginBase and Smoothing),
 // so Metro cannot pick one. The plugin list wants PluginBase.
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
+@ContributesBinding(AppScope::class, binding = binding<DisplayRawSmoothing>())
 @IntKey(630)
 class UnscentedKalmanFilterPlugin(
     aapsLogger: AAPSLogger,
     rh: TextResolver,
     preferences: Preferences,
-    private val persistenceLayer: PersistenceLayer
+    private val persistenceLayer: PersistenceLayer,
+    notificationManager: NotificationManager
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.SMOOTHING)
@@ -87,8 +93,13 @@ class UnscentedKalmanFilterPlugin(
         .shortName(SmoothingStrings.smoothing_shortname)
         .description(SmoothingStrings.description_UKF),
     ownPreferences = UkfLongNonKey.entries + UkfIntNonKey.entries + UkfDoubleNonKey.entries,
-    aapsLogger, rh, preferences
-), Smoothing {
+    aapsLogger, rh, preferences, notificationManager
+), Smoothing, DisplayRawSmoothing {
+
+    // Heavier than the live pipeline. Live R trusts a clean calibrated point. Raw Libre noise
+    // needs a larger measurement noise and a quieter rate, or the line copies the raw trace.
+    private val displayR = 225.0
+    private val displayQ = doubleArrayOf(1.0, 0.0, 0.0, 0.15)
 
     // ============================================================
     // UKF CONFIGURATION
@@ -1311,6 +1322,92 @@ class UnscentedKalmanFilterPlugin(
      * Used when insufficient data is available for filtering (< 2 readings) or
      * when the filter fails; ensures smoothed field is always populated.
      */
+    /**
+     * One pass over raw Libre values. Does not read or write the live filter's saved noise estimate.
+     * Points are newest first. A gap over 60 minutes, or a timestamp that does not move backward, starts a new piece.
+     */
+    override fun smoothForDisplay(points: List<Pair<Long, Double>>): List<Double> {
+        if (points.isEmpty()) return emptyList()
+        if (!preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)) return points.map { max(it.second, 39.0) }
+        if (points.size < 2) return points.map { max(it.second, 39.0) }
+
+        val result = DoubleArray(points.size)
+        var idx = 0
+        while (idx < points.size) {
+            var end = idx
+            while (end + 1 < points.size) {
+                val dt = (points[end].first - points[end + 1].first) / millisPerMinute
+                if (dt > majorGapThreshold || dt <= 0.0) break
+                end++
+            }
+            if (end - idx + 1 < 2) {
+                result[idx] = max(points[idx].second, 39.0)
+            } else {
+                smoothSegmentForDisplay(points, idx, end, result)
+            }
+            idx = end + 1
+        }
+        return result.toList()
+    }
+
+    private fun smoothSegmentForDisplay(points: List<Pair<Long, Double>>, startIdx: Int, endIdx: Int, result: DoubleArray) {
+        val segmentSize = endIdx - startIdx + 1
+        val initialGlucose = points[endIdx].second
+        var initialRate = 0.0
+        if (endIdx > 0) {
+            val dt = (points[endIdx - 1].first - points[endIdx].first) / millisPerMinute
+            if (dt in 3.0..7.0) {
+                initialRate = ((points[endIdx - 1].second - points[endIdx].second) / dt).coerceIn(-4.0, 4.0)
+            }
+        }
+
+        val x = doubleArrayOf(initialGlucose, initialRate)
+        val p = doubleArrayOf(16.0, 0.0, 0.0, 1.0)
+        val forwardResults = DoubleArray(segmentSize)
+        forwardResults[segmentSize - 1] = x[0]
+        val forwardStates = ArrayList<FilterState>(segmentSize)
+
+        for (i in (endIdx - 1) downTo startIdx) {
+            val dt = (points[i].first - points[i + 1].first) / millisPerMinute
+            if (dt > minorGapThreshold && dt <= majorGapThreshold) {
+                val qScale = dt / 5.0
+                p[0] = min(p[0] + displayQ[0] * qScale, maxGlucoseVariance)
+                p[3] = min(p[3] + displayQ[3] * qScale, maxRateVariance)
+                x[1] *= exp(-dt / rateDecayTimeConstant)
+            }
+            p[0] = p[0].coerceIn(0.1, maxGlucoseVariance)
+            p[3] = p[3].coerceIn(0.001, maxRateVariance)
+
+            val dtClamped = dt.coerceIn(3.5, 6.5)
+            val (xPred, pPred) = predict(x, p, displayQ, dtClamped)
+            val stateBefore = FilterState(x.copyOf(), p.copyOf(), xPred.copyOf(), pPred.copyOf(), dtClamped)
+            update(xPred, pPred, points[i].second, displayR, x, p)
+
+            val resultIdx = i - startIdx
+            forwardResults[resultIdx] = x[0]
+            forwardStates.add(0, stateBefore)
+        }
+
+        val smoothedResults = forwardResults.copyOf()
+        if (segmentSize >= 3 && forwardStates.isNotEmpty()) {
+            val maxSmoothSteps = min(segmentSize - 1, forwardStates.size)
+            var xSmooth = doubleArrayOf(forwardResults[0], x[1])
+            for (i in 1..maxSmoothSteps) {
+                val state = forwardStates[i - 1]
+                val c = computeSmootherGain(state.p, state.pPred, state.dt)
+                val dx0 = xSmooth[0] - state.xPred[0]
+                val dx1 = xSmooth[1] - state.xPred[1]
+                xSmooth[0] = forwardResults[i] + c[0] * dx0 + c[1] * dx1
+                xSmooth[1] = state.x[1] + c[2] * dx0 + c[3] * dx1
+                smoothedResults[i] = xSmooth[0]
+            }
+        }
+
+        for (i in startIdx..endIdx) {
+            result[i] = max(smoothedResults[i - startIdx], 39.0)
+        }
+    }
+
     private fun copyRawToSmoothed(data: MutableList<InMemoryGlucoseValue>) {
         for (reading in data) {
             reading.smoothed = max(reading.calibratedOrValue, 39.0)

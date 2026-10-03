@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.ExternalOptions
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.pump.VirtualPump
@@ -51,7 +52,8 @@ import dev.zacsweers.metro.IntKey as MetroIntKey
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
 @MetroIntKey(550)
 @SingleIn(AppScope::class)
-class RandomBgPlugin @Inject constructor(
+@Inject
+class RandomBgPlugin(
     private val context: Context,
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
@@ -59,6 +61,7 @@ class RandomBgPlugin @Inject constructor(
     private val virtualPump: VirtualPump,
     preferences: Preferences,
     config: Config,
+    notificationManager: NotificationManager,
 ) : AbstractBgSourcePlugin(
     PluginDescription()
         .mainType(PluginType.BGSOURCE)
@@ -75,7 +78,8 @@ class RandomBgPlugin @Inject constructor(
     aapsLogger = aapsLogger,
     rh = rh,
     preferences = preferences,
-    config = config
+    config = config,
+    notificationManager = notificationManager
 ), BgSource {
 
     @VisibleForTesting

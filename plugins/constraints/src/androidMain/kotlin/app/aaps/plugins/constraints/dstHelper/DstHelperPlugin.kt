@@ -1,5 +1,6 @@
 package app.aaps.plugins.constraints.dstHelper
 
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.constraints.ConstraintsStrings
 import app.aaps.core.data.model.RM
@@ -13,7 +14,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.NotificationAction
 import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
@@ -37,12 +37,13 @@ import java.util.Calendar
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
 @IntKey(850)
 @SingleIn(AppScope::class)
-class DstHelperPlugin @Inject constructor(
+@Inject
+class DstHelperPlugin(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
     preferences: Preferences,
     private val activePlugin: ActivePlugin,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     private val loop: Loop,
     private val profileFunction: ProfileFunction
 ) : PluginBaseWithPreferences(
@@ -52,7 +53,7 @@ class DstHelperPlugin @Inject constructor(
         .showInList { false }
         .pluginName(ConstraintsStrings.dst_plugin_name),
     ownPreferences = DstHelperLongKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ), DstHelper {
 
     companion object {

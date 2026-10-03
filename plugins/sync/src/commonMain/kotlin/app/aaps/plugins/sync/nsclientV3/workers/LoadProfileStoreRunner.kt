@@ -5,6 +5,8 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.utils.safeGetLongAllowNull
@@ -23,6 +25,7 @@ import kotlinx.serialization.json.JsonObject
 class LoadProfileStoreRunner(
 
     private val aapsLogger: AAPSLogger,
+    private val preferences: Preferences,
 
     private val nsClientV3Plugin: NSClientV3Plugin,
     private val dateUtil: DateUtil,
@@ -31,6 +34,10 @@ class LoadProfileStoreRunner(
 ) {
 
     suspend fun run(): WorkOutcome {
+        if (preferences.get(BooleanKey.NsClientSecondaryEnabled)) {
+            nsClientRepository.addLog("◄ RCV PROFILE END", "Profile store comes from the secondary Nightscout")
+            return WorkOutcome.Skipped("secondary")
+        }
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return WorkOutcome.Failure("AndroidClient is null")
 
         try {

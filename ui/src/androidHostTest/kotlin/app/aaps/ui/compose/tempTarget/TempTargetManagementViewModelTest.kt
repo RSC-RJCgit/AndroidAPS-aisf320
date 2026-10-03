@@ -79,7 +79,7 @@ internal class TempTargetManagementViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `editor setters update the state`() {
+    fun editorSettersUpdateTheState() {
         sut.updateEditorName("Morning")
         sut.updateEditorTarget(5.5)
         sut.updateEditorDuration(3_600_000L)
@@ -95,7 +95,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `updateEventTime records the time and marks it changed`() {
+    fun updateEventTimeRecordsTheTimeAndMarksItChanged() {
         sut.updateEventTime(123_456L)
 
         assertThat(sut.uiState.value.eventTime).isEqualTo(123_456L)
@@ -103,7 +103,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `hasUnsavedChanges is false with no selected preset`() {
+    fun hasUnsavedChangesIsFalseWithNoSelectedPreset() {
         assertThat(sut.hasUnsavedChanges()).isFalse()
         assertThat(sut.isEditorDifferentFromDefaults()).isFalse()
     }
@@ -138,7 +138,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `a freshly loaded preset reports no unsaved changes in mmol`() = runTest {
+    fun aFreshlyLoadedPresetReportsNoUnsavedChangesInMmol() = runTest {
         // Regression: the editor holds a display-rounded value, so converting it back to mg/dL and
         // comparing against full-precision storage flagged an edit nobody made — 90 mg/dL shows as
         // 5.0 mmol/L, which converts back to 90.08 mg/dL. Every whole-mg/dL preset looked dirty,
@@ -153,7 +153,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `editing the target by one display step is still detected in mmol`() = runTest {
+    fun editingTheTargetByOneDisplayStepIsStillDetectedInMmol() = runTest {
         givenBuiltInsInMmol()
         sut.selectPreset(0)
 
@@ -201,12 +201,12 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `reorderOrder is null until reorder mode is entered`() {
+    fun reorderOrderIsNullUntilReorderModeIsEntered() {
         assertThat(sut.reorderOrder.value).isNull()
     }
 
     @Test
-    fun `canReorder needs more than one movable preset`() = runTest {
+    fun canReorderNeedsMoreThanOneMovablePreset() = runTest {
         // Only the three built-ins: nothing a user could rearrange.
         givenPresets(storedPresets.take(3))
         assertThat(sut.canReorder()).isFalse()
@@ -216,14 +216,14 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `entering reorder mode starts from the identity order`() = runTest {
+    fun enteringReorderModeStartsFromTheIdentityOrder() = runTest {
         givenPresets()
         sut.enterReorderMode()
         assertThat(sut.reorderOrder.value).containsExactly(0, 1, 2, 3, 4).inOrder()
     }
 
     @Test
-    fun `the three built-in presets are not movable`() = runTest {
+    fun theThreeBuiltInPresetsAreNotMovable() = runTest {
         givenPresets()
         sut.enterReorderMode()
 
@@ -235,7 +235,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `a built-in preset cannot be moved`() = runTest {
+    fun aBuiltInPresetCannotBeMoved() = runTest {
         givenPresets()
         sut.enterReorderMode()
 
@@ -244,7 +244,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `a custom preset cannot displace a built-in one`() = runTest {
+    fun aCustomPresetCannotDisplaceABuiltInOne() = runTest {
         givenPresets()
         sut.enterReorderMode()
 
@@ -255,7 +255,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `custom presets can be reordered among themselves`() = runTest {
+    fun customPresetsCanBeReorderedAmongThemselves() = runTest {
         givenPresets()
         sut.enterReorderMode()
 
@@ -264,7 +264,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `committing an unchanged order never writes the presets`() = runTest {
+    fun committingAnUnchangedOrderNeverWritesThePresets() = runTest {
         givenPresets()
         clearInvocations(preferences)
         sut.enterReorderMode()
@@ -278,7 +278,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `committing writes the new order once, built-ins still first`() = runTest {
+    fun committingWritesTheNewOrderOnceBuiltInsStillFirst() = runTest {
         givenPresets()
         clearInvocations(preferences)
         sut.enterReorderMode()
@@ -291,7 +291,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `committing settles on the card of the preset that was moved`() = runTest {
+    fun committingSettlesOnTheCardOfThePresetThatWasMoved() = runTest {
         givenPresets()
         sut.enterReorderMode()
         sut.moveReorderItem(4, 3)
@@ -301,7 +301,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `a same-size replacement of the preset list aborts the commit`() = runTest {
+    fun aSameSizeReplacementOfThePresetListAbortsTheCommit() = runTest {
         whenever(rh.gs(any<Int>())).thenReturn("message")
         // The screens name their strings now, so the TextRef overload is the one they call.
         whenever(rh.gs(any<TextRef>())).thenReturn("message")
@@ -320,7 +320,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `cancelling leaves the presets untouched`() = runTest {
+    fun cancellingLeavesThePresetsUntouched() = runTest {
         givenPresets()
         clearInvocations(preferences)
         sut.enterReorderMode()
@@ -332,7 +332,7 @@ internal class TempTargetManagementViewModelTest {
     }
 
     @Test
-    fun `moves and commits outside reorder mode do nothing`() = runTest {
+    fun movesAndCommitsOutsideReorderModeDoNothing() = runTest {
         givenPresets()
         assertThat(sut.moveReorderItem(3, 4)).isFalse()
         assertThat(sut.isReorderPositionMovable(3)).isFalse()

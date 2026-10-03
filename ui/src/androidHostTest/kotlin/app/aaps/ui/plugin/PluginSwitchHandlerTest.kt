@@ -29,7 +29,7 @@ internal class PluginSwitchHandlerTest {
     private val configBuilder = mock<ConfigBuilder>()
 
     @Test
-    fun `multi-select toggle commits immediately and refreshes`() = runTest {
+    fun multiSelectToggleCommitsImmediatelyAndRefreshes() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val plugin = mock<PluginBase>()
         whenever(configBuilder.requestPluginSwitch(plugin, true, PluginType.SYNC)).thenReturn(null)
@@ -45,7 +45,7 @@ internal class PluginSwitchHandlerTest {
     }
 
     @Test
-    fun `single-select enabling defers the switch behind the swap confirmation`() = runTest {
+    fun singleSelectEnablingDefersTheSwitchBehindTheSwapConfirmation() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val current = mock<PluginBase>()
         val target = mock<PluginBase>()
@@ -73,7 +73,7 @@ internal class PluginSwitchHandlerTest {
     }
 
     @Test
-    fun `hardware-pump warning raises the gate and confirm commits it`() = runTest {
+    fun hardwarePumpWarningRaisesTheGateAndConfirmCommitsIt() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val pump = mock<PluginBase>()
         whenever(pump.isEnabled(PluginType.PUMP)).thenReturn(false) // no active pump -> straight to execute
@@ -97,7 +97,7 @@ internal class PluginSwitchHandlerTest {
     }
 
     @Test
-    fun `double confirm fires the switch only once`() = runTest {
+    fun doubleConfirmFiresTheSwitchOnlyOnce() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val current = mock<PluginBase>()
         val target = mock<PluginBase>()
@@ -118,7 +118,7 @@ internal class PluginSwitchHandlerTest {
     }
 
     @Test
-    fun `a second toggle is ignored while a switch is in flight`() = runTest {
+    fun aSecondToggleIsIgnoredWhileASwitchIsInFlight() = runTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val first = mock<PluginBase>()
         val second = mock<PluginBase>()

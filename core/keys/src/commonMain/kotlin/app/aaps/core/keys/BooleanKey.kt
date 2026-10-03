@@ -198,6 +198,130 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfFastRiseEnabled(
+        "autoisf_fast_rise_enabled",
+        true,
+        KeysStrings.pref_title_aps_fast_rise_enabled,
+        KeysStrings.pref_summary_aps_fast_rise_enabled,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfLowReboundGuardEnabled(
+        "autoisf_low_rebound_guard_enabled",
+        false,
+        KeysStrings.pref_title_aps_low_rebound_guard_enabled,
+        KeysStrings.pref_summary_aps_low_rebound_guard_enabled,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfShowCarbModelCurve(
+        "show_carb_model_curve",
+        true,
+        KeysStrings.pref_title_aps_show_carb_model_curve,
+        KeysStrings.pref_summary_aps_show_carb_model_curve,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfShowGraph5(
+        "show_graph5",
+        false,
+        KeysStrings.pref_title_aps_show_graph5,
+        KeysStrings.pref_summary_aps_show_graph5,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUseUkf1ForDosing(
+        "autoisf_use_ukf1_for_dosing",
+        false,
+        KeysStrings.pref_title_aps_use_ukf1_for_dosing,
+        KeysStrings.pref_summary_aps_use_ukf1_for_dosing,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTddSensitivity(
+        "autoisf_tdd_sensitivity",
+        true,
+        KeysStrings.pref_title_aps_tdd_sensitivity,
+        KeysStrings.pref_summary_aps_tdd_sensitivity,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUseLiveStepsOnVirtual(
+        "autoisf_use_live_steps_on_virtual",
+        false,
+        KeysStrings.pref_title_aps_use_live_steps,
+        KeysStrings.pref_summary_aps_use_live_steps,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSmbOffsetOverrideEnabled(
+        "autoisf_smb_offset_override_enabled",
+        false,
+        KeysStrings.pref_title_aps_smb_offset_override_enabled,
+        KeysStrings.pref_summary_aps_smb_offset_override_enabled,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfBoostAutomationsEnabled(
+        "autoisf_boost_automations_enabled",
+        true,
+        KeysStrings.pref_title_aps_boost_automations,
+        KeysStrings.pref_summary_aps_boost_automations,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostEnabled(
+        "autoisf_uam_boost_enabled",
+        false,
+        KeysStrings.pref_title_aps_uam_boost,
+        KeysStrings.pref_summary_aps_uam_boost,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostUnrestrictedEnabled(
+        "autoisf_uam_boost_unrestricted_enabled",
+        false,
+        KeysStrings.pref_title_aps_uam_boost_unrestricted,
+        KeysStrings.pref_summary_aps_uam_boost_unrestricted,
+        dependency = ApsAutoIsfUamBoostEnabled,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfCustomAutomationsEnabled(
+        "autoisf_custom_automations_enabled",
+        false,
+        KeysStrings.pref_title_aps_custom_automations,
+        KeysStrings.pref_summary_aps_custom_automations,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    AutomationStatesEnabled(
+        "automation_states_enabled",
+        true,
+        KeysStrings.pref_title_aps_automation_states,
+        KeysStrings.pref_summary_aps_automation_states,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsActivityDetection(
+        "activity_detection",
+        false,
+        KeysStrings.pref_title_aps_activity_detection,
+        KeysStrings.pref_summary_aps_activity_detection,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsIgnoreInactivityOvernight(
+        "ignore_inactivity_overnight",
+        true,
+        KeysStrings.pref_title_aps_ignore_inactivity_overnight,
+        KeysStrings.pref_summary_aps_ignore_inactivity_overnight,
+        defaultedBySM = true,
+        dependency = ApsActivityDetection,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTddFactor(
+        "autoisf_tdd_factor",
+        true,
+        KeysStrings.pref_title_aps_tdd_factor,
+        KeysStrings.pref_summary_aps_tdd_factor,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
 
     MaintenanceEnableFabric("enable_fabric2", true, KeysStrings.pref_title_maintenance_enable_fabric, defaultedBySM = true, hideParentScreenIfHidden = true),
 
@@ -205,6 +329,13 @@ enum class BooleanKey(
     // client is derived from the master. showInNsClientMode=false hides it in apsMode + pumpControlMode only;
     // hideParentScreenIfHidden collapses the now-empty "Unattended Settings Export" subscreen on a client.
     MaintenanceEnableExportSettingsAutomation("enable_unattended_export", false, KeysStrings.pref_title_maintenance_enable_export_automation, defaultedBySM = false, showInNsClientMode = false, hideParentScreenIfHidden = true),
+    MaintenanceAutoExportLogsToCloud(
+        "maintenance_auto_export_logs_to_cloud",
+        false,
+        KeysStrings.pref_title_auto_export_logs,
+        KeysStrings.pref_summary_auto_export_logs,
+        defaultedBySM = false
+    ),
 
     AutotuneAutoSwitchProfile("autotune_auto", false, KeysStrings.pref_title_autotune_auto_switch_profile, KeysStrings.pref_summary_autotune_auto_switch_profile),
     AutotuneCategorizeUamAsBasal("categorize_uam_as_basal", false, KeysStrings.pref_title_autotune_categorize_uam_as_basal, KeysStrings.pref_summary_autotune_categorize_uam_as_basal),
@@ -226,6 +357,25 @@ enum class BooleanKey(
     NsClientAcceptTherapyEvent("ns_receive_therapy_events", false, KeysStrings.pref_title_ns_receive_therapy_event, KeysStrings.pref_summary_ns_receive_therapy_event, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptRunningMode("ns_receive_running_mode", false, KeysStrings.pref_title_ns_receive_running_mode, KeysStrings.pref_summary_ns_receive_running_mode, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptTbrEb("ns_receive_tbr_eb", false, KeysStrings.pref_title_ns_receive_tbr_eb, KeysStrings.pref_summary_ns_receive_tbr_eb, showInNsClientMode = false, engineeringModeOnly = true),
+    // A second Nightscout site. A virtual pump reads glucose from its own site, and boluses and
+    // carbs from the phone that entered them. SMBs are never taken from this site.
+    NsClientSecondaryEnabled("nsclient_secondary_enabled", false, KeysStrings.ns_secondary_enabled, KeysStrings.ns_secondary_enabled_summary),
+    NsClientSecondaryAcceptTherapyEvent(
+        "nsclient_secondary_receive_therapy_events",
+        true,
+        KeysStrings.ns_secondary_receive_therapy_events,
+        KeysStrings.ns_secondary_receive_therapy_events_summary,
+        dependency = NsClientSecondaryEnabled
+    ),
+    // On by default. The full app and a client then take glucose from the second site.
+    // Turn off to leave glucose on this phone's main site.
+    NsClientBgFromLiveSite(
+        "ns_bg_from_live_site",
+        true,
+        KeysStrings.ns_bg_from_live_site,
+        KeysStrings.ns_bg_from_live_site_summary,
+        dependency = NsClientSecondaryEnabled
+    ),
     NsClientNotificationsFromAlarms("ns_alarms", false, KeysStrings.pref_title_ns_notifications_from_alarms, calculatedDefaultValue = true),
     NsClientNotificationsFromAnnouncements("ns_announcements", false, KeysStrings.pref_title_ns_notifications_from_announcements, calculatedDefaultValue = true),
     NsClientUseCellular("ns_cellular", true, KeysStrings.pref_title_ns_use_cellular),
@@ -272,8 +422,40 @@ enum class BooleanKey(
     WearNotifyOnSmb(key = "wear_notifySMB", defaultValue = true, title = KeysStrings.pref_title_wear_notify_on_smb, summary = KeysStrings.pref_summary_wear_notify_on_smb),
     WearBroadcastData(key = "wear_broadcast_data", defaultValue = false, title = KeysStrings.pref_title_wear_broadcast_data, summary = KeysStrings.pref_summary_wear_broadcast_data, showInApsMode = false, showInPumpControlMode = false),
 
+    // Same stored name as the old hidden switch. On until the user turns it off.
+    FslApplySmoothing("fsl_apply_smoothing", true, KeysStrings.fsl_apply_smoothing_title, KeysStrings.fsl_apply_smoothing_summary),
+
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_pump, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_cgm, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+
+    ApsAutoIsfMjKotlinButtonsEnabled(
+        "autoisf_mj_kotlin_buttons",
+        false,
+        KeysStrings.pref_title_mj_kotlin_buttons,
+        KeysStrings.pref_summary_mj_kotlin_buttons,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSteroidKotlinButtonEnabled(
+        "autoisf_steroid_kotlin_button",
+        false,
+        KeysStrings.pref_title_steroid_kotlin_button,
+        KeysStrings.pref_summary_steroid_kotlin_button,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfShowInsulinTotals(
+        "autoisf_show_insulin_totals",
+        false,
+        KeysStrings.pref_title_show_insulin_totals,
+        KeysStrings.pref_summary_show_insulin_totals,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    AutomationCodedLocationsEnabled(
+        "automation_coded_locations",
+        false,
+        KeysStrings.pref_title_coded_locations,
+        KeysStrings.pref_summary_coded_locations,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
 
     ;
 

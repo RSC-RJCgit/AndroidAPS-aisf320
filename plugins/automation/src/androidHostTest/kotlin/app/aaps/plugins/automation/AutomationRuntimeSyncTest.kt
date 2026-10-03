@@ -96,7 +96,7 @@ class AutomationRuntimeSyncTest : TestBaseWithProfile() {
     private fun newRuntime() = AutomationRuntime(
         mock<LocationPermissions>(), eventFactory, aapsLogger, rh, preferences, loop, rxBus, constraintChecker,
         config, locationServiceController, dateUtil, activePlugin, reminderScheduler, actionFactory, triggerFactory, triggerDeps, receiverStatusStore,
-        uel, profileRepository, sceneApi, mock()
+        uel, profileRepository, sceneApi, mock(), mock()
     )
 
     private fun event(title: String) = eventFactory.newEvent().apply {

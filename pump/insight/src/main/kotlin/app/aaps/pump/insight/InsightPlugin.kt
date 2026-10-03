@@ -147,7 +147,8 @@ import app.aaps.core.interfaces.pump.comment
 @PumpDriver
 @IntKey(1050)
 @SingleIn(AppScope::class)
-class InsightPlugin @Inject constructor(
+@Inject
+class InsightPlugin(
     aapsLogger: AAPSLogger,
     override val rh: ResourceHelper,
     preferences: Preferences,
@@ -159,7 +160,7 @@ class InsightPlugin @Inject constructor(
     private val pumpSync: PumpSync,
     private val insightDatabase: InsightDatabase,
     private val pumpEnactResultProvider: () -> PumpEnactResult,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     private val ch: ConcentrationHelper,
     private val bolusProgressData: BolusProgressData,
     @ApplicationScope private val appScope: CoroutineScope,
@@ -188,7 +189,7 @@ class InsightPlugin @Inject constructor(
             )
         },
     ownPreferences = InsightBooleanKey.entries + InsightIntKey.entries + InsightLongNonKey.entries + InsightDoubleNonKey.entries,
-    aapsLogger, rh, preferences, commandQueue
+    aapsLogger, rh, preferences, commandQueue, notificationManager
 ), Pump, Insight, PumpPluginConstraints, InsightConnectionService.StateCallback, OwnDatabasePlugin {
 
     override val pumpDescription: PumpDescription = PumpDescription().also { it.fillFor(PumpType.ACCU_CHEK_INSIGHT) }

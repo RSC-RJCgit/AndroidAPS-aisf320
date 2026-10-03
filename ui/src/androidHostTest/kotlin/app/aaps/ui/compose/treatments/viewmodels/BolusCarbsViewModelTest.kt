@@ -63,7 +63,7 @@ internal class BolusCarbsViewModelTest {
     }
 
     @Test
-    fun `default uiState is not in removing mode and has no selection`() {
+    fun defaultUiStateIsNotInRemovingModeAndHasNoSelection() {
         val state = sut.uiState.value
         assertThat(state.isRemovingMode).isFalse()
         assertThat(state.selectedItems).isEmpty()
@@ -72,7 +72,7 @@ internal class BolusCarbsViewModelTest {
     }
 
     @Test
-    fun `enterSelectionMode selects the item and enables removing mode`() {
+    fun enterSelectionModeSelectsTheItemAndEnablesRemovingMode() {
         val item = link()
 
         sut.enterSelectionMode(item)
@@ -83,7 +83,7 @@ internal class BolusCarbsViewModelTest {
     }
 
     @Test
-    fun `exitSelectionMode clears selection and disables removing mode`() {
+    fun exitSelectionModeClearsSelectionAndDisablesRemovingMode() {
         sut.enterSelectionMode(link())
 
         sut.exitSelectionMode()
@@ -94,7 +94,7 @@ internal class BolusCarbsViewModelTest {
     }
 
     @Test
-    fun `toggleSelection adds an item and then removes it`() {
+    fun toggleSelectionAddsAnItemAndThenRemovesIt() {
         val first = link()
         val second = link()
         sut.enterSelectionMode(first)
@@ -107,7 +107,7 @@ internal class BolusCarbsViewModelTest {
     }
 
     @Test
-    fun `toggleInvalidated flips the showInvalidated flag`() {
+    fun toggleInvalidatedFlipsTheShowInvalidatedFlag() {
         assertThat(sut.uiState.value.showInvalidated).isFalse()
 
         sut.toggleInvalidated()
@@ -116,12 +116,12 @@ internal class BolusCarbsViewModelTest {
     }
 
     @Test
-    fun `getDeleteConfirmationMessage is empty when nothing is selected`() {
+    fun getDeleteConfirmationMessageIsEmptyWhenNothingIsSelected() {
         assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("")
     }
 
     @Test
-    fun `getDeleteConfirmationMessage uses the plural string for multiple selection`() {
+    fun getDeleteConfirmationMessageUsesThePluralStringForMultipleSelection() {
         whenever(rh.gs(CoreUiStrings.confirm_remove_multiple_items, 2)).thenReturn("Remove 2 items")
         sut.enterSelectionMode(link())
         sut.toggleSelection(link())

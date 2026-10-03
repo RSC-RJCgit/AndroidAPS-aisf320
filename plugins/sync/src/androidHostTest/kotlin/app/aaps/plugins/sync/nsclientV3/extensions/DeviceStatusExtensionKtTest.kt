@@ -4,6 +4,8 @@ import app.aaps.core.data.model.DS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -35,6 +37,8 @@ internal class DeviceStatusExtensionKtTest : TestBase() {
     @Mock lateinit var overviewData: OverviewData
     @Mock lateinit var calculationWorkflow: CalculationWorkflow
     @Mock lateinit var nsClientV3Plugin: NSClientV3Plugin
+    @Mock lateinit var activePlugin: ActivePlugin
+    @Mock lateinit var profileUtil: ProfileUtil
     private lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
     private lateinit var nsDeviceStatusHandler: NSDeviceStatusHandler
     private val testScope = CoroutineScope(Dispatchers.Unconfined)
@@ -45,7 +49,7 @@ internal class DeviceStatusExtensionKtTest : TestBase() {
         nsDeviceStatusHandler = NSDeviceStatusHandler(
             preferences, config, dateUtil, processedDeviceStatusData, aapsLogger,
             persistenceLayer, overviewData, calculationWorkflow, rxBus, testScope,
-            { nsClientV3Plugin }
+            { nsClientV3Plugin }, activePlugin, profileUtil
         )
         whenever(config.AAPSCLIENT).thenReturn(true)
     }

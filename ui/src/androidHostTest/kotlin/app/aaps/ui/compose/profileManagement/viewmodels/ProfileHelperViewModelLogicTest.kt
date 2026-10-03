@@ -96,7 +96,7 @@ internal class ProfileHelperViewModelLogicTest {
     // ---- label templates -------------------------------------------------------------------
 
     @Test
-    fun `MOTOL label uses the TDD template when a TDD is entered`() {
+    fun mOTOLLabelUsesTheTDDTemplateWhenATDDIsEntered() {
         val name = sut.getProfileName(
             age = 12, tdd = 30.0, weight = 40.0, basalPct = 0.32,
             profileType = ProfileType.MOTOL_DEFAULT, profileIndex = 0, profileSwitchIndex = 0
@@ -105,7 +105,7 @@ internal class ProfileHelperViewModelLogicTest {
     }
 
     @Test
-    fun `MOTOL label uses the weight template when there is no TDD`() {
+    fun mOTOLLabelUsesTheWeightTemplateWhenThereIsNoTDD() {
         val name = sut.getProfileName(
             age = 12, tdd = 0.0, weight = 40.0, basalPct = 0.32,
             profileType = ProfileType.MOTOL_DEFAULT, profileIndex = 0, profileSwitchIndex = 0
@@ -114,7 +114,7 @@ internal class ProfileHelperViewModelLogicTest {
     }
 
     @Test
-    fun `DPV label carries the basal percentage as a whole number`() {
+    fun dPVLabelCarriesTheBasalPercentageAsAWholeNumber() {
         val name = sut.getProfileName(
             age = 12, tdd = 30.0, weight = 40.0, basalPct = 0.35,
             profileType = ProfileType.DPV_DEFAULT, profileIndex = 0, profileSwitchIndex = 0
@@ -123,7 +123,7 @@ internal class ProfileHelperViewModelLogicTest {
     }
 
     @Test
-    fun `AVAILABLE_PROFILE label is empty when the index is out of range`() {
+    fun aVAILABLEPROFILELabelIsEmptyWhenTheIndexIsOutOfRange() {
         val name = sut.getProfileName(
             age = 12, tdd = 30.0, weight = 40.0, basalPct = 0.32,
             profileType = ProfileType.AVAILABLE_PROFILE, profileIndex = 3, profileSwitchIndex = 0
@@ -134,7 +134,7 @@ internal class ProfileHelperViewModelLogicTest {
     // ---- which generator builds which profile ----------------------------------------------
 
     @Test
-    fun `MOTOL profile is built by DefaultProfile from age tdd and weight`() {
+    fun mOTOLProfileIsBuiltByDefaultProfileFromAgeTddAndWeight() {
         val expected: PureProfile = mock()
         whenever(defaultProfile.profile(12, 30.0, 40.0, GlucoseUnit.MGDL)).thenReturn(expected)
 
@@ -148,7 +148,7 @@ internal class ProfileHelperViewModelLogicTest {
     }
 
     @Test
-    fun `DPV profile is built by DefaultProfileDPV and the fraction is passed through unscaled`() {
+    fun dPVProfileIsBuiltByDefaultProfileDPVAndTheFractionIsPassedThroughUnscaled() {
         val expected: PureProfile = mock()
         whenever(defaultProfileDPV.profile(12, 30.0, 0.32, GlucoseUnit.MGDL)).thenReturn(expected)
 
@@ -161,7 +161,7 @@ internal class ProfileHelperViewModelLogicTest {
     }
 
     @Test
-    fun `a generator failure shows no profile instead of crashing the screen`() {
+    fun aGeneratorFailureShowsNoProfileInsteadOfCrashingTheScreen() {
         whenever(defaultProfile.profile(12, 30.0, 40.0, GlucoseUnit.MGDL))
             .thenThrow(IllegalStateException("boom"))
 
@@ -176,7 +176,7 @@ internal class ProfileHelperViewModelLogicTest {
     // ---- copy to local ---------------------------------------------------------------------
 
     @Test
-    fun `copy to local asks for confirmation with the profile switch title`() {
+    fun copyToLocalAsksForConfirmationWithTheProfileSwitchTitle() {
         whenever(defaultProfile.profile(12, 30.0, 40.0, GlucoseUnit.MGDL)).thenReturn(mock())
 
         sut.copyToLocal(age = 12, tdd = 30.0, weight = 40.0, pct = 32.0, profileType = ProfileType.MOTOL_DEFAULT)
@@ -188,7 +188,7 @@ internal class ProfileHelperViewModelLogicTest {
     }
 
     @Test
-    fun `copy to local of a DPV profile turns the percent into a fraction`() {
+    fun copyToLocalOfADPVProfileTurnsThePercentIntoAFraction() {
         whenever(defaultProfileDPV.profile(12, 30.0, 0.32, GlucoseUnit.MGDL)).thenReturn(mock())
 
         sut.copyToLocal(age = 12, tdd = 30.0, weight = 40.0, pct = 32.0, profileType = ProfileType.DPV_DEFAULT)
@@ -198,7 +198,7 @@ internal class ProfileHelperViewModelLogicTest {
     }
 
     @Test
-    fun `copy to local asks nothing when no profile could be generated`() {
+    fun copyToLocalAsksNothingWhenNoProfileCouldBeGenerated() {
         whenever(defaultProfile.profile(eq(12), eq(30.0), eq(40.0), eq(GlucoseUnit.MGDL))).thenReturn(null)
 
         sut.copyToLocal(age = 12, tdd = 30.0, weight = 40.0, pct = 32.0, profileType = ProfileType.MOTOL_DEFAULT)

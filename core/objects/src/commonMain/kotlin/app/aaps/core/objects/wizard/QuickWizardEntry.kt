@@ -155,7 +155,10 @@ class QuickWizardEntry(
             buttonText(),
             carbTime(),
             positiveIOBOnly = uPositiveIOBOnly,
-            source = Sources.QuickWizard
+            source = Sources.QuickWizard,
+            protein = protein(),
+            fat = fat(),
+            warsawDurationHours = warsawDurationHours(),
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
     }
 
@@ -172,6 +175,14 @@ class QuickWizardEntry(
     fun buttonText(): String = data.buttonText
 
     fun carbs(): Int = data.carbs
+
+    fun protein(): Int = data.protein
+
+    fun fat(): Int = data.fat
+
+    fun warsawDurationHours(): Double = data.warsawDurationHours
+
+    fun maxBolus(): Double = data.maxBolus
 
     fun validFrom(): Int = data.validFrom
 

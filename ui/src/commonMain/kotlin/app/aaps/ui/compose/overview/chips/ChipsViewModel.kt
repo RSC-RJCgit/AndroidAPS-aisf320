@@ -1,32 +1,51 @@
 package app.aaps.ui.compose.overview.chips
 
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.DoubleNonKey
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.overview.AUTO_ISF_HISTORY_WINDOW_MS
+import app.aaps.ui.compose.overview.AutoIsfHistoryRow
+import app.aaps.ui.compose.overview.autoIsfHistoryRows
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
@@ -39,8 +58,25 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+data class List1Row(
+    val label: String,
+    val current: String,
+    val downMmol: Double,
+    val upMmol: Double?,
+    val readOnly: Boolean = false,
+    val pickProfiles: Boolean = false,
+)
+
+data class CodedProfileRole(
+    val title: String,
+    val key: StringKey,
+    val optional: Boolean,
+    val blockSteroidName: Boolean,
+)
+
 @Stable
-class ChipsViewModel @AssistedInject constructor(
+@AssistedInject
+class ChipsViewModel(
     @Assisted cache: OverviewDataCache,
     private val iobCobCalculator: IobCobCalculator,
     private val loop: Loop,
@@ -48,6 +84,7 @@ class ChipsViewModel @AssistedInject constructor(
     private val persistenceLayer: PersistenceLayer,
     private val constraintChecker: ConstraintsChecker,
     private val profileFunction: ProfileFunction,
+    private val profileRepository: ProfileRepository,
     private val processedDeviceStatusData: ProcessedDeviceStatusData,
     private val profileUtil: ProfileUtil,
     private val activePlugin: ActivePlugin,
@@ -56,7 +93,8 @@ class ChipsViewModel @AssistedInject constructor(
     private val dateUtil: DateUtil,
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
-    private val rxBus: RxBus
+    private val rxBus: RxBus,
+    private val maintenance: Maintenance,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -109,6 +147,14 @@ class ChipsViewModel @AssistedInject constructor(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = CobUiState()
+    )
+
+    val overviewActions: StateFlow<List<OverviewAction>> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
+        buildOverviewActions()
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
     )
 
     val sensitivityUiState: StateFlow<SensitivityUiState> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
@@ -189,8 +235,295 @@ class ChipsViewModel @AssistedInject constructor(
             dialogText = dialogText.joinToString("\n"),
             ratio = lastAutosensRatio ?: 1.0,
             isEnabled = isEnabled,
-            hasData = lastAutosensData != null
+            hasData = lastAutosensData != null,
+            autoIsfHistory = activePlugin.activeAPS?.algorithm == APSResult.Algorithm.AUTO_ISF
+                || config.AAPSCLIENT
+                || persistenceLayer.getAutoIsfValuesFromTimeToTime(
+                    dateUtil.now() - AUTO_ISF_HISTORY_WINDOW_MS,
+                    dateUtil.now()
+                ).isNotEmpty()
         )
+    }
+
+    var autoIsfHistoryOpen by mutableStateOf(false)
+        private set
+    var autoIsfHistoryRows by mutableStateOf<List<AutoIsfHistoryRow>>(emptyList())
+        private set
+
+    /** Opens the history table. Kept here so turning the phone does not close it. */
+    fun openAutoIsfHistory() {
+        viewModelScope.launch {
+            autoIsfHistoryRows = loadAutoIsfHistory()
+            autoIsfHistoryOpen = true
+            // The table is already open. A slow cloud upload must not hold it back.
+            runCatching { maintenance.exportCoordinated("ISF_LONG_PRESS") }
+        }
+    }
+
+    fun closeAutoIsfHistory() {
+        autoIsfHistoryOpen = false
+    }
+
+    /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
+    suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> {
+        val now = dateUtil.now()
+        val units = profileFunction.getUnits()
+        val fromLivePhone = config.APS && !config.AAPSCLIENT &&
+            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
+            activePlugin.activePump.selectedActivePump() is VirtualPump
+        val steps = persistenceLayer.getStepsCountFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
+        return persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
+            .sortedByDescending { it.timestamp }
+            .autoIsfHistoryRows(
+                timeText = { dateUtil.timeString(it) },
+                glucoseText = { profileUtil.fromMgdlToStringInUnits(it, units) },
+                deltaText = { profileUtil.fromMgdlToSignedStringInUnits(it, units) },
+                format2 = { decimalFormatter.to2Decimal(it) },
+                steps = steps,
+                fromLivePhone = fromLivePhone,
+                ownDevice = "openaps://${config.deviceModelForUpload}"
+            )
+    }
+
+    var list1Open by mutableStateOf(false)
+        private set
+    var list1Generation by mutableIntStateOf(0)
+        private set
+
+    var insulinPeakText by mutableStateOf("--")
+        private set
+
+    fun openList1() {
+        list1Open = true
+        viewModelScope.launch { refreshInsulinPeak() }
+    }
+
+    private suspend fun refreshInsulinPeak() {
+        insulinPeakText = profileFunction.getRunningOrRequestedICfg()?.peak?.toString() ?: "--"
+    }
+
+    fun closeList1() {
+        list1Open = false
+    }
+
+    var list2Open by mutableStateOf(false)
+        private set
+    var list2Generation by mutableIntStateOf(0)
+        private set
+
+    fun openList2() {
+        list2Open = true
+    }
+
+    fun closeList2() {
+        list2Open = false
+    }
+
+    fun applyList1(mmol: Double) {
+        rxBus.send(EventAutoIsfDirectTtCode(mmol))
+        viewModelScope.launch {
+            delay(400)
+            refreshInsulinPeak()
+            list1Generation++
+            list2Generation++
+        }
+    }
+
+    private suspend fun buildOverviewActions(): List<OverviewAction> {
+        if (config.AAPSCLIENT) return emptyList()
+        if (activePlugin.activeAPS?.algorithm != APSResult.Algorithm.AUTO_ISF) return emptyList()
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return emptyList()
+        val states = preferences.get(StringNonKey.AutomationCurrentStates)
+        val mj = stateValue(states, "MJ")
+        val steroids = stateValue(states, "Steroids")
+        val actions = mutableListOf<OverviewAction>()
+        if (preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)) {
+            when (mj) {
+                "NOMJremains" -> actions += OverviewAction(rh.gs(UiStrings.overview_mj_start), 5.158)
+                "" -> Unit
+                else -> actions += OverviewAction(rh.gs(UiStrings.overview_mj_restore), 5.160)
+            }
+        }
+        if (preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) {
+            val hour = dateUtil.hourString().toIntOrNull() ?: 0
+            val profile = profileFunction.getProfile()
+            val originalPercent = (profile as? ProfileSealed.EPS)?.value?.originalPercentage ?: profile?.percentage
+            val profileName = profileFunction.getOriginalProfileName()
+            val atHundred = originalPercent == 100
+            if (hour >= 6 && mj == "NOMJremains" && steroids == "Steroids Off") {
+                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_on), 5.162)
+            }
+            if (atHundred && steroids == "SteroidsON" && profileName == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName)) {
+                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_130), 5.168)
+            }
+            if (atHundred && steroids == "SteroidsON" && mj == "NOMJremains") {
+                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName)) {
+                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_150), 5.170)
+                }
+                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName)) {
+                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_190), 5.172)
+                }
+                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName)) {
+                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_250), 5.174)
+                }
+                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_off), 5.176)
+            }
+        }
+        return actions
+    }
+
+    private fun stateValue(json: String, name: String): String {
+        val key = "\"$name\""
+        val at = json.indexOf(key)
+        if (at < 0) return ""
+        val colon = json.indexOf(':', at + key.length)
+        if (colon < 0) return ""
+        val open = json.indexOf('"', colon + 1)
+        val close = if (open < 0) -1 else json.indexOf('"', open + 1)
+        if (open < 0 || close < 0) return ""
+        return json.substring(open + 1, close)
+    }
+
+    fun list1Rows(): List<List1Row> {
+        val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
+        val two: (Double) -> String = { decimalFormatter.to2Decimal(it) }
+        val one: (Double) -> String = { decimalFormatter.to1Decimal(it) }
+        return numbered(listOf(
+            List1Row("SMBdel base + mild-Bst", "base=${two(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))}, mildBst=${two(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}", 5.002, 5.004),
+            List1Row("Tog Libre sens on/off", onOff(preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)), 5.006, null),
+            List1Row("Tog Bst autos(all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)), 5.008, null),
+            List1Row("pp ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)), 5.012, 5.014),
+            List1Row("acce ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)), 5.016, 5.018),
+            List1Row("Dura weight", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
+            List1Row("Libre slope", decimalFormatter.to2Decimal(preferences.get(DoubleKey.FslCalSlope)), 5.026, 5.028),
+            List1Row("Libre offset", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)), 5.032, 5.034),
+            List1Row("Live Libre slope/offset", libreLiveText(), 0.0, null, readOnly = true),
+            List1Row("SMB offset", one(preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride)), 5.036, 5.038),
+            List1Row("Clean main graph", "no SMBs, solid green", 5.042, null),
+            List1Row("Wizard bolus %", preferences.get(IntKey.OverviewBolusPercentage).toString(), 5.046, 5.048),
+            List1Row("Mild boost", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)), 5.052, 5.054),
+            List1Row("pp ISF Wt (High)", two(preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)), 5.056, 5.058),
+            List1Row("acce ISF Wt (High)", two(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)), 5.062, 5.064),
+            List1Row("higher ISF range Wt", one(preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)), 5.068, 5.070),
+            List1Row("Peak insulin time", insulinPeakText, 5.074, 5.076),
+            List1Row("autoISF max (lowBG)", one(preferences.get(DoubleKey.ApsAutoIsfMaxLow)), 5.080, 5.082),
+            List1Row("autoISF max (N)", one(preferences.get(DoubleKey.ApsAutoIsfMax)), 5.086, 5.088),
+            List1Row("T1 tod offset 00-02h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0002)), 5.092, 5.094),
+            List1Row("T2 tod offset 02-04h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0204)), 5.098, 5.100),
+            List1Row("T3 tod offset 04-06h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0406)), 5.104, 5.106),
+            List1Row("T4 tod offset 06-09h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0609)), 5.110, 5.112),
+            List1Row("T5 tod offset 09-12h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0912)), 5.116, 5.118),
+            List1Row("T6 tod offset 12-18h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset1218)), 5.122, 5.124),
+            List1Row("T7 tod offset 18-22h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset1822)), 5.128, 5.130),
+            List1Row("T8 tod offset 22-00h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset2200)), 5.134, 5.136),
+            List1Row("Tog Graph2 (carb model curve) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)), 5.138, null),
+            List1Row("Cloud logs upload", "send now", 5.140, null),
+            List1Row("Tog Graph5 (main clone) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowGraph5)), 5.142, null),
+            List1Row("MJ state: MJ active", "set this state", 5.222, null),
+            List1Row("MJ state: MJ2", "set this state", 5.224, null),
+            List1Row("MJ state: MJ3", "set this state", 5.146, null),
+            List1Row("MJ state: NOMJremains", "set this state", 5.144, null),
+            List1Row("Profile: Standard", preferences.get(StringKey.ApsAutoIsfStandardProfileName), 5.148, null),
+            List1Row("Profile: Low", preferences.get(StringKey.ApsAutoIsfLowProfileName), 5.150, null),
+            List1Row("Tier set A", "Standard and Low", 5.216, null),
+            List1Row("Tier set B", "Standard and Low", 5.218, null),
+            List1Row("Tier set C", "Standard and Low", 5.220, null),
+            List1Row("Re-pick coded profiles", "Standard, Low, Steroid", 0.0, null, pickProfiles = true),
+            List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
+            List1Row("Sensor age code", onOff(preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)), 5.156, null),
+        ))
+    }
+
+    fun list2Rows(): List<List1Row> {
+        val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
+        return numbered(listOf(
+            List1Row("MJ injection", "low, 0.35, 70", 5.158, null),
+            List1Row("MJ restore", "standard, 0.50, 70", 5.160, null),
+            List1Row("Steroids on", preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName), 5.162, null),
+            List1Row("MJ buttons", onOff(preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)), 5.164, null),
+            List1Row("Steroid buttons", onOff(preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)), 5.166, null),
+            List1Row("Steroids 130", preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName), 5.168, null),
+            List1Row("Steroids 150", preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName), 5.170, null),
+            List1Row("Steroids 190", preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName), 5.172, null),
+            List1Row("Steroids 250", preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName), 5.174, null),
+            List1Row("Steroids off", preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName), 5.176, null),
+            List1Row("Tier 3 UAM boost", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)), 5.194, null),
+            List1Row("Profile batch auto", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled)), 5.210, null),
+            List1Row("Profile batch hold A", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled)), 5.212, null),
+            List1Row("Profile batch hold C", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled)), 5.214, null),
+            List1Row("AutoISF calcs UKF1", onOff(preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)), 5.196, null),
+            List1Row("Location texts", onOff(preferences.get(BooleanKey.AutomationCodedLocationsEnabled)), 5.198, null),
+            List1Row("Live steps on virtual", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)), 5.206, null),
+            List1Row("Fast rise", onOff(preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)), 5.226, null),
+            List1Row("LoReb", onOff(preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)), 5.228, null),
+            List1Row("T3 unrestricted", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)), 5.230, null),
+            List1Row("Insulin totals row", onOff(preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)), 5.232, null),
+            List1Row("Location text phone", preferences.get(StringKey.AutomationLocationSmsDeviceModel).ifBlank { onOff(false) }, 5.204, null),
+            List1Row("Send AnyDesk restart", "send now", 5.178, null),
+            List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
+            List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
+            List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
+            List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null),
+            List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null),
+            List1Row("ADB wireless: attempt Shizuku start", adbPortText(), 5.208, null),
+        ))
+    }
+
+    // The number is the place in the list on screen. Each row is on one list only.
+    private fun numbered(rows: List<List1Row>): List<List1Row> =
+        rows.mapIndexed { index, row -> row.copy(label = "${index + 1}. ${row.label}") }
+
+    private fun newestApkText(): String {
+        val newest = preferences.get(LongNonKey.ApsAutoIsfApkNewestNnn)
+        return if (newest > 0L) "Newest: $newest" else "Newest: not found yet"
+    }
+
+    private fun adbPortText(): String {
+        val port = preferences.get(IntKey.ApsAutoIsfAdbConnectPort)
+        return if (port > 0) "Port $port" else "Port not set"
+    }
+
+    private fun libreLiveText(): String {
+        val liveSlope = preferences.get(DoubleKey.FslCalSlope)
+        val liveOffset = preferences.get(DoubleKey.FslCalOffset)
+        val baseSlope = preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)
+        val baseOffset = preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)
+        val tier = preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjActive)
+        return "Live slope ${decimalFormatter.to2Decimal(liveSlope)}, offset ${decimalFormatter.to2Decimal(liveOffset)}. " +
+            "Baseline slope ${decimalFormatter.to2Decimal(baseSlope)}, offset ${decimalFormatter.to2Decimal(baseOffset)}. " +
+            "Sensor age tier ${if (tier) "on" else "off"}."
+    }
+
+    fun profileNames(): List<String> =
+        profileRepository.profile.value?.getProfileList()?.map { it.toString() } ?: emptyList()
+
+    fun codedProfileRoles(): List<CodedProfileRole> = listOf(
+        CodedProfileRole("Standard current", StringKey.ApsAutoIsfStandardProfileName, optional = false, blockSteroidName = true),
+        CodedProfileRole("Low current", StringKey.ApsAutoIsfLowProfileName, optional = false, blockSteroidName = true),
+        CodedProfileRole("Standard tier A", StringKey.ApsAutoIsfStandard100ProfileName, optional = true, blockSteroidName = true),
+        CodedProfileRole("Standard tier B", StringKey.ApsAutoIsfStandard105ProfileName, optional = true, blockSteroidName = true),
+        CodedProfileRole("Standard tier C", StringKey.ApsAutoIsfStandard110ProfileName, optional = true, blockSteroidName = true),
+        CodedProfileRole("Low tier A", StringKey.ApsAutoIsfLow70ProfileName, optional = true, blockSteroidName = true),
+        CodedProfileRole("Low tier B", StringKey.ApsAutoIsfLow80ProfileName, optional = true, blockSteroidName = true),
+        CodedProfileRole("Low tier C", StringKey.ApsAutoIsfLow90ProfileName, optional = true, blockSteroidName = true),
+        CodedProfileRole("Steroid 100", StringKey.ApsAutoIsfSteroid100ProfileName, optional = false, blockSteroidName = false),
+        CodedProfileRole("Steroid 110", StringKey.ApsAutoIsfSteroid110ProfileName, optional = false, blockSteroidName = false),
+        CodedProfileRole("Steroid 130", StringKey.ApsAutoIsfSteroid130ProfileName, optional = false, blockSteroidName = false),
+        CodedProfileRole("Steroid 150", StringKey.ApsAutoIsfSteroid150ProfileName, optional = false, blockSteroidName = false),
+        CodedProfileRole("Steroid 190", StringKey.ApsAutoIsfSteroid190ProfileName, optional = false, blockSteroidName = false),
+        CodedProfileRole("Steroid 250", StringKey.ApsAutoIsfSteroid250ProfileName, optional = false, blockSteroidName = false),
+    )
+
+    fun codedRoleValue(role: CodedProfileRole): String = preferences.get(role.key)
+
+    // Returns a short reason when the name is refused. Empty means it was saved.
+    fun setCodedRole(role: CodedProfileRole, name: String): String {
+        if (role.blockSteroidName && (name.contains("steroid", ignoreCase = true) || name.contains("%"))) {
+            return "That name belongs on a steroid role."
+        }
+        preferences.put(role.key, name)
+        list1Generation++
+        return ""
     }
 
     fun showIobInfo() {

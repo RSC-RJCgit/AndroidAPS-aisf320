@@ -54,6 +54,11 @@ enum class NotificationId(
     // A user/remote (non-SMB) bolus failed to deliver — surfaced once, here, from the executor (the entry
     // dialog is gone by the time the async result arrives). SMB failures stay silent (the loop self-corrects).
     BOLUS_DELIVERY_FAILED(URGENT, PUMP),
+
+    // The same bolus never reached the pump, but because the queue was cleared on purpose (a settings import) —
+    // nothing failed on the pump, so this is NOT the alarm tier. It still has to be said: the user pressed bolus,
+    // no insulin was given, and nobody re-sends it (unlike a temp basal, which the loop re-issues next cycle).
+    BOLUS_CANCELLED(IMPORTANT, PUMP),
     WRONG_SERIAL_NUMBER(NORMAL, PUMP),
     WRONG_BASAL_STEP(NORMAL, PUMP),
     WRONG_DRIVER(NORMAL, PUMP),
@@ -121,6 +126,9 @@ enum class NotificationId(
     // Pump — Dana emulator
     PUMP_EMULATOR_DISPLAY(INFO, PUMP),
 
+    // Pump — Carelevo
+    CARELEVO_PATCH_ALERT(URGENT, PUMP, allowMultiple = true),
+
     // CGM
     BG_READINGS_MISSED(URGENT, CGM),
     SENSOR_CHANGE_DETECTED(NORMAL, CGM),
@@ -185,7 +193,30 @@ enum class NotificationId(
     SCENE_CHAIN_ERROR(IMPORTANT, AUTOMATION, allowMultiple = true),
 
     /** Bolus succeeded but the accompanying carbs could not be persisted — the user must re-enter them. */
-    CARBS_STORE_FAILED(URGENT, PUMP);
+    CARBS_STORE_FAILED(URGENT, PUMP),
+
+    // A plugin's onStart threw. It stays ENABLED on purpose - disabling a failed pump driver makes
+    // ActivePlugin.activePumpInternal throw "No pump selected" - so this alarm is how the user finds out
+    // that a plugin is running only half built. Appended at the END: [fromOrdinal] maps a stored ordinal
+    // back to an id, so inserting in the middle would renumber every id after it.
+    //
+    // allowMultiple, because one id is shared by every plugin. Without it a second failing plugin would
+    // replace the first one's card, and one plugin starting cleanly would dismiss the card of another that
+    // is still broken - leaving a blocked pump with no alarm to explain it. Same reason EQUIL_LOW_BATTERY
+    // keeps its own id above. [app.aaps.core.interfaces.plugin.PluginBase] dismisses by handle, not by id.
+    PLUGIN_START_FAILED(URGENT, SYSTEM, allowMultiple = true),
+
+    // Work the plugin launched itself ended with an error. Separate from PLUGIN_START_FAILED because the
+    // plugin did start - it is a polling loop or a queued command that died, so the text has to say
+    // something else. Same reasons for allowMultiple.
+    PLUGIN_WORK_FAILED(URGENT, SYSTEM, allowMultiple = true),
+
+    // AutoISF phone alerts. Appended at the end so stored ordinals stay put.
+    // allowMultiple so a sensor reminder does not replace a battery alert.
+    AUTOISF_ALERT(URGENT, AUTOMATION, allowMultiple = true),
+
+    // AutoISF notes that are not alarms, such as a missing profile name.
+    AUTOISF_NOTE(NORMAL, AUTOMATION, allowMultiple = true);
 
     companion object {
 

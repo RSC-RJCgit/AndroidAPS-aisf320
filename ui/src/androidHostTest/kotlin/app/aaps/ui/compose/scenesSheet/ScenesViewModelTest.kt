@@ -70,7 +70,7 @@ internal class ScenesViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has no items and no scene items`() {
+    fun defaultUiStateHasNoItemsAndNoSceneItems() {
         val state = sut.uiState.value
         assertThat(state.items).isEmpty()
         assertThat(state.sceneItems).isEmpty()

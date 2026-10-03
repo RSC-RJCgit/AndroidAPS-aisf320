@@ -3,11 +3,13 @@ package app.aaps.ui.compose.profileManagement.viewmodels
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.PS
+import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.InsulinManager
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -64,6 +66,7 @@ internal class ProfileManagementViewModelTest {
     @Mock private lateinit var nsClient: NsClient
     @Mock private lateinit var batchExecutor: BatchExecutor
     @Mock private lateinit var rxBus: RxBus
+    @Mock private lateinit var importExportPrefs: ImportExportPrefs
 
     private lateinit var sut: ProfileManagementViewModel
 
@@ -101,7 +104,9 @@ internal class ProfileManagementViewModelTest {
         sut = ProfileManagementViewModel(
             profileRepository, profileFunction, rh, dateUtil, aapsLogger, activePlugin,
             profileUtil, decimalFormatter, persistenceLayer, insulinManager, preferences, config,
-            nsClient, batchExecutor, rxBus, CoroutineScope(UnconfinedTestDispatcher())
+            nsClient, batchExecutor, rxBus, object : CodedProfileRoles {
+                override fun markSteroidsOff() = Unit
+            }, importExportPrefs, CoroutineScope(UnconfinedTestDispatcher())
         )
     }
 
@@ -109,7 +114,7 @@ internal class ProfileManagementViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is loading, in EDIT mode and empty`() {
+    fun defaultUiStateIsLoadingInEDITModeAndEmpty() {
         val state = sut.uiState.value
         assertThat(state.isLoading).isTrue()
         assertThat(state.screenMode).isEqualTo(ScreenMode.EDIT)
@@ -119,12 +124,12 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `getReuseValues returns null when there is no active profile switch`() {
+    fun getReuseValuesReturnsNullWhenThereIsNoActiveProfileSwitch() {
         assertThat(sut.getReuseValues()).isNull()
     }
 
     @Test
-    fun `isPumpCompatible returns true when there is no profile at the index`() {
+    fun isPumpCompatibleReturnsTrueWhenThereIsNoProfileAtTheIndex() {
         assertThat(sut.isPumpCompatible(0, 100)).isTrue()
     }
 
@@ -135,7 +140,7 @@ internal class ProfileManagementViewModelTest {
     private fun iCfg(label: String) = ICfg(insulinLabel = label, insulinEndTime = 360, insulinPeakTime = 75, concentration = 1.0)
 
     @Test
-    fun `no picker is offered while an insulin is in force`() = runTest {
+    fun noPickerIsOfferedWhileAnInsulinIsInForce() = runTest {
         whenever(profileFunction.getRunningOrRequestedICfg()).thenReturn(iCfg("Running"))
 
         // The master resolves the in-force insulin itself, so the screen must not ask.
@@ -143,7 +148,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `with nothing in force the catalogue is offered, preselected from the last switch`() = runTest {
+    fun withNothingInForceTheCatalogueIsOfferedPreselectedFromTheLastSwitch() = runTest {
         whenever(profileFunction.getRunningOrRequestedICfg()).thenReturn(null)
         whenever(insulinManager.insulins).thenReturn(arrayListOf(iCfg("Novorapid"), iCfg("Fiasp")))
         val older = mock<PS>().also { whenever(it.timestamp).thenReturn(1_000L); whenever(it.iCfg).thenReturn(iCfg("Novorapid")) }
@@ -157,7 +162,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `preselection is empty when the last used insulin is no longer in the catalogue`() = runTest {
+    fun preselectionIsEmptyWhenTheLastUsedInsulinIsNoLongerInTheCatalogue() = runTest {
         whenever(profileFunction.getRunningOrRequestedICfg()).thenReturn(null)
         whenever(insulinManager.insulins).thenReturn(arrayListOf(iCfg("Novorapid")))
         val deleted = mock<PS>().also { whenever(it.timestamp).thenReturn(1L); whenever(it.iCfg).thenReturn(iCfg("Deleted")) }
@@ -174,25 +179,25 @@ internal class ProfileManagementViewModelTest {
     // ---------------------------------------------------------------------------------------------
 
     @Test
-    fun `reorderOrder is null until reorder mode is entered`() {
+    fun reorderOrderIsNullUntilReorderModeIsEntered() {
         assertThat(sut.reorderOrder.value).isNull()
     }
 
     @Test
-    fun `entering reorder mode starts from the identity order`() {
+    fun enteringReorderModeStartsFromTheIdentityOrder() {
         givenProfiles(4)
         sut.enterReorderMode()
         assertThat(sut.reorderOrder.value).containsExactly(0, 1, 2, 3).inOrder()
     }
 
     @Test
-    fun `entering reorder mode with no profiles is a no-op`() {
+    fun enteringReorderModeWithNoProfilesIsANoOp() {
         sut.enterReorderMode()
         assertThat(sut.reorderOrder.value).isNull()
     }
 
     @Test
-    fun `a non-adjacent move is applied as remove-then-insert, not a swap`() {
+    fun aNonAdjacentMoveIsAppliedAsRemoveThenInsertNotASwap() {
         givenProfiles(4)
         sut.enterReorderMode()
         // CarouselReorderConfig.onMove is declared for arbitrary index pairs, so a multi-slot move
@@ -202,7 +207,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `moves that cannot apply are rejected so the carousel does not follow them`() {
+    fun movesThatCannotApplyAreRejectedSoTheCarouselDoesNotFollowThem() {
         givenProfiles(3)
         sut.enterReorderMode()
         // The carousel scrolls to the target only when the move reports success, so a rejected move
@@ -214,13 +219,13 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `a move outside reorder mode is rejected`() {
+    fun aMoveOutsideReorderModeIsRejected() {
         givenProfiles(3)
         assertThat(sut.moveReorderItem(0, 1)).isFalse()
     }
 
     @Test
-    fun `cancelling leaves the repository untouched`() = runTest {
+    fun cancellingLeavesTheRepositoryUntouched() = runTest {
         givenProfiles(3)
         sut.enterReorderMode()
         sut.moveReorderItem(0, 2)
@@ -230,7 +235,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `committing an unchanged order never touches the repository`() = runTest {
+    fun committingAnUnchangedOrderNeverTouchesTheRepository() = runTest {
         givenProfiles(3)
         sut.enterReorderMode()
         val settledOn = sut.commitReorder()
@@ -242,7 +247,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `committing persists the working order exactly once`() = runTest {
+    fun committingPersistsTheWorkingOrderExactlyOnce() = runTest {
         givenProfiles(4)
         whenever(profileRepository.reorder(any())).thenReturn(Result.success(Unit))
         sut.enterReorderMode()
@@ -255,7 +260,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `committing settles on the profile that was moved`() = runTest {
+    fun committingSettlesOnTheProfileThatWasMoved() = runTest {
         givenProfiles(4)
         whenever(profileRepository.reorder(any())).thenReturn(Result.success(Unit))
         sut.selectProfile(3)
@@ -269,7 +274,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `committing without moving anything settles on the profile that was selected`() = runTest {
+    fun committingWithoutMovingAnythingSettlesOnTheProfileThatWasSelected() = runTest {
         givenProfiles(4)
         sut.selectProfile(2)
         sut.enterReorderMode()
@@ -277,7 +282,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `an undone move settles on the same card a committed move would`() = runTest {
+    fun anUndoneMoveSettlesOnTheSameCardACommittedMoveWould() = runTest {
         givenProfiles(4)
         sut.selectProfile(1)
         sut.enterReorderMode()
@@ -292,7 +297,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `a failed commit reports it and leaves reorder mode`() = runTest {
+    fun aFailedCommitReportsItAndLeavesReorderMode() = runTest {
         givenProfiles(3)
         whenever(rh.gs(any<Int>())).thenReturn("message")
         // The screens name their strings now, so the TextRef overload is the one they call.
@@ -307,7 +312,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `a same-size replacement of the profile list aborts the commit`() = runTest {
+    fun aSameSizeReplacementOfTheProfileListAbortsTheCommit() = runTest {
         givenProfiles(3)
         whenever(rh.gs(any<Int>())).thenReturn("message")
         // The screens name their strings now, so the TextRef overload is the one they call.
@@ -326,7 +331,7 @@ internal class ProfileManagementViewModelTest {
     }
 
     @Test
-    fun `committing outside reorder mode does nothing`() = runTest {
+    fun committingOutsideReorderModeDoesNothing() = runTest {
         givenProfiles(3)
         assertThat(sut.commitReorder()).isNull()
         verify(profileRepository, never()).reorder(any())

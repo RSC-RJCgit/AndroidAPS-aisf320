@@ -15,7 +15,9 @@ interface HardLimits {
         )
 
         // Very Hard Limits Ranges [mg/dL]
-        // The range says how low and how high the limit itself may be set
+        // The range says how low and how high the limit itself may be set.
+        // The low end is 72 mg/dL (4.0 mmol/L), the same as the 3.2.1 profiles. A floor of 80 or 90
+        // rejects those profiles, so the loop never starts.
         // MIN_BG top is 180.2, not a flat 180.0. A 10.0 mmol low target (the highest the editor offers)
         // converts to 180.16 mg/dL, and the loop rounds the profile low target to 0.1 mg/dL BEFORE this
         // check (OpenAPSSMBPlugin: Round.roundTo(getTargetLowMgdl(), 0.1) -> 180.2). A tighter top (180.0,
@@ -33,6 +35,7 @@ interface HardLimits {
         val LIMIT_TEMP_MIN_BG = 72.0..180.16
         val LIMIT_TEMP_MAX_BG = 72.0..270.0
         val LIMIT_TEMP_TARGET_BG = 72.0..200.0
+        // 3.2.1 allows 10 hours for every age. A DIA of 10 must not reject the profile.
         val LIMIT_DIA = mapOf(
             AgeType.CHILD to 5.0..10.0,
             AgeType.TEENAGE to 5.0..10.0,

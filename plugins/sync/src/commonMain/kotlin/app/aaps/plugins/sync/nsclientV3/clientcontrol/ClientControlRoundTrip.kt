@@ -79,7 +79,8 @@ import kotlinx.serialization.json.JsonObject
 @OptIn(ExperimentalAtomicApi::class)
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class, binding = binding<ClientControlActionDispatcher>())
-class ClientControlRoundTrip @Inject constructor(
+@Inject
+class ClientControlRoundTrip(
     private val publisher: ClientControlPublisher,
     private val pairingRepository: ClientPairingRepository,
     private val nsClientV3Plugin: () -> NSClientV3Plugin,
@@ -184,13 +185,17 @@ class ClientControlRoundTrip @Inject constructor(
         // raise an URGENT alarm here. It is NOT a round-trip response (the commit already terminated), so it does
         // not feed ackEvents; the master itself alarmed locally too (executor, phase 1a).
         if (ack.phase == AckPhase.Delivery) {
-            if (ack.status == AckStatus.Failed)
-                notificationManager.post(
-                    NotificationId.BOLUS_DELIVERY_FAILED,
-                    // payload is the master-authored full text ("title\n<pump detail>"); show it as-is, don't re-prefix the title.
-                    ack.payload ?: rh.gs(CoreUiStrings.treatmentdeliveryerror),
-                    validMinutes = 0, sound = AlarmSound.BOLUS_ERROR
-                )
+            if (ack.status == AckStatus.Failed) {
+                // payload is the master-authored full text ("title\n<pump detail>"); show it as-is, don't re-prefix the title.
+                val text = ack.payload ?: rh.gs(CoreUiStrings.treatmentdeliveryerror)
+                // A command the master dropped on purpose (its queue was cleared by a settings import) did not fail
+                // on the pump, so it must not alarm here either — the master itself only posts a silent notice. It
+                // still has to be shown: nothing re-sends a bolus.
+                if (ack.reason.toFailureReason() == FailureReason.Cancelled)
+                    notificationManager.post(NotificationId.BOLUS_CANCELLED, text)
+                else
+                    notificationManager.post(NotificationId.BOLUS_DELIVERY_FAILED, text, validMinutes = 0, sound = AlarmSound.BOLUS_ERROR)
+            }
             return
         }
         ackEvents.tryEmit(ack)
@@ -313,10 +318,9 @@ class ClientControlRoundTrip @Inject constructor(
                     if (p !is ActionProgress.Applied && p !is ActionProgress.Prepared) _pending.value = PendingAction(p, label)
                 }
             }
-            // No ack came back (timeout / connection lost) → we don't actually know the master's state.
-            // Flip offline so the app-level probe pings + re-pulls and the real result reconciles, rather
-            // than leaving a stale optimistic guess. Self-heals on the next pong/heartbeat.
-            if (terminal is ActionProgress.Unconfirmed) nsClientV3Plugin().markMasterUnreachable()
+            // No answer. The command stays unanswered. It does not end the live link.
+            // Ask again. The master's answer resets the clock if the master is there.
+            if (terminal is ActionProgress.Unconfirmed) nsClientV3Plugin().requestMasterProbe()
             if (terminal is ActionProgress.Applied || terminal is ActionProgress.Prepared) {
                 val visibleMs = dateUtil.now() - shownAt
                 if (visibleMs < ClientControlActionDispatcher.MIN_MODAL_VISIBLE_MS)
@@ -350,7 +354,7 @@ class ClientControlRoundTrip @Inject constructor(
                 is ClientControlActionDispatcher.Command.BolusPrepare   -> ClientControlMessage.BolusPrepare(command.guid)
                 is ClientControlActionDispatcher.Command.BolusCommit    -> ClientControlMessage.BolusCommit(command.bolusId, command.asAdvisor, command.correctionU)
                 is ClientControlActionDispatcher.Command.WizardPrepare  -> with(command.inputs) {
-                    ClientControlMessage.WizardPrepare(bg, carbs, percentage, directCorrection, carbTime, useBg, useCob, useIob, useTt, useTrend, alarm, notes, eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours, profileName)
+                    ClientControlMessage.WizardPrepare(bg, carbs, percentage, directCorrection, carbTime, useBg, useCob, useIob, useTt, useTrend, alarm, notes, eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours, profileName, walkingSoon)
                 }
 
                 is ClientControlActionDispatcher.Command.BatchPrepare   -> ClientControlMessage.BatchPrepare(command.actions.map { it.toDto() })

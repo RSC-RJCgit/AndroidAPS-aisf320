@@ -10,6 +10,7 @@ import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.utils.DateUtil
@@ -24,7 +25,8 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 
 @SingleIn(AppScope::class)
-class DataSyncSelectorV3 @Inject constructor(
+@Inject
+class DataSyncSelectorV3(
     private val preferences: Preferences,
     private val aapsLogger: AAPSLogger,
     private val dateUtil: DateUtil,
@@ -81,9 +83,27 @@ class DataSyncSelectorV3 @Inject constructor(
 
     val bgUploadEnabled @OpenForTesting get() = preferences.get(BooleanKey.BgSourceUploadToNs) && activePlugin.activeBgSource !is NSClientSource
 
+    /**
+     * True on a full phone whose pump is the virtual pump.
+     * Upload is allowed. The Nightscout screen warns to check the site.
+     *
+     * NSClient starts before ConfigBuilder has elected a pump. Asking then hits
+     * [app.aaps.core.interfaces.plugin.ActivePlugin.activePumpInternal] and the plugin fails to start.
+     * Until the app is initialized this is false, so start can finish. The warning appears on the next status read.
+     */
+    internal fun virtualPumpSelected(): Boolean {
+        if (!config.appInitialized) return false
+        return !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
+    }
+
     override suspend fun doUpload() {
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
-        if ((config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused) {
+        val uploadOn = (config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused
+        if (uploadOn && virtualPumpSelected()) {
+            aapsLogger.warn(LTag.NSCLIENT, "Virtual pump: check this Nightscout is not the live upload site")
+            nsClientRepository.addLog("● WARN", "Virtual pump: check this Nightscout is not the live upload site")
+        }
+        if (uploadOn) {
             queueCounter.bolusesRemaining = (persistenceLayer.getLastBolusId() ?: 0L) - preferences.get(NsclientLongKey.BolusLastSyncedId)
             queueCounter.carbsRemaining = (persistenceLayer.getLastCarbsId() ?: 0L) - preferences.get(NsclientLongKey.CarbsLastSyncedId)
             queueCounter.bcrRemaining = (persistenceLayer.getLastBolusCalculatorResultId() ?: 0L) - preferences.get(NsclientLongKey.BolusCalculatorLastSyncedId)

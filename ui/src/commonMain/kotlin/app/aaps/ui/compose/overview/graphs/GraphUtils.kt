@@ -1,17 +1,27 @@
 package app.aaps.ui.compose.overview.graphs
 
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
+import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
@@ -82,34 +92,91 @@ fun rememberTimeFormatter(minTimestamp: Long): CartesianValueFormatter {
             val timestamp = minTimestamp + (value * 60000).toLong()
             // Always 24 hour, as SimpleDateFormat("HH") was: on an axis a bare 12 hour label would
             // not say which half of the day it belongs to.
-            Instant.fromEpochMilliseconds(timestamp)
+            val local = Instant.fromEpochMilliseconds(timestamp)
                 .toLocalDateTime(TimeZone.currentSystemDefault())
-                .hour.toString().padStart(2, '0')
+            timeAxisLabel(local.hour, local.minute)
         }
     }
 }
 
 /**
- * Creates an item placer for X-axis that shows labels at whole hour intervals.
- *
- * Calculates offset from minTimestamp to align labels with whole hours (e.g., 12:00, 13:00).
- *
- * @param minTimestamp The reference timestamp for calculating hour alignment
- * @return HorizontalAxis.ItemPlacer with 60-minute spacing aligned to whole hours
+ * Label step for the overview time axis, in minutes.
+ * Two hours or less uses 15. Three hours or less uses 30. Longer ranges stay on the hour.
+ * A long range can still widen to every 2 hours when the hour labels no longer fit.
  */
+internal fun timeAxisStepMinutes(visibleMinutes: Double): Int = when {
+    visibleMinutes <= 120.0 -> 15
+    visibleMinutes <= 180.0 -> 30
+    else -> 60
+}
+
+/** Hour label, or hour and minute when the tick is not on the hour. */
+internal fun timeAxisLabel(hour: Int, minute: Int): String {
+    val hourText = hour.toString().padStart(2, '0')
+    if (minute == 0) return hourText
+    return hourText + ":" + minute.toString().padStart(2, '0')
+}
+
 @OptIn(ExperimentalTime::class)
+internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int): Int {
+    val minute = Instant.fromEpochMilliseconds(minTimestamp)
+        .toLocalDateTime(TimeZone.currentSystemDefault())
+        .minute
+    val intoStep = minute % stepMinutes
+    return if (intoStep == 0) 0 else stepMinutes - intoStep
+}
+
+/**
+ * Time labels for the overview graphs.
+ * Short ranges use 15 or 30 minute steps. Longer ranges stay on the hour.
+ */
 @Composable
 fun rememberBottomAxisItemPlacer(minTimestamp: Long): HorizontalAxis.ItemPlacer {
     return remember(minTimestamp) {
-        val instant = Instant.fromEpochMilliseconds(minTimestamp)
-        val localDateTime = instant.toLocalDateTime(TimeZone.currentSystemDefault())
-        val minutesIntoHour = localDateTime.minute
-        val offsetToNextHour = if (minutesIntoHour == 0) 0 else 60 - minutesIntoHour
-
-        HorizontalAxis.ItemPlacer.aligned(
-            spacing = { 60 },  // 60 minutes between labels
-            offset = { offsetToNextHour }
+        ShortRangeTimeAxisPlacer(
+            hourly = alignedTimePlacer(minTimestamp, 60, padExtremes = true),
+            halfHour = alignedTimePlacer(minTimestamp, 30, padExtremes = false),
+            quarterHour = alignedTimePlacer(minTimestamp, 15, padExtremes = false),
         )
+    }
+}
+
+private fun alignedTimePlacer(
+    minTimestamp: Long,
+    stepMinutes: Int,
+    padExtremes: Boolean,
+): HorizontalAxis.ItemPlacer {
+    val offset = minutesUntilNextStep(minTimestamp, stepMinutes)
+    return HorizontalAxis.ItemPlacer.aligned(
+        spacing = { stepMinutes },
+        offset = { offset },
+        addExtremeLabelPadding = padExtremes,
+    )
+}
+
+/**
+ * Picks the 15, 30, or 60 minute placer from the range on screen.
+ * Measurement stays on the hourly placer, so a long range can still drop to every 2 hours.
+ */
+private class ShortRangeTimeAxisPlacer(
+    private val hourly: HorizontalAxis.ItemPlacer,
+    private val halfHour: HorizontalAxis.ItemPlacer,
+    private val quarterHour: HorizontalAxis.ItemPlacer,
+) : HorizontalAxis.ItemPlacer by hourly {
+
+    override fun getLabelValues(
+        context: CartesianDrawingContext,
+        visibleXRange: ClosedFloatingPointRange<Double>,
+        fullXRange: ClosedFloatingPointRange<Double>,
+        maxLabelWidth: Float,
+    ): List<Double> {
+        val minutes = visibleXRange.endInclusive - visibleXRange.start
+        val placer = when (timeAxisStepMinutes(minutes)) {
+            15 -> quarterHour
+            30 -> halfHour
+            else -> hourly
+        }
+        return placer.getLabelValues(context, visibleXRange, fullXRange, maxLabelWidth)
     }
 }
 
@@ -169,7 +236,7 @@ fun filterToRange(
 
 /**
  * Target point size for layout normalization across all synchronized graphs.
- * Must be >= the largest actual point size used in any graph (currently 22dp from IOB SMB/bolus markers).
+ * Must be >= the largest actual point size used in any graph (the 48dp bolus triangle on graph 0).
  *
  * Every graph includes an invisible normalizer line with this point size (via [createNormalizerLine]).
  * This ensures all charts have the same maxPointSize, which makes Vico compute identical:
@@ -178,7 +245,7 @@ fun filterToRange(
  *
  * Without this, each chart's different point sizes cause different layout, breaking pixel-based sync.
  */
-val NORMALIZER_POINT_SIZE: Dp = 22.dp
+val NORMALIZER_POINT_SIZE: Dp = 48.dp
 
 /**
  * Creates an invisible line with [NORMALIZER_POINT_SIZE] transparent points.
@@ -190,7 +257,7 @@ fun createNormalizerLine(): LineCartesianLayer.Line =
         areaFill = null,
         pointProvider = LineCartesianLayer.PointProvider.single(
             LineCartesianLayer.Point(
-                component = ShapeComponent(fill = Fill(Color.Transparent), shape = CircleShape),
+                component = ShapeComponent(fill = Fill(Color.Transparent), shape = SafeCircleShape),
                 size = NORMALIZER_POINT_SIZE
             )
         )
@@ -216,12 +283,39 @@ fun normalizerX(maxX: Double): List<Double> = listOf(0.0, maxX)
  * Used for rendering SMB markers on graphs. The triangle sits on the X axis
  * with the point facing up, making it visually distinct from circle dots.
  */
+/**
+ * A circle for chart points. Compose's `CircleShape` throws when the box width or height is not a
+ * real number. A bad scroll or a bad reading used to kill the overview that way. This shape draws
+ * nothing instead.
+ */
+val SafeCircleShape: Shape = GenericShape { size, _ ->
+    if (size.width.isFinite() && size.height.isFinite() && size.width > 0f && size.height > 0f) {
+        addOval(Rect(0f, 0f, size.width, size.height))
+    }
+}
+
 val TriangleShape: Shape = GenericShape { size, _ ->
     val baseHalf = size.width * 0.3f         // Narrow base for sharper triangle
     val cx = size.width / 2f
     moveTo(cx, 0f)                           // Top center (apex)
     lineTo(cx + baseHalf, size.height / 2f)  // Right base
     lineTo(cx - baseHalf, size.height / 2f)  // Left base
+    close()
+}
+
+/**
+ * Upright bolus triangle. The mark is centered on the glucose point, so the tip starts
+ * just under that center and the body hangs below the line.
+ */
+val BolusUnderLineShape: Shape = GenericShape { size, _ ->
+    val cx = size.width / 2f
+    val apexY = size.height / 2f + size.height * 0.06f
+    val baseY = size.height * 0.98f
+    // UK graph half-width is bolusSize and the height is 1.67 times that, so the base is about half this box.
+    val baseHalf = size.width * 0.25f
+    moveTo(cx, apexY)
+    lineTo(cx + baseHalf, baseY)
+    lineTo(cx - baseHalf, baseY)
     close()
 }
 
@@ -253,7 +347,7 @@ fun createPredictionLine(color: Color): LineCartesianLayer.Line =
             LineCartesianLayer.Point(
                 component = ShapeComponent(
                     fill = Fill(color),
-                    shape = CircleShape
+                    shape = SafeCircleShape
                 ),
                 size = 4.dp
             )
@@ -326,6 +420,324 @@ class NowLine(
  * Remember a [NowLine] decoration for the current time.
  * @param nowTimestamp current time in millis — pass a ticker value so the line updates periodically
  */
+enum class SecondaryMarks { NONE, SMB_TOTALS, NOTES }
+
+/** 20-minute windows. The label time is the end of the window, and the number is the insulin in it. */
+internal fun smbTimedTotals(events: List<Pair<Long, Double>>, windowMs: Long = 20 * 60_000L): List<Pair<Long, Double>> {
+    if (events.isEmpty()) return emptyList()
+    val sorted = events.sortedBy { it.first }
+    val totals = mutableListOf<Pair<Long, Double>>()
+    var start = 0L
+    for (event in sorted) {
+        if (start == 0L || event.first - start >= windowMs) {
+            start = event.first
+            val end = start + windowMs
+            val total = sorted.filter { it.first in start..end }.sumOf { it.second }
+            totals.add(end to total)
+        }
+    }
+    return totals
+}
+
+// Success export notes stay off the graph. "Logs" is the one that still shows.
+private val hiddenGraphNotes = setOf("ACEs", "AVLs", "AVCs", "UKCs", "UKCn")
+
+// Exact short labels copied from the other app. Anything else is the first 5 characters.
+private val noteShortNames = mapOf(
+    "HiBrk" to "HiBrk",
+    "HiBrkCut" to "HBCut",
+    "HiBrkDay" to "HBDay",
+    "HiBrkDayMid" to "HBMid",
+    "HiBrkDayCut" to "HBDCt",
+    "HiBrkTwilight" to "HBTwi",
+    "HiBrkTwilightCut" to "HBTCt",
+    "ActTToff1" to "AcTf1",
+    "ActTToff2" to "AcTf2",
+    "BMildFS" to "BmFS",
+    "EvCapR" to "EvCaR",
+    "NtCapR" to "NtCaR",
+    "LocPhOn" to "LPhOn",
+    "LocPhOff" to "LPhOf",
+    "SaAutoOn" to "SaAOn",
+    "SaAutoOff" to "SaAOf",
+    "UKF1VOn" to "U1VOn",
+    "UKF1VOff" to "U1VOf",
+    "MJ active" to "MJact",
+    "SteroidsON" to "StON",
+    "SteroidsOff" to "StOf",
+    "Steroids130" to "St130",
+    "Steroids150" to "St150",
+    "Steroids190" to "St190",
+    "Steroids250" to "St250",
+    "OldSensorOff" to "OSOff",
+    "OldSensorNewDay1" to "OSNd1",
+    "OldSensorNewDay2" to "OSNd2",
+    "OldSensorNewDay3" to "OSNd3",
+    "OldSensor1" to "OS1",
+    "OldSensor2" to "OS2",
+    "OldSensor3" to "OS3",
+    "OldPodBst" to "OPBst",
+    "OldPodBstOff" to "OPBOf",
+    "AdbStOk" to "AdSOk",
+    "AdbStNg" to "AdSNg",
+    "TierSetA" to "TSetA",
+    "TierSetB" to "TSetB",
+    "TierSetC" to "TSetC",
+    "MoreMJ" to "MoreM",
+    "MoreMJ2" to "MorM2",
+)
+
+/** Short graph label. A known note uses its map entry. Anything else keeps 5 characters. */
+internal fun abbreviateCareNote(label: String): String {
+    val trimmed = label.trim()
+    noteShortNames[trimmed]?.let { return it }
+    val first = trimmed.substringBefore('|').trim()
+    noteShortNames[first]?.let { return it }
+    return first.take(5)
+}
+
+/**
+ * Drop success log notes and a repeated exact label inside one 25 minute stack.
+ * The label on the way out is already shortened.
+ */
+internal fun visibleCareNotes(notes: List<Pair<Long, String>>): List<Pair<Long, String>> {
+    val out = mutableListOf<Pair<Long, String>>()
+    var anchor = Long.MIN_VALUE
+    val seen = mutableSetOf<String>()
+    for ((time, label) in notes.sortedBy { it.first }) {
+        val full = label.trim()
+        if (full.isEmpty()) continue
+        if (full != "Logs" && full in hiddenGraphNotes) continue
+        if (anchor == Long.MIN_VALUE || time - anchor >= 25 * 60 * 1000L) {
+            anchor = time
+            seen.clear()
+        }
+        if (!seen.add(full)) continue
+        out.add(time to abbreviateCareNote(full))
+    }
+    return out
+}
+
+data class SmbStackItem(
+    val x: Double,
+    val label: String,
+    val stackIndex: Int,
+    val anchorY: Double? = null,
+    val color: Color = Color.White,
+    val columnX: Double? = null,
+    val stemUnits: Int = 1,
+    val belowAnchor: Boolean = false,
+)
+
+// Within each 10-minute run, the newest dose is index 0 (closest to the anchor). Older doses stack further up.
+internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 35 * 60_000L): List<Int> {
+    if (timestamps.isEmpty()) return emptyList()
+    val order = timestamps.indices.sortedBy { timestamps[it] }
+    val index = IntArray(timestamps.size)
+    var anchor = Long.MIN_VALUE
+    var bucketStart = 0
+    fun close(end: Int) {
+        val count = end - bucketStart
+        for (i in 0 until count) index[order[bucketStart + i]] = count - i - 1
+    }
+    for (pos in order.indices) {
+        val time = timestamps[order[pos]]
+        if (anchor != Long.MIN_VALUE && time - anchor >= windowMs) {
+            close(pos)
+            bucketStart = pos
+        }
+        if (anchor == Long.MIN_VALUE || time - anchor >= windowMs) anchor = time
+    }
+    close(order.size)
+    return index.toList()
+}
+
+/** Newest time in each stack bucket. Older doses draw on that column instead of their own time. */
+internal fun smbColumnTimes(timestamps: List<Long>, windowMs: Long = 35 * 60_000L): List<Long> {
+    if (timestamps.isEmpty()) return emptyList()
+    val result = LongArray(timestamps.size)
+    val order = timestamps.indices.sortedBy { timestamps[it] }
+    var anchor = Long.MIN_VALUE
+    var start = 0
+    fun close(end: Int) {
+        if (end <= start) return
+        val newest = timestamps[order[end - 1]]
+        for (i in start until end) result[order[i]] = newest
+    }
+    for (pos in order.indices) {
+        val time = timestamps[order[pos]]
+        if (anchor != Long.MIN_VALUE && time - anchor >= windowMs) {
+            close(pos)
+            start = pos
+        }
+        if (anchor == Long.MIN_VALUE || time - anchor >= windowMs) anchor = time
+    }
+    close(order.size)
+    return result.toList()
+}
+
+/** Arrow at an SMB time. The tip points up. [pinToBottom] sits it on the bottom edge of the graph. */
+class SmbArrows(
+    private val items: List<SmbStackItem>,
+    private val pinToBottom: Boolean = false,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
+            val yLength = yRange.length
+            if (xStep == 0.0 || yLength == 0.0) return
+            for (item in items) {
+                val canvasX = layerBounds.left +
+                    layerDimensions.startPadding +
+                    layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
+                    scroll
+                if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                with(mutableDrawScope) {
+                    val unit = 18.sp.toPx() * 0.25f
+                    val tip: Float
+                    val base: Float
+                    val foot: Float
+                    val stroke: Float
+                    if (pinToBottom) {
+                        val units = item.stemUnits.coerceAtLeast(1)
+                        foot = layerBounds.bottom - 2f
+                        base = foot - unit * units
+                        tip = base - 16f
+                        stroke = if (units >= 4) 4f else 2f
+                    } else {
+                        val anchorY = item.anchorY ?: return@with
+                        val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
+                        tip = dotY + 10f
+                        base = tip + 16f
+                        foot = base + unit
+                        stroke = 2f
+                    }
+                    val half = 6f
+                    val path = Path().apply {
+                        moveTo(canvasX, tip)
+                        lineTo(canvasX + half, base)
+                        lineTo(canvasX - half, base)
+                        close()
+                    }
+                    drawPath(path, item.color)
+                    drawLine(item.color, Offset(canvasX, base), Offset(canvasX, foot), strokeWidth = stroke)
+                }
+            }
+        }
+    }
+}
+
+/** Full SMB label size. Used when the window is 500 dp tall or taller. */
+internal const val SMB_LABEL_FULL_SP = 12f
+
+/** Window height where SMB labels are full size. Shorter windows use a smaller label. */
+internal const val SMB_LABEL_REFERENCE_HEIGHT_DP = 500f
+
+/**
+ * SMB label size for the main graph and graph 2.
+ * At a window height of 500 dp the size is 12 sp. A shorter window scales it down by the same
+ * fraction. A taller window stays at 12 sp.
+ */
+internal fun smbLabelSize(screenHeightDp: Float): TextUnit {
+    if (screenHeightDp <= 0f) return SMB_LABEL_FULL_SP.sp
+    val scale = (screenHeightDp / SMB_LABEL_REFERENCE_HEIGHT_DP).coerceAtMost(1f)
+    return (SMB_LABEL_FULL_SP * scale).sp
+}
+
+@Composable
+internal fun rememberSmbLabelSize(): TextUnit {
+    val heightPx = LocalWindowInfo.current.containerSize.height
+    val heightDp = with(LocalDensity.current) { heightPx.toDp().value }
+    return smbLabelSize(heightDp)
+}
+
+class SmbStackLabels(
+    private val items: List<SmbStackItem>,
+    private val textMeasurer: TextMeasurer,
+    private val pinToBottom: Boolean,
+    private val stackStepFraction: Float = 0.6f,
+    private val labelSize: TextUnit = 12.sp,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            if (xStep == 0.0) return
+            for (item in items) {
+                if (item.label.isEmpty()) continue
+                val style = TextStyle(color = item.color, fontSize = labelSize, fontWeight = FontWeight.Bold)
+                val xValue = item.columnX ?: item.x
+                val canvasX = layerBounds.left +
+                    layerDimensions.startPadding +
+                    layerDimensions.xSpacing * ((xValue - ranges.minX) / xStep).toFloat() -
+                    scroll
+                if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                val layout = textMeasurer.measure(item.label, style)
+                val steep = item.columnX != null
+                val step = layout.size.height * if (steep) 1.2f else stackStepFraction
+                val drawX = canvasX - if (steep) item.stackIndex * 4f else 0f
+                val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
+                val yLength = yRange.length
+                val anchor = if (pinToBottom || item.anchorY == null || yLength == 0.0) {
+                    layerBounds.bottom - 4f
+                } else {
+                    layerBounds.bottom - layerBounds.height * ((item.anchorY - yRange.minY) / yLength).toFloat()
+                }
+                with(mutableDrawScope) {
+                    val top = if (item.belowAnchor) {
+                        anchor + 16.dp.toPx()
+                    } else {
+                        anchor - layout.size.height - item.stackIndex * step
+                    }
+                    drawText(layout, topLeft = Offset(drawX - layout.size.width / 2f, top))
+                }
+            }
+        }
+    }
+}
+
+/** Down arrows in the top part of the graph. The label is the trigger time, and only the first of a group has one. */
+class NoteArrows(
+    private val items: List<SmbStackItem>,
+    private val textMeasurer: TextMeasurer,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            if (xStep == 0.0) return
+            for (item in items) {
+                val canvasX = layerBounds.left +
+                    layerDimensions.startPadding +
+                    layerDimensions.xSpacing * ((item.x - ranges.minX) / xStep).toFloat() -
+                    scroll
+                if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                val shaftStart = layerBounds.top + layerBounds.height * 0.22f
+                val shaftEnd = shaftStart + 16f
+                val tip = shaftEnd + 12f
+                val half = 5f
+                val path = Path().apply {
+                    moveTo(canvasX, tip)
+                    lineTo(canvasX + half, shaftEnd)
+                    lineTo(canvasX - half, shaftEnd)
+                    close()
+                }
+                with(mutableDrawScope) {
+                    drawLine(item.color, Offset(canvasX, shaftStart), Offset(canvasX, shaftEnd), strokeWidth = 2f)
+                    drawPath(path, item.color)
+                    if (item.label.isNotEmpty()) {
+                        val style = TextStyle(color = item.color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        val layout = textMeasurer.measure(item.label, style)
+                        drawText(layout, topLeft = Offset(canvasX - layout.size.width / 2f, shaftStart - layout.size.height))
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun rememberNowLine(minTimestamp: Long, nowTimestamp: Long, color: Color): NowLine {
     return remember(minTimestamp, nowTimestamp, color) {
@@ -438,10 +850,12 @@ private fun niceNum(range: Double, round: Boolean): Double {
  * zero or pivot anchoring — used for series like VAR_SENSITIVITY and HEART_RATE.
  */
 fun niceScale(min: Double, max: Double, maxTickCount: Int = 5): NiceScale {
-    val safeMax = if (max > min) max else min + 1.0
-    val range = niceNum(safeMax - min, round = false)
+    val low = if (min.isFinite()) min else 0.0
+    val high = if (max.isFinite()) max else low
+    val safeMax = if (high > low) high else low + 1.0
+    val range = niceNum(safeMax - low, round = false)
     val step = niceNum(range / (maxTickCount - 1), round = true)
-    return NiceScale(floor(min / step) * step, ceil(safeMax / step) * step, step)
+    return NiceScale(floor(low / step) * step, ceil(safeMax / step) * step, step)
 }
 
 /** Rounds [value] up to the nearest nice number (1/2/5/10 x 10^n). Used for a lone axis bound. */
@@ -474,7 +888,9 @@ const val SENS_MIN_DEVIATION = 5.0
  * directly (via [niceScale]) would not preserve that centering.
  */
 fun niceScaleAroundPivot(min: Double, max: Double, pivot: Double, maxTickCount: Int = 5, minDeviation: Double = 0.0): NiceScale {
-    val rawDeviation = maxOf(abs(pivot - min), abs(max - pivot))
+    val safeMin = if (min.isFinite()) min else pivot
+    val safeMax = if (max.isFinite()) max else pivot
+    val rawDeviation = maxOf(abs(pivot - safeMin), abs(safeMax - pivot))
     // Below the floor (e.g. SENS sitting flat around 100%): snap to a fixed 3-tick scale
     // (pivot-minDeviation, pivot, pivot+minDeviation) instead of nice-ifying a near-zero range,
     // which would otherwise produce an overly tight, non-round scale (e.g. 99/99.5/100/100.5/101).
@@ -495,6 +911,66 @@ fun niceScaleAroundPivot(min: Double, max: Double, pivot: Double, maxTickCount: 
 val ZERO_FLOOR_SERIES_TYPES = setOf(SeriesType.BGI, SeriesType.DEVIATIONS, SeriesType.ACTIVITY, SeriesType.STEPS, SeriesType.ABS_IOB)
 
 /**
+ * AutoISF axis used by the UK graphs. The highest factor touches the top.
+ * The bottom is the mirror of that peak around 1.0, so 1.0 stays in the middle.
+ * A flat line at 1.0 gets a tiny gap so the axis does not collapse.
+ */
+fun isfAxis(peak: Double): NiceScale {
+    val safePeak = if (peak.isFinite()) peak else 1.0
+    val maxY = if (safePeak <= 1.0) 1.0 + 1.0e-6 else safePeak
+    val minY = 2.0 - maxY
+    return NiceScale(minY, maxY, (maxY - minY) / (SECONDARY_GRAPH_TICK_COUNT - 1).toDouble())
+}
+
+/**
+ * IOB threshold axis. The largest absolute value touches the top and the bottom,
+ * so zero stays in the middle, the same way the UK IOB threshold line is scaled.
+ */
+fun iobThAxis(min: Double, max: Double): NiceScale {
+    val peak = iobThPeak(listOf(min, max))
+    return NiceScale(-peak, peak, (2.0 * peak) / (SECONDARY_GRAPH_TICK_COUNT - 1).toDouble())
+}
+
+/** SMB delivery ratio fills the bottom half at 1.0. */
+const val SMB_DELIVERY_SCALE_MAX = 1.0
+
+/** Acceleration weight is stored as 0 to 1. 1.0 is 100% and fills the bottom half. */
+const val ACCE_WEIGHT_SCALE_MAX = 1.0
+
+/** Post-meal weight setting. 0.15 fills the bottom half. */
+const val PP_WEIGHT_SCALE_MAX = 0.15
+
+/**
+ * Largest absolute IOB threshold in [values], at least 0.1.
+ * That peak is the top and the bottom of [iobThAxis], so zero stays in the middle.
+ */
+fun iobThPeak(values: List<Double>): Double {
+    val raw = values.maxOfOrNull { abs(it) } ?: 0.1
+    return if (raw.isFinite()) raw.coerceAtLeast(0.1) else 0.1
+}
+
+/**
+ * Place one reading in the bottom half of an IOB threshold axis.
+ * Zero sits on the bottom edge. [scaleMax] sits on the middle, where the IOB threshold is zero.
+ * A value past [scaleMax] stays on that middle line.
+ */
+fun bottomHalfY(value: Double, scaleMax: Double, axisMin: Double): Double {
+    if (!value.isFinite() || !scaleMax.isFinite() || scaleMax <= 0.0 || !axisMin.isFinite()) return axisMin
+    val fraction = (value / scaleMax).coerceIn(0.0, 1.0)
+    if (fraction == 1.0) return 0.0
+    return axisMin * (1.0 - fraction)
+}
+
+/** AutoISF factor lines. They sit around 1.0, so the axis is centered there. */
+val AUTO_ISF_SERIES_TYPES = setOf(
+    SeriesType.ACCE_ISF,
+    SeriesType.BG_ISF,
+    SeriesType.PP_ISF,
+    SeriesType.DURA_ISF,
+    SeriesType.FINAL_ISF
+)
+
+/**
  * Zero-floor axis range, disparity-aware: when the negative excursion is tiny relative to the
  * positive side (ratio >= [disparityRatio]), one shared nice tick spacing across the whole
  * range would make the small negative part look arbitrary — so the two sides are nice-ified
@@ -504,6 +980,7 @@ val ZERO_FLOOR_SERIES_TYPES = setOf(SeriesType.BGI, SeriesType.DEVIATIONS, Serie
  * Used for IOB and [ZERO_FLOOR_SERIES_TYPES].
  */
 fun zeroFloorNiceRange(dataMin: Double, dataMax: Double, maxTickCount: Int = 5, disparityRatio: Double = 10.0): NiceScale {
+    if (!dataMin.isFinite() || !dataMax.isFinite()) return niceScale(0.0, 1.0, maxTickCount)
     if (dataMin >= 0.0) return niceScale(0.0, dataMax, maxTickCount)
     val absMin = -dataMin
     val ratio = if (absMin > 0.0) dataMax / absMin else Double.MAX_VALUE

@@ -5,7 +5,9 @@ import android.content.Context
 import android.os.Bundle
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TrendArrow
@@ -16,8 +18,10 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
+import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.receivers.Intents
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.source.BgSource
@@ -25,11 +29,18 @@ import app.aaps.core.interfaces.source.XDripSource
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.DoubleNonKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.objects.workflow.MetroWorkerCreator
 import app.aaps.core.ui.compose.icons.IcXDrip
+import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
+import app.aaps.core.ui.compose.preference.libreSpecialSettings
+import app.aaps.core.utils.calibratedLibre
+import app.aaps.core.utils.libreSpecial
 import app.aaps.core.utils.receivers.DataInbox
 import app.aaps.core.utils.receivers.Inbox
 import app.aaps.plugins.source.compose.BgSourceComposeContent
@@ -52,11 +63,13 @@ import kotlin.math.round
 @IntKey(400)
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class, binding = binding<XDripSource>())
-class XdripSourcePlugin @Inject constructor(
+@Inject
+class XdripSourcePlugin(
     rh: ResourceHelper,
     aapsLogger: AAPSLogger,
     preferences: Preferences,
     config: Config,
+    notificationManager: NotificationManager
 ) : AbstractBgSourceWithSensorInsertLogPlugin(
     pluginDescription = PluginDescription()
         .mainType(PluginType.BGSOURCE)
@@ -71,14 +84,27 @@ class XdripSourcePlugin @Inject constructor(
         .description(TextRef.AndroidRes(R.string.description_source_xdrip)),
     aapsLogger = aapsLogger,
     rh = rh,
-    preferences = preferences
+    preferences = preferences,
+    notificationManager = notificationManager
 ), BgSource, XDripSource {
 
     override var sensorBatteryLevel = -1
 
+    override fun getPreferenceScreenContent() = PreferenceSubScreenDef(
+        key = "bg_source_with_sensor_settings",
+        title = pluginDescription.pluginName!!,
+        items = listOf(
+            BooleanKey.BgSourceUploadToNs,
+            BooleanKey.BgSourceCreateSensorChange,
+            libreSpecialSettings("xdrip_libre_special_settings")
+        ),
+        icon = pluginDescription.icon
+    )
+
     // cannot be inner class because of needed injection
 
-    class XdripSourceWorker @AssistedInject constructor(
+    @AssistedInject
+    class XdripSourceWorker(
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,
@@ -87,7 +113,8 @@ class XdripSourcePlugin @Inject constructor(
         private val persistenceLayer: PersistenceLayer,
         private val preferences: Preferences,
         private val dateUtil: DateUtil,
-        private val dataInbox: DataInbox
+        private val dataInbox: DataInbox,
+        private val profileFunction: ProfileFunction
     ) : LoggingWorker(context, params, Dispatchers.IO, aapsLogger, fabricPrivacy) {
 
         /**
@@ -150,14 +177,49 @@ class XdripSourcePlugin @Inject constructor(
 
         private suspend fun processBundle(bundle: Bundle) {
             aapsLogger.debug(LTag.BGSOURCE, "Received xDrip data: $bundle")
+            // The second Nightscout is the only glucose source while that switch is on.
+            // A full app and a client both use it. Storing this packet would put xDrip back on top.
+            if (preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
+                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+            ) {
+                aapsLogger.debug(LTag.BGSOURCE, "xDrip skipped: BG comes from the Live Nightscout connection")
+                return
+            }
+            val timestamp = bundle.getLong(Intents.EXTRA_TIMESTAMP, 0)
+            val sourceCgm = bundle.getString(Intents.XDRIP_DATA_SOURCE) ?: ""
+            var value = bundle.getDouble(Intents.EXTRA_BG_ESTIMATE, 0.0)
+            var raw = bundle.getDouble(Intents.EXTRA_RAW, 0.0)
+            var noise: Double? = null
+            var smoothed: Double? = null
+            if (applyLibreSlope(raw, sourceCgm)) {
+                val slope = preferences.get(DoubleKey.FslCalSlope)
+                val offset = preferences.get(DoubleKey.FslCalOffset)
+                val alpha = preferences.get(DoubleKey.FslSmoothAlpha)
+                val unitFactor = if (profileFunction.getUnits() == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+                // A relay often sends no raw field. The estimate is that raw reading.
+                val sensor = if (raw == 0.0) value else raw
+                val calibrated = calibratedLibre(sensor, slope, offset, unitFactor)
+                val lastSmooth = preferences.get(DoubleNonKey.FslLastSmooth)
+                val lastTime = preferences.get(LongNonKey.FslSmoothLastTimeRaw)
+                val elapsed = if (lastTime < 0L) 0.0 else (timestamp - lastTime) / 60000.0
+                val smooth = libreSpecial(calibrated, lastSmooth, elapsed, alpha)
+                aapsLogger.debug(LTag.BGSOURCE, "Libre slope applied: slope=$slope offset=$offset value=$smooth")
+                noise = sensor
+                raw = calibrated
+                value = smooth
+                smoothed = smooth
+            } else {
+                value = round(value)
+                raw = round(raw)
+            }
             val glucoseValues = mutableListOf<GV>()
             glucoseValues += GV(
-                timestamp = bundle.getLong(Intents.EXTRA_TIMESTAMP, 0),
-                value = round(bundle.getDouble(Intents.EXTRA_BG_ESTIMATE, 0.0)),
-                raw = round(bundle.getDouble(Intents.EXTRA_RAW, 0.0)),
-                noise = null,
+                timestamp = timestamp,
+                value = value,
+                raw = raw,
+                noise = noise,
                 trendArrow = TrendArrow.fromString(bundle.getString(Intents.EXTRA_BG_SLOPE_NAME)),
-                sourceSensor = SourceSensor.fromString(bundle.getString(Intents.XDRIP_DATA_SOURCE) ?: "")
+                sourceSensor = SourceSensor.fromString(sourceCgm)
             )
             val newSensorStartTime = getSensorStartTime(bundle)
             // Retrieve last stored sensorStartTime from the database
@@ -181,12 +243,24 @@ class XdripSourcePlugin @Inject constructor(
             }
             // Always update glucoseValues, but use the decided sensorStartTime
             if (glucoseValues[0].timestamp > 0 && glucoseValues[0].value > 0.0) {
+                smoothed?.let {
+                    preferences.put(DoubleNonKey.FslLastSmooth, it)
+                    preferences.put(LongNonKey.FslSmoothLastTimeRaw, timestamp)
+                }
                 persistenceLayer.insertCgmSourceData(Sources.Xdrip, glucoseValues, emptyList(), finalSensorStartTime)
             } else {
                 aapsLogger.warn(LTag.BGSOURCE, "Skipping xDrip bundle: missing glucoseValue")
                 return
             }
             xdripSourcePlugin.sensorBatteryLevel = bundle.getInt(Intents.EXTRA_SENSOR_BATTERY, -1)
+        }
+
+        // Apply Libre slope is enough on its own. A relay source name is often a device serial, not Libre2.
+        // With the switch off, the old packets still apply: no raw value, and Libre 2, Libre 3, or G7.
+        private fun applyLibreSlope(raw: Double, sourceCgm: String): Boolean {
+            if (preferences.get(BooleanKey.FslApplySmoothing)) return true
+            if (raw != 0.0) return false
+            return sourceCgm == "Libre2" || sourceCgm == "Libre2 Native" || sourceCgm == "Libre3" || sourceCgm == "G7"
         }
     }
 }

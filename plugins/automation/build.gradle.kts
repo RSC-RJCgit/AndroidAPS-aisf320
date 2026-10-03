@@ -72,11 +72,11 @@ kotlin {
                 implementation(project(":core:utils"))
                 implementation(project(":core:ui"))
 
-                api(libs.cmp.runtime)
-                api(libs.cmp.foundation)
-                api(libs.cmp.ui)
-                api(libs.cmp.material3)
-                api(libs.cmp.material.icons.extended)
+                api(libs.jetbrains.compose.runtime)
+                api(libs.jetbrains.compose.foundation)
+                api(libs.jetbrains.compose.ui)
+                api(libs.jetbrains.compose.material3)
+                api(libs.jetbrains.compose.material.icons.extended)
                 // The JetBrains republish, not androidx.lifecycle: same `androidx.lifecycle.*` package
                 // names, but with Apple targets. Same choice as :core:ui and :ui.
                 api(libs.jetbrains.lifecycle.viewmodel.compose)
@@ -87,7 +87,7 @@ kotlin {
                 // reorderable list works everywhere and does not pin a screen to Android.
                 implementation(libs.sh.calvin.reorderable)
                 // The JetBrains republish of the Preview annotation - same package name, with iOS.
-                implementation(libs.cmp.ui.tooling.preview)
+                implementation(libs.jetbrains.compose.ui.tooling.preview)
             }
         }
 
@@ -120,6 +120,12 @@ kotlin {
         // Hand written rather than taken from test-module-dependencies and
         // compose-test-module-dependencies, because both apply com.android.library and so cannot be
         // used by a multiplatform module. Same approach as :plugins:aps.
+        getByName("commonTest") {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
+
         getByName("androidHostTest") {
             dependencies {
                 implementation(project(":shared:tests"))

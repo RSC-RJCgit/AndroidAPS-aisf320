@@ -143,9 +143,16 @@ fun OverviewScreenSplit(
                         iobUiState = iobUiState,
                         cobUiState = cobUiState,
                         sensitivityUiState = sensitivityUiState,
+                        onOpenAutoIsfHistory = chipsViewModel::openAutoIsfHistory,
+                        actionButtons = chipsViewModel.overviewActions.collectAsStateWithLifecycle().value,
+                        onAction = chipsViewModel::applyList1,
                         onNavigate = onNavigate,
                         onTbrChipClick = onTbrChipClick,
+                        onTbrChipLongClick = graphViewModel::onBasalIconLongPress,
+                        onTbrChipDoubleClick = chipsViewModel::openList2,
                         onIobChipClick = onIobChipClick,
+                        onIobChipLongClick = graphViewModel::onIobIconLongPress,
+                        onIobChipDoubleClick = chipsViewModel::openList1,
                         commandsAllowed = commandsAllowed,
                         modifier = Modifier
                             .weight(1f)

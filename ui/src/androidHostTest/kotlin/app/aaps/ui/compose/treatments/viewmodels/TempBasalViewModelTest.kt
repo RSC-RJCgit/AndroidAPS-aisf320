@@ -53,7 +53,7 @@ internal class TempBasalViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is not in removing mode and has no selection`() {
+    fun defaultUiStateIsNotInRemovingModeAndHasNoSelection() {
         val state = sut.uiState.value
         assertThat(state.isRemovingMode).isFalse()
         assertThat(state.selectedItems).isEmpty()
@@ -62,7 +62,7 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `enterSelectionMode selects the item and enables removing mode`() {
+    fun enterSelectionModeSelectsTheItemAndEnablesRemovingMode() {
         val item = mock<TB>()
 
         sut.enterSelectionMode(item)
@@ -72,7 +72,7 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `exitSelectionMode clears selection`() {
+    fun exitSelectionModeClearsSelection() {
         sut.enterSelectionMode(mock<TB>())
 
         sut.exitSelectionMode()
@@ -82,7 +82,7 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `toggleSelection adds then removes an item`() {
+    fun toggleSelectionAddsThenRemovesAnItem() {
         val first = mock<TB>()
         val second = mock<TB>()
         sut.enterSelectionMode(first)
@@ -95,13 +95,13 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `toggleInvalidated flips the flag`() {
+    fun toggleInvalidatedFlipsTheFlag() {
         sut.toggleInvalidated()
         assertThat(sut.uiState.value.showInvalidated).isTrue()
     }
 
     @Test
-    fun `getDeleteConfirmationMessage empty when nothing selected, plural for many`() = runBlocking {
+    fun getDeleteConfirmationMessageEmptyWhenNothingSelectedPluralForMany() = runBlocking {
         // getDeleteConfirmationMessage is suspend on this VM (unlike the sibling VMs).
         assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("")
 

@@ -70,6 +70,9 @@ class AutosensDataStoreObject : AutosensDataStore {
     override fun clone(): AutosensDataStore =
         AutosensDataStoreObject().also {
             dataLock.withLock {
+                // Leave referenceTime unset. This copy is published as the live store, so the next
+                // load anchors the 5 minute grid to the newest reading, as AutoISF 3.2.1 does.
+                // Bucket 0 is then that reading, and the loop runs on every new glucose value.
                 it.bgReadings = this.bgReadings.toMutableList()
                 it.autosensDataTable = LongSparseArray<AutosensData>(this.autosensDataTable.size).apply { putAll(this@AutosensDataStoreObject.autosensDataTable) }
                 it.bucketedData = this.bucketedData?.toMutableList()
@@ -92,6 +95,34 @@ class AutosensDataStoreObject : AutosensDataStore {
                 } else {
                     break
                 }
+            }
+        }
+    }
+
+    override fun holdsSameData(gv: GV): Boolean {
+        dataLock.withLock {
+            val held = bgReadings.firstOrNull { it.id == gv.id } ?: return false
+            // Compare by copying the three fields every write touches from the incoming row, then using
+            // normal equality. A field list would have to be kept in step with what the calculation
+            // reads; this way a field added to GV later is compared without anyone remembering to, and
+            // the worst a mistake can do is one recalculation too many, never one too few.
+            return held.copy(version = gv.version, dateCreated = gv.dateCreated, ids = gv.ids) == gv
+        }
+    }
+
+    override fun pruneOlderThan(time: Long, aapsLogger: AAPSLogger, dateUtil: DateUtil) {
+        dataLock.withLock {
+            val table = autosensDataTable
+            // Count first, delete afterwards, and delete downwards. removeAt() only marks the slot and
+            // the next size() or keyAt() compacts the array, so removing while walking up would skip
+            // every second entry and copy the tail on every step. This is the same direction
+            // newHistoryData uses at the other end of the table.
+            var doomed = 0
+            while (doomed < table.size() && table.keyAt(doomed) < time) doomed++
+            if (doomed == 0) return
+            for (index in doomed - 1 downTo 0) table.removeAt(index)
+            aapsLogger.debug(LTag.AUTOSENS) {
+                "Pruned $doomed entries older than ${dateUtil.dateAndTimeAndSecondsString(time)} from autosensDataTable. Left: ${table.size()}"
             }
         }
     }
@@ -342,7 +373,18 @@ class AutosensDataStoreObject : AutosensDataStore {
 
         // Normalize bucketed data
         val oldest = bData[bData.size - 1]
+        // A stale anchor can sit on another 5 minute phase. Shifting every reading onto it moves
+        // them off the time they were taken, so drop it and use this data's own phase.
+        if (referenceTime != -1L && abs(adjustToReferenceTime(oldest.timestamp) - oldest.timestamp) > T.secs(90).msecs()) {
+            aapsLogger.debug(LTag.AUTOSENS, "Reference time out of phase with current data. Re-anchoring.")
+            referenceTime = -1
+        }
+        val rawOldest = oldest.timestamp
         oldest.timestamp = adjustToReferenceTime(oldest.timestamp)
+        // How far the anchor moved the oldest reading. Each later adjustment is measured against the
+        // entry before it, so it carries this shift. Add it back so the 90 second test measures only
+        // the jitter in the data.
+        val anchorShift = (oldest.timestamp - rawOldest) / 1000
         aapsLogger.debug("Adjusted time " + dateUtil.dateAndTimeAndSecondsString(oldest.timestamp))
         for (i in bData.size - 2 downTo 0) {
             val current = bData[i]
@@ -354,7 +396,7 @@ class AutosensDataStoreObject : AutosensDataStore {
                     dateUtil.dateAndTimeAndSecondsString(previous.timestamp + T.mins(5).msecs())
                 } by $adjusted sec"
             }
-            if (abs(adjusted) > 90) {
+            if (abs(adjusted + anchorShift) > 90) {
                 // too big adjustment, fallback to non 5 min data
                 aapsLogger.debug(LTag.AUTOSENS, "Fallback to non 5 min data")
                 createBucketedDataRecalculated(aapsLogger, dateUtil)

@@ -1,6 +1,7 @@
 package app.aaps.core.ui.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 
 /**
  * Keeps the system bar icons legible against the bar scrims, which use `colorScheme.surface`.
@@ -52,3 +53,12 @@ expect fun is24HourClock(): Boolean
  */
 @Composable
 expect fun LockPortraitOrientation()
+
+/**
+ * Stops the system edge gesture from taking a drag that starts on this view.
+ *
+ * Android uses this so a sideways drag on a landscape graph scrolls the graph
+ * instead of going back. iOS and desktop have no matching gesture, so there the
+ * modifier does nothing.
+ */
+expect fun Modifier.blockSystemEdgeGesture(): Modifier

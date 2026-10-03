@@ -1173,6 +1173,14 @@ class SmsCommunicatorPluginTest : TestBaseWithProfile() {
         assertThat(smsCommunicatorPlugin.messages[1].text).isEqualTo("abc")
     }
 
+    @Test fun sendNotificationSkipsExcludedNumbers() = runBlocking {
+        smsCommunicatorPlugin.messages = ArrayList()
+        smsCommunicatorPlugin.broadcastExcludeNumbers = mutableListOf("5678")
+        smsCommunicatorPlugin.sendNotificationToAllNumbers("abc")
+        assertThat(smsCommunicatorPlugin.messages).hasSize(1)
+        assertThat(smsCommunicatorPlugin.messages[0].phoneNumber).isEqualTo("1234")
+    }
+
     @Test
     fun `requiredPermissions should include sms permissions`() {
         val allPermissions = smsCommunicatorPlugin.requiredPermissions().flatMap { it.permissions }

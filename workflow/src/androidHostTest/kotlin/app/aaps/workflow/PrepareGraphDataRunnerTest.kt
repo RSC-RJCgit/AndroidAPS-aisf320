@@ -54,7 +54,7 @@ class PrepareGraphDataRunnerTest : TestBaseWithProfile() {
         PrepareGraphDataRunner(
             aapsLogger, workflowChainData, dateUtil, mockedRxBus, persistenceLayer,
             activePlugin, profileFunction, profileUtil, preferences, config, profiler, decimalFormatter,
-            processedDeviceStatusData, TestScope(), autosensDataProvider
+            processedDeviceStatusData, TestScope(), autosensDataProvider, mock()
         )
 
     // The runner asks this between phases; nothing in these tests stops a run part way.
@@ -95,6 +95,7 @@ class PrepareGraphDataRunnerTest : TestBaseWithProfile() {
         whenever(dataAds.getLastAutosensData(any(), any(), any())).thenReturn(null)
         whenever(persistenceLayer.getBgReadingsDataFromTimeToTime(any(), any(), any())).thenReturn(emptyList())
         whenever(persistenceLayer.getApsResults(any(), any())).thenReturn(emptyList())
+        whenever(persistenceLayer.getAutoIsfValuesFromTimeToTime(any(), any())).thenReturn(emptyList())
         whenever(persistenceLayer.getTemporaryTargetActiveAt(any())).thenReturn(null)
         whenever(dataIobCob.calculateIobArrayForSMB(any(), any(), any(), any())).thenReturn(emptyArray())
         whenever(dataIobCob.iobArrayToString(any())).thenReturn("")

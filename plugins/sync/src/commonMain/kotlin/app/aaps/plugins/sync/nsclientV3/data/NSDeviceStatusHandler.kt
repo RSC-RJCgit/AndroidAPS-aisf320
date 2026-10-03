@@ -1,8 +1,13 @@
 package app.aaps.plugins.sync.nsclientV3.data
 
+import app.aaps.core.data.model.LiveSteps
+import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
@@ -11,12 +16,14 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNsClientStatusUpdated
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.utils.safeGetString
 import app.aaps.core.utils.safeGetStringAllowNull
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
+import app.aaps.plugins.sync.nsclientV3.workers.stepsFromPrimarySite
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -77,7 +84,8 @@ import kotlinx.coroutines.launch
  */
 @Suppress("SpellCheckingInspection")
 @SingleIn(AppScope::class)
-class NSDeviceStatusHandler @Inject constructor(
+@Inject
+class NSDeviceStatusHandler(
     private val preferences: Preferences,
     private val config: Config,
     private val dateUtil: DateUtil,
@@ -89,14 +97,13 @@ class NSDeviceStatusHandler @Inject constructor(
     private val rxBus: RxBus,
     // Plain CoroutineScope: @ApplicationScope is a javax qualifier and cannot appear in commonMain.
     private val appScope: CoroutineScope,
-    private val nsClientV3Plugin: () -> NSClientV3Plugin
+    private val nsClientV3Plugin: () -> NSClientV3Plugin,
+    private val activePlugin: ActivePlugin,
+    private val profileUtil: ProfileUtil,
 ) {
 
-    /**
-     * @param live true only for a real-time WS push (a devicestatus the master just created), false for the
-     *   REST catch-up/initial batch load. Only a live push bumps the master-alive heartbeat — see below.
-     */
-    fun handleNewData(deviceStatuses: Array<NSDeviceStatus>, live: Boolean = false) {
+    /** A live push and a downloaded batch both count. The status time is what the 9-minute check uses. */
+    fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]
             if (config.AAPSCLIENT) {
@@ -108,23 +115,17 @@ class NSDeviceStatusHandler @Inject constructor(
             }
             if (config.APS) {
                 nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
+                receiveLiveLoop(nsDeviceStatus)
             }
         }
         if (config.AAPSCLIENT && deviceStatuses.isNotEmpty()) {
-            // Master-alive heartbeat — gates scene/edit controls when master goes silent, even while the
-            // local WS to NS is still up. Bump ONLY for a live WS push: a brand-new devicestatus arriving in
-            // real time proves the master is online NOW. The catch-up/initial worker load must NOT bump — at
-            // app start it pulls the master's LAST historical devicestatus off NS, which can be only a few
-            // minutes old (inside the 9-min window) yet the master may already be offline. Per the agreed
-            // design the client fails closed after start and waits for the first live ping.
-            // (created_at, not receipt time, is still used as a second guard: skip an unparseable/absent
-            // record rather than crashing, and never fall back to now().)
-            if (live) {
-                val newestCreatedAt = deviceStatuses
-                    .mapNotNull { ds -> ds.createdAt?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() } ?: ds.date }
-                    .maxOrNull() ?: 0L
-                if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
-            }
+            // One missed live push must not end the link. A downloaded status counts too.
+            // The time on the status is used, not the time it was received. A status with no
+            // time is skipped. A time older than 9 minutes does not keep the master reachable.
+            val newestCreatedAt = deviceStatuses
+                .mapNotNull { ds -> ds.createdAt?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() } ?: ds.date }
+                .maxOrNull() ?: 0L
+            if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
             rxBus.send(EventNsClientStatusUpdated())
         }
     }
@@ -178,7 +179,9 @@ class NSDeviceStatusHandler @Inject constructor(
                 // check if this is new data
                 if (clock > processedDeviceStatusData.openAPSData.clockSuggested) {
                     try {
-                        processedDeviceStatusData.openAPSData.suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        val suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        processedDeviceStatusData.openAPSData.suggested = suggested
+                        storeReceivedAutoIsf(suggested, clock)
                     } catch (e: Exception) {
                         aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
                     }
@@ -202,6 +205,98 @@ class NSDeviceStatusHandler @Inject constructor(
                     processedDeviceStatusData.openAPSData.clockEnacted = clock
                 }
             }
+        }
+    }
+
+    /**
+     * A full phone on the virtual pump keeps the live phone's loop row and step counts.
+     * It does not copy the live phone's pump state, and it ignores its own Nightscout echo.
+     */
+    private fun receiveLiveLoop(deviceStatus: NSDeviceStatus) {
+        if (config.AAPSCLIENT) return
+        if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return
+        val device = deviceStatus.device ?: return
+        val own = "openaps://${config.deviceModelForUpload}"
+        if (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true)) return
+        val suggested = deviceStatus.openaps?.suggested ?: return
+        val timestamp = suggested.safeGetString("timestamp") ?: return
+        val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: return
+        val now = dateUtil.now()
+        if (clock <= 0L || clock > now) return
+        val rt = runCatching { RT.deserialize(suggested.toString()).apply { this.timestamp = clock } }.getOrElse { error ->
+            aapsLogger.error(LTag.NSCLIENT, "Live loop result was not stored: ${error.message}")
+            return
+        }
+        storeReceivedAutoIsf(rt, clock)
+        if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled)) &&
+            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
+            now - clock <= LiveSteps.MAX_AGE_MS
+        ) {
+            storeReceivedSteps(device, clock, rt.reason.toString())
+        }
+    }
+
+    /**
+     * Step counts from the secondary Nightscout. Used only while that site is on, so a virtual
+     * pump follows the live phone rather than this phone's own Nightscout.
+     */
+    fun takeLiveSteps(deviceStatuses: List<NSDeviceStatus>) {
+        if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled))) return
+        if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) return
+        if (config.AAPSCLIENT) return
+        if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return
+        val now = dateUtil.now()
+        for (deviceStatus in deviceStatuses) {
+            val device = deviceStatus.device ?: continue
+            val own = "openaps://${config.deviceModelForUpload}"
+            if (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true)) continue
+            val suggested = deviceStatus.openaps?.suggested ?: continue
+            val timestamp = suggested.safeGetString("timestamp") ?: continue
+            val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: continue
+            if (clock <= 0L || clock > now || now - clock > LiveSteps.MAX_AGE_MS) continue
+            val reason = runCatching { RT.deserialize(suggested.toString()).reason.toString() }.getOrElse { continue }
+            storeReceivedSteps(device, clock, reason)
+        }
+    }
+
+    private fun storeReceivedSteps(device: String, clock: Long, reason: String) {
+        val buckets = LiveSteps.buckets(reason)
+        if (!LiveSteps.hasDosingBuckets(buckets)) return
+        appScope.launch {
+            val already = persistenceLayer.getStepsCountFromTimeToTime(clock, clock)
+            if (already.any { it.timestamp == clock && it.device.equals(device, ignoreCase = true) }) return@launch
+            persistenceLayer.insertOrUpdateStepsCounts(
+                listOf(
+                    SC(
+                        timestamp = clock,
+                        duration = 5 * 60_000L,
+                        steps5min = buckets.getValue(5),
+                        steps10min = buckets[10] ?: 0,
+                        steps15min = buckets.getValue(15),
+                        steps30min = buckets.getValue(30),
+                        steps60min = buckets.getValue(60),
+                        steps180min = buckets.getValue(180),
+                        device = device
+                    )
+                )
+            )
+        }
+    }
+
+    /** A client, or a full phone on the virtual pump, keeps the live phone's loop row. */
+    private fun keepsReceivedAutoIsf(): Boolean {
+        if (config.AAPSCLIENT) return true
+        if (!config.APS) return false
+        return activePlugin.activePump.selectedActivePump() is VirtualPump
+    }
+
+    private fun storeReceivedAutoIsf(rt: RT, clock: Long) {
+        if (!keepsReceivedAutoIsf()) return
+        val row = receivedAutoIsfRow(clock, rt) { profileUtil.convertToMgdl(it, profileUtil.units) } ?: return
+        appScope.launch {
+            val already = persistenceLayer.getAutoIsfValuesFromTimeToTime(clock, clock)
+            if (already.any { it.timestamp == clock }) return@launch
+            persistenceLayer.insertAutoIsfValue(row)
         }
     }
 

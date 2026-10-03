@@ -509,6 +509,28 @@ class ProfileRepositoryImplTest : TestBaseWithProfile() {
         assertThat(zone).isEqualTo(TimeZone.getDefault().id)
     }
 
+    @Test
+    fun `addAll appends every profile and leaves the screen where it was`() = runTest {
+        val sut = sutWith("Day")
+
+        val result = sut.addAll(listOf(profile("Low tier A"), profile("Steroid250")))
+
+        assertThat(result.isSuccess).isTrue()
+        assertThat(sut.names()).containsExactly("Day", "Low tier A", "Steroid250").inOrder()
+        assertThat(sut.showAppendedProfile).isFalse()
+    }
+
+    @Test
+    fun `add asks the screen to follow the new profile`() = runTest {
+        val sut = sutWith("Day")
+        sut.addAll(listOf(profile("Quiet")))
+
+        sut.add(profile("New"))
+
+        assertThat(sut.showAppendedProfile).isTrue()
+        assertThat(sut.names()).containsExactly("Day", "Quiet", "New").inOrder()
+    }
+
     /** The accepted case still bumps, otherwise the editor would never notice an NS push. */
     @Test
     fun `an accepted Nightscout store does count as a mutation`() = runTest {

@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.di
 
+import app.aaps.core.interfaces.aps.CodedProfileRoles
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.plugins.aps.openAPSAMA.OpenAPSAMAPlugin
 import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
@@ -51,4 +52,7 @@ object ApsPluginRegistrations {
     @IntoMap
     @IntKey(230)
     fun openApsAutoIsfEntry(plugin: OpenAPSAutoISFPlugin): PluginBase = plugin
+
+    @Provides
+    fun codedProfileRoles(plugin: OpenAPSAutoISFPlugin): CodedProfileRoles = plugin
 }

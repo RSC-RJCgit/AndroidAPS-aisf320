@@ -1,5 +1,6 @@
 package app.aaps.database.persistence
 
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
@@ -2527,6 +2528,16 @@ class PersistenceLayerImpl(
 
     override suspend fun getLastStepsCountFromTimeToTime(startTime: Long, endTime: Long): SC? = withContext(aapsIoDispatcher) {
         repository.getLastStepsCountFromTimeToTime(startTime, endTime)?.fromDb()
+    }
+
+    override suspend fun insertAutoIsfValue(value: AIV) {
+        withContext(aapsIoDispatcher) {
+            repository.insertAutoIsfValue(value.toDb())
+        }
+    }
+
+    override suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV> = withContext(aapsIoDispatcher) {
+        repository.getAutoIsfValuesFromTimeToTime(startTime, endTime).map { it.fromDb() }
     }
 
     override suspend fun insertOrUpdateStepsCounts(stepsCounts: List<SC>): PersistenceLayer.TransactionResult<SC> = withContext(aapsIoDispatcher) {

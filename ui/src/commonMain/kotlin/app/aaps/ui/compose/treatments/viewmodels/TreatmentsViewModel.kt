@@ -6,6 +6,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -32,7 +33,8 @@ import dev.zacsweers.metrox.viewmodel.ViewModelKey
 @ContributesIntoMap(AppScope::class, binding = binding<ViewModel>())
 @ViewModelKey
 @Stable
-class TreatmentsViewModel @Inject constructor(
+@Inject
+class TreatmentsViewModel(
     val persistenceLayer: PersistenceLayer,
     val profileUtil: ProfileUtil,
     val profileFunction: ProfileFunction,
@@ -45,6 +47,7 @@ class TreatmentsViewModel @Inject constructor(
     val uiInteraction: UiInteraction,
     val userEntryPresentationHelper: UserEntryPresentationHelper,
     val importExportPrefs: ImportExportPrefs,
+    val maintenance: Maintenance,
     val uel: UserEntryLogger,
     val aapsLogger: AAPSLogger,
     val rxBus: RxBus
@@ -143,7 +146,9 @@ class TreatmentsViewModel @Inject constructor(
             rh = rh,
             dateUtil = dateUtil,
             aapsLogger = aapsLogger,
-            rxBus = rxBus
+            rxBus = rxBus,
+            maintenance = maintenance,
+            importExportPrefs = importExportPrefs,
         )
     }
 }

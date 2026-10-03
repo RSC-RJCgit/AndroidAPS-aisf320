@@ -133,6 +133,12 @@ internal class FillDialogViewModelTest {
         return captor.allValues.filterIsInstance<EventShowDialog.Ok>().map { it.message }
     }
 
+    private fun reportedTitles(): List<String> {
+        val captor = argumentCaptor<Event>()
+        verify(rxBus, atLeast(0)).send(captor.capture())
+        return captor.allValues.filterIsInstance<EventShowDialog.Ok>().map { it.title }
+    }
+
     /**
      * Drive a cartridge change whose selected insulin differs from the active one (there is none), with no prime
      * bolus — so `confirmAndSave` takes the "switch immediately" branch and the outcome of [outcome] is what the
@@ -151,7 +157,7 @@ internal class FillDialogViewModelTest {
     }
 
     @Test
-    fun `a rejected insulin activation is reported, not silently dropped`() = runTest {
+    fun aRejectedInsulinActivationIsReportedNotSilentlyDropped() = runTest {
         val seen = runCartridgeChangeWithInsulinSwitch(ActionProgress.Rejected(FailureReason.NotReachable, "offline"))
 
         // Previously this only hit aapsLogger.warn — the user was told the insulin changed when it had not.
@@ -159,7 +165,7 @@ internal class FillDialogViewModelTest {
     }
 
     @Test
-    fun `an unconfirmed insulin activation is reported as unknown, not as failed`() = runTest {
+    fun anUnconfirmedInsulinActivationIsReportedAsUnknownNotAsFailed() = runTest {
         val seen = runCartridgeChangeWithInsulinSwitch(ActionProgress.Unconfirmed(FailureReason.NoReply, "timeout"))
 
         // Unknown must be neither claimed nor denied: it may still land via sync-back.
@@ -167,7 +173,7 @@ internal class FillDialogViewModelTest {
     }
 
     @Test
-    fun `a successful insulin activation says nothing`() = runTest {
+    fun aSuccessfulInsulinActivationSaysNothing() = runTest {
         val seen = runCartridgeChangeWithInsulinSwitch(ActionProgress.Applied)
 
         assertThat(seen).isEmpty()
@@ -178,15 +184,17 @@ internal class FillDialogViewModelTest {
      * skips it entirely — and the confirmation has already promised it. [changeInsulin] selects a different insulin
      * (there is no active one) to make that promise, or leaves it alone so no switch was ever promised.
      */
-    private suspend fun runFailingPrime(changeInsulin: Boolean): List<String> {
+    private suspend fun runFailingPrime(changeInsulin: Boolean, cancelled: Boolean = false): List<String> {
         stubStrings()
         whenever(rh.gs(eq(CoreUiStrings.fill_prime_failed_insulin_not_switched), anyOrNull())).thenReturn("PRIME_FAILED_AND_NOT_SWITCHED")
+        whenever(rh.gs(CoreUiStrings.treatmentdeliveryerror)).thenReturn("ERROR_TITLE")
+        whenever(rh.gs(CoreUiStrings.command_cancelled_title)).thenReturn("CANCELLED_TITLE")
         // A non-zero constrained amount makes hasPrimeBolus true, so the switch is chained to the prime.
         val constrained: Constraint<Double> = mock()
         whenever(constrained.value()).thenReturn(0.3)
         whenever(constraintChecker.applyBolusConstraints(any())).thenReturn(constrained)
         whenever(wizardBolusExecutor.deliverFillBolus(any(), anyOrNull(), any(), any(), any())).thenAnswer { inv ->
-            inv.getArgument<(String) -> Unit>(3).invoke("pump error")
+            inv.getArgument<(WizardBolusExecutor.Failure) -> Unit>(3).invoke(WizardBolusExecutor.Failure("pump error", cancelled))
         }
         if (changeInsulin) sut.selectInsulin(ICfg(insulinLabel = "Fiasp", insulinEndTime = 480, insulinPeakTime = 55, concentration = 1.0))
         sut.updateCartridgeChange(true)
@@ -196,8 +204,20 @@ internal class FillDialogViewModelTest {
         return reportedMessages()
     }
 
+    /**
+     * A prime dropped from the queue (a settings import cleared it) did not fail, so calling it a delivery error
+     * is wrong twice over: it names the pump as the culprit, and "error" is the word the alarm tier uses.
+     */
     @Test
-    fun `a failed prime says the promised insulin switch did not happen either`() = runTest {
+    fun aCancelledPrimeIsNotReportedAsADeliveryError() = runTest {
+        runFailingPrime(changeInsulin = false, cancelled = true)
+
+        assertThat(reportedTitles()).contains("CANCELLED_TITLE")
+        assertThat(reportedTitles()).doesNotContain("ERROR_TITLE")
+    }
+
+    @Test
+    fun aFailedPrimeSaysThePromisedInsulinSwitchDidNotHappenEither() = runTest {
         val seen = runFailingPrime(changeInsulin = true)
 
         // One combined message, not two dialogs stacked on the user.
@@ -206,7 +226,7 @@ internal class FillDialogViewModelTest {
     }
 
     @Test
-    fun `a failed prime with no insulin change reports only the delivery error`() = runTest {
+    fun aFailedPrimeWithNoInsulinChangeReportsOnlyTheDeliveryError() = runTest {
         val seen = runFailingPrime(changeInsulin = false)
 
         // Nothing was promised, so the message must not claim an insulin switch was skipped.
@@ -215,7 +235,7 @@ internal class FillDialogViewModelTest {
     }
 
     @Test
-    fun `updateSiteChange and updateCartridgeChange toggle their flags`() {
+    fun updateSiteChangeAndUpdateCartridgeChangeToggleTheirFlags() {
         sut.updateSiteChange(true)
         sut.updateCartridgeChange(true)
 
@@ -224,13 +244,13 @@ internal class FillDialogViewModelTest {
     }
 
     @Test
-    fun `updateNotes sets the notes`() {
+    fun updateNotesSetsTheNotes() {
         sut.updateNotes("prime 0.3")
         assertThat(sut.uiState.value.notes).isEqualTo("prime 0.3")
     }
 
     @Test
-    fun `updateEventTime records the time and marks it changed`() {
+    fun updateEventTimeRecordsTheTimeAndMarksItChanged() {
         sut.updateEventTime(123_456L)
 
         assertThat(sut.uiState.value.eventTime).isEqualTo(123_456L)

@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.db.ProcessedTbrEbData
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.BgInfoData
 import app.aaps.core.interfaces.overview.graph.BgRange
@@ -25,6 +26,7 @@ import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -82,6 +84,8 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
     val persistenceLayer: PersistenceLayer = mock()
     val activePlugin: ActivePlugin = mock()
     val profileFunction: ProfileFunction = mock()
+    val profileRepository: ProfileRepository = mock()
+    val maintenance: Maintenance = mock()
     val loop: Loop = mock()
 
     /** Shared with the composables through `LocalDecimalFormatter`, so the two cannot format differently. */
@@ -119,6 +123,7 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
         whenever(screen.dateUtil.minAgoShort(BG_TIMESTAMP)).thenReturn(CLOCK_AGO)
         whenever(screen.dateUtil.minAgo(any(), anyOrNull())).thenReturn(TIME_AGO)
         whenever(profileFunction.getUnits()).thenReturn(GlucoseUnit.MGDL)
+        whenever(profileRepository.profile).thenReturn(MutableStateFlow(null))
         runBlocking {
             // No running profile: the reservoir has no concentration to convert with, and the
             // sensitivity chip takes its "no variable ISF" branch. Both are the empty-data cases.
@@ -172,8 +177,8 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
     val chipsViewModel: ChipsViewModel by lazy {
         ChipsViewModel(
             cache, iobCobCalculator, loop, screen.config, persistenceLayer, constraintChecker, profileFunction,
-            processedDeviceStatusData, screen.profileUtil, activePlugin, rh, decimalFormatter, screen.dateUtil,
-            aapsLogger, screen.preferences, rxBus
+            profileRepository, processedDeviceStatusData, screen.profileUtil, activePlugin, rh, decimalFormatter,
+            screen.dateUtil, aapsLogger, screen.preferences, rxBus, maintenance
         )
     }
 

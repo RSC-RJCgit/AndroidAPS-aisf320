@@ -1,5 +1,6 @@
 package app.aaps.plugins.constraints.signatureVerifier
 
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.plugins.constraints.ConstraintsStrings
 import android.content.Context
 import android.content.pm.PackageManager
@@ -11,7 +12,6 @@ import app.aaps.core.interfaces.constraints.PluginConstraints
 import app.aaps.core.interfaces.di.APS
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
@@ -49,12 +49,13 @@ import kotlin.time.Duration.Companion.days
 @APS
 @IntKey(830)
 @SingleIn(AppScope::class)
-class SignatureVerifierPlugin @Inject constructor(
+@Inject
+class SignatureVerifierPlugin(
     aapsLogger: AAPSLogger,
     rh: ResourceHelper,
     preferences: Preferences,
     private val context: Context,
-    private val notificationManager: NotificationManager
+    notificationManager: NotificationManager
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.CONSTRAINTS)
@@ -62,7 +63,7 @@ class SignatureVerifierPlugin @Inject constructor(
         .showInList { false }
         .pluginName(ConstraintsStrings.signature_verifier),
     ownPreferences = SignatureVerifierLongKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ), PluginConstraints {
 
     private var handler: Handler? = null
