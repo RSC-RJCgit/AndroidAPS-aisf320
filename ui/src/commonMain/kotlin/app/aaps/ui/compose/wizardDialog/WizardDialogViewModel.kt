@@ -743,10 +743,10 @@ class WizardDialogViewModel(
 
     private suspend fun applyWalkingSoonDefault(state: WizardDialogUiState): WizardDialogUiState {
         if (walkingSoonTouched) return state
-        val (steps5, steps30) = stepCountsForWalkingSoon()
+        val (steps5, steps30, steps15) = stepCountsForWalkingSoon()
         val glucose = glucoseStatusProvider.getGlucoseStatusData()
         val bgMgdl = if (state.bg > 0.0) profileUtil.convertToMgdl(state.bg, state.units) else glucose?.glucose ?: 999.0
-        val want = walkingSoonDefault(steps5, steps30, bgMgdl, glucose?.delta ?: 0.0) ?: return state
+        val want = walkingSoonDefault(steps5, steps30, bgMgdl, glucose?.delta ?: 0.0, steps15) ?: return state
         if (want == state.walkingSoon) return state
         _uiState.update { it.copy(walkingSoon = want) }
         return uiState.value
@@ -754,7 +754,7 @@ class WizardDialogViewModel(
 
     // Live steps when this virtual phone is set to use them. No fresh live sample leaves the box alone.
     // Otherwise the phone's own latest steps are used, and none means not moving.
-    private suspend fun stepCountsForWalkingSoon(): Pair<Int?, Int?> {
+    private suspend fun stepCountsForWalkingSoon(): Triple<Int?, Int?, Int?> {
         val now = dateUtil.now()
         val useLive = config.APS && !config.AAPSCLIENT &&
             preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
@@ -778,12 +778,12 @@ class WizardDialogViewModel(
                     )
                 )
             }
-            if (sample == null) return null to null
-            return sample.steps5min to sample.steps30min
+            if (sample == null) return Triple(null, null, null)
+            return Triple(sample.steps5min, sample.steps30min, sample.steps15min)
         }
         val local = persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60_000L, now)
-        if (local == null) return 0 to 0
-        return local.steps5min to local.steps30min
+        if (local == null) return Triple(0, 0, 0)
+        return Triple(local.steps5min, local.steps30min, local.steps15min)
     }
 
     /**

@@ -595,26 +595,32 @@ class SmbArrows(
                     scroll
                 if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
                 with(mutableDrawScope) {
+                    // Sizes follow the 3426 graph (PointsWithLabelGraphSeries Shape.SMB), where d is one scaled
+                    // pixel unit (1 sp). Baseline arrow: 6d wide, 5d tall, shaft 4.5d x dose units. BGL arrow:
+                    // 7.2d below the BGL point, 10.8d tall, 3.6d wide, fixed 4.5d shaft.
+                    val d = 1.sp.toPx()
                     val unit = 18.sp.toPx() * 0.25f
                     val tip: Float
                     val base: Float
                     val foot: Float
                     val stroke: Float
+                    val half: Float
                     if (pinToBottom) {
                         val units = item.stemUnits.coerceAtLeast(1)
                         foot = layerBounds.bottom - 2f
                         base = foot - unit * units
-                        tip = base - 16f
+                        tip = base - 5f * d
                         stroke = if (units >= 4) 4f else 2f
+                        half = 3f * d
                     } else {
                         val anchorY = item.anchorY ?: return@with
                         val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
-                        tip = dotY + 10f
-                        base = tip + 16f
+                        tip = dotY + 7.2f * d
+                        base = tip + 10.8f * d
                         foot = base + unit
                         stroke = 2f
+                        half = 1.8f * d
                     }
-                    val half = 6f
                     val path = Path().apply {
                         moveTo(canvasX, tip)
                         lineTo(canvasX + half, base)
@@ -629,16 +635,16 @@ class SmbArrows(
     }
 }
 
-/** Full SMB label size. Used when the window is 500 dp tall or taller. */
-internal const val SMB_LABEL_FULL_SP = 12f
+/** Full SMB label size. Used when the window is 500 dp tall or taller. 7.2 sp = 60% of the old 12 sp, as on the 3426 graphs. */
+internal const val SMB_LABEL_FULL_SP = 7.2f
 
 /** Window height where SMB labels are full size. Shorter windows use a smaller label. */
 internal const val SMB_LABEL_REFERENCE_HEIGHT_DP = 500f
 
 /**
  * SMB label size for the main graph and graph 2.
- * At a window height of 500 dp the size is 12 sp. A shorter window scales it down by the same
- * fraction. A taller window stays at 12 sp.
+ * At a window height of 500 dp the size is [SMB_LABEL_FULL_SP]. A shorter window scales it down by the same
+ * fraction. A taller window stays at [SMB_LABEL_FULL_SP].
  */
 internal fun smbLabelSize(screenHeightDp: Float): TextUnit {
     if (screenHeightDp <= 0f) return SMB_LABEL_FULL_SP.sp

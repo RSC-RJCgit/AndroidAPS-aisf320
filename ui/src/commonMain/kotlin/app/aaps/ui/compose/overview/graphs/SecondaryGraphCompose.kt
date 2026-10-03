@@ -796,8 +796,11 @@ fun SecondaryGraphCompose(
     val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor) {
         if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()
         val notes = visibleCareNotes(
+            // ANNOUNCEMENT included: care-portal announcements such as the Tier 3 UAM boost "B" are text labels on the
+            // 3426 notes graph. They also stay as icons on the treatment belt.
             treatmentData?.therapyEvents.orEmpty().filter {
-                it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION
+                it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION ||
+                    it.eventType == TherapyEventType.ANNOUNCEMENT
             }.map { it.timestamp to it.label }
         )
         var anchor = Long.MIN_VALUE

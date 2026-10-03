@@ -831,7 +831,7 @@ fun BgGraphCompose(
                 label = bolus.label,
                 stackIndex = stack[index],
                 anchorY = lowMark,
-                color = Color(0xFFE53935),
+                color = Color(0xFFFFFF00),
             )
         }
     }
