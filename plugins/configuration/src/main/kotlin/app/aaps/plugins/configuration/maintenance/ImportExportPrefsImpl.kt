@@ -20,10 +20,12 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.UE
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.androidPermissions.AndroidPermission
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.ConfigBuilder
@@ -1137,7 +1139,7 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
     override fun writeUserEntriesAivFile(): File? = try {
-        writeUserEntriesAivLocal(persistenceLayer, preferences, prefFileList, userEntryPresentationHelper, aapsLogger).datedText
+        writeUserEntriesAivLocal(persistenceLayer, preferences, prefFileList, userEntryPresentationHelper, aapsLogger, config.AAPSCLIENT).datedText
     } catch (e: Exception) {
         aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT writeUserEntriesAivFile failed", e)
         null
@@ -1167,12 +1169,13 @@ class ImportExportPrefsImpl @Inject constructor(
         @Inject lateinit var cloudStorageManager: CloudStorageManager
         @Inject lateinit var exportOptionsDialog: ExportOptionsDialog
         @Inject lateinit var preferences: Preferences
+        @Inject lateinit var config: Config
 
         override suspend fun doWorkAndLog(): Result {
             aapsLogger.info(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT doWorkAndLog started")
 
             val files = try {
-                writeUserEntriesAivLocal(persistenceLayer, preferences, prefFileList, userEntryPresentationHelper, aapsLogger)
+                writeUserEntriesAivLocal(persistenceLayer, preferences, prefFileList, userEntryPresentationHelper, aapsLogger, config.AAPSCLIENT)
             } catch (e: Exception) {
                 aapsLogger.error(LTag.CORE, "CSV_EXPORT failed to create patient-scoped TXT/CSV copies", e)
                 ToastUtils.longErrorToast(context, "User entries TXT/CSV export failed")
@@ -1300,11 +1303,14 @@ private fun writeUserEntriesAivLocal(
     preferences: Preferences,
     prefFileList: FileListProvider,
     userEntryPresentationHelper: UserEntryPresentationHelper,
-    aapsLogger: AAPSLogger
+    aapsLogger: AAPSLogger,
+    isClient: Boolean = false
 ): UserEntriesAivLocal {
-    val thirtyHourEntries = persistenceLayer
-        .getUserEntryFilteredDataFromTime(System.currentTimeMillis() - T.hours(30).msecs())
-        .blockingGet()
+    val thirtyFrom = System.currentTimeMillis() - T.hours(30).msecs()
+    val thirtyHourEntries = withMirroredLiveEntries(
+        persistenceLayer.getUserEntryFilteredDataFromTime(thirtyFrom).blockingGet(),
+        persistenceLayer, thirtyFrom, isClient
+    )
     // Model-scoped to match AutoIsfHistoryExporter.scopedExportName() / MaintenancePlugin so this
     // 4th AIV file lands in the same aapsLogs\<name>_<model>\ folder as the csv/txt/settings trio.
     val patientName = preferences.get(StringKey.GeneralPatientName).trim().let { base ->
@@ -1346,9 +1352,11 @@ private fun writeUserEntriesAivLocal(
     var datedCsv: File? = null
     var currentCsv: File? = null
     try {
-        val userEntries = persistenceLayer
-            .getUserEntryFilteredDataFromTime(MidnightTime.calc() - T.days(90).msecs())
-            .blockingGet()
+        val ninetyFrom = MidnightTime.calc() - T.days(90).msecs()
+        val userEntries = withMirroredLiveEntries(
+            persistenceLayer.getUserEntryFilteredDataFromTime(ninetyFrom).blockingGet(),
+            persistenceLayer, ninetyFrom, isClient
+        )
         val csvContents = userEntryPresentationHelper.userEntriesToCsv(userEntries)
         datedCsv = writeUtf8FirstWritable(
             listOf(
@@ -1375,6 +1383,49 @@ private fun writeUserEntriesAivLocal(
         currentCsv = currentCsv,
         patientName = patientName
     )
+}
+
+/** Client never runs Live's automations, so the local UserEntry audit table has no rows for Live's profile switches
+ *  or temp targets even though the real PS/TT records are NS-synced into Client's DB. On a Client build only, add
+ *  one row per mirrored record (source NSClient) so Client's UserEntries export shows what Live actually did.
+ *  A mirrored row is skipped when a real local row of the same action exists within 5 s (no duplicates). */
+private fun withMirroredLiveEntries(
+    entries: List<UE>,
+    persistenceLayer: PersistenceLayer,
+    fromTime: Long,
+    isClient: Boolean
+): List<UE> {
+    if (!isClient) return entries
+    val mirrored = ArrayList<UE>()
+    persistenceLayer.getProfileSwitchesFromTime(fromTime, true).blockingGet().filter { it.isValid }.forEach { ps ->
+        mirrored.add(
+            UE(
+                timestamp = ps.timestamp, action = Action.PROFILE_SWITCH, source = Sources.NSClient,
+                note = "Mirrored from NS (Live)",
+                values = listOfNotNull(
+                    ValueWithUnit.SimpleString(ps.profileName),
+                    ValueWithUnit.Percent(ps.percentage),
+                    ValueWithUnit.Hour((ps.timeshift / T.hours(1).msecs()).toInt()).takeIf { ps.timeshift != 0L },
+                    ValueWithUnit.Minute((ps.duration / T.mins(1).msecs()).toInt()).takeIf { ps.duration != 0L }
+                )
+            )
+        )
+    }
+    persistenceLayer.getTemporaryTargetDataFromTime(fromTime, true).blockingGet().filter { it.isValid }.forEach { tt ->
+        mirrored.add(
+            UE(
+                timestamp = tt.timestamp, action = Action.TT, source = Sources.NSClient,
+                note = "Mirrored from NS (Live)",
+                values = listOf(
+                    ValueWithUnit.TETTReason(tt.reason),
+                    ValueWithUnit.Mgdl(tt.lowTarget),
+                    ValueWithUnit.Minute((tt.duration / T.mins(1).msecs()).toInt())
+                )
+            )
+        )
+    }
+    val extra = mirrored.filter { m -> entries.none { it.action == m.action && kotlin.math.abs(it.timestamp - m.timestamp) <= 5_000L } }
+    return (entries + extra).sortedByDescending { it.timestamp }
 }
 
 private fun writeUtf8FirstWritable(candidates: List<File>, contents: String, aapsLogger: AAPSLogger): File {
