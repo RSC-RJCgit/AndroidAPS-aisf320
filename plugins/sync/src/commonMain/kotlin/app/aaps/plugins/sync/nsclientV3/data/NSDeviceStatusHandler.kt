@@ -240,28 +240,61 @@ class NSDeviceStatusHandler(
      * Step counts from the secondary Nightscout. Used only while that site is on, so a virtual
      * pump follows the live phone rather than this phone's own Nightscout.
      */
-    fun takeLiveSteps(deviceStatuses: List<NSDeviceStatus>) {
-        if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled))) return
-        if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) return
-        if (config.AAPSCLIENT) return
-        if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return
+    /**
+     * Returns one line saying what happened to each row, for the Nightscout log: why nothing was taken when this is
+     * skipped, or how many rows came from this phone, were too old, had no loop result, had no step lines, or were kept.
+     */
+    fun takeLiveSteps(deviceStatuses: List<NSDeviceStatus>): String {
+        if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled))) return "skipped: secondary site is off"
+        if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) return "skipped: step import is off"
+        if (config.AAPSCLIENT) return "skipped: this is a client"
+        if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return "skipped: pump is not the Virtual pump"
         val now = dateUtil.now()
+        val own = "openaps://${config.deviceModelForUpload}"
+        var fromThisPhone = 0
+        var notLoopPhone = 0
+        var noLoopResult = 0
+        var tooOld = 0
+        var noStepLines = 0
+        var kept = 0
+        val otherPhones = mutableSetOf<String>()
         for (deviceStatus in deviceStatuses) {
-            val device = deviceStatus.device ?: continue
-            val own = "openaps://${config.deviceModelForUpload}"
-            if (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true)) continue
-            val suggested = deviceStatus.openaps?.suggested ?: continue
-            val timestamp = suggested.safeGetString("timestamp") ?: continue
-            val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: continue
-            if (clock <= 0L || clock > now || now - clock > LiveSteps.MAX_AGE_MS) continue
-            val reason = runCatching { RT.deserialize(suggested.toString()).reason.toString() }.getOrElse { continue }
-            storeReceivedSteps(device, clock, reason)
+            val device = deviceStatus.device
+            if (device == null || !device.startsWith("openaps://")) {
+                notLoopPhone++
+                continue
+            }
+            if (device.equals(own, ignoreCase = true)) {
+                fromThisPhone++
+                continue
+            }
+            otherPhones += device
+            val suggested = deviceStatus.openaps?.suggested
+            val timestamp = suggested?.safeGetString("timestamp")
+            val clock = timestamp?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() }
+            if (suggested == null || clock == null || clock <= 0L) {
+                noLoopResult++
+                continue
+            }
+            if (clock > now || now - clock > LiveSteps.MAX_AGE_MS) {
+                tooOld++
+                continue
+            }
+            val reason = runCatching { RT.deserialize(suggested.toString()).reason.toString() }.getOrNull()
+            if (reason == null) {
+                noLoopResult++
+                continue
+            }
+            if (storeReceivedSteps(device, clock, reason)) kept++ else noStepLines++
         }
+        return "own=$fromThisPhone, other phones=${otherPhones.ifEmpty { "none" }}, no loop result=$noLoopResult, " +
+            "older than 20 min=$tooOld, no step lines=$noStepLines, kept=$kept, not a loop phone=$notLoopPhone"
     }
 
-    private fun storeReceivedSteps(device: String, clock: Long, reason: String) {
+    /** True when the reason had the step lines and the sample was queued for storing. */
+    private fun storeReceivedSteps(device: String, clock: Long, reason: String): Boolean {
         val buckets = LiveSteps.buckets(reason)
-        if (!LiveSteps.hasDosingBuckets(buckets)) return
+        if (!LiveSteps.hasDosingBuckets(buckets)) return false
         appScope.launch {
             val already = persistenceLayer.getStepsCountFromTimeToTime(clock, clock)
             if (already.any { it.timestamp == clock && it.device.equals(device, ignoreCase = true) }) return@launch
@@ -281,6 +314,7 @@ class NSDeviceStatusHandler(
                 )
             )
         }
+        return true
     }
 
     /** A client, or a full phone on the virtual pump, keeps the live phone's loop row. */

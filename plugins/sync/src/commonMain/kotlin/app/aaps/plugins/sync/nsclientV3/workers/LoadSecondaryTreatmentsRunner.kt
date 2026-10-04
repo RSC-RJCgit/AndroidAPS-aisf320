@@ -186,10 +186,9 @@ class LoadSecondaryTreatmentsRunner(
         try {
             val from = dateUtil.now() - LiveSteps.MAX_AGE_MS
             val statuses = client.getDeviceStatusModifiedSince(from)
-            nsDeviceStatusHandler.takeLiveSteps(statuses)
-            if (statuses.isNotEmpty()) {
-                nsClientRepository.addLog("◄ SEC-NS", "${statuses.size} device status rows for live steps")
-            }
+            val outcome = nsDeviceStatusHandler.takeLiveSteps(statuses)
+            // Always logged (also when nothing came back), so a missing step import can be traced to the step that fails.
+            nsClientRepository.addLog("◄ SEC-NS", "Step import: ${statuses.size} device status rows in the last 20 min; $outcome")
         } catch (error: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS step fetch failed", error)
             nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Steps error")

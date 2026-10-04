@@ -1,5 +1,9 @@
 name: Branch CI
 
+# Run title is the commit subject on a push (as on the UKF3426 "AAPS CI"); a manual run falls back to the branch name.
+# APK / Drive names still come from Versions.appVersion after checkout, not from this title.
+run-name: ${{ github.event.head_commit.message || format('Branch CI {0}', github.ref_name) }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -18,10 +22,25 @@ on:
           - pumpcontrolRelease
           - pumpcontrolDebug
 
+  # Every push to any branch builds fullRelease, then aapsclientRelease, then aapsclient2Release (in that order, one
+  # after another, all uploaded to the same Google Drive folder). Pushes that only touch the workflows are ignored.
+  # iOS CI (ios-ci.yml) has its own push trigger and is not affected.
+  push:
+    branches:
+      - '**'
+    paths-ignore:
+      - '.github/workflows/**'
+
 jobs:
   build:
-    name: Build AAPS
+    name: Build AAPS (${{ matrix.variant }})
     runs-on: ubuntu-latest
+    strategy:
+      # One variant at a time so the full APK reaches Drive first; one failing variant does not stop the next.
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        variant: ${{ fromJSON(github.event_name == 'push' && '["fullRelease","aapsclientRelease","aapsclient2Release"]' || format('["{0}"]', github.event.inputs.buildVariant)) }}
     steps:
       - name: Decode Secrets Keystore Set and Oauth2 to Env
         env:
@@ -170,7 +189,7 @@ jobs:
 
       - name: Set BUILD_VARIANT
         run: |
-          BUILD_VARIANT="${{ github.event.inputs.buildVariant }}"
+          BUILD_VARIANT="${{ matrix.variant }}"
           echo "BUILD_VARIANT=$BUILD_VARIANT" >> $GITHUB_ENV
           VARIANT_FLAVOR=$(echo "$BUILD_VARIANT" | sed -E 's/(Release|Debug)$//' | tr '[:upper:]' '[:lower:]')
           VARIANT_TYPE=$(echo "$BUILD_VARIANT" | grep -oE '(Release|Debug)$' | tr '[:upper:]' '[:lower:]')
