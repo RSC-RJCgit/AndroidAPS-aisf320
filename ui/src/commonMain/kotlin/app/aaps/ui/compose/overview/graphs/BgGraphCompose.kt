@@ -812,7 +812,8 @@ fun BgGraphCompose(
         val smbs = treatments.boluses.filter { it.bolusType == BolusType.SMB && it.label.isNotEmpty() }
         val times = smbs.map { it.timestamp }
         val stack = smbStackIndex(times)
-        val columns = smbColumnTimes(times)
+        // Each number sits at its own SMB time (as on 3426 and graph 2) and stacks upward; older doses are no longer
+        // moved onto the newest dose's column (columnX), which put them away from their own arrow.
         smbs.mapIndexed { index, smb ->
             val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
             SmbStackItem(
@@ -821,7 +822,6 @@ fun BgGraphCompose(
                 stackIndex = stack[index],
                 anchorY = dot?.value,
                 color = isfColor(dot?.dominantIsf),
-                columnX = timestampToX(columns[index], minTimestamp),
             )
         }
     }
