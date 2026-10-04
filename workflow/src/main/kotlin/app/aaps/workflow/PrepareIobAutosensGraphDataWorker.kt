@@ -824,9 +824,10 @@ class PrepareIobAutosensGraphDataWorker(
             it.thickness = 3
         }
 
-        // Graph5 top-band lines, per AIV cycle: SMB delivered (0..1.0 U, spikes), acce ISF weight (the setting,
-        // 0..1.0 = 100%) and pp ISF weight (the setting, 0..0.20). Each is stored as value / fullScale, i.e. 0..1;
-        // GraphData.addTopBandLines() sets bottomHalfScale (shift + multiplier) to graph5's top band so they fill it.
+        // Graph5 top-band lines, per AIV cycle: SMB delivery ratio (usual 0.10..0.30; 0.5 fills its lane), acce ISF weight
+        // (the setting, 0..1.0 = 100%), pp ISF weight (the setting, 0..0.20) and profile basal. Each has its own lane (0..3
+        // from the bottom) and is stored as lane + 0.9 * value / fullScale; GraphData.addTopBandLines() sets bottomHalfScale
+        // (shift + multiplier) so the four lanes fill graph5's top band without overlapping.
         // (Moved 2026-10-04 from graph4's bottom half; the Scale name is kept.) pp weight is not a persisted AIV field --
         // it is parsed from the nearest APSResult reason text (same source AutoIsfHistoryExporter.ppWeightStr uses).
         // Profile basal (the active profile's basal rate at each cycle, step-like) is scaled 0..30% of the max-IOB
@@ -844,14 +845,16 @@ class PrepareIobAutosensGraphDataWorker(
                 .sortedBy { it.first }
             var pi = 0
             autoIsfResults.forEach { aiv ->
-                smbArr.add(ScaledDataPoint(aiv.timestamp, aiv.smbDelivered.coerceIn(0.0, 1.0), bottomScale))
-                acceWtArr.add(ScaledDataPoint(aiv.timestamp, aiv.acceIsfWeight.coerceIn(0.0, 1.0), bottomScale))
+                // Four lanes (0 = bottom), each value fills 90% of its lane so the lines never sit on top of each other.
+                // SMBdel is the SMB delivery RATIO (usual 0.10..0.30, 0.5 fills the lane), as on the KMP graph 5.
+                smbArr.add(ScaledDataPoint(aiv.timestamp, 0 + (aiv.smbDeliveryRatio / 0.5).coerceIn(0.0, 1.0) * 0.9, bottomScale))
+                acceWtArr.add(ScaledDataPoint(aiv.timestamp, 1 + aiv.acceIsfWeight.coerceIn(0.0, 1.0) * 0.9, bottomScale))
                 while (pi + 1 < ppPoints.size && abs(ppPoints[pi + 1].first - aiv.timestamp) <= abs(ppPoints[pi].first - aiv.timestamp)) pi++
                 if (ppPoints.isNotEmpty() && abs(ppPoints[pi].first - aiv.timestamp) <= 3 * 60 * 1000L)
-                    ppWtArr.add(ScaledDataPoint(aiv.timestamp, ppPoints[pi].second.coerceIn(0.0, 0.20) / 0.20, bottomScale))
+                    ppWtArr.add(ScaledDataPoint(aiv.timestamp, 2 + (ppPoints[pi].second.coerceIn(0.0, 0.20) / 0.20) * 0.9, bottomScale))
                 if (basalFullScale > 0.0)
                     profileFunction.getProfile(aiv.timestamp)?.getBasal(aiv.timestamp)?.let { basal ->
-                        profileBasalArr.add(ScaledDataPoint(aiv.timestamp, (basal / basalFullScale).coerceIn(0.0, 1.0), bottomScale))
+                        profileBasalArr.add(ScaledDataPoint(aiv.timestamp, 3 + (basal / basalFullScale).coerceIn(0.0, 1.0) * 0.9, bottomScale))
                     }
             }
             data.overviewData.bottomSmbSeries = LineGraphSeries(Array(smbArr.size) { i -> smbArr[i] }).also {

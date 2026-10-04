@@ -63,6 +63,17 @@
             android:layout_height="200dp"
             android:contentDescription="@string/a11y_graph" />
 
+        <!-- Legend for the four top-band lines (SMBdel, aISFwt, ppISFwt, profBasal), each name in its line colour.
+             Text and colours are set in OverviewFragment.updateGraph(); empty (and so invisible) when no line has data. -->
+        <TextView
+            android:id="@+id/graph5_legend"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="44dp"
+            android:layout_marginTop="2dp"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
     </RelativeLayout>
 
 </LinearLayout>

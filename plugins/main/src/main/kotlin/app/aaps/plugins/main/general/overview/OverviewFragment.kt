@@ -3175,6 +3175,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // SMB delivered / acce weight / pp weight / profile basal: always on graph5 (even in BGL-only mode), top band.
             // After every scale-setting series above so maxY is final. Keep in sync with HistoryBrowseActivity.kt.
             graph5Data.addTopBandLines()
+            binding.graphsLayout.graph5Legend.text = graph5Data.topBandLegend()
             // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column
             // area, one line below the pp/acc/du row.
             graph5Data.addTargetOffsetDuTAnnotation()

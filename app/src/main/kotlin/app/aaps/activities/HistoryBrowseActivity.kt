@@ -453,6 +453,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
             // SMB delivered / acce weight / pp weight / profile basal: always on graph5 (even in BGL-only mode), top band.
             graph5Data.addTopBandLines()
+            binding.graph5Legend.text = graph5Data.topBandLegend()
             graph5Data.addTargetOffsetDuTAnnotation()
             graph5Data.addIsfWeightsRow()
             graph5Data.addTargetLine()

@@ -128,6 +128,16 @@
                     android:layout_height="match_parent"
                     android:contentDescription="@string/a11y_graph" />
 
+                <!-- Legend for the four top-band lines, set in HistoryBrowseActivity.updateGUI(); see overview_graphs_layout.xml. -->
+                <TextView
+                    android:id="@+id/graph5_legend"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="44dp"
+                    android:layout_marginTop="2dp"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+
             </RelativeLayout>
 
         </LinearLayout>

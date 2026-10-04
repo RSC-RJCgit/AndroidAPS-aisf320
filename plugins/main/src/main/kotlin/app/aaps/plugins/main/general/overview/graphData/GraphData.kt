@@ -3,6 +3,9 @@ package app.aaps.plugins.main.general.overview.graphData
 import android.content.Context
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.graph.data.AreaGraphSeries
 import app.aaps.core.graph.data.BarGraphSeries
@@ -34,7 +37,7 @@ import kotlin.math.abs
 import kotlin.math.max
 
 // Share of graph5's height, from the top, used by the SMB / acce weight / pp weight / profile basal lines. See addTopBandLines().
-private const val TOP_BAND_FRACTION = 0.22
+private const val TOP_BAND_FRACTION = 0.28
 
 @Suppress("UNCHECKED_CAST")
 class GraphData @Inject constructor(
@@ -334,18 +337,39 @@ class GraphData @Inject constructor(
     }
 
     // SMB / acce ISF weight / pp ISF weight / profile basal lines in the top band of graph5 (moved 2026-10-04 from graph4's
-    // bottom half), always drawn on graph5, including in BGL-only mode. The band is the top 22% of the panel's Y range:
-    // the series hold 0..1, so shift = band bottom and multiplier = band height. Must be called AFTER graph5's own
+    // bottom half), always drawn on graph5, including in BGL-only mode. The band is the top 28% of the panel's Y range,
+    // split into four lanes (one per line, see the scale below). Must be called AFTER graph5's own
     // scale-setting series (addBgReadings/addBasals/...) so maxY is final.
     fun addTopBandLines() {
         if (maxY <= 0.0 || maxY == Double.MIN_VALUE) return
         val bandHeight = TOP_BAND_FRACTION * maxY
         overviewData.bottomHalfScale.shift = maxY - bandHeight
-        overviewData.bottomHalfScale.multiplier = bandHeight
+        // The series hold lane + 0..0.9 (lane 0..3: SMBdel, aISFwt, ppISFwt, profBasal), so one lane = a quarter of the band.
+        overviewData.bottomHalfScale.multiplier = bandHeight / 4.0
         addSeries(overviewData.bottomSmbSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.bottomAcceWtSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.bottomPpWtSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.bottomProfileBasalSeries as LineGraphSeries<ScaledDataPoint>)
+    }
+
+    // Legend text for those four lines, each name in its own line colour, lowest lane first. Only lines that actually have
+    // data are named, so an empty legend also tells which line is missing.
+    fun topBandLegend(): CharSequence {
+        val entries = listOf(
+            Triple("SMBdel", overviewData.bottomSmbSeries as Series<*>, app.aaps.core.ui.R.attr.smbDelColor),
+            Triple("aISFwt", overviewData.bottomAcceWtSeries as Series<*>, app.aaps.core.ui.R.attr.acceIsfColor),
+            Triple("ppISFwt", overviewData.bottomPpWtSeries as Series<*>, app.aaps.core.ui.R.attr.ppIsfColor),
+            Triple("profBasal", overviewData.bottomProfileBasalSeries as Series<*>, app.aaps.core.ui.R.attr.profileBasalColor)
+        )
+        val text = SpannableStringBuilder()
+        for ((name, series, colorAttr) in entries) {
+            if (series.isEmpty) continue
+            if (text.isNotEmpty()) text.append("  ")
+            val start = text.length
+            text.append(name)
+            text.setSpan(ForegroundColorSpan(rh.gac(graph.context, colorAttr)), start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return text
     }
 
     // scale in % of vertical size (like 0.3)
