@@ -1909,14 +1909,14 @@ open class OpenAPSAutoISFPlugin(
         mildThisCycle = false
         bg3ThisCycle = false
         mildFailsafeThisCycle = false
-        val lastBolusMinForHold = minutesSinceLastPositiveNormalBolus(now)
+        val lastBolusMinForHold = minutesSinceLastMealEvent(now)
         riseHoldThisCycle = nightRiseHoldsIobLimit(
             delta = delta,
             shortDelta = shortDelta,
             longDelta = longDelta,
             bg = bg,
             bolusAgeMinutes = lastBolusMinForHold,
-            carbAgeMinutes = minutesSinceLastCarbs(now),
+            carbAgeMinutes = lastBolusMinForHold,   // same single meal-event age (2026-10-04)
         )
         seedBaselines(profilePercent)
         val boostOn = preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
@@ -2145,7 +2145,7 @@ open class OpenAPSAutoISFPlugin(
         val acceNow = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
         val hp = rawDelta5.takeIf { it > -9000.0 }?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
         val hp1 = rawDelta5MinMgdl(now)?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
-        val recentBolusOrCarbs = lastBolusMin < 20 || (minutesSinceLastCarbs(now) ?: Int.MAX_VALUE) < 20
+        val recentBolusOrCarbs = lastBolusMin < 20
         val hypo1 = alarmHypo1ShouldFire(
             ready = runMarks.ready(RunMark.ALARM_HYPO_1, 15, now),
             bg = bg,
@@ -2472,11 +2472,6 @@ open class OpenAPSAutoISFPlugin(
         }
         if (cobSustainedSince <= 0L) return false
         return (now - cobSustainedSince) / 60_000.0 >= 45.0
-    }
-
-    private suspend fun minutesSinceLastCarbs(now: Long): Int? {
-        val last = persistenceLayer.getNewestCarbs()?.timestamp ?: return null
-        return ((now - last).toDouble() / 60_000.0).toInt()
     }
 
     // Stuck high, poor response, and the unexplained-high backstop run before the night ceiling.
@@ -3088,7 +3083,7 @@ open class OpenAPSAutoISFPlugin(
             iob = iob,
             bg = bg,
             delta = delta,
-            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            minutesSinceBolus = minutesSinceLastMealEvent(now),
             ownMildTt = ownMild,
         )
         if (stop57 != null) {
@@ -3110,7 +3105,7 @@ open class OpenAPSAutoISFPlugin(
             shortDelta = shortDelta,
             acce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
             iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
-            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            minutesSinceBolus = minutesSinceLastMealEvent(now),
         )
         if (th != null) {
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
@@ -4092,7 +4087,7 @@ open class OpenAPSAutoISFPlugin(
     ) {
         val virtualPump = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
         val noTempTarget = persistenceLayer.getTemporaryTargetActiveAt(now) == null
-        val lastNormalBolusMinutes = minutesSinceLastPositiveNormalBolus(now)
+        val lastNormalBolusMinutes = minutesSinceLastMealEvent(now)
         val allBgHigh = allRecentBgAbove90Minutes(now, 8.0 * Constants.MMOLL_TO_MGDL)
         val duraActiveMinutes = recentAdaptationMinutes(now, factors) { it.duraIsf }
         val acceActiveMinutes = recentAdaptationMinutes(now, factors) { it.acceIsf }
@@ -4477,8 +4472,8 @@ open class OpenAPSAutoISFPlugin(
             shortDelta = shortDelta,
             longDelta = longDelta,
             bg = bg,
-            bolusAgeMinutes = minutesSinceLastPositiveNormalBolus(now),
-            carbAgeMinutes = minutesSinceLastCarbs(now),
+            bolusAgeMinutes = minutesSinceLastMealEvent(now),
+            carbAgeMinutes = minutesSinceLastMealEvent(now),   // same single meal-event age (2026-10-04)
         )
         // While the rise holds the limit up, check every loop. Insulin on board moves, and a
         // five minute wait would let it pass the percent again. The ordinary drop to 22% stays
@@ -4517,7 +4512,7 @@ open class OpenAPSAutoISFPlugin(
                 iob = iob,
                 steps60 = steps60,
                 steps180 = steps180,
-                bolusAgeMinutes = minutesSinceLastPositiveBolus(now),
+                bolusAgeMinutes = minutesSinceLastMealEvent(now),
             )
         ) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
@@ -4562,7 +4557,7 @@ open class OpenAPSAutoISFPlugin(
             iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
             cob = cob,
             ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
-            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            minutesSinceBolus = minutesSinceLastMealEvent(now),
             mjActive = statesOn && store.inState("MJ", "MJ active"),
             onRoleProfile = onRole,
             profilePercent = profilePercent,
@@ -4747,7 +4742,7 @@ open class OpenAPSAutoISFPlugin(
             bg = bg,
             profilePercent = profilePercent,
             cob = cob,
-            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            minutesSinceBolus = minutesSinceLastMealEvent(now),
             alarmRecent = statesOn && store.inState("AlarmHypo", "AlarmRecent"),
             iob = iob,
             noRecentHigh = !libreRawOver12Within(now, 48),
@@ -4931,7 +4926,7 @@ open class OpenAPSAutoISFPlugin(
             iob = iob,
             cob = cob,
             cannulaHours = cannulaHours,
-            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            minutesSinceBolus = minutesSinceLastMealEvent(now),
             acceWeight = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight),
         )
         if (pp50 != null) {
@@ -4955,7 +4950,7 @@ open class OpenAPSAutoISFPlugin(
             iob = iob,
             cob = cob,
             profilePercent = profilePercent,
-            minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+            minutesSinceBolus = minutesSinceLastMealEvent(now),
             steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
         )
         if (skittles != null && persistenceLayer.getTemporaryTargetActiveAt(now) == null) {
@@ -5086,7 +5081,7 @@ open class OpenAPSAutoISFPlugin(
                 shortDelta = shortDelta,
                 steps60 = steps60(now),
                 cob = cob,
-                minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+                minutesSinceBolus = minutesSinceLastMealEvent(now),
                 ttLowMgdl = tt?.lowTarget,
             )
         ) {
@@ -5205,7 +5200,7 @@ open class OpenAPSAutoISFPlugin(
                 delta = delta,
                 cob = cob,
                 iob = iob,
-                minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+                minutesSinceBolus = minutesSinceLastMealEvent(now),
                 cannulaHours = cannulaHours,
             )
         ) return
@@ -5338,7 +5333,7 @@ open class OpenAPSAutoISFPlugin(
                 delta = delta,
                 shortDelta = shortDelta,
                 longDelta = longDelta,
-                minutesSinceBolus = minutesSinceLastPositiveNormalBolus(now),
+                minutesSinceBolus = minutesSinceLastMealEvent(now),
                 cannulaHours = cannulaHours,
             )
         ) return
@@ -5552,7 +5547,7 @@ open class OpenAPSAutoISFPlugin(
                 bg = bg,
                 delta = delta,
                 cannulaHours = cannulaHours,
-                lastBolusMinutes = minutesSinceLastPositiveNormalBolus(now),
+                lastBolusMinutes = minutesSinceLastMealEvent(now),
                 delayedBolusPending = false,
             )
         ) return
@@ -5750,18 +5745,42 @@ open class OpenAPSAutoISFPlugin(
         return iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile).iob
     }
 
-    private suspend fun minutesSinceLastPositiveBolus(now: Long): Int {
+    // Every "minutes since last bolus / carbs" test reads this one value. It is the age of the newest ordinary
+    // (non-extended) carb entry. While an extended-carb entry (duration over 0) started in the last 8 hours exists,
+    // or when there is no carb entry in the last 24 hours, it is the age of the last manual bolus instead.
+    // Manual means a NORMAL bolus over 0 U that is not a delayed, split, or FPU part, and not the Virtual
+    // pseudo-wizard bolus. SMBs are a different type and are never counted. Int.MAX_VALUE when there is nothing.
+    private fun isAutomatedOrPartialBolusNote(notes: String?): Boolean {
+        val n = notes ?: return false
+        return n.startsWith("Delayed ") || n.contains("Split bolus attempt") ||
+            n.contains("Reduced split bolus part") || n.contains("pseudo-wizard")
+    }
+
+    private suspend fun minutesSinceLastManualBolus(now: Long): Int {
         val last = persistenceLayer.getBolusesFromTimeToTime(now - 24 * 60 * 60_000L, now, ascending = false)
-            .firstOrNull { it.amount > 0.0 }
+            .firstOrNull { it.type == BS.Type.NORMAL && it.amount > 0.0 && !isAutomatedOrPartialBolusNote(it.notes) }
             ?.timestamp ?: return Int.MAX_VALUE
         return ((now - last).toDouble() / 60_000.0).toInt()
     }
 
-    private suspend fun minutesSinceLastPositiveNormalBolus(now: Long): Int {
-        val last = persistenceLayer.getBolusesFromTimeToTime(now - 24 * 60 * 60_000L, now, ascending = false)
-            .firstOrNull { it.type == BS.Type.NORMAL && it.amount > 0.0 }
-            ?.timestamp ?: return Int.MAX_VALUE
-        return ((now - last).toDouble() / 60_000.0).toInt()
+    // Cached for 20 seconds: many blocks ask each cycle, and this reads both the bolus and the carb tables.
+    private var mealEventCacheAt = 0L
+    private var mealEventCacheValue = Int.MAX_VALUE
+
+    private suspend fun minutesSinceLastMealEvent(now: Long): Int {
+        if (mealEventCacheAt > 0L && now >= mealEventCacheAt && now - mealEventCacheAt < 20_000L) return mealEventCacheValue
+        val carbs = persistenceLayer.getCarbsFromTime(now - 24 * 60 * 60_000L, ascending = false)
+            .filter { it.isValid && it.amount > 0.0 && it.timestamp <= now }
+        val extendedRecent = carbs.any { it.duration > 0L && it.timestamp >= now - 8 * 60 * 60_000L }
+        val lastCarbTime = carbs.filter { it.duration == 0L }.maxOfOrNull { it.timestamp }
+        val age = when {
+            extendedRecent -> minutesSinceLastManualBolus(now)
+            lastCarbTime != null -> ((now - lastCarbTime).toDouble() / 60_000.0).toInt()
+            else -> minutesSinceLastManualBolus(now)
+        }
+        mealEventCacheAt = now
+        mealEventCacheValue = age
+        return age
     }
 
     // A site change under 2 hours with glucose over 9.0 mmol/L may open the day window at any hour.
