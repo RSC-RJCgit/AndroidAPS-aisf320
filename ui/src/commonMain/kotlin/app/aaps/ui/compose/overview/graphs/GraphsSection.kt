@@ -640,21 +640,6 @@ fun GraphsSection(
                 onDismiss = { editingBgOverlays = false }
             )
         }
-        if (showGraph5) {
-            BgGraphCompose(
-                viewModel = graphViewModel,
-                bgOverlays = graphConfig.bgOverlays,
-                scrollState = g5ScrollState,
-                zoomState = g5ZoomState,
-                derivedTimeRange = derivedTimeRange,
-                nowTimestamp = nowTimestamp,
-                visibleTimeRange = bgVisibleTimeRange,
-                topBandLines = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(graphConfig.iobHeight.dp)
-            )
-        }
         val autoIsfStatus = graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
         // Fixed IOB graph (Graph 1) with optional Activity overlay
         var editingIobOverlays by remember { mutableStateOf(false) }
@@ -774,6 +759,24 @@ fun GraphsSection(
                     )
                 }
             }
+        }
+        // Graph 5 (second copy of the glucose graph with the SMB / acce weight / pp weight / profile basal lines in its
+        // top band) is the LAST graph, below every secondary graph, as on 3426. Its scroll/zoom is already synced as the
+        // last entry of the shared list above.
+        if (showGraph5) {
+            BgGraphCompose(
+                viewModel = graphViewModel,
+                bgOverlays = graphConfig.bgOverlays,
+                scrollState = g5ScrollState,
+                zoomState = g5ZoomState,
+                derivedTimeRange = derivedTimeRange,
+                nowTimestamp = nowTimestamp,
+                visibleTimeRange = bgVisibleTimeRange,
+                topBandLines = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(graphConfig.iobHeight.dp)
+            )
         }
         if (editingGraphIndex >= 0 && editingGraphIndex < activeCount) {
             val editing = graphConfig.secondaryGraphs[editingGraphIndex]

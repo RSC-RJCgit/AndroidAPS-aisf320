@@ -110,8 +110,12 @@ private val BG_VISIBLE_RANGE_KEY = ExtraStore.Key<Pair<Long?, Long?>>()
 /** Share of the BG axis height, from the top, used by the Graph 5 top band lines. */
 private const val BG_TOP_BAND_FRACTION = 0.22
 
-/** Profile basal line colour in the top band. The other three reuse the SMB delivery, acce and pp colours. */
-private val PROFILE_BASAL_BAND_COLOR = Color(0xFF26C6DA)
+/**
+ * Colours of the Graph 5 top band lines. SMB delivery and profile basal use the same colours as the 3426 graph (pink and
+ * orange), so neither can be mistaken for the blue acce weight or the green pp weight, which keep their ISF colours.
+ */
+private val SMB_BAND_COLOR = Color(0xFFFF40C0)
+private val PROFILE_BASAL_BAND_COLOR = Color(0xFFFFA040)
 
 /**
  * A [CartesianLayerRangeProvider] backed by plain mutable fields instead of an immutable value
@@ -773,7 +777,7 @@ fun BgGraphCompose(
             stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
             areaFill = null
         )
-        listOf(line(SMB_DELIVERY_COLOR), line(acceColor), line(ppColor), line(PROFILE_BASAL_BAND_COLOR))
+        listOf(line(SMB_BAND_COLOR), line(acceColor), line(ppColor), line(PROFILE_BASAL_BAND_COLOR))
     }
 
     // Basal Y-axis range: maxBasal / BASAL_HEIGHT_FRACTION so basal occupies that fraction of chart height
@@ -986,6 +990,25 @@ fun BgGraphCompose(
         scrollState = scrollState,
         zoomState = zoomState
     )
+    if (topBandLines) {
+        // Legend for the four top band lines, each name in its own line colour. A name is shown only when that line
+        // really has data to draw (profile basal also needs a max IOB setting), so the legend also says what is missing.
+        val haveLoops = autoIsfGraph.smbDelivery.size >= 2
+        val legend = buildList {
+            if (haveLoops) add("SMBdel" to SMB_BAND_COLOR)
+            if (autoIsfGraph.acceWeight.size >= 2) add("aISFwt" to acceColor)
+            if (autoIsfGraph.ppWeight.size >= 2) add("ppISFwt" to ppColor)
+            if (haveLoops && viewModel.smbMaxIob > 0.0 && rawBasalData.profileBasal.isNotEmpty()) add("profBasal" to PROFILE_BASAL_BAND_COLOR)
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp)
+        ) {
+            legend.forEach { (name, color) ->
+                Text(text = name, color = color, style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold))
+            }
+        }
+    }
     if (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
