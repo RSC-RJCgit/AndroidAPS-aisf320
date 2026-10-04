@@ -449,6 +449,8 @@ fun SecondaryGraphCompose(
     val iobThOnLeft = SeriesType.IOB_TH in primaryTypes
     val iobThOnRight = isDualAxis && secondaryType == SeriesType.IOB_TH
     val bottomHalfRaw = remember(autoIsfData, stableTimeRange, iobThOnLeft, iobThOnRight) {
+        // Since 2026-10-04 these lines are drawn on Graph 5 (top band) instead, so the IOB threshold graph no longer shows them.
+        if (!SHOW_BOTTOM_HALF_LINES_ON_IOB_TH_GRAPH) return@remember null
         if (!hasRealTimeRange || autoIsfData == null || (!iobThOnLeft && !iobThOnRight)) return@remember null
         BottomHalfRaw(
             smb = processPoints(autoIsfData.smbDelivery, minTimestamp, minX, maxX),
@@ -751,7 +753,7 @@ fun SecondaryGraphCompose(
     val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp)
     val nowLineColor = MaterialTheme.colorScheme.onSurface
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
-    val smbText = rememberTextMeasurer()
+    val smbText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val bgDots = if (showSmbDoseLabels || secondaryMarks == SecondaryMarks.NOTES) viewModel.bgReadingsFlow.collectAsStateWithLifecycle().value else emptyList()
     val smbStack = remember(showSmbDoseLabels, treatmentData, minTimestamp, bgDots, acceColor, bgIsfColor, ppColor, duraColor) {
         if (!showSmbDoseLabels) return@remember emptyList()
@@ -1303,7 +1305,10 @@ private class BottomHalfRaw(
     val pp: List<Pair<Double, Double>>,
 )
 
-private val SMB_DELIVERY_COLOR = Color(0xFFFF9800)
+internal val SMB_DELIVERY_COLOR = Color(0xFFFF9800)
+
+/** The SMB / acce weight / pp weight lines moved to the Graph 5 top band. Set true to bring them back on the IOB threshold graph. */
+private const val SHOW_BOTTOM_HALF_LINES_ON_IOB_TH_GRAPH = false
 
 private fun bottomHalfLine(color: Color): LineCartesianLayer.Line =
     LineCartesianLayer.Line(

@@ -107,6 +107,12 @@ private val PREDICTION_SERIES = listOf(SERIES_PRED_IOB, SERIES_PRED_COB, SERIES_
  */
 private val BG_VISIBLE_RANGE_KEY = ExtraStore.Key<Pair<Long?, Long?>>()
 
+/** Share of the BG axis height, from the top, used by the Graph 5 top band lines. */
+private const val BG_TOP_BAND_FRACTION = 0.22
+
+/** Profile basal line colour in the top band. The other three reuse the SMB delivery, acce and pp colours. */
+private val PROFILE_BASAL_BAND_COLOR = Color(0xFF26C6DA)
+
 /**
  * A [CartesianLayerRangeProvider] backed by plain mutable fields instead of an immutable value
  * object. [CartesianLayerRangeProvider.fixed] returns a NEW instance whenever bounds change,
@@ -151,6 +157,8 @@ fun BgGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     visibleTimeRange: Pair<Long, Long>? = null,
+    /** Graph 5 only: draw SMB delivery, acce weight, pp weight and profile basal in the top band of the BG axis. */
+    topBandLines: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -241,6 +249,8 @@ fun BgGraphCompose(
         currentVisibleTimeRange: Pair<Long, Long>?,
         bolusPoints: List<Pair<Long, Double>>,
         carbPoints: List<Pair<Long, Double>>,
+        axisMin: Double,
+        axisMax: Double,
     ) {
         val regularPoints = seriesRegistry[SERIES_REGULAR] ?: emptyList()
         val bucketedPoints = seriesRegistry[SERIES_BUCKETED] ?: emptyList()
@@ -403,6 +413,38 @@ fun BgGraphCompose(
                 }
             }
 
+            // Block 6 → Top band layer (layer 5, start axis): SMB delivery, acce weight, pp weight and profile basal, per
+            // loop, each as a 0..1 fraction of its own scale drawn in the top BG_TOP_BAND_FRACTION of the BG axis.
+            // Always four series (dummy at y=0 when off or empty) so the series count matches the layer's four lines.
+            lineModel {
+                val bandHeight = BG_TOP_BAND_FRACTION * (axisMax - axisMin).coerceAtLeast(1.0)
+                val bandBottom = axisMax - bandHeight
+                fun addBand(fractions: List<Pair<Double, Double>>) {
+                    if (!topBandLines || fractions.size < 2) {
+                        series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
+                    } else {
+                        series(x = fractions.map { it.first }, y = fractions.map { bandBottom + it.second.coerceIn(0.0, 1.0) * bandHeight })
+                    }
+                }
+                fun fractionsOf(points: List<GraphDataPoint>, fullScale: Double) =
+                    points.map { timestampToX(it.timestamp, minTimestamp) to (it.value / fullScale) }.sortedBy { it.first }
+                addBand(fractionsOf(autoIsfGraph.smbDelivery, SMB_DELIVERY_SCALE_MAX))
+                addBand(fractionsOf(autoIsfGraph.acceWeight, ACCE_WEIGHT_SCALE_MAX))
+                addBand(fractionsOf(autoIsfGraph.ppWeight, PP_WEIGHT_SCALE_MAX))
+                // Profile basal: the step series only holds change points, so read its value at each loop's time.
+                val basalFullScale = 0.30 * viewModel.smbMaxIob
+                val profileBasalSteps = rawBasalData.profileBasal
+                    .map { timestampToX(it.timestamp, minTimestamp) to it.value }.sortedBy { it.first }
+                addBand(
+                    if (basalFullScale > 0.0 && profileBasalSteps.isNotEmpty()) {
+                        autoIsfGraph.smbDelivery.map { loop ->
+                            val x = timestampToX(loop.timestamp, minTimestamp)
+                            x to ((stepValueAt(profileBasalSteps, x) ?: 0.0) / basalFullScale)
+                        }.sortedBy { it.first }
+                    } else emptyList()
+                )
+            }
+
             // Forces Vico to reprocess this transaction even when the series data above is
             // identical to last time (see BG_VISIBLE_RANGE_KEY doc) — otherwise scrolling/zooming
             // would re-submit the same partials and get silently skipped, never picking up the
@@ -431,7 +473,7 @@ fun BgGraphCompose(
     } else emptyList()
     var epsLabelAnchors by remember { mutableStateOf(emptyList<SmbStackItem>()) }
 
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg) {
+    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData, topBandLines) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
         seriesRegistry[SERIES_RAW] = rawPoints
@@ -492,7 +534,7 @@ fun BgGraphCompose(
             nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
         }
         val activityAxisMax = if (showActivity) niceBgScale.max else maxBgY
-        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints)
+        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max)
     }
 
     // Build lookup map for BUCKETED points: x-value -> BgDataPoint (for PointProvider)
@@ -724,6 +766,16 @@ fun BgGraphCompose(
         listOf(activityHistLine, activityPredLine, carbModelLine)
     }
 
+    // Top band lines (layer 5): SMB delivery, acce weight, pp weight, profile basal. Graph 5 only.
+    val topBandLineList = remember(acceColor, ppColor) {
+        fun line(color: Color) = LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(color)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+            areaFill = null
+        )
+        listOf(line(SMB_DELIVERY_COLOR), line(acceColor), line(ppColor), line(PROFILE_BASAL_BAND_COLOR))
+    }
+
     // Basal Y-axis range: maxBasal / BASAL_HEIGHT_FRACTION so basal occupies that fraction of chart height
     val basalMaxY = remember(basalData.maxBasal) {
         if (basalData.maxBasal > 0.0) basalData.maxBasal / BASAL_HEIGHT_FRACTION else 1.0
@@ -754,7 +806,7 @@ fun BgGraphCompose(
         DominantIsf.DURA -> duraColor
         else             -> smbMarkColor
     }
-    val smbText = rememberTextMeasurer()
+    val smbText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val smbStack = remember(treatments, bgReadings, minTimestamp, graphDisplay.showSmbLabels) {
         if (!graphDisplay.showSmbLabels) return@remember emptyList()
         val smbs = treatments.boluses.filter { it.bolusType == BolusType.SMB && it.label.isNotEmpty() }
@@ -817,11 +869,11 @@ fun BgGraphCompose(
             )
         }
     }
-    val carbText = rememberTextMeasurer()
+    val carbText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val carbNumbers = remember(carbLabels, carbText) {
         SmbStackLabels(carbLabels, carbText, pinToBottom = false)
     }
-    val bolusText = rememberTextMeasurer()
+    val bolusText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val bolusStack = remember(treatments, minTimestamp, lowMark) {
         val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
         val stack = smbStackIndex(boluses.map { it.timestamp })
@@ -838,7 +890,7 @@ fun BgGraphCompose(
     val bolusNumbers = remember(bolusStack, bolusText) {
         SmbStackLabels(bolusStack, bolusText, pinToBottom = false)
     }
-    val epsText = rememberTextMeasurer()
+    val epsText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val epsNumbers = remember(epsLabelAnchors, epsText, profileSwitchColor) {
         SmbStackLabels(
             epsLabelAnchors.map { it.copy(color = profileSwitchColor) },
@@ -901,6 +953,12 @@ fun BgGraphCompose(
             // Layer 4: Activity (start axis — shares BG Y-axis range, values normalized in rebuildChart)
             rememberLineCartesianLayer(
                 lineProvider = LineCartesianLayer.LineProvider.series(activityLines),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
+            // Layer 5: top band lines (start axis — shares BG Y-axis range, values placed in rebuildChart)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(topBandLineList),
                 rangeProvider = startAxisRangeProvider,
                 verticalAxisPosition = Axis.Position.Vertical.Start
             ),

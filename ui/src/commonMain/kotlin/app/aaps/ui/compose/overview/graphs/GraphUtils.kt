@@ -635,6 +635,12 @@ class SmbArrows(
     }
 }
 
+/**
+ * Text layouts each label measurer keeps. The default is 8, and a graph can show more labels than that at once
+ * (notes, arrows, SMB numbers), so every draw frame re-laid-out the text and scrolling the synced graphs got slow.
+ */
+internal const val LABEL_TEXT_CACHE_SIZE = 128
+
 /** Full SMB label size. Used when the window is 500 dp tall or taller. 7.2 sp = 60% of the old 12 sp, as on the 3426 graphs. */
 internal const val SMB_LABEL_FULL_SP = 7.2f
 
@@ -943,8 +949,8 @@ const val SMB_DELIVERY_SCALE_MAX = 1.0
 /** Acceleration weight is stored as 0 to 1. 1.0 is 100% and fills the bottom half. */
 const val ACCE_WEIGHT_SCALE_MAX = 1.0
 
-/** Post-meal weight setting. 0.15 fills the bottom half. */
-const val PP_WEIGHT_SCALE_MAX = 0.15
+/** Post-meal weight setting. 0.20 fills the bottom half. */
+const val PP_WEIGHT_SCALE_MAX = 0.20
 
 /**
  * Largest absolute IOB threshold in [values], at least 0.1.

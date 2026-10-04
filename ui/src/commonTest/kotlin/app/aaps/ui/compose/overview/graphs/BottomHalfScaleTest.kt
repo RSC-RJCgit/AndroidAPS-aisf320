@@ -13,7 +13,7 @@ class BottomHalfScaleTest {
     @Test
     fun fullScaleSitsOnTheMiddle() {
         assertEquals(0.0, bottomHalfY(1.0, SMB_DELIVERY_SCALE_MAX, -4.0))
-        assertEquals(0.0, bottomHalfY(0.15, PP_WEIGHT_SCALE_MAX, -4.0))
+        assertEquals(0.0, bottomHalfY(0.20, PP_WEIGHT_SCALE_MAX, -4.0))
     }
 
     @Test

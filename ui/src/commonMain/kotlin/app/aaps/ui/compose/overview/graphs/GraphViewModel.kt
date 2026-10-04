@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import dev.zacsweers.metro.Assisted
@@ -87,6 +88,9 @@ class GraphViewModel(
 
     /** Second copy of the main glucose graph. Off until the Graph 5 switch is turned on. */
     val showGraph5: StateFlow<Boolean> = preferences.observe(BooleanKey.ApsAutoIsfShowGraph5)
+
+    /** Max IOB setting. The profile basal line on Graph 5 uses 0 to 30% of it as its scale. */
+    val smbMaxIob: Double get() = preferences.get(DoubleKey.ApsSmbMaxIob)
 
     /** Basal-rate icon: arrows on, arrows off, then plain green dots. */
     fun onBasalIconLongPress() {
