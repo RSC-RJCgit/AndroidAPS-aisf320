@@ -107,8 +107,14 @@ private val PREDICTION_SERIES = listOf(SERIES_PRED_IOB, SERIES_PRED_COB, SERIES_
  */
 private val BG_VISIBLE_RANGE_KEY = ExtraStore.Key<Pair<Long?, Long?>>()
 
-/** Share of the BG axis height, from the top, used by the Graph 5 top band lines. */
-private const val BG_TOP_BAND_FRACTION = 0.22
+/**
+ * Share of the BG axis height, from the top, used by the Graph 5 top band lines. The band is split into four equal lanes,
+ * one per line (bottom to top: SMBdel, aISFwt, ppISFwt, profBasal), so usual values can never sit on top of each other.
+ */
+private const val BG_TOP_BAND_FRACTION = 0.28
+
+/** SMB delivery ratio that fills its lane. Usual values are 0.10 to 0.30. */
+private const val SMB_BAND_FULL_SCALE = 0.5
 
 /**
  * Colours of the Graph 5 top band lines. SMB delivery and profile basal use the same colours as the 3426 graph (pink and
@@ -423,23 +429,29 @@ fun BgGraphCompose(
             lineModel {
                 val bandHeight = BG_TOP_BAND_FRACTION * (axisMax - axisMin).coerceAtLeast(1.0)
                 val bandBottom = axisMax - bandHeight
-                fun addBand(fractions: List<Pair<Double, Double>>) {
+                val laneHeight = bandHeight / 4.0
+                // Each line gets its own lane (0 = bottom). Its 0..1 value fills 90% of the lane, so lines stay apart.
+                fun addBand(lane: Int, fractions: List<Pair<Double, Double>>) {
                     if (!topBandLines || fractions.size < 2) {
                         series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     } else {
-                        series(x = fractions.map { it.first }, y = fractions.map { bandBottom + it.second.coerceIn(0.0, 1.0) * bandHeight })
+                        series(
+                            x = fractions.map { it.first },
+                            y = fractions.map { bandBottom + (lane + it.second.coerceIn(0.0, 1.0) * 0.9) * laneHeight }
+                        )
                     }
                 }
                 fun fractionsOf(points: List<GraphDataPoint>, fullScale: Double) =
                     points.map { timestampToX(it.timestamp, minTimestamp) to (it.value / fullScale) }.sortedBy { it.first }
-                addBand(fractionsOf(autoIsfGraph.smbDelivery, SMB_DELIVERY_SCALE_MAX))
-                addBand(fractionsOf(autoIsfGraph.acceWeight, ACCE_WEIGHT_SCALE_MAX))
-                addBand(fractionsOf(autoIsfGraph.ppWeight, PP_WEIGHT_SCALE_MAX))
+                addBand(0, fractionsOf(autoIsfGraph.smbDelivery, SMB_BAND_FULL_SCALE))
+                addBand(1, fractionsOf(autoIsfGraph.acceWeight, ACCE_WEIGHT_SCALE_MAX))
+                addBand(2, fractionsOf(autoIsfGraph.ppWeight, PP_WEIGHT_SCALE_MAX))
                 // Profile basal: the step series only holds change points, so read its value at each loop's time.
                 val basalFullScale = 0.30 * viewModel.smbMaxIob
                 val profileBasalSteps = rawBasalData.profileBasal
                     .map { timestampToX(it.timestamp, minTimestamp) to it.value }.sortedBy { it.first }
                 addBand(
+                    3,
                     if (basalFullScale > 0.0 && profileBasalSteps.isNotEmpty()) {
                         autoIsfGraph.smbDelivery.map { loop ->
                             val x = timestampToX(loop.timestamp, minTimestamp)
