@@ -597,7 +597,7 @@ class SmbArrows(
                 with(mutableDrawScope) {
                     // Sizes follow the 3426 graph (PointsWithLabelGraphSeries Shape.SMB), where d is one scaled
                     // pixel unit (1 sp). Baseline arrow: 6d wide, 5d tall, shaft 4.5d x dose units. BGL arrow:
-                    // 7.2d below the BGL point, 10.8d tall, 3.6d wide, fixed 4.5d shaft.
+                    // 10.8d tall, 3.6d wide, fixed 4.5d shaft, tip just under the BGL dot (dot is 6 dp across).
                     val d = 1.sp.toPx()
                     val unit = 18.sp.toPx() * 0.25f
                     val tip: Float
@@ -607,15 +607,24 @@ class SmbArrows(
                     val half: Float
                     if (pinToBottom) {
                         val units = item.stemUnits.coerceAtLeast(1)
-                        foot = layerBounds.bottom - 2f
-                        base = foot - unit * units
-                        tip = base - 5f * d
+                        val markAnchor = item.anchorY
+                        if (markAnchor != null) {
+                            // 3426: the baseline arrow's tip sits on the bottom of the green band (the low mark), its shaft
+                            // runs down from the head by dose units. (It used to sit on the bottom edge of the whole graph.)
+                            tip = layerBounds.bottom - layerBounds.height * ((markAnchor - yRange.minY) / yLength).toFloat()
+                            base = tip + 5f * d
+                            foot = base + unit * units
+                        } else {
+                            foot = layerBounds.bottom - 2f
+                            base = foot - unit * units
+                            tip = base - 5f * d
+                        }
                         stroke = if (units >= 4) 4f else 2f
                         half = 3f * d
                     } else {
                         val anchorY = item.anchorY ?: return@with
                         val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
-                        tip = dotY + 7.2f * d
+                        tip = dotY + 4.dp.toPx()
                         base = tip + 10.8f * d
                         foot = base + unit
                         stroke = 2f
@@ -641,8 +650,8 @@ class SmbArrows(
  */
 internal const val LABEL_TEXT_CACHE_SIZE = 128
 
-/** Full SMB label size. Used when the window is 500 dp tall or taller. 7.2 sp = 60% of the old 12 sp, as on the 3426 graphs. */
-internal const val SMB_LABEL_FULL_SP = 7.2f
+/** Full SMB label size. Used when the window is 500 dp tall or taller. 9.6 sp = 80% of the old 12 sp (7.2 sp was too small). */
+internal const val SMB_LABEL_FULL_SP = 9.6f
 
 /** Window height where SMB labels are full size. Shorter windows use a smaller label. */
 internal const val SMB_LABEL_REFERENCE_HEIGHT_DP = 500f

@@ -3661,7 +3661,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STEROID_BUTTON -> toggleBool(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, "Steroid buttons", "StB")
             RemoteToggleCode.LOCATION_SMS -> toggleBool(BooleanKey.AutomationCodedLocationsEnabled, "Location texts", "Loc")
             RemoteToggleCode.LOCATION_THIS_PHONE -> setLocationSmsPhone()
-            RemoteToggleCode.LIVE_STEPS -> toggleBool(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, "Live steps on virtual", "LSt")
+            RemoteToggleCode.LIVE_STEPS -> toggleBool(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, "Stepcount import from remote main AAPS phone", "LSt")
             RemoteToggleCode.INSULIN_TOTALS -> toggleBool(BooleanKey.ApsAutoIsfShowInsulinTotals, "Insulin totals row", "ITt")
             RemoteToggleCode.STAGE_APK -> stageNewestApk("list", notify = true)
             RemoteToggleCode.INSTALL_APK -> installNewestApk("list")
