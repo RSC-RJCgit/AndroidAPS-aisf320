@@ -764,19 +764,43 @@ fun GraphsSection(
         // top band) is the LAST graph, below every secondary graph, as on 3426. Its scroll/zoom is already synced as the
         // last entry of the shared list above.
         if (showGraph5) {
-            BgGraphCompose(
-                viewModel = graphViewModel,
-                bgOverlays = graphConfig.bgOverlays,
-                scrollState = g5ScrollState,
-                zoomState = g5ZoomState,
-                derivedTimeRange = derivedTimeRange,
-                nowTimestamp = nowTimestamp,
-                visibleTimeRange = bgVisibleTimeRange,
-                topBandLines = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(graphConfig.iobHeight.dp)
-            )
+            var editingGraph5 by remember { mutableStateOf(false) }
+            Box {
+                BgGraphCompose(
+                    viewModel = graphViewModel,
+                    bgOverlays = graphConfig.bgOverlays,
+                    scrollState = g5ScrollState,
+                    zoomState = g5ZoomState,
+                    derivedTimeRange = derivedTimeRange,
+                    nowTimestamp = nowTimestamp,
+                    visibleTimeRange = bgVisibleTimeRange,
+                    topBandLines = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(graphConfig.graph5Height.dp)
+                )
+                if (!isSimpleMode) {
+                    GraphEditButton(
+                        onClick = { editingGraph5 = true },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 4.dp, top = 2.dp)
+                    )
+                }
+            }
+            if (editingGraph5) {
+                // Height only: graph 5's lines are fixed (it shows what the main graph's overlays show, plus the four top band lines).
+                GraphSeriesBottomSheet(
+                    title = stringResource(CoreUiStrings.graph_number, 5),
+                    selectedSeries = emptyList(),
+                    availableSeries = emptyList(),
+                    height = graphConfig.graph5Height,
+                    maxHeight = GraphConfig.MAX_BG_GRAPH_HEIGHT_DP,
+                    onHeightChange = { h -> graphViewModel.updateGraphConfig(graphConfig.copy(graph5Height = h)) },
+                    onToggle = { },
+                    onDismiss = { editingGraph5 = false }
+                )
+            }
         }
         if (editingGraphIndex >= 0 && editingGraphIndex < activeCount) {
             val editing = graphConfig.secondaryGraphs[editingGraphIndex]

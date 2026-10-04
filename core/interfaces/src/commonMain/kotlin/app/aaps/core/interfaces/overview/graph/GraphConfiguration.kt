@@ -66,6 +66,8 @@ data class GraphConfig(
     val iobOverlays: List<SeriesType> = listOf(SeriesType.ACTIVITY),
     val bgHeight: Int = DEFAULT_GRAPH_HEIGHT_DP,
     val iobHeight: Int = DEFAULT_GRAPH_HEIGHT_DP,
+    /** Graph 5 (second copy of the glucose graph, shown last). Adjustable up to [MAX_BG_GRAPH_HEIGHT_DP] like the main graph. */
+    val graph5Height: Int = DEFAULT_GRAPH_HEIGHT_DP,
     val secondaryGraphs: List<SecondaryGraph> = listOf(
         SecondaryGraph(listOf(SeriesType.COB))
     )

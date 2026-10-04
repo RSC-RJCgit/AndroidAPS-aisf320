@@ -80,6 +80,7 @@ class GraphConfigRepositoryImpl(
         private const val KEY_IOB_OVERLAYS = "iobOverlays"
         private const val KEY_BG_HEIGHT = "bgHeight"
         private const val KEY_IOB_HEIGHT = "iobHeight"
+        private const val KEY_GRAPH5_HEIGHT = "graph5Height"
         private const val KEY_SERIES = "series"
         private const val KEY_HEIGHT = "height"
 
@@ -107,6 +108,7 @@ class GraphConfigRepositoryImpl(
                 put(KEY_IOB_OVERLAYS, overlaysToJson(config.iobOverlays))
                 put(KEY_BG_HEIGHT, config.bgHeight)
                 put(KEY_IOB_HEIGHT, config.iobHeight)
+                put(KEY_GRAPH5_HEIGHT, config.graph5Height)
                 put(
                     KEY_SECONDARY_GRAPHS,
                     buildJsonArray {
@@ -137,6 +139,8 @@ class GraphConfigRepositoryImpl(
             val iobOverlays = overlaysFromJson(obj.array(KEY_IOB_OVERLAYS), listOf(SeriesType.ACTIVITY))
             val bgHeight = obj.height(KEY_BG_HEIGHT, GraphConfig.MAX_BG_GRAPH_HEIGHT_DP)
             val iobHeight = obj.height(KEY_IOB_HEIGHT)
+            // Graph 5 used to share the IOB graph's height, so a config saved before this key existed keeps that height.
+            val graph5Height = if (obj.containsKey(KEY_GRAPH5_HEIGHT)) obj.height(KEY_GRAPH5_HEIGHT, GraphConfig.MAX_BG_GRAPH_HEIGHT_DP) else iobHeight
             val graphs = mutableListOf<SecondaryGraph>()
             for (raw in obj.array(KEY_SECONDARY_GRAPHS).orEmpty()) {
                 // Legacy format: element is an array of series names.
@@ -153,6 +157,7 @@ class GraphConfigRepositoryImpl(
                 iobOverlays = iobOverlays,
                 bgHeight = bgHeight,
                 iobHeight = iobHeight,
+                graph5Height = graph5Height,
                 secondaryGraphs = graphs
             )
         }
