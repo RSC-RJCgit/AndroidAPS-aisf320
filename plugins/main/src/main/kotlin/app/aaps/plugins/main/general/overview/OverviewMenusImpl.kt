@@ -93,7 +93,7 @@ class OverviewMenusImpl @Inject constructor(
         // Combined Carbs -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
         // timestamps. See PrepareIobAutosensGraphDataWorker.kt (combinedCarbsSeries) / GraphData.addCombinedCarbs().
         COMBINED_CARBS(R.string.overview_show_combined_carbs, app.aaps.core.ui.R.attr.combinedCarbsColor, app.aaps.core.ui.R.attr.menuTextColor, primary = true, secondary = true, shortnameId = R.string.combined_carbs_shortname),
-        // Bottom-half lines on any secondary graph (see GraphData.addBottomHalfLines()). Appended last, same order as OverviewMenus.CharType.
+        // Per-cycle lines, now always drawn on graph5's top band (see GraphData.addTopBandLines(); menu rows hidden). Appended last, same order as OverviewMenus.CharType.
         SMB_DEL(R.string.overview_show_smb_del, app.aaps.core.ui.R.attr.smbDelColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.smb_del_shortname),
         ACCE_WT(R.string.overview_show_acce_wt, app.aaps.core.ui.R.attr.acceIsfColor, app.aaps.core.ui.R.attr.menuTextColorInverse, primary = false, secondary = true, shortnameId = R.string.acce_wt_shortname),
         PP_WT(R.string.overview_show_pp_wt, app.aaps.core.ui.R.attr.ppIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.pp_wt_shortname),
@@ -196,10 +196,12 @@ class OverviewMenusImpl @Inject constructor(
             m == CharTypeData.BG_ISF.ordinal    -> masterAutoIsf
             m == CharTypeData.PP_ISF.ordinal    -> masterAutoIsf
             m == CharTypeData.DUR_ISF.ordinal   -> masterAutoIsf
-            m == CharTypeData.SMB_DEL.ordinal       -> masterAutoIsf
-            m == CharTypeData.ACCE_WT.ordinal       -> masterAutoIsf
-            m == CharTypeData.PP_WT.ordinal         -> masterAutoIsf
-            m == CharTypeData.PROFILE_BASAL.ordinal -> masterAutoIsf
+            // These four are now always drawn on graph5's top band (2026-10-04), so their per-graph checkboxes are hidden.
+            // The entries stay in the enum so saved menu arrays keep their size and order.
+            m == CharTypeData.SMB_DEL.ordinal       -> false
+            m == CharTypeData.ACCE_WT.ordinal       -> false
+            m == CharTypeData.PP_WT.ordinal         -> false
+            m == CharTypeData.PROFILE_BASAL.ordinal -> false
             m == CharTypeData.HR.ordinal        -> !config.AAPSCLIENT
             // Steps used to be unconditionally hidden on client builds (no local StepsCount sync),
             // but PrepareBgDataWorker.kt/PrepareTreatmentsDataWorker.kt now fall back to parsing step

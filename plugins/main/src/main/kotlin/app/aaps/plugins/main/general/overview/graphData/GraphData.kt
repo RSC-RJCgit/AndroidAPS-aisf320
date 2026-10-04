@@ -33,6 +33,9 @@ import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.max
 
+// Share of graph5's height, from the top, used by the SMB / acce weight / pp weight / profile basal lines. See addTopBandLines().
+private const val TOP_BAND_FRACTION = 0.22
+
 @Suppress("UNCHECKED_CAST")
 class GraphData @Inject constructor(
     private val profileFunction: ProfileFunction,
@@ -330,23 +333,19 @@ class GraphData @Inject constructor(
         //addSeries(overviewData.iobPredictions2Series)
     }
 
-    // SMB / acce ISF weight / pp ISF weight / profile basal lines in the bottom (negative) half of a secondary panel,
-    // each only when its own menu option is ticked for that graph. Must be called AFTER the panel's own scale-setting
-    // series (addIob/addIobTh/...) so maxY is final. If nothing else set a range yet (minY still unset), the panel gets
-    // a plain -1..1 range so these lines can stand alone. With a pure ISF-factor range (minY >= 0) there is no empty
-    // bottom half, so nothing is drawn.
-    fun addBottomHalfLines(smb: Boolean, acceWt: Boolean, ppWt: Boolean, profileBasal: Boolean) {
-        if (!(smb || acceWt || ppWt || profileBasal)) return
-        if (minY == Double.MAX_VALUE) {
-            maxY = 1.0
-            minY = -1.0
-        }
-        if (minY >= 0.0) return
-        overviewData.bottomHalfScale.multiplier = maxY
-        if (smb) addSeries(overviewData.bottomSmbSeries as LineGraphSeries<ScaledDataPoint>)
-        if (acceWt) addSeries(overviewData.bottomAcceWtSeries as LineGraphSeries<ScaledDataPoint>)
-        if (ppWt) addSeries(overviewData.bottomPpWtSeries as LineGraphSeries<ScaledDataPoint>)
-        if (profileBasal) addSeries(overviewData.bottomProfileBasalSeries as LineGraphSeries<ScaledDataPoint>)
+    // SMB / acce ISF weight / pp ISF weight / profile basal lines in the top band of graph5 (moved 2026-10-04 from graph4's
+    // bottom half), always drawn on graph5, including in BGL-only mode. The band is the top 22% of the panel's Y range:
+    // the series hold 0..1, so shift = band bottom and multiplier = band height. Must be called AFTER graph5's own
+    // scale-setting series (addBgReadings/addBasals/...) so maxY is final.
+    fun addTopBandLines() {
+        if (maxY <= 0.0 || maxY == Double.MIN_VALUE) return
+        val bandHeight = TOP_BAND_FRACTION * maxY
+        overviewData.bottomHalfScale.shift = maxY - bandHeight
+        overviewData.bottomHalfScale.multiplier = bandHeight
+        addSeries(overviewData.bottomSmbSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.bottomAcceWtSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.bottomPpWtSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.bottomProfileBasalSeries as LineGraphSeries<ScaledDataPoint>)
     }
 
     // scale in % of vertical size (like 0.3)

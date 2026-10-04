@@ -41,9 +41,10 @@ interface OverviewMenus {
         // Combined Carbs -- carbAbsorptionSeries + uamCarbImpactSeries summed at matching bucket
         // timestamps. Same ordinal-stability/migration-reset notes as above.
         COMBINED_CARBS,
-        // Bottom-half lines (per AIV cycle) on any secondary graph: SMB delivered (0..1U), acce ISF weight
-        // (0..1), pp ISF weight (0..0.15), profile basal (0..30% of max IOB). Appended at the end for ordinal
-        // stability; OverviewMenusImpl.loadGraphConfig() now pads older saved configs instead of resetting them.
+        // Per-AIV-cycle lines: SMB delivered (0..1U), acce ISF weight (0..1), pp ISF weight (0..0.20), profile
+        // basal (0..30% of max IOB). Since 2026-10-04 they are always drawn in graph5's top band and these menu
+        // entries are hidden (kept so saved arrays stay the same size/order). Appended at the end for ordinal
+        // stability; OverviewMenusImpl.loadGraphConfig() pads older saved configs instead of resetting them.
         SMB_DEL,
         ACCE_WT,
         PP_WT,

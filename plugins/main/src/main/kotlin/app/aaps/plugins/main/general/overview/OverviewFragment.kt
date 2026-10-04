@@ -3176,6 +3176,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Graph5-only UKF1 (UKF2/UKF3 graph lines stopped 2026-09-02).
             graph5Data.addRawBgSmoothedGraph5(false)
             if (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) graph5Data.addBasals()
+            // SMB delivered / acce weight / pp weight / profile basal: always on graph5 (even in BGL-only mode), top band.
+            // After every scale-setting series above so maxY is final. Keep in sync with HistoryBrowseActivity.kt.
+            graph5Data.addTopBandLines()
             // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column
             // area, one line below the pp/acc/du row.
             graph5Data.addTargetOffsetDuTAnnotation()
@@ -3303,14 +3306,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)) secondGraphData.addUamCarbImpact(if (useUAMForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)) secondGraphData.addCombinedCarbs(if (useCombinedCarbsForScale) 1.0 else 0.8)
-            // SMB / acce ISF weight / pp ISF weight / profile basal lines in the bottom half of this panel, each by its own
-            // menu option. After every scale-setting series above so maxY is final. Keep in sync with HistoryBrowseActivity.kt.
-            secondGraphData.addBottomHalfLines(
-                overviewMenus.isActiveCharTypeData(g+1, OverviewMenus.CharType.SMB_DEL.ordinal),
-                overviewMenus.isActiveCharTypeData(g+1, OverviewMenus.CharType.ACCE_WT.ordinal),
-                overviewMenus.isActiveCharTypeData(g+1, OverviewMenus.CharType.PP_WT.ordinal),
-                overviewMenus.isActiveCharTypeData(g+1, OverviewMenus.CharType.PROFILE_BASAL.ordinal)
-            )
+            // (SMB / acce weight / pp weight / profile basal lines used to be drawn here in the bottom half; since 2026-10-04
+            // they are always drawn in graph5's top band instead -- see graph5Data.addTopBandLines() below.)
             // CarePortal notes: swapped from graph2 to graph4 (g==3) — was on graph2, swapped positions
             // with the SMB stacked labels below. Same TREAT toggle source as before.
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
