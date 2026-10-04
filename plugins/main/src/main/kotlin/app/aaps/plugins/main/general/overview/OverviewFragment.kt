@@ -82,7 +82,6 @@ import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
 import app.aaps.core.interfaces.rx.events.EventInitializationChanged
 import app.aaps.core.interfaces.rx.events.EventMobileToWear
 import app.aaps.core.interfaces.rx.events.EventMjUserAction
-import app.aaps.core.interfaces.rx.events.EventNewHistoryData
 import app.aaps.core.interfaces.rx.events.EventNewOpenLoopNotification
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
@@ -438,20 +437,17 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Mirrors what the KMP repo's MainViewModel.uiState gets for free via
         // stateIn(SharingStarted.WhileSubscribed(5_000)) + collectAsStateWithLifecycle() -- its data
         // pipeline actually restarts fresh every time the screen becomes visible again, not just redraws.
-        // Reuses runOnScaleChanged() (PrepareBucketedData -> PrepareBgData -> graph redraw) rather than
+        // Reuses the range-dropdown path (PrepareBucketedData -> PrepareBgData -> graph redraw) rather than
         // the full MAIN_CALCULATION chain -- deliberately does NOT re-invoke the loop/dosing algorithm
         // just because the screen turned on.
-        overviewData.initRange()
-        // Temp diagnostic (2026-10-01): confirm this actually runs on resume, since real-device testing
-        // showed the graph still blank until the next natural loop cycle or a manual scale click --
-        // either this call never fires, or firing it isn't enough to redraw what's on screen. Remove
-        // once confirmed either way.
-        aapsLogger.debug(LTag.CORE, "OverviewFragment.onResume: calling runOnScaleChanged for fresh graph data")
-        calculationWorkflow.runOnScaleChanged(iobCobCalculator, overviewData)
-        // The range-dropdown path (IobCobCalculatorPlugin, RangeToDisplay change) does initRange + runOnScaleChanged
-        // (both above) AND sends EventNewHistoryData(0, false). That last step was the only part resume did not
-        // repeat, and a dropdown click refreshes the graph immediately -- so do the same here.
-        rxBus.send(EventNewHistoryData(0, false))
+        // 2026-10-04, per explicit request: send the very event a 3-hour/dropdown click sends
+        // (EventPreferenceChange(RangeToDisplay), no setting actually changed). Two listeners then run exactly as for a
+        // click: IobCobCalculatorPlugin (initRange + runOnScaleChanged + EventNewHistoryData) and this fragment's own
+        // EventPreferenceChange -> scheduleUpdateGUI(), whose refreshAll() 500 ms later redraws from the freshly built data.
+        // The earlier version called the workers directly and never got that delayed redraw, so fresh data only reached
+        // the screen after the 1-second EventUpdateOverviewGraph debounce.
+        aapsLogger.debug(LTag.CORE, "OverviewFragment.onResume: sending RangeToDisplay change event for fresh graph data")
+        rxBus.send(EventPreferenceChange(IntNonKey.RangeToDisplay.key))
         updatePumpStatus()
         updateCalcProgress()
         if (config.AAPSCLIENT) tryFlushPendingRelayTts()
