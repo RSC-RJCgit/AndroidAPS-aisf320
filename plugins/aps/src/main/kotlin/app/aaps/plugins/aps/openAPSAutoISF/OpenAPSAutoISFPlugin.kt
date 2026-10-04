@@ -2492,19 +2492,48 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Bolus-age consumers must ignore the 0 U NORMAL records that Omnipod Dash writes when a
     // basal-compensation bolus command is denied or cannot be confirmed. The longest live gate is
     // 210 minutes, so no positive NORMAL bolus in one day is equivalent to one older than the gate.
-    private fun minutesSinceLastPositiveNormalBolus(): Int? {
+    // 2026-10-04, per explicit request: every "minutes since last bolus / carbs" test in this file now reads ONE value,
+    // minutesSinceLastMealEvent(): the age of the newest ordinary (non-extended) carb entry; but while an extended-carb entry
+    // (duration > 0) started in the last 8 h exists, carb timestamps no longer mark the meal, so it uses the age of the last
+    // MANUAL bolus instead. With no carb entry in the last 24 h it also falls back to the last manual bolus age.
+    // "Manual" = NORMAL, amount > 0, and not one of the app's own partial doses: delayed bolus attempts, FPU "Delayed <label>
+    // dose", split/reduced-split parts, or the Virtual-only pseudo-wizard bolus (all recorded as NORMAL boluses by BolusWizard /
+    // DelayedBolusWorker / applyVirtualPseudoWizard, with those note texts). SMBs are a different type and never counted.
+    private fun isAutomatedOrPartialBolusNote(notes: String?): Boolean {
+        val n = notes ?: return false
+        return n.startsWith("Delayed ") || n.contains("Split bolus attempt") ||
+            n.contains("Reduced split bolus part") || n.contains("pseudo-wizard")
+    }
+
+    private fun minutesSinceLastManualBolus(): Int? {
         val now = dateUtil.now()
         val lastBolusTime = persistenceLayer
             .getBolusesFromTimeToTime(now - T.hours(24).msecs(), now, ascending = false)
-            .firstOrNull { it.type == BS.Type.NORMAL && it.amount > 0.0 }
+            .firstOrNull { it.type == BS.Type.NORMAL && it.amount > 0.0 && !isAutomatedOrPartialBolusNote(it.notes) }
             ?.timestamp
             ?: return null
         return ((now - lastBolusTime).toDouble() / (60 * 1000)).toInt()
     }
 
-    private fun minutesSinceLastCarbs(): Int? {
-        val lastCarbTime = persistenceLayer.getNewestCarbs()?.timestamp ?: return null
-        return ((dateUtil.now() - lastCarbTime).toDouble() / (60 * 1000)).toInt()
+    // Cached for 20 s: many blocks ask each cycle, and this reads both the bolus and carb tables.
+    private var mealEventCacheAt = 0L
+    private var mealEventCacheValue: Int? = null
+
+    private fun minutesSinceLastMealEvent(): Int? {
+        val now = dateUtil.now()
+        if (mealEventCacheAt > 0L && now >= mealEventCacheAt && now - mealEventCacheAt < 20_000L) return mealEventCacheValue
+        val carbs = persistenceLayer.getCarbsFromTime(now - T.hours(24).msecs(), ascending = false).blockingGet()
+            .filter { it.isValid && it.amount > 0.0 && it.timestamp <= now }
+        val extendedRecent = carbs.any { it.duration > 0L && it.timestamp >= now - T.hours(8).msecs() }
+        val lastCarbTime = carbs.filter { it.duration == 0L }.maxOfOrNull { it.timestamp }
+        val age = when {
+            extendedRecent -> minutesSinceLastManualBolus()
+            lastCarbTime != null -> ((now - lastCarbTime).toDouble() / (60 * 1000)).toInt()
+            else -> minutesSinceLastManualBolus()
+        }
+        mealEventCacheAt = now
+        mealEventCacheValue = age
+        return age
     }
 
     // Fast rise: delta and short delta above 0.2 mmol/L, long delta above 0.1 mmol/L,
@@ -2514,12 +2543,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (delta <= 0.2 * 18.0182) return false
         if (shortDelta <= 0.2 * 18.0182) return false
         if (longDelta <= 0.1 * 18.0182) return false
-        val bolusAge = minutesSinceLastPositiveNormalBolus()
-        val carbAge = minutesSinceLastCarbs()
+        val mealAge = minutesSinceLastMealEvent()
         val overNineFive = bg > 9.5 * 18.0182
-        val recentBolus = bolusAge != null && bolusAge < 150
-        val recentCarbs = carbAge != null && carbAge < 150
-        return overNineFive || recentBolus || recentCarbs
+        val recentMeal = mealAge != null && mealAge < 150
+        return overNineFive || recentMeal
     }
 
     // Smallest whole percent whose unit value is strictly above the insulin already on board.
@@ -3672,7 +3699,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // entirely; the UPPER cap (< 14.4*stackK, keeping mild out of bg3's territory) still always
             // applies, so mutual exclusivity with bg3 is preserved either way.
             val rawDelta1FloorOk = g < 162.1 /* 9.0 mmol */ || rawDelta1 >= 4.5 * stackK
-            val lastBolusMinMild = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMinMild = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             // 4 Sep 2026 15:30-15:59: BGL 5.5→7.3 after the 13:34 meal, IOBd5 −0.11..+0.10 (leftover
             // IOB decaying), RawUKF5 often 0.73-0.97 (bg3 band). BMild's IOB-rising + raw<0.80 split
             // left nobody to fire; bg3 was GivBlk'd from a 15:11 delivery-suppressed Giv-3 at BGL 5.0.
@@ -5964,7 +5991,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val iob = iobData.iob
             val cob = mealData.mealCOB
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val acceWeight = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
 
             // Daytime window: 01:01 – 22:00. Overnight window: 22:00 – 01:00.
@@ -6018,7 +6045,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ld  = glucoseStatus.longAvgDelta  // mg/dL, 40-min avg
             val iob = iobData.iob
             val cob = mealData.mealCOB
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val gate = profile_percentage >= 65 && lastBolusMin >= 5
 
             // Block A — SkittlesTT3 #1: fallback at very low glucose (BGL/data issues tolerated)
@@ -6684,7 +6711,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val ld = glucoseStatus.longAvgDelta
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val cannulaH = hoursSinceCurrentPodChange()
             val oldOrNew = cannulaH != null && (cannulaH >= 60.0 || cannulaH <= 6.0)
             if (g >= 180.2 /* 10.0 mmol */ && d in 1.8..5.4 /* 0.1–0.3 mmol */
@@ -6710,7 +6737,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val tt = activeTtMgdl()
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             if (isTimeBetween(5, 30, 8, 30)
                 && g <= 144.1 /* 8.0 mmol */ && d >= 6.3 /* 0.35 mmol */ && sd >= 4.5 /* 0.25 mmol */
                 && recentSteps60Minutes < 10 && mealData.mealCOB == 0.0 && lastBolusMin >= 180
@@ -6803,7 +6830,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             val tt = activeTtMgdl()
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val delayedBolusPending = preferences.get(LongKey.DelayedBolusBlockSmbUntil) > dateUtil.now()
             val aoB1 = tt != null && fuzzyEquals(tt, mmolToMgdl(6.8)) && g >= 171.2 /* 9.5 mmol */
             val aoB2 = tt == null && g <= 153.1 /* 8.5 mmol */ && d >= 1.8 /* 0.1 mmol */
@@ -6991,7 +7018,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d  = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
             val iobTH = iobThresholdPercent
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val cob = mealData.mealCOB
             // Safety cap: within the first 30 min post-bolus, don't let bg1/bg2 fire if delta is
             // already >=0.5 mmol — an early, already-large delta this soon after a bolus reads as a
@@ -7175,8 +7202,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val iobChange5 = totalIobAt(dateUtil.now()) - totalIobAt(dateUtil.now() - 5 * 60_000L)
             val stackK = if (smbInterval5Sec() <= 70) 1.10 else 1.0
             val thresholdScale = deliveryBaseline / 0.17
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
-            val lastCarbMin = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val profileName = profileFunction.getProfileName()
             val outerGuardOk = profile_percentage == 100 && activeTtMgdl() == null
                 && preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
@@ -7206,7 +7232,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val mildDeliveryRatioWould = mildBase + 0.15   // flat, matches BolusGivenMild/Failsafe (2026-08-31)
             consoleError.add("BoostDebug settings: deliveryBaseline=${round(deliveryBaseline, 2)} mildBase=${round(mildBase, 2)} hardStackTarget=${round(hardStackTarget, 2)} currentRatio=${round(smb_delivery_ratio, 2)} thresholdScale=${round(thresholdScale, 2)} ;;")
             consoleError.add("BoostDebug stacking: smbStacking=$smbStacking smbInterval5Sec=${round(smbInterval5Sec(), 1)} smbCount5Min=${smbCount5Min()} stackK=${round(stackK, 2)} ;;")
-            consoleError.add("BoostDebug signals: g=${convert_bg(g)} d=${deltaForDisplay(d)} rawDelta5=${deltaForDisplay(rawDelta5)} rawDelta1=${deltaForDisplay(rawDelta1)} iobChange5=${round(iobChange5, 2)} lastBolusMin=$lastBolusMin lastCarbMin=$lastCarbMin longAvgDelta=${deltaForDisplay(glucoseStatus.longAvgDelta)} recentSteps60Minutes=$recentSteps60Minutes ;;")
+            consoleError.add("BoostDebug signals: g=${convert_bg(g)} d=${deltaForDisplay(d)} rawDelta5=${deltaForDisplay(rawDelta5)} rawDelta1=${deltaForDisplay(rawDelta1)} iobChange5=${round(iobChange5, 2)} lastMealMin=$lastBolusMin longAvgDelta=${deltaForDisplay(glucoseStatus.longAvgDelta)} recentSteps60Minutes=$recentSteps60Minutes ;;")
             consoleError.add("BoostDebug bg3: rawDelta1FloorOk=$rawDelta1FloorOkBg3 deliverySuppressed=$deliverySuppressedBg3 wouldFire=$bg3Would ;;")
             consoleError.add("BoostDebug mild: rawDelta1FloorOk=$rawDelta1FloorOkMild deliveryRatioWould=${round(mildDeliveryRatioWould, 2)} wouldFire=$mildWould ;;")
         }
@@ -7514,7 +7540,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val d  = glucoseStatus.delta
                 val cob = mealData.mealCOB
                 val iob = iobData.iob
-                val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+                val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
                 // Block 1: TT 4.6–5.9 mmol, COB>10, IOB>=2.2, BGL>=5.0, Delta>=0
                 // bmildOwnFiveTtActive() guard added 2026-09-12 -- this range fully contains BMild's
                 // own 5.0mmol 2-min hold TT, and BMild's own firing conditions are nearly the same
@@ -7623,7 +7649,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd  = glucoseStatus.shortAvgDelta
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
             val iobTH = iobThresholdPercent
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             // Block 1: BGL falling (SDelta<=-0.1mmol, Delta<=-0.1mmol), 5.0–8.5mmol,
             //          bolus>=80min ago, either iobTH at normal (>=71) or deep-hypo acce (<=0.03)
             val ctB1 = sd <= -1.8 && d <= -1.8 && g > 90.1 && g <= 153.1
@@ -7815,7 +7841,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // the 50SetRecent/PP50Off flap fix elsewhere in this file.
         if (readyToRun("MoreMJ", 5) && readyToRun("MJoff", 65) && isTimeBetween(6, 0, 0, 0)) {
             val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val existingConditionsMet = acceW <= 0.11
                 && recentSteps180Minutes <= 400
                 && recentSteps60Minutes <= 200
@@ -8053,7 +8079,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // on a Δ 0.21 / IOB 3.57 knife-edge, then stacked 130% + 4.2 TT + high acce. A late
             // pod-rise after food is still visible at 30+ min; this quiet window is SMB-excluded
             // (NORMAL bolus only, same helper as Giv).
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             if (podH != null && (podH <= 6.0 || podH >= 48.0)
                 && d >= 3.6 /* 0.2 mmol */
                 && mealData.mealCOB >= 16.0
@@ -8580,7 +8606,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (slowRiseCriteriaMet(
                     glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta,
                     glucoseStatus.longAvgDelta, mealData.mealCOB, totalIobAt(dateUtil.now()),
-                    steps60, steps180, minutesSinceLastPositiveNormalBolus(), minutesSinceLastCarbs(),
+                    steps60, steps180, minutesSinceLastMealEvent(), minutesSinceLastMealEvent(),   // same meal-event age for both arguments (2026-10-04)
                     gentleDeltasOnly = !recentDelayedBolus
                 ) && startTempTargetIfNeeded(4.2 * 18.0, 5)
             ) {
@@ -8833,7 +8859,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("EveningTH", 5)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
             val onCurrentProfileEither = profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfLowProfileName) || profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfStandardProfileName)
             // TWO FIXES, both from the careportal trail on the night of 7->8 Aug 2026, which showed "Eve"
@@ -9023,7 +9049,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val sd = glucoseStatus.shortAvgDelta
             val iob = iobData.iob
             val cob = mealData.mealCOB
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val b1 = lastBolusMin <= 5 && sd <= -3.6 /* -0.2 mmol */ && d <= -5.4 /* -0.3 mmol */
                 && g <= 126.1 /* 7.0 mmol */ && iob >= 0.5 && cob >= 9.0
             val b2 = lastBolusMin <= 15 && checkAutomationState("MJ", "MJ active")
@@ -9044,7 +9070,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // safely exceed Bolus2's own duration under either reading of it (SMS text says "10mins",
         // coded action is 5 min — see the mismatch noted on Bolus2 above).
         if (checkAutomationState("Profile", "Bolus")) {
-            val lastBolusMin = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             if (lastBolusMin > 15) {
                 setAutomationState("Profile", "C100")
             }
@@ -9092,8 +9118,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // while raw g is still comfortably high (e.g. g~6.5mmol at trigger, per a real report).
             // ah1b1/b2/b3 are untouched -- they already gate on g itself, so a fresh dose/meal can't
             // spoof them the same way.
-            val ah1b4RecentBolusOrCarbs = (minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE) < 20 ||
-                (minutesSinceLastCarbs() ?: Int.MAX_VALUE) < 20
+            val ah1b4RecentBolusOrCarbs = (minutesSinceLastMealEvent() ?: Int.MAX_VALUE) < 20
             val ah1b4 = hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8 && acceW <= 0.08 && !ah1b4RecentBolusOrCarbs
             if (ah1b1 || ah1b2 || ah1b3 || ah1b4) {
                 setBgAccelIsfWeight(0.10)
@@ -9142,8 +9167,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // 3.8 -> 3.4 (tightened), AND'd with HP1 <= 3.8 -- same reasoning as AlarmHypo1's ah1b4.
             // Same recent-bolus/carb gate added 2026-08-29 on this branch too -- see ah1b4's own comment
             // for why. Only applies to the HP-predictive branch; the two raw-g branches above are untouched.
-            val ah2HpRecentBolusOrCarbs = (minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE) < 20 ||
-                (minutesSinceLastCarbs() ?: Int.MAX_VALUE) < 20
+            val ah2HpRecentBolusOrCarbs = (minutesSinceLastMealEvent() ?: Int.MAX_VALUE) < 20
             val lowOk = g <= 77.5 /* 4.3 mmol */ ||
                 (g <= 99.1 /* 5.5 mmol */ && recentSteps30Minutes >= 1000) ||
                 (hp != null && hp <= 3.4 && hp1 != null && hp1 <= 3.8 && !ah2HpRecentBolusOrCarbs)
@@ -9217,7 +9241,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Match the other coded automations' "no bolus within" meaning: NORMAL/user boluses only.
             // SMBs are deliberately ignored here; otherwise an active loop would make this gate nearly
             // permanently false.
-            val lastNormalBolusMinutes = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
+            val lastNormalBolusMinutes = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val noNormalBolus120 = lastNormalBolusMinutes >= 120
             val allBgHigh = allRecentBgAbove90Minutes(8.0 * GlucoseUnit.MMOLL_TO_MGDL)
             val duraActiveMinutes = recentAdaptationMinutes { it.duraIsf }
@@ -9537,8 +9561,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val replaySmbSum30Min = smbSum30Min()
         val replaySub75HeavyDeliveryCooldown = !readyToRun("Sub75HeavyDelivery", 10)
         val replayFastRiseSlopeCompensationRatio = fastRiseSlopeCompensationRatio()
-        val replayLastBolusMinutes = minutesSinceLastPositiveNormalBolus() ?: Int.MAX_VALUE
-        val replayLastCarbMinutes = minutesSinceLastCarbs() ?: Int.MAX_VALUE
+        val replayLastBolusMinutes = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
+        val replayLastCarbMinutes = replayLastBolusMinutes   // both now the single meal-event age (2026-10-04)
         val replayIobChange5Min = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
         val lowBgSnapshotAt = dateUtil.now()
         val replayRecentLowBG = recentLowBgMgdl(at = lowBgSnapshotAt) ?: 999.0
