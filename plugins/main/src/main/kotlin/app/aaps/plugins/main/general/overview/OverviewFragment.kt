@@ -1443,7 +1443,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Added 2026-09-17: on/off for ApsAutoIsfUseLiveStepsOnVirtual -- same toggle the
         // Settings-screen AdaptiveSwitchPreference exposes, just reachable from List 2 too.
         // Same EventAutoIsfDirectTtCode dispatch as UKF1_DOSING_TOGGLE/LOCATION_SMS_TOGGLE above.
-        LIVE_STEPS_ON_VIRTUAL_TOGGLE("Live steps on VirtualPump on/off", 5.206),
+        LIVE_STEPS_ON_VIRTUAL_TOGGLE("Stepcount import from remote main AAPS phone on/off", 5.206),
         // Added 2026-09-20 (test toggles, also Settings switches): FastRise size tiers and the post-low rebound guard
         // (LoReb). Same EventAutoIsfDirectTtCode dispatch as the toggles above; Client relays 5.226 / 5.228.
         FAST_RISE_TOGGLE("FastRise SMB tiers on/off (test)", 5.226),

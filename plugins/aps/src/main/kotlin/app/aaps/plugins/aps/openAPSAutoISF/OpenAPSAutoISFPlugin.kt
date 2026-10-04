@@ -446,7 +446,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // immediately from List 2 -- VirtualPump-only, no effect on any other pump type.
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
                         preferences.put(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, newState)
-                        sendSms("Live steps on VirtualPump: ${if (newState) "ON" else "OFF"}")
+                        sendSms("Stepcount import from remote main AAPS phone: ${if (newState) "ON" else "OFF"}")
                         addCarePortalNote("LSt${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local live-steps-on-Virtual toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Live steps on VirtualPump toggled", true))

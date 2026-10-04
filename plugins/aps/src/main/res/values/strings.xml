@@ -16,8 +16,8 @@
     <string name="openaps_auto_isf">Auto ISF</string>
     <string name="mj_kotlin_buttons_enabled_title">MJ Kotlin buttons</string>
     <string name="mj_kotlin_buttons_enabled_summary">Show the direct Start/Restore MJ button on Overview. This does not use native Automation entries.</string>
-    <string name="use_live_steps_on_virtual_title">Use loop phone\'s steps on VirtualPump</string>
-    <string name="use_live_steps_on_virtual_summary">VirtualPump only — has no effect on any other pump type. When on, Virtual\'s step-count gates (BasalUp, MoreMJ, etc.) use the loop phone\'s own step counts instead of this device\'s local sensor.</string>
+    <string name="use_live_steps_on_virtual_title">Stepcount import from remote main AAPS phone</string>
+    <string name="use_live_steps_on_virtual_summary">VirtualPump only — has no effect on any other pump type. When on, this phone\'s step-count gates (BasalUp, MoreMJ, etc.) use the step counts imported from the remote main AAPS phone (the one that runs the real pump) instead of this phone\'s own step sensor.</string>
     <string name="fast_rise_enabled_title">FastRise SMB size tiers (test)</string>
     <string name="fast_rise_enabled_summary">On (default) = the Libre FAST RISE tiers cut the SMB by x0.2-x0.9 depending on the rise. Off = those tiers are skipped (sensor-glitch guards, the late FastRise taper and the cumulative SMB cap stay active). For testing.</string>
     <string name="low_rebound_guard_enabled_title">Post-low rebound guard, LoReb (test)</string>
