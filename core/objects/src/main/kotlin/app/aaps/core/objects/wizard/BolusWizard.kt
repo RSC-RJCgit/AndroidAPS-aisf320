@@ -1274,10 +1274,16 @@ class BolusWizard @Inject constructor(
                         if (plan.capped) " [CAPPED at ${plan.numDoses}h, full tier=${plan.fullTierInsulin}U/8h]" else ""
                 )
                 preferences.put(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU, Math.round(plan.totalInsulin * 1000))
+                val scheduledAt = dateUtil.now()
                 for (i in 1..plan.numDoses) {
                     val delayMins = if (plan.numDoses == 1) plan.durationMinutes.coerceAtLeast(1)
                     else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
-                    scheduleSingleDelayedDose(plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken, isLast = i == plan.numDoses)
+                    // When the NEXT part is due: a failed check on this part is re-checked every 10 min until 10 min before it.
+                    val nextDueAt = if (i < plan.numDoses) scheduledAt + T.mins(plan.durationMinutes.toLong() * (i + 1) / plan.numDoses).msecs() else null
+                    scheduleSingleDelayedDose(
+                        plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken,
+                        deliverAt = scheduledAt + T.mins(delayMins.toLong()).msecs(), isLast = i == plan.numDoses, nextDueAt = nextDueAt
+                    )
                 }
                 totalProjectedFutureSplitDoses += plan.totalInsulin
                 noteDetails.add(
@@ -1376,6 +1382,25 @@ class BolusWizard @Inject constructor(
     // cancellation is visible and inspectable exactly like a delivered or calculated-zero dose. Left out (null) at the
     // one call site that already gets its own calc description from insertZeroDoseTreatment moments earlier
     // (the isLast IOB-rose branch), so that event is not recorded twice.
+    // One CarePortal note when an FPU part's due-time check fails and it is being re-checked every 10 min instead of cancelled
+    // ("D1.30", 5 chars like the cancel note). Not repeated on each re-check, and no zero-dose bolus marker.
+    private fun deferDoseNote(amount: Double, reason: String) {
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = NoteTimestampAllocator.next(dateUtil.now()),
+                type = TE.Type.NOTE,
+                glucoseUnit = profileFunction.getUnits()
+            ).also {
+                it.note = "D${decimalFormatter.to2Decimal(amount)}"
+                it.duration = T.mins(1).msecs()
+            },
+            action = Action.CAREPORTAL,
+            source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
+            note = "Split/protein/fat dose deferred, re-checking every 10 min: $reason",
+            listValues = listOf()
+        ).blockingGet()
+    }
+
     private fun cancelDoseNote(amount: Double, reason: String, label: String? = null, iobBaseline: Double? = null) {
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
@@ -1703,13 +1728,24 @@ class BolusWizard @Inject constructor(
     // the anticipated protein/fat-driven rise, so iobBaseline (IOB right after the immediate dose was
     // delivered — shared across every call in the series, see the call site) is compared against the
     // live IOB at delivery time; only a genuine rise reduces the dose, and dropping to <=0 cancels it
-    // entirely (no partial delivery, no retry) — for just this call, other sub-doses are unaffected.
+    // for now (no partial delivery) — for just this call, other sub-doses are unaffected. Since 2026-10-05 a failed
+    // due-time check (this one, BG safety, profile, pump, superbolus) is re-checked every 10 min instead of being
+    // dropped, until 10 min before the next part is due (see the nextDueAt parameter below).
     private fun scheduleSingleDelayedDose(
         dose: Double, delayMins: Int, label: String, schedulingPct: Int, iobBaseline: Double, myScheduleToken: Long,
         deliverAt: Long = dateUtil.now() + T.mins(delayMins.toLong()).msecs(),
         // Only the LAST sub-dose of the FPU series writes a 0U bolus marker when it calculates to <=0
         // (2026-09-19, explicit request); earlier ones just log and write their cancel note.
-        isLast: Boolean = true
+        isLast: Boolean = true,
+        // 2026-10-05, per explicit request: a due-time check that fails (BG safety, IOB rise, profile switch, pump
+        // suspended, superbolus) no longer cancels the part for good. It is re-checked every 10 min and delivered the
+        // first time everything passes, and is only dropped (cancelled with an "expired" note) once the next re-check
+        // would fall inside the 10 min before the NEXT FPU part is due. nextDueAt = when that next part is due (null for
+        // the last part, which gets a 30 min window from its own first due time). "Bolus stopped" / "superseded" still
+        // cancel at once. firstDueAt/deferNoted just carry state along the re-checks.
+        nextDueAt: Long? = null,
+        firstDueAt: Long = deliverAt,
+        deferNoted: Boolean = false
     ) {
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
@@ -1732,48 +1768,61 @@ class BolusWizard @Inject constructor(
             // (e.g. a short 50% profile switch) can't cancel doses that aren't due for hours -- previously
             // fpu1..fpu4 (due 1h apart) were all cancelled together by one switch minutes after scheduling.
             if (dateUtil.now() < deliverAt) {
-                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt, isLast)
+                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt, isLast, nextDueAt, firstDueAt, deferNoted)
                 return@postDelayed
+            }
+            // A check failed at/after the due time: re-check in 10 min unless that would be inside the last 10 min before the
+            // next FPU part is due (30 min after its own due time for the last part), in which case drop it as expired.
+            // The dose stays counted in the Warsaw pending total while it waits. onExpired runs only on that final drop.
+            fun deferOrCancel(logReason: String, noteReason: String, withLabel: Boolean = true, onExpired: (() -> Unit)? = null) {
+                val retryAt = dateUtil.now() + T.mins(10).msecs()
+                val deadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
+                if (retryAt <= deadline) {
+                    aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — deferring ${dose}U, re-check at ${dateUtil.timeString(retryAt)} (window ends ${dateUtil.timeString(deadline)})")
+                    if (!deferNoted) deferDoseNote(dose, noteReason)
+                    scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, retryAt, isLast, nextDueAt, firstDueAt, true)
+                } else {
+                    aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — retry window over, cancelling ${dose}U")
+                    onExpired?.invoke()
+                    val expired = "$noteReason (not delivered within the retry window)"
+                    if (withLabel) cancelDoseNote(dose, expired, label, iobBaseline) else cancelDoseNote(dose, expired)
+                    decrementWarsawPendingRemaining(dose)
+                }
             }
             val pct = activeProfileSwitchPct()
             if (pct < 100) {
-                aapsLogger.info(LTag.CORE, "DelayedDose($label): profile switch at $pct% (scheduled at $schedulingPct%) — cancelling ${dose}U")
-                cancelDoseNote(dose, "$label dose: profile switch to $pct%", label, iobBaseline)
-                decrementWarsawPendingRemaining(dose)
+                deferOrCancel("profile switch at $pct% (scheduled at $schedulingPct%)", "$label dose: profile switch to $pct%")
                 return@postDelayed
             }
             if (pumpUnavailable()) {
-                aapsLogger.info(LTag.CORE, "DelayedDose($label): pump suspended — cancelling ${dose}U")
-                cancelDoseNote(dose, "$label dose: pump suspended", label, iobBaseline)
-                decrementWarsawPendingRemaining(dose)
+                deferOrCancel("pump suspended", "$label dose: pump suspended")
                 return@postDelayed
             }
             if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
-                aapsLogger.info(LTag.CORE, "DelayedDose($label): superbolus active — cancelling ${dose}U")
-                cancelDoseNote(dose, "$label dose: superbolus active", label, iobBaseline)
-                decrementWarsawPendingRemaining(dose)
+                deferOrCancel("superbolus active", "$label dose: superbolus active")
                 return@postDelayed
             }
             val gs = glucoseStatusProvider.glucoseStatusData
             val bgOk = gs != null && gs.glucose >= 126.1 /* 7.0 mmol */ && gs.delta > -0.90 /* -0.05 mmol */ && gs.shortAvgDelta > -0.90 /* -0.05 mmol */
             if (!bgOk) {
-                aapsLogger.info(LTag.CORE, "DelayedDose($label): BG safety check failed (g=${gs?.glucose} d=${gs?.delta} sd=${gs?.shortAvgDelta}) — cancelling ${dose}U")
-                cancelDoseNote(dose, "$label dose: BG safety check failed", label, iobBaseline)
-                decrementWarsawPendingRemaining(dose)
+                deferOrCancel("BG safety check failed (g=${gs?.glucose} d=${gs?.delta} sd=${gs?.shortAvgDelta})", "$label dose: BG safety check failed")
                 return@postDelayed
             }
             val liveIob = currentTotalIob()
             val iobIncrease = max(0.0, liveIob - iobBaseline)
             val thisDose = Round.roundTo(dose - iobIncrease, activePlugin.activePump.pumpDescription.bolusStep)
             if (thisDose <= 0) {
-                aapsLogger.info(LTag.CORE, "DelayedDose($label): IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0, cancelling ${dose}U")
-                if (isLast) {
-                    insertZeroDoseTreatment("Delayed $label dose", iobIncrease, followUpCalculation(
-                        dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
-                    ))
+                deferOrCancel(
+                    "IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0",
+                    "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U",
+                    withLabel = false
+                ) {
+                    if (isLast) {
+                        insertZeroDoseTreatment("Delayed $label dose", iobIncrease, followUpCalculation(
+                            dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
+                        ))
+                    }
                 }
-                cancelDoseNote(dose, "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U")
-                decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             DetailedBolusInfo().apply {
