@@ -135,8 +135,8 @@ class WizardDialog : DaggerDialogFragment() {
     private var carbTimeRiseEstimate: CarbTimeFromRise.Estimate? = null
     private var applyingCarbTimeRise = false
     // Fat/Protein auto-fill from carbs (2026-10-02, per explicit request, matching KMP's fpuInstead/
-    // unreliableSmb): whenever carbs changes, Fat/Protein auto-populate from it (fat=carbs×1.0,
-    // protein=carbs×1.5, or ×1.5/×2.0 if Unreliable SMBs) -- same pattern as the other pre-fill defaults
+    // unreliableSmb): whenever carbs changes, Fat/Protein auto-populate from it (since 2026-10-05 fat=carbs×0.35,
+    // protein=carbs×0.4; doubled for Unreliable SMBs, halved for Small meal) -- same pattern as the other pre-fill defaults
     // above. A manual edit to either box wins and sticks until carbs itself changes again, at which
     // point a fresh suggestion overwrites it (see autoFillProteinFatFromCarbs()). The autoFpuCheckbox
     // (added same day) is the sticky alternative -- unticking it stops auto-fill outright, surviving
@@ -281,6 +281,9 @@ class WizardDialog : DaggerDialogFragment() {
         binding.proteinInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
         binding.fatInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
         binding.unreliableSmbsCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
+        // Small meal (2026-10-05): halves the Fat/Protein auto-fill. Same behaviour as the unreliable box: re-runs the
+        // suggestion (only takes effect while the boxes are not manually overridden) and recalculates.
+        binding.smallMealCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
         // Auto FPU on/off (2026-10-02, per explicit request): unlike proteinFatManuallyOverridden (which a
         // later carbs edit silently resets, see carbsInput's listener above), this checkbox is the sticky
         // "leave my Fat/Protein boxes alone" switch -- autoFillProteinFatFromCarbs() checks it directly and
@@ -677,8 +680,12 @@ class WizardDialog : DaggerDialogFragment() {
         if (proteinFatManuallyOverridden || !binding.autoFpuCheckbox.isChecked) return
         val carbsValue = binding.carbsInput.value
         val unreliable = binding.unreliableSmbsCheckbox.isChecked
-        val fatRatio = if (unreliable) 1.5 else 1.0
-        val proteinRatio = if (unreliable) 2.0 else 1.5
+        // 2026-10-05, per explicit request: an average mixed meal is about 0.35 g fat and 0.4 g protein per g of carbs
+        // (was 1.0 / 1.5, which is a very heavy meal: 150% of the carb insulin as FPU). Unreliable SMBs / high protein /
+        // bad sensor doubles it, Small meal halves it, both together give the average again.
+        val scale = (if (unreliable) 2.0 else 1.0) * (if (binding.smallMealCheckbox.isChecked) 0.5 else 1.0)
+        val fatRatio = 0.35 * scale
+        val proteinRatio = 0.4 * scale
         val newFat = (carbsValue * fatRatio).roundToInt().coerceIn(0, 200)
         val newProtein = (carbsValue * proteinRatio).roundToInt().coerceIn(0, 200)
         applyingAutoFpu = true

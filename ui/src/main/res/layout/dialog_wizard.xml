@@ -376,7 +376,15 @@
                         android:id="@+id/unreliable_smbs_checkbox"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Unreliable SMBs (current sensor/pod): Fat/Protein auto-fill boosts to fat×1.5/protein×2.0 of carbs, sets wiz% to 90"
+                        android:text="Unreliable SMBs / bad sensor / high protein: Fat/Protein auto-fill doubles (fat×0.7, protein×0.8 of carbs), sets wiz% to 90"
+                        android:textAppearance="?android:attr/textAppearanceSmall"
+                        tools:ignore="HardcodedText,RtlSymmetry" />
+
+                    <CheckBox
+                        android:id="@+id/small_meal_checkbox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Small meal: Fat/Protein auto-fill halves (average is fat×0.35, protein×0.4 of carbs)"
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText,RtlSymmetry" />
 
