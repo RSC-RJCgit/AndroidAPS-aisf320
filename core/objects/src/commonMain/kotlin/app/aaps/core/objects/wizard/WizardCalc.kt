@@ -109,14 +109,15 @@ internal fun walkingSoonHeldUnits(walkingSoon: Boolean, standingPct: Double, sca
 }
 
 /**
- * Default for the Walking soon box. Steps over 5 minutes at 100 or more, or steps over 30 minutes at
- * 200 or more while steps over 15 or 5 minutes are above 0 (S30 alone lingers about 25 minutes after
+ * Default for the Walking soon box. Steps over 5 minutes at 20 or more, or steps over 30 minutes at
+ * 100 or more while steps over 15 or 5 minutes are above 0 (S30 alone lingers about 25 minutes after
  * you stop). A missing 15-minute count keeps the older 30-minute-only test. Also glucose under
  * 6 mmol/L and not rising fast. Null when the 5 or 30 minute counts are missing, so the box is left as it is.
  */
 fun walkingSoonDefault(steps5: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: Double, steps15: Int? = null): Boolean? {
     if (steps5 == null || steps30 == null) return null
-    val moving = steps5 >= 100 || (steps30 >= 200 && (steps15 == null || steps15 > 0 || steps5 > 0))
+    // 20 and 100 (were 100 and 200), as in the loop's own standing gates and the 3426 wizard.
+    val moving = steps5 >= 20 || (steps30 >= 100 && (steps15 == null || steps15 > 0 || steps5 > 0))
     val low = bgMgdl < 108.1
     val notRisingFast = deltaMgdl <= 0.9
     return moving && low && notRisingFast

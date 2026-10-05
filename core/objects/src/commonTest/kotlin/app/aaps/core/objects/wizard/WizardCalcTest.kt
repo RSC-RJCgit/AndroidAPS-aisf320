@@ -123,6 +123,11 @@ class WizardCalcTest {
         assertEquals(false, walkingSoonDefault(80, 200, 120.0, 0.0))
         assertEquals(false, walkingSoonDefault(80, 200, 100.0, 2.0))
         assertNull(walkingSoonDefault(null, null, 100.0, 0.0))
+        // Thresholds are 20 for 5 minutes and 100 for 30 minutes. S30 alone does not count once S15 and S5 are both 0.
+        assertEquals(true, walkingSoonDefault(20, 0, 100.0, 0.0))
+        assertEquals(false, walkingSoonDefault(19, 99, 100.0, 0.0))
+        assertEquals(true, walkingSoonDefault(10, 100, 100.0, 0.0, steps15 = 15))
+        assertEquals(false, walkingSoonDefault(0, 100, 100.0, 0.0, steps15 = 0))
     }
 
     private fun halve(
