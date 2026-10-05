@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.15.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.16.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,22 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .15, 2026-10-05)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .16, 2026-10-05)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.15.patch
-  git apply bolus-calculator-on-3426-aisf321.15.patch
+  git apply --check bolus-calculator-on-3426-aisf321.16.patch
+  git apply bolus-calculator-on-3426-aisf321.16.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .16 (2026-10-05):
+- The wizard's "still moving now" step thresholds are lowered: steps over 5 minutes 100 -> 20 and steps over
+  30 minutes 200 -> 100 (WizardActivitySteps.STILL_NOW_S5 / STILL_NOW_S30). They feed the Walking soon
+  auto-tick, the QuickWizard "always on" walking-soon, and DelayedBolusWorker's moving (80%) / seated
+  (full remainder) switch, so light walking now counts as moving. S30 alone now only counts while the
+  15-minute or 5-minute steps show recent movement (S30 lingers ~25 min after you stop), so lowering it does
+  not keep "moving" on after you stop; a missing 15-minute count keeps the S30-only behaviour.
+- Retains all patch .15 changes below.
 
 Changes in patch .15 (2026-10-05):
 - New wizard checkbox "Delay protein/fat doses instead of cancelling" (checked by default, below
@@ -249,6 +258,30 @@ def revert_steps_source(staging: Path) -> None:
     old = subprocess.run(
         ["git", "show", f"{STEPS_MIRROR_COMMIT}~1:{p}"], cwd=OURS, capture_output=True, text=True, encoding="utf-8", check=True
     ).stdout.replace("\r\n", "\n")
+    # 2026-10-05, per explicit request: lower thresholds (S5 100 -> 20, S30 200 -> 100), and carry the current fork's
+    # "S30 lingers" guard (S30 alone only counts while S15 or S5 show recent steps) so lowering S30 does not leave "moving"
+    # on for ~25 min after you stop. The old payload text lacks both, so they are applied here.
+    old = must_replace(old, "STILL_NOW_S30 = 200", "STILL_NOW_S30 = 100", "WAS S30")
+    old = must_replace(old, "STILL_NOW_S5 = 100", "STILL_NOW_S5 = 20", "WAS S5")
+    old = must_replace(
+        old,
+        """    fun stillMovingNow(steps5min: Int, steps30min: Int): Boolean =
+        steps30min >= STILL_NOW_S30 || steps5min >= STILL_NOW_S5
+""",
+        """    // S30 alone lingers ~25 min after you stop, so it only counts while S15 or S5 shows recent steps.
+    // A missing S15 (null) keeps the S30-only behaviour.
+    fun stillMovingNow(steps5min: Int, steps30min: Int, steps15min: Int? = null): Boolean =
+        steps5min >= STILL_NOW_S5 ||
+            (steps30min >= STILL_NOW_S30 && (steps15min == null || steps15min > 0 || steps5min > 0))
+""",
+        "WAS fn",
+    )
+    old = must_replace(
+        old,
+        "return stillMovingNow(sample.steps5min, sample.steps30min)",
+        "return stillMovingNow(sample.steps5min, sample.steps30min, sample.steps15min)",
+        "WAS persisted",
+    )
     write(staging, p, old)
 
     p = "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt"

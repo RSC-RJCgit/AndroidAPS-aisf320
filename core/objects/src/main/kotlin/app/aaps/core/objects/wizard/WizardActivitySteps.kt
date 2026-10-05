@@ -19,8 +19,11 @@ import app.aaps.core.utils.LiveStepsMirror
  * QuickWizard "always on" must call stillMovingNow before setting walkingSoon.
  */
 object WizardActivitySteps {
-    const val STILL_NOW_S30 = 200
-    const val STILL_NOW_S5 = 100
+    // 2026-10-05, per explicit request: S5 100 -> 20 and S30 200 -> 100, matching the loop gates in OpenAPSAutoISFPlugin
+    // (S5<=20 / S30<=100 = standing). Light walking now counts as moving: the Walking soon auto-tick and the delayed
+    // top-up's moving/seated switch (80% while moving) both trip on smaller step counts. The S30-lingers guard below is unchanged.
+    const val STILL_NOW_S30 = 100
+    const val STILL_NOW_S5 = 20
     const val MOVING_PERCENT = 70.0
 
     // S30 alone lingers ~25 min after you stop (3 Oct 14:00: S30=315 while S5=S15=0 for 15 min ticked Walking soon).
