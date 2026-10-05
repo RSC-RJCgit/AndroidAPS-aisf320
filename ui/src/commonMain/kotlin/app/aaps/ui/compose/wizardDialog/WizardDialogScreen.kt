@@ -212,6 +212,7 @@ fun WizardDialogScreen(
         onWalkingSoonToggle = viewModel::toggleWalkingSoon,
         onFpuInsteadToggle = viewModel::toggleFpuInstead,
         onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
+        onDelayFpuInsteadOfCancelToggle = viewModel::toggleDelayFpuInsteadOfCancel,
         onUnreliableSmbToggle = viewModel::toggleUnreliableSmb,
         onAlarmToggle = viewModel::toggleAlarm,
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
@@ -248,6 +249,7 @@ internal fun WizardDialogContent(
     onWalkingSoonToggle: (Boolean) -> Unit = {},
     onFpuInsteadToggle: (Boolean) -> Unit = {},
     onGiveRestLaterToggle: (Boolean) -> Unit = {},
+    onDelayFpuInsteadOfCancelToggle: (Boolean) -> Unit = {},
     onUnreliableSmbToggle: (Boolean) -> Unit = {},
     onAlarmToggle: (Boolean) -> Unit,
     onCalculationExpandToggle: () -> Unit,
@@ -722,6 +724,31 @@ internal fun WizardDialogContent(
                                 modifier = Modifier.clickable { onGiveRestLaterToggle(!uiState.giveRestLater) }
                             )
                         }
+                        Text(
+                            text = stringResource(UiStrings.wizard_give_rest_later_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.delayFpuInsteadOfCancel,
+                                onCheckedChange = onDelayFpuInsteadOfCancelToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel),
+                                modifier = Modifier.clickable { onDelayFpuInsteadOfCancelToggle(!uiState.delayFpuInsteadOfCancel) }
+                            )
+                        }
+                        Text(
+                            text = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                        )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically

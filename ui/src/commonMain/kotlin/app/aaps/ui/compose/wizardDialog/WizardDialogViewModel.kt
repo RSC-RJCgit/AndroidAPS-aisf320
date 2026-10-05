@@ -254,6 +254,11 @@ class WizardDialogViewModel(
         if (checked) enableMealExtra(unreliable = false) else disableMealExtra()
     }
 
+    fun toggleDelayFpuInsteadOfCancel(checked: Boolean) {
+        _uiState.update { it.copy(delayFpuInsteadOfCancel = checked) }
+        recalculate()
+    }
+
     fun toggleGiveRestLater(checked: Boolean) {
         _uiState.update { it.copy(giveRestLater = checked) }
         recalculate()
@@ -587,6 +592,7 @@ class WizardDialogViewModel(
             walkingSoon = state.walkingSoon,
         )
 
+        w.warsawRetryLater = state.delayFpuInsteadOfCancel
         wizard = w
         if (state.giveRestLater && extra.percentage > percentForCalc) {
             val scaled = w.insulinFromBG + w.insulinFromTrend + w.insulinFromCarbs + w.insulinFromCOB

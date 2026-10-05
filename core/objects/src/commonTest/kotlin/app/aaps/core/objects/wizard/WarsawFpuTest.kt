@@ -10,6 +10,31 @@ import kotlin.test.assertTrue
 class WarsawFpuTest {
 
     @Test
+    fun anEarlierDoseIsRetriedUntilTenMinutesBeforeTheNextOne() {
+        val hour = 60 * 60_000L
+        val deadline = warsawRetryDeadlineMs(firstDueAt = hour, nextDueAt = 2 * hour)
+        assertEquals(2 * hour - 10 * 60_000L, deadline)
+        // Re-checks at +10, +20, +30, +40 and +50 minutes are allowed. The one at +60 is not.
+        assertTrue(warsawCanRetry(now = hour + 40 * 60_000L, firstDueAt = hour, nextDueAt = 2 * hour))
+        assertFalse(warsawCanRetry(now = hour + 41 * 60_000L, firstDueAt = hour, nextDueAt = 2 * hour))
+    }
+
+    @Test
+    fun theLastDoseGetsThirtyMinutesFromItsOwnHour() {
+        val hour = 60 * 60_000L
+        assertEquals(hour + 30 * 60_000L, warsawRetryDeadlineMs(firstDueAt = hour, nextDueAt = null))
+        assertTrue(warsawCanRetry(now = hour + 20 * 60_000L, firstDueAt = hour, nextDueAt = null))
+        assertFalse(warsawCanRetry(now = hour + 21 * 60_000L, firstDueAt = hour, nextDueAt = null))
+    }
+
+    @Test
+    fun noteAmountsKeepTwoDecimals() {
+        assertEquals("1.30", warsawNoteAmount(1.3))
+        assertEquals("0.05", warsawNoteAmount(0.05))
+        assertEquals("2.00", warsawNoteAmount(2.0))
+    }
+
+    @Test
     fun midTierSplitsTheTotalAcrossItsOwnHours() {
         val plan = warsawFpuPlan(proteinGrams = 10, fatGrams = 10, ic = 10.0)
         requireNotNull(plan)

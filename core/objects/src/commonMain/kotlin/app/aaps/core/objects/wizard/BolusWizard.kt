@@ -136,6 +136,9 @@ class BolusWizard(
         private set
     var warsawIobBaseline: Double = 0.0
         private set
+
+    /** Set by the dialog: a protein or fat dose that fails a check at its hour is checked again every 10 minutes instead of being dropped. */
+    var warsawRetryLater: Boolean = true
     private var hpSafetyApplied: Boolean = false
     private var hpSafetyOriginal: Double = 0.0
     private var hpSafetyAdjusted: Double = 0.0
@@ -439,45 +442,87 @@ class BolusWizard(
     }
 
     /**
-     * Queue the protein and fat doses. Each one is checked again at its own hour.
-     * A later confirm cancels this series. Nothing is written to the care portal.
+     * Queue the protein and fat doses. Each one is checked again at its own hour, and is looked at every 2 minutes
+     * until then, so a later confirm cancels the waiting series at once.
+     *
+     * When [retryLater] is on (the default), a dose that fails a check at its hour is not cancelled. It is checked
+     * again every 10 minutes and given the first time every check passes. It is dropped only when the next re-check
+     * would fall inside the last 10 minutes before the next dose is due, or 30 minutes after its own hour for the
+     * last dose. Off, a failed check drops the dose, as before.
+     *
+     * Care portal notes: "D1.30" (the amount) the first time a dose is deferred, and "C1.30" when a dose is dropped.
      */
-    suspend fun scheduleWarsawDoses(plan: WarsawFpuPlan, iobBaseline: Double, source: Sources) {
+    suspend fun scheduleWarsawDoses(plan: WarsawFpuPlan, iobBaseline: Double, source: Sources, retryLater: Boolean = true) {
         if (plan.numDoses <= 0) return
         if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return
         val profile = profileFunction.getProfile() ?: return
         if (profileSwitchPercent(profile) < 100) return
         val token = WarsawScheduleGate.next()
+        val scheduledAt = dateUtil.now()
         aapsLogger.info(
             LTag.CORE,
-            "Warsaw: ${plan.numDoses} doses of ${plan.perDoseInsulin} U over ${plan.durationMinutes} min"
+            "Warsaw: ${plan.numDoses} doses of ${plan.perDoseInsulin} U over ${plan.durationMinutes} min, retry=$retryLater"
         )
         for (index in 1..plan.numDoses) {
             val delayMin = warsawDoseDelayMinutes(index, plan.numDoses, plan.durationMinutes)
+            val firstDueAt = scheduledAt + delayMin * 60_000L
+            val nextDueAt = if (index < plan.numDoses) {
+                scheduledAt + warsawDoseDelayMinutes(index + 1, plan.numDoses, plan.durationMinutes) * 60_000L
+            } else null
             val planned = plan.perDoseInsulin
-            appScope.launch {
-                delay(delayMin * 60_000L)
-                if (!WarsawScheduleGate.isCurrent(token)) return@launch
-                deliverWarsawDose(planned, iobBaseline, source)
+            appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater) }
+        }
+    }
+
+    private suspend fun runWarsawDose(
+        planned: Double,
+        iobBaseline: Double,
+        source: Sources,
+        token: Long,
+        firstDueAt: Long,
+        nextDueAt: Long?,
+        retryLater: Boolean,
+    ) {
+        var dueAt = firstDueAt
+        var deferralNoted = false
+        while (true) {
+            // Wait for the due time in steps of at most 2 minutes, so a newer confirm cancels this dose at once.
+            while (true) {
+                if (!WarsawScheduleGate.isCurrent(token)) {
+                    warsawNote("C", planned, "superseded by a newer entry", source)
+                    return
+                }
+                val wait = dueAt - dateUtil.now()
+                if (wait <= 0L) break
+                delay(min(wait, 120_000L))
+            }
+            val reason = tryDeliverWarsawDose(planned, iobBaseline, source) ?: return
+            val now = dateUtil.now()
+            if (retryLater && warsawCanRetry(now, firstDueAt, nextDueAt)) {
+                aapsLogger.info(LTag.CORE, "Warsaw dose deferred: $reason, checking again in $WARSAW_RETRY_MINUTES min")
+                if (!deferralNoted) {
+                    warsawNote("D", planned, "deferred, checking every $WARSAW_RETRY_MINUTES min: $reason", source)
+                    deferralNoted = true
+                }
+                dueAt = now + WARSAW_RETRY_MINUTES * 60_000L
+            } else {
+                aapsLogger.info(LTag.CORE, "Warsaw dose dropped: $reason")
+                warsawNote("C", planned, if (retryLater) "$reason, not delivered within the retry window" else reason, source)
+                return
             }
         }
     }
 
-    private suspend fun deliverWarsawDose(planned: Double, iobBaseline: Double, source: Sources) {
-        if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return
-        val profile = profileFunction.getProfile() ?: return
-        if (profileSwitchPercent(profile) < 100) return
+    /** Null when the dose was handed to the pump. Otherwise the reason it was not given now. */
+    private suspend fun tryDeliverWarsawDose(planned: Double, iobBaseline: Double, source: Sources): String? {
+        if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return "superbolus active"
+        val profile = profileFunction.getProfile() ?: return "no profile"
+        if (profileSwitchPercent(profile) < 100) return "profile under 100%"
         val status = glucoseStatusProvider.glucoseStatusData
-        if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) {
-            aapsLogger.info(LTag.CORE, "Warsaw dose skipped: glucose check failed")
-            return
-        }
+        if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) return "glucose check failed"
         val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
         val dose = warsawDoseAfterIobRise(planned, iobBaseline, liveIob, ch.bolusStep(planned))
-        if (dose <= 0.0) {
-            aapsLogger.info(LTag.CORE, "Warsaw dose skipped: insulin on board already covers it")
-            return
-        }
+        if (dose <= 0.0) return "insulin on board already covers it"
         wizardBolusExecutor.deliverInsulin(
             insulin = dose,
             note = null,
@@ -485,6 +530,30 @@ class BolusWizard(
             onError = { failure -> aapsLogger.info(LTag.CORE, "Warsaw dose not delivered: ${failure.comment}") },
             treatmentNote = rh.gs(InterfacesStrings.wizard_warsaw_dose),
             onSuccess = { preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now()) },
+        )
+        return null
+    }
+
+    private var lastWarsawNoteAt = 0L
+
+    /** A one minute care portal note, "D1.30" for a deferred dose or "C1.30" for a dropped one. */
+    private suspend fun warsawNote(prefix: String, amount: Double, text: String, source: Sources) {
+        val timestamp = max(dateUtil.now(), lastWarsawNoteAt + 1)
+        lastWarsawNoteAt = timestamp
+        val label = "$prefix${warsawNoteAmount(amount)}"
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = timestamp,
+                type = TE.Type.NOTE,
+                note = label,
+                duration = 60_000L,
+                glucoseUnit = profileFunction.getUnits(),
+            ),
+            timestamp = timestamp,
+            action = Action.CAREPORTAL,
+            source = source,
+            note = "Protein and fat dose: $text",
+            listValues = listOf(ValueWithUnit.SimpleString(label)),
         )
     }
 

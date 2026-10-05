@@ -82,6 +82,31 @@ fun warsawDoseDelayMinutes(index: Int, numDoses: Int, durationMinutes: Int): Int
     return (durationMinutes.toLong() * index / numDoses).toInt()
 }
 
+/** A dose that fails a check at its hour is checked again every 10 minutes. */
+const val WARSAW_RETRY_MINUTES = 10
+
+/** The last dose has no next dose, so it keeps trying for 30 minutes after its own hour. */
+const val WARSAW_LAST_DOSE_WINDOW_MINUTES = 30
+
+private const val MS_PER_MINUTE = 60_000L
+
+/**
+ * The latest time a re-check may still run. An earlier dose may be re-checked until 10 minutes before the next
+ * dose is due. The last dose may be re-checked until 30 minutes after its own first due time.
+ */
+fun warsawRetryDeadlineMs(firstDueAt: Long, nextDueAt: Long?): Long =
+    nextDueAt?.let { it - WARSAW_RETRY_MINUTES * MS_PER_MINUTE } ?: (firstDueAt + WARSAW_LAST_DOSE_WINDOW_MINUTES * MS_PER_MINUTE)
+
+/** True when one more re-check, 10 minutes from [now], still falls inside the window. Otherwise the dose is dropped. */
+fun warsawCanRetry(now: Long, firstDueAt: Long, nextDueAt: Long?): Boolean =
+    now + WARSAW_RETRY_MINUTES * MS_PER_MINUTE <= warsawRetryDeadlineMs(firstDueAt, nextDueAt)
+
+/** Amount as it is written in a care portal note: two decimals, for example 1.30. */
+fun warsawNoteAmount(units: Double): String {
+    val cents = kotlin.math.round(units * 100.0).toLong()
+    return "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
+}
+
 fun profileSwitchPercent(profile: Profile): Int =
     if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
 

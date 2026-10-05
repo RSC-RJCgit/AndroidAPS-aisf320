@@ -149,6 +149,7 @@ class WizardBolusExecutorImpl(
         val bolusTimestamp: Long? = null,
         val warsawPlan: WarsawFpuPlan? = null,
         val warsawIobBaseline: Double = 0.0,
+        val warsawRetryLater: Boolean = true,
         val wizardMaxBolus: Double? = null,
         val walkingSoonHeld: Double = 0.0,
         val splitRapidFall: Boolean = false,
@@ -276,6 +277,7 @@ class WizardBolusExecutorImpl(
             notes = entry.buttonText(),
             warsawPlan = wizard.warsawPlan,
             warsawIobBaseline = wizard.warsawIobBaseline,
+            warsawRetryLater = wizard.warsawRetryLater,
             wizardMaxBolus = buttonMax,
             walkingSoonHeld = wizard.walkingSoonHeldUnits,
             splitRapidFall = wizard.rapidFallForSplit,
@@ -370,6 +372,7 @@ class WizardBolusExecutorImpl(
                 eCarbsDurationHours = inputs.eCarbsDurationHours,
                 warsawPlan = wizard.warsawPlan,
                 warsawIobBaseline = wizard.warsawIobBaseline,
+                warsawRetryLater = wizard.warsawRetryLater,
                 wizardMaxBolus = inputs.maxBolus,
                 walkingSoonHeld = wizard.walkingSoonHeldUnits,
                 splitRapidFall = wizard.rapidFallForSplit,
@@ -741,7 +744,7 @@ class WizardBolusExecutorImpl(
         } else {
             bolusWizardProvider().cancelLeftoverSplit()
         }
-        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source) }
+        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source, p.warsawRetryLater) }
         if (carbs2 > 0) deliverECarbs(carbs2, eventTime, duration, eCarbsDelay, notes, source, onError)
         if (useAlarm && p.carbs > 0 && carbTimeOffset > 0)
             automation.scheduleTimeToEatReminder(T.mins(carbTimeOffset).secs().toInt())
