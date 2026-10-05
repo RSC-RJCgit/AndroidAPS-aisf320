@@ -389,6 +389,15 @@
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText,RtlSymmetry" />
 
+                    <CheckBox
+                        android:id="@+id/delay_fpu_checkbox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="Delay protein/fat doses instead of cancelling (a dose that is not safe at its hour is re-checked every 10 min until 10 min before the next one; untick to cancel it)"
+                        android:textAppearance="?android:attr/textAppearanceSmall"
+                        tools:ignore="HardcodedText,RtlSymmetry" />
+
                 </LinearLayout>
 
             </TableRow>

@@ -788,6 +788,8 @@ class WizardDialog : DaggerDialogFragment() {
             // Set before anything below reads warsawFpuPlan() (the live preview does, further down) --
             // see BolusWizard.warsawDurationHours's own doc comment.
             wizard.warsawDurationHours = binding.warsawDurationInput.value
+            // Ticked (default): a protein/fat part that fails a due-time check is re-checked every 10 min, not cancelled.
+            wizard.delayFpuInsteadOfCancel = binding.delayFpuCheckbox.isChecked
             // See dropTrendCautionApplied's own doc comment -- a fourth DelayedBolusWorker trigger reason.
             wizard.dropTrendCautionApplied = dropTrendCautionActive
             binding.bg.text = rh.gs(R.string.format_bg_isf, valueToUnitsToString(profileUtil.convertToMgdl(bg, profileFunction.getUnits()), profileFunction.getUnits().asText), wizard.sens)

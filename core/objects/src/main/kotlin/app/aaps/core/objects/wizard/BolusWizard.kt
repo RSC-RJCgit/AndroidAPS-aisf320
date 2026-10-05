@@ -186,6 +186,11 @@ class BolusWizard @Inject constructor(
     // fixed 3h/4h/5h duration. Set here, not a doCalc() parameter, because warsawFpuPlan() only runs
     // later, on demand, same as manualSplitBolusEnabled above. Defaults to 5h.
     var warsawDurationHours: Double = 5.0
+
+    // Set by WizardDialog's "Delay protein/fat doses instead of cancelling" checkbox (on by default, 2026-10-05): ticked, a
+    // protein/fat (FPU) part that fails a due-time check is re-checked every 10 min instead of cancelled; unticked, it is
+    // cancelled as before. Read when the series is scheduled. Quick-wizard buttons never touch it, so they keep the default.
+    var delayFpuInsteadOfCancel: Boolean = true
     private var splitBolusScheduled = false  // guard against double-callback
     // Guard against double-callback for the combined protein+fat Warsaw-FPU extended dose series (see
     // warsawFpuPlan()/scheduleSplitProteinFatDoses()). Replaced 2026-09-12's separate
@@ -1282,7 +1287,8 @@ class BolusWizard @Inject constructor(
                     val nextDueAt = if (i < plan.numDoses) scheduledAt + T.mins(plan.durationMinutes.toLong() * (i + 1) / plan.numDoses).msecs() else null
                     scheduleSingleDelayedDose(
                         plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken,
-                        deliverAt = scheduledAt + T.mins(delayMins.toLong()).msecs(), isLast = i == plan.numDoses, nextDueAt = nextDueAt
+                        deliverAt = scheduledAt + T.mins(delayMins.toLong()).msecs(), isLast = i == plan.numDoses, nextDueAt = nextDueAt,
+                        retryLater = delayFpuInsteadOfCancel
                     )
                 }
                 totalProjectedFutureSplitDoses += plan.totalInsulin
@@ -1745,7 +1751,8 @@ class BolusWizard @Inject constructor(
         // cancel at once. firstDueAt/deferNoted just carry state along the re-checks.
         nextDueAt: Long? = null,
         firstDueAt: Long = deliverAt,
-        deferNoted: Boolean = false
+        deferNoted: Boolean = false,
+        retryLater: Boolean = true
     ) {
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
@@ -1768,7 +1775,7 @@ class BolusWizard @Inject constructor(
             // (e.g. a short 50% profile switch) can't cancel doses that aren't due for hours -- previously
             // fpu1..fpu4 (due 1h apart) were all cancelled together by one switch minutes after scheduling.
             if (dateUtil.now() < deliverAt) {
-                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt, isLast, nextDueAt, firstDueAt, deferNoted)
+                scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, deliverAt, isLast, nextDueAt, firstDueAt, deferNoted, retryLater)
                 return@postDelayed
             }
             // A check failed at/after the due time: re-check in 10 min unless that would be inside the last 10 min before the
@@ -1777,14 +1784,14 @@ class BolusWizard @Inject constructor(
             fun deferOrCancel(logReason: String, noteReason: String, withLabel: Boolean = true, onExpired: (() -> Unit)? = null) {
                 val retryAt = dateUtil.now() + T.mins(10).msecs()
                 val deadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
-                if (retryAt <= deadline) {
+                if (retryLater && retryAt <= deadline) {
                     aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — deferring ${dose}U, re-check at ${dateUtil.timeString(retryAt)} (window ends ${dateUtil.timeString(deadline)})")
                     if (!deferNoted) deferDoseNote(dose, noteReason)
-                    scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, retryAt, isLast, nextDueAt, firstDueAt, true)
+                    scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, retryAt, isLast, nextDueAt, firstDueAt, true, retryLater)
                 } else {
-                    aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — retry window over, cancelling ${dose}U")
+                    aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — ${if (retryLater) "retry window over, " else ""}cancelling ${dose}U")
                     onExpired?.invoke()
-                    val expired = "$noteReason (not delivered within the retry window)"
+                    val expired = if (retryLater) "$noteReason (not delivered within the retry window)" else noteReason
                     if (withLabel) cancelDoseNote(dose, expired, label, iobBaseline) else cancelDoseNote(dose, expired)
                     decrementWarsawPendingRemaining(dose)
                 }

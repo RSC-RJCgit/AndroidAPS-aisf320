@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.13.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.15.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,36 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .13, 2026-10-03)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .15, 2026-10-05)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.13.patch
-  git apply bolus-calculator-on-3426-aisf321.13.patch
+  git apply --check bolus-calculator-on-3426-aisf321.15.patch
+  git apply bolus-calculator-on-3426-aisf321.15.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .15 (2026-10-05):
+- New wizard checkbox "Delay protein/fat doses instead of cancelling" (checked by default, below
+  "Auto fat/protein from carbs"). It switches the patch .14 re-check behaviour on or off for that wizard
+  session: ticked, a protein/fat (Warsaw FPU) part that fails a due-time check is re-checked every 10 min
+  instead of being cancelled; unticked, it is cancelled as before (plain cancel note, no deferred note).
+  The choice is read when the series is scheduled and carried through every re-check
+  (BolusWizard.delayFpuInsteadOfCancel -> scheduleSingleDelayedDose(retryLater)). Quick-wizard buttons
+  never touch it and keep the default (ticked).
+- Retains all patch .14 changes below.
+
+Changes in patch .14 (2026-10-05):
+- A protein/fat (Warsaw FPU) dose whose due-time check fails is no longer cancelled for good. If the
+  profile is under 100%, the pump is suspended, a superbolus is active, the BG safety check fails, or the
+  IOB-rise reduction takes the dose to 0 or less, the part is deferred and re-checked every 10 min, and is
+  delivered the first time every check passes (same IOB-delta reduction as before). It is only dropped, with
+  a cancel note saying it was not delivered within the retry window, once the next re-check would fall
+  inside the 10 min before the NEXT part is due (the last part gets 30 min from its own due time).
+  "Bolus stopped" and "superseded by a newer entry" still cancel at once, and are still polled every 2 min
+  while a part waits. One CarePortal note ("D1.30" = the amount) is written when a part is first deferred.
+  The dose stays in the pending-Warsaw total while it waits. The last part's zero-dose marker is written
+  only at the final drop (BolusWizard.scheduleSingleDelayedDose / deferDoseNote).
+- Retains all patch .13 changes below.
 
 Changes in patch .13 (2026-10-03):
 - Fix: the protein/fat (Warsaw FPU) doses fpu1..fpuN, due an hour apart, were all cancelled together
