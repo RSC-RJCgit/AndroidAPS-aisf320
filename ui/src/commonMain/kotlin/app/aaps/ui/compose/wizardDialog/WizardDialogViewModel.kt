@@ -268,6 +268,11 @@ class WizardDialogViewModel(
         if (checked) enableMealExtra(unreliable = true) else disableMealExtra()
     }
 
+    fun toggleSmallMeal(checked: Boolean) {
+        _uiState.update { it.copy(smallMeal = checked) }
+        recalculate()
+    }
+
     private fun enableMealExtra(unreliable: Boolean) {
         val state = uiState.value
         if (!state.fpuInstead && !state.unreliableSmb) {
@@ -539,6 +544,7 @@ class WizardDialogViewModel(
         val extra = mealExtra(
             fpuInstead = state.fpuInstead,
             unreliableSmb = state.unreliableSmb,
+            smallMeal = state.smallMeal,
             carbs = state.carbs,
             typedFat = state.fat,
             typedProtein = state.protein,

@@ -214,6 +214,7 @@ fun WizardDialogScreen(
         onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
         onDelayFpuInsteadOfCancelToggle = viewModel::toggleDelayFpuInsteadOfCancel,
         onUnreliableSmbToggle = viewModel::toggleUnreliableSmb,
+        onSmallMealToggle = viewModel::toggleSmallMeal,
         onAlarmToggle = viewModel::toggleAlarm,
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
         onNavigateBack = onNavigateBack,
@@ -251,6 +252,7 @@ internal fun WizardDialogContent(
     onGiveRestLaterToggle: (Boolean) -> Unit = {},
     onDelayFpuInsteadOfCancelToggle: (Boolean) -> Unit = {},
     onUnreliableSmbToggle: (Boolean) -> Unit = {},
+    onSmallMealToggle: (Boolean) -> Unit = {},
     onAlarmToggle: (Boolean) -> Unit,
     onCalculationExpandToggle: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -760,6 +762,19 @@ internal fun WizardDialogContent(
                             Text(
                                 text = stringResource(UiStrings.wizard_unreliable_smb),
                                 modifier = Modifier.clickable { onUnreliableSmbToggle(!uiState.unreliableSmb) }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.smallMeal,
+                                onCheckedChange = onSmallMealToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_small_meal),
+                                modifier = Modifier.clickable { onSmallMealToggle(!uiState.smallMeal) }
                             )
                         }
 

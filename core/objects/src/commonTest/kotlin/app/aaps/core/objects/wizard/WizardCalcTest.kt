@@ -33,8 +33,8 @@ class WizardCalcTest {
             percentage = 80,
             extendedCarbPercent = 35,
         )
-        assertEquals(40, later.fatGrams)
-        assertEquals(60, later.proteinGrams)
+        assertEquals(14, later.fatGrams)
+        assertEquals(16, later.proteinGrams)
         assertEquals(0, later.extendedCarbs)
         assertEquals(80, later.percentage)
         assertFalse(later.useSavedMaxBolus)
@@ -48,13 +48,27 @@ class WizardCalcTest {
             percentage = 100,
             extendedCarbPercent = 20,
         )
-        assertEquals(60, unreliable.fatGrams)
-        assertEquals(80, unreliable.proteinGrams)
+        assertEquals(28, unreliable.fatGrams)
+        assertEquals(32, unreliable.proteinGrams)
         assertEquals(90, unreliable.percentage)
         assertEquals(0, unreliable.extendedCarbs)
         assertTrue(unreliable.useSavedMaxBolus)
         assertEquals(100, unreliable.immediateCarbPercent)
         assertEquals(null, later.immediateCarbPercent)
+
+        val small = mealExtra(
+            fpuInstead = true, unreliableSmb = false, carbs = 40, typedFat = 3, typedProtein = 4,
+            percentage = 100, extendedCarbPercent = 35, smallMeal = true,
+        )
+        assertEquals(7, small.fatGrams)
+        assertEquals(8, small.proteinGrams)
+
+        val both = mealExtra(
+            fpuInstead = false, unreliableSmb = true, carbs = 40, typedFat = 3, typedProtein = 4,
+            percentage = 100, extendedCarbPercent = 20, smallMeal = true,
+        )
+        assertEquals(14, both.fatGrams)
+        assertEquals(16, both.proteinGrams)
     }
 
 
