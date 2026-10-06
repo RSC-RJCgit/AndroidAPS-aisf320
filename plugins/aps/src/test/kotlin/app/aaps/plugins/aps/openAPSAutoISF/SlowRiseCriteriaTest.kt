@@ -4,12 +4,20 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
 class SlowRiseCriteriaTest {
-    @Test fun `delayed bolus in the last hour is required`() {
-        val now = 10_000_000L
-        assertThat(slowRiseRecentEvents(now, now - 60 * 60_000L)).isTrue()
-        assertThat(slowRiseRecentEvents(now, now - 60 * 60_000L - 1)).isFalse()
-        assertThat(slowRiseRecentEvents(now, 0)).isFalse()
-        assertThat(slowRiseRecentEvents(now, now + 1)).isFalse()
+    @Test fun `wide delta bands apply only while the meal event is under 60 min old`() {
+        assertThat(slowRiseWideBandsApply(40)).isTrue()
+        assertThat(slowRiseWideBandsApply(59)).isTrue()
+        assertThat(slowRiseWideBandsApply(60)).isFalse()
+        assertThat(slowRiseWideBandsApply(null)).isFalse()
+    }
+
+    @Test fun `gentle deltas always pass and wide bands only when allowed`() {
+        val gentle = 0.1 * 18.0
+        val wide = 0.2 * 18.0
+        assertThat(slowRiseCriteriaMet(144.0, gentle, gentle, gentle, 0.0, 1.2, 0, 0, 90, 90, gentleDeltasOnly = true)).isTrue()
+        assertThat(slowRiseCriteriaMet(144.0, gentle, gentle, gentle, 0.0, 1.2, 0, 0, 45, 45, gentleDeltasOnly = false)).isTrue()
+        assertThat(slowRiseCriteriaMet(144.0, wide, wide, wide, 0.0, 1.2, 0, 0, 45, 45, gentleDeltasOnly = false)).isTrue()
+        assertThat(slowRiseCriteriaMet(144.0, wide, wide, wide, 0.0, 1.2, 0, 0, 90, 90, gentleDeltasOnly = true)).isFalse()
     }
 
     private fun eligible(s60: Int? = 599, s180: Int? = 999, bolus: Int? = 40, carbs: Int? = 1,
@@ -28,6 +36,14 @@ class SlowRiseCriteriaTest {
         assertThat(eligible(bolus = null, carbs = 40)).isTrue()
         assertThat(eligible(bolus = 39, carbs = 39)).isFalse()
         assertThat(eligible(bolus = null, carbs = null)).isFalse()
+    }
+
+    @Test fun `iob floor is 1_0 U and cap stays 5_5 U`() {
+        val d = 3.6
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 1.0, 599, 999, 40, 1)).isTrue()
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 0.99, 599, 999, 40, 1)).isFalse()
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 5.5, 599, 999, 40, 1)).isTrue()
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 5.51, 599, 999, 40, 1)).isFalse()
     }
 
     @Test fun `bg floor is 6_5 mmol and cap stays 9_0`() {

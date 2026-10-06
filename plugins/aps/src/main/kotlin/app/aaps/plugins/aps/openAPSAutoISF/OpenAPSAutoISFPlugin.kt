@@ -140,29 +140,17 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
-// No longer a hard gate on StuckRisingSlowly (2026-10-01, per explicit request) -- real Client-mirrored
-// data from 30 Sep/1 Oct showed a genuine slow-rise case (deltas correctly banded, BG/COB in range) get
-// blocked outright at 00:45 purely because no delayed bolus had fired that evening, with IOB missing
-// the 1.2U floor by only 0.07U at the one moment deltas aligned -- i.e. this gate alone threw away a
-// case the numeric criteria had otherwise already earned. Original intent (see git history) was two
-// signals together -- a delayed bolus AND the LoReb low-rebound guard both recently active, as
-// confirmation the loop was already managing a recent low -- but LoReb's own half was dropped
-// 2026-09-21 when it stopped refreshing its timestamp, leaving this one running alone as a stale
-// fragment, not a deliberate "require recent activity" design. Still READ at the call site below, but
-// now to pick which delta test applies (the wider band when true, a stricter substitute when false)
-// rather than to block the whole path.
-internal fun slowRiseRecentEvents(now: Long, delayedDeliveredAt: Long): Boolean =
-    delayedDeliveredAt > 0 && delayedDeliveredAt <= now && now - delayedDeliveredAt <= 60 * 60_000L
+// Which delta test StuckRisingSlowly uses (2026-10-06, per explicit request): it used to ask "was a delayed bolus delivered
+// in the last hour", which is not a meal event at all. It now reads the same meal-event age as every other "bolus ago"
+// test (minutesSinceLastMealEvent(): carb age, or the last manual bolus age while extended carbs are active; delayed, split
+// and FPU doses never count). While that meal is 40-59 min old (the rule already needs >= 40) the wider 0.15-0.35 mmol
+// delta bands are allowed as well as the gentle test; from 60 min on only the gentle test applies.
+internal fun slowRiseWideBandsApply(mealAgeMinutes: Int?): Boolean = mealAgeMinutes != null && mealAgeMinutes < 60
 
 /** Native slow-rise numeric conditions with strict step limits; glucose inputs are mg/dL.
- *  [gentleDeltasOnly] (2026-10-01, per explicit request): when there's no recent-delayed-bolus signal
- *  to confirm the loop was already actively managing this (slowRiseRecentEvents false), substitute a
- *  STRICTER delta shape instead of just dropping the requirement outright -- the same gentle
- *  "just starting to climb" test EarlyDawnSlowRise already uses (all three deltas positive but still
- *  under 0.15mmol), rather than the wider 0.15-0.35mmol three-band match used when that confirmation IS
- *  present. Real data check: this stricter test would NOT have matched the 30 Sep/1 Oct 00:45 case
- *  either (deltas 0.15-0.18mmol there, already past the <0.15 cutoff) -- it's a genuinely separate,
- *  additional catch-net for a gentler pattern, not a substitute fix for that specific near-miss. */
+ *  The gentle test (all three deltas positive but under 0.15mmol -- EarlyDawnSlowRise's "just starting to climb") is always
+ *  accepted. Unless [gentleDeltasOnly] is set, the wider test (all three deltas in one common band of 0.15-0.25, 0.20-0.30
+ *  or 0.25-0.35mmol) is accepted too. The caller sets [gentleDeltasOnly] from slowRiseWideBandsApply(meal age). */
 internal fun slowRiseCriteriaMet(
     bg: Double, delta: Double, shortDelta: Double, longDelta: Double,
     cob: Double, iob: Double, steps60: Int?, steps180: Int?,
@@ -170,10 +158,11 @@ internal fun slowRiseCriteriaMet(
     gentleDeltasOnly: Boolean = false
 ): Boolean {
     if (listOf(bg, delta, shortDelta, longDelta, cob, iob).any { !it.isFinite() }) return false
-    if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.2..5.5) return false
+    if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.0..5.5) return false
     if (steps60 == null || steps60 !in 0 until 600 || steps180 == null || steps180 !in 0 until 1000) return false
     if (bolusAgeMinutes?.let { it >= 40 } != true && carbAgeMinutes?.let { it >= 40 } != true) return false
-    if (gentleDeltasOnly) return delta > 0.0 && delta < 2.7 && shortDelta > 0.0 && shortDelta < 2.7 && longDelta > 0.0 && longDelta < 2.7
+    val gentle = delta > 0.0 && delta < 2.7 && shortDelta > 0.0 && shortDelta < 2.7 && longDelta > 0.0 && longDelta < 2.7
+    if (gentle || gentleDeltasOnly) return gentle
     // All deltas must fit one common band, not independently fit the full 0.15–0.35 range.
     return listOf(0.15 to 0.25, 0.20 to 0.30, 0.25 to 0.35).any { (low, high) ->
         listOf(delta, shortDelta, longDelta).all { it >= low * 18.0 && it <= high * 18.0 }
@@ -8586,28 +8575,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // preserves the shared delta bands and bolus-age OR carb-age condition. No boost/profile action.
         // 2026-09-21: window 08:00-01:00 (wraps midnight), BG floor 6.5-9.0. LoReb last-30-min
         // stamp dropped — LoReb off never refreshes it, so that gate could not be left in place.
-        // 2026-10-01, per explicit request (both options together, after a real near-miss on 30 Sep/1
-        // Oct): slowRiseRecentEvents no longer GATES this block -- it now only picks which delta test
-        // applies. A recent delayed bolus still gets the original wider 0.15-0.35mmol three-band match;
-        // without one, gentleDeltasOnly substitutes EarlyDawnSlowRise's stricter "just starting to
-        // climb" test (all three deltas positive but under 0.15mmol) as a stand-in for the missing
-        // confirmation, rather than either blocking the path outright or dropping the requirement with
-        // no compensating check at all. See slowRiseCriteriaMet's own doc comment for why this is a
-        // genuinely separate catch-net, not a fix for that specific near-miss (its own deltas were
-        // already past the gentle cutoff -- the wider band, not the gentle one, is what would have let
-        // it through).
+        // 2026-10-01, per explicit request (after a real near-miss on 30 Sep/1 Oct): the "recent activity" signal no longer
+        // GATES this block, it only picks which delta test applies. 2026-10-06, per explicit request: that signal is now the
+        // meal-event age (slowRiseWideBandsApply), not a delayed-bolus lookup. 40-59 min after a meal event the wider
+        // 0.15-0.35mmol bands are accepted as well as the gentle test (all three deltas positive but under 0.15mmol);
+        // from 60 min on only the gentle test applies. IOB floor 1.0U (was 1.2U, 2026-10-06).
         if (readyToRun("StuckRisingSlowly", 5) && isTimeBetween(8, 0, 1, 0)
             && activeTtMgdl() == null && checkAutomationState("Steroids", "Steroids Off")
         ) {
             val mirroredSteps = if (useLiveStepsOnVirtual()) liveStepsMirror.at(dateUtil.now()) else null
             val steps60 = if (useLiveStepsOnVirtual()) mirroredSteps?.steps(60) else recentSteps60Minutes
             val steps180 = if (useLiveStepsOnVirtual()) mirroredSteps?.steps(180) else recentSteps180Minutes
-            val recentDelayedBolus = slowRiseRecentEvents(dateUtil.now(), preferences.get(LongNonKey.LastDelayedBolusDeliveredAt))
+            val mealAge = minutesSinceLastMealEvent()
+            val wideBands = slowRiseWideBandsApply(mealAge)
             if (slowRiseCriteriaMet(
                     glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta,
                     glucoseStatus.longAvgDelta, mealData.mealCOB, totalIobAt(dateUtil.now()),
-                    steps60, steps180, minutesSinceLastMealEvent(), minutesSinceLastMealEvent(),   // same meal-event age for both arguments (2026-10-04)
-                    gentleDeltasOnly = !recentDelayedBolus
+                    steps60, steps180, mealAge, mealAge,   // same meal-event age for both arguments (2026-10-04)
+                    gentleDeltasOnly = !wideBands
                 ) && startTempTargetIfNeeded(4.2 * 18.0, 5)
             ) {
                 markRun("StuckRisingSlowly")
@@ -8623,8 +8608,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         smbBoostHoldUntilMs = dateUtil.now() + 6 * 60_000L
                     }
                 }
-                sendSms("StuckRisingSlowly Acce${if (!recentDelayedBolus) " (gentle)" else ""}")
-                aapsLogger.debug(LTag.APS, "StuckRisingSlowly: requested TT 4.2mmol@5min, S60=$steps60 S180=$steps180 recentDelayedBolus=$recentDelayedBolus")
+                sendSms("StuckRisingSlowly Acce${if (!wideBands) " (gentle)" else ""}")
+                aapsLogger.debug(LTag.APS, "StuckRisingSlowly: requested TT 4.2mmol@5min, S60=$steps60 S180=$steps180 wideBands=$wideBands")
             }
         }
 
