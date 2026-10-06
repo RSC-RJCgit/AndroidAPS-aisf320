@@ -109,14 +109,13 @@ internal fun offHighShouldAct(minuteOfDay: Int, hp: Double?): Boolean =
     minuteInWindow(minuteOfDay, 22 * 60, 6 * 60) || hp == null || hp < 5.0
 
 // 08:00 until 01:00. No temp target, and steroids off.
-// Either a delayed dose was delivered in the last hour, or any bolus is more than 60 minutes old.
+// The last meal event (carbs, or the last manual bolus while extended carbs are active) must be at least 40 minutes old.
 // The caller sets 4.2 mmol for 5 minutes.
 internal fun stuckRisingShouldRequest(
     ready: Boolean,
     minuteOfDay: Int,
     ttActive: Boolean,
     steroidsOff: Boolean,
-    recentDelayedBolus: Boolean,
     bg: Double,
     delta: Double,
     shortDelta: Double,
@@ -125,22 +124,21 @@ internal fun stuckRisingShouldRequest(
     iob: Double,
     steps60: Int,
     steps180: Int,
-    bolusAgeMinutes: Int,
+    mealAgeMinutes: Int,
 ): Boolean {
     if (!ready || ttActive || !steroidsOff) return false
     if (!minuteInWindow(minuteOfDay, 8 * 60, 60)) return false
-    return slowRiseCriteriaMet(
-        bg, delta, shortDelta, longDelta, cob, iob, steps60, steps180, bolusAgeMinutes, recentDelayedBolus,
-    )
+    return slowRiseCriteriaMet(bg, delta, shortDelta, longDelta, cob, iob, steps60, steps180, mealAgeMinutes)
 }
 
-// True when a delayed dose was delivered in the last hour.
-internal fun slowRiseRecentEvents(now: Long, delayedDeliveredAt: Long): Boolean =
-    delayedDeliveredAt > 0L && delayedDeliveredAt <= now && now - delayedDeliveredAt <= 60 * 60_000L
+// 40 to 59 minutes after a meal event the wider delta bands are allowed as well as the gentle test.
+// From 60 minutes on only the gentle test applies. (This replaced a delayed-bolus lookup on 2026-10-06.)
+internal fun slowRiseWideBandsApply(mealAgeMinutes: Int): Boolean = mealAgeMinutes < 60
 
-// Glucose 6.5 to 9.0 mmol, small carbs, IOB 1.2 to 5.5.
-// All three deltas must be above 0 and under 0.15 mmol.
-// Opens when a delayed dose is under an hour old, or when any bolus is more than 60 minutes old.
+// Glucose 6.5 to 9.0 mmol, small carbs, IOB 1.0 to 5.5 (floor lowered from 1.2 on 2026-10-06, per explicit request).
+// The meal event must be at least 40 minutes old.
+// Gentle test: all three deltas above 0 and under 0.15 mmol. Wide test: all three in one common band of
+// 0.15-0.25, 0.20-0.30 or 0.25-0.35 mmol, only while the meal event is under 60 minutes old.
 internal fun slowRiseCriteriaMet(
     bg: Double,
     delta: Double,
@@ -150,13 +148,17 @@ internal fun slowRiseCriteriaMet(
     iob: Double,
     steps60: Int,
     steps180: Int,
-    bolusAgeMinutes: Int,
-    recentDelayedBolus: Boolean,
+    mealAgeMinutes: Int,
 ): Boolean {
     if (listOf(bg, delta, shortDelta, longDelta, cob, iob).any { !it.isFinite() }) return false
-    if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.2..5.5) return false
+    if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.0..5.5) return false
     if (steps60 !in 0 until 600 || steps180 !in 0 until 1000) return false
-    if (!recentDelayedBolus && bolusAgeMinutes <= 60) return false
+    if (mealAgeMinutes < 40) return false
     val slowCeiling = 0.15 * 18.0
-    return listOf(delta, shortDelta, longDelta).all { it > 0.0 && it < slowCeiling }
+    if (listOf(delta, shortDelta, longDelta).all { it > 0.0 && it < slowCeiling }) return true
+    if (!slowRiseWideBandsApply(mealAgeMinutes)) return false
+    return listOf(0.15 to 0.25, 0.20 to 0.30, 0.25 to 0.35).any { (low, high) ->
+        listOf(delta, shortDelta, longDelta).all { it >= low * 18.0 && it <= high * 18.0 }
+    }
+}
 }

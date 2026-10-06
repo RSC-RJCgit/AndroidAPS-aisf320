@@ -74,65 +74,27 @@ class RescueTest {
     }
 
     @Test
-    fun slowRiseOpensForARecentDelayedDoseOrAQuietHour() {
-        val slow = 0.1 * 18.0
-        assertTrue(
-            slowRiseCriteriaMet(
-                bg = 7.0 * 18.0,
-                delta = slow,
-                shortDelta = slow,
-                longDelta = slow,
-                cob = 4.0,
-                iob = 2.0,
-                steps60 = 100,
-                steps180 = 200,
-                bolusAgeMinutes = 10,
-                recentDelayedBolus = true,
-            )
-        )
-        assertTrue(
-            slowRiseCriteriaMet(
-                bg = 7.0 * 18.0,
-                delta = slow,
-                shortDelta = slow,
-                longDelta = slow,
-                cob = 4.0,
-                iob = 2.0,
-                steps60 = 100,
-                steps180 = 200,
-                bolusAgeMinutes = 61,
-                recentDelayedBolus = false,
-            )
-        )
-        assertFalse(
-            slowRiseCriteriaMet(
-                bg = 7.0 * 18.0,
-                delta = slow,
-                shortDelta = slow,
-                longDelta = slow,
-                cob = 4.0,
-                iob = 2.0,
-                steps60 = 100,
-                steps180 = 200,
-                bolusAgeMinutes = 30,
-                recentDelayedBolus = false,
-            )
-        )
-        assertFalse(
-            slowRiseCriteriaMet(
-                bg = 7.0 * 18.0,
-                delta = 0.2 * 18.0,
-                shortDelta = 0.2 * 18.0,
-                longDelta = 0.2 * 18.0,
-                cob = 4.0,
-                iob = 2.0,
-                steps60 = 100,
-                steps180 = 200,
-                bolusAgeMinutes = 90,
-                recentDelayedBolus = false,
-            )
-        )
-        assertTrue(slowRiseRecentEvents(now = 3_600_000L, delayedDeliveredAt = 1_000L))
-        assertFalse(slowRiseRecentEvents(now = 3_600_000L, delayedDeliveredAt = 0L))
+    fun slowRiseNeedsAMealEventOfAtLeast40MinutesAndOnlyTheGentleTestAfterAnHour() {
+        val gentle = 0.1 * 18.0
+        val wide = 0.2 * 18.0
+        fun met(d: Double, age: Int, iob: Double = 2.0) =
+            slowRiseCriteriaMet(7.0 * 18.0, d, d, d, 4.0, iob, 100, 200, age)
+        assertTrue(met(gentle, 40))
+        assertFalse(met(gentle, 39))
+        assertTrue(met(gentle, 90))
+        assertTrue(met(wide, 45))
+        assertFalse(met(wide, 90))
+        assertTrue(slowRiseWideBandsApply(59))
+        assertFalse(slowRiseWideBandsApply(60))
+    }
+
+    @Test
+    fun slowRiseIobFloorIsOnePointZero() {
+        val gentle = 0.1 * 18.0
+        fun met(iob: Double) = slowRiseCriteriaMet(7.0 * 18.0, gentle, gentle, gentle, 4.0, iob, 100, 200, 90)
+        assertTrue(met(1.0))
+        assertFalse(met(0.99))
+        assertTrue(met(5.5))
+        assertFalse(met(5.51))
     }
 }

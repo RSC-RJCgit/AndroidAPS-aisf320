@@ -4503,7 +4503,6 @@ open class OpenAPSAutoISFPlugin(
                 minuteOfDay = minuteOfDay,
                 ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
                 steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
-                recentDelayedBolus = slowRiseRecentEvents(now, preferences.get(LongNonKey.ApsAutoIsfLastDelayedBolusAt)),
                 bg = bg,
                 delta = delta,
                 shortDelta = shortDelta,
@@ -4512,7 +4511,7 @@ open class OpenAPSAutoISFPlugin(
                 iob = iob,
                 steps60 = steps60,
                 steps180 = steps180,
-                bolusAgeMinutes = minutesSinceLastMealEvent(now),
+                mealAgeMinutes = minutesSinceLastMealEvent(now),
             )
         ) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
