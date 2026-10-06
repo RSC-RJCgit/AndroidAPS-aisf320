@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.18.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.19.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,19 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .18, 2026-10-06)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .19, 2026-10-06)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.18.patch
-  git apply bolus-calculator-on-3426-aisf321.18.patch
+  git apply --check bolus-calculator-on-3426-aisf321.19.patch
+  git apply bolus-calculator-on-3426-aisf321.19.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .19 (2026-10-06):
+- New Overview setting group "Bolus calculator defaults": how the Unreliable SMBs, Small meal and Auto fat/protein
+  from carbs boxes START each time the calculator opens (defaults: Unreliable off, Small meal off, Auto on). The boxes
+  can still be changed while the calculator is open; the change is not remembered, the next open starts from the defaults.
+- Patch .18's 0 U marker fix and Bolus-ago change, and patch .17's Fat/Protein auto-fill, are included.
 
 Changes in patch .18 (2026-10-06):
 - 0 U wizard markers (cancelled / calculated-zero carb-split, delayed and protein/fat parts, "Wizard: 0U") now reach
@@ -395,6 +401,17 @@ def apply_surgical(staging: Path) -> None:
         '    WizardIncludeCob("wizard_include_cob", defaultValue = false),',
         "BooleanKey",
     )
+    # Patch .19: calculator starting state for the three FPU boxes (read in WizardDialog.kt, shown in OverviewPlugin below).
+    t = must_replace(
+        t,
+        '    WizardIncludeCob("wizard_include_cob", defaultValue = false),',
+        '    // Bolus calculator starting state, applied every time the wizard opens (a change while open is not remembered).\n'
+        '    WizardDefaultUnreliableSmbs("wizard_default_unreliable_smbs", defaultValue = false),\n'
+        '    WizardDefaultSmallMeal("wizard_default_small_meal", defaultValue = false),\n'
+        '    WizardDefaultAutoFpu("wizard_default_auto_fpu", defaultValue = true),\n'
+        '    WizardIncludeCob("wizard_include_cob", defaultValue = false),',
+        "BooleanKey wizard defaults",
+    )
     # Separate feature from WizardDelayedBolusEnabled above: "Split bolus when over max" (wizard
     # split-every-N-min row), used by WizardDialog.kt's own split-bolus-when-over-max logic. Missing
     # from an earlier generation of this script even though the FULL_COPY'd WizardDialog.kt already
@@ -556,6 +573,21 @@ def apply_surgical(staging: Path) -> None:
         "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))",
         "OverviewPlugin pref",
     )
+    # Patch .19: "Bolus calculator defaults" sub-screen, placed right after the bolus reminder switch.
+    t = must_replace(
+        t,
+        "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))",
+        "            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewUseBolusReminder, summary = R.string.enablebolusreminder_summary, title = R.string.enablebolusreminder))\n"
+        "            addPreference(preferenceManager.createPreferenceScreen(context).apply {\n"
+        "                key = \"wizard_defaults_settings\"\n"
+        "                title = rh.gs(R.string.wizard_defaults_title)\n"
+        "                summary = rh.gs(R.string.wizard_defaults_summary)\n"
+        "                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultUnreliableSmbs, title = R.string.wizard_default_unreliable_title))\n"
+        "                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultSmallMeal, title = R.string.wizard_default_small_meal_title))\n"
+        "                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultAutoFpu, title = R.string.wizard_default_auto_fpu_title))\n"
+        "            })",
+        "OverviewPlugin wizard defaults",
+    )
     write(staging, p, t)
 
     # strings
@@ -576,6 +608,18 @@ def apply_surgical(staging: Path) -> None:
         '    <string name="wizard_split_bolus_summary">When profile is 50%: deliver the remaining gap ×90% at +10/20/30 min once BGL rising criteria are met. SMBs are blocked during the check window.</string>\n'
         '    <string name="enable_bolus_advisor">Enable bolus advisor</string>\n',
         "strings.xml",
+    )
+    # Patch .19: labels for the "Bolus calculator defaults" settings.
+    t = must_replace(
+        t,
+        '    <string name="enable_bolus_advisor">Enable bolus advisor</string>\n',
+        '    <string name="wizard_defaults_title">Bolus calculator defaults</string>\n'
+        '    <string name="wizard_defaults_summary">How these boxes start each time the calculator opens</string>\n'
+        '    <string name="wizard_default_unreliable_title">Unreliable SMBs ticked</string>\n'
+        '    <string name="wizard_default_small_meal_title">Small meal ticked</string>\n'
+        '    <string name="wizard_default_auto_fpu_title">Auto fat/protein from carbs ticked</string>\n'
+        '    <string name="enable_bolus_advisor">Enable bolus advisor</string>\n',
+        "strings.xml wizard defaults",
     )
     write(staging, p, t)
 

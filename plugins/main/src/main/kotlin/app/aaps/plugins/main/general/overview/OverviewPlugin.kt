@@ -249,6 +249,14 @@ class OverviewPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowCgmButton, summary = R.string.show_cgm_button_summary, title = R.string.cgm))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewShowCalibrationButton, summary = R.string.show_calibration_button_summary, title = app.aaps.core.ui.R.string.calibration))
             })
+            addPreference(preferenceManager.createPreferenceScreen(context).apply {
+                key = "wizard_defaults_settings"
+                title = rh.gs(R.string.wizard_defaults_title)
+                summary = rh.gs(R.string.wizard_defaults_summary)
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultUnreliableSmbs, title = R.string.wizard_default_unreliable_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultSmallMeal, title = R.string.wizard_default_small_meal_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultAutoFpu, title = R.string.wizard_default_auto_fpu_title))
+            })
             addPreference(
                 AdaptiveIntentPreference(
                     ctx = context,

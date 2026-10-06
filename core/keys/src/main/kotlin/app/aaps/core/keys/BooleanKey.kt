@@ -311,6 +311,11 @@ enum class BooleanKey(
     WizardDelayedBolusEnabled("wizard_split_bolus_enabled", defaultValue = false),
     WizardIncludeCob("wizard_include_cob", defaultValue = false),
     WizardIncludeTrend("wizard_include_trend_bg", defaultValue = false),
+    // Bolus calculator starting state (2026-10-06, per explicit request). Applied every time the wizard opens;
+    // a box ticked/unticked during use is NOT remembered. Settings are under Overview > Bolus calculator defaults.
+    WizardDefaultUnreliableSmbs("wizard_default_unreliable_smbs", defaultValue = false),
+    WizardDefaultSmallMeal("wizard_default_small_meal", defaultValue = false),
+    WizardDefaultAutoFpu("wizard_default_auto_fpu", defaultValue = true),
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false),
     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false),
 

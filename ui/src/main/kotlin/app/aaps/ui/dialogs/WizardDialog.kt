@@ -280,6 +280,12 @@ class WizardDialog : DaggerDialogFragment() {
         }
         binding.proteinInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
         binding.fatInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
+        // Starting state of the three FPU boxes comes from Overview > Bolus calculator defaults (2026-10-06, per explicit
+        // request). Set BEFORE the listeners below attach, so opening the dialog does not trigger a recompute. Not remembered
+        // between uses: every open starts from these defaults.
+        binding.unreliableSmbsCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+        binding.smallMealCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultSmallMeal)
+        binding.autoFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultAutoFpu)
         binding.unreliableSmbsCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
         // Small meal (2026-10-05): halves the Fat/Protein auto-fill. Same behaviour as the unreliable box: re-runs the
         // suggestion (only takes effect while the boxes are not manually overridden) and recalculates.
