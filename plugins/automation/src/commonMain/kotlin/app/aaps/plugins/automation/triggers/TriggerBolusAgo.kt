@@ -35,7 +35,12 @@ class TriggerBolusAgo(deps: TriggerDeps) : Trigger(deps) {
     }
 
     override suspend fun shouldRun(): Boolean {
-        val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)
+        // Only a real bolus (> 0 U) counts: 0 U markers (cancelled / zero-dose wizard parts) are not boluses. Looks back 24 h;
+        // if the newest NORMAL bolus is older than that and is a real one, it is still used.
+        val now = dateUtil.now()
+        val lastBolus = persistenceLayer.getBolusesFromTimeToTime(now - 24L * 60 * 60 * 1000, now, false)
+            .firstOrNull { it.type == BS.Type.NORMAL && it.amount > 0.0 }
+            ?: persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)?.takeIf { it.amount > 0.0 }
         val lastBolusTime = lastBolus?.timestamp ?: 0L
         if (lastBolusTime == 0L)
             return if (comparator.value == Comparator.Compare.IS_NOT_AVAILABLE) {
