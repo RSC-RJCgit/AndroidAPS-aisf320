@@ -200,6 +200,26 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // Bolus calculator starting state (2026-10-06, per explicit request). Applied every time the wizard opens;
+    // a box changed during use is NOT remembered. Shown in the wizard's own settings screen.
+    WizardDefaultUnreliableSmbs(
+        "wizard_default_unreliable_smbs",
+        false,
+        KeysStrings.pref_title_wizard_default_unreliable_smbs,
+        KeysStrings.pref_summary_wizard_default_unreliable_smbs
+    ),
+    WizardDefaultSmallMeal(
+        "wizard_default_small_meal",
+        false,
+        KeysStrings.pref_title_wizard_default_small_meal,
+        KeysStrings.pref_summary_wizard_default_small_meal
+    ),
+    WizardDefaultAutoFpu(
+        "wizard_default_auto_fpu",
+        true,
+        KeysStrings.pref_title_wizard_default_auto_fpu,
+        KeysStrings.pref_summary_wizard_default_auto_fpu
+    ),
     ApsAutoIsfFastRiseEnabled(
         "autoisf_fast_rise_enabled",
         true,

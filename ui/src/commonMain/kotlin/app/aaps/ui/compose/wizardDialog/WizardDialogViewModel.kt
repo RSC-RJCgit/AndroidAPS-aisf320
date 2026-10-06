@@ -160,6 +160,12 @@ class WizardDialogViewModel(
         val useCOB = preferences.get(BooleanNonKey.WizardIncludeCob)
         val showNotes = preferences.get(BooleanKey.OverviewShowNotesInDialogs)
         val useBolusAdvisor = preferences.get(BooleanKey.OverviewUseBolusAdvisor)
+        // Starting state of the three meal-extra boxes (2026-10-06, per explicit request): every open starts from the
+        // Overview settings defaults, nothing is remembered from the last use. Unreliable SMBs and Auto fat/protein are
+        // mutually exclusive in this wizard, so Unreliable wins when both defaults are on.
+        val defaultUnreliable = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+        val defaultSmallMeal = preferences.get(BooleanKey.WizardDefaultSmallMeal)
+        val defaultAutoFpu = preferences.get(BooleanKey.WizardDefaultAutoFpu) && !defaultUnreliable
 
         // Percentage: reset to 100% if last BG is too old
         var percentage = preferences.get(IntKey.OverviewBolusPercentage)
@@ -205,6 +211,8 @@ class WizardDialogViewModel(
                 useTrend = useTrend,
                 useIOB = true,
                 useCOB = useCOB,
+                fpuInstead = defaultAutoFpu,
+                smallMeal = defaultSmallMeal,
                 alarmChecked = false,
                 calculationExpanded = false,
                 // Config
@@ -230,7 +238,9 @@ class WizardDialogViewModel(
             )
         }
 
-        recalculate()
+        // Unreliable SMBs as a starting state goes through the same path as ticking it by hand (it also lifts the max
+        // bolus back to the safety limit and sets the unreliable ratios), then recalculates.
+        if (defaultUnreliable) enableMealExtra(unreliable = true) else recalculate()
     }
 
     // --- Input update methods ---

@@ -78,6 +78,12 @@
     <string name="pref_summary_aps_use_autoisf_weights">Enable AutoISF weight-based ISF adjustments.</string>
     <string name="pref_title_aps_smb_on_even_target">Enable SMB on even target</string>
     <string name="pref_summary_aps_smb_on_even_target">Alternative activation of SMB always based on target glucose value.</string>
+    <string name="pref_title_wizard_default_unreliable_smbs">Calculator starts with Unreliable SMBs ticked</string>
+    <string name="pref_summary_wizard_default_unreliable_smbs">Applied each time the calculator opens. Off leaves it unticked. If this and Auto fat/protein are both on, Unreliable SMBs wins.</string>
+    <string name="pref_title_wizard_default_small_meal">Calculator starts with Small meal ticked</string>
+    <string name="pref_summary_wizard_default_small_meal">Applied each time the calculator opens. Off leaves it unticked.</string>
+    <string name="pref_title_wizard_default_auto_fpu">Calculator starts with Auto fat/protein from carbs ticked</string>
+    <string name="pref_summary_wizard_default_auto_fpu">Applied each time the calculator opens. Off leaves it unticked.</string>
     <string name="pref_title_aps_fast_rise_enabled">FastRise size tiers</string>
     <string name="pref_summary_aps_fast_rise_enabled">Cut SMB size during a fast Libre rise. Off leaves the SMB unchanged.</string>
     <string name="pref_title_aps_show_carb_model_curve">Carb model curve</string>

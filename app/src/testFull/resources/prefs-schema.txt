@@ -503,6 +503,9 @@ wearwizard_iob|BooleanKey|true
 wearwizard_trend|BooleanKey|true
 wearwizard_tt|BooleanKey|true
 widget_use_black_%d|BooleanComposedKey|true
+wizard_default_auto_fpu|BooleanKey|true
+wizard_default_small_meal|BooleanKey|true
+wizard_default_unreliable_smbs|BooleanKey|true
 wizard_include_cob|BooleanNonKey|true
 wizard_include_trend_bg|BooleanNonKey|true
 xdrip_bolus_calculator_result_last_synced_id|XdripLongKey|false
