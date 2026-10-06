@@ -877,6 +877,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")
             && (dateUtil.now() - preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)) <= T.hours(24).msecs()
 
+    // Whether the name saved when Tier C switched on may be written back to a role. The live role must still hold the
+    // name Tier C gave it, so a later change by hand is kept. A blank tierCName means Tier C left that role alone.
+    // The saved name must also still be a stored profile (2026-10-07: a stale saved "Profile110" was restored although
+    // no such profile existed, and it overwrote Tier A edits made in the coded-profiles dialog).
+    private fun tierCRoleRestorable(saved: String, live: String, tierCName: String): Boolean {
+        if (saved.isBlank()) return false
+        if (live != tierCName.ifBlank { saved }) return false
+        val store = activePlugin.activeProfileSource.profile ?: return true
+        return store.getSpecificProfile(saved) != null
+    }
+
     private fun escalateToStuckHighTierC() {
         if (preferences.get(BooleanKey.ApsAutoIsfStuckHighTierCActive)) return
         // 2026-09-25, per explicit request: no role escalation while the hypo-alarm revert condition holds. 25 Sep 16:02 (Live)
@@ -6501,19 +6512,25 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (g >= 135.1 /* 7.5 mmol */) return@run
             val escalatedLow = preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val escalatedStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-            val restoredLow = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole)
-            val restoredStandard = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole)
+            val savedLow = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole)
+            val savedStandard = preferences.get(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole)
+            // 2026-10-07: a role changed by hand since escalation (e.g. the coded-profiles dialog) keeps its new value, and a
+            // saved name that is no longer a stored profile is not written back.
+            val restoredLow = if (tierCRoleRestorable(savedLow, escalatedLow.trim(), preferences.get(StringKey.ApsAutoIsfLow90ProfileName).trim())) savedLow else ""
+            val restoredStandard = if (tierCRoleRestorable(savedStandard, escalatedStandard.trim(), preferences.get(StringKey.ApsAutoIsfStandard110ProfileName).trim())) savedStandard else ""
+            if (savedLow.isNotBlank() && restoredLow.isBlank()) aapsLogger.debug(LTag.APS, "StuckHighTierC off: kept Low=$escalatedLow, saved $savedLow not restored")
+            if (savedStandard.isNotBlank() && restoredStandard.isBlank()) aapsLogger.debug(LTag.APS, "StuckHighTierC off: kept Standard=$escalatedStandard, saved $savedStandard not restored")
             // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
             val currentProfileName = profileFunction.getOriginalProfileName()
             if (restoredLow.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, restoredLow)
             if (restoredStandard.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, restoredStandard)
             if (currentProfileName == escalatedLow && restoredLow.isNotBlank()) switchProfileIfNeeded(restoredLow)
             else if (currentProfileName == escalatedStandard && restoredStandard.isNotBlank()) switchProfileIfNeeded(restoredStandard)
-            applyRoleTierDeliveryNudge(1, roleTierBandForIndex(sharedRoleLadderIndex(restoredStandard, restoredLow)))
+            applyRoleTierDeliveryNudge(1, roleTierBandForIndex(sharedRoleLadderIndex(restoredStandard.ifBlank { escalatedStandard }, restoredLow.ifBlank { escalatedLow })))
             preferences.put(BooleanKey.ApsAutoIsfStuckHighTierCActive, false)
             preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole, "")
             preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole, "")
-            sendSms("StuckHighTierC off: BGL ${round(g / 18.0182, 1)} -> Standard=$restoredStandard Low=$restoredLow")
+            sendSms("StuckHighTierC off: BGL ${round(g / 18.0182, 1)} -> Standard=${restoredStandard.ifBlank { escalatedStandard }} Low=${restoredLow.ifBlank { escalatedLow }}")
             addCarePortalNote("STCOf") // 5 chars -- no Graph4NoteLabel truncation collision, see that file
         }
 
