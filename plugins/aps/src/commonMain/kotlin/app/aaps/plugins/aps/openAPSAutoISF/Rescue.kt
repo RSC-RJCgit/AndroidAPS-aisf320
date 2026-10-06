@@ -161,4 +161,3 @@ internal fun slowRiseCriteriaMet(
         listOf(delta, shortDelta, longDelta).all { it >= low * 18.0 && it <= high * 18.0 }
     }
 }
-}
