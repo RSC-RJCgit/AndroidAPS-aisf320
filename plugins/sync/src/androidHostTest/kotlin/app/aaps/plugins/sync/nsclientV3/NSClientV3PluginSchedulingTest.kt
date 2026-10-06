@@ -8,7 +8,9 @@ import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadStep
+import app.aaps.plugins.sync.SyncStringsValues
 import app.aaps.shared.tests.TestBaseWithProfile
+import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
@@ -33,6 +35,9 @@ import org.mockito.kotlin.whenever
  */
 class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
 
+    /** Real English; the sync owner is not one of the five :shared:tests can see. */
+    private val text = generatedTextResolver("sync" to SyncStringsValues::textOf)
+
     @Mock lateinit var nsLoadExecutor: NsLoadExecutor
     @Mock lateinit var nsConnection: NsConnection
     @Mock lateinit var receiverDelegate: ReceiverDelegate
@@ -53,7 +58,7 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
         whenever(persistenceLayer.observeChanges(any<kotlin.reflect.KClass<*>>())).thenReturn(emptyFlow())
         whenever(persistenceLayer.observeAnyChange()).thenReturn(emptyFlow())
         sut = NSClientV3Plugin(
-            aapsLogger, rh, preferences, rxBus,
+            aapsLogger, text, preferences, rxBus,
             receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
             mock(), mock(), decimalFormatter, l, nsClientRepository, mock(),
             mock(), mock(), mock(), mock(), mock(), mock(), mock(), nsConnection, nsLoadExecutor, mock()

@@ -178,6 +178,18 @@ enum class NotificationId(
     IDENTIFICATION_NOT_SET(NORMAL, SYSTEM),
     MASTER_PASSWORD_NOT_SET(IMPORTANT, SYSTEM),
     AAPS_DIR_NOT_SELECTED(NORMAL, SYSTEM),
+
+    // The AAPS directory IS selected, but the permission behind it is gone - Android drops a
+    // persisted SAF grant on reinstall and on "clear storage". Separate from the id above because
+    // the two need different words and different weight: that one is "you have not set this up
+    // yet", this one is "something that was working has stopped and nothing said so". While it is
+    // true, local settings export is silently off - the button just goes grey - so a user with no
+    // cloud configured has no backup at all and no sign of it. Found on a real phone in September
+    // 2026 where the last local backup was four months old.
+    //
+    // IMPORTANT, not URGENT: the backups have stopped, which has to be said plainly and has to
+    // persist, but it is not the alarm tier - that is reserved for insulin delivery and BG.
+    AAPS_DIR_ACCESS_LOST(IMPORTANT, SYSTEM),
     GOOGLE_DRIVE_ERROR(IMPORTANT, SYSTEM),
     SETTINGS_EXPORT_RESULT(INFO, SYSTEM),
     SNACKBAR_FALLBACK(NORMAL, SYSTEM, allowMultiple = true),
@@ -216,7 +228,12 @@ enum class NotificationId(
     AUTOISF_ALERT(URGENT, AUTOMATION, allowMultiple = true),
 
     // AutoISF notes that are not alarms, such as a missing profile name.
-    AUTOISF_NOTE(NORMAL, AUTOMATION, allowMultiple = true);
+    AUTOISF_NOTE(NORMAL, AUTOMATION, allowMultiple = true),
+
+    // The pump is disconnected (or a super bolus runs) in AAPS, but the zero temp basal that stops the
+    // insulin is not on the pump, and sending it again did not help. The pump may still give basal
+    // while the user believes it does not. Appended at the END for the same reason as above.
+    ZERO_DELIVERY_NOT_SET(URGENT, PUMP);
 
     companion object {
 

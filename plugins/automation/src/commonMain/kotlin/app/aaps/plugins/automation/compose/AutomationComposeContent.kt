@@ -520,7 +520,7 @@ private fun buildListToolbar(
 private fun AutomationOverflow(onRun: (() -> Unit)?, onStates: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }) {
-        Icon(Icons.Default.MoreVert, contentDescription = null)
+        Icon(Icons.Default.MoreVert, contentDescription = stringResource(CoreUiStrings.more_options))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         DropdownMenuItem(

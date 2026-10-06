@@ -95,7 +95,6 @@ class OpenAPSAMAPlugin(
         }
         .icon(IcPluginOpenAPS)
         .pluginName(ApsStrings.openapsama)
-        .shortName(ApsStrings.oaps_shortname)
         .preferencesVisibleInSimpleMode(false)
         .showInList { config.APS || config.AAPSCLIENT }   // AAPSCLIENT: visible so a client can select the master's APS
         .description(ApsStrings.description_ama),
@@ -108,24 +107,8 @@ class OpenAPSAMAPlugin(
     override val algorithm = APSResult.Algorithm.AMA
     override var lastAPSResult: APSResult? = null
 
-    override fun specialEnableCondition(): Boolean {
-        return try {
-            val pump = activePlugin.activePump
-            pump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
-            // may fail during initialization
-            true
-        }
-    }
-
-    override fun specialShowInListCondition(): Boolean {
-        try {
-            val pump = activePlugin.activePump
-            return pump.pumpDescription.isTempBasalCapable
-        } catch (_: Exception) {
-            return true
-        }
-    }
+    // No temp basal check here - see the note in OpenAPSSMBPlugin. SafetyPlugin.isLoopInvocationAllowed
+    // owns that rule.
 
     override suspend fun invoke(initiator: String, tempBasalFallback: Boolean) = withContext(Dispatchers.Default) {
 

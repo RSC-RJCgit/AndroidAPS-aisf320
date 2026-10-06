@@ -2,6 +2,7 @@ package app.aaps.plugins.main.iob.iobCobCalculator.data
 
 import androidx.collection.LongSparseArray
 import androidx.collection.size
+import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.time.T
@@ -44,6 +45,11 @@ class AutosensDataStoreObject : AutosensDataStore {
 
         const val IRREGULAR_DATA_SEC = 30L
 
+        // How far back seedReferenceTime looks for the phase the readings share. Long enough to hold
+        // several readings of a 5 minute source, short enough to describe the phase the sensor is on
+        // now rather than one it left hours ago.
+        const val PHASE_SEED_MIN = 30L
+
         // Autosens/COB data (table or stored fallback) older than this is treated as stale and not handed out.
         val MAX_AUTOSENS_AGE_MS = T.mins(11).msecs()
     }
@@ -73,6 +79,12 @@ class AutosensDataStoreObject : AutosensDataStore {
                 // Leave referenceTime unset. This copy is published as the live store, so the next
                 // load anchors the 5 minute grid to the newest reading, as AutoISF 3.2.1 does.
                 // Bucket 0 is then that reading, and the loop runs on every new glucose value.
+                // (Fork decision kept in the 2026-10 upstream merge: upstream now copies referenceTime here, see #5066.)
+                // Must survive, for the reason upstream gives: the calculation publishes its clone as the new
+                // live store, so without this the flag is back to null on every published store, the
+                // "mode changed, drop the cache" test in createBucketedData can never fire, and
+                // BgQualityCheckPlugin reports UNKNOWN instead of clean / recalculated data.
+                it.lastUsed5minCalculation = this.lastUsed5minCalculation
                 it.bgReadings = this.bgReadings.toMutableList()
                 it.autosensDataTable = LongSparseArray<AutosensData>(this.autosensDataTable.size).apply { putAll(this@AutosensDataStoreObject.autosensDataTable) }
                 it.bucketedData = this.bucketedData?.toMutableList()
@@ -152,7 +164,7 @@ class AutosensDataStoreObject : AutosensDataStore {
      */
     override fun actualBg(): InMemoryGlucoseValue? {
         val lastBg = lastBg() ?: return null
-        return if (lastBg.timestamp > Clock.System.now().toEpochMilliseconds() - T.mins(9).msecs()) lastBg else null
+        return if (lastBg.timestamp > Clock.System.now().toEpochMilliseconds() - T.mins(Constants.OLD_BG_MINUTES).msecs()) lastBg else null
     }
 
     override fun lastDataTime(dateUtil: DateUtil): String =
@@ -221,33 +233,104 @@ class AutosensDataStoreObject : AutosensDataStore {
             referenceTime = someTime
             return someTime
         }
-        var diff = abs(someTime - referenceTime)
-        diff %= T.mins(5).msecs()
-        return if (diff > T.mins(2).plus(T.secs(30)).msecs()) someTime + abs(diff - T.mins(5).msecs()) // Adjust to the future
-        else someTime - diff // adjust to the past
+        val offset = gridOffset(someTime, referenceTime)
+        return if (offset > T.mins(2).plus(T.secs(30)).msecs()) someTime + (T.mins(5).msecs() - offset) // Adjust to the future
+        else someTime - offset // adjust to the past
+    }
+
+    /**
+     * How far [someTime] sits above the grid point below it, for the 5 minute grid [anchor] defines.
+     * Always in 0 until 5 minutes.
+     *
+     * This used to be `abs(someTime - referenceTime) % 5min` inside [adjustToReferenceTime]. Taking the
+     * absolute value first throws away the direction, and for a time OLDER than the anchor the result
+     * then moved the right distance the wrong way and landed between grid points. createBucketedData5min
+     * calls [adjustToReferenceTime] exactly that way - on the oldest reading - and lays its whole series
+     * out from the answer, so every bucket sat off the anchor's own grid and the two bucketing paths
+     * built on different grids. The magnitudes matched, which is why the 90 second re-anchor test next
+     * to it still behaved, and why this stayed hidden.
+     */
+    private fun gridOffset(someTime: Long, anchor: Long): Long {
+        val fiveMin = T.mins(5).msecs()
+        return ((someTime - anchor) % fiveMin + fiveMin) % fiveMin
+    }
+
+    /**
+     * True when the readings arrive faster than every 5 minutes (the 1 minute Libre): the median gap between the newest
+     * readings is under 2.5 minutes. Median, so one missing reading does not make a 1 minute source look slower.
+     */
+    private fun isFasterThan5min(readings: List<GV>): Boolean {
+        val gaps = readings.asSequence().take(8).zipWithNext { newer, older -> newer.timestamp - older.timestamp }.toList().sorted()
+        if (gaps.isEmpty()) return false
+        return gaps[gaps.size / 2] < T.mins(2).plus(T.secs(30)).msecs()
+    }
+
+    /**
+     * Pick the anchor from the phase the recent readings share, instead of from whichever reading
+     * happens to be newest.
+     *
+     * The anchor is set once and then kept for the life of the process, because the whole point of it
+     * is that autosens and COB keep the same 5 minute slots (issue #5066): the table is keyed by bucket
+     * time, COB is chained from the previous bucket, and carbs are counted into the slot the grid
+     * defines. So the one moment it is chosen has to be right, and [adjustToReferenceTime] chose it
+     * from a single reading with nothing checking that the reading is representative.
+     *
+     * This path runs exactly when the data is NOT a clean 5 minute cadence, so the newest reading is
+     * the one most likely to be the irregular one. Anchoring on it puts every regular reading off the
+     * grid for the rest of the session - every bucket becomes an interpolation, which is reported as
+     * filledGap and which the AutoISF parabola fit then refuses. Only a restart cleared it, and only by
+     * luck, when the newest reading at that moment happened to be a regular one.
+     *
+     * So score every recent reading as a candidate anchor by how many of the others its grid would
+     * land on, and take the best. A source faster than 5 minutes has no dominant phase - every
+     * candidate scores the same - and the list is newest first, so ties keep today's answer.
+     */
+    private fun seedReferenceTime() {
+        val readings = bgReadings
+        val newest = readings[0].timestamp
+        val from = newest - T.mins(PHASE_SEED_MIN).msecs()
+        // Never empty: readings[0] is `newest` itself, so it always passes the window test.
+        val recent = readings.asSequence().takeWhile { it.timestamp >= from }.map { it.timestamp }.toList()
+        val tolerance = T.secs(IRREGULAR_DATA_SEC).msecs()
+        referenceTime = recent.maxBy { candidate -> recent.count { distanceToGrid(it, candidate) <= tolerance } }
+    }
+
+    /**
+     * Distance from [someTime] to the nearest point of the 5 minute grid that [anchor] defines, always
+     * positive. Unlike [adjustToReferenceTime] it takes the anchor as a parameter, because the seeding
+     * scores candidate anchors before one is chosen.
+     */
+    private fun distanceToGrid(someTime: Long, anchor: Long): Long {
+        val offset = gridOffset(someTime, anchor)
+        return min(offset, T.mins(5).msecs() - offset)
     }
 
     fun isAbout5minData(aapsLogger: AAPSLogger): Boolean {
         dataLock.withLock {
-            if (bgReadings.size < 3) return true
+            // Read the list ONCE. The property getter takes [dataLock] on every access, so touching
+            // bgReadings inside a loop re-enters a lock this thread already holds, once per element.
+            // The list is only ever replaced, never changed in place, so a local is the same data.
+            // See the note on [findNewer].
+            val readings = bgReadings
+            if (readings.size < 3) return true
 
             var totalDiff: Long = 0
-            for (i in 1 until bgReadings.size) {
-                val bgTime = bgReadings[i].timestamp
-                val lastBgTime = bgReadings[i - 1].timestamp
+            for (i in 1 until readings.size) {
+                val bgTime = readings[i].timestamp
+                val lastBgTime = readings[i - 1].timestamp
                 var diff = lastBgTime - bgTime
                 diff %= T.mins(5).msecs()
                 if (diff > T.mins(2).plus(T.secs(30)).msecs()) diff -= T.mins(5).msecs()
                 totalDiff += diff
                 diff = abs(diff)
                 if (diff > T.secs(IRREGULAR_DATA_SEC).msecs()) {
-                    aapsLogger.debug(LTag.AUTOSENS, "Interval detection: values: ${bgReadings.size} diff: ${diff / 1000}[s] is5minData: false")
+                    aapsLogger.debug(LTag.AUTOSENS, "Interval detection: values: ${readings.size} diff: ${diff / 1000}[s] is5minData: false")
                     return false
                 }
             }
-            val averageDiff = totalDiff / bgReadings.size / 1000
+            val averageDiff = totalDiff / readings.size / 1000
             val is5minData = averageDiff < 1
-            aapsLogger.debug(LTag.AUTOSENS, "Interval detection: values: ${bgReadings.size} averageDiff: $averageDiff[s] is5minData: $is5minData")
+            aapsLogger.debug(LTag.AUTOSENS, "Interval detection: values: ${readings.size} averageDiff: $averageDiff[s] is5minData: $is5minData")
             return is5minData
         }
     }
@@ -263,42 +346,83 @@ class AutosensDataStoreObject : AutosensDataStore {
         if (fiveMinData) createBucketedData5min(aapsLogger, dateUtil) else createBucketedDataRecalculated(aapsLogger, dateUtil)
     }
 
+    /**
+     * The closest reading at or after [time], or null when every reading is older than it.
+     *
+     * The local `readings` is not a style choice. [bgReadings]' getter takes [dataLock] on every
+     * single access, and this loop reads it two to four times per element, so a full bucketing pass
+     * used to re-enter the lock over a million times - on a lock the caller (createBucketedData, under
+     * loadBgData) already holds. The list is only ever replaced, never mutated in place, so reading it
+     * once is the same data and also pins one snapshot for the whole scan.
+     */
     fun findNewer(time: Long): GV? {
-        var lastFound = bgReadings[0]
+        val readings = bgReadings
+        var lastFound = readings[0]
         if (lastFound.timestamp < time) return null
-        for (i in 1 until bgReadings.size) {
-            if (bgReadings[i].timestamp == time) return bgReadings[i]
-            if (bgReadings[i].timestamp > time) continue
-            lastFound = bgReadings[i - 1]
-            if (bgReadings[i].timestamp < time) break
+        for (i in 1 until readings.size) {
+            if (readings[i].timestamp == time) return readings[i]
+            if (readings[i].timestamp > time) continue
+            lastFound = readings[i - 1]
+            if (readings[i].timestamp < time) break
         }
         return lastFound
     }
 
+    /** Mirror of [findNewer] at the other end, and the same note about the local list applies. */
     fun findOlder(time: Long): GV? {
-        var lastFound = bgReadings[bgReadings.size - 1]
+        val readings = bgReadings
+        var lastFound = readings[readings.size - 1]
         if (lastFound.timestamp > time) return null
-        for (i in bgReadings.size - 2 downTo 0) {
-            if (bgReadings[i].timestamp == time) return bgReadings[i]
-            if (bgReadings[i].timestamp < time) continue
-            lastFound = bgReadings[i + 1]
-            if (bgReadings[i].timestamp > time) break
+        for (i in readings.size - 2 downTo 0) {
+            if (readings[i].timestamp == time) return readings[i]
+            if (readings[i].timestamp < time) continue
+            lastFound = readings[i + 1]
+            if (readings[i].timestamp > time) break
         }
         return lastFound
     }
 
     private fun createBucketedDataRecalculated(aapsLogger: AAPSLogger, dateUtil: DateUtil) {
-        if (bgReadings.size < 3) {
+        // One read of the property, then work on the local - see the note on [findNewer].
+        val readings = bgReadings
+        if (readings.size < 3) {
             bucketedData = null
             return
         }
-        val lastBg = bgReadings[0]
+        val lastBg = readings[0]
+        // Fork rule (kept in the 2026-10 upstream merge): a source faster than 5 minutes (the 1 minute Libre) anchors to
+        // the NEWEST reading on every load. clone() drops the anchor, so each minute the 5 minute grid is rebuilt back
+        // from the newest reading and bucket 0 IS that reading - the rolling per-minute recalculation. Upstream's phase
+        // seeding is for IRREGULAR 5 minute data. On 1 minute data it usually ties and keeps the newest, but one missing
+        // reading in its 30 minute window changes the scores and can pick a reading minutes older, which then makes
+        // bucket 0 stale or off the newest reading.
+        if (referenceTime == -1L && !isFasterThan5min(readings)) seedReferenceTime()
         val newBucketedData = ArrayList<InMemoryGlucoseValue>()
-        var currentTime = bgReadings[0].timestamp
-        val adjustedTime = adjustToReferenceTime(currentTime)
-        // after adjusting time may be newer. In this case use T-5min
-        currentTime = if (adjustedTime > currentTime) adjustedTime - T.mins(5).msecs() else adjustedTime
+        val adjustedTime = adjustToReferenceTime(lastBg.timestamp)
+        // adjustToReferenceTime snaps to the NEAREST grid point, so the newest grid point can land after
+        // the newest reading. Dropping to T-5min for that leaves the newest reading out of the bucketed
+        // data, and everything reading bucketedData[0] - overview, loop, wear - then runs 5 minutes late
+        // for as long as the process lives, because referenceTime survives clone().
+        //
+        // So keep the grid point and fill it from the newest reading below, the way createBucketedData5min
+        // keeps bgReadings[0]. The limit is IRREGULAR_DATA_SEC, the same "still the same 5 minute slot"
+        // distance isAbout5minData and filledGap use. Up to that much, bucketedData[0] carries a timestamp
+        // ahead of the reading it holds, so actualBg() and isActualBg() read it as up to 30 seconds
+        // fresher than it is. That is the price of not being a full 5 minutes stale.
+        //
+        // A bigger overshoot is a real phase mismatch, not jitter, and still steps back. createBucketedData5min
+        // drops the anchor instead when it is that far out; this path has no such re-anchor.
+        var currentTime =
+            if (adjustedTime - lastBg.timestamp > T.secs(IRREGULAR_DATA_SEC).msecs()) adjustedTime - T.mins(5).msecs()
+            else adjustedTime
         aapsLogger.debug("Adjusted time " + dateUtil.dateAndTimeAndSecondsString(currentTime))
+        // findNewer() and findOlder() cannot bracket a time that is after every reading, so this bucket is
+        // taken from the newest reading and the loop starts one grid point below it.
+        val firstBucket = if (currentTime > lastBg.timestamp) {
+            val bucket = InMemoryGlucoseValue.fromGv(lastBg).copy(timestamp = currentTime)
+            currentTime -= T.mins(5).msecs()
+            bucket
+        } else null
         while (true) {
             // test if current value is older than current time
             val newer = findNewer(currentTime)
@@ -317,33 +441,39 @@ class AutosensDataStoreObject : AutosensDataStore {
             }
             currentTime -= T.mins(5).msecs()
         }
+        // Only when the loop found something to bucket. On its own this bucket would turn a result that
+        // used to be empty into a single point, and GlucoseStatus answers a lone point with delta 0
+        // instead of null, so the APS would run on a made up flat trend instead of declining to run.
+        if (firstBucket != null && newBucketedData.isNotEmpty()) newBucketedData.add(0, firstBucket)
         bucketedData = newBucketedData
     }
 
     private fun createBucketedData5min(aapsLogger: AAPSLogger, dateUtil: DateUtil) {
-        if (bgReadings.size < 3) {
+        // One read of the property, then work on the local - see the note on [findNewer].
+        val readings = bgReadings
+        if (readings.size < 3) {
             bucketedData = null
             return
         }
-        val lastBg = bgReadings[0]
+        val lastBg = readings[0]
         val bData: MutableList<InMemoryGlucoseValue> = ArrayList()
-        bData.add(InMemoryGlucoseValue.fromGv(bgReadings[0]))
-        aapsLogger.debug(LTag.AUTOSENS) { "Adding. bgTime: ${dateUtil.toISOString(bgReadings[0].timestamp)} lastBgTime: none-first-value ${bgReadings[0]}" }
+        bData.add(InMemoryGlucoseValue.fromGv(readings[0]))
+        aapsLogger.debug(LTag.AUTOSENS) { "Adding. bgTime: ${dateUtil.toISOString(readings[0].timestamp)} lastBgTime: none-first-value ${readings[0]}" }
         var j = 0
-        for (i in 1 until bgReadings.size) {
-            val bgTime = bgReadings[i].timestamp
-            var lastBgTime = bgReadings[i - 1].timestamp
+        for (i in 1 until readings.size) {
+            val bgTime = readings[i].timestamp
+            var lastBgTime = readings[i - 1].timestamp
             var elapsedMinutes = (bgTime - lastBgTime) / (60 * 1000)
             when {
                 abs(elapsedMinutes) > 8 -> {
                     // interpolate missing data points
-                    var lastBgValue = bgReadings[i - 1].value
+                    var lastBgValue = readings[i - 1].value
                     elapsedMinutes = abs(elapsedMinutes)
                     var nextBgTime: Long
                     while (elapsedMinutes > 5) {
                         nextBgTime = lastBgTime - 5 * 60 * 1000
                         j++
-                        val gapDelta = bgReadings[i].value - lastBgValue
+                        val gapDelta = readings[i].value - lastBgValue
                         val nextBg = lastBgValue + 5.0 / elapsedMinutes * gapDelta
                         val newBgReading = InMemoryGlucoseValue(nextBgTime, nextBg.roundToLong().toDouble(), filledGap = true, sourceSensor = lastBg.sourceSensor)
                         bData.add(newBgReading)
@@ -353,26 +483,28 @@ class AutosensDataStoreObject : AutosensDataStore {
                         lastBgTime = nextBgTime
                     }
                     j++
-                    val newBgReading = InMemoryGlucoseValue(bgTime, bgReadings[i].value, sourceSensor = lastBg.sourceSensor)
+                    val newBgReading = InMemoryGlucoseValue(bgTime, readings[i].value, sourceSensor = lastBg.sourceSensor)
                     bData.add(newBgReading)
                     aapsLogger.debug(LTag.AUTOSENS) { "Adding. bgTime: ${dateUtil.toISOString(bgTime)} lastBgTime: ${dateUtil.toISOString(lastBgTime)} $newBgReading" }
                 }
 
                 abs(elapsedMinutes) > 2 -> {
                     j++
-                    val newBgReading = InMemoryGlucoseValue(bgTime, bgReadings[i].value, sourceSensor = lastBg.sourceSensor)
+                    val newBgReading = InMemoryGlucoseValue(bgTime, readings[i].value, sourceSensor = lastBg.sourceSensor)
                     bData.add(newBgReading)
                     aapsLogger.debug(LTag.AUTOSENS) { "Adding. bgTime: ${dateUtil.toISOString(bgTime)} lastBgTime: ${dateUtil.toISOString(lastBgTime)} $newBgReading" }
                 }
 
                 else                    -> {
-                    bData[j].value = (bData[j].value + bgReadings[i].value) / 2
+                    bData[j].value = (bData[j].value + readings[i].value) / 2
                 }
             }
         }
 
         // Normalize bucketed data
         val oldest = bData[bData.size - 1]
+        // Whether this pass is the one that establishes the anchor. Used only by the fallback below.
+        val anchorWasUnset = referenceTime == -1L
         // A stale anchor can sit on another 5 minute phase. Shifting every reading onto it moves
         // them off the time they were taken, so drop it and use this data's own phase.
         if (referenceTime != -1L && abs(adjustToReferenceTime(oldest.timestamp) - oldest.timestamp) > T.secs(90).msecs()) {
@@ -399,6 +531,15 @@ class AutosensDataStoreObject : AutosensDataStore {
             if (abs(adjusted + anchorShift) > 90) {
                 // too big adjustment, fallback to non 5 min data
                 aapsLogger.debug(LTag.AUTOSENS, "Fallback to non 5 min data")
+                // If this pass invented the anchor a few lines up, it took the phase of the OLDEST
+                // reading, and getting here says the newest readings have drifted away from that phase
+                // by more than the 90 seconds this loop tolerates. Anchoring the rest of the process on
+                // it would put every recent reading off the grid. Hand the fallback a clean slate so it
+                // seeds the anchor from the recent phase instead.
+                //
+                // Only an anchor this pass created. One that was already established stays: autosens
+                // keys, the COB chain and carb slotting all depend on the grid not moving (issue #5066).
+                if (anchorWasUnset) referenceTime = -1
                 createBucketedDataRecalculated(aapsLogger, dateUtil)
                 return
             }

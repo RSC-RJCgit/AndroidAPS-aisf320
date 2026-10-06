@@ -1533,6 +1533,10 @@ class PersistenceLayerImpl(
         repository.getTemporaryBasalActiveAt(timestamp)?.fromDb()
     }
 
+    override suspend fun getTemporaryBasalsActiveAt(timestamp: Long): List<TB> = withContext(aapsIoDispatcher) {
+        repository.getTemporaryBasalsActiveAt(timestamp).map { it.fromDb() }
+    }
+
     override suspend fun getOldestTemporaryBasalRecord(): TB? = withContext(aapsIoDispatcher) {
         repository.getOldestTemporaryBasalRecord()?.fromDb()
     }
@@ -1543,10 +1547,6 @@ class PersistenceLayerImpl(
 
     override suspend fun getTemporaryBasalByNSId(nsId: String): TB? = withContext(aapsIoDispatcher) {
         repository.findTemporaryBasalByNSId(nsId)?.fromDb()
-    }
-
-    override suspend fun getTemporaryBasalsActiveBetweenTimeAndTime(startTime: Long, endTime: Long): List<TB> = withContext(aapsIoDispatcher) {
-        repository.getTemporaryBasalsActiveBetweenTimeAndTime(startTime, endTime).map { it.fromDb() }
     }
 
     override suspend fun getTemporaryBasalsStartingFromTimeToTime(startTime: Long, endTime: Long, ascending: Boolean): List<TB> = withContext(aapsIoDispatcher) {
@@ -1771,6 +1771,10 @@ class PersistenceLayerImpl(
         repository.getExtendedBolusActiveAt(timestamp)?.fromDb()
     }
 
+    override suspend fun getExtendedBolusesActiveAt(timestamp: Long): List<EB> = withContext(aapsIoDispatcher) {
+        repository.getExtendedBolusesActiveAt(timestamp).map { it.fromDb() }
+    }
+
     override suspend fun getOldestExtendedBolusRecord(): EB? = withContext(aapsIoDispatcher) {
         repository.getOldestExtendedBolusRecord()?.fromDb()
     }
@@ -1897,6 +1901,9 @@ class PersistenceLayerImpl(
     // TT
     override suspend fun getTemporaryTargetActiveAt(timestamp: Long): TT? =
         repository.getTemporaryTargetActiveAt(timestamp)?.fromDb()
+
+    override suspend fun getTemporaryTargetsActiveAt(timestamp: Long): List<TT> =
+        repository.getTemporaryTargetsActiveAt(timestamp).map { it.fromDb() }
 
     override suspend fun getLastTemporaryTargetId(): Long? = withContext(aapsIoDispatcher) {
         repository.getLastTempTargetId()

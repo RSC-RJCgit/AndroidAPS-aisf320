@@ -41,7 +41,6 @@ class SecondaryNsSourcePlugin(
         }
         .icon(IcPluginNsClientBg)
         .pluginName(SourceStrings.secondary_ns_bg)
-        .shortName(SourceStrings.secondary_ns_bg_short)
         .description(SourceStrings.description_source_secondary_ns),
     aapsLogger, rh, notificationManager
 ), BgSource

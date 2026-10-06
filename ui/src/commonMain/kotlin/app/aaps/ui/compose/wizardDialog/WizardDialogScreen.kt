@@ -68,6 +68,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -285,6 +287,11 @@ internal fun WizardDialogContent(
             )
         },
         bottomBar = {
+            // The button shows only the amounts, so a screen reader would say just "2.5 U" and never
+            // what pressing it does. The verb only: the Texts below are still read, so repeating the
+            // amounts here would have them announced twice. This also sidesteps the insulin/carbs
+            // branching, which no single template could join without leaving a gap.
+            val confirmDescription = stringResource(CoreUiStrings.confirm)
             Button(
                 onClick = {
                     focusManager.clearFocus()
@@ -295,6 +302,7 @@ internal fun WizardDialogContent(
                     .fillMaxWidth()
                     .bottomBarSafeArea()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .semantics { contentDescription = confirmDescription }
             ) {
                 Icon(
                     imageVector = Icons.Filled.Check,
@@ -406,7 +414,7 @@ internal fun WizardDialogContent(
                             }
                             Icon(
                                 imageVector = if (uiState.calculationExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                contentDescription = null,
+                                contentDescription = stringResource(if (uiState.calculationExpanded) CoreUiStrings.collapse else CoreUiStrings.expand),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -505,7 +513,7 @@ internal fun WizardDialogContent(
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Info,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(CoreUiStrings.carousel_show_card),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -845,7 +853,7 @@ internal fun WizardDialogContent(
                                 IconButton(onClick = { scope.launch { tooltipState.show() } }) {
                                     Icon(
                                         imageVector = Icons.Outlined.Info,
-                                        contentDescription = null,
+                                        contentDescription = stringResource(CoreUiStrings.carousel_show_card),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }

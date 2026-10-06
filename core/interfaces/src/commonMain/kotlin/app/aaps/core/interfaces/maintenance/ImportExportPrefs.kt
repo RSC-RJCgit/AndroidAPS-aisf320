@@ -108,11 +108,48 @@ interface ImportExportPrefs {
     fun importKeepOffer(prefs: Prefs): ImportKeepOffer
 
     /**
-     * Write the decrypted prefs and call plugin hooks.
-     * The local AAPS folder is kept. Automation states are off unless [enableAutomationStates] is true.
-     * [keep] leaves the chosen current groups in place.
+     * Applies the decrypted prefs to the live store and calls the plugin hooks.
+     *
+     * The store is NOT cleared. Each name is resolved to the key that owns it, the value is read as
+     * that key's type, and only what would actually change is written - in one batch, then published
+     * once. A name this build does not know is left alone rather than dropped.
+     *
+     * @param keep the user's choices on the import screen. A kept group is left exactly as it is on this
+     *        phone: the pump (keys owned by a pump driver and the pump's own `ConfigBuilder_Enabled_*`
+     *        entry, so the pump this phone is paired with keeps working), the patient name, the BG
+     *        source, and the sync settings. A group that is not kept is replaced by the file, which is
+     *        what a restore onto a new phone with the same pump wants.
+     * @param enableAutomationStates whether the imported automation states are switched on. Off unless
+     *        the import screen checkbox asked for it, whatever the file says.
+     * @return what changed, for the log and for what the user is told afterwards
      */
-    fun executeImport(prefs: Prefs, enableAutomationStates: Boolean = false, keep: ImportKeepChoices = ImportKeepChoices())
+    suspend fun executeImport(
+        prefs: Prefs,
+        keep: ImportKeepChoices = ImportKeepChoices(),
+        enableAutomationStates: Boolean = false
+    ): ImportOutcome
+
+    /** What [executeImport] did, or what [previewImport] says it would do. */
+    data class ImportOutcome(
+        val changed: Int = 0,
+        val unchanged: Int = 0,
+        val pumpSkipped: Int = 0,
+        val pumpWouldChange: Int = 0,
+        val keptByChoice: Int = 0,
+        val syncedSkipped: Int = 0,
+        val notExportable: Int = 0,
+        val unresolved: List<String> = emptyList(),
+        val unreadable: List<String> = emptyList()
+    )
+
+    /**
+     * What [executeImport] would do, without doing it.
+     *
+     * The import screen uses this to say how much actually changes, and how many pump settings the
+     * checkbox is protecting - counted with the same filter that will run, so the number cannot
+     * disagree with the outcome.
+     */
+    fun previewImport(prefs: Prefs, keep: ImportKeepChoices = ImportKeepChoices()): ImportOutcome
 
     /**
      * Tidy up after [executeImport], before the imported settings are applied.

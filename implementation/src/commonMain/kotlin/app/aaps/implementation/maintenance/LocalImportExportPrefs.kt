@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.implementation.maintenance.cloud.CloudConstants
 import app.aaps.implementation.maintenance.cloud.CloudStorageManager
@@ -79,6 +80,7 @@ class LocalImportExportPrefs(
     private val persistenceLayer: PersistenceLayer,
     private val userEntryPresentationHelper: UserEntryPresentationHelper,
     private val appScope: CoroutineScope,
+    private val applier: PreferenceImportApplier,
     secureEncrypt: SecureEncrypt,
     textResolver: TextResolver
 ) : ImportExportPrefs {
@@ -280,11 +282,29 @@ class LocalImportExportPrefs(
     override fun importKeepOffer(prefs: Prefs): ImportKeepOffer =
         importKeepOfferFor(activePlugin, transfer.currentEntries(), prefs.values)
 
-    override fun executeImport(prefs: Prefs, enableAutomationStates: Boolean, keep: ImportKeepChoices) {
+    override suspend fun executeImport(
+        prefs: Prefs,
+        keep: ImportKeepChoices,
+        enableAutomationStates: Boolean
+    ): ImportExportPrefs.ImportOutcome {
         activePlugin.beforeImport()
-        transfer.applyImported(prefs, enableAutomationStates, preserveKeys(activePlugin, keep))
+        val outcome = applier.apply(prefs, keep.keepPump, preserveKeys(activePlugin, keep))
+        // Automation states come in off unless the import screen checkbox asked for them, whatever the file says.
+        preferences.put(BooleanKey.AutomationStatesEnabled, enableAutomationStates)
         activePlugin.afterImport()
+        aapsLogger.info(
+            LTag.CORE,
+            "Import applied: ${outcome.changed} changed, ${outcome.unchanged} already matched, " +
+                "${outcome.keptByChoice} kept by choice, ${outcome.pumpSkipped} pump settings kept (${outcome.pumpWouldChange} would have changed), " +
+                "${outcome.syncedSkipped} synced keys left to the master, ${outcome.notExportable} refused as device state, " +
+                "${outcome.unresolved.size} unknown names left alone, ${outcome.unreadable.size} unreadable values skipped"
+        )
+        if (outcome.unresolved.isNotEmpty()) aapsLogger.debug(LTag.CORE, "Import: names this build does not know: ${outcome.unresolved}")
+        return outcome
     }
+
+    override fun previewImport(prefs: Prefs, keep: ImportKeepChoices): ImportExportPrefs.ImportOutcome =
+        applier.preview(prefs, keep.keepPump, preserveKeys(activePlugin, keep))
 
     override fun prepareImportedSettings() {
         preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)

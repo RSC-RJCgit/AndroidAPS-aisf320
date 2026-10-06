@@ -44,7 +44,6 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.clientcontrol.ClientState
@@ -159,7 +158,6 @@ class NSClientV3Plugin(
         .mainType(PluginType.SYNC)
         .icon(IcPluginNsClient)
         .pluginName(SyncStrings.ns_client_v3_title)
-        .shortName(SyncStrings.ns_client_v3_short_name)
         .description(SyncStrings.description_ns_client_v3)
         .composeContent { plugin ->
             NSClientComposeContent(

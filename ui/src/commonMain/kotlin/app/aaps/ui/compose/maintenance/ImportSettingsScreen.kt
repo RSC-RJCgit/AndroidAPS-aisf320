@@ -3,6 +3,7 @@ package app.aaps.ui.compose.maintenance
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -128,10 +130,15 @@ fun ImportSettingsScreen(
             )
         }
 
-        is ImportStep.WaitingForPump -> {
-            // Deliberately without the close button the Loading step has: the settings are already
-            // written, and applying them is the only way out. It ends on its own when the pump goes
-            // idle, or with the busy message when it does not.
+        is ImportStep.WaitingForPump,
+        is ImportStep.Applying       -> {
+            // Deliberately without the close button the Loading step has: the apply is under way and
+            // letting it go would leave the configuration half changed. It ends on its own, or with
+            // the busy message if the pump never goes idle.
+            //
+            // Two steps, one screen, differing only in the line of text - "waiting for the pump" is a
+            // lie when there was nothing to wait for, and this screen is the one thing standing
+            // between the user and a second tap on the confirm dialog.
             Scaffold(
                 topBar = { AapsTopAppBar(title = { Text(stringResource(CoreUiStrings.import_setting)) }) }
             ) { padding ->
@@ -144,16 +151,29 @@ fun ImportSettingsScreen(
                 ) {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(AapsTheme.spacing.extraLarge))
-                    Text(stringResource(CoreUiStrings.import_apply_waiting))
+                    Text(
+                        if (currentStep is ImportStep.WaitingForPump) stringResource(CoreUiStrings.import_apply_waiting)
+                        else stringResource(CoreUiStrings.import_applying)
+                    )
                 }
             }
         }
 
         is ImportStep.ApplyConfirm   -> {
-            OkDialog(
+            // Nothing has been written yet, so Cancel genuinely changes nothing - which is why this
+            // is a real confirmation now and not the acknowledgement it used to be. The counts come
+            // from the same filter that will run, so what it says cannot disagree with what happens.
+            OkCancelDialog(
                 title = stringResource(CoreUiStrings.import_apply_title),
-                message = stringResource(CoreUiStrings.import_apply_message),
-                onDismiss = { viewModel.onApplyConfirmed() }
+                message = if (currentStep.keep.keepPump && currentStep.preview.pumpSkipped > 0)
+                    stringResource(
+                        CoreUiStrings.import_apply_message_pump_kept,
+                        currentStep.preview.changed,
+                        currentStep.preview.pumpSkipped
+                    )
+                else stringResource(CoreUiStrings.import_apply_message, currentStep.preview.changed),
+                onConfirm = { viewModel.onApplyConfirmed() },
+                onDismiss = { viewModel.cancelImport(); onClose() }
             )
         }
 
@@ -358,7 +378,7 @@ private fun ImportFileCard(
                 ) {
                     Icon(
                         imageVector = metaKey.icon,
-                        contentDescription = null,
+                        contentDescription = stringResource(metaKey.label),
                         modifier = Modifier
                             .padding(start = iconStartPadding, end = 8.dp)
                             .height(iconSize)
@@ -383,7 +403,7 @@ private fun ImportFileCard(
                 metadata.entries.find { it.key.key == "created_at" }?.let { (metaKey, metaEntry) ->
                     Icon(
                         imageVector = metaKey.icon,
-                        contentDescription = null,
+                        contentDescription = stringResource(metaKey.label),
                         modifier = Modifier
                             .padding(start = iconStartPadding, end = 8.dp)
                             .height(iconSize)

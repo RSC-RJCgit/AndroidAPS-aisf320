@@ -45,10 +45,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.SecondaryGraph
 import app.aaps.core.interfaces.overview.graph.SeriesType
@@ -56,8 +60,11 @@ import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.ui.UiStrings
 import app.aaps.core.ui.compose.blockSystemEdgeGesture
 import app.aaps.core.ui.compose.isLandscape
+import app.aaps.core.ui.compose.LocalDecimalFormatter
+import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.stringResource
 import com.patrykandpatrick.vico.compose.cartesian.Scroll
@@ -91,6 +98,14 @@ private val SIMPLE_MODE_CONFIG = GraphConfig(
     secondaryGraphs = listOf(SecondaryGraph(listOf(SeriesType.COB)))
 )
 
+/**
+ * How many recent readings the spoken description of the BG graph lists.
+ *
+ * Five is about twenty-five minutes, which is enough to hear where the glucose is heading without
+ * turning the description into a list nobody will sit through.
+ */
+private const val RECENT_VALUES_SPOKEN = 5
+
 /** Series types available as BG graph overlays */
 private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.RAW_BG, SeriesType.UKF_BG)
 
@@ -105,7 +120,14 @@ fun GraphsSection(
     graphViewModel: GraphViewModel,
     isSimpleMode: Boolean,
     modifier: Modifier = Modifier,
-    fitWholeWindow: Boolean = false
+    fitWholeWindow: Boolean = false,
+    /**
+     * Insulin and carbs on board, already formatted, for the spoken description of the BG graph.
+     * The overview passes them; the history browser must NOT, because these are CURRENT values and
+     * announcing them beside a past day would state something untrue about insulin.
+     */
+    iobText: String? = null,
+    cobText: String? = null
 ) {
     val dateUtil = LocalDateUtil.current
     val savedGraphConfig by graphViewModel.graphConfigFlow.collectAsStateWithLifecycle()
@@ -600,6 +622,38 @@ fun GraphsSection(
     ) {
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
+
+        // The graph is drawn, so a screen reader gets nothing from it at all - a chart contributes
+        // no semantics node of its own. Describe it instead: the recent readings newest first,
+        // because the current value is what matters most and a listener may stop there, plus what
+        // is on board. The description goes on the graph itself rather than the Box, so the edit
+        // button beside it stays a separate control.
+        val bgReadings by graphViewModel.bgReadingsFlow.collectAsStateWithLifecycle()
+        val profileUtil = LocalProfileUtil.current
+        val decimalFormatter = LocalDecimalFormatter.current
+        val recentValues = remember(bgReadings, profileUtil.units) {
+            // BgDataPoint.value is ALREADY in the user's units, so it must not be converted again -
+            // only formatted. The unit decides the decimals; the "detect" helpers guess that from
+            // the magnitude and would read a very high mmol/l reading as mg/dl.
+            bgReadings.takeLast(RECENT_VALUES_SPOKEN)
+                .asReversed()
+                .joinToString(", ") {
+                    if (profileUtil.units == GlucoseUnit.MGDL) decimalFormatter.to0Decimal(it.value)
+                    else decimalFormatter.to1Decimal(it.value)
+                }
+        }
+        val graphDescription = when {
+            recentValues.isEmpty()                 -> null
+            iobText != null && cobText != null     -> stringResource(
+                UiStrings.a11y_bg_graph_summary,
+                recentValues,
+                stringResource(InterfacesStrings.confirmation_line, stringResource(CoreUiStrings.iob), iobText),
+                stringResource(InterfacesStrings.confirmation_line, stringResource(CoreUiStrings.cob), cobText)
+            )
+
+            else                                   -> stringResource(UiStrings.a11y_bg_graph_summary_values_only, recentValues)
+        }
+
         Box {
             BgGraphCompose(
                 viewModel = graphViewModel,
@@ -612,6 +666,10 @@ fun GraphsSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(graphConfig.bgHeight.dp)
+                    .then(
+                        if (graphDescription != null) Modifier.semantics { contentDescription = graphDescription }
+                        else Modifier
+                    )
             )
             if (!isSimpleMode) {
                 GraphEditButton(
@@ -943,7 +1001,7 @@ private fun GraphEditButton(
     ) {
         Icon(
             imageVector = Icons.Filled.Edit,
-            contentDescription = null,
+            contentDescription = stringResource(CoreUiStrings.switch_to_edit),
             modifier = Modifier.size(16.dp)
         )
     }
