@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.16.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.17.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,19 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .16, 2026-10-05)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .17, 2026-10-06)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.16.patch
-  git apply bolus-calculator-on-3426-aisf321.16.patch
+  git apply --check bolus-calculator-on-3426-aisf321.17.patch
+  git apply bolus-calculator-on-3426-aisf321.17.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .17 (2026-10-06):
+- Fat/Protein auto-fill from carbs is now an average-meal estimate: fat = carbs x0.35, protein = carbs x0.4
+  (was x1.0 / x1.5, a very heavy meal). "Unreliable SMBs / bad sensor / high protein" doubles it (fat x0.7,
+  protein x0.8; was x1.5 / x2.0). New checkbox "Small meal" halves it. Ticking both multiplies the two factors,
+  which gives the average again. A manually typed Fat/Protein still sticks until carbs changes.
 
 Changes in patch .16 (2026-10-05):
 - The wizard's "still moving now" step thresholds are lowered: steps over 5 minutes 100 -> 20 and steps over

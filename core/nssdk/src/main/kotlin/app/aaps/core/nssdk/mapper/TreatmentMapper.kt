@@ -33,7 +33,10 @@ fun String.toNSTreatment(): NSTreatment? =
 internal fun RemoteTreatment.toTreatment(): NSTreatment? {
     val treatmentTimestamp = timestamp()
     when {
-        insulin != null && insulin > 0                                     ->
+        // A 0 U Meal Bolus with no carbs is a real record: the wizard writes one for every cancelled or calculated-zero
+        // carb-split, delayed or protein/fat part, so it shows as a 0 marker on the graphs. Without this it fell through
+        // to "unknown" and Client / Virtual never stored it (2026-10-06, per explicit request).
+        insulin != null && (insulin > 0 || (insulin == 0.0 && eventType == EventType.MEAL_BOLUS && (carbs == null || carbs == 0.0))) ->
             return NSBolus(
                 date = treatmentTimestamp,
                 device = this.device,
