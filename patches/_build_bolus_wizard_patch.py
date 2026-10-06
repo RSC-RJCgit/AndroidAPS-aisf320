@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.17.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.18.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,22 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .17, 2026-10-06)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .18, 2026-10-06)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.17.patch
-  git apply bolus-calculator-on-3426-aisf321.17.patch
+  git apply --check bolus-calculator-on-3426-aisf321.18.patch
+  git apply bolus-calculator-on-3426-aisf321.18.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .18 (2026-10-06):
+- 0 U wizard markers (cancelled / calculated-zero carb-split, delayed and protein/fat parts, "Wizard: 0U") now reach
+  Client and Virtual: core/nssdk TreatmentMapper.kt accepts a 0 U "Meal Bolus" with no carbs as a bolus when it is
+  downloaded from Nightscout (it used to need insulin > 0, so the record was dropped and the graph showed nothing).
+  A 0 U record that carries carbs is still treated as carbs.
+- Automation "Bolus ago" (TriggerBolusAgo.kt) only counts a real bolus (> 0 U) so those 0 U markers never reset it.
+  Looks back 24 h for the newest NORMAL bolus above 0, else the newest NORMAL bolus if it is above 0.
+- Patch .17's Fat/Protein auto-fill (fat x0.35, protein x0.4 of carbs, unreliable doubles, Small meal halves) is included.
 
 Changes in patch .17 (2026-10-06):
 - Fat/Protein auto-fill from carbs is now an average-meal estimate: fat = carbs x0.35, protein = carbs x0.4
@@ -343,6 +352,36 @@ def revert_steps_source(staging: Path) -> None:
 
 
 def apply_surgical(staging: Path) -> None:
+    # TreatmentMapper: keep a 0 U Meal Bolus with no carbs (the wizard's zero markers) when downloaded from Nightscout.
+    p = "core/nssdk/src/main/kotlin/app/aaps/core/nssdk/mapper/TreatmentMapper.kt"
+    t = read(BASE, p)
+    t = must_replace(
+        t,
+        "        insulin != null && insulin > 0                                     ->\n",
+        "        // A 0 U Meal Bolus with no carbs is a real record: the wizard writes one for every cancelled or calculated-zero\n"
+        "        // carb-split, delayed or protein/fat part, so it shows as a 0 marker on the graphs. Without this it fell through\n"
+        "        // to \"unknown\" and Client / Virtual never stored it (2026-10-06, per explicit request).\n"
+        "        insulin != null && (insulin > 0 || (insulin == 0.0 && eventType == EventType.MEAL_BOLUS && (carbs == null || carbs == 0.0))) ->\n",
+        "TreatmentMapper zero bolus",
+    )
+    write(staging, p, t)
+
+    # TriggerBolusAgo: only a real bolus (> 0 U) counts.
+    p = "plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerBolusAgo.kt"
+    t = read(BASE, p)
+    t = must_replace(
+        t,
+        "        val lastBolus = persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)\n",
+        "        // Only a real bolus (> 0 U) counts: 0 U markers (cancelled / zero-dose wizard parts) are not boluses. Looks back 24 h;\n"
+        "        // if the newest NORMAL bolus is older than that and is a real one, it is still used.\n"
+        "        val now = dateUtil.now()\n"
+        "        val lastBolus = persistenceLayer.getBolusesFromTimeToTime(now - 24L * 60 * 60 * 1000, now, false)\n"
+        "            .firstOrNull { it.type == BS.Type.NORMAL && it.amount > 0.0 }\n"
+        "            ?: persistenceLayer.getNewestBolusOfType(BS.Type.NORMAL)?.takeIf { it.amount > 0.0 }\n",
+        "TriggerBolusAgo",
+    )
+    write(staging, p, t)
+
     # BooleanKey
     p = "core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt"
     t = read(BASE, p)
@@ -1257,6 +1296,8 @@ def main() -> None:
             "ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt",
             "ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt",
             "ui/src/main/kotlin/app/aaps/ui/activities/fragments/TreatmentsBolusCarbsFragment.kt",
+            "core/nssdk/src/main/kotlin/app/aaps/core/nssdk/mapper/TreatmentMapper.kt",
+            "plugins/automation/src/main/kotlin/app/aaps/plugins/automation/triggers/TriggerBolusAgo.kt",
         ]
 
         for p in surgical:
