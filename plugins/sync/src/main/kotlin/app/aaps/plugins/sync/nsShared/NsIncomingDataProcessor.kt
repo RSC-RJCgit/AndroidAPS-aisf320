@@ -239,7 +239,9 @@ class NsIncomingDataProcessor @Inject constructor(
 
                 when (treatment) {
                     is NSBolus                  ->
-                        if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync) {
+                        if (isIapsEntry(treatment.enteredBy))
+                            aapsLogger.debug(LTag.NSCLIENT, "Ignoring iAPS bolus: $treatment")
+                        else if (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT || doFullSync) {
                             val bolus = treatment.toBolus()
                             if (bolus.type == BS.Type.SMB && preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb) && !config.AAPSCLIENT && !doFullSync)
                                 aapsLogger.debug(LTag.NSCLIENT, "Skipping SMB bolus (excluded by setting): $treatment")

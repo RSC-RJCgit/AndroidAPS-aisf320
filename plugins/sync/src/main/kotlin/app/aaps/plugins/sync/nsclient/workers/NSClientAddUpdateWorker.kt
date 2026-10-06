@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.plugins.sync.nsShared.acceptsNsTbrEb
+import app.aaps.plugins.sync.nsShared.isIapsEntry
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -72,7 +73,10 @@ class NSClientAddUpdateWorker(
             if (mills != 0L && mills < dateUtil.now() && mills > latestDateInReceivedData)
                 latestDateInReceivedData = mills
 
-            if (insulin > 0 && (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) {
+            if (insulin > 0 && isIapsEntry(JsonHelper.safeGetStringAllowNull(json, "enteredBy", null))) {
+                // Another loop's insulin (iAPS): ignored, SMB or meal (2026-10-06, per explicit request). Carbs below are untouched.
+                aapsLogger.debug(LTag.NSCLIENT, "Ignoring iAPS bolus: $json")
+            } else if (insulin > 0 && (preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) {
                 BS.fromJson(json)?.let { bolus ->
                     if (bolus.type == BS.Type.SMB && preferences.get(BooleanKey.NsClientAcceptInsulinExcludeSmb) && !config.AAPSCLIENT)
                         aapsLogger.debug(LTag.NSCLIENT, "Skipping SMB bolus (excluded by setting): $json")

@@ -22,7 +22,9 @@ data class NSBolus(
     override var app: String? = null,
     val insulin: Double,
     val type: BolusType,
-    val isBasalInsulin: Boolean
+    val isBasalInsulin: Boolean,
+    // Who uploaded it (Nightscout "enteredBy"); used to ignore boluses written by another loop (iAPS).
+    val enteredBy: String? = null
 
 ) : NSTreatment {
 

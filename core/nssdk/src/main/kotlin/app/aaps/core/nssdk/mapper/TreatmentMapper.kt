@@ -56,7 +56,8 @@ internal fun RemoteTreatment.toTreatment(): NSTreatment? {
                 pumpSerial = this.pumpSerial,
                 insulin = this.insulin,
                 type = NSBolus.BolusType.fromString(this.type),
-                isBasalInsulin = isBasalInsulin == true
+                isBasalInsulin = isBasalInsulin == true,
+                enteredBy = this.enteredBy
             )
 
         carbs != null && carbs != 0.0                                      -> {
