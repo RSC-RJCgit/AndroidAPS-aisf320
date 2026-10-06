@@ -2643,12 +2643,22 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // Puts the saved role names back once glucose is under 7.5 mmol.
+    // A role changed by hand since Tier C switched on keeps its new value, and a saved name that is no longer a stored profile is not written back.
     private suspend fun revertStuckHighTierC(now: Long, bg: Double) {
         if (!preferences.get(BooleanNonKey.ApsAutoIsfStuckHighTierCActive) || bg >= 135.1) return
         val escalatedLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
         val escalatedStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
-        val restoredLow = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevLow).trim()
-        val restoredStandard = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevStandard).trim()
+        val savedLow = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevLow).trim()
+        val savedStandard = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevStandard).trim()
+        val store = profileRepository.profile.value
+        val restoredLow = savedLow.takeIf {
+            tierCRoleRestorable(it, escalatedLow, lowLadderNames().getOrNull(2).orEmpty(), store == null || store.getSpecificProfile(it) != null)
+        }.orEmpty()
+        val restoredStandard = savedStandard.takeIf {
+            tierCRoleRestorable(it, escalatedStandard, standardLadderNames().getOrNull(2).orEmpty(), store == null || store.getSpecificProfile(it) != null)
+        }.orEmpty()
+        if (savedLow.isNotBlank() && restoredLow.isBlank()) aapsLogger.debug(LTag.APS, "Stuck high tier C off: kept Low=$escalatedLow, saved $savedLow not restored")
+        if (savedStandard.isNotBlank() && restoredStandard.isBlank()) aapsLogger.debug(LTag.APS, "Stuck high tier C off: kept Standard=$escalatedStandard, saved $savedStandard not restored")
         val running = profileFunction.getOriginalProfileName()
         if (restoredLow.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, restoredLow)
         if (restoredStandard.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, restoredStandard)
@@ -2662,7 +2672,7 @@ open class OpenAPSAutoISFPlugin(
         val standardRungs = standardLadderNames()
         val nudge = roleTierDeliveryNudge(
             previousBand = 1,
-            newBand = roleTierBandForIndex(sharedRoleLadderIndex(restoredStandard, restoredLow, standardRungs, lowRungs)),
+            newBand = roleTierBandForIndex(sharedRoleLadderIndex(restoredStandard.ifBlank { escalatedStandard }, restoredLow.ifBlank { escalatedLow }, standardRungs, lowRungs)),
             smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
             mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
         )

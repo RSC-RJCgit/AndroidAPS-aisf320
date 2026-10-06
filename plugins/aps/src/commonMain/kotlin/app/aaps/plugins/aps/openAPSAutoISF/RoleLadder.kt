@@ -5,6 +5,12 @@ internal data class RoleNudge(
     val mildRatio: Double,
 )
 
+// Whether the name saved when Tier C switched on may be written back to a role.
+// The live role must still hold the name Tier C gave it, so a later change is kept. A blank [tierCName]
+// means Tier C left that role alone. The saved name must also still be a stored profile.
+internal fun tierCRoleRestorable(saved: String, live: String, tierCName: String, savedInStore: Boolean): Boolean =
+    saved.isNotBlank() && savedInStore && live == tierCName.ifBlank { saved }
+
 // Which saved name in [rungs] matches [name]. Blank names do not match. -1 when none do.
 internal fun ladderIndexOf(name: String, rungs: List<String>): Int {
     if (name.isBlank()) return -1

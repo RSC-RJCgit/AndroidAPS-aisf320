@@ -21,6 +21,18 @@ class RoleLadderTest {
     }
 
     @Test
+    fun tierCRestoresOnlyWhenRoleStillHoldsTierCName() {
+        assertTrue(tierCRoleRestorable("Profile100", "Profile150", "Profile150", savedInStore = true))
+        // Changed by hand since Tier C switched on: keep that value.
+        assertFalse(tierCRoleRestorable("Profile110", "Profile100", "Profile150", savedInStore = true))
+        // Saved name is no longer a stored profile.
+        assertFalse(tierCRoleRestorable("Profile110", "Profile150", "Profile150", savedInStore = false))
+        assertFalse(tierCRoleRestorable("", "Profile150", "Profile150", savedInStore = true))
+        // Tier C rung blank: the role was left alone, so live equals saved.
+        assertTrue(tierCRoleRestorable("Profile100", "Profile100", "", savedInStore = true))
+    }
+
+    @Test
     fun sharedRungFollowsThatLetter() {
         val names = sharedRungNames(
             index = 2,
