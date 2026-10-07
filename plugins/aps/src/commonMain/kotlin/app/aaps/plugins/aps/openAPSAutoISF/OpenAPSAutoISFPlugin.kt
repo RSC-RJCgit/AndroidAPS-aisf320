@@ -636,6 +636,9 @@ open class OpenAPSAutoISFPlugin(
             steps30 = stepSample?.steps30min ?: 0,
             ukfDelta1 = ukf.delta1 ?: -9999.0,
         )
+        ukfAvg60LowAlarm(now, minuteOfDay, glucoseStatus.glucose, iobData.iob, ukf.glucose)
+        compressionNotes(now)
+        oneMinuteLoopTierAReset(now)
         applyOvernightDuraRescue(
             now = now,
             minuteOfDay = minuteOfDay,
@@ -1592,6 +1595,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled,
             BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled,
             BooleanKey.ApsAutoIsfShowInsulinTotals,
+            BooleanKey.ApsAutoIsfLoopEveryMinute,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,
             BooleanKey.ApsUseSmbWithCob,
@@ -3412,6 +3416,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_THIS_PHONE -> RunMark.LOCATION_THIS_PHONE
             RemoteToggleCode.LIVE_STEPS -> RunMark.LIVE_STEPS
             RemoteToggleCode.INSULIN_TOTALS -> RunMark.INSULIN_TOTALS
+            RemoteToggleCode.LOOP_INTERVAL -> RunMark.LOOP_INTERVAL
             RemoteToggleCode.STAGE_APK -> RunMark.STAGE_APK
             RemoteToggleCode.INSTALL_APK -> RunMark.INSTALL_APK
             RemoteToggleCode.ADB_START -> RunMark.ADB_START
@@ -3695,6 +3700,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_THIS_PHONE -> setLocationSmsPhone()
             RemoteToggleCode.LIVE_STEPS -> toggleBool(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, "Stepcount import from remote main AAPS phone", "LSt")
             RemoteToggleCode.INSULIN_TOTALS -> toggleBool(BooleanKey.ApsAutoIsfShowInsulinTotals, "Insulin totals row", "ITt")
+            RemoteToggleCode.LOOP_INTERVAL -> toggleBool(BooleanKey.ApsAutoIsfLoopEveryMinute, "Loop every minute (off = every 5 min)", "Lp1")
             RemoteToggleCode.STAGE_APK -> stageNewestApk("list", notify = true)
             RemoteToggleCode.INSTALL_APK -> installNewestApk("list")
             RemoteToggleCode.ADB_START -> attemptAdbWirelessStart("list")
@@ -5900,6 +5906,93 @@ open class OpenAPSAutoISFPlugin(
     private suspend fun recentLowBgMgdl(now: Long): Double =
         persistenceLayer.getBgReadingsDataFromTimeToTime(now - 60 * 60_000L, now, ascending = false)
             .minOfOrNull { it.value } ?: 999.0
+
+    // UkfRawAvg60Low (2026-10-08, per explicit request): ALERT ONLY. Between 00:00 and 07:00, when the 60 minute average
+    // of ukfRawBgl (the saved AIV rows plus the current UKF raw value) is under 3.0 mmol/L, send the hypo alarm, and repeat
+    // it every 30 minutes while the average stays under. Averaging over an hour is what makes this ignore a short
+    // compression dip. No state writes (no AlarmRecent / LowBG), no tier or profile change, nothing in dosing reads it.
+    // The 22:00-07:30 quiet window of the other hypo alerts does not apply: this one is meant to wake.
+    // Needs at least 6 rows spanning 30 minutes, so missing or stale data cannot trigger it.
+    private suspend fun ukfAvg60LowAlarm(now: Long, minuteOfDay: Int, glucoseMgdl: Double, iob: Double, ukfRawMgdl: Double?) {
+        if (!minuteInWindow(minuteOfDay, 0, 7 * 60) || !runMarks.ready(RunMark.UKF_AVG60_LOW, 30, now)) return
+        val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - 60 * 60_000L, now).filter { it.ukfRawBgl > 0.0 }
+        val values = rows.map { it.ukfRawBgl } + listOfNotNull(ukfRawMgdl?.takeIf { it > 0.0 })
+        val spanMs = if (rows.isEmpty()) 0L else now - rows.minOf { it.timestamp }
+        if (values.size < 6 || spanMs < 30 * 60_000L) return
+        val avg = values.average()
+        if (avg >= 3.0 * Constants.MMOLL_TO_MGDL) return
+        val avgMmol = decimals(avg / Constants.MMOLL_TO_MGDL, 1)
+        val text = "AlarmHypo60: 60-min avg UKFrawBGL=$avgMmol (<3.0)" +
+            " UKFrawG=${decimals((ukfRawMgdl ?: 0.0) / Constants.MMOLL_TO_MGDL, 1)}" +
+            " g=${decimals(glucoseMgdl / Constants.MMOLL_TO_MGDL, 1)} iob=${decimals(iob, 2)}"
+        sendAutoSms(text)
+        phoneAlert("H60 avg $avgMmol")
+        carePortalNote("AvgLow60")
+        runMarks.mark(RunMark.UKF_AVG60_LOW, now)
+    }
+
+    // One-time revert (2026-10-08, per explicit request): the first time the loop is seen running at 1-minute intervals
+    // (four loop runs in a row, 30-90 seconds apart, with "Loop every minute" on), put the Standard and Low roles back on
+    // Tier A (the same reset as profile batch hold A) and switch the running profile if it was the previous Standard or Low
+    // role. The latch is saved first, so it happens once only, ever, even if the roles were already on A.
+    private val recentLoopRunAts = ArrayDeque<Long>()
+
+    private suspend fun oneMinuteLoopTierAReset(now: Long) {
+        recentLoopRunAts.addLast(now)
+        while (recentLoopRunAts.size > 4) recentLoopRunAts.removeFirst()
+        if (preferences.get(LongNonKey.ApsAutoIsfOneMinuteTierAResetAt) > 0L) return
+        if (!preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute) || recentLoopRunAts.size < 4) return
+        val gaps = recentLoopRunAts.zipWithNext { a, b -> b - a }
+        if (gaps.any { it !in 30_000L..90_000L }) return
+        preferences.put(LongNonKey.ApsAutoIsfOneMinuteTierAResetAt, now)
+        val changed = resetToRung(now, 0, true)
+        if (changed) {
+            sendAutoSms("OneMinuteLoopTierA (one-time: loop now every minute): roles back on Tier A")
+            carePortalNote("TierARst1m")
+        }
+        aapsLogger.debug(LTag.APS, "One-time Tier A revert after the loop reached 1-minute intervals: roles changed=$changed")
+    }
+
+    // Compression notes (2026-10-08, per explicit request): NOTES AND AN ALERT AT THE TOP OF THE OVERVIEW ONLY, at any time
+    // of day -- nothing here changes dosing, tiers, profiles or marking. See CompressionDetector for the rules.
+    //  - "CompSusp": a clean compression-type fall just ended at the newest raw reading (flat before, then >=30 mg/dL in 10 min
+    //    with a >=4 mg/dL/min minute), with no meal, bolus or SMB in the last 30 minutes. Once per event.
+    //  - "CompConf": once only for that event, if within 2 hours a sharp rebound follows (>=25 mg/dL in 10 min, from near
+    //    the low, with no carbs in the 15 minutes before it).
+    // The raw series is the same one the rawBGL column and ukfRawBgl are built from (GlucoseValue.noise, else the value).
+    private suspend fun compressionNotes(now: Long) {
+        val suspectAt = preferences.get(LongNonKey.ApsAutoIsfCompressionSuspectAt)
+        val confirmedAt = preferences.get(LongNonKey.ApsAutoIsfCompressionConfirmedAt)
+        val pending = suspectAt > 0L && confirmedAt < suspectAt && now - suspectAt <= CompressionDetector.PENDING_MINUTES * 60_000L
+        val from = if (pending) suspectAt - 25 * 60_000L else now - 25 * 60_000L
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
+            .mapNotNull { gv -> (gv.noise?.takeIf { it > 10.0 } ?: gv.value).takeIf { it > 10.0 }?.let { gv.timestamp to it } }
+            .sortedBy { it.first }
+        if (readings.size < 3) return
+        val mealMinutes = minutesSinceLastMealEvent(now)
+        if (pending && mealMinutes >= 15 && CompressionDetector.rebounded(readings, suspectAt)) {
+            preferences.put(LongNonKey.ApsAutoIsfCompressionConfirmedAt, now)
+            carePortalNote("CompConf")
+            notificationManager.post(
+                id = NotificationId.AUTOISF_NOTE,
+                text = "Compression confirmed: sharp rebound after the fall at ${dateUtil.timeString(suspectAt)}. Note only.",
+                validMinutes = 120
+            )
+        }
+        if (now - suspectAt > CompressionDetector.SAME_EVENT_MINUTES * 60_000L && mealMinutes >= 30 && smbSum(now, 30 * 60 * 1000L) <= 0.0) {
+            CompressionDetector.suspect(readings)?.let { s ->
+                preferences.put(LongNonKey.ApsAutoIsfCompressionSuspectAt, now)
+                carePortalNote("CompSusp")
+                notificationManager.post(
+                    id = NotificationId.AUTOISF_NOTE,
+                    text = "Compression suspected: sharp fall ${decimals(s.fromMgdl / Constants.MMOLL_TO_MGDL, 1)} to " +
+                        "${decimals(s.toMgdl / Constants.MMOLL_TO_MGDL, 1)} mmol in 10 min " +
+                        "(${decimals(s.steepestMgdlPerMin / Constants.MMOLL_TO_MGDL, 2)}/min), flat before, no meal or bolus. Note only.",
+                    validMinutes = 120
+                )
+            }
+        }
+    }
 
     private data class UkfRaw(val glucose: Double?, val delta1: Double?, val delta5: Double?, val delta15: Double?)
 

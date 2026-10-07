@@ -73,9 +73,17 @@ class AutosensDataStoreObject : AutosensDataStore {
         get() = dataLock.withLock { field }
         set(value) { dataLock.withLock { field = value } }
 
+    // Set from BooleanKey.ApsAutoIsfLoopEveryMinute by IobCobCalculatorPlugin. false (the default, every minute) = the
+    // rolling bucket described in clone(); true = the loop runs every 5 minutes, because clone() then keeps referenceTime.
+    @Volatile var pinGridToFiveMinutes: Boolean = false
+
     override fun clone(): AutosensDataStore =
         AutosensDataStoreObject().also {
             dataLock.withLock {
+                it.pinGridToFiveMinutes = this.pinGridToFiveMinutes
+                // "Loop every 5 minutes" on: keep the anchor, so the 5 minute grid stays on one phase and bucket 0 changes
+                // only every 5 minutes. Off (default): leave it unset, as described below.
+                if (this.pinGridToFiveMinutes) it.referenceTime = this.referenceTime
                 // Leave referenceTime unset. This copy is published as the live store, so the next
                 // load anchors the 5 minute grid to the newest reading, as AutoISF 3.2.1 does.
                 // Bucket 0 is then that reading, and the loop runs on every new glucose value.

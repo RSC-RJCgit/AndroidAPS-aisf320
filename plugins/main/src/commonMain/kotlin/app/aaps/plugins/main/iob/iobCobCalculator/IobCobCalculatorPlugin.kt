@@ -50,6 +50,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.workflow.CalculationSignalsEmitter
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
@@ -114,7 +115,10 @@ class IobCobCalculatorPlugin(
     // stale read cannot corrupt anything - but without @Volatile a reader can go on using the previous
     // store after a newer one has been published, so a fresh result becomes visible later than it
     // should. kotlin.concurrent.Volatile, which works in common code.
-    @Volatile override var ads: AutosensDataStore = AutosensDataStoreObject()
+    // Loop every minute (default) or every 5 minutes: see BooleanKey.ApsAutoIsfLoopEveryMinute and AutosensDataStoreObject.clone().
+    @Volatile override var ads: AutosensDataStore = AutosensDataStoreObject().also {
+        it.pinGridToFiveMinutes = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
+    }
 
     private val dataLock = AapsLock()
 
@@ -164,6 +168,12 @@ class IobCobCalculatorPlugin(
             preferences.observe(DoubleKey.AutosensMax).drop(1).map {},
             preferences.observe(DoubleKey.AutosensMin).drop(1).map {},
         ).collectResilient(newScope, aapsLogger, LTag.AUTOSENS) { resetDataAndRunCalculation("onPreferenceChange") }
+        // Loop every minute / every 5 minutes: carry the new setting on the live store, then restart the calculation.
+        preferences.observe(BooleanKey.ApsAutoIsfLoopEveryMinute).drop(1)
+            .collectResilient(newScope, aapsLogger, LTag.AUTOSENS) { everyMinute ->
+                (ads as? AutosensDataStoreObject)?.pinGridToFiveMinutes = !everyMinute
+                resetDataAndRunCalculation("loop interval changed")
+            }
         // GlucoseValue changes → reload BG data + trigger loop
         persistenceLayer.observeChanges(GV::class)
             .collectResilient(newScope, aapsLogger, LTag.AUTOSENS) { gvList ->

@@ -562,6 +562,8 @@
     <string name="pref_summary_mj_kotlin_buttons">Show the MJ start and restore buttons on the overview.</string>
     <string name="pref_title_steroid_kotlin_button">Steroid buttons</string>
     <string name="pref_summary_steroid_kotlin_button">Show the steroid buttons on the overview.</string>
+    <string name="pref_title_loop_every_minute">Loop every minute (off = every 5 minutes)</string>
+    <string name="pref_summary_loop_every_minute">On: the loop, and one AIV row, runs on every new 1-minute reading. Off: once every 5 minutes. Applies at once.</string>
     <string name="pref_title_show_insulin_totals">Insulin totals row</string>
     <string name="pref_summary_show_insulin_totals">Show twelve insulin totals on the IOB graph.</string>
     <string name="pref_title_coded_locations">Location texts</string>

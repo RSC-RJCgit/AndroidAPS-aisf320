@@ -85,6 +85,14 @@ enum class LongNonKey(
     // Hypo-alarm time the alarm role revert has already acted on. Local only.
     ApsAutoIsfAlarmRevertHandledAt("autoisf_alarm_revert_handled_at", 0L, exportable = false),
 
+    // 2026-10-08: time of the last "compression suspected" note (sharp, clean fall in the raw readings) and of the last
+    // "compression confirmed" note (a sharp rebound after it). Notes only; nothing in dosing reads them. Local only.
+    // 2026-10-08: set once, the first time the loop is seen running at 1-minute intervals; the one-time revert of the
+    // Standard and Low roles to Tier A is done at that moment (0 = not yet done). Local only.
+    ApsAutoIsfOneMinuteTierAResetAt("autoisf_one_minute_tier_a_reset_at", 0L, exportable = false),
+    ApsAutoIsfCompressionSuspectAt("autoisf_compression_suspect_at", 0L, exportable = false),
+    ApsAutoIsfCompressionConfirmedAt("autoisf_compression_confirmed_at", 0L, exportable = false),
+
     // Profile-switch time already used as a Set-role duration. Local only.
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0L, exportable = false),
 

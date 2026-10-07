@@ -365,7 +365,8 @@ fun GraphsSection(
         if (fitWholeWindow) return@LaunchedEffect
         val startedAt = dateUtil.now()
         while (dateUtil.now() - startedAt < STARTUP_GUARD_MS) {
-            delay(STARTUP_GUARD_INTERVAL_MS)
+            // Fast at first (the lower graphs come up on stale positions in the first seconds), then relaxed.
+            delay(if (dateUtil.now() - startedAt < 30_000L) 1_000L else STARTUP_GUARD_INTERVAL_MS)
             val range = latestTimeRange.value
             val visible = iobVisibleRange
             val nowMs = dateUtil.now()
@@ -374,7 +375,18 @@ fun GraphsSection(
                 "GraphStart guard: followNow=$followNow placedOnNow=$placedOnNow range=${range?.first} " +
                     "visible=$visible bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue} sinceInteractionMs=$sinceInteraction"
             )
-            if (!followNow || range == null || visible == null || sinceInteraction < INTERACTION_GRACE_MS) continue
+            if (!followNow || range == null || sinceInteraction < INTERACTION_GRACE_MS) continue
+            // The lower graphs (IOB, the secondary graphs, graph 5, the belt) start from their own first-layout positions,
+            // such as 2043 px = about 14 hours back, and nothing copies the main graph's place onto them until the main
+            // graph moves. While nothing has been touched, put every one of them on the main graph's place.
+            val mainScroll = bgScrollState.value
+            if (placedOnNow && mainScroll.isFinite() && bgScrollState.maxValue > 24f) {
+                beltScrollState.copyPixelsIfDifferent(mainScroll, null)
+                iobScrollState.copyPixelsIfDifferent(mainScroll, null)
+                if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(mainScroll, null)
+                for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(mainScroll, null)
+            }
+            if (visible == null) continue
             val nowX = timestampToX(nowMs, range.first)
             if (visible.second < nowX - STARTUP_GUARD_GAP_MINUTES) {
                 println("GraphStart guard: window ends at ${visible.second} min, now is at $nowX min - putting now on the right edge")

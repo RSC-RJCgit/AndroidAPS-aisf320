@@ -464,6 +464,15 @@ enum class BooleanKey(
         KeysStrings.pref_summary_steroid_kotlin_button,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // 2026-10-08: true (default) = loop on every new 1-minute reading (rolling bucket); false = every 5 minutes (grid pinned).
+    ApsAutoIsfLoopEveryMinute(
+        "autoisf_loop_every_minute",
+        true,
+        KeysStrings.pref_title_loop_every_minute,
+        KeysStrings.pref_summary_loop_every_minute,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfShowInsulinTotals(
         "autoisf_show_insulin_totals",
         false,

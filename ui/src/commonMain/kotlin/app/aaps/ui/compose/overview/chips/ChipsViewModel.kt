@@ -416,6 +416,7 @@ class ChipsViewModel(
             List1Row("LoReb", onOff(preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)), 5.228, null),
             List1Row("T3 unrestricted", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)), 5.230, null),
             List1Row("Insulin totals row", onOff(preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)), 5.232, null),
+            List1Row("Loop interval", if (preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)) "every 1 min" else "every 5 min", 5.234, null),
             List1Row("Location text phone", preferences.get(StringKey.AutomationLocationSmsDeviceModel).ifBlank { onOff(false) }, 5.204, null),
             List1Row("Send AnyDesk restart", "send now", 5.178, null),
             List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),

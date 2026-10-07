@@ -205,7 +205,7 @@ const val STARTUP_GUARD_MS = 180_000L
 /** A lower graph that moves counts as a finger drag only within this long of a real touch on the graphs area (GraphsSection). */
 const val GRAPH_TOUCH_WINDOW_MS = 3_000L
 const val STARTUP_GUARD_INTERVAL_MS = 5_000L
-const val STARTUP_GUARD_GAP_MINUTES = 5.0
+const val STARTUP_GUARD_GAP_MINUTES = 12.0
 
 /**
  * Fraction of the graph height occupied by the basal overlay.
