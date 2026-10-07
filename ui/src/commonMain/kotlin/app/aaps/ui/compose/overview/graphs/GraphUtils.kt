@@ -182,9 +182,9 @@ private class ShortRangeTimeAxisPlacer(
 }
 
 /**
- * Default zoom level for graphs - shows 6 hours of data (360 minutes).
+ * Default zoom level for graphs - shows 3 hours of data (180 minutes).
  */
-const val DEFAULT_GRAPH_ZOOM_MINUTES = 360.0
+const val DEFAULT_GRAPH_ZOOM_MINUTES = 180.0
 
 /**
  * Maximum zoom-in level — never show fewer than this many minutes.
@@ -198,6 +198,11 @@ const val MIN_GRAPH_ZOOM_MINUTES = 30.0
  * so the viewport doesn't snap back while the user is examining the graph.
  */
 const val INTERACTION_GRACE_MS = 60_000L
+
+/** Startup guard in GraphsSection: how long after opening it keeps putting the current time on the right edge, how often it checks, and how many minutes early the window may end before it acts. */
+const val STARTUP_GUARD_MS = 180_000L
+const val STARTUP_GUARD_INTERVAL_MS = 5_000L
+const val STARTUP_GUARD_GAP_MINUTES = 5.0
 
 /**
  * Fraction of the graph height occupied by the basal overlay.

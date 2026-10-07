@@ -76,6 +76,7 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlin.math.abs
 import kotlin.math.round
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 
@@ -349,6 +350,34 @@ fun GraphsSection(
             }
     }
 
+    // Startup guard (2026-10-07): a cold start sometimes left every graph on the OLDEST hours, with the current time off
+    // the right edge, and neither the placement below nor the next reading moved it back. For the first
+    // STARTUP_GUARD_MS, while the user has not touched a graph (followNow) and the visible window ends well before
+    // now, put the current time on the right edge again; the sync above copies it to the other graphs. The println
+    // lines (tag "GraphStart", visible in logcat) record what the placement and sync steps see, to find the real cause.
+    LaunchedEffect(bgScrollState) {
+        if (fitWholeWindow) return@LaunchedEffect
+        val startedAt = dateUtil.now()
+        while (dateUtil.now() - startedAt < STARTUP_GUARD_MS) {
+            delay(STARTUP_GUARD_INTERVAL_MS)
+            val range = latestTimeRange.value
+            val visible = iobVisibleRange
+            val nowMs = dateUtil.now()
+            val sinceInteraction = nowMs - graphViewModel.lastInteractionMs
+            println(
+                "GraphStart guard: followNow=$followNow placedOnNow=$placedOnNow range=${range?.first} " +
+                    "visible=$visible bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue} sinceInteractionMs=$sinceInteraction"
+            )
+            if (!followNow || range == null || visible == null || sinceInteraction < INTERACTION_GRACE_MS) continue
+            val nowX = timestampToX(nowMs, range.first)
+            if (visible.second < nowX - STARTUP_GUARD_GAP_MINUTES) {
+                println("GraphStart guard: window ends at ${visible.second} min, now is at $nowX min - putting now on the right edge")
+                skipInteractionUntilMs[0] = nowMs + 1000L
+                bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, nowMs))
+            }
+        }
+    }
+
     // Auto-scroll when new BG value arrives
     val bgInfoState by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
     var lastBgTimestamp by remember { mutableLongStateOf(0L) }
@@ -365,6 +394,7 @@ fun GraphsSection(
             // Keep the hours the user is already looking at. Slide the window so the current
             // time is the right edge. Recreating the zoom state here used to snap back to 6 hours.
             val timeRange = derivedTimeRange
+            println("GraphStart newReading: timeRangeFirst=${timeRange?.first} bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue}")
             if (fitWholeWindow || timeRange == null) {
                 bgScrollState.scroll(Scroll.Absolute.End)
             } else {
@@ -413,6 +443,7 @@ fun GraphsSection(
                 // The first layout often stores the start as 0, or at the axis end, which can be
                 // the next hour. Once there is a real width, put the current time on the right edge.
                 if (!placedOnNow && bgMax > 24f && (fitWholeWindow || range != null)) {
+                    println("GraphStart place: followNow=$followNow bgScroll=$bgScroll bgMax=$bgMax rangeFirst=${range?.first} now=$now")
                     lastMainMax = bgMax
                     if (!fitWholeWindow && followNow && range != null) {
                         skipInteractionUntilMs[0] = dateUtil.now() + 1000L
@@ -436,6 +467,7 @@ fun GraphsSection(
                     !lastMainMax.isNaN() && abs(bgMax - lastMainMax) > 24f
                 lastMainMax = bgMax
                 if (rebuiltToStart) {
+                    println("GraphStart rebuiltToStart: followNow=$followNow bgScroll=$bgScroll bgMax=$bgMax lastMainScroll=$lastMainScroll")
                     if (followNow && !fitWholeWindow && range != null) {
                         skipInteractionUntilMs[0] = dateUtil.now() + 1000L
                         bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
@@ -479,6 +511,7 @@ fun GraphsSection(
                     return if (secondaryIndex < count) secScrollStates[secondaryIndex] else g5ScrollState
                 }
                 suspend fun shareScroll(place: Float, driver: VicoScrollState?) {
+                    println("GraphStart shareScroll: place=$place bgScroll=$bgScroll bgMax=$bgMax placedOnNow=$placedOnNow followNowWas=$followNow")
                     pendingScroll[0] = place
                     appliedScroll[0] = place
                     drivingScroll[0] = driver

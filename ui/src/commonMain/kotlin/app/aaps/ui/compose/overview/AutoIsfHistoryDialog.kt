@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.stringResource
@@ -45,10 +46,12 @@ fun AutoIsfHistoryDialog(
     var smbOnly by remember { mutableStateOf(false) }
     val shown = if (smbOnly) rows.filter { it.hasSmb } else rows
     val horizontal = rememberScrollState()
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)) {
+    // Full screen width like the 3426 dialog: the platform default width is about a portrait phone, which in landscape
+    // leaves room for only the time column and 4-5 others.
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(modifier = Modifier.fillMaxWidth(0.98f).fillMaxHeight(0.95f)) {
             Column(
-                modifier = Modifier.padding(AapsTheme.spacing.extraLarge),
+                modifier = Modifier.padding(AapsTheme.spacing.large),
                 verticalArrangement = Arrangement.spacedBy(AapsTheme.spacing.medium)
             ) {
                 Text(
