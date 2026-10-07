@@ -201,6 +201,9 @@ const val INTERACTION_GRACE_MS = 60_000L
 
 /** Startup guard in GraphsSection: how long after opening it keeps putting the current time on the right edge, how often it checks, and how many minutes early the window may end before it acts. */
 const val STARTUP_GUARD_MS = 180_000L
+
+/** A lower graph that moves counts as a finger drag only within this long of a real touch on the graphs area (GraphsSection). */
+const val GRAPH_TOUCH_WINDOW_MS = 3_000L
 const val STARTUP_GUARD_INTERVAL_MS = 5_000L
 const val STARTUP_GUARD_GAP_MINUTES = 5.0
 

@@ -43,6 +43,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
@@ -268,6 +270,10 @@ fun GraphsSection(
 
     // Set just before this code moves the main graph, so that move is not counted as a finger drag.
     val skipInteractionUntilMs = remember { longArrayOf(0L) }
+    // When a finger last touched the graphs area. A lower graph that moves on its own at startup (its saved or
+    // first-layout position) is not a drag: only a move within GRAPH_TOUCH_WINDOW_MS of a real touch is.
+    val lastTouchMs = remember { longArrayOf(0L) }
+    fun recentTouch() = dateUtil.now() - lastTouchMs[0] < GRAPH_TOUCH_WINDOW_MS
     // The live overview stays on the current time until the user drags the main graph.
     var followNow by remember { mutableStateOf(!fitWholeWindow) }
     var placedOnNow by remember(bgScrollState) { mutableStateOf(false) }
@@ -303,9 +309,9 @@ fun GraphsSection(
                 val userMovedMain = if (initialValue) {
                     initialValue = false
                     false
-                } else if (placedOnNow && dateUtil.now() >= skipInteractionUntilMs[0]) {
+                } else if (placedOnNow && dateUtil.now() >= skipInteractionUntilMs[0] && recentTouch()) {
                     // Startup and our own move to the current time also change the scroll.
-                    // Only a later move is the user dragging the main graph.
+                    // Only a later move with a finger on the graphs is the user dragging the main graph.
                     graphViewModel.onGraphInteraction()
                     followNow = false
                     true
@@ -511,6 +517,16 @@ fun GraphsSection(
                     return if (secondaryIndex < count) secScrollStates[secondaryIndex] else g5ScrollState
                 }
                 suspend fun shareScroll(place: Float, driver: VicoScrollState?) {
+                    if (!recentTouch()) {
+                        // No finger on the graphs: a lower graph moved by itself (startup position, rebuild). It must not
+                        // pull the main graph away from the current time. Put the lower graphs back on the main graph's place.
+                        println("GraphStart shareScroll ignored (no touch): place=$place bgScroll=$bgScroll bgMax=$bgMax")
+                        beltScrollState.copyPixelsIfDifferent(bgScroll, null)
+                        iobScrollState.copyPixelsIfDifferent(bgScroll, null)
+                        if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(bgScroll, null)
+                        for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(bgScroll, null)
+                        return
+                    }
                     println("GraphStart shareScroll: place=$place bgScroll=$bgScroll bgMax=$bgMax placedOnNow=$placedOnNow followNowWas=$followNow")
                     pendingScroll[0] = place
                     appliedScroll[0] = place
@@ -652,6 +668,15 @@ fun GraphsSection(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
+            // Passive: sees every touch before the graphs do and consumes nothing.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                        lastTouchMs[0] = dateUtil.now()
+                    }
+                }
+            }
     ) {
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
