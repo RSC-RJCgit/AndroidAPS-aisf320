@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
@@ -527,7 +528,25 @@ data class SmbStackItem(
     val columnX: Double? = null,
     val stemUnits: Int = 1,
     val belowAnchor: Boolean = false,
+    /** Optional second line drawn just above [label], for example the basal since the preceding SMB total. */
+    val subLabel: String? = null,
+    val subColor: Color = Color(0xFF64C8FF),
 )
+
+/**
+ * Basal insulin in units delivered from [from] to [to]. [points] are step points (time, U/h): each rate holds until the next
+ * point, and the last point only ends the previous step.
+ */
+internal fun basalBetween(points: List<GraphDataPoint>, from: Long, to: Long): Double {
+    if (points.size < 2 || to <= from) return 0.0
+    var total = 0.0
+    for (i in 0 until points.size - 1) {
+        val segStart = maxOf(points[i].timestamp, from)
+        val segEnd = minOf(points[i + 1].timestamp, to)
+        if (segEnd > segStart) total += points[i].value * (segEnd - segStart) / 3_600_000.0
+    }
+    return total
+}
 
 // Within each 10-minute run, the newest dose is index 0 (closest to the anchor). Older doses stack further up.
 internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 35 * 60_000L): List<Int> {
@@ -686,6 +705,8 @@ class SmbStackLabels(
         with(context) {
             val xStep = ranges.xStep
             if (xStep == 0.0) return
+            // A stack that carries second lines steps two lines apart, so an older label never overlaps a newer one's second line.
+            val twoLine = items.any { it.subLabel != null }
             for (item in items) {
                 if (item.label.isEmpty()) continue
                 val style = TextStyle(color = item.color, fontSize = labelSize, fontWeight = FontWeight.Bold)
@@ -697,7 +718,7 @@ class SmbStackLabels(
                 if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
                 val layout = textMeasurer.measure(item.label, style)
                 val steep = item.columnX != null
-                val step = layout.size.height * if (steep) 1.2f else stackStepFraction
+                val step = layout.size.height * if (steep) 1.2f else stackStepFraction * (if (twoLine) 2f else 1f)
                 val drawX = canvasX - if (steep) item.stackIndex * 4f else 0f
                 val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
                 val yLength = yRange.length
@@ -713,6 +734,10 @@ class SmbStackLabels(
                         anchor - layout.size.height - item.stackIndex * step
                     }
                     drawText(layout, topLeft = Offset(drawX - layout.size.width / 2f, top))
+                    item.subLabel?.let { sub ->
+                        val subLayout = textMeasurer.measure(sub, TextStyle(color = item.subColor, fontSize = labelSize, fontWeight = FontWeight.Bold))
+                        drawText(subLayout, topLeft = Offset(drawX - subLayout.size.width / 2f, top - subLayout.size.height))
+                    }
                 }
             }
         }

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <!-- General preferences -->
     <string name="pref_title_simple_mode">Simple mode</string>
     <string name="pref_title_insulin_concentration">Insulin concentration support</string>

@@ -780,17 +780,24 @@ fun SecondaryGraphCompose(
     val smbNumbers = remember(smbStack, smbText, smbLabelSize) {
         SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.5f, labelSize = smbLabelSize)
     }
-    val smbTotals = remember(secondaryMarks, treatmentData, minTimestamp, smbText) {
+    // Actual basal (U/h step points), only collected for the SMB-totals graph. Used for the "b0.35" line above each total.
+    val basalForTotals = if (secondaryMarks == SecondaryMarks.SMB_TOTALS) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value.actualBasal else emptyList()
+    val smbTotals = remember(secondaryMarks, treatmentData, minTimestamp, smbText, basalForTotals, nowTimestamp) {
         if (secondaryMarks != SecondaryMarks.SMB_TOTALS) return@remember null
         val doses = treatmentData?.boluses.orEmpty().filter { it.amount > 0.0 }.map { it.timestamp to it.amount }
         val totals = smbTimedTotals(doses)
         val stack = smbStackIndex(totals.map { it.first }, windowMs = 30 * 60_000L)
         val items = totals.mapIndexed { index, total ->
+            // 2026-10-07, per explicit request: basal delivered from the PRECEDING total's time to this one's (up to now when this
+            // total is dated in the future). The first total in view has no preceding one, so no basal line.
+            val basalLine = if (index == 0 || basalForTotals.isEmpty()) null
+            else "b" + smbDoseFormatter.to2Decimal(basalBetween(basalForTotals, totals[index - 1].first, minOf(total.first, nowTimestamp)))
             SmbStackItem(
                 x = timestampToX(total.first, minTimestamp),
                 label = formatBolusLabel(total.second, smbDoseFormatter),
                 stackIndex = stack[index],
                 color = Color(0xFFFFFF00),
+                subLabel = basalLine,
             )
         }
         SmbStackLabels(items, smbText, pinToBottom = true, stackStepFraction = 0.5f)
