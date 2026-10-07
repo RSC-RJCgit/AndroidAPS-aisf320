@@ -5,6 +5,14 @@ internal data class RoleNudge(
     val mildRatio: Double,
 )
 
+// The Low profile for a 50% reduction. When the running profile sits on a Standard or Low rung, it is the Low rung of that
+// same letter, so the reduction follows the tier you are running even if the saved roles lag behind. Otherwise it is Low current.
+internal fun lowNameForRunning(running: String, standardRungs: List<String>, lowRungs: List<String>, lowCurrent: String): String {
+    val index = ladderIndexOf(running, standardRungs).takeIf { it >= 0 } ?: ladderIndexOf(running, lowRungs)
+    val rung = lowRungs.getOrNull(index)?.trim().orEmpty()
+    return rung.ifBlank { lowCurrent }
+}
+
 // A hypo-driven drop to a lower tier is skipped when the event fell between 01:00 and 07:00,
 // or when the 60 minute step count is over 1000.
 internal fun hypoTierDropBlocked(eventMinuteOfDay: Int, steps60: Int): Boolean =

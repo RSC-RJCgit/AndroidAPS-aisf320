@@ -79,6 +79,9 @@ enum class LongNonKey(
     // Server time of the newest glucose page taken from the secondary Nightscout. 0 means not yet.
     NsClientSecondaryGlucoseModified("nsclient_secondary_glucose_modified", 0L, exportable = false),
 
+    // Time of the newest "SetRole ..." Note already handled. Local only.
+    ApsAutoIsfSetRoleNoteHandledAt("autoisf_set_role_note_handled_at", 0L, exportable = false),
+
     // Hypo-alarm time the alarm role revert has already acted on. Local only.
     ApsAutoIsfAlarmRevertHandledAt("autoisf_alarm_revert_handled_at", 0L, exportable = false),
 

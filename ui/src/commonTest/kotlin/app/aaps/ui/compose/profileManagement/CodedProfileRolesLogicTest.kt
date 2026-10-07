@@ -21,6 +21,17 @@ class CodedProfileRolesLogicTest {
     }
 
     @Test
+    fun aLadderProfileWithNoRoleChosenBecomesTheCurrentRole() {
+        val std = listOf("Profile100", "Profile130", "Profile150")
+        val low = listOf("Profile70", "Profile80", "Profile90")
+        assertEquals("autoisf_standard_profile_name", ladderCurrentRoleKey("Profile130", std, low))
+        assertEquals("autoisf_low_profile_name", ladderCurrentRoleKey("Profile80", std, low))
+        assertNull(ladderCurrentRoleKey("Profile95", std, low))
+        assertNull(ladderCurrentRoleKey("Steroid130", listOf("Steroid130"), low))
+        assertNull(ladderCurrentRoleKey("", std, low))
+    }
+
+    @Test
     fun steroidDefaultsMatchTheCodedNames() {
         assertEquals("", StringKey.ApsAutoIsfSteroid100ProfileName.defaultValue)
         assertEquals("Steroid Profile110", StringKey.ApsAutoIsfSteroid110ProfileName.defaultValue)

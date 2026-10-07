@@ -56,6 +56,7 @@ import app.aaps.ui.compose.profileManagement.TierFillPlan
 import app.aaps.ui.compose.profileManagement.TierWrite
 import app.aaps.ui.compose.profileManagement.claimStandardTierA
 import app.aaps.ui.compose.profileManagement.codedProfileSlots
+import app.aaps.ui.compose.profileManagement.ladderCurrentRoleKey
 import app.aaps.ui.compose.profileManagement.planCodedProfileSave
 import app.aaps.ui.compose.profileManagement.planSwitchRole
 import app.aaps.ui.compose.profileManagement.planTierFill
@@ -726,7 +727,14 @@ class ProfileManagementViewModel(
 
     /** Writes the one role chosen on the profile switch screen. */
     fun declareRoleForSwitch(profileName: String, chosenKey: String?) {
-        val plan = planSwitchRole(profileName, chosenKey)
+        // 2026-10-07: a switch that names no role, to a profile on the Standard or Low ladder, records that profile as the
+        // current Standard or Low role. Before, only the running profile changed and the roles stayed on the old tier.
+        val effectiveKey = chosenKey ?: ladderCurrentRoleKey(
+            profileName = profileName,
+            standardRungs = listOf("autoisf_standard100_profile_name", "autoisf_standard105_profile_name", "autoisf_standard110_profile_name").map { codedRoleValue(it) },
+            lowRungs = listOf("autoisf_low70_profile_name", "autoisf_low80_profile_name", "autoisf_low90_profile_name").map { codedRoleValue(it) },
+        )
+        val plan = planSwitchRole(profileName, effectiveKey)
         plan.writes.forEach { (key, value) -> preferences.put(stringKeyForCodedRole(key), value) }
         if (plan.steroidsOff) codedProfileRoles.markSteroidsOff()
         if (plan.writes.isNotEmpty()) return

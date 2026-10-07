@@ -115,6 +115,20 @@ fun planSwitchRole(profileName: String, chosenKey: String?): CodedProfileSave {
 }
 
 /**
+ * The current-role slot a ladder profile belongs to, used when a switch names no role (2026-10-07). A Standard rung is
+ * Standard current, a Low rung is Low current. Null for a name on neither ladder, or a steroid-marked name.
+ */
+fun ladderCurrentRoleKey(profileName: String, standardRungs: List<String>, lowRungs: List<String>): String? {
+    val name = profileName.trim()
+    if (name.isEmpty() || isSteroidMarkedProfileName(name)) return null
+    return when {
+        standardRungs.any { it.trim() == name } -> "autoisf_standard_profile_name"
+        lowRungs.any { it.trim() == name }      -> "autoisf_low_profile_name"
+        else                                    -> null
+    }
+}
+
+/**
  * What to write when a plain profile is activated and Standard tier A is empty.
  * [currentStandard] is set only when that role is also empty. Null means leave it.
  */

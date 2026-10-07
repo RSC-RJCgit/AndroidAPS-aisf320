@@ -617,6 +617,7 @@ open class OpenAPSAutoISFPlugin(
         )
         applyLiveMjNote(now)
         applySetRoleDuration(now)
+        applySetRoleNotes(now)
         smbBoostedThisCycle = false
         markBolusBoosts(
             now = now,
@@ -3870,6 +3871,46 @@ open class OpenAPSAutoISFPlugin(
         preferences.put(LongNonKey.ApsAutoIsfMjActiveNoteAt, hit.timestamp.coerceAtMost(now))
     }
 
+    // The Standard and Low roles a "SetRole <prefKey>=<profile>" Note can name.
+    private val setRoleNoteKeys = listOf(
+        StringKey.ApsAutoIsfStandardProfileName,
+        StringKey.ApsAutoIsfStandard100ProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName,
+        StringKey.ApsAutoIsfLowProfileName,
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName,
+    )
+
+    // 2026-10-07: the Note channel of SetRole, which 3426 has and this port lacked. A client's profile switch dialog writes a
+    // "SetRole <prefKey>=<profile>" Note as well as the coded 51 to 57 minute switch. Each Note is applied once, in time order,
+    // tracked by a saved cursor. On the first run the cursor is set to now and nothing old is replayed.
+    private suspend fun applySetRoleNotes(now: Long) {
+        if (config.AAPSCLIENT) return
+        val handledAt = preferences.get(LongNonKey.ApsAutoIsfSetRoleNoteHandledAt)
+        if (handledAt == 0L) {
+            preferences.put(LongNonKey.ApsAutoIsfSetRoleNoteHandledAt, now)
+            return
+        }
+        val notes = persistenceLayer.getTherapyEventDataFromTime(handledAt + 1L, TE.Type.NOTE, true)
+            .filter { it.isValid && it.timestamp > handledAt }
+        for (note in notes) {
+            val text = note.note.orEmpty()
+            if (!text.startsWith("SetRole ")) continue
+            val body = text.removePrefix("SetRole ").trim()
+            val eq = body.indexOf('=')
+            if (eq <= 0) continue
+            val roleKey = setRoleNoteKeys.firstOrNull { it.key == body.substring(0, eq).trim() } ?: continue
+            val profileName = body.substring(eq + 1).trim()
+            if (applySetRole(roleKey, profileName)) {
+                sendAutoSms("SetRole(note): ${roleKey.key} -> $profileName")
+                carePortalNote("RoleSet")
+            }
+        }
+        notes.lastOrNull()?.let { preferences.put(LongNonKey.ApsAutoIsfSetRoleNoteHandledAt, it.timestamp.coerceAtMost(now)) }
+    }
+
     // A 100% profile switch of 51 to 57 minutes names a Standard or Low role, then the switch is made indefinite.
     private suspend fun applySetRoleDuration(now: Long) {
         val cursor = preferences.get(LongNonKey.ApsAutoIsfSetRoleDurationHandledAt)
@@ -4914,7 +4955,13 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
-            val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+            // 2026-10-07: the Low rung of the tier being run (see lowNameForRunning), not just Low current, which can lag.
+            val lowName = lowNameForRunning(
+                running = profileFunction.getOriginalProfileName(),
+                standardRungs = standardLadderNames(),
+                lowRungs = lowLadderNames(),
+                lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim(),
+            )
             if (!writeNamedPercent(now, lowName, 50, 360, "AutoISF: prepare 50%")) {
                 aapsLogger.debug(LTag.APS, "PrepareSet50 did not write a profile switch")
             }

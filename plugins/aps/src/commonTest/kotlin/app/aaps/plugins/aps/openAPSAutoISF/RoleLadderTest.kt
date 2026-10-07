@@ -21,6 +21,19 @@ class RoleLadderTest {
     }
 
     @Test
+    fun fiftyPercentFollowsTheLowRungOfTheRunningTier() {
+        val std = listOf("Profile100", "Profile130", "Profile150")
+        val low = listOf("Profile70", "Profile80", "Profile90")
+        // Running Standard B while the saved roles still say A: the 50% profile is Low B, not Low current.
+        assertEquals("Profile80", lowNameForRunning("Profile130", std, low, lowCurrent = "Profile70"))
+        // Running a Low rung uses that same letter.
+        assertEquals("Profile90", lowNameForRunning("Profile90", std, low, lowCurrent = "Profile70"))
+        // Off both ladders, or a blank Low rung, falls back to Low current.
+        assertEquals("Profile70", lowNameForRunning("Profile95", std, low, lowCurrent = "Profile70"))
+        assertEquals("Profile70", lowNameForRunning("Profile130", std, listOf("Profile70", "", "Profile90"), lowCurrent = "Profile70"))
+    }
+
+    @Test
     fun tierReadingNamesTheLetterOrShowsEveryDisagreement() {
         val std = listOf("Profile100", "Profile130", "Profile150")
         val low = listOf("Profile70", "Profile80", "Profile90")
