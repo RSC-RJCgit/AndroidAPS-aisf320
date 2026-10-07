@@ -2157,11 +2157,17 @@ open class OpenAPSAutoISFPlugin(
             recentBolusOrCarbs = recentBolusOrCarbs,
         )
         if (hypo1 || hypo2) {
-            preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, now)
-            applyAlarmHypoState()
+            // 2026-10-07, per explicit request: an alarm between 01:00 and 07:00, or with 60 minute steps over 1000, is not
+            // marked at all (no saved time, no AlarmRecent or LowBG state), so nothing that reads the alarm can act on it.
+            // The 15 minute run marks are still set, so this is evaluated and logged once per 15 minutes, not every loop.
+            val blocked = hypoTierDropBlocked(minuteOfDay, steps60(now))
+            if (!blocked) {
+                preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, now)
+                applyAlarmHypoState()
+            }
             if (hypo1) runMarks.mark(RunMark.ALARM_HYPO_1, now)
             if (hypo2) runMarks.mark(RunMark.ALARM_HYPO_2, now)
-            aapsLogger.debug(LTag.APS, "AlarmHypo marked 1=$hypo1 2=$hypo2")
+            aapsLogger.debug(LTag.APS, "AlarmHypo ${if (blocked) "not marked (01:00-07:00 or steps60 over 1000)" else "marked"} 1=$hypo1 2=$hypo2")
         }
     }
 
@@ -2697,6 +2703,14 @@ open class OpenAPSAutoISFPlugin(
     // Battery and the profile-name check run first. The batch step sees this loop's poor-response mark.
     // The low-glucose tier A reset is last, so it can undo a step from the same loop.
     private suspend fun applyProfileBatch(now: Long, bg: Double) {
+        // The three hypo-driven drops to a lower tier below (gentle-hypo step down, alarm role revert, low-glucose reset)
+        // do not run when the event was between 01:00 and 07:00, or 60 minute steps are over 1000.
+        // The alarm uses its own saved time. The other two use this moment.
+        val steps60Now = steps60(now)
+        fun hypoDropBlocked(eventAt: Long) = hypoTierDropBlocked(
+            Instant.fromEpochMilliseconds(eventAt).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute },
+            steps60Now,
+        )
         val safety = preferences.get(StringNonKey.ApsAutoIsfSafetyProfileName).trim()
         if (battery1ShouldFire(
                 ready = runMarks.ready(RunMark.BATTERY_1, 20, now),
@@ -2770,7 +2784,7 @@ open class OpenAPSAutoISFPlugin(
             bgl12For2h = heldForHours(now, bglSince, 2),
             ukf14For2h = heldForHours(now, ukfSince, 2),
             poorResponseRecent = runMarks.recent(RunMark.POOR_RESPONSE_2, 5, now),
-            gentleHypoRecent = runMarks.recent(RunMark.GENTLE_HYPO_RISK, 5, now),
+            gentleHypoRecent = runMarks.recent(RunMark.GENTLE_HYPO_RISK, 5, now) && !hypoDropBlocked(now),
             morningStreak = preferences.get(IntNonKey.ApsAutoIsfMorningRoleSwapChangeStreak),
         )
         when (choice) {
@@ -2793,15 +2807,31 @@ open class OpenAPSAutoISFPlugin(
         }
         val hypoStore = states()
         val hypoStatesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
+        val alarmAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt)
+        val alarmMinuteOfDay = Instant.fromEpochMilliseconds(alarmAt).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
+        // 2026-10-07: an AlarmRecent flag whose alarm time is missing, over 24 hours old, or inside the ignored overnight window
+        // is cleared. Before this, the flag stayed set until Not50Recently happened to clear it, and never did when LowBG was already reset.
+        if (hypoStatesOn && hypoStore.inState("AlarmHypo", "AlarmRecent") && hypoStore.hasStateValues("AlarmHypo") &&
+            alarmRecentExpired(now, alarmAt, alarmMinuteOfDay)
+        ) {
+            hypoStore.setState("AlarmHypo", "NoAlarmRecent")
+            aapsLogger.debug(LTag.APS, "AlarmRecent cleared: alarm time $alarmAt missing, over 24 hours old, or inside 01:00-07:00")
+        }
+        // Once per alarm: after the revert has acted on an alarm time, later tier choices stay until a newer alarm.
+        val handledAt = preferences.get(LongNonKey.ApsAutoIsfAlarmRevertHandledAt)
         if (alarmHypoRoleShouldRevert(
                 statesOn = hypoStatesOn,
                 alarmRecent = hypoStore.inState("AlarmHypo", "AlarmRecent"),
                 mjHasValues = hypoStore.hasStateValues("MJ"),
                 noMjRemains = hypoStore.inState("MJ", "NOMJremains"),
-            ) && resetToRung(now, 0, runMarks.ready(RunMark.ALARM_HYPO_ROLE_REVERT, 30, now))
+            ) && alarmRevertDue(alarmAt, handledAt) && !hypoDropBlocked(alarmAt)
         ) {
-            runMarks.mark(RunMark.ALARM_HYPO_ROLE_REVERT, now)
-            aapsLogger.debug(LTag.APS, "Alarm hypo role revert to tier A")
+            val moved = resetToRung(now, 0, ready = true)
+            preferences.put(LongNonKey.ApsAutoIsfAlarmRevertHandledAt, alarmAt)
+            if (moved) {
+                runMarks.mark(RunMark.ALARM_HYPO_ROLE_REVERT, now)
+                aapsLogger.debug(LTag.APS, "Alarm hypo role revert to tier A")
+            }
         }
         if (!runMarks.ready(RunMark.LOW_BG_TIER_A_SCAN, 5, now)) return
         runMarks.mark(RunMark.LOW_BG_TIER_A_SCAN, now)
@@ -2809,8 +2839,12 @@ open class OpenAPSAutoISFPlugin(
         val steps = persistenceLayer.getStepsCountFromTimeToTime(from, now).map { it.timestamp to it.steps60min }
         val loopSeries = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
             .map { it.timestamp to it.value }
-        val loopHit = sustainedLowEpisode(loopSeries, steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000)
-        val ukfHit = sustainedLowEpisode(ukf1Series(now), steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000)
+        // 2026-10-07: readings between 01:00 and 07:00 do not count toward an episode, so an overnight compression low
+        // cannot trigger this reset later in the 12 hour lookback. Episodes with 60 minute steps over 1000 are already skipped.
+        val zone = TimeZone.currentSystemDefault()
+        val overnight = { ts: Long -> Instant.fromEpochMilliseconds(ts).toLocalDateTime(zone).let { inHypoIgnoreWindow(it.hour * 60 + it.minute) } }
+        val loopHit = sustainedLowEpisode(loopSeries, steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = overnight)
+        val ukfHit = sustainedLowEpisode(ukf1Series(now), steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = overnight)
         if ((loopHit || ukfHit) && resetToRung(now, 0, runMarks.ready(RunMark.LOW_BG_TIER_A, 30, now))) {
             runMarks.mark(RunMark.LOW_BG_TIER_A, now)
             aapsLogger.debug(LTag.APS, "Low BG tier A reset loop=$loopHit ukf=$ukfHit")

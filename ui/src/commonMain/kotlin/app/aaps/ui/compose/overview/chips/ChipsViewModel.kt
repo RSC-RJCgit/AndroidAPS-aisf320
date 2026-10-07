@@ -39,6 +39,8 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.readTier
+import app.aaps.core.keys.tierSummary
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.CoreUiStrings
@@ -248,8 +250,13 @@ class ChipsViewModel(
         viewModelScope.launch { refreshInsulinPeak() }
     }
 
+    // Name of the running profile without modifiers, read when List 1 opens for the "Tier now" row.
+    private var runningProfileForTier = ""
+
     private suspend fun refreshInsulinPeak() {
         insulinPeakText = profileFunction.getRunningOrRequestedICfg()?.peak?.toString() ?: "--"
+        runningProfileForTier = profileFunction.getOriginalProfileName()
+        list1Generation++
     }
 
     fun closeList1() {
@@ -375,6 +382,7 @@ class ChipsViewModel(
             List1Row("MJ state: NOMJremains", "set this state", 5.144, null),
             List1Row("Profile: Standard", preferences.get(StringKey.ApsAutoIsfStandardProfileName), 5.148, null),
             List1Row("Profile: Low", preferences.get(StringKey.ApsAutoIsfLowProfileName), 5.150, null),
+            List1Row("Tier now", tierNowText(), 0.0, null, readOnly = true),
             List1Row("Tier set A", "Standard and Low", 5.216, null),
             List1Row("Tier set B", "Standard and Low", 5.218, null),
             List1Row("Tier set C", "Standard and Low", 5.220, null),
@@ -422,6 +430,29 @@ class ChipsViewModel(
     // The number is the place in the list on screen. Each row is on one list only.
     private fun numbered(rows: List<List1Row>): List<List1Row> =
         rows.mapIndexed { index, row -> row.copy(label = "${index + 1}. ${row.label}") }
+
+    // The Standard and Low roles and the running profile, each placed on the A, B, C ladders the same way the loop reads them.
+    private fun tierNowText(): String {
+        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val runningName = runningProfileForTier
+        val reading = readTier(
+            standardName = standardName,
+            lowName = lowName,
+            runningName = runningName,
+            standardRungs = listOf(
+                preferences.get(StringKey.ApsAutoIsfStandard100ProfileName),
+                preferences.get(StringKey.ApsAutoIsfStandard105ProfileName),
+                preferences.get(StringKey.ApsAutoIsfStandard110ProfileName),
+            ),
+            lowRungs = listOf(
+                preferences.get(StringKey.ApsAutoIsfLow70ProfileName),
+                preferences.get(StringKey.ApsAutoIsfLow80ProfileName),
+                preferences.get(StringKey.ApsAutoIsfLow90ProfileName),
+            ),
+        )
+        return tierSummary(reading, standardName, lowName, runningName)
+    }
 
     private fun newestApkText(): String {
         val newest = preferences.get(LongNonKey.ApsAutoIsfApkNewestNnn)

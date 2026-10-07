@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.scenes.SceneAutomationApi
 import app.aaps.core.interfaces.scenes.SceneAutomationResult
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.LongComposedKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
 import app.aaps.core.keys.interfaces.DoubleNonPreferenceKey
 import app.aaps.core.keys.interfaces.IntNonPreferenceKey
@@ -709,6 +710,16 @@ class ClientControlReceiver(
                 aapsLogger.warn(LTag.NSCLIENT, "ClientControl: preferences.update from ${entry.name} rejected $keyString (unknown or not client-writable)")
                 return@forEach
             }
+            // 2026-10-07: while this master runs AutoISF, a client may not switch the APS plugin away from it.
+            // Clients kept pushing their own selection (AMA) and the master flipped back within seconds.
+            // Only rejected here. Nothing is republished, because a client may be fixed code that cannot be corrected that way.
+            if (keyString == StringNonKey.ActivePluginAps.key &&
+                preferences.get(StringNonKey.ActivePluginAps) == AUTO_ISF_PLUGIN_ID &&
+                pushed.value != AUTO_ISF_PLUGIN_ID
+            ) {
+                aapsLogger.warn(LTag.NSCLIENT, "ClientControl: preferences.update from ${entry.name} rejected $keyString=${pushed.value}, master runs AutoISF")
+                return@forEach
+            }
             // Stale, by last-writer-wins. Logged with both stamps because this is the one drop that
             // used to be silent: if the master's stamp somehow sits ahead of the client's, every edit
             // of that key is discarded for ever and nothing anywhere says why. Both numbers are
@@ -909,3 +920,6 @@ private fun EventData.WizardDetail.toDto() = WizardDetailDto(
     maxBolus = maxBolus,
     bolusStep = bolusStep,
 )
+
+// Class simple name of the AutoISF APS plugin, which is its pluginId and the value of the synced active_plugin_aps key.
+private const val AUTO_ISF_PLUGIN_ID = "OpenAPSAutoISFPlugin"

@@ -9,6 +9,7 @@ internal fun sustainedLowEpisode(
     maxMgdl: Double,
     maxSteps60: Int,
     maxGapMinutes: Int = 5,
+    ignoreAt: (Long) -> Boolean = { false },
 ): Boolean {
     if (series.size < 2) return false
     val needMs = sustainedMinutes * 60_000L
@@ -24,7 +25,8 @@ internal fun sustainedLowEpisode(
             if (qualifies(previous)) return true
             streakStart = -1L
         }
-        if (mgdl < maxMgdl) {
+        // A reading at an ignored time counts as not low, so it can neither start nor extend an episode.
+        if (mgdl < maxMgdl && !ignoreAt(ts)) {
             if (streakStart < 0L) streakStart = ts
         } else {
             if (qualifies(previous)) return true

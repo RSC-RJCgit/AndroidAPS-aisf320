@@ -16,6 +16,15 @@ class ProfileBatchTest {
     }
 
     @Test
+    fun ignoredTimesNeverFormAnEpisode() {
+        val series = (0..12).map { it * 60_000L to 70.0 }
+        assertFalse(sustainedLowEpisode(series, emptyList(), sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = { true }))
+        // A daytime episode after an ignored overnight stretch still counts.
+        val mixed = (0..30).map { it * 60_000L to 70.0 }
+        assertTrue(sustainedLowEpisode(mixed, emptyList(), sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = { it < 10 * 60_000L }))
+    }
+
+    @Test
     fun highStepsBlockTheLowEpisode() {
         val series = (0..12).map { it * 60_000L to 70.0 }
         val steps = listOf(6 * 60_000L to 1500)

@@ -5,6 +5,14 @@ internal data class RoleNudge(
     val mildRatio: Double,
 )
 
+// A hypo-driven drop to a lower tier is skipped when the event fell between 01:00 and 07:00,
+// or when the 60 minute step count is over 1000.
+internal fun hypoTierDropBlocked(eventMinuteOfDay: Int, steps60: Int): Boolean =
+    steps60 > 1000 || inHypoIgnoreWindow(eventMinuteOfDay)
+
+// Overnight lows are often sensor compression, so hypo events between 01:00 and 07:00 are ignored.
+internal fun inHypoIgnoreWindow(minuteOfDay: Int): Boolean = minuteInWindow(minuteOfDay, 60, 7 * 60)
+
 // Whether the name saved when Tier C switched on may be written back to a role.
 // The live role must still hold the name Tier C gave it, so a later change is kept. A blank [tierCName]
 // means Tier C left that role alone. The saved name must also still be a stored profile.

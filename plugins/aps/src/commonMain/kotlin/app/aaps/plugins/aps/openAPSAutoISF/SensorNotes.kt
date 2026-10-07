@@ -41,6 +41,13 @@ internal fun sensorAgeShouldTurnOn(codeEnabled: Boolean, latched: Boolean, podHo
 internal fun alarmHypoRoleShouldRevert(statesOn: Boolean, alarmRecent: Boolean, mjHasValues: Boolean, noMjRemains: Boolean): Boolean =
     statesOn && alarmRecent && mjHasValues && !noMjRemains
 
+// AlarmRecent is cleared when its saved time is missing, older than 24 hours, or inside the ignored overnight window.
+internal fun alarmRecentExpired(now: Long, alarmAt: Long, alarmMinuteOfDay: Int): Boolean =
+    alarmAt <= 0L || now - alarmAt > 24 * 3_600_000L || inHypoIgnoreWindow(alarmMinuteOfDay)
+
+// The alarm role revert runs once per alarm: only when the saved alarm time is newer than the last one handled.
+internal fun alarmRevertDue(alarmAt: Long, handledAt: Long): Boolean = alarmAt > handledAt
+
 // A live high is written by the caller. The scan runs only when the saved time is missing or older than 48 hours.
 internal fun libreOver12ShouldScan(liveHigh: Boolean, existingTs: Long, now: Long, ready: Boolean): Boolean =
     !liveHigh && (existingTs == 0L || now - existingTs > 48 * 3_600_000L) && ready

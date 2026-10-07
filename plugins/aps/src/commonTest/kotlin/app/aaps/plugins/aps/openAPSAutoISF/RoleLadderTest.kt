@@ -21,6 +21,51 @@ class RoleLadderTest {
     }
 
     @Test
+    fun tierReadingNamesTheLetterOrShowsEveryDisagreement() {
+        val std = listOf("Profile100", "Profile130", "Profile150")
+        val low = listOf("Profile70", "Profile80", "Profile90")
+        val same = app.aaps.core.keys.readTier("Profile130", "Profile80", "Profile80", std, low)
+        assertTrue(same.agrees)
+        assertEquals("Tier B: Std Profile130, Low Profile80", app.aaps.core.keys.tierSummary(same, "Profile130", "Profile80", "Profile80"))
+        // 13:18 today: Standard on A, Low on B.
+        val mixed = app.aaps.core.keys.readTier("Profile100", "Profile80", "Profile80", std, low)
+        assertFalse(mixed.agrees)
+        assertEquals(
+            "Mixed: Std A (Profile100), Low B (Profile80), running Profile80 (B)",
+            app.aaps.core.keys.tierSummary(mixed, "Profile100", "Profile80", "Profile80"),
+        )
+        // A running profile off both ladders does not break agreement.
+        assertTrue(app.aaps.core.keys.readTier("Profile130", "Profile80", "Profile95", std, low).agrees)
+    }
+
+    @Test
+    fun alarmRecentExpiresWhenMissingOldOrOvernight() {
+        val hour = 3_600_000L
+        val now = 100 * hour
+        assertTrue(alarmRecentExpired(now, alarmAt = 0L, alarmMinuteOfDay = 12 * 60))
+        assertTrue(alarmRecentExpired(now, alarmAt = now - 25 * hour, alarmMinuteOfDay = 12 * 60))
+        assertTrue(alarmRecentExpired(now, alarmAt = now - hour, alarmMinuteOfDay = 5 * 60 + 35))
+        assertFalse(alarmRecentExpired(now, alarmAt = now - 23 * hour, alarmMinuteOfDay = 12 * 60))
+    }
+
+    @Test
+    fun alarmRevertRunsOncePerAlarm() {
+        assertTrue(alarmRevertDue(alarmAt = 2000L, handledAt = 1000L))
+        assertFalse(alarmRevertDue(alarmAt = 2000L, handledAt = 2000L))
+        assertFalse(alarmRevertDue(alarmAt = 0L, handledAt = 0L))
+    }
+
+    @Test
+    fun hypoTierDropBlockedBetween0100And0700OrOnHighSteps() {
+        assertTrue(hypoTierDropBlocked(eventMinuteOfDay = 60, steps60 = 0))
+        assertTrue(hypoTierDropBlocked(eventMinuteOfDay = 6 * 60 + 59, steps60 = 0))
+        assertFalse(hypoTierDropBlocked(eventMinuteOfDay = 7 * 60, steps60 = 0))
+        assertFalse(hypoTierDropBlocked(eventMinuteOfDay = 59, steps60 = 0))
+        assertFalse(hypoTierDropBlocked(eventMinuteOfDay = 12 * 60, steps60 = 1000))
+        assertTrue(hypoTierDropBlocked(eventMinuteOfDay = 12 * 60, steps60 = 1001))
+    }
+
+    @Test
     fun tierCRestoresOnlyWhenRoleStillHoldsTierCName() {
         assertTrue(tierCRoleRestorable("Profile100", "Profile150", "Profile150", savedInStore = true))
         // Changed by hand since Tier C switched on: keep that value.
