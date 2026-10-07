@@ -398,10 +398,11 @@ fun BgGraphCompose(
                 }
             }
 
-            // Activity and the carb model sit on the bottom of the green band, not on chart zero.
-            // The peak still uses 80% of the room above that line.
+            // Activity and the carb model start at the bottom of the panel and peak at 80% of its height, as on 3426
+            // (actScale: maxY * 0.8 / peak). currentMaxBgY is the axis top without the Graph 5 top band, so the
+            // peaks stay below the band lanes.
             lineModel {
-                val floor = chartConfig.lowMark
+                val floor = axisMin
                 val headroom = (currentMaxBgY - floor).coerceAtLeast(1.0)
                 val activityTop = headroom * 0.8
                 val maxAct = currentActivityData.maxActivity
@@ -549,7 +550,8 @@ fun BgGraphCompose(
         val carbPoints = treatments.carbs.mapNotNull { carb ->
             nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
         }
-        val activityAxisMax = if (showActivity) niceBgScale.max else maxBgY
+        // Activity scales to the axis as it is without the Graph 5 top band, so its peak never reaches the band lanes.
+        val activityAxisMax = if (showActivity) niceScale(dataMin, dataMax).max else maxBgY
         rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max)
     }
 
