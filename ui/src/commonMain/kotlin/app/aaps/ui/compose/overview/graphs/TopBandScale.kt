@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
+import kotlin.math.floor
 import kotlin.math.round
 
 /** Each Graph 5 top band line is scaled to its own lowest and highest value over this long, ending now. */
@@ -33,6 +34,18 @@ internal fun bandRange(points: List<Pair<Long, Double>>, now: Long): BandRange? 
 
 internal fun topBandLine(points: List<Pair<Long, Double>>, now: Long): TopBandLine =
     TopBandLine(points.sortedBy { it.first }, bandRange(points, now))
+
+/**
+ * Panel top the 3426 graph uses (PrepareBgDataWorker.addUpperChartMargin): the highest glucose over the loaded range, or the
+ * high mark if that is higher, rounded (mg/dL to 40, mmol/L to 2) and raised by a margin (mg/dL +80, mmol/L +4).
+ * With the insulin activity peak at 80% of this, the peak sits above the green range.
+ */
+internal fun activityChartTop(maxBg: Double, highMark: Double, mgdl: Boolean): Double {
+    val top = maxOf(maxBg, highMark)
+    // Half rounds up, as the 3426 Round.roundTo does (kotlin.math.round would round 4.5 to 4).
+    fun roundTo(value: Double, step: Double) = floor(value / step + 0.5) * step
+    return if (mgdl) roundTo(top, 40.0) + 80.0 else roundTo(top, 2.0) + 4.0
+}
 
 /**
  * BG axis that leaves the top [bandFraction] of its height free above the data and the target range, so the top band

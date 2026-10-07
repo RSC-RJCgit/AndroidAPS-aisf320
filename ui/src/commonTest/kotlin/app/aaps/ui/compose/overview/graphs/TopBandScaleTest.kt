@@ -53,6 +53,17 @@ class TopBandScaleTest {
     }
 
     @Test
+    fun activityChartTopMatches3426() {
+        assertEquals(14.0, activityChartTop(10.0, 10.0, mgdl = false))
+        assertEquals(14.0, activityChartTop(9.0, 10.0, mgdl = false)) // the high mark is the floor
+        assertEquals(18.0, activityChartTop(13.6, 10.0, mgdl = false))
+        assertEquals(280.0, activityChartTop(180.0, 180.0, mgdl = true)) // 180 / 40 = 4.5 rounds up to 5
+        // 80% of the panel is above the green range top
+        assertTrue(0.8 * activityChartTop(10.0, 10.0, mgdl = false) > 10.0)
+        assertTrue(0.8 * activityChartTop(180.0, 180.0, mgdl = true) > 180.0)
+    }
+
+    @Test
     fun bandSitsAboveTheHighestValueThatMustStayClear() {
         listOf(
             Triple(70.0, 180.0, 0.28),

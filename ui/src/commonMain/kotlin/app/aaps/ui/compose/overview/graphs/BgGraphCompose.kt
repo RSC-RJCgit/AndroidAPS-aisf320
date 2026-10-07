@@ -533,9 +533,11 @@ fun BgGraphCompose(
         val windowedOrFull = windowedValues.ifEmpty { allBgAndPredictionValues }
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
-        // Activity is drawn from the low mark, so the axis does not have to start at 0.
+        // Activity overlay on: the panel top is the 3426 one (24 h highest or high mark, rounded, plus a margin), and the
+        // activity peak sits at 80% of the panel height, so it ends up above the green range as on 3426.
+        val axisDataMax = if (showActivity) maxOf(dataMax, activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)) else dataMax
         // Graph 5: raise the top so the four top band lanes sit above the green range and the curve, not on them.
-        val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, dataMax, BG_TOP_BAND_FRACTION) else niceScale(dataMin, dataMax)
+        val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, axisDataMax, BG_TOP_BAND_FRACTION) else niceScale(dataMin, axisDataMax)
         startAxisRangeProvider.maxX = maxX
         startAxisRangeProvider.minY = niceBgScale.min
         startAxisRangeProvider.maxY = niceBgScale.max
@@ -551,7 +553,7 @@ fun BgGraphCompose(
             nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
         }
         // Activity scales to the axis as it is without the Graph 5 top band, so its peak never reaches the band lanes.
-        val activityAxisMax = if (showActivity) niceScale(dataMin, dataMax).max else maxBgY
+        val activityAxisMax = if (showActivity) niceScale(dataMin, axisDataMax).max else maxBgY
         rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max)
     }
 
