@@ -592,8 +592,15 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.style = Paint.Style.FILL
                         mPaint.color = Color.YELLOW
                         mPaint.textAlign = Paint.Align.CENTER
-                        val labelY = smbStackTotalPy - stackIndex3 * scaledTextSize * 0.5f
-                        canvas.drawText(value.label, endX, labelY, mPaint)
+                        // 2026-10-07: the label may carry a second line ("<total>\nb<basal>"), drawn just above the total in light
+                        // blue. Each stack step is two text lines so a stacked older label never overlaps this one's basal line.
+                        val lines = value.label.split('\n')
+                        val labelY = smbStackTotalPy - stackIndex3 * scaledTextSize * 1.0f
+                        canvas.drawText(lines[0], endX, labelY, mPaint)
+                        if (lines.size > 1) {
+                            mPaint.color = Color.rgb(100, 200, 255)
+                            canvas.drawText(lines[1], endX, labelY - scaledTextSize * 0.5f, mPaint)
+                        }
                         mPaint.textAlign = Paint.Align.LEFT
                     }
                 } else if (value.shape == Shape.STEPS_STACKED_BOTTOM) {

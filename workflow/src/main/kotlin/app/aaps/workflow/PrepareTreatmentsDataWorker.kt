@@ -292,12 +292,31 @@ class PrepareTreatmentsDataWorker(
         val allTimestampsForStack = allAmountsForStack.map { it.first }.distinct().sorted()
         val smbStackTotalLabels: MutableList<DataPointWithLabelInterface> = ArrayList()
         var reconstructedStackStart = 0L
+        // 2026-10-07, per explicit request: a second line above each total, "b0.35" = basal insulin delivered from the PRECEDING
+        // label's time to this label's time (temp-basal absolute, minute by minute, same method as the insulin-totals row below;
+        // no SMB, bolus or extended bolus). A label dated in the future counts only up to now. The first label in view has no
+        // preceding label, so no basal line. Encoded as "<total>\n<basal line>" and split by the renderer.
+        var previousWindowEnd = 0L
+        val nowForBasal = System.currentTimeMillis()
         allTimestampsForStack.forEach { ts ->
             if (reconstructedStackStart == 0L || ts - reconstructedStackStart >= stackWindowMs) {
                 reconstructedStackStart = ts
                 val windowEnd = reconstructedStackStart + stackWindowMs
                 val stackTotal = allAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.sumOf { it.second }
-                val labelText = String.format("%.2f", stackTotal)
+                var labelText = String.format("%.2f", stackTotal)
+                if (previousWindowEnd != 0L) {
+                    val basalEnd = minOf(windowEnd, nowForBasal)
+                    var basalSince = 0.0
+                    var t = previousWindowEnd
+                    while (t < basalEnd) {
+                        profileFunction.getProfile(t)?.let { profile ->
+                            basalSince += data.iobCobCalculator.getBasalData(profile, t).tempBasalAbsolute / 60.0
+                        }
+                        t += 60_000L
+                    }
+                    labelText += "\nb" + String.format("%.2f", basalSince)
+                }
+                previousWindowEnd = windowEnd
                 smbStackTotalLabels.add(object : DataPointWithLabelInterface {
                     override fun getX(): Double = windowEnd.toDouble()
                     override fun getY(): Double = 0.0
