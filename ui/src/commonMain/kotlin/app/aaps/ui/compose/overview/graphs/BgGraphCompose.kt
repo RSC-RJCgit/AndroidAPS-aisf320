@@ -113,9 +113,6 @@ private val BG_VISIBLE_RANGE_KEY = ExtraStore.Key<Pair<Long?, Long?>>()
  */
 private const val BG_TOP_BAND_FRACTION = 0.28
 
-/** SMB delivery ratio that fills its lane. Usual values are 0.10 to 0.30. */
-private const val SMB_BAND_FULL_SCALE = 0.5
-
 /**
  * Colours of the Graph 5 top band lines. SMB delivery and profile basal use the same colours as the 3426 graph (pink and
  * orange), so neither can be mistaken for the blue acce weight or the green pp weight, which keep their ISF colours.
@@ -194,6 +191,24 @@ fun BgGraphCompose(
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
     val autoIsfGraph = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
+
+    // Graph 5 top band lines (lowest to highest lane: SMBdel, aISFwt, ppISFwt, profBasal). Each is scaled to its own lowest
+    // and highest value over the last 24 hours, so the lines always use the full lane. Profile basal is read at each loop's time.
+    val topBandLines5 = remember(autoIsfGraph, rawBasalData.profileBasal, nowTimestamp / 60_000L) {
+        val now = nowTimestamp
+        val basalSteps = rawBasalData.profileBasal.sortedBy { it.timestamp }.map { it.timestamp.toDouble() to it.value }
+        listOf(
+            topBandLine(autoIsfGraph.smbDelivery.map { it.timestamp to it.value }, now),
+            topBandLine(autoIsfGraph.acceWeight.map { it.timestamp to it.value }, now),
+            topBandLine(autoIsfGraph.ppWeight.map { it.timestamp to it.value }, now),
+            topBandLine(
+                if (basalSteps.isEmpty()) emptyList() else autoIsfGraph.smbDelivery.mapNotNull { loop ->
+                    stepValueAt(basalSteps, loop.timestamp.toDouble())?.let { loop.timestamp to it }
+                },
+                now
+            )
+        )
+    }
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -424,41 +439,25 @@ fun BgGraphCompose(
             }
 
             // Block 6 → Top band layer (layer 5, start axis): SMB delivery, acce weight, pp weight and profile basal, per
-            // loop, each as a 0..1 fraction of its own scale drawn in the top BG_TOP_BAND_FRACTION of the BG axis.
+            // loop, each as a 0..1 fraction of its own scale drawn in the top BG_TOP_BAND_FRACTION of the BG axis (the axis is raised so that band sits above the green range).
             // Always four series (dummy at y=0 when off or empty) so the series count matches the layer's four lines.
             lineModel {
                 val bandHeight = BG_TOP_BAND_FRACTION * (axisMax - axisMin).coerceAtLeast(1.0)
                 val bandBottom = axisMax - bandHeight
                 val laneHeight = bandHeight / 4.0
-                // Each line gets its own lane (0 = bottom). Its 0..1 value fills 90% of the lane, so lines stay apart.
-                fun addBand(lane: Int, fractions: List<Pair<Double, Double>>) {
-                    if (!topBandLines || fractions.size < 2) {
+                // Each line gets its own lane (0 = bottom). Its 24-hour lowest..highest range fills 90% of the lane, so lines stay apart.
+                fun addBand(lane: Int, line: TopBandLine) {
+                    val range = line.range
+                    if (!topBandLines || line.points.size < 2 || range == null) {
                         series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     } else {
                         series(
-                            x = fractions.map { it.first },
-                            y = fractions.map { bandBottom + (lane + it.second.coerceIn(0.0, 1.0) * 0.9) * laneHeight }
+                            x = line.points.map { timestampToX(it.first, minTimestamp) },
+                            y = line.points.map { bandBottom + (lane + range.fraction(it.second) * 0.9) * laneHeight }
                         )
                     }
                 }
-                fun fractionsOf(points: List<GraphDataPoint>, fullScale: Double) =
-                    points.map { timestampToX(it.timestamp, minTimestamp) to (it.value / fullScale) }.sortedBy { it.first }
-                addBand(0, fractionsOf(autoIsfGraph.smbDelivery, SMB_BAND_FULL_SCALE))
-                addBand(1, fractionsOf(autoIsfGraph.acceWeight, ACCE_WEIGHT_SCALE_MAX))
-                addBand(2, fractionsOf(autoIsfGraph.ppWeight, PP_WEIGHT_SCALE_MAX))
-                // Profile basal: the step series only holds change points, so read its value at each loop's time.
-                val basalFullScale = 0.30 * viewModel.smbMaxIob
-                val profileBasalSteps = rawBasalData.profileBasal
-                    .map { timestampToX(it.timestamp, minTimestamp) to it.value }.sortedBy { it.first }
-                addBand(
-                    3,
-                    if (basalFullScale > 0.0 && profileBasalSteps.isNotEmpty()) {
-                        autoIsfGraph.smbDelivery.map { loop ->
-                            val x = timestampToX(loop.timestamp, minTimestamp)
-                            x to ((stepValueAt(profileBasalSteps, x) ?: 0.0) / basalFullScale)
-                        }.sortedBy { it.first }
-                    } else emptyList()
-                )
+                topBandLines5.forEachIndexed { lane, line -> addBand(lane, line) }
             }
 
             // Forces Vico to reprocess this transaction even when the series data above is
@@ -489,7 +488,7 @@ fun BgGraphCompose(
     } else emptyList()
     var epsLabelAnchors by remember { mutableStateOf(emptyList<SmbStackItem>()) }
 
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData, topBandLines) {
+    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData, topBandLines, topBandLines5) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
         seriesRegistry[SERIES_RAW] = rawPoints
@@ -534,7 +533,8 @@ fun BgGraphCompose(
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
         // Activity is drawn from the low mark, so the axis does not have to start at 0.
-        val niceBgScale = niceScale(dataMin, dataMax)
+        // Graph 5: raise the top so the four top band lanes sit above the green range and the curve, not on them.
+        val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, dataMax, BG_TOP_BAND_FRACTION) else niceScale(dataMin, dataMax)
         startAxisRangeProvider.maxX = maxX
         startAxisRangeProvider.minY = niceBgScale.min
         startAxisRangeProvider.maxY = niceBgScale.max
@@ -1003,21 +1003,25 @@ fun BgGraphCompose(
         zoomState = zoomState
     )
     if (topBandLines) {
-        // Legend for the four top band lines, each name in its own line colour. A name is shown only when that line
-        // really has data to draw (profile basal also needs a max IOB setting), so the legend also says what is missing.
-        val haveLoops = autoIsfGraph.smbDelivery.size >= 2
+        // Legend for the four top band lines, each name in its own line colour, followed by that line's last-24-hour range
+        // (lowest on the lane bottom, highest on its top). A name is shown only when that line really has data to draw,
+        // so the legend also says what is missing.
         val legend = buildList {
-            if (haveLoops) add("SMBdel" to SMB_BAND_COLOR)
-            if (autoIsfGraph.acceWeight.size >= 2) add("aISFwt" to acceColor)
-            if (autoIsfGraph.ppWeight.size >= 2) add("ppISFwt" to ppColor)
-            if (haveLoops && viewModel.smbMaxIob > 0.0 && rawBasalData.profileBasal.isNotEmpty()) add("profBasal" to PROFILE_BASAL_BAND_COLOR)
+            val names = listOf("SMBdel" to SMB_BAND_COLOR, "aISFwt" to acceColor, "ppISFwt" to ppColor, "profBasal" to PROFILE_BASAL_BAND_COLOR)
+            names.forEachIndexed { lane, (name, color) ->
+                val line = topBandLines5[lane]
+                val range = line.range
+                if (line.points.size >= 2 && range != null) add("$name ${range.label()}" to color)
+            }
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp)
-        ) {
-            legend.forEach { (name, color) ->
-                Text(text = name, color = color, style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold))
+        // Two rows of two (with the ranges the names no longer fit on one row of a phone).
+        Column(modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp)) {
+            legend.chunked(2).forEach { rowItems ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowItems.forEach { (name, color) ->
+                        Text(text = name, color = color, style = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold))
+                    }
+                }
             }
         }
     }
