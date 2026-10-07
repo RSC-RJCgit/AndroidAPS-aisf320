@@ -223,6 +223,20 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         }
     }
 
+    // 2026-10-07: a switch with the selector left on "(no role change)" to a profile that sits on the Standard or Low ladder
+    // records it as the current Standard or Low role (the partner role then follows to the same letter, as for a picked role).
+    // Before, only the running profile changed and the roles stayed on the old tier, so tier-driven automations, such as the
+    // 50% profile, still used the old tier's names. Not on Client, which keeps no role preferences.
+    private fun ladderCurrentRoleKeyForName(name: String): StringKey? {
+        val clean = name.trim()
+        if (clean.isEmpty() || config.AAPSCLIENT) return null
+        return when {
+            standardRoleLadder.any { rolePref(it).trim() == clean } -> StringKey.ApsAutoIsfStandardProfileName
+            lowRoleLadder.any { rolePref(it).trim() == clean }      -> StringKey.ApsAutoIsfLowProfileName
+            else                                                    -> null
+        }
+    }
+
     // Role selector. durationCode 51–57 is the fast ProfileSwitch path (setRoleKeysInOrder on the
     // loop phone). StandardTierA and SteroidTier A–F have no 51–57 slot — they travel the SetRole
     // Note only. Spinner order matches List1; durationCode is on the option, not the index.
@@ -534,7 +548,7 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                         val roleHandled = steroidRoleKeyForProfileName(profileName)?.let { steroidKey ->
                             if (!config.AAPSCLIENT) preferences.put(steroidKey, profileName)
                             emitSetRoleNote(steroidKey, profileName)
-                        } ?: roleOption.key?.let { roleKey ->
+                        } ?: (roleOption.key ?: ladderCurrentRoleKeyForName(profileName))?.let { roleKey ->
                             if (!config.AAPSCLIENT) {
                                 preferences.put(roleKey, profileName)
                                 // 2026-09-14 drift fix: keep the partner Current locked to the same

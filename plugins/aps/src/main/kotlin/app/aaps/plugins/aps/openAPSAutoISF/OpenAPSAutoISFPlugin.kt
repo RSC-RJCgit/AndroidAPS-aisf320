@@ -1455,6 +1455,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return ProfileRoleClassification(strength, steroidTier)
     }
 
+    // 2026-10-07: the Low profile for a 50% reduction. When the running profile sits on a Standard or Low rung it is the Low
+    // rung of that same letter, so the reduction follows the tier being run even if the saved roles lag behind (switching to
+    // a Standard B profile by hand left Low current on Tier A, and the 50% profile came out as Low A). Otherwise Low current.
+    private fun lowNameForRunningTier(): String {
+        val running = profileFunction.getOriginalProfileName()
+        val index = ladderIndexOf(running, standardRoleLadder).takeIf { it >= 0 } ?: ladderIndexOf(running, lowRoleLadder)
+        val rung = if (index >= 0) preferences.get(lowRoleLadder[index]).trim() else ""
+        return rung.ifBlank { preferences.get(StringKey.ApsAutoIsfLowProfileName) }
+    }
+
     // Force a profile switch to the current profile at 100%, even when already on that named profile.
     // Needed to cancel a temporary % reduction (e.g. prepare50 sets profile to 50% for 360 min).
     // switchProfileIfNeeded() short-circuits when the name matches; this never short-circuits.
@@ -4253,7 +4263,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // restore delivery baseline: hypo protection must not
                                             // keep BolusGiven's strengthened SMB delivery
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
-                startProfilePercentFor(50, 360, preferences.get(StringKey.ApsAutoIsfLowProfileName))   // force onto the MJ/night profile, then hold 50% for 360 min as usual
+                startProfilePercentFor(50, 360, lowNameForRunningTier())   // force onto the MJ/night profile, then hold 50% for 360 min as usual
                 setAutomationState("LowBG", "50recent")
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
                 addCarePortalNote("Set50-$p50block")
