@@ -470,6 +470,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("ITt${if (newState) "On" else "Off"}")
                         aapsLogger.info(LTag.APS, "Applied local insulin totals row toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.234) <= 0.0000001) {
+                        // Loop interval 1 min / 5 min (see BooleanKey.ApsAutoIsfLoopEveryMinute): IobCobCalculatorPlugin
+                        // reacts to the preference change and restarts the calculation.
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
+                        preferences.put(BooleanKey.ApsAutoIsfLoopEveryMinute, newState)
+                        sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}")
+                        addCarePortalNote(if (newState) "Loop1m" else "Loop5m")
+                        aapsLogger.info(LTag.APS, "Applied local loop interval toggle immediately: every ${if (newState) 1 else 5} min")
+                        rxBus.send(EventRefreshOverview("Loop interval toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.204) <= 0.0000001) {
                         // Client List2 relays 5.204 here. This runs on the loop phone and writes that
                         // phone's Build.MODEL. Location SMS still originate on this loop phone.
@@ -5652,6 +5661,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
             markRun("InsulinTotalsToggleTT")
         }
+        if (readyToRun("LoopIntervalToggleTT", 2) && activeTtNear(5.234, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
+            preferences.put(BooleanKey.ApsAutoIsfLoopEveryMinute, newState)
+            cancelCurrentTempTarget()
+            sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}")
+            addCarePortalNote(if (newState) "Loop1m" else "Loop5m")
+            rxBus.send(EventRefreshOverview("Loop interval toggled", true))
+            markRun("LoopIntervalToggleTT")
+        }
 
         // List 2 coded-location master switch. This changes only the enable preference; the five
         // airport/five address definitions remain editable local preferences under Automation.
@@ -9254,6 +9272,37 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
+        // UkfRawAvg60Low (2026-10-08, per explicit request): ALERT ONLY. Between 00:00 and 07:00, when the 60-minute average
+        // of ukfRawBgl (the saved AIV rows plus the current UKF raw value) is under 3.0 mmol/L, send the hypo alarm, and repeat
+        // it every 30 minutes while the average stays under. Averaging over an hour is what makes this ignore a short
+        // compression dip. No state writes (no AlarmRecent / LowBG), no tier or profile change, nothing in dosing reads it.
+        // The 22:00-07:30 quiet window of AlarmHypo1/2 does not apply: this one is meant to wake. Needs at least 6 rows
+        // spanning 30 minutes, so missing or stale data cannot trigger it.
+        if (isTimeBetween(0, 0, 7, 0) && readyToRun("UkfRawAvg60Low", 30)) {
+            val nowMs = dateUtil.now()
+            val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(nowMs - T.mins(60).msecs(), nowMs).filter { it.ukfRawBgl > 0.0 }
+            val currentUkfRaw = computeUkfRawBgl()
+            val values = rows.map { it.ukfRawBgl } + listOfNotNull(currentUkfRaw.takeIf { it > 0.0 })
+            val spanMs = if (rows.isEmpty()) 0L else nowMs - rows.minOf { it.timestamp }
+            if (values.size >= 6 && spanMs >= T.mins(30).msecs()) {
+                val avg = values.average()
+                if (avg < 3.0 * GlucoseUnit.MMOLL_TO_MGDL) {
+                    val avgText = "AlarmHypo60: 60-min avg UKFrawBGL=${String.format("%.1f", avg / 18.016)} (<3.0)" +
+                        " UKFrawG=${String.format("%.1f", currentUkfRaw / 18.016)} g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}" +
+                        " iob=${String.format("%.2f", iobData.iob)}"
+                    sendSms(avgText)
+                    sendSmsToNumbers(avgText, StringKey.SmsAlarmHypo1Numbers)
+                    uiInteraction.addNotification(id = 9012, text = "H60 avg ${String.format("%.1f", avg / 18.016)}", level = Notification.URGENT)
+                    addGraphAnnouncement("____H60")
+                    addCarePortalNote("AvgLow60")
+                    markRun("UkfRawAvg60Low")
+                }
+            }
+        }
+
+        compressionNotes(dateUtil.now())
+        oneMinuteLoopTierAReset(dateUtil.now())
+
         // Code port of "Steps Steroids OFF": asserts Steroids=Steroids Off based on sustained
         // activity with moderate IOB, controlled glucose, and no carbs. Per user confirmation, this
         // is the automation that actually sets the Steroids state (previously only ever read as a
@@ -10007,6 +10056,68 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.debug(LTag.APS, "AUTOISF_REPLAY_END $traceId")
         }.onFailure { error ->
             aapsLogger.error(LTag.APS, "AutoISF replay trace capture failed", error)
+        }
+    }
+
+    // One-time revert (2026-10-08, per explicit request): the first time the loop is seen running at 1-minute intervals
+    // (four loop runs in a row, 30-90 seconds apart, with "Loop every minute" on), put the Standard and Low roles back on
+    // Tier A (Standard100 / Low70) and switch the running profile if it was the previous Standard or Low role -- the same
+    // reset LowBgTierAReset uses. The latch is saved first, so it happens once only, ever, even if the roles were already on A.
+    private val recentLoopRunAts = ArrayDeque<Long>()
+
+    private fun oneMinuteLoopTierAReset(now: Long) {
+        recentLoopRunAts.addLast(now)
+        while (recentLoopRunAts.size > 4) recentLoopRunAts.removeFirst()
+        if (preferences.get(LongKey.ApsAutoIsfOneMinuteTierAResetAt) > 0L) return
+        if (!preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute) || recentLoopRunAts.size < 4) return
+        val gaps = recentLoopRunAts.zipWithNext { a, b -> b - a }
+        if (gaps.any { it !in 30_000L..90_000L }) return
+        preferences.put(LongKey.ApsAutoIsfOneMinuteTierAResetAt, now)
+        val changed = resetStandardAndLowTiersToA(
+            reason = "OneMinuteLoopTierA (one-time: loop now every minute)",
+            note = "TierARst1m",
+            throttleKey = "OneMinuteTierAReset",
+            throttleMinutes = 1
+        )
+        aapsLogger.info(LTag.APS, "One-time Tier A revert after the loop reached 1-minute intervals: roles changed=$changed")
+    }
+
+    // Compression notes (2026-10-08, per explicit request): NOTES AND AN ALERT AT THE TOP OF THE OVERVIEW ONLY, at any time
+    // of day -- nothing here changes dosing, tiers, profiles or marking. See CompressionDetector for the rules.
+    //  - "CompSusp": a clean compression-type fall just ended at the newest raw reading (flat before, then >=30 mg/dL in 10 min
+    //    with a >=4 mg/dL/min minute), with no meal, bolus or SMB in the last 30 minutes. Once per event.
+    //  - "CompConf": once only for that event, if within 2 hours a sharp rebound follows (>=25 mg/dL in 10 min, from near
+    //    the low, with no carbs in the 15 minutes before it).
+    // The raw series is the same one the rawBGL column and ukfRawBgl are built from (GlucoseValue.noise, else the value).
+    private fun compressionNotes(now: Long) {
+        val suspectAt = preferences.get(LongKey.ApsAutoIsfCompressionSuspectAt)
+        val confirmedAt = preferences.get(LongKey.ApsAutoIsfCompressionConfirmedAt)
+        val pending = suspectAt > 0L && confirmedAt < suspectAt && now - suspectAt <= T.mins(CompressionDetector.PENDING_MINUTES).msecs()
+        val from = if (pending) suspectAt - T.mins(25).msecs() else now - T.mins(25).msecs()
+        val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
+            .mapNotNull { gv -> (gv.noise?.takeIf { it > 10.0 } ?: gv.value).takeIf { it > 10.0 }?.let { gv.timestamp to it } }
+            .sortedBy { it.first }
+        if (readings.size < 3) return
+        val mealMinutes = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
+        if (pending && mealMinutes >= 15 && CompressionDetector.rebounded(readings, suspectAt)) {
+            preferences.put(LongKey.ApsAutoIsfCompressionConfirmedAt, now)
+            addCarePortalNote("CompConf")
+            uiInteraction.addNotificationValidFor(
+                id = 9014, text = "Compression confirmed: sharp rebound after the fall at ${dateUtil.timeString(suspectAt)}. Note only.",
+                level = Notification.NORMAL, validMinutes = 120
+            )
+        }
+        if (now - suspectAt > T.mins(CompressionDetector.SAME_EVENT_MINUTES).msecs() && mealMinutes >= 30 && smbSum30Min() <= 0.0) {
+            CompressionDetector.suspect(readings)?.let { s ->
+                preferences.put(LongKey.ApsAutoIsfCompressionSuspectAt, now)
+                addCarePortalNote("CompSusp")
+                uiInteraction.addNotificationValidFor(
+                    id = 9013,
+                    text = "Compression suspected: sharp fall ${String.format("%.1f", s.fromMgdl / 18.016)} to ${String.format("%.1f", s.toMgdl / 18.016)} mmol in 10 min " +
+                        "(${String.format("%.2f", s.steepestMgdlPerMin / 18.016)}/min), flat before, no meal or bolus. Note only.",
+                    level = Notification.NORMAL, validMinutes = 120
+                )
+            }
         }
     }
 
@@ -11085,6 +11196,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // exactly which glucose_status fields this replaces and which it deliberately leaves
                 // alone.
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseUkf1ForDosing, summary = R.string.autoisf_use_ukf1_for_dosing_summary, title = R.string.autoisf_use_ukf1_for_dosing_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLoopEveryMinute, summary = R.string.autoisf_loop_every_minute_summary, title = R.string.autoisf_loop_every_minute_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfReplayTraceEnabled, summary = R.string.autoisf_replay_trace_summary, title = R.string.autoisf_replay_trace_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope, dialogMessage = R.string.autoisf_ukf1_delta_compensation_slope_summary, title = R.string.autoisf_ukf1_delta_compensation_slope_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset, dialogMessage = R.string.autoisf_ukf1_delta_compensation_offset_summary, title = R.string.autoisf_ukf1_delta_compensation_offset_title))

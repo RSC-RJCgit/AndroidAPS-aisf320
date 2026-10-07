@@ -41,6 +41,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
@@ -95,7 +96,10 @@ class IobCobCalculatorPlugin @Inject constructor(
     private var iobTable = LongSparseArray<IobTotal>() // oldest at index 0
     private var basalDataTable = LongSparseArray<BasalData>() // oldest at index 0
 
-    override var ads: AutosensDataStore = AutosensDataStoreObject()
+    // Loop every minute (default) or every 5 minutes: see BooleanKey.ApsAutoIsfLoopEveryMinute and AutosensDataStoreObject.clone().
+    override var ads: AutosensDataStore = AutosensDataStoreObject().also {
+        it.pinGridToFiveMinutes = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
+    }
 
     private val dataLock = Any()
     private var thread: Thread? = null
@@ -141,6 +145,10 @@ class IobCobCalculatorPlugin @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
                            safe("onEventPreferenceChange") {
+                               if (event.isChanged(BooleanKey.ApsAutoIsfLoopEveryMinute.key)) {
+                                   (ads as? AutosensDataStoreObject)?.pinGridToFiveMinutes = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
+                                   resetDataAndRunCalculation("loop interval changed", event)
+                               }
                                if (event.isChanged(IntKey.AutosensPeriod.key) ||
                                    event.isChanged(StringKey.SafetyAge.key) ||
                                    event.isChanged(DoubleKey.AbsorptionMaxTime.key) ||

@@ -41,19 +41,26 @@ class AutosensDataStoreObject : AutosensDataStore {
         @Synchronized set
         @Synchronized get
 
-    // referenceTime added to clone() 2026-09-30: IobCobOref1Worker/IobCobOrefWorker clone the live store, work on the
-    // copy, then swap it back in as the new live store every run. Without copying referenceTime here too, that swap
-    // reset it to -1 almost every cycle (this fork's clone-then-swap runs at ~1-minute cadence), so adjustToReferenceTime()
-    // never had a stable point to snap the bucketed-data grid to -- each cycle's grid just started wherever the latest
-    // raw reading landed instead of staying pinned. Same bug independently found and fixed in the KMP port
-    // (AaAPS-v4-kmp-aisf321, commit 17dd2bbd8e, 2026-09-09, citing AAPS issue #5066).
+    // Set from BooleanKey.ApsAutoIsfLoopEveryMinute by IobCobCalculatorPlugin. false (the default, every minute) = the
+    // rolling bucket described below; true = the loop runs every 5 minutes, because clone() then keeps referenceTime.
+    @Volatile var pinGridToFiveMinutes: Boolean = false
+
+    // referenceTime is deliberately NOT copied here (restored 2026-10-08; a 2026-09-30 change had copied it) -- except while
+    // the "loop every 5 minutes" setting is on, which is exactly that behaviour on purpose.
+    // IobCobOref1Worker/IobCobOrefWorker clone the live store, work on the copy, then swap it in as the new live
+    // store every run, so the copy starts with referenceTime = -1 and every cycle the 5-minute bucket grid is rebuilt
+    // back from the NEWEST raw reading. That is the aisf321 rolling bucket: bucketedData[0] is the newest 1-minute
+    // reading, so InvokeLoopWorker sees a new value every minute and the loop (and the AIV row) runs every minute.
+    // Copying referenceTime pinned the grid to one 5-minute phase, bucket 0 then changed only every 5 minutes, and
+    // from 1 Oct 2026 the loop ran every 5 minutes ("already looped with that value" on the other four readings).
     override fun clone(): AutosensDataStore =
         AutosensDataStoreObject().also {
             synchronized(dataLock) {
                 it.bgReadings = this.bgReadings.toMutableList()
                 it.autosensDataTable = LongSparseArray<AutosensData>(this.autosensDataTable.size).apply { putAll(this@AutosensDataStoreObject.autosensDataTable) }
                 it.bucketedData = this.bucketedData?.toMutableList()
-                it.referenceTime = this.referenceTime
+                it.pinGridToFiveMinutes = this.pinGridToFiveMinutes
+                if (this.pinGridToFiveMinutes) it.referenceTime = this.referenceTime
             }
         }
 

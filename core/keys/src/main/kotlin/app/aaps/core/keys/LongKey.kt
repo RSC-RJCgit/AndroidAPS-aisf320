@@ -121,6 +121,13 @@ enum class LongKey(
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0, defaultedBySM = true),
     // 2026-10-07: hypo-alarm time the AlarmHypoRoleRevert has already acted on, so it reverts once per alarm.
     ApsAutoIsfAlarmRevertHandledAt("autoisf_alarm_revert_handled_at", 0, defaultedBySM = true),
+    // 2026-10-08: time of the last "compression suspected" note (sharp, clean fall in the raw readings) and of the last
+    // "compression confirmed" note (a sharp rebound after it). Notes only; nothing in dosing reads them.
+    // 2026-10-08: set once, the first time the loop is seen running at 1-minute intervals; the one-time revert of every
+    // coded role and tier profile to Tier A is done at that moment (0 = not yet done).
+    ApsAutoIsfOneMinuteTierAResetAt("autoisf_one_minute_tier_a_reset_at", 0, defaultedBySM = true),
+    ApsAutoIsfCompressionSuspectAt("autoisf_compression_suspect_at", 0, defaultedBySM = true),
+    ApsAutoIsfCompressionConfirmedAt("autoisf_compression_confirmed_at", 0, defaultedBySM = true),
 
     // Added 2026-09-12: the exact TT.timestamp (creation time, ms) of the 5.0mmol TT BMild/
     // BMildFailsafe last successfully created, stashed by applyBMildOutcomeFactors right at creation.

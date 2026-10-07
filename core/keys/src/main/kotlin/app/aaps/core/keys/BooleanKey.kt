@@ -148,6 +148,10 @@ enum class BooleanKey(
     // opt-in, unproven for real dosing use. See OpenAPSAutoISFPlugin.kt's applyUkf1DosingOverride() doc
     // comment for exactly which GlucoseStatusAutoIsf fields this does/doesn't replace.
     ApsAutoIsfUseUkf1ForDosing("autoisf_use_ukf1_for_dosing", false, defaultedBySM = true),
+    // 2026-10-08, per explicit request: true (default) = the loop (and one AIV row) runs every minute, on each new 1-minute
+    // reading, as the aisf321 rolling bucket intends; false = every 5 minutes (the bucket grid is pinned to one 5-minute phase).
+    // Read by AutosensDataStoreObject.clone() via IobCobCalculatorPlugin. Settings switch and List 2 row.
+    ApsAutoIsfLoopEveryMinute("autoisf_loop_every_minute", true, defaultedBySM = true),
     // Read-only diagnostics. When enabled, OpenAPSAutoISFPlugin writes a versioned, chunked replay
     // trace to the ordinary AAPS log after determine_basal() returns. It never changes an input or
     // result and is off by default because the trace is intentionally detailed.
