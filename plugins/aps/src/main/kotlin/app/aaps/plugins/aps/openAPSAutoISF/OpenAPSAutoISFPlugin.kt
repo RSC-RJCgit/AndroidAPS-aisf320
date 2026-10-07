@@ -1480,7 +1480,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             ?.let { keyName -> allRoleKeys.firstOrNull { it.key == keyName } }
             ?.let { preferences.get(it) }
             ?.takeIf { it.isNotEmpty() && profileStore.getSpecificProfile(it) != null }
-        val profileName = roleResolvedName ?: profileFunction.getOriginalProfileName()
+        val originalName = profileFunction.getOriginalProfileName()
+        // 2026-10-07: with no recorded role (restart, or a reduction started elsewhere), a saved name that sits on the Standard or
+        // Low ladder follows that role's CURRENT name, so a tier change made during the reduction is not undone. Any other name is kept.
+        val ladderResolvedName = when {
+            ladderIndexOf(originalName, standardRoleLadder) >= 0 -> preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+            ladderIndexOf(originalName, lowRoleLadder) >= 0      -> preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            else                                                 -> ""
+        }.trim().takeIf { it.isNotEmpty() && profileStore.getSpecificProfile(it) != null }
+        val profileName = roleResolvedName ?: ladderResolvedName ?: originalName
         profileFunction.createProfileSwitch(
             profileStore = profileStore,
             profileName = profileName,

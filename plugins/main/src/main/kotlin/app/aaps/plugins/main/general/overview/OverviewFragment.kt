@@ -1802,7 +1802,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             val actionEntries = BasalDirectAction.values().filter {
                 it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
             }
-            val labels = actionEntries.map { list2ActionLabel(it) } + list2SteppedEntries.map { it.label } + graphToggleEntries.map { it.label }
+            // Numbered by place on screen (2026-10-07), as in the KMP lists.
+            val labels = (actionEntries.map { list2ActionLabel(it) } + list2SteppedEntries.map { it.label } + graphToggleEntries.map { it.label })
+                .mapIndexed { index, label -> "${index + 1}. $label" }
             val adapter = object : ArrayAdapter<String>(act, 0, labels) {
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                     val tv = convertView as? TextView ?: TextView(act).apply {
@@ -2117,7 +2119,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // row — that one reserves ~48dp min height per row plus its own vertical padding, which
             // wastes a lot of space on a narrow phone with this many entries. No functional difference,
             // just tighter rows with no gap between them.
-            val adapter = object : ArrayAdapter<String>(act, 0, entries.map { it.label }) {
+            // Numbered by place on screen (2026-10-07), as in the KMP lists.
+            val adapter = object : ArrayAdapter<String>(act, 0, entries.mapIndexed { index, entry -> "${index + 1}. ${entry.label}" }) {
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                     val tv = convertView as? TextView ?: TextView(act).apply {
                         setPadding(24, 2, 24, 2)
@@ -2414,9 +2417,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             else "Current: ${automationStateService.getState("MJ").ifEmpty { "unset" }}"
             val options = arrayOf("MJ active", "MJ2", "MJ3", "NOMJremains")
             val codes = doubleArrayOf(5.222, 5.224, 5.146, 5.144)
+            // 2026-10-07: the current state is in the TITLE, not setMessage(). AlertDialog hides the item list whenever a
+            // message is set, which left this popup showing the state with nothing to pick (read only).
             androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle("MJ state (manual override)")
-                .setMessage(current)
+                .setTitle("MJ state (manual override)\n$current")
                 .setItems(options) { _, which -> applyTtControl(codes[which], origin = "List 1 MJ state") }
                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                 .setOnCancelListener { showTtCodesListDialog() }
