@@ -22,7 +22,6 @@ import app.aaps.core.graph.data.Shape
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
@@ -824,39 +823,56 @@ class PrepareIobAutosensGraphDataWorker(
             it.thickness = 3
         }
 
-        // Graph5 top-band lines, per AIV cycle: SMB delivery ratio (usual 0.10..0.30; 0.5 fills its lane), acce ISF weight
-        // (the setting, 0..1.0 = 100%), pp ISF weight (the setting, 0..0.20) and profile basal. Each has its own lane (0..3
-        // from the bottom) and is stored as lane + 0.9 * value / fullScale; GraphData.addTopBandLines() sets bottomHalfScale
-        // (shift + multiplier) so the four lanes fill graph5's top band without overlapping.
+        // Graph5 top-band lines, per AIV cycle: SMB delivery ratio, acce ISF weight, pp ISF weight and profile basal. Each
+        // has its own lane (0..3 from the bottom) and is stored as lane + 0.9 * position, where position is 0..1 between that
+        // line's own LOWEST and HIGHEST value over the last 24 hours (so each line always uses its full lane; a flat line sits
+        // mid-lane). GraphData.addTopBandLines() sets bottomHalfScale (shift + multiplier) so the four lanes fill graph5's
+        // top band without overlapping. The "lowest-highest" texts go to overviewData.topBandRangeLabels for the legend.
         // (Moved 2026-10-04 from graph4's bottom half; the Scale name is kept.) pp weight is not a persisted AIV field --
         // it is parsed from the nearest APSResult reason text (same source AutoIsfHistoryExporter.ppWeightStr uses).
-        // Profile basal (the active profile's basal rate at each cycle, step-like) is scaled 0..30% of the max-IOB
-        // setting (DoubleKey.ApsSmbMaxIob), clamped to that range.
+        // Profile basal is the active profile's basal rate at each cycle (step-like).
         run {
             val bottomScale = data.overviewData.bottomHalfScale
-            val smbArr: MutableList<ScaledDataPoint> = ArrayList()
-            val acceWtArr: MutableList<ScaledDataPoint> = ArrayList()
-            val ppWtArr: MutableList<ScaledDataPoint> = ArrayList()
-            val profileBasalArr: MutableList<ScaledDataPoint> = ArrayList()
-            val basalFullScale = 0.30 * preferences.get(DoubleKey.ApsSmbMaxIob)
             val ppWeightRegex = Regex("""pp_ISF_weight\s+is\s+([0-9.]+)""", RegexOption.IGNORE_CASE)
             val ppPoints = apsResults
                 .mapNotNull { r -> ppWeightRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull()?.let { v -> r.date to v } }
                 .sortedBy { it.first }
+            val smbRaw: List<Pair<Long, Double>> = autoIsfResults.map { it.timestamp to it.smbDeliveryRatio }
+            val acceRaw: List<Pair<Long, Double>> = autoIsfResults.map { it.timestamp to it.acceIsfWeight }
+            val ppRaw: MutableList<Pair<Long, Double>> = ArrayList()
+            val basalRaw: MutableList<Pair<Long, Double>> = ArrayList()
             var pi = 0
             autoIsfResults.forEach { aiv ->
-                // Four lanes (0 = bottom), each value fills 90% of its lane so the lines never sit on top of each other.
-                // SMBdel is the SMB delivery RATIO (usual 0.10..0.30, 0.5 fills the lane), as on the KMP graph 5.
-                smbArr.add(ScaledDataPoint(aiv.timestamp, 0 + (aiv.smbDeliveryRatio / 0.5).coerceIn(0.0, 1.0) * 0.9, bottomScale))
-                acceWtArr.add(ScaledDataPoint(aiv.timestamp, 1 + aiv.acceIsfWeight.coerceIn(0.0, 1.0) * 0.9, bottomScale))
                 while (pi + 1 < ppPoints.size && abs(ppPoints[pi + 1].first - aiv.timestamp) <= abs(ppPoints[pi].first - aiv.timestamp)) pi++
                 if (ppPoints.isNotEmpty() && abs(ppPoints[pi].first - aiv.timestamp) <= 3 * 60 * 1000L)
-                    ppWtArr.add(ScaledDataPoint(aiv.timestamp, 2 + (ppPoints[pi].second.coerceIn(0.0, 0.20) / 0.20) * 0.9, bottomScale))
-                if (basalFullScale > 0.0)
-                    profileFunction.getProfile(aiv.timestamp)?.getBasal(aiv.timestamp)?.let { basal ->
-                        profileBasalArr.add(ScaledDataPoint(aiv.timestamp, 3 + (basal / basalFullScale).coerceIn(0.0, 1.0) * 0.9, bottomScale))
-                    }
+                    ppRaw.add(aiv.timestamp to ppPoints[pi].second)
+                profileFunction.getProfile(aiv.timestamp)?.getBasal(aiv.timestamp)?.let { basal -> basalRaw.add(aiv.timestamp to basal) }
             }
+            // Position inside the last-24-hour range (older points clip at the lane edges). If nothing is that recent, all points are used.
+            val dayAgo = now.toLong() - 24 * 60 * 60 * 1000L
+            val rangeLabels: MutableList<String> = ArrayList()
+            fun lane(lane: Int, raw: List<Pair<Long, Double>>): MutableList<ScaledDataPoint> {
+                val points: MutableList<ScaledDataPoint> = ArrayList()
+                if (raw.isEmpty()) {
+                    rangeLabels.add("")
+                    return points
+                }
+                val recent = raw.filter { it.first >= dayAgo }.ifEmpty { raw }
+                val lo = recent.minOf { it.second }
+                val hi = recent.maxOf { it.second }
+                raw.forEach { (time, value) ->
+                    val position = if (hi - lo < 1e-9) 0.5 else ((value - lo) / (hi - lo)).coerceIn(0.0, 1.0)
+                    points.add(ScaledDataPoint(time, lane + position * 0.9, bottomScale))
+                }
+                fun tidy(v: Double) = (kotlin.math.round(v * 100.0) / 100.0).toString().removeSuffix(".0")
+                rangeLabels.add("${tidy(lo)}-${tidy(hi)}")
+                return points
+            }
+            val smbArr = lane(0, smbRaw)
+            val acceWtArr = lane(1, acceRaw)
+            val ppWtArr = lane(2, ppRaw)
+            val profileBasalArr = lane(3, basalRaw)
+            data.overviewData.topBandRangeLabels = rangeLabels
             data.overviewData.bottomSmbSeries = LineGraphSeries(Array(smbArr.size) { i -> smbArr[i] }).also {
                 it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.smbDelColor)
                 it.thickness = 3

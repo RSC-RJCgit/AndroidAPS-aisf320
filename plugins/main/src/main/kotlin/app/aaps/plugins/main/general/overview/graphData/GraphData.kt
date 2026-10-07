@@ -342,6 +342,9 @@ class GraphData @Inject constructor(
     // scale-setting series (addBgReadings/addBasals/...) so maxY is final.
     fun addTopBandLines() {
         if (maxY <= 0.0 || maxY == Double.MIN_VALUE) return
+        // Raise the top of the panel so the band's lower edge sits at the high mark (or the highest glucose, when higher):
+        // the four lanes then lie above the green range and the curve instead of on top of them.
+        maxY = max(maxY, preferences.get(UnitDoubleKey.OverviewHighMark)) / (1.0 - TOP_BAND_FRACTION)
         val bandHeight = TOP_BAND_FRACTION * maxY
         overviewData.bottomHalfScale.shift = maxY - bandHeight
         // The series hold lane + 0..0.9 (lane 0..3: SMBdel, aISFwt, ppISFwt, profBasal), so one lane = a quarter of the band.
@@ -362,11 +365,14 @@ class GraphData @Inject constructor(
             Triple("profBasal", overviewData.bottomProfileBasalSeries as Series<*>, app.aaps.core.ui.R.attr.profileBasalColor)
         )
         val text = SpannableStringBuilder()
-        for ((name, series, colorAttr) in entries) {
+        // Each name is followed by that line's last-24-hour lowest-highest range (lowest on the lane bottom, highest on its top).
+        for ((index, entry) in entries.withIndex()) {
+            val (name, series, colorAttr) = entry
             if (series.isEmpty) continue
             if (text.isNotEmpty()) text.append("  ")
             val start = text.length
             text.append(name)
+            overviewData.topBandRangeLabels.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { text.append(" ").append(it) }
             text.setSpan(ForegroundColorSpan(rh.gac(graph.context, colorAttr)), start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         return text

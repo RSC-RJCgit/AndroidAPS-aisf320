@@ -221,6 +221,8 @@ interface OverviewData {
     var bottomPpWtSeries: SeriesData
     /** Active profile's basal rate per cycle, scaled 0..30% of max IOB (-1..0 like the other bottom-half lines). */
     var bottomProfileBasalSeries: SeriesData
+    /** Last-24-hour "lowest-highest" text of the four top band lines (SMBdel, aISFwt, ppISFwt, profBasal), for graph5's legend. "" when a line has no data. */
+    var topBandRangeLabels: List<String>
     var maxAcceIsfValueFound: Double
     var minAcceIsfValueFound: Double
     val acceIsfScale: Scale
