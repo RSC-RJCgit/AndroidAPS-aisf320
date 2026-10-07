@@ -522,7 +522,9 @@ class WizardDialog : DaggerDialogFragment() {
     private fun loadCheckedStates() {
         binding.bgTrendCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeTrend)
         binding.cobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeCob)
-        usePercentage = preferences.get(BooleanKey.WizardCorrectionPercent)
+        // Opens with the % tick on every time (the Corr box then shows the wizard percentage), as requested 8 Oct 2026;
+        // it is no longer restored from the last use. Unticking it during use still switches the box to units.
+        usePercentage = true
         binding.correctionPercent.isChecked = usePercentage
     }
 
