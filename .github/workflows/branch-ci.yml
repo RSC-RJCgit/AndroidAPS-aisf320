@@ -1,7 +1,8 @@
 name: Branch CI
 
 # Run title is the commit subject on a push (as on the UKF3426 "AAPS CI"); a manual run falls back to the branch name.
-# APK / Drive names still come from Versions.appVersion after checkout, not from this title.
+# APK file names still come from Versions.appVersion after checkout, not from this title. The Drive folder is
+# <appVersion>_<kmpNNN from the commit message>_<commit date_time, Adelaide>_<short hash>, so builds never overwrite each other.
 run-name: ${{ github.event.head_commit.message || format('Branch CI {0}', github.ref_name) }}
 
 on:
@@ -210,6 +211,13 @@ jobs:
             VERSION=$(grep 'val appVersion' buildSrc/src/main/kotlin/Versions.kt | awk -F '"' '{print $2}')
           fi
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          # Drive folder per build, so builds that share one app version never overwrite each other:
+          # <version>_<kmpNNN from the commit message>_<commit date and time, Adelaide>_<short hash>.
+          # Built from the commit (not the clock) so every variant of one run lands in the same folder.
+          KMP_NO=$(git log -1 --format=%s | grep -oE '^kmp[0-9]{3}' || true)
+          COMMIT_STAMP=$(TZ=Australia/Adelaide git log -1 --format=%cd --date=format-local:%Y%m%d_%H%M)
+          SHORT_HASH=$(git rev-parse --short=7 HEAD)
+          echo "DRIVE_FOLDER=${VERSION}${KMP_NO:+_$KMP_NO}_${COMMIT_STAMP}_${SHORT_HASH}" >> $GITHUB_ENV
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -263,17 +271,17 @@ jobs:
             echo "📂 Found AAPS folder: $AAPS_FOLDER_ID"
           fi
 
-          echo "📁 Checking or creating version folder: $VERSION"
+          echo "📁 Checking or creating build folder: $DRIVE_FOLDER"
           VERSION_FOLDER_ID=$(curl -s -X GET \
             -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='${VERSION}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
+            "https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FOLDER}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
             | jq -r '.files[0].id')
 
           if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then
             VERSION_FOLDER_ID=$(curl -s -X POST \
               -H "Authorization: Bearer $ACCESS_TOKEN" \
               -H "Content-Type: application/json" \
-              -d "{\"name\": \"${VERSION}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
+              -d "{\"name\": \"${DRIVE_FOLDER}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
               "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
             echo "📂 Created version folder: $VERSION_FOLDER_ID"
           else
