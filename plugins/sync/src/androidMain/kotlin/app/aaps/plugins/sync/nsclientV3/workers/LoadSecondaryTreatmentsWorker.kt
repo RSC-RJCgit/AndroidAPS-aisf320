@@ -21,9 +21,15 @@ class LoadSecondaryTreatmentsWorker(
     private val runner: LoadSecondaryTreatmentsRunner
 ) : RunnerWorker(context, params, Dispatchers.IO, aapsLogger, fabricPrivacy) {
 
-    override suspend fun runBody(isStopped: () -> Boolean) = runner.run()
+    // Input GLUCOSE_ONLY (set by NsLoadExecutor.enqueueSecondaryGlucose) = read just the glucose, every minute.
+    override suspend fun runBody(isStopped: () -> Boolean) =
+        if (inputData.getBoolean(GLUCOSE_ONLY, false)) runner.runGlucoseOnly() else runner.run()
 
     /** Metro builds the worker through this. WorkManager supplies context and params. */
     @AssistedFactory
     abstract class Factory : WorkerInstanceFactory<LoadSecondaryTreatmentsWorker>()
+
+    companion object {
+        const val GLUCOSE_ONLY = "glucoseOnly"
+    }
 }

@@ -6,6 +6,7 @@ import androidx.work.ListenableWorker
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import app.aaps.plugins.sync.nsclientV3.workers.DataSyncWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadBgWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadDeviceStatusWorker
@@ -82,6 +83,17 @@ class WorkManagerNsLoadExecutor(
         )
     }
 
+    // The same worker, told to read only the glucose, under its own name so it neither waits for nor replaces the full download.
+    override fun enqueueSecondaryGlucose() {
+        workManager.enqueueUniqueWork(
+            SECONDARY_GLUCOSE_JOB_NAME,
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequest.Builder(LoadSecondaryTreatmentsWorker::class.java)
+                .setInputData(workDataOf(LoadSecondaryTreatmentsWorker.GLUCOSE_ONLY to true))
+                .build()
+        )
+    }
+
     private fun request(step: NsLoadStep): OneTimeWorkRequest =
         OneTimeWorkRequest.Builder(workerFor(step)).build()
 
@@ -112,5 +124,8 @@ class WorkManagerNsLoadExecutor(
 
         /** Own name, so a primary-token failure cannot cancel or replace this download. */
         private const val SECONDARY_JOB_NAME = "LoadSecondaryBolusCarbs"
+
+        /** Own name again: the every-minute glucose read must not wait behind a long treatments download. */
+        private const val SECONDARY_GLUCOSE_JOB_NAME = "LoadSecondaryGlucose"
     }
 }

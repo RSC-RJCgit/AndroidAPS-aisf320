@@ -77,6 +77,34 @@ class LoadSecondaryTreatmentsRunner(
         }
     }
 
+    /**
+     * Reads only the glucose from the secondary site (2026-10-08). Polled every minute while the loop runs every minute and
+     * this site is the glucose source, so each reading is stored when it appears and the loop can run on it. Does not touch
+     * the profile, treatments or steps; the full round does those every 5 minutes. Skipped when the site is not the glucose source.
+     */
+    suspend fun runGlucoseOnly(): WorkOutcome {
+        if (!preferences.get(BooleanKey.NsClientSecondaryEnabled))
+            return WorkOutcome.Skipped("Secondary NS disabled")
+        if (!glucoseFromSecondarySite(secondaryEnabled = true, preferences.get(BooleanKey.NsClientBgFromLiveSite)))
+            return WorkOutcome.Skipped("Glucose is not taken from the secondary NS")
+        val url = preferences.get(StringKey.NsClientSecondaryUrl).trim()
+        val token = preferences.get(StringKey.NsClientSecondaryAccessToken).trim()
+        if (url.isEmpty())
+            return WorkOutcome.Failure("Secondary NS URL not configured")
+        val client = NSAndroidClientImpl(
+            baseUrl = url.lowercase().replace("https://", "").replace(Regex("/$"), ""),
+            accessToken = token,
+            logging = false,
+            logger = { msg -> aapsLogger.debug(LTag.HTTP, "SecondaryNS: $msg") }
+        )
+        return try {
+            downloadGlucose(client)
+            WorkOutcome.Success
+        } finally {
+            client.close()
+        }
+    }
+
     private suspend fun download(client: NSAndroidClientImpl): WorkOutcome {
         var cursor = preferences.get(LongNonKey.NsClientSecondaryLastModified)
         val recoveryScan = cursor == 0L

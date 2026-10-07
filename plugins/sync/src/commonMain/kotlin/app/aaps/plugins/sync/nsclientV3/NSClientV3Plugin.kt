@@ -78,6 +78,7 @@ import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadStep
 import app.aaps.plugins.sync.nsclientV3.services.RunningConfigurationPublisher
+import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.ContributesIntoMap
@@ -391,6 +392,19 @@ class NSClientV3Plugin(
                 else
                     nsClientRepository.addLog("● TICK", "")
                 delay(refreshInterval)
+            }
+        }
+        // 2026-10-08: with the secondary Nightscout as the glucose source, a reading only arrives when that site is read, and the
+        // tick above reads it every 5 minutes, five readings at once - so the loop saw one new reading per 5 minutes. While
+        // "Loop every minute" is on, read just the glucose from that site every minute (not the treatments or profile).
+        // Not on an AAPSClient: it does not run the loop.
+        scope.launch {
+            delay(T.mins(1).msecs())
+            while (isActive) {
+                if (!config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute) &&
+                    glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite))
+                ) nsLoadExecutor.enqueueSecondaryGlucose()
+                delay(T.mins(1).msecs())
             }
         }
     }
