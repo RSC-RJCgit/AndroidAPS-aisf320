@@ -2485,14 +2485,27 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         TtCode.Action("Set Standard+Low tier (A/B/C)") {
             val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
             val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
-            val onTierC = standardName == preferences.get(StringKey.ApsAutoIsfStandard110ProfileName) ||
-                lowName == preferences.get(StringKey.ApsAutoIsfLow90ProfileName)
-            val onTierB = standardName == preferences.get(StringKey.ApsAutoIsfStandard105ProfileName) ||
-                lowName == preferences.get(StringKey.ApsAutoIsfLow80ProfileName)
-            val currentLetter = if (onTierC) "C" else if (onTierB) "B" else "A"
+            // 2026-10-07: read with the shared readTier()/tierSummary() (core:keys) instead of the old "either role on B or C" guess,
+            // so this shows the Standard letter, the Low letter and the running profile, and says "Mixed" when they differ.
+            val runningName = profileFunction.getOriginalProfileName()
+            val reading = app.aaps.core.keys.readTier(
+                standardName = standardName,
+                lowName = lowName,
+                runningName = runningName,
+                standardRungs = listOf(
+                    preferences.get(StringKey.ApsAutoIsfStandard100ProfileName),
+                    preferences.get(StringKey.ApsAutoIsfStandard105ProfileName),
+                    preferences.get(StringKey.ApsAutoIsfStandard110ProfileName),
+                ),
+                lowRungs = listOf(
+                    preferences.get(StringKey.ApsAutoIsfLow70ProfileName),
+                    preferences.get(StringKey.ApsAutoIsfLow80ProfileName),
+                    preferences.get(StringKey.ApsAutoIsfLow90ProfileName),
+                ),
+            )
             androidx.appcompat.app.AlertDialog.Builder(act)
                 .setTitle("Set Standard+Low tier")
-                .setMessage("Currently: Tier$currentLetter. Pick a tier for both roles:")
+                .setMessage("Currently: ${app.aaps.core.keys.tierSummary(reading, standardName, lowName, runningName)}. Pick a tier for both roles:")
                 .setPositiveButton("Tier A") { _, _ -> applyTtControl(5.216, origin = "List 1 tier set A") }
                 .setNegativeButton("Tier B") { _, _ -> applyTtControl(5.218, origin = "List 1 tier set B") }
                 .setNeutralButton("Tier C") { _, _ -> applyTtControl(5.220, origin = "List 1 tier set C") }

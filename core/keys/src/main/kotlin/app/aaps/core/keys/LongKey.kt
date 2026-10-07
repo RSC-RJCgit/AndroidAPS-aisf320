@@ -119,6 +119,8 @@ enum class LongKey(
     // A later record has a newer timestamp and is applied once, across restarts.
     ApsAutoIsfSetRoleNoteHandledAt("autoisf_set_role_note_handled_at", 0, defaultedBySM = true),
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0, defaultedBySM = true),
+    // 2026-10-07: hypo-alarm time the AlarmHypoRoleRevert has already acted on, so it reverts once per alarm.
+    ApsAutoIsfAlarmRevertHandledAt("autoisf_alarm_revert_handled_at", 0, defaultedBySM = true),
 
     // Added 2026-09-12: the exact TT.timestamp (creation time, ms) of the 5.0mmol TT BMild/
     // BMildFailsafe last successfully created, stashed by applyBMildOutcomeFactors right at creation.

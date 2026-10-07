@@ -876,6 +876,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun hypoRoleRevertConditionActive(): Boolean =
         checkAutomationState("AlarmHypo", "AlarmRecent") && !checkAutomationState("MJ", "NOMJremains")
             && (dateUtil.now() - preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)) <= T.hours(24).msecs()
+            && !hypoDropBlockedAt(preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt))
+
+    // 2026-10-07, per explicit request: overnight lows are often sensor compression, so a hypo event between 01:00 and 07:00,
+    // or with 60 minute steps over 1000, is ignored by the AlarmHypo marking and by the hypo-driven drops to a lower tier.
+    private fun minuteOfDayAt(ts: Long): Int {
+        val cal = Calendar.getInstance().apply { timeInMillis = ts }
+        return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+    }
+
+    private fun inHypoIgnoreWindowAt(ts: Long): Boolean = minuteOfDayAt(ts) in 60 until 7 * 60
+
+    private fun hypoDropBlockedAt(ts: Long): Boolean = recentSteps60Minutes > 1000 || inHypoIgnoreWindowAt(ts)
 
     // Whether the name saved when Tier C switched on may be written back to a role. The live role must still hold the
     // name Tier C gave it, so a later change by hand is kept. A blank tierCName means Tier C left that role alone.
@@ -1375,7 +1387,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         sustainedMinutes: Int,
         maxMgdl: Double,
         maxSteps60: Int,
-        maxGapMinutes: Int = 5
+        maxGapMinutes: Int = 5,
+        ignoreAt: (Long) -> Boolean = { false }
     ): Boolean {
         if (series.size < 2) return false
         val needMs = T.mins(sustainedMinutes.toLong()).msecs()
@@ -1396,7 +1409,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (streakQualifies(prevTs)) return true
                 streakStart = -1L
             }
-            if (mgdl < maxMgdl) {
+            // 2026-10-07: a reading at an ignored time (01:00-07:00) counts as not low, so it can neither start nor extend an episode.
+            if (mgdl < maxMgdl && !ignoreAt(ts)) {
                 if (streakStart < 0L) streakStart = ts
             } else {
                 if (streakQualifies(prevTs)) return true
@@ -8786,7 +8800,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
             val exceptionalRise = !readyToRun("PoorResponseRescueStage2", 5)
             val wantUp = exceptionalRise || bgl12For2h || ukf14For2h
-            val gentleHypo = !readyToRun("GentleHypoRisk", 5)
+            val gentleHypo = !readyToRun("GentleHypoRisk", 5) && !hypoDropBlockedAt(dateUtil.now())
             val secondMorningSwap = preferences.get(IntKey.ApsAutoIsfMorningRoleSwapChangeStreak) >= 2
             val wantDown = gentleHypo || secondMorningSwap
             when {
@@ -8815,14 +8829,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // MorningRoleSwap -- a hypo is a hypo regardless of time or steroid state. Only acts (and only
         // throttles/notifies) when a role is actually not already at its target, so this doesn't spam a
         // note every cycle while the alarm state persists.
+        //
+        // 2026-10-07, per explicit request: (1) an AlarmRecent flag whose alarm time is missing, over 24 hours old, or inside
+        // 01:00-07:00 is cleared here (it used to stay set until Not50Recently cleared it, which never happens once LowBG is
+        // already reset); (2) the revert acts once per alarm time, so tier choices made afterwards stay until a newer alarm.
         run {
-            if (hypoRoleRevertConditionActive()) {
+            val alarmAt = preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)
+            if (checkAutomationState("AlarmHypo", "AlarmRecent") &&
+                (alarmAt <= 0L || dateUtil.now() - alarmAt > T.hours(24).msecs() || inHypoIgnoreWindowAt(alarmAt))
+            ) {
+                setAutomationState("AlarmHypo", "NoAlarmRecent")
+                aapsLogger.debug(LTag.APS, "AlarmRecent cleared: alarm time $alarmAt missing, over 24 hours old, or inside 01:00-07:00")
+            }
+            if (hypoRoleRevertConditionActive() && alarmAt > preferences.get(LongKey.ApsAutoIsfAlarmRevertHandledAt)) {
                 resetStandardAndLowTiersToA(
                     reason = "AlarmHypoRoleRevert (hypo alarm during active MJ)",
                     note = "HypoRevert",
                     throttleKey = "AlarmHypoRoleRevert",
-                    throttleMinutes = 30
+                    throttleMinutes = 1
                 )
+                preferences.put(LongKey.ApsAutoIsfAlarmRevertHandledAt, alarmAt)
             }
         }
 
@@ -8841,8 +8867,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val loopSeries = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
                 .map { it.timestamp to it.value }
             val ukf1Series = ukf1RecentHistory(12 * 60L).asReversed()
-            val loopHit = sustainedLowEpisodeWithoutHighSteps(loopSeries, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000)
-            val ukf1Hit = sustainedLowEpisodeWithoutHighSteps(ukf1Series, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000)
+            val loopHit = sustainedLowEpisodeWithoutHighSteps(loopSeries, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000, ignoreAt = { inHypoIgnoreWindowAt(it) })
+            val ukf1Hit = sustainedLowEpisodeWithoutHighSteps(ukf1Series, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000, ignoreAt = { inHypoIgnoreWindowAt(it) })
             if (loopHit || ukf1Hit) {
                 val via = when {
                     loopHit && ukf1Hit -> "loop+UKF1"
@@ -9145,9 +9171,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     uiInteraction.addNotification(id = 9009, text = "H4", level = Notification.URGENT)
                 }
                 addGraphAnnouncement("_____H4")
-                setAutomationState("LowBG", "50recent")
-                setAutomationState("AlarmHypo", "AlarmRecent")   // exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment
-                preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, dateUtil.now())
+                // 2026-10-07: not marked between 01:00 and 07:00 or with 60 minute steps over 1000 (often compression lows).
+                if (!hypoDropBlockedAt(dateUtil.now())) {
+                    setAutomationState("LowBG", "50recent")
+                    setAutomationState("AlarmHypo", "AlarmRecent")   // exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment
+                    preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, dateUtil.now())
+                }
                 markRun("AlarmHypo1")
             }
         }
@@ -9195,9 +9224,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     uiInteraction.addNotification(id = 9010, text = "A4", level = Notification.URGENT)
                 }
                 addGraphAnnouncement("__________A4")
-                setAutomationState("LowBG", "50recent")
-                setAutomationState("AlarmHypo", "AlarmRecent")   // exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment
-                preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, dateUtil.now())
+                // 2026-10-07: not marked between 01:00 and 07:00 or with 60 minute steps over 1000 (often compression lows).
+                if (!hypoDropBlockedAt(dateUtil.now())) {
+                    setAutomationState("LowBG", "50recent")
+                    setAutomationState("AlarmHypo", "AlarmRecent")   // exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment
+                    preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, dateUtil.now())
+                }
                 uiInteraction.addNotification(id = 9011, text = "H4", level = Notification.URGENT)
                 addGraphAnnouncement("H4")
                 markRun("AlarmHypo2")

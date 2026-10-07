@@ -257,8 +257,11 @@
     <string name="wizard_defaults_title">Bolus calculator defaults</string>
     <string name="wizard_defaults_summary">How these boxes start each time the calculator opens</string>
     <string name="wizard_default_unreliable_title">Unreliable SMBs ticked</string>
+    <string name="wizard_default_unreliable_summary">Applied each time the calculator opens. Off leaves it unticked. When ticked the calculation uses 90% and doubles the auto fat/protein.</string>
     <string name="wizard_default_small_meal_title">Small meal ticked</string>
+    <string name="wizard_default_small_meal_summary">Applied each time the calculator opens. Off leaves it unticked.</string>
     <string name="wizard_default_auto_fpu_title">Auto fat/protein from carbs ticked</string>
+    <string name="wizard_default_auto_fpu_summary">Applied each time the calculator opens. Off leaves it unticked.</string>
     <string name="show_calibration_button_summary">Sends a calibration to xDrip+ (ensure \'Accept Calibrations\' is enabled in xDrip+ under Inter-App settings).</string>
     <string name="show_cgm_button_summary">Opens xDrip+ or Dexcom App (you can use back button to return to AAPS).</string>
     <string name="not_available_full">Not available</string>

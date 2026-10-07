@@ -224,7 +224,7 @@ class OverviewPlugin @Inject constructor(
     }
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {
-        if (requiredKey != null && requiredKey != "overview_buttons_settings" && requiredKey != "default_temp_targets_settings" && requiredKey != "prime_fill_settings" && requiredKey != "range_settings" && requiredKey != "statuslights_overview_advanced" && requiredKey != "overview_advanced_settings") return
+        if (requiredKey != null && requiredKey != "overview_buttons_settings" && requiredKey != "default_temp_targets_settings" && requiredKey != "prime_fill_settings" && requiredKey != "range_settings" && requiredKey != "statuslights_overview_advanced" && requiredKey != "overview_advanced_settings" && requiredKey != "wizard_defaults_settings") return
         val category = PreferenceCategory(context)
         parent.addPreference(category)
         category.apply {
@@ -253,9 +253,9 @@ class OverviewPlugin @Inject constructor(
                 key = "wizard_defaults_settings"
                 title = rh.gs(R.string.wizard_defaults_title)
                 summary = rh.gs(R.string.wizard_defaults_summary)
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultUnreliableSmbs, title = R.string.wizard_default_unreliable_title))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultSmallMeal, title = R.string.wizard_default_small_meal_title))
-                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultAutoFpu, title = R.string.wizard_default_auto_fpu_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultUnreliableSmbs, summary = R.string.wizard_default_unreliable_summary, title = R.string.wizard_default_unreliable_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultSmallMeal, summary = R.string.wizard_default_small_meal_summary, title = R.string.wizard_default_small_meal_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.WizardDefaultAutoFpu, summary = R.string.wizard_default_auto_fpu_summary, title = R.string.wizard_default_auto_fpu_title))
             })
             addPreference(
                 AdaptiveIntentPreference(
