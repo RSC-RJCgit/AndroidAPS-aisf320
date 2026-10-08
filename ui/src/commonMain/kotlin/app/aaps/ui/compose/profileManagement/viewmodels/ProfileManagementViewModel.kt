@@ -6,7 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.ICfg
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
+import app.aaps.core.data.ue.Action
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.graph.profile.ProfileCompareData
@@ -714,13 +717,37 @@ class ProfileManagementViewModel(
 
     fun codedRoleValue(key: String): String = preferences.get(stringKeyForCodedRole(key))
 
+    /**
+     * Sets one coded role. On Live (and a virtual phone) it writes the setting. On a client it never writes its own copy
+     * (2026-10-08, per explicit request): it sends the same "SetRole <key>=<profile>" CarePortal note the 3426 client sends, and
+     * the master applies it.
+     */
+    private fun writeRole(key: String, value: String) {
+        if (!config.AAPSCLIENT) {
+            preferences.put(stringKeyForCodedRole(key), value)
+            return
+        }
+        appScope.launch {
+            val ts = dateUtil.now()
+            val text = "SetRole $key=$value"
+            persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                therapyEvent = TE(timestamp = ts, type = TE.Type.NOTE, note = text, duration = 60_000L, glucoseUnit = profileFunction.getUnits()),
+                timestamp = ts,
+                action = Action.CAREPORTAL,
+                source = Sources.ProfileSwitchDialog,
+                note = null,
+                listValues = listOf(ValueWithUnit.SimpleString("SetRole $key")),
+            )
+        }
+    }
+
     /** Writes the role list. Returns how many steroid names were refused for a Standard or Low slot. */
     fun saveCodedProfiles(selected: List<String>): Int {
         val slots = codedProfileSlots()
         val previous = slots.associate { it.key to codedRoleValue(it.key) }
         val plan = planCodedProfileSave(slots, selected, previous)
-        plan.writes.forEach { (key, value) -> preferences.put(stringKeyForCodedRole(key), value) }
-        if (plan.steroidsOff) codedProfileRoles.markSteroidsOff()
+        plan.writes.forEach { (key, value) -> writeRole(key, value) }
+        if (plan.steroidsOff && !config.AAPSCLIENT) codedProfileRoles.markSteroidsOff()
         if (plan.blocked > 0) _snackbarEvent.tryEmit(rh.gs(UiStrings.coded_profiles_blocked, plan.blocked))
         return plan.blocked
     }
@@ -735,8 +762,8 @@ class ProfileManagementViewModel(
             lowRungs = listOf("autoisf_low70_profile_name", "autoisf_low80_profile_name", "autoisf_low90_profile_name").map { codedRoleValue(it) },
         )
         val plan = planSwitchRole(profileName, effectiveKey)
-        plan.writes.forEach { (key, value) -> preferences.put(stringKeyForCodedRole(key), value) }
-        if (plan.steroidsOff) codedProfileRoles.markSteroidsOff()
+        plan.writes.forEach { (key, value) -> writeRole(key, value) }
+        if (plan.steroidsOff && !config.AAPSCLIENT) codedProfileRoles.markSteroidsOff()
         if (plan.writes.isNotEmpty()) return
         val names = profileRepository.profiles.value.map { it.name }.toSet()
         val claim = claimStandardTierA(
@@ -746,8 +773,8 @@ class ProfileManagementViewModel(
             currentStandardName = codedRoleValue("autoisf_standard_profile_name"),
             profileNames = names,
         ) ?: return
-        preferences.put(stringKeyForCodedRole(STANDARD_TIER_A_KEY), claim.tierA)
-        claim.currentStandard?.let { preferences.put(stringKeyForCodedRole("autoisf_standard_profile_name"), it) }
+        writeRole(STANDARD_TIER_A_KEY, claim.tierA)
+        claim.currentStandard?.let { writeRole("autoisf_standard_profile_name", it) }
         val roles = codedProfileSlots().associate { it.key to codedRoleValue(it.key) }
         val fill = planTierFill(roles, names)
         viewModelScope.launch { applyTierFill(fill, replaceExisting = false) }

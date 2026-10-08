@@ -2015,6 +2015,22 @@ class DetermineBasalAutoISF(
                 microBolus = stacked.microBolus
                 if (stacked.reason.isNotEmpty()) rT.reason.append(stacked.reason)
                 smbStackStartToStore = stacked.stackStart
+                // 2026-10-08: the SMB offset is worked out before Tier 3 now, because Tier 3 needs the current offset as its BG floor.
+                val offsetHour = if (hour in 0..23) hour
+                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                val carbAgeMin = if (meal_data.carbs > 0.0) round((systemTime - meal_data.lastCarbTime) / 60000.0, 2) else 363.0
+                val offset = targetOffset(
+                    smbDeliveryRatioMax = profile.smb_delivery_ratio_max,
+                    todOffsetMgdl = todOffsetMgdl,
+                    mildOffsetZero = mildOffsetZero,
+                    smbOffsetOverrideMmol = smbOffsetOverrideMmol,
+                    tempTargetSet = profile.temptargetSet,
+                    minBg = profile.min_bg,
+                    hour = offsetHour,
+                    bg = bg,
+                    cob = meal_data.mealCOB,
+                    carbAgeMin = carbAgeMin,
+                )
                 val tier3Hour = if (hour in 0..23) hour
                 else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
                 val tier3 = tier3BoostMicroBolus(
@@ -2036,6 +2052,7 @@ class DetermineBasalAutoISF(
                     profilePercent = profile_percentage,
                     bg = bg,
                     targetBg = target_bg,
+                    targetBgOffsetMgdl = offset.targetBgOffset,
                     iob = iob_data.iob,
                     cob = meal_data.mealCOB,
                     delta = glucose_status.delta,
@@ -2236,27 +2253,13 @@ class DetermineBasalAutoISF(
                 tier3Allowance?.let { allowance ->
                     if (microBolus > allowance) microBolus = allowance
                 }
-                val offsetHour = if (hour in 0..23) hour
-                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
-                val carbAgeMin = if (meal_data.carbs > 0.0) round((systemTime - meal_data.lastCarbTime) / 60000.0, 2) else 363.0
-                val offset = targetOffset(
-                    smbDeliveryRatioMax = profile.smb_delivery_ratio_max,
-                    todOffsetMgdl = todOffsetMgdl,
-                    mildOffsetZero = mildOffsetZero,
-                    smbOffsetOverrideMmol = smbOffsetOverrideMmol,
-                    tempTargetSet = profile.temptargetSet,
-                    minBg = profile.min_bg,
-                    hour = offsetHour,
-                    bg = bg,
-                    cob = meal_data.mealCOB,
-                    carbAgeMin = carbAgeMin,
-                )
                 val gated = applyTargetOffsetToSmb(
                     microBolus = microBolus,
                     bg = bg,
                     offset = offset,
                     roundSmbTo = roundSMBTo,
-                    skipCarbBand = mildThisCycle || bg3ThisCycle || mildFailsafeThisCycle || tier3Enhanced,
+                    // 2026-10-08, per explicit request: no exemption for BMild, bg3, the failsafe or Tier 3 fire cycles any more.
+                    skipCarbBand = false,
                     mildOffsetZero = mildOffsetZero,
                 )
                 microBolus = gated.first

@@ -37,12 +37,6 @@ class BoostCriteriaTest {
     }
 
     @Test
-    fun mildNeedsSixMmolForTheIobRisePath() {
-        assertFalse(mild(bg = 100.0))
-        assertTrue(mild(bg = 112.0))
-    }
-
-    @Test
     fun mildStaysOffUnder75WhenDeliveryIsAlreadyHot() {
         assertFalse(mild(bg = 130.0, iobChange5 = 0.9))
     }

@@ -5,8 +5,13 @@ import kotlin.math.abs
 
 private const val MMOL_TO_MGDL = Constants.MMOLL_TO_MGDL
 
+// The 3426 app writes and reads coded targets at 18.0 mg/dL per mmol/L; this app's own constant is 18.01559. A coded TT from a
+// 3426 client (or a KMP client, which sends at 18.0) therefore matched nothing here. Both scales are accepted (2026-10-08).
+private const val MMOL_TO_MGDL_3426 = 18.0
+
 internal fun ttNear(ttMgdl: Double, targetMmol: Double, toleranceMmol: Double): Boolean =
-    abs(ttMgdl - targetMmol * MMOL_TO_MGDL) <= toleranceMmol * MMOL_TO_MGDL
+    abs(ttMgdl - targetMmol * MMOL_TO_MGDL) <= toleranceMmol * MMOL_TO_MGDL ||
+        abs(ttMgdl - targetMmol * MMOL_TO_MGDL_3426) <= toleranceMmol * MMOL_TO_MGDL_3426
 
 // The running profile is the safety name and the phone battery is back above 1%.
 internal fun batteryOver1ShouldFire(ready: Boolean, running: String, safetyName: String, batteryPercent: Int): Boolean =

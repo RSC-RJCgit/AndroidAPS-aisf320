@@ -621,6 +621,7 @@ open class OpenAPSAutoISFPlugin(
             profile = profile,
         )
         applyLiveMjNote(now)
+        applyRelayNotes(now)
         applySetRoleDuration(now)
         applySetRoleNotes(now)
         smbBoostedThisCycle = false
@@ -928,7 +929,9 @@ open class OpenAPSAutoISFPlugin(
             sub75Cooldown = runMarks.recent(RunMark.SUB75, 10, now),
             smbIntervalSec = smbInterval5Sec(now),
             smbStackStart = preferences.get(LongNonKey.ApsAutoIsfSmbStackStart),
-            mildOffsetZero = preferences.get(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive),
+            // 2026-10-08, per explicit request: MildOffsetZero is switched off. BMild and Tier 3 respect the SMB offset numbers like every
+            // other SMB. The flag is still written and cleared by its timer, but no longer read here.
+            mildOffsetZero = false,
             smbOffsetOverrideMmol = if (preferences.get(BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled))
                 preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) else null,
             mildThisCycle = mildThisCycle,
@@ -1578,7 +1581,8 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfUseUkf1ForDosing,
             DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope,
             DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset,
-            StringKey.ApsAutoIsfLowProfileName,
+            // 2026-10-08, per explicit request: the Low role name row is removed from Settings, as in 3426. Role and tier names are
+            // set from the coded-profiles dialog and the profile switch, which send a client's pick to Live instead of keeping a copy.
             BooleanKey.ApsAutoIsfTddSensitivity,
             BooleanKey.ApsAutoIsfTddFactor,
             DoubleKey.ApsAutoIsfTddFactorFallback,
@@ -3354,7 +3358,8 @@ open class OpenAPSAutoISFPlugin(
     // A temp target near 5.00 mmol is a remote switch, not a real target. Cancel it before the
     // bolus boosts so it does not block them this cycle. Returns true when a target was cancelled.
     private suspend fun applyRemoteToggles(now: Long): Boolean {
-        val tt = persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget ?: return false
+        val activeTt = persistenceLayer.getTemporaryTargetActiveAt(now) ?: return false
+        val tt = activeTt.lowTarget
         val code = remoteToggleCode(tt) ?: return false
         val mark = when (code) {
             RemoteToggleCode.SENSOR_AGE -> RunMark.SENSOR_AGE_TOGGLE
@@ -3460,6 +3465,12 @@ open class OpenAPSAutoISFPlugin(
             else -> 2
         }
         if (!runMarks.ready(mark, waitMin, now)) return false
+        // 2026-10-08, per explicit request: a client sends each List code twice, as this TT and as a note "LC<code>@<TT time>". The
+        // TT time is the shared id, so whichever arrives first applies the change and the other is skipped.
+        if (!claimRelayId(activeTt.timestamp, now, fromTt = true)) {
+            aapsLogger.info(LTag.APS, "Relay code ${code.name} skipped: already applied from the note (id ${activeTt.timestamp})")
+            return false
+        }
         applyToggleAction(code)
         persistenceLayer.cancelCurrentTemporaryTargetIfAny(
             timestamp = now,
@@ -3470,6 +3481,50 @@ open class OpenAPSAutoISFPlugin(
         )
         runMarks.mark(mark, now)
         return true
+    }
+
+    // Relay ids already applied, id = the client's TT start time in ms. In memory only: both copies of a code arrive within
+    // minutes, and a note older than 15 minutes is never applied. True when this id was free and is now taken.
+    private val appliedRelayIds = HashMap<Long, Pair<Char, Long>>()
+
+    // 'T' = the TT applied it, 'N' = the note did. The same TT matched again within a minute is the same application.
+    private fun claimRelayId(id: Long, now: Long, fromTt: Boolean): Boolean {
+        appliedRelayIds.entries.removeAll { now - it.value.second > 30 * 60_000L }
+        val existing = appliedRelayIds[id]
+        if (existing == null) {
+            appliedRelayIds[id] = (if (fromTt) 'T' else 'N') to now
+            return true
+        }
+        return fromTt && existing.first == 'T' && now - existing.second <= 60_000L
+    }
+
+    // The note copy of a client's List code: "LC<mmol>@<id>" (2026-10-08, per explicit request). It is the fallback for a coded TT
+    // that never arrives or is not seen in time. A note whose id the TT path already applied is skipped, and so is a TT whose id a
+    // note already applied, so one tap changes the setting once.
+    private val relayNoteRegex = Regex("^LC(\\d+(?:\\.\\d+)?)@(\\d+)$")
+    private var relayNoteCursor = 0L
+
+    private suspend fun applyRelayNotes(now: Long) {
+        if (config.AAPSCLIENT) return
+        // First scan after a start: take no old note. The applied ids are only in memory, so a code applied just before a restart
+        // would otherwise be applied again from its note.
+        if (relayNoteCursor == 0L) {
+            relayNoteCursor = now
+            return
+        }
+        val from = maxOf(relayNoteCursor, now - 15 * 60_000L)
+        val notes = persistenceLayer.getTherapyEventDataFromTime(from, TE.Type.NOTE, true)
+            .filter { it.isValid && it.timestamp > relayNoteCursor }
+        for (note in notes) {
+            val match = relayNoteRegex.find(note.note.orEmpty().trim()) ?: continue
+            val mmol = match.groupValues[1].toDoubleOrNull() ?: continue
+            val id = match.groupValues[2].toLongOrNull() ?: continue
+            if (now - id > 15 * 60_000L) continue
+            if (!claimRelayId(id, now, fromTt = false)) continue
+            aapsLogger.info(LTag.APS, "Relay code $mmol applied from the note (id $id)")
+            applyDirectListCode(mmol)
+        }
+        notes.lastOrNull()?.let { relayNoteCursor = it.timestamp }
     }
 
     // A double tap on the IOB chip. Same change as the matching temp target, with no target and no wait.
@@ -3926,6 +3981,14 @@ open class OpenAPSAutoISFPlugin(
         StringKey.ApsAutoIsfLow70ProfileName,
         StringKey.ApsAutoIsfLow80ProfileName,
         StringKey.ApsAutoIsfLow90ProfileName,
+        // 2026-10-08: the six Steroid roles, as in 3426's setRoleNoteKeys. A client's role picker can name them, and this app ignored
+        // those notes before.
+        StringKey.ApsAutoIsfSteroid100ProfileName,
+        StringKey.ApsAutoIsfSteroid110ProfileName,
+        StringKey.ApsAutoIsfSteroid130ProfileName,
+        StringKey.ApsAutoIsfSteroid150ProfileName,
+        StringKey.ApsAutoIsfSteroid190ProfileName,
+        StringKey.ApsAutoIsfSteroid250ProfileName,
     )
 
     // 2026-10-07: the Note channel of SetRole, which 3426 has and this port lacked. A client's profile switch dialog writes a

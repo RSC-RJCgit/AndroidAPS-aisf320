@@ -52,15 +52,16 @@ internal fun mildBoostShouldFire(
     val stackK = if (smbIntervalSec <= 70.0) 1.10 else 1.0
     val thresholdScale = deliveryBaseline / 0.17
     val rawDelta1FloorOk = bg < 162.1 || rawDelta1 >= 4.5 * stackK
-    // 2026-10-08: the usual floor 6.0 -> 6.5 mmol (see the Tier 3 floor in Tier3Boost.kt).
-    val mealFloor = if (recentAlarmHypo) 126.1 else 117.1
+    // 2026-10-08: raised to 6.5 mmol and put back to 6.0 the same day, per explicit request (BMild and Tier 3 respect the SMB offset
+    // numbers instead).
+    val mealFloor = if (recentAlarmHypo) 126.1 else 108.1
     val mealLeftover = bg >= mealFloor && (cob >= 4.0 || minutesSinceNormalBolus < 180) && shortDelta >= 2.7
     // 2026-10-08: "IOB rising" counts only the bolus and SMB IOB change, not temp basal, and needs BG of 6.0 mmol or more. 8 Oct
     // 16:08 a temp basal climbing 0.6 to 3.35 U/h with no SMB passed the old test and BMild then Tier 3 gave 0.65 U at BG 5.5.
     // The total iobChange5 still feeds the sub-7.5 delivery ceiling below.
     // The bar is scaled x0.6 because it now measures SMB and bolus IOB only: across 190 past BMild firings that part was a median
     // 58% of the total 5-minute IOB rise, so 0.24 x baseline/0.17 keeps the sensitivity the path had (about 0.14 U at baseline 0.10).
-    val iobRising = bg >= 108.1 && bolusIobChange5 > 0.24 * stackK * thresholdScale
+    val iobRising = bolusIobChange5 > 0.24 * stackK * thresholdScale   // the 6.0 mmol floor that stood here was withdrawn (2026-10-08)
     // A high rise, or a recent bolus or carb entry, keeps this open past 02:00 and past 2.5 U.
     val inWindow = timeWindowContains(minuteOfDay, 8, 30, 2, 0) || daytimeBypass || riseHold
     return inWindow &&

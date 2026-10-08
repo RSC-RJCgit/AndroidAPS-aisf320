@@ -29,6 +29,7 @@ fun List1Dialog(viewModel: ChipsViewModel) {
         rows = rows,
         onDismiss = viewModel::closeList1,
         onApply = viewModel::applyList1,
+        queuedText = viewModel.queuedRelayText(),
         onPickProfiles = { pickProfiles = true },
     )
     if (pickProfiles) {
@@ -45,6 +46,7 @@ fun List2Dialog(viewModel: ChipsViewModel) {
         rows = rows,
         onDismiss = viewModel::closeList2,
         onApply = viewModel::applyList1,
+        queuedText = viewModel.queuedRelayText(),
     )
 }
 
@@ -55,6 +57,7 @@ private fun DirectListDialog(
     rows: List<List1Row>,
     onDismiss: () -> Unit,
     onApply: (Double) -> Unit,
+    queuedText: String? = null,
     onPickProfiles: () -> Unit = {},
 ) {
     if (!open) return
@@ -63,14 +66,18 @@ private fun DirectListDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                items(rows, key = { it.label }) { row ->
-                    TextButton(onClick = {
-                        if (row.pickProfiles) onPickProfiles() else picked = row
-                    }) {
-                        Column {
-                            Text(row.label)
-                            Text("Current: ${row.current}")
+            Column {
+                // Codes sent from a client that wait for a running TT to end (2026-10-08).
+                if (queuedText != null) Text(queuedText)
+                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(rows, key = { it.label }) { row ->
+                        TextButton(onClick = {
+                            if (row.pickProfiles) onPickProfiles() else picked = row
+                        }) {
+                            Column {
+                                Text(row.label)
+                                Text("Current: ${row.current}")
+                            }
                         }
                     }
                 }

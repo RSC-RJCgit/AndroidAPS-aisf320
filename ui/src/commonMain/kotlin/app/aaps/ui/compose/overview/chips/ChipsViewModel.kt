@@ -7,6 +7,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.aaps.core.data.model.TE
+import app.aaps.core.data.model.TT
+import app.aaps.core.data.ue.Action
+import app.aaps.core.data.ue.Sources
+import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
@@ -15,6 +20,7 @@ import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
@@ -52,6 +58,7 @@ import app.aaps.ui.compose.overview.autoIsfHistoryRows
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -276,8 +283,83 @@ class ChipsViewModel(
         list2Open = false
     }
 
+    // KMP client relay (2026-10-08, per explicit request): a client has no AutoISF loop of its own, so a List 1 or List 2 tap
+    // used to do nothing at all (the plugin's handler returns for a client). Now it sends the coded 5-minute TT to the master,
+    // as the 3426 client does: the master reads it, applies the change and cancels the TT. A real TT that is already on is never
+    // cancelled: the code is queued and retried every 5 minutes. The queue is shown at the top of both lists.
+    private val relayQueue = ArrayDeque<Double>()
+    private var relayJob: Job? = null
+    var queuedRelayCodes by mutableStateOf<List<Double>>(emptyList())
+        private set
+
+    private fun relayToMaster(mmol: Double) {
+        relayQueue.addLast(mmol)
+        queuedRelayCodes = relayQueue.toList()
+        if (relayJob?.isActive == true) return
+        relayJob = viewModelScope.launch {
+            while (relayQueue.isNotEmpty()) {
+                if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) {
+                    aapsLogger.info(LTag.CORE, "Client relay TT ${relayQueue.first()} deferred 5 min; existing TT preserved")
+                    delay(5 * 60_000L)
+                    continue
+                }
+                val next = relayQueue.removeFirst()
+                queuedRelayCodes = relayQueue.toList()
+                insertRelayTt(next)
+                if (relayQueue.isNotEmpty()) delay(5 * 60_000L)
+            }
+        }
+    }
+
+    private suspend fun insertRelayTt(mmol: Double) {
+        // 18.0, the 3426 app's scale, not this app's Constants.MMOLL_TO_MGDL (18.01559): a 3426 master matches a code to within
+        // 0.0018 mg/dL on its own scale, so a TT at 18.01559 would never be recognised there. The KMP master accepts both scales.
+        val mgdl = mmol * 18.0
+        val sentAt = dateUtil.now()
+        persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+            temporaryTarget = TT(
+                timestamp = sentAt,
+                duration = 5 * 60_000L,
+                reason = TT.Reason.CUSTOM,
+                lowTarget = mgdl,
+                highTarget = mgdl
+            ),
+            action = Action.TT,
+            source = Sources.TTDialog,
+            note = "TT code $mmol (KMP client list)",
+            listValues = listOf(
+                ValueWithUnit.TETTReason(TT.Reason.CUSTOM),
+                ValueWithUnit.Mgdl(mgdl),
+                ValueWithUnit.Minute(5)
+            )
+        )
+        // The note copy (2026-10-08, per explicit request): "LC<code>@<TT start time>". The master applies whichever of the TT and this
+        // note it sees first and skips the other, matching them by that time.
+        val copy = "LC$mmol@$sentAt"
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = sentAt + 1,
+                type = TE.Type.NOTE,
+                note = copy,
+                duration = 60_000L,
+                glucoseUnit = profileFunction.getUnits(),
+            ),
+            timestamp = sentAt + 1,
+            action = Action.CAREPORTAL,
+            source = Sources.TTDialog,
+            note = copy,
+            listValues = listOf(ValueWithUnit.SimpleString(copy)),
+        )
+        aapsLogger.info(LTag.CORE, "Client relay TT $mmol sent to the master, with the note copy $copy")
+    }
+
+    /** Text for the top of the lists while codes wait for a running TT to end, or null when nothing waits. */
+    fun queuedRelayText(): String? =
+        if (queuedRelayCodes.isEmpty()) null
+        else "Waiting for the running TT to end (retry every 5 min): " + queuedRelayCodes.joinToString(", ")
+
     fun applyList1(mmol: Double) {
-        rxBus.send(EventAutoIsfDirectTtCode(mmol))
+        if (config.AAPSCLIENT) relayToMaster(mmol) else rxBus.send(EventAutoIsfDirectTtCode(mmol))
         viewModelScope.launch {
             delay(400)
             refreshInsulinPeak()
@@ -504,9 +586,36 @@ class ChipsViewModel(
         if (role.blockSteroidName && (name.contains("steroid", ignoreCase = true) || name.contains("%"))) {
             return "That name belongs on a steroid role."
         }
+        // 2026-10-08, per explicit request: a client never changes a setting on its own phone, only on Live. It sends the same
+        // "SetRole <key>=<profile>" CarePortal note the 3426 client sends; the master applies it and writes RoleSet. Nothing is
+        // written here until Live's value comes back through the settings it publishes.
+        if (config.AAPSCLIENT) {
+            viewModelScope.launch { sendSetRoleNote(role.key, name) }
+            return ""
+        }
         preferences.put(role.key, name)
         list1Generation++
         return ""
+    }
+
+    private suspend fun sendSetRoleNote(key: StringKey, name: String) {
+        val ts = dateUtil.now()
+        val text = "SetRole ${key.key}=$name"
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = ts,
+                type = TE.Type.NOTE,
+                note = text,
+                duration = 60_000L,
+                glucoseUnit = profileFunction.getUnits(),
+            ),
+            timestamp = ts,
+            action = Action.CAREPORTAL,
+            source = Sources.ProfileSwitchDialog,
+            note = null,
+            listValues = listOf(ValueWithUnit.SimpleString("SetRole ${key.key}")),
+        )
+        aapsLogger.info(LTag.CORE, "Client sent $text to the master")
     }
 
     fun showIobInfo() {

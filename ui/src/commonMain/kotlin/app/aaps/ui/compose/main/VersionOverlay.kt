@@ -20,18 +20,18 @@ fun VersionOverlay(
 ) {
     val config = LocalConfig.current
     val preferences = LocalPreferences.current
-    if (config.APS || config.PUMPCONTROL) {
-        val colors = AapsTheme.generalColors
-        val versionColor = when {
-            config.COMMITTED                                                          -> colors.versionCommitted
-            preferences.get(LongComposedKey.AppExpiration, config.VERSION_NAME) != 0L -> colors.versionWarning
-            else                                                                      -> colors.versionUncommitted
-        }
-        Text(
-            text = "${config.VERSION_NAME} (${config.HEAD.substring(0, minOf(4, config.HEAD.length))})",
-            color = versionColor,
-            fontSize = 10.sp,
-            modifier = modifier.padding(top = 4.dp, end = 4.dp)
-        )
+    // 2026-10-08, per explicit request: shown on every flavor, clients included (it used to need APS or PUMPCONTROL),
+    // with its padding on the left edge where the label is placed.
+    val colors = AapsTheme.generalColors
+    val versionColor = when {
+        config.COMMITTED                                                          -> colors.versionCommitted
+        preferences.get(LongComposedKey.AppExpiration, config.VERSION_NAME) != 0L -> colors.versionWarning
+        else                                                                      -> colors.versionUncommitted
     }
+    Text(
+        text = "${config.VERSION_NAME} (${config.HEAD.substring(0, minOf(4, config.HEAD.length))})",
+        color = versionColor,
+        fontSize = 10.sp,
+        modifier = modifier.padding(top = 4.dp, start = 4.dp)
+    )
 }

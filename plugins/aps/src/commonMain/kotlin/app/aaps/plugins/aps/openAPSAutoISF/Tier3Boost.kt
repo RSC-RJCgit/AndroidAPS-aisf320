@@ -35,6 +35,7 @@ internal fun tier3BoostMicroBolus(
     profilePercent: Int,
     bg: Double,
     targetBg: Double,
+    targetBgOffsetMgdl: Double,
     iob: Double,
     cob: Double,
     delta: Double,
@@ -54,9 +55,10 @@ internal fun tier3BoostMicroBolus(
     val boostMaxIob = maxIob * maxIobPercent / 100.0
     val allowance = (boostMaxIob - iob).coerceAtLeast(0.0)
     val scale = scaleSetting * (profilePercent / 100.0)
-    // 2026-10-08: BG floor 80 mg/dL (4.4 mmol) -> 6.5 mmol (117.1). Of 98 firings in 30 days, the 29 under 6.5 mmol held all 3
-    // that went on to drop under 4.5 mmol; none of the 69 above did.
-    if (scale >= 3.0 || bg < 117.1) return unchanged
+    // 2026-10-08, per explicit request: the BG floor is the CURRENT SMB offset (targetBgOffset), not a fixed number. A 6.5 mmol floor
+    // was added and withdrawn the same day. BMild and Tier 3 respect the offset like every other SMB, and the rise tests no longer
+    // count temp-basal IOB.
+    if (scale >= 3.0 || bg < targetBgOffsetMgdl) return unchanged
     if (!riseHold && !unrestricted && (iob >= boostMaxIob || allowance <= 0.0)) return unchanged
     if (!riseHold && !unrestricted && uamBoostRecent) return Tier3Result(microBolus, false, null, false, "T3skip<20min; ")
     if (!riseHold && !unrestricted && smbDeliveryRatio > 0.50) return Tier3Result(microBolus, false, null, false, "T3skip SMBdel>$smbDeliveryRatio; ")
