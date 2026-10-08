@@ -648,9 +648,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
                         mPaint.style = Paint.Style.FILL
                         mPaint.textAlign = Paint.Align.LEFT
-                        value.label.split('\n').forEachIndexed { lineIndex, line ->
+                        val hpLines = value.label.split('\n')
+                        hpLines.forEachIndexed { lineIndex, line ->
                             canvas.drawText(line, graphLeft + 10f, nearBottomPy + lineIndex * scaledTextSize * 0.6f, mPaint)
                         }
+                        // 2026-10-08, per explicit request: the same row again in black, directly under the white one, so it can be
+                        // read over any basal column colour from one line or the other.
+                        val hpWhiteColor = mPaint.color
+                        mPaint.color = Color.BLACK
+                        hpLines.forEachIndexed { lineIndex, line ->
+                            canvas.drawText(line, graphLeft + 10f, nearBottomPy + (hpLines.size + lineIndex) * scaledTextSize * 0.6f, mPaint)
+                        }
+                        mPaint.color = hpWhiteColor
                     }
                 } else if (value.shape == Shape.TARGET_OFFSET_DUT_GRAPH1) {
                     mPaint.strokeWidth = 0f

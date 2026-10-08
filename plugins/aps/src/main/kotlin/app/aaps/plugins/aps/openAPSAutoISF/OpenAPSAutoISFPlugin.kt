@@ -3808,7 +3808,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // BMild/Boost already being the cause is unlikely, per explicit reasoning. Only mealLeftoverRise
             // gets the raised floor. Added 2026-09-16, per explicit request.
             val recentAlarmHypo = (dateUtil.now() - preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)) <= T.mins(60).msecs()
-            val mealLeftoverRiseFloor = if (recentAlarmHypo) 126.1 /* 7.0 mmol */ else 108.1 /* 6.0 mmol */
+            // 2026-10-08, per explicit request: the usual floor 6.0 -> 6.5 mmol (see the Tier 3 floor in DetermineBasalAutoISF.kt).
+            val mealLeftoverRiseFloor = if (recentAlarmHypo) 126.1 /* 7.0 mmol */ else 117.1 /* 6.5 mmol */
             val mealLeftoverRise = g >= mealLeftoverRiseFloor
                 // 2026-09-26, per explicit request: last-normal-bolus window 180 -> 240 min. A scan of 17 Client-mirrored meals since
                 // 14 Sep found 9 late rises (>= 1.0 mmol after the post-meal dip) starting 100-210 min after the entry, mostly with COB
@@ -4490,9 +4491,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 return@run
             }
 
-            // Latch is written at the top of this run (even when SensorAge is off). Read here
-            // for OldSensorAdj only: tier compensation needs a recent genuine high.
-            val recentHighBglSeen = recentLibreOver12(24)
+            // The LibreOver12Ts latch is still written at the top of this run (MoreMJ's 48h path reads it). Since 2026-10-08 the
+            // tier compensation below no longer needs it.
 
             // Missing sensor age is unknown, never day 0. A null age produces no tier below (other than
             // the NewDay2-by-pod-age fallback just below); if an override was active, the normal
@@ -4536,13 +4536,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             consoleError.add(
                 "SensorAge check: sensorAgeDays=${sensorAgeDays?.let { round(it, 3) } ?: "null"} " +
                     "oldSensorTier=${oldSensorTier?.first ?: "none"} oldSensorEnabled=$oldSensorEnabled " +
-                    "recentHighBglSeen=$recentHighBglSeen (liveUkfG=${liveUkfG?.let { round(it / 18.0182, 2) } ?: "null"}mmol) " +
+                    "(liveUkfG=${liveUkfG?.let { round(it / 18.0182, 2) } ?: "null"}mmol, not a tier condition) " +
                     "oldSensorActiveNow=$oldSensorActiveNow currentFslCalSlope=${round(preferences.get(DoubleKey.FslCalSlope), 2)}"
             )
             // Sensor-age calibration is otherwise independent of cannula/pod age (see NewDay2's pod-age
             // OR above for the one exception). It still requires recentHighBglSeen (see above); cannula
             // protections remain in their own pod automations.
-            if (oldSensorEnabled && oldSensorTier != null && recentHighBglSeen) {
+            // 2026-10-08, per explicit request: the tier now needs only the sensor age (or the pod age for NewDay2), no longer a
+            // UKF raw Libre value above 12.0 mmol in the last 24 hours.
+            if (oldSensorEnabled && oldSensorTier != null) {
                 if (!oldSensorActiveNow) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))

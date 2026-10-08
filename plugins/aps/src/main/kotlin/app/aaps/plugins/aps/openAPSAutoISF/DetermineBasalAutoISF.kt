@@ -1698,8 +1698,11 @@ class DetermineBasalAutoISF @Inject constructor(
                     // bmildBasicCriteriaMet supplies that (on real pumps, already relied on for its own
                     // dosing), keeping them just made the combined path unreachable rather than adding
                     // real protection.
+                    // 2026-10-08, per explicit request: BG floor 80 mg/dL (4.4 mmol) -> 117.1 (6.5 mmol). Of 98 firings in 30 days, the
+                    // 29 under 6.5 mmol included all 3 that went on to drop under 4.5 (none of the 69 above did); their deltas and IOB
+                    // changes were strong, so only the BG floor separates them.
                     if (boostActive && (bmildBasicCriteriaMet || bg3BasicCriteriaMet) &&
-                        boost_scale < 3 && bg > 80 &&
+                        boost_scale < 3 && bg >= 117.1 /* 6.5 mmol */ &&
                         (riseHold || t3Unrestricted || (iob_data.iob < boostMaxIOB && boostIobAllowance > 0.0))) {
                         // 2026-09-21: T3-only skips. BMild/bg3 still run this cycle (SMBdel/TT unchanged).
                         // uamBoostRecent is false on the firing cycle (markRun is after determine_basal).
