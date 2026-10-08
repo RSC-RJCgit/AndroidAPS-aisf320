@@ -238,6 +238,16 @@ internal object ShizukuAaps333Installer {
         return (offCode == 0 && onCode == 0) to "off=$offCode:$offOut on=$onCode:$onOut".trim()
     }
 
+    // AnyDesk restart helper (2026-10-08, per explicit request): launches a package's launcher screen from the Shizuku shell. A
+    // shell start is not subject to the background-launch block that can make a plain startActivity do nothing on Android 12+.
+    // Launch only -- no force-stop (a kill plus relaunch once left AnyDesk's remote listener down).
+    fun launchPackage(pkg: String): Pair<Boolean, String> {
+        if (!PACKAGE_NAME.matches(pkg)) return false to "bad package name"
+        val (code, out) = exec(arrayOf("monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"))
+        val ok = code == 0 && !out.contains("No activities found", ignoreCase = true)
+        return ok to "exit=$code $out".trim()
+    }
+
     private fun exec(cmd: Array<String>): Pair<Int, String> {
         val method = Shizuku::class.java.getDeclaredMethod(
             "newProcess",

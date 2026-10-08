@@ -73,6 +73,7 @@ import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventAnyDeskLaunchRequested
 import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import app.aaps.core.interfaces.rx.events.EventMjUserAction
+import app.aaps.core.interfaces.rx.events.EventNetworkChange
 import app.aaps.core.interfaces.rx.events.EventSteroidUserAction
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
@@ -397,6 +398,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             .observeOn(Schedulers.io())
             .subscribe({ handleDirectMjUserAction(it.action, it.directMenu) }) {
                 aapsLogger.error(LTag.APS, "Direct MJ Kotlin button failed", it)
+            }
+        mjUserActionDisposable += rxBus
+            .toObservable(EventNetworkChange::class.java)
+            .observeOn(Schedulers.io())
+            .subscribe({ onNetworkChangeRestartShizuku(it) }) {
+                aapsLogger.error(LTag.APS, "Network-change Shizuku restart failed", it)
             }
         mjUserActionDisposable += rxBus
             .toObservable(EventSteroidUserAction::class.java)
@@ -1925,6 +1932,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 aapsLogger.warn(LTag.APS, "AnyDesk startActivity failed for $pkg: ${e.message}")
                 addCarePortalNote("AdMs")
             }
+            // 2026-10-08, per explicit request: also launch it from the Shizuku shell when Shizuku is running and granted, because a
+            // background startActivity can silently do nothing. Off the main thread. "AdSz" = the shell launch ran, "AdSzNo" = it
+            // was tried and failed; no note when Shizuku is not available (it is often down after a reboot or network change).
+            Schedulers.io().scheduleDirect {
+                try {
+                    if (!ShizukuAaps333Installer.hasPermission()) {
+                        aapsLogger.info(LTag.APS, "AnyDesk Shizuku launch skipped: Shizuku not running or not granted")
+                        return@scheduleDirect
+                    }
+                    val (ok, detail) = ShizukuAaps333Installer.launchPackage(pkg)
+                    aapsLogger.info(LTag.APS, "AnyDesk Shizuku launch ($pkg): ok=$ok $detail")
+                    addCarePortalNote(if (ok) "AdSz" else "AdSzNo")
+                } catch (e: Throwable) {
+                    aapsLogger.warn(LTag.APS, "AnyDesk Shizuku launch failed: ${e.message}")
+                }
+            }
         }, 400)
     }
 
@@ -2158,6 +2181,27 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    // 2026-10-08, per explicit request: any network change (a connection coming up) also tries to start Shizuku, because it often
+    // drops after one. Waits 20 s for the connection to settle, does nothing if Shizuku is already running or no wireless-debugging
+    // port is configured, at most once every 5 minutes, never on Client. It may well fail (the port moves when wireless debugging
+    // restarts); "ShzNet" = start.sh ran, "ShzNetNg" = the attempt failed. Never installs anything.
+    private fun onNetworkChangeRestartShizuku(ev: EventNetworkChange) {
+        if (config.AAPSCLIENT || !ev.isAnyConnection) return
+        if (!readyToRun("NetShizukuStart", 5)) return
+        markRun("NetShizukuStart")
+        try {
+            Thread.sleep(20_000L)
+            if (ShizukuAaps333Installer.shizukuRunning()) return
+            val port = preferences.get(IntKey.ApsAutoIsfAdbConnectPort)
+            if (port <= 0) return
+            val (ok, detail) = AdbWirelessStarter.attemptStart(context, port)
+            aapsLogger.info(LTag.APS, "Network-change Shizuku start: ok=$ok $detail")
+            addCarePortalNote(if (ok) "ShzNet" else "ShzNetNg")
+        } catch (e: Throwable) {
+            aapsLogger.warn(LTag.APS, "Network-change Shizuku start failed: ${e.message}")
+        }
+    }
+
     // Manual "attempt to start Shizuku now" — List2 5.208. Virtual-only. Same underlying call as
     // installNewestAaps333Apk()'s own silent best-effort attempt, but this one always reports its
     // outcome by SMS/note since it's a deliberate user action, not a background pre-step.
@@ -2272,6 +2316,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     private fun tryAutoInstallNewerApk() {
         if (config.AAPSCLIENT) return
+        // 2026-10-08, per explicit request: no automatic install on the real-pump phone (Live) so Shizuku can run there for the
+        // AnyDesk restart without it installing new APKs by itself. Virtual still auto-installs; the List2 manual install still
+        // works on Live. To enable it on Live later, replace this check with a setting.
+        if (isRealLoopPhone()) return
         // Defer (not consume the 45-min cooldown -- just skip THIS 15-min check, try again next time)
         // while a boost/rise is actively in progress. Added 2026-09-13 after a real collision: a
         // Shizuku auto-install kill+relaunch on Virtual landed right as HiBrkDayMid/P120 was about to
@@ -7884,6 +7932,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sendSms("BasalUp Acce")
                 addCarePortalNote("BsUp")
                 markRun("BasalUp")
+            } else if (g >= 81.1 && !cannulaOrStateOk
+                && stepsOk
+                && profile_percentage == 100
+                && d >= 3.6
+                && isTimeBetween(7, 0, 0, 0)
+                && onLowFamily
+                && readyToRun("BasalUpHeldAlert", 30)
+            ) {
+                // 2026-10-08, per explicit request: tell the user when ONLY the MJ/pod condition held BasalUp back (every other test
+                // is open), at most once every 30 minutes. 8 Oct 11:12-12:25 it stayed closed for over an hour with MJ left on
+                // "MJ active". Not raised for profile%, the steps brake or the 07:00-00:00 window. Note only.
+                markRun("BasalUpHeldAlert")
+                val mjNow = automationStateService.getState("MJ").ifBlank { "unknown" }
+                uiInteraction.addNotificationValidFor(
+                    id = 9015,
+                    text = "BsUp held back: MJ is \"$mjNow\" (needs NOMJremains or MJ3, or 12:00-18:00, or pod age 72h+ or 6h-). " +
+                        "BG ${String.format("%.1f", g / 18.016)} rising ${String.format("%.2f", d / 18.016)}, " +
+                        "pod ${podH?.let { String.format("%.0f", it) + "h" } ?: "unknown"}. Note only.",
+                    level = Notification.NORMAL, validMinutes = 30
+                )
             }
         }
 
