@@ -1899,6 +1899,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             return
         }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // 2026-10-08: on Android 12+ a background startActivity can do nothing, silently and without an exception, unless AAPS has
+        // "Display over other apps" (the A36 host logged AcTTR + AdOn at 11:21 and 11:25 with AnyDesk not restarting). AdOn only
+        // means startActivity did not throw, so record whether the permission is there: "AdNoOv" = not granted. The launch is still tried.
+        val overlayGranted = android.provider.Settings.canDrawOverlays(context)
+        aapsLogger.info(LTag.APS, "AnyDesk launch: Display over other apps granted=$overlayGranted")
+        if (!overlayGranted) addCarePortalNote("AdNoOv")
         try {
             val home = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_HOME)
@@ -6338,8 +6344,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // while BG is genuinely rising (shortAvgDelta and longAvgDelta both > 0). 3 Oct 22:30-23:20 Live: BG 7.2 -> 8.5
             // with deltas all positive, HP2 6.8-7.3 (> 6.5, ratio branch qualifies) and IOB only 0.5-1.0 (far under the
             // ceiling below), yet nothing stronger than 0.05U SMBs at ratio 0.10 until the 8.5 bar was reached at 23:20.
-            val nightRising = isTimeBetween(20, 0, 6, 0) && glucoseStatus.shortAvgDelta > 0.0 && glucoseStatus.longAvgDelta > 0.0
-            val highEnough = g >= 153.1 /* 8.5 mmol */ || (nightRising && g >= 135.1 /* 7.5 mmol */)
+            // 2026-10-08, per explicit request: the night 7.5 bar is withdrawn (8 Oct 02:29 Live: a StuckHighRescue ratio boost at
+            // BG 7.7 produced a large SMB followed by a hypo), so night now uses the same 8.5 mmol bar as the day.
+            val highEnough = g >= 153.1 /* 8.5 mmol */
             // 2026-09-26, per explicit request: ceiling 0.30 -> 0.40 * max_iob (StuckHighRescue only; PoorResponseRescue below
             // keeps 0.30). 26 Sep Live: BG >= 8.5 from 13:34 and plateaued 10.0-10.1 from 13:55, but total IOB sat at 3.3-3.9
             // (about 1.8 of it basal IOB from 5 U/h temp basals) against the old 2.85 ceiling, so this only fired at 14:19 when
@@ -6939,7 +6946,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.get(StringKey.ApsAutoIsfStandardProfileName),
             listOf(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
         )
-        val restingDeliveryBaseline = (deliveryBaseline + (if (standardRoleRung >= 1) 0.15 else 0.0)).coerceAtMost(smb_delivery_ratio_max)
+        // 2026-10-08, per explicit request: the +0.15 tier lift only applies while BG is at least 7.0 mmol (126.1 mg/dL);
+        // below that SMBdel settles to the plain baseline, so low-range SMBs are not enlarged by the elevated rung.
+        val tierLiftActive = standardRoleRung >= 1 && glucoseStatus.glucose >= 126.1
+        val restingDeliveryBaseline = (deliveryBaseline + (if (tierLiftActive) 0.15 else 0.0)).coerceAtMost(smb_delivery_ratio_max)
         // Time-based boost hold (2026-10-03): defer the reset while a StuckHighRescue/StuckRisingSlowly boost's hold is
         // running, even if its TT was cancelled. Released early if IOB reached the StuckHighRescue ceiling (0.40*maxIob)
         // or BG is no longer rising; HardStackDelOff and the hypo/overnight resets still override it directly.
