@@ -44,6 +44,31 @@ class CompressionDetectorTest {
     }
 
     @Test
+    fun aFallStillLow15MinutesLaterIsSuspected() {
+        val readings = compressionFall + (24..38).map { it * minute to 120.0 }
+        assertNotNull(CompressionDetector.sustainedSuspect(readings))
+    }
+
+    @Test
+    fun aFallNotYet15MinutesOldIsNotSuspected() {
+        val readings = compressionFall + (24..30).map { it * minute to 120.0 }
+        assertNull(CompressionDetector.sustainedSuspect(readings))
+    }
+
+    @Test
+    fun aSwingThatComesStraightBackIsNotSuspected() {
+        val readings = compressionFall + (24..38).map { it * minute to if (it < 28) 120.0 else 150.0 }
+        assertNull(CompressionDetector.sustainedSuspect(readings))
+    }
+
+    @Test
+    fun aFallThatEndsAboveSevenMmolIsNotSuspected() {
+        val high = compressionFall.map { it.first to it.second + 40.0 }
+        assertNull(CompressionDetector.suspect(high))
+        assertNull(CompressionDetector.sustainedSuspect(high + (24..38).map { it * minute to 160.0 }))
+    }
+
+    @Test
     fun aSharpRiseFromNearTheLowConfirms() {
         val readings = compressionFall + listOf(
             24 * minute to 118.0, 25 * minute to 117.0, 26 * minute to 125.0, 27 * minute to 140.0, 28 * minute to 150.0

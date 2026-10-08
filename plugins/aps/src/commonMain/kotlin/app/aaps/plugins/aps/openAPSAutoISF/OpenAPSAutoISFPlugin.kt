@@ -593,6 +593,7 @@ open class OpenAPSAutoISFPlugin(
             iob = iobData.iob,
             maxIob = oapsProfile.max_iob,
             shortDelta = glucoseStatus.shortAvgDelta,
+            glucoseMgdl = glucoseStatus.glucose,
         )
         applyOldPodBoost(
             now = now,
@@ -1811,7 +1812,7 @@ open class OpenAPSAutoISFPlugin(
     // While four or more SMBs land inside 65 seconds, and the meal is under 9 g, the ratio goes to
     // baseline minus 0.03 instead. A boost mark from the last 3 minutes is left alone.
     // This runs before the boost marks, so a later write in the same loop is not undone here.
-    private suspend fun applyDeliveryRestore(now: Long, tempTargetSet: Boolean, mealCob: Double, iob: Double, maxIob: Double, shortDelta: Double) {
+    private suspend fun applyDeliveryRestore(now: Long, tempTargetSet: Boolean, mealCob: Double, iob: Double, maxIob: Double, shortDelta: Double, glucoseMgdl: Double) {
         // Time-based boost hold: defer the reset while a StuckHighRescue/StuckRisingSlowly hold runs, even if its temp
         // target was cancelled early. Released if IOB reaches 40% of max or glucose is no longer rising.
         val boostHoldActive = now < smbBoostHoldUntil && iob < 0.40 * maxIob && shortDelta >= 0.0
@@ -1820,7 +1821,11 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, false)
         }
         val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
-        val resting = baseline.coerceAtMost(smb_delivery_ratio_max)
+        // 2026-10-08: the resting level is lifted by TIER_LIFT while the Standard role sits on an elevated rung
+        // (Standard105/110) and glucose is at least 7.0 mmol (126.1 mg/dL). The hard-stack target keeps the raw baseline.
+        val standardRung = ladderIndexOf(preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim(), standardLadderNames())
+        val tierLift = if (standardRung >= 1 && glucoseMgdl >= 126.1) 0.08 else 0.0
+        val resting = (baseline + tierLift).coerceAtMost(smb_delivery_ratio_max)
         val hardStackTarget = (baseline - 0.03).coerceAtLeast(0.1)
         val stacking = smbIsStacking(smbInterval5Sec(now), smbCount5(now))
         val current = smb_delivery_ratio
@@ -4302,6 +4307,10 @@ open class OpenAPSAutoISFPlugin(
             aapsLogger.info(LTag.APS, "$receipt; not the AnyDesk host, launch skipped")
             return
         }
+        // AdOn only means startActivity did not throw. Without "Display over other apps" Android 12+ can ignore a background launch.
+        val overlayGranted = anyDeskFront.overlayGranted()
+        aapsLogger.info(LTag.APS, "AnyDesk launch: Display over other apps granted=$overlayGranted")
+        if (!overlayGranted) carePortalNote("AdNoOv")
         anyDeskFront.bringToFront { shown ->
             pluginScope.launch {
                 carePortalNote(if (shown) "AdOn" else "AdMs")
@@ -4594,11 +4603,11 @@ open class OpenAPSAutoISFPlugin(
         ) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
             runMarks.mark(RunMark.STUCK_RISING, now)
-            // From 20:00 until 06:00 the ratio also steps up by 0.15, held for 6 minutes so a cancelled 5-minute
-            // target cannot drop it early. The reset puts it back once the hold ends.
+            // From 20:00 until 06:00 the ratio also steps up by 0.08 (was 0.15 until 2026-10-08), held for 6 minutes so a
+            // cancelled 5-minute target cannot drop it early. The reset puts it back once the hold ends.
             if (minuteInWindow(minuteOfDay, 20 * 60, 6 * 60)) {
                 val current = smb_delivery_ratio
-                val boosted = (current + 0.15).coerceAtMost(smb_delivery_ratio_max)
+                val boosted = (current + 0.08).coerceAtMost(smb_delivery_ratio_max)
                 if (!deliveryNear(current, boosted)) {
                     preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, boosted)
                     smbBoostHoldUntil = now + 6 * 60_000L
@@ -5955,8 +5964,9 @@ open class OpenAPSAutoISFPlugin(
 
     // Compression notes (2026-10-08, per explicit request): NOTES AND AN ALERT AT THE TOP OF THE OVERVIEW ONLY, at any time
     // of day -- nothing here changes dosing, tiers, profiles or marking. See CompressionDetector for the rules.
-    //  - "CompSusp": a clean compression-type fall just ended at the newest raw reading (flat before, then >=30 mg/dL in 10 min
-    //    with a >=4 mg/dL/min minute), with no meal, bolus or SMB in the last 30 minutes. Once per event.
+    //  - "CompSusp": a clean compression-type fall (flat before, then >=30 mg/dL in 10 min with a >=4 mg/dL/min minute, ending
+    //    under 7.0 mmol) that began 15-20 minutes ago and has stayed >=20 mg/dL under its pre-fall level since (2026-10-08: a
+    //    noise swing at normal glucose fired it), with no meal, bolus or SMB in the last 30 minutes. Once per event.
     //  - "CompConf": once only for that event, if within 2 hours a sharp rebound follows (>=25 mg/dL in 10 min, from near
     //    the low, with no carbs in the 15 minutes before it).
     // The raw series is the same one the rawBGL column and ukfRawBgl are built from (GlucoseValue.noise, else the value).
@@ -5964,7 +5974,7 @@ open class OpenAPSAutoISFPlugin(
         val suspectAt = preferences.get(LongNonKey.ApsAutoIsfCompressionSuspectAt)
         val confirmedAt = preferences.get(LongNonKey.ApsAutoIsfCompressionConfirmedAt)
         val pending = suspectAt > 0L && confirmedAt < suspectAt && now - suspectAt <= CompressionDetector.PENDING_MINUTES * 60_000L
-        val from = if (pending) suspectAt - 25 * 60_000L else now - 25 * 60_000L
+        val from = if (pending) suspectAt - 25 * 60_000L else now - CompressionDetector.LOOKBACK_MINUTES * 60_000L
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
             .mapNotNull { gv -> (gv.noise?.takeIf { it > 10.0 } ?: gv.value).takeIf { it > 10.0 }?.let { gv.timestamp to it } }
             .sortedBy { it.first }
@@ -5980,14 +5990,14 @@ open class OpenAPSAutoISFPlugin(
             )
         }
         if (now - suspectAt > CompressionDetector.SAME_EVENT_MINUTES * 60_000L && mealMinutes >= 30 && smbSum(now, 30 * 60 * 1000L) <= 0.0) {
-            CompressionDetector.suspect(readings)?.let { s ->
+            CompressionDetector.sustainedSuspect(readings)?.let { s ->
                 preferences.put(LongNonKey.ApsAutoIsfCompressionSuspectAt, now)
                 carePortalNote("CompSusp")
                 notificationManager.post(
                     id = NotificationId.AUTOISF_NOTE,
                     text = "Compression suspected: sharp fall ${decimals(s.fromMgdl / Constants.MMOLL_TO_MGDL, 1)} to " +
                         "${decimals(s.toMgdl / Constants.MMOLL_TO_MGDL, 1)} mmol in 10 min " +
-                        "(${decimals(s.steepestMgdlPerMin / Constants.MMOLL_TO_MGDL, 2)}/min), flat before, no meal or bolus. Note only.",
+                        "(${decimals(s.steepestMgdlPerMin / Constants.MMOLL_TO_MGDL, 2)}/min), flat before, still low 15 minutes later, no meal or bolus. Note only.",
                     validMinutes = 120
                 )
             }

@@ -51,6 +51,9 @@ class AndroidAnyDeskFront(
         }, RELAUNCH_DELAY_MS)
     }
 
+    override fun overlayGranted(): Boolean =
+        android.provider.Settings.canDrawOverlays(context)
+
     private fun anyDeskPackage(): String? {
         val packages = context.packageManager
         return CANDIDATES.firstOrNull { packages.getLaunchIntentForPackage(it) != null }

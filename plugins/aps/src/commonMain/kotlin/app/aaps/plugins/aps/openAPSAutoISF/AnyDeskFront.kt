@@ -10,4 +10,10 @@ interface AnyDeskFront {
 
     /** `shown` is true only after AnyDesk's own screen was opened. */
     fun bringToFront(onResult: (shown: Boolean) -> Unit)
+
+    /**
+     * Whether this app may start a screen from the background ("Display over other apps" on Android).
+     * Without it Android 12+ can ignore the launch without an error. Other platforms have no such limit.
+     */
+    fun overlayGranted(): Boolean = true
 }
