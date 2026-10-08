@@ -2745,6 +2745,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile).iob
     }
 
+    // Bolus and SMB part of the total IOB at a timestamp: the total minus the temp-basal contribution (IobTotal.combine adds the
+    // temp basals' basaliob into iob). Added 2026-10-08 for BMild's "IOB rising" test.
+    private fun bolusIobAt(time: Long): Double {
+        val total = totalIobAt(time)
+        val basal = iobCobCalculator.calculateIobToTimeFromTempBasalsIncludingConvertedExtended(time).basaliob
+        return total - basal
+    }
+
     // Not yet called anywhere; ready for later conditions. Mirrors ActionSetAcceWeight: same underlying
     // preference key ("bgAccel_ISF_weight") the DoubleKey.ApsAutoIsfBgAccelWeight getter already reads.
     private fun setBgAccelIsfWeight(weight: Double) {
@@ -3816,7 +3824,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // already 0; 15 Sep (209 min), 18 Sep (200), 25 Sep (176) and 26 Sep 15:57 (206) fell just past the old 3 h window.
                 && (mealData.mealCOB >= 4.0 || lastBolusMinMild < 240)
                 && glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
-            val iobRising = iobChange5 > 0.40 * stackK * thresholdScale
+            // 2026-10-08, per explicit request: "IOB rising" now counts only the IOB change from boluses and SMBs, not from temp
+            // basal, and needs BG >= 6.0 mmol. 8 Oct 16:08 Live: the loop's temp basal climbed 0.6 -> 3.35 U/h with no SMB,
+            // total IOB rose 0.015 -> 0.263 in 5 min, that passed the 0.235 U bar (0.40 x 0.10/0.17), and BMild then Tier 3
+            // delivered 0.65 U at BG 5.5. iobChange5 (total) still feeds the sub-7.5 delivery ceiling below.
+            val bolusIobChange5 = bolusIobAt(dateUtil.now()) - bolusIobAt(dateUtil.now() - 5 * 60_000L)
+            // Bar scaled x0.6 (2026-10-08, per explicit request) because it now measures SMB/bolus IOB only: across 190 past BMild
+            // firings the SMB part was a median 58% of the total 5-min IOB rise, so 0.40 x 0.6 = 0.24 x baseline/0.17 keeps the
+            // sensitivity the path had for SMB-driven rises (about 0.14 U at baseline 0.10).
+            val iobRising = g >= 108.1 /* 6.0 mmol */ && bolusIobChange5 > 0.24 * stackK * thresholdScale
             // Delivery-suppressed OR (smbCount5Min() <= 1 + raw rise, no iobChange5) removed 2026-09-02
             // after Client 13:07 BMild|UamBst 1.20U at BGL 5.9 with IOBd5 only 0.12: that path treated
             // a 5-min SMB gap (normal, and here the near-target zero-SMB hold) as "already need a
