@@ -30,6 +30,19 @@ class BoostCriteriaTest {
     }
 
     @Test
+    fun mildDoesNotCountAnIobRiseThatCameFromTempBasal() {
+        // 8 Oct 16:08: total IOB rose 0.25 from a climbing temp basal, no bolus or SMB part.
+        assertFalse(mild(iobChange5 = 0.25, bolusIobChange5 = 0.0, bg = 120.0))
+        assertTrue(mild(iobChange5 = 0.5, bolusIobChange5 = 0.5, bg = 120.0))
+    }
+
+    @Test
+    fun mildNeedsSixMmolForTheIobRisePath() {
+        assertFalse(mild(bg = 100.0))
+        assertTrue(mild(bg = 112.0))
+    }
+
+    @Test
     fun mildStaysOffUnder75WhenDeliveryIsAlreadyHot() {
         assertFalse(mild(bg = 130.0, iobChange5 = 0.9))
     }
@@ -145,6 +158,7 @@ class BoostCriteriaTest {
         rawDelta5: Double = 6.0,
         rawDelta1: Double = 5.0,
         iobChange5: Double = 0.5,
+        bolusIobChange5: Double = iobChange5,
         cob: Double = 0.0,
         smbIntervalSec: Double = 9999.0,
         iob: Double = 1.0,
@@ -163,6 +177,7 @@ class BoostCriteriaTest {
         rawDelta5 = rawDelta5,
         rawDelta1 = rawDelta1,
         iobChange5 = iobChange5,
+        bolusIobChange5 = bolusIobChange5,
         cob = cob,
         minutesSinceNormalBolus = Int.MAX_VALUE,
         recentAlarmHypo = false,

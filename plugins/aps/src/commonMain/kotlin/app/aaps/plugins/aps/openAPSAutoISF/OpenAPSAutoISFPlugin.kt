@@ -1929,6 +1929,9 @@ open class OpenAPSAutoISFPlugin(
         val rawDelta1 = ukfDelta1
         val interval = smbInterval5Sec(now)
         val iobChange5 = iobAt(now) - iobAt(now - 5 * 60_000L)
+        // Bolus and SMB part only (total minus the temp basals' contribution), for BMild's "IOB rising" test.
+        val bolusIobChange5 = iobChange5 -
+            (tempBasalIobAt(now) - tempBasalIobAt(now - 5 * 60_000L))
         val lastBolusMin = lastBolusMinForHold
         val recentAlarm = now - preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt) <= 60 * 60_000L
         val bypass = newPodHighBypass(now, bg) || runMarks.recent(RunMark.USUAL2, 90, now)
@@ -1973,6 +1976,7 @@ open class OpenAPSAutoISFPlugin(
             rawDelta5 = rawDelta5,
             rawDelta1 = rawDelta1,
             iobChange5 = iobChange5,
+            bolusIobChange5 = bolusIobChange5,
             cob = cob,
             minutesSinceNormalBolus = lastBolusMin,
             recentAlarmHypo = recentAlarm,
@@ -5886,6 +5890,10 @@ open class OpenAPSAutoISFPlugin(
         val profile = profileFunction.getProfile(time) ?: return 0.0
         return iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile).iob
     }
+
+    // The temp basals' share of the total IOB at a timestamp (IobTotal.combine adds their basaliob into iob).
+    private suspend fun tempBasalIobAt(time: Long): Double =
+        iobCobCalculator.calculateIobToTimeFromTempBasalsIncludingConvertedExtended(time).basaliob
 
     // Every "minutes since last bolus / carbs" test reads this one value. It is the age of the newest ordinary
     // (non-extended) carb entry. While an extended-carb entry (duration over 0) started in the last 8 hours exists,
