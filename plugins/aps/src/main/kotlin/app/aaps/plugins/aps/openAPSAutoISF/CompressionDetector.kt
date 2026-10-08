@@ -18,6 +18,24 @@ internal object CompressionDetector {
     /** ...with at least one minute falling this fast (mg/dL per minute). */
     const val STEEPEST_MGDL_PER_MIN = -4.0
 
+    /**
+     * 2026-10-08: the low must be under 7.0 mmol/L (126.1 mg/dL). 8 Oct 12:18 a sensor swing (9.7 down to 7.8 mmol, back up within
+     * 5 minutes) passed the fall test at a normal glucose.
+     */
+    const val FLOOR_MGDL = 126.1
+
+    /**
+     * 2026-10-08: a pressure low stays down until the pressure is released, a noise swing comes straight back. "Suspected" is only
+     * declared once the fall started 15 to 20 minutes ago and every reading since has stayed at least [SUSTAINED_BELOW_PRIOR_MGDL]
+     * under the level before the fall.
+     */
+    const val SUSTAIN_MINUTES = 15L
+    const val SUSTAIN_SEARCH_MINUTES = 5L
+    const val SUSTAINED_BELOW_PRIOR_MGDL = 20.0
+
+    /** Readings needed: 20 minutes before the fall test, plus the sustained wait. */
+    const val LOOKBACK_MINUTES = 45L
+
     /** A rebound is a rise of at least this much within 10 minutes, starting near the low. */
     const val REBOUND_MGDL = 25.0
     const val REBOUND_START_NEAR_LOW_MGDL = 15.0
@@ -39,6 +57,7 @@ internal object CompressionDetector {
     fun suspect(readings: List<Pair<Long, Double>>): Suspect? {
         if (readings.size < 8) return null
         val newest = readings.last()
+        if (newest.second > FLOOR_MGDL) return null
         val v10 = nearest(readings, newest.first - TEN_MIN) ?: return null
         val v20 = nearest(readings, newest.first - 2 * TEN_MIN) ?: return null
         if (newest.second - v10 > -DROP_MGDL) return null
@@ -52,6 +71,26 @@ internal object CompressionDetector {
         }
         if (steepest > STEEPEST_MGDL_PER_MIN) return null
         return Suspect(v10, newest.second, steepest)
+    }
+
+    /**
+     * A fall that [suspect] accepted [SUSTAIN_MINUTES] to [SUSTAIN_MINUTES] + [SUSTAIN_SEARCH_MINUTES] minutes before the newest
+     * reading and that has stayed [SUSTAINED_BELOW_PRIOR_MGDL] or more under its pre-fall level since, or null. This is what
+     * "Compression suspected" now waits for.
+     */
+    fun sustainedSuspect(readings: List<Pair<Long, Double>>): Suspect? {
+        val newest = readings.lastOrNull() ?: return null
+        val latest = newest.first - SUSTAIN_MINUTES * 60_000L
+        val earliest = latest - SUSTAIN_SEARCH_MINUTES * 60_000L
+        for (cut in readings.indices.reversed()) {
+            val t = readings[cut].first
+            if (t > latest) continue
+            if (t < earliest) break
+            val fall = suspect(readings.subList(0, cut + 1)) ?: continue
+            val since = readings.subList(cut + 1, readings.size)
+            if (since.isNotEmpty() && since.all { it.second <= fall.fromMgdl - SUSTAINED_BELOW_PRIOR_MGDL }) return fall
+        }
+        return null
     }
 
     /**
