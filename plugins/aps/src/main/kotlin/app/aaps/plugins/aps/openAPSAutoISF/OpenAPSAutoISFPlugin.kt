@@ -4096,6 +4096,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val newState = when (te.note.orEmpty()) {
                     "MJ active"   -> "MJ active"
                     "NOMJremains" -> "NOMJremains"
+                    // 2026-10-08, per explicit request: the manual List 1 "MJ state" row writes these notes (see MjStateNoMjTT/
+                    // MjStateActiveTT/MjStateMj2TT/MjStateMj3TT). 8 Oct Live set MJ3 at 12:25 ("MJs3") but Virtual kept "MJ active"
+                    // from the 04:40 button press all evening, so BasalUp stayed closed there.
+                    "MJsNO"       -> "NOMJremains"
+                    "MJsAc"       -> "MJ active"
+                    "MJs2"        -> "MJ2"
+                    "MJs3"        -> "MJ3"
                     else          -> null
                 } ?: continue
                 setAutomationState("MJ", newState)
@@ -7956,12 +7963,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && d >= 3.6
                 && isTimeBetween(7, 0, 0, 0)
                 && onLowFamily
+                && !config.AAPSCLIENT && activePlugin.activePump is VirtualPump   // 2026-10-08, per explicit request: Virtual only, like compression
                 && readyToRun("BasalUpHeldAlert", 30)
             ) {
                 // 2026-10-08, per explicit request: tell the user when ONLY the MJ/pod condition held BasalUp back (every other test
                 // is open), at most once every 30 minutes. 8 Oct 11:12-12:25 it stayed closed for over an hour with MJ left on
                 // "MJ active". Not raised for profile%, the steps brake or the 07:00-00:00 window. Note only.
                 markRun("BasalUpHeldAlert")
+                addCarePortalNote("BsHeld")   // 2026-10-08, per explicit request: a CarePortal note with the alert
                 val mjNow = automationStateService.getState("MJ").ifBlank { "unknown" }
                 uiInteraction.addNotificationValidFor(
                     id = 9015,

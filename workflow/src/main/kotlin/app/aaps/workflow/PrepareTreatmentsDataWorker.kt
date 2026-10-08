@@ -292,11 +292,13 @@ class PrepareTreatmentsDataWorker(
         val allTimestampsForStack = allAmountsForStack.map { it.first }.distinct().sorted()
         val smbStackTotalLabels: MutableList<DataPointWithLabelInterface> = ArrayList()
         var reconstructedStackStart = 0L
-        // 2026-10-07, per explicit request: a second line above each total, "b0.35" = basal insulin delivered from the PRECEDING
-        // label's time to this label's time (temp-basal absolute, minute by minute, same method as the insulin-totals row below;
-        // no SMB, bolus or extended bolus). A label dated in the future counts only up to now. The first label in view has no
-        // preceding label, so no basal line. Encoded as "<total>\n<basal line>" and split by the renderer.
-        var previousWindowEnd = 0L
+        // 2026-10-07, per explicit request: a second line above each total, "b0.35" = basal insulin delivered between the stacks
+        // (temp-basal absolute, minute by minute, same method as the insulin-totals row below; no SMB, bolus or extended bolus; see
+        // the 2026-10-08 note below for the exact span). The span ends at the present time at most. The first label in view has no
+        // preceding stack, so no basal line. Encoded as "<total>\n<basal line>" and split by the renderer.
+        // 2026-10-08, per explicit request: the basal line now counts from the LAST SMB or bolus of the preceding stack to the END of
+        // this stack's window (the label's own time). It used to run from the preceding window's end to this window's end.
+        var previousLastBolusTs = 0L
         val nowForBasal = System.currentTimeMillis()
         allTimestampsForStack.forEach { ts ->
             if (reconstructedStackStart == 0L || ts - reconstructedStackStart >= stackWindowMs) {
@@ -304,10 +306,10 @@ class PrepareTreatmentsDataWorker(
                 val windowEnd = reconstructedStackStart + stackWindowMs
                 val stackTotal = allAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.sumOf { it.second }
                 var labelText = String.format("%.2f", stackTotal)
-                if (previousWindowEnd != 0L) {
-                    val basalEnd = minOf(windowEnd, nowForBasal)
+                if (previousLastBolusTs != 0L) {
+                    val basalEnd = minOf(windowEnd, nowForBasal)   // to the label's own time, the end of this stack's window
                     var basalSince = 0.0
-                    var t = previousWindowEnd
+                    var t = previousLastBolusTs
                     while (t < basalEnd) {
                         profileFunction.getProfile(t)?.let { profile ->
                             basalSince += data.iobCobCalculator.getBasalData(profile, t).tempBasalAbsolute / 60.0
@@ -316,7 +318,7 @@ class PrepareTreatmentsDataWorker(
                     }
                     labelText += "\nb" + String.format("%.2f", basalSince)
                 }
-                previousWindowEnd = windowEnd
+                previousLastBolusTs = allAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.maxOf { it.first }
                 smbStackTotalLabels.add(object : DataPointWithLabelInterface {
                     override fun getX(): Double = windowEnd.toDouble()
                     override fun getY(): Double = 0.0
