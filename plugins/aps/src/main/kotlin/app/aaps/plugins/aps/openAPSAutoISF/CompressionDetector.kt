@@ -3,38 +3,38 @@ package app.aaps.plugins.aps.openAPSAutoISF
 import kotlin.math.abs
 
 /**
- * Compression-low detector (2026-10-08, notes only). A pressure artefact on the sensor shows up in the raw readings as a
- * fall that is far too sharp for insulin: flat, then several mg/dL per minute for a few minutes, then often a sharp
- * rebound when the pressure is released. Readings are (timestamp ms, mg/dL), oldest first, about one per minute.
+ * Compression-low detector (2026-10-08, notes only), rebuilt the same day on the UKF-smoothed raw series after a sensor swing at a
+ * normal glucose (8 Oct 12:18) passed the old sharp-fall test. Compared on UKF values, the steepest 5-minute fall is almost the
+ * same in a true compression low (-1.48 mmol, 03:24) and in that swing (-1.50 mmol, 12:03), so the rate of fall cannot separate
+ * them. What does:
+ *  - the fall is unbroken for 15 minutes or more (true 20+, swing 8-9 minutes) and drops at least 2.0 mmol in total (true 3.4,
+ *    swing 0.9);
+ *  - the signal was quiet before it (30 minutes before: swing 0.3 mmol and no 5-minute rise above +0.13 against 2.8 and +1.24);
+ *  - it ends at or under 6.0 mmol.
+ * Series are (timestamp ms, mg/dL), oldest first, about one per minute: the UKF-smoothed series for [suspect], the raw series for
+ * [rebounded].
  */
 internal object CompressionDetector {
 
-    /** A fall of at least this much over the last 10 minutes... */
-    const val DROP_MGDL = 30.0
+    /** A minute counts as falling when the change over the previous 5 minutes is at or under this (-0.15 mmol). */
+    const val FALLING_MGDL_PER_5MIN = -2.7
 
-    /** ...after a flat spell: the 10 minutes before that window changed by no more than this... */
-    const val FLAT_PRIOR_MGDL = 12.0
+    /** The unbroken falling run must last at least this long... */
+    const val MIN_FALL_MINUTES = 15L
 
-    /** ...with at least one minute falling this fast (mg/dL per minute). */
-    const val STEEPEST_MGDL_PER_MIN = -4.0
+    /** ...and drop at least this much in total (2.0 mmol), measured from where the fall began. */
+    const val MIN_TOTAL_FALL_MGDL = 36.0
 
-    /**
-     * 2026-10-08: the low must be under 7.0 mmol/L (126.1 mg/dL). 8 Oct 12:18 a sensor swing (9.7 down to 7.8 mmol, back up within
-     * 5 minutes) passed the fall test at a normal glucose.
-     */
-    const val FLOOR_MGDL = 126.1
+    /** The 30 minutes before the fall must stay within this swing (1.0 mmol), with no 5-minute rise above the next bar (0.5 mmol). */
+    const val QUIET_MINUTES = 30L
+    const val QUIET_SWING_MGDL = 18.0
+    const val QUIET_MAX_RISE_MGDL_PER_5MIN = 9.0
 
-    /**
-     * 2026-10-08: a pressure low stays down until the pressure is released, a noise swing comes straight back. "Suspected" is only
-     * declared once the fall started 15 to 20 minutes ago and every reading since has stayed at least [SUSTAINED_BELOW_PRIOR_MGDL]
-     * under the level before the fall.
-     */
-    const val SUSTAIN_MINUTES = 15L
-    const val SUSTAIN_SEARCH_MINUTES = 5L
-    const val SUSTAINED_BELOW_PRIOR_MGDL = 20.0
+    /** The level now must be at or under this (6.0 mmol). */
+    const val FLOOR_MGDL = 108.1
 
-    /** Readings needed: 20 minutes before the fall test, plus the sustained wait. */
-    const val LOOKBACK_MINUTES = 45L
+    /** Minutes of readings needed: the quiet window, the 15-minute fall, a margin. */
+    const val LOOKBACK_MINUTES = 70L
 
     /** A rebound is a rise of at least this much within 10 minutes, starting near the low. */
     const val REBOUND_MGDL = 25.0
@@ -44,53 +44,53 @@ internal object CompressionDetector {
     const val PENDING_MINUTES = 120L
     const val SAME_EVENT_MINUTES = 40L
 
+    private const val FIVE_MIN = 5 * 60_000L
     private const val TEN_MIN = 10 * 60_000L
     private const val NEAREST_TOLERANCE = 90_000L
     private const val MAX_GAP = 150_000L
 
-    class Suspect(val fromMgdl: Double, val toMgdl: Double, val steepestMgdlPerMin: Double)
+    class Suspect(val fromMgdl: Double, val toMgdl: Double, val steepestMgdlPerMin: Double, val fallMinutes: Long)
 
-    private fun nearest(readings: List<Pair<Long, Double>>, time: Long): Double? =
-        readings.minByOrNull { abs(it.first - time) }?.takeIf { abs(it.first - time) <= NEAREST_TOLERANCE }?.second
+    private fun valueNear(series: List<Pair<Long, Double>>, time: Long): Double? =
+        series.minByOrNull { abs(it.first - time) }?.takeIf { abs(it.first - time) <= NEAREST_TOLERANCE }?.second
 
-    /** A clean compression-type fall that has just reached the newest reading, or null. */
-    fun suspect(readings: List<Pair<Long, Double>>): Suspect? {
-        if (readings.size < 8) return null
-        val newest = readings.last()
-        if (newest.second > FLOOR_MGDL) return null
-        val v10 = nearest(readings, newest.first - TEN_MIN) ?: return null
-        val v20 = nearest(readings, newest.first - 2 * TEN_MIN) ?: return null
-        if (newest.second - v10 > -DROP_MGDL) return null
-        if (abs(v10 - v20) > FLAT_PRIOR_MGDL) return null
-        var steepest = 0.0
-        for (i in 1 until readings.size) {
-            val (t0, a) = readings[i - 1]
-            val (t1, b) = readings[i]
-            if (t1 < newest.first - TEN_MIN || t1 - t0 > MAX_GAP || t1 <= t0) continue
-            steepest = minOf(steepest, (b - a) / ((t1 - t0) / 60_000.0))
-        }
-        if (steepest > STEEPEST_MGDL_PER_MIN) return null
-        return Suspect(v10, newest.second, steepest)
+    /** Change over the previous 5 minutes at index [i], or null when there is no reading about 5 minutes earlier. */
+    private fun delta5(series: List<Pair<Long, Double>>, i: Int): Double? {
+        val (t, v) = series[i]
+        val earlier = valueNear(series.subList(0, i), t - FIVE_MIN) ?: return null
+        return v - earlier
     }
 
-    /**
-     * A fall that [suspect] accepted [SUSTAIN_MINUTES] to [SUSTAIN_MINUTES] + [SUSTAIN_SEARCH_MINUTES] minutes before the newest
-     * reading and that has stayed [SUSTAINED_BELOW_PRIOR_MGDL] or more under its pre-fall level since, or null. This is what
-     * "Compression suspected" now waits for.
-     */
-    fun sustainedSuspect(readings: List<Pair<Long, Double>>): Suspect? {
-        val newest = readings.lastOrNull() ?: return null
-        val latest = newest.first - SUSTAIN_MINUTES * 60_000L
-        val earliest = latest - SUSTAIN_SEARCH_MINUTES * 60_000L
-        for (cut in readings.indices.reversed()) {
-            val t = readings[cut].first
-            if (t > latest) continue
-            if (t < earliest) break
-            val fall = suspect(readings.subList(0, cut + 1)) ?: continue
-            val since = readings.subList(cut + 1, readings.size)
-            if (since.isNotEmpty() && since.all { it.second <= fall.fromMgdl - SUSTAINED_BELOW_PRIOR_MGDL }) return fall
+    /** A compression-type fall that is still going at the newest reading and has run long enough, or null. */
+    fun suspect(series: List<Pair<Long, Double>>): Suspect? {
+        if (series.size < 20) return null
+        val last = series.lastIndex
+        if (series[last].second > FLOOR_MGDL) return null
+        // The unbroken falling run that ends at the newest reading.
+        var start = last
+        var steepest5 = 0.0
+        var i = last
+        while (i >= 0) {
+            if (i < last && series[i + 1].first - series[i].first > MAX_GAP) break
+            val d = delta5(series, i) ?: break
+            if (d > FALLING_MGDL_PER_5MIN) break
+            steepest5 = minOf(steepest5, d)
+            start = i
+            i--
         }
-        return null
+        val fallMinutes = (series[last].first - series[start].first) / 60_000L
+        if (fallMinutes < MIN_FALL_MINUTES) return null
+        val fallBegan = series[start].first - FIVE_MIN
+        val before = valueNear(series, fallBegan) ?: return null
+        if (before - series[last].second < MIN_TOTAL_FALL_MGDL) return null
+        // The 30 minutes before the fall: need data from at least 25 of them, within the swing, no 5-minute rise above the bar.
+        val quietFrom = fallBegan - QUIET_MINUTES * 60_000L
+        val quiet = series.withIndex().filter { it.value.first in quietFrom..fallBegan }
+        if (quiet.size < 8 || quiet.first().value.first > quietFrom + 5 * 60_000L) return null
+        val values = quiet.map { it.value.second }
+        if (values.max() - values.min() > QUIET_SWING_MGDL) return null
+        if (quiet.any { q -> (delta5(series, q.index) ?: 0.0) > QUIET_MAX_RISE_MGDL_PER_5MIN }) return null
+        return Suspect(before, series[last].second, steepest5 / 5.0, fallMinutes)
     }
 
     /**
