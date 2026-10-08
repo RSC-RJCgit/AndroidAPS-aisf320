@@ -6946,10 +6946,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.get(StringKey.ApsAutoIsfStandardProfileName),
             listOf(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandard105ProfileName, StringKey.ApsAutoIsfStandard110ProfileName)
         )
-        // 2026-10-08, per explicit request: the +0.15 tier lift only applies while BG is at least 7.0 mmol (126.1 mg/dL);
+        // 2026-10-08, per explicit request: the tier lift is now +0.08 (was +0.15, the figure in the comment above) and only
+        // applies while BG is at least 7.0 mmol (126.1 mg/dL);
         // below that SMBdel settles to the plain baseline, so low-range SMBs are not enlarged by the elevated rung.
         val tierLiftActive = standardRoleRung >= 1 && glucoseStatus.glucose >= 126.1
-        val restingDeliveryBaseline = (deliveryBaseline + (if (tierLiftActive) 0.15 else 0.0)).coerceAtMost(smb_delivery_ratio_max)
+        val restingDeliveryBaseline = (deliveryBaseline + (if (tierLiftActive) 0.08 else 0.0)).coerceAtMost(smb_delivery_ratio_max)
         // Time-based boost hold (2026-10-03): defer the reset while a StuckHighRescue/StuckRisingSlowly boost's hold is
         // running, even if its TT was cancelled. Released early if IOB reached the StuckHighRescue ceiling (0.40*maxIob)
         // or BG is no longer rising; HardStackDelOff and the hypo/overnight resets still override it directly.
@@ -8671,7 +8672,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // restores the baseline the moment that TT ends, and this re-arms every 5 min while the slow-rise
                 // criteria still hold (same pattern as StuckHighRescue's ratio branch).
                 if (isTimeBetween(20, 0, 6, 0)) {
-                    val boosted = (smb_delivery_ratio + 0.15).coerceAtMost(smb_delivery_ratio_max)
+                    // 2026-10-08, per explicit request: step reduced 0.15 -> 0.08.
+                    val boosted = (smb_delivery_ratio + 0.08).coerceAtMost(smb_delivery_ratio_max)
                     if (!fuzzyEquals(smb_delivery_ratio, boosted)) {
                         setSmbDeliveryRatio(boosted)
                         smbBoostHoldUntilMs = dateUtil.now() + 6 * 60_000L
