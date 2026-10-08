@@ -1193,7 +1193,7 @@ class GoogleDriveManager @Inject constructor(
 
     // Newest pump APK under Drive/AAPS (and a few subfolders). Find-only — does not create AAPS.
     // drive.file can only see files this app created or opened; PC/DriveSync uploads may be invisible.
-    private val pumpApkSkip = Regex("aapsclient|wear|pumpcontrol|aapsNewestAPK", RegexOption.IGNORE_CASE)
+    // Which names are taken depends on the running flavor: see Aaps333NewestApk.acceptsName().
 
     suspend fun downloadNewestPumpApkFromAapsFolder(dest: File): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         if (!hasValidRefreshToken()) return@withContext false to "Drive not authorised"
@@ -1250,7 +1250,7 @@ class GoogleDriveManager @Inject constructor(
                     continue
                 }
                 if (!name.endsWith(".apk", ignoreCase = true)) continue
-                if (pumpApkSkip.containsMatchIn(name)) continue
+                if (!Aaps333NewestApk.acceptsName(name)) continue
                 into.add(Triple(id, name, f.optString("modifiedTime")))
             }
             page = json.optString("nextPageToken").ifBlank { null }

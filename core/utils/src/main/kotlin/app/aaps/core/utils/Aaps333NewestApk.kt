@@ -16,7 +16,25 @@ object Aaps333NewestApk {
 
     private val ARCHIVE_NAMES = listOf("AAPS333", "AAPS3")
     private val DROP_NAMES = listOf("ApkDownload", "APKdownload", "apkdownload")
-    private val skipName = Regex("aapsclient|wear|pumpcontrol|full2|uk3426|aapsNewestAPK", RegexOption.IGNORE_CASE)
+    private val skipName = Regex("aapsclient|wear|pumpcontrol|aapsNewestAPK", RegexOption.IGNORE_CASE)
+    private val full2Name = Regex("full2|uk3426", RegexOption.IGNORE_CASE)
+    private val kmpName = Regex("kmp\\d|aaps-[4-9]\\.\\d", RegexOption.IGNORE_CASE)
+    private val buildNumberName = Regex("""(?:aisf321UK|\+ai\w*)_\d+""")
+
+    // 2026-10-08, per explicit request: the running app's flavor, set once by the AutoISF plugin at start. Every APK
+    // picker (this file, ShizukuAaps333Installer, GoogleDriveManager) asks acceptsName() so a full2 phone only ever
+    // takes -full2 builds, a full phone never takes a full2 or KMP build, and clients/wear/pumpcontrol are skipped.
+    @Volatile
+    var flavor: String = ""
+
+    // True when an APK with this file name may be installed over the running app. Names with no build number at all
+    // (driveAapsNewest.apk, the staged copy) are the already-chosen copy and pass for either flavor.
+    fun acceptsName(name: String): Boolean {
+        if (skipName.containsMatchIn(name)) return false
+        if (kmpName.containsMatchIn(name)) return false
+        val isFull2 = full2Name.containsMatchIn(name)
+        return if (flavor == "full2") isFull2 || !buildNumberName.containsMatchIn(name) else !isFull2
+    }
     // Old names: 3.4.2.6+aisf321UK_NNN; current names: 3426+ai321_NNN (also -full2 / -uk3426 suffixes).
     // "+ai<anything>_NNN" so a future ai322_/aiXYZ_ prefix still parses without another edit.
     private val featureNumberRe = Regex("""(?:aisf321UK|\+ai\w*)_(\d+)""")
@@ -275,7 +293,7 @@ object Aaps333NewestApk {
             val name = f.name
             if (name.endsWith(".part", ignoreCase = true)) continue
             if (!name.endsWith(".apk", ignoreCase = true) && name != FIXED_NAME_NO_EXT) continue
-            if (skipName.containsMatchIn(name)) continue
+            if (!acceptsName(name)) continue
             if (isPlausiblePumpApk(f)) into.add(f)
         }
     }

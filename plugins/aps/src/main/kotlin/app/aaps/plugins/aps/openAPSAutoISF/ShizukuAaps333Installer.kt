@@ -25,7 +25,6 @@ internal object ShizukuAaps333Installer {
     // Longer name first so path matching does not treat AAPS333 as AAPS3.
     private val ARCHIVE_NAMES = listOf("AAPS333", "AAPS3")
 
-    private val skipName = Regex("aapsclient|wear|pumpcontrol|aapsNewestAPK", RegexOption.IGNORE_CASE)
     private val PACKAGE_NAME = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
     fun shizukuRunning(): Boolean = try {
@@ -140,7 +139,7 @@ internal object ShizukuAaps333Installer {
             val name = f.name
             if (name.endsWith(".part", ignoreCase = true)) continue
             if (!name.endsWith(".apk", ignoreCase = true) && name != FIXED_NAME_NO_EXT) continue
-            if (skipName.containsMatchIn(name)) continue
+            if (!Aaps333NewestApk.acceptsName(name)) continue
             if (isPlausiblePumpApk(f)) into.add(f)
         }
     }

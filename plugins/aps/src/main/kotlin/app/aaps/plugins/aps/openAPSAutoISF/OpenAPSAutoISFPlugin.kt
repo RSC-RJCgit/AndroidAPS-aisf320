@@ -380,6 +380,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
+        Aaps333NewestApk.flavor = config.FLAVOR
         ensureRequiredAutomationStatesDeclared()
         var count = 0
         val apsResults = persistenceLayer.getApsResults(dateUtil.now() - T.days(1).msecs(), dateUtil.now())
@@ -2877,8 +2878,54 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             kotlin.math.abs(it - targetMmol) <= toleranceMmol
         } == true
         if (directTtCodeMatchActive) return true
-        val ttMgdl = activeTtMgdl() ?: return false
-        return kotlin.math.abs(ttMgdl - mmolToMgdl(targetMmol)) <= mmolToMgdl(toleranceMmol)
+        val tt = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) ?: return false
+        if (kotlin.math.abs(tt.lowTarget - mmolToMgdl(targetMmol)) > mmolToMgdl(toleranceMmol)) return false
+        // 2026-10-08, per explicit request: a client sends each List code twice, as this TT and as a note "LC<code>@<TT time>". The TT
+        // time is the shared id, so whichever arrives first applies the change and the other is skipped. A TT already applied from
+        // its note is left to expire (5 minutes) and matches nothing.
+        if (!claimRelayId(tt.timestamp, dateUtil.now(), fromTt = true)) {
+            aapsLogger.info(LTag.APS, "Relay code $targetMmol skipped: already applied from the note (id ${tt.timestamp})")
+            return false
+        }
+        return true
+    }
+
+    // Relay ids already applied (id = the client's TT start time in ms), in memory only: the way it was applied ('T' = the TT,
+    // 'N' = the note) and when. True when the id was free and is now taken. The same TT matched again within a minute is the same
+    // application (a code can be read by more than one block), so it still counts; a note never re-uses a TT's or a note's id.
+    private val appliedRelayIds = java.util.concurrent.ConcurrentHashMap<Long, Pair<Char, Long>>()
+    private val relayNoteRegex = Regex("^LC(\\d+(?:\\.\\d+)?)@(\\d+)$")
+    @Volatile private var relayNoteCursor = 0L
+
+    // Extracted from invoke() (JVM method size limit).
+    private fun applyRelayNotes() {
+        if (config.AAPSCLIENT) return
+        val nowMs = dateUtil.now()
+        // First scan after a start: take no old note. The applied ids are only in memory, so a code applied just before a restart
+        // would otherwise be applied again from its note.
+        if (relayNoteCursor == 0L) {
+            relayNoteCursor = nowMs
+            return
+        }
+        val from = maxOf(relayNoteCursor, nowMs - T.mins(15).msecs())
+        val notes = persistenceLayer.getTherapyEventDataFromTime(from, TE.Type.NOTE, true)
+            .filter { it.isValid && it.timestamp > relayNoteCursor }
+        for (te in notes) {
+            val m = relayNoteRegex.find(te.note.orEmpty().trim()) ?: continue
+            val mmol = m.groupValues[1].toDoubleOrNull() ?: continue
+            val id = m.groupValues[2].toLongOrNull() ?: continue
+            if (nowMs - id > T.mins(15).msecs()) continue
+            if (!claimRelayId(id, nowMs, fromTt = false)) continue
+            aapsLogger.info(LTag.APS, "Relay code $mmol applied from the note (id $id)")
+            rxBus.send(EventAutoIsfDirectTtCode(mmol))
+        }
+        notes.lastOrNull()?.let { relayNoteCursor = it.timestamp }
+    }
+
+    private fun claimRelayId(id: Long, now: Long, fromTt: Boolean): Boolean {
+        appliedRelayIds.entries.removeIf { now - it.value.second > 30 * 60_000L }
+        val existing = appliedRelayIds.putIfAbsent(id, (if (fromTt) 'T' else 'N') to now) ?: return true
+        return fromTt && existing.first == 'T' && now - existing.second <= 60_000L
     }
 
     // Mirrors the real automation engine's Comparator.Compare.check(obj1, obj2, tolerance) —
@@ -3816,8 +3863,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // BMild/Boost already being the cause is unlikely, per explicit reasoning. Only mealLeftoverRise
             // gets the raised floor. Added 2026-09-16, per explicit request.
             val recentAlarmHypo = (dateUtil.now() - preferences.get(LongKey.ApsAutoIsfLastAlarmHypoAt)) <= T.mins(60).msecs()
-            // 2026-10-08, per explicit request: the usual floor 6.0 -> 6.5 mmol (see the Tier 3 floor in DetermineBasalAutoISF.kt).
-            val mealLeftoverRiseFloor = if (recentAlarmHypo) 126.1 /* 7.0 mmol */ else 117.1 /* 6.5 mmol */
+            // 2026-10-08: raised to 6.5 mmol and put back to 6.0 the same day, per explicit request (BMild and Tier 3 respect the SMB
+            // offset numbers instead; see DetermineBasalAutoISF.kt).
+            val mealLeftoverRiseFloor = if (recentAlarmHypo) 126.1 /* 7.0 mmol */ else 108.1 /* 6.0 mmol */
             val mealLeftoverRise = g >= mealLeftoverRiseFloor
                 // 2026-09-26, per explicit request: last-normal-bolus window 180 -> 240 min. A scan of 17 Client-mirrored meals since
                 // 14 Sep found 9 late rises (>= 1.0 mmol after the post-meal dip) starting 100-210 min after the entry, mostly with COB
@@ -3832,7 +3880,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // Bar scaled x0.6 (2026-10-08, per explicit request) because it now measures SMB/bolus IOB only: across 190 past BMild
             // firings the SMB part was a median 58% of the total 5-min IOB rise, so 0.40 x 0.6 = 0.24 x baseline/0.17 keeps the
             // sensitivity the path had for SMB-driven rises (about 0.14 U at baseline 0.10).
-            val iobRising = g >= 108.1 /* 6.0 mmol */ && bolusIobChange5 > 0.24 * stackK * thresholdScale
+            val iobRising = bolusIobChange5 > 0.24 * stackK * thresholdScale   // the 6.0 mmol floor that stood here was withdrawn (2026-10-08)
             // Delivery-suppressed OR (smbCount5Min() <= 1 + raw rise, no iobChange5) removed 2026-09-02
             // after Client 13:07 BMild|UamBst 1.20U at BGL 5.9 with IOBd5 only 0.12: that path treated
             // a 5-min SMB gap (normal, and here the near-target zero-SMB hold) as "already need a
@@ -4075,6 +4123,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // writes careportal Notes continuously, so the cursor tracks forward from the first invoke.
             notes.lastOrNull()?.let { preferences.put(LongKey.ApsAutoIsfSetRoleNoteHandledAt, it.timestamp) }
         }
+
+        // --- List-code note copy (Note channel), 2026-10-08, per explicit request: a client sends each List 1 / List 2 code twice, as the
+        // coded 5-minute TT and as a note "LC<code>@<TT start time>". This is the fallback for a TT that never arrives or is not seen
+        // in time. Whichever copy is seen first applies the change (the note by feeding the same direct-code path a pump popup uses),
+        // the other is skipped: see claimRelayId().
+        applyRelayNotes()
 
         // --- MJ button-press event relay (Note channel): same shape as SetRole (Note channel) above,
         // gated by ApsAutoIsfUseLiveMjStateOnVirtual instead of isRealLoopPhone() -- VirtualPump only.

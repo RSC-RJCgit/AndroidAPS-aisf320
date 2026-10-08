@@ -1212,10 +1212,10 @@ class DetermineBasalAutoISF @Inject constructor(
         // 5.9mmol, so its stronger SMB delivery ratio isn't wasted behind this offset gate below — forces
         // varOffset to 0 (bg only needs to clear targetBgOrig itself, not target+offset) for the same
         // 2-min window as the delivery-ratio boost. Self-clears when that TT expires.
-        if (preferences.get(BooleanKey.ApsAutoIsfMildOffsetZeroActive)) {
-            varOffset = 0.0
-            rT.reason.append("MildOffsetZero active (BolusGivenMild fired under 5.9mmol): varOffset forced to 0 ;")
-        }
+        // 2026-10-08, per explicit request: DISABLED. BMild and Tier 3 now respect the offset numbers like every other SMB (no forced
+        // varOffset 0 while BolusGivenMild fires under 5.9 mmol). The flag is still written by the plugin and cleared by its timer, but
+        // nothing reads it here. 8 Oct 16:08 this bypass let BMild and Tier 3 deliver 0.65 U at BG 5.5, below the offset.
+        // if (preferences.get(BooleanKey.ApsAutoIsfMildOffsetZeroActive)) { varOffset = 0.0 }
 
         // BasalUpOffsetZero removed 2026-09-18 at explicit request: real device data showed BasalUp
         // firing right after a severe low's recovery (3.7mmol -> 4.6mmol, delta +0.90) forced
@@ -1698,11 +1698,11 @@ class DetermineBasalAutoISF @Inject constructor(
                     // bmildBasicCriteriaMet supplies that (on real pumps, already relied on for its own
                     // dosing), keeping them just made the combined path unreachable rather than adding
                     // real protection.
-                    // 2026-10-08, per explicit request: BG floor 80 mg/dL (4.4 mmol) -> 117.1 (6.5 mmol). Of 98 firings in 30 days, the
-                    // 29 under 6.5 mmol included all 3 that went on to drop under 4.5 (none of the 69 above did); their deltas and IOB
-                    // changes were strong, so only the BG floor separates them.
+                    // 2026-10-08, per explicit request: the BG floor is the CURRENT SMB offset (targetBgOffset), not a fixed number. A 6.5
+                    // mmol floor was added and withdrawn the same day. BMild and Tier 3 respect the offset like every other SMB
+                    // (MildOffsetZero off, no offset-band exemption), and their rise tests no longer count temp-basal IOB.
                     if (boostActive && (bmildBasicCriteriaMet || bg3BasicCriteriaMet) &&
-                        boost_scale < 3 && bg >= 117.1 /* 6.5 mmol */ &&
+                        boost_scale < 3 && bg >= targetBgOffset &&
                         (riseHold || t3Unrestricted || (iob_data.iob < boostMaxIOB && boostIobAllowance > 0.0))) {
                         // 2026-09-21: T3-only skips. BMild/bg3 still run this cycle (SMBdel/TT unchanged).
                         // uamBoostRecent is false on the firing cycle (markRun is after determine_basal).
@@ -2582,9 +2582,9 @@ class DetermineBasalAutoISF @Inject constructor(
                 // offset band: below targetBgOrig + 0.5*varOffset -> zero SMB; from there up to targetBgOffset -> half
                 // SMB (floored to the pump step below). Skipped on BMild / bg3 / Tier 3 fire cycles: MildOffsetZero
                 // already forces varOffset to 0 for BMild, and Tier 3 has its own IOB allowance.
-                if (!offsetSoZeroSMB && varOffset > 0.0 && bg < targetBgOffset && microBolus > 0.0 &&
-                    !(bmildBasicCriteriaMet || bg3BasicCriteriaMet || uamBoostEnhancedCandidateThisCycle)
-                ) {
+                // 2026-10-08, per explicit request: the BMild / bg3 / Tier 3 exemption that stood here is removed, so this band applies to
+                // their fire cycles too.
+                if (!offsetSoZeroSMB && varOffset > 0.0 && bg < targetBgOffset && microBolus > 0.0) {
                     val beforeOffsetBand = microBolus
                     val offsetBandZeroTop = min(targetBgOrig + 0.5 * varOffset, targetBgOffset)
                     if (bg < offsetBandZeroTop) {

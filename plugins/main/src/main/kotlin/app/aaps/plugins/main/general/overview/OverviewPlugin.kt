@@ -210,17 +210,16 @@ class OverviewPlugin @Inject constructor(
 
     @SuppressLint("SetTextI18n")
     override fun setVersionView(view: TextView) {
-        if (config.APS || config.PUMPCONTROL) {
-            view.text = "${config.VERSION_NAME} (${config.HEAD.substring(0, 4)})"
-            if (config.COMMITTED) {
-                view.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.omniGrayColor))
-                view.alpha = 1.0f
-            } else if (preferences.get(LongComposedKey.AppExpiration, config.VERSION_NAME) != 0L) {
-                view.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.metadataTextWarningColor))
-            } else {
-                view.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.urgentColor))
-            }
-        } else view.text = ""
+        // 2026-10-08, per explicit request: shown on every flavor, clients included (it used to be blank unless APS or PUMPCONTROL).
+        view.text = "${config.VERSION_NAME} (${config.HEAD.take(4)})"
+        if (config.COMMITTED) {
+            view.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.omniGrayColor))
+            view.alpha = 1.0f
+        } else if (preferences.get(LongComposedKey.AppExpiration, config.VERSION_NAME) != 0L) {
+            view.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.metadataTextWarningColor))
+        } else {
+            view.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.urgentColor))
+        }
     }
 
     override fun addPreferenceScreen(preferenceManager: PreferenceManager, parent: PreferenceScreen, context: Context, requiredKey: String?) {

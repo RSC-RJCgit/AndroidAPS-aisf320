@@ -1822,7 +1822,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(if (config.AAPSCLIENT) "Actions - relay to pump" else "Direct actions")
+                .setTitle(if (config.AAPSCLIENT) "Actions - relay to pump" + queuedRelayTitleSuffix() else "Direct actions")
                 .setAdapter(adapter) { _, which ->
                     if (which < actionEntries.size) {
                         val action = actionEntries[which]
@@ -2137,7 +2137,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(if (config.AAPSCLIENT) "Settings - relay to pump" else "Direct AutoISF settings")
+                .setTitle(if (config.AAPSCLIENT) "Settings - relay to pump" + queuedRelayTitleSuffix() else "Direct AutoISF settings")
                 .setAdapter(adapter) { _, which ->
                     // The mmol number (and, for Stepped, which direction) only ever surface here, never
                     // in the outer list -- picking a button both chooses and confirms.
@@ -2618,6 +2618,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private val relayTtRetryRunnable = Runnable { tryFlushPendingRelayTts() }
 
+    // 2026-10-08, per explicit request: show what is queued. Codes waiting for a running TT to end are named in the title of both
+    // relay lists, so a deferred code is not invisible after the toast has gone.
+    private fun queuedRelayTitleSuffix(): String =
+        if (pendingRelayTts.isEmpty()) "" else " (waiting for the TT to end: " + pendingRelayTts.joinToString(", ") { it.mmol.toString() } + ")"
+
     private fun setRelayTt(mmol: Double, origin: String) {
         pendingRelayTts.addLast(PendingRelayTt(mmol, origin))
         if (persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null) {
@@ -2643,8 +2648,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun insertRelayTtNow(mmol: Double, origin: String) {
         val mgdl = mmol * app.aaps.core.data.configuration.Constants.MMOLL_TO_MGDL
+        val sentAt = dateUtil.now()
         val tt = TT(
-            timestamp = dateUtil.now(),
+            timestamp = sentAt,
             duration = TimeUnit.MINUTES.toMillis(5),
             reason = TT.Reason.CUSTOM,
             lowTarget = mgdl,
@@ -2660,6 +2666,21 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 ValueWithUnit.Mgdl(mgdl),
                 ValueWithUnit.Minute(5)
             )
+        ).subscribe()
+        // The note copy (2026-10-08, per explicit request): "LC<code>@<TT start time>". The master applies whichever of the TT and this
+        // note it sees first and skips the other, matching them by that time.
+        val copy = "LC$mmol@$sentAt"
+        val te = TE(timestamp = sentAt + 1, type = TE.Type.NOTE, glucoseUnit = profileFunction.getUnits()).apply {
+            this.note = copy
+            this.duration = TimeUnit.MINUTES.toMillis(1)
+        }
+        disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = te,
+            timestamp = sentAt + 1,
+            action = Action.CAREPORTAL,
+            source = Sources.TTDialog,
+            note = copy,
+            listValues = listOf(ValueWithUnit.SimpleString(copy))
         ).subscribe()
     }
 
