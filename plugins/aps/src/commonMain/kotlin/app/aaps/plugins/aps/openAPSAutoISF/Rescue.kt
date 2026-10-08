@@ -2,7 +2,7 @@ package app.aaps.plugins.aps.openAPSAutoISF
 
 // Glucose is at least 8.5 mmol and IOB is under 40% of max. HP2 over 6.5 raises the SMB ratio.
 // HP2 within 1.0 mmol of target lowers the target instead. A missing prediction stays closed.
-// From 20:00 until 06:00, while short and long deltas are both above 0 ([nightRising]), the bar is 7.5 mmol.
+// [nightRising] is still passed but no longer lowers the bar (night 7.5 mmol bar withdrawn 2026-10-08).
 internal enum class StuckHighBranch { RATIO, TARGET }
 
 internal fun stuckHighBranch(
@@ -14,7 +14,8 @@ internal fun stuckHighBranch(
     targetMmol: Double,
     nightRising: Boolean = false,
 ): StuckHighBranch? {
-    val bar = if (nightRising) 135.1 else 153.1
+    // 2026-10-08: the night 7.5 mmol bar is withdrawn. A large SMB at BG 7.7 at 02:29 led to a hypo.
+    val bar = 153.1
     if (!ready || hp == null || bg < bar || iob >= 0.40 * maxIob) return null
     return when {
         hp > 6.5 -> StuckHighBranch.RATIO

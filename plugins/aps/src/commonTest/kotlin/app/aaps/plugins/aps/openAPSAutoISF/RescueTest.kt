@@ -31,14 +31,14 @@ class RescueTest {
     }
 
     @Test
-    fun stuckHighBarDropsToSevenAndAHalfWhileRisingAtNight() {
-        // 140 mg/dL is about 7.8 mmol: under the 8.5 bar, over the 7.5 night bar.
+    fun stuckHighBarStaysAtEightAndAHalfEvenWhileRisingAtNight() {
+        // 140 mg/dL is about 7.8 mmol: under the 8.5 bar, so the night rising flag no longer opens it.
         assertNull(stuckHighBranch(ready = true, bg = 140.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0))
+        assertNull(stuckHighBranch(ready = true, bg = 140.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0, nightRising = true))
         assertEquals(
             StuckHighBranch.RATIO,
-            stuckHighBranch(ready = true, bg = 140.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0, nightRising = true),
+            stuckHighBranch(ready = true, bg = 155.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0, nightRising = true),
         )
-        assertNull(stuckHighBranch(ready = true, bg = 130.0, iob = 2.0, maxIob = 9.5, hp = 7.0, targetMmol = 5.0, nightRising = true))
     }
 
     @Test
