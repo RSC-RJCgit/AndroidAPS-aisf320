@@ -3320,12 +3320,11 @@ open class OpenAPSAutoISFPlugin(
             }
             return
         }
-        val recentHigh = preferences.get(LongNonKey.ApsAutoIsfLibreOver12Ts).let { ts ->
-            ts != 0L && now - ts <= 24 * 3_600_000L
-        }
+        // 2026-10-08, per explicit request: the tier needs only the sensor age (or the pod age for NewDay2), no longer a UKF raw
+        // Libre value above 12.0 mmol in the last 24 hours. The LibreOver12Ts latch is still written elsewhere.
         val tier = oldSensorTier(sensorDays, podHours, slopeBase, offsetBase)
         if (!preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)) return
-        if (tier != null && recentHigh) {
+        if (tier != null) {
             if (!active) {
                 preferences.put(DoubleNonKey.ApsAutoIsfFslCalSlopeNormal, currentSlope)
                 preferences.put(DoubleNonKey.ApsAutoIsfFslCalOffsetNormal, currentOffset)

@@ -50,7 +50,8 @@ internal fun mildBoostShouldFire(
     val stackK = if (smbIntervalSec <= 70.0) 1.10 else 1.0
     val thresholdScale = deliveryBaseline / 0.17
     val rawDelta1FloorOk = bg < 162.1 || rawDelta1 >= 4.5 * stackK
-    val mealFloor = if (recentAlarmHypo) 126.1 else 108.1
+    // 2026-10-08: the usual floor 6.0 -> 6.5 mmol (see the Tier 3 floor in Tier3Boost.kt).
+    val mealFloor = if (recentAlarmHypo) 126.1 else 117.1
     val mealLeftover = bg >= mealFloor && (cob >= 4.0 || minutesSinceNormalBolus < 180) && shortDelta >= 2.7
     val iobRising = iobChange5 > 0.40 * stackK * thresholdScale
     // A high rise, or a recent bolus or carb entry, keeps this open past 02:00 and past 2.5 U.

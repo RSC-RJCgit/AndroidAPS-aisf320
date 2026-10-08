@@ -375,6 +375,12 @@ fun GraphsSection(
                 "GraphStart guard: followNow=$followNow placedOnNow=$placedOnNow range=${range?.first} " +
                     "visible=$visible bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue} sinceInteractionMs=$sinceInteraction"
             )
+            // Safety net (2026-10-08): followNow can only be cleared by a finger. If nothing has ever touched the graphs since
+            // start, it was cleared by a misread startup move, so put it back.
+            if (!followNow && lastTouchMs[0] == 0L) {
+                println("GraphStart guard: followNow was false with no touch since start - following the current time again")
+                followNow = true
+            }
             if (!followNow || range == null || sinceInteraction < INTERACTION_GRACE_MS) continue
             // The lower graphs (IOB, the secondary graphs, graph 5, the belt) start from their own first-layout positions,
             // such as 2043 px = about 14 hours back, and nothing copies the main graph's place onto them until the main
@@ -624,7 +630,10 @@ fun GraphsSection(
                                 break
                             }
                         }
-                        if (zoomFinger != null && zoomFinger.isFinite() && zoomFinger > 0f) {
+                        // 2026-10-08: only a pinch with a finger on the graphs counts. 8 Oct 17:09:02 the lower graphs' zoom
+                        // settling after the first layout was taken for a pinch, cleared followNow and disabled the startup
+                        // guard, leaving the graphs on old hours for 3 minutes.
+                        if (zoomFinger != null && zoomFinger.isFinite() && zoomFinger > 0f && recentTouch()) {
                             followNow = false
                             graphViewModel.onGraphInteraction()
                             skipInteractionUntilMs[0] = dateUtil.now() + 1000L
