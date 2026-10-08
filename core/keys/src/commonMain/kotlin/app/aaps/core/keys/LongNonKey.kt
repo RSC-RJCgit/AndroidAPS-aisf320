@@ -92,6 +92,10 @@ enum class LongNonKey(
     ApsAutoIsfOneMinuteTierAResetAt("autoisf_one_minute_tier_a_reset_at", 0L, exportable = false),
     ApsAutoIsfCompressionSuspectAt("autoisf_compression_suspect_at", 0L, exportable = false),
     ApsAutoIsfCompressionConfirmedAt("autoisf_compression_confirmed_at", 0L, exportable = false),
+    // Compression trigger waiting for its 15-minute sustain check (2026-10-08): when the sudden drop was seen, and the level it ended at
+    // in tenths of mg/dL. 0 means nothing is waiting. Internal only.
+    ApsAutoIsfCompressionTriggerAt("autoisf_compression_trigger_at", 0L, exportable = false),
+    ApsAutoIsfCompressionTriggerLevelTenths("autoisf_compression_trigger_level_tenths", 0L, exportable = false),
 
     // Profile-switch time already used as a Set-role duration. Local only.
     ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0L, exportable = false),
