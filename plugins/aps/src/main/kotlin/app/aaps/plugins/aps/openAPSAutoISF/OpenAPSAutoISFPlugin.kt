@@ -5661,15 +5661,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
             markRun("InsulinTotalsToggleTT")
         }
-        if (readyToRun("LoopIntervalToggleTT", 2) && activeTtNear(5.234, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
-            preferences.put(BooleanKey.ApsAutoIsfLoopEveryMinute, newState)
-            cancelCurrentTempTarget()
-            sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}")
-            addCarePortalNote(if (newState) "Loop1m" else "Loop5m")
-            rxBus.send(EventRefreshOverview("Loop interval toggled", true))
-            markRun("LoopIntervalToggleTT")
-        }
+        applyLoopIntervalToggleTT()
 
         // List 2 coded-location master switch. This changes only the enable preference; the five
         // airport/five address definitions remain editable local preferences under Automation.
@@ -9272,36 +9264,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // UkfRawAvg60Low (2026-10-08, per explicit request): ALERT ONLY. Between 00:00 and 07:00, when the 60-minute average
-        // of ukfRawBgl (the saved AIV rows plus the current UKF raw value) is under 3.0 mmol/L, send the hypo alarm, and repeat
-        // it every 30 minutes while the average stays under. Averaging over an hour is what makes this ignore a short
-        // compression dip. No state writes (no AlarmRecent / LowBG), no tier or profile change, nothing in dosing reads it.
-        // The 22:00-07:30 quiet window of AlarmHypo1/2 does not apply: this one is meant to wake. Needs at least 6 rows
-        // spanning 30 minutes, so missing or stale data cannot trigger it.
-        if (isTimeBetween(0, 0, 7, 0) && readyToRun("UkfRawAvg60Low", 30)) {
-            val nowMs = dateUtil.now()
-            val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(nowMs - T.mins(60).msecs(), nowMs).filter { it.ukfRawBgl > 0.0 }
-            val currentUkfRaw = computeUkfRawBgl()
-            val values = rows.map { it.ukfRawBgl } + listOfNotNull(currentUkfRaw.takeIf { it > 0.0 })
-            val spanMs = if (rows.isEmpty()) 0L else nowMs - rows.minOf { it.timestamp }
-            if (values.size >= 6 && spanMs >= T.mins(30).msecs()) {
-                val avg = values.average()
-                if (avg < 3.0 * GlucoseUnit.MMOLL_TO_MGDL) {
-                    val avgText = "AlarmHypo60: 60-min avg UKFrawBGL=${String.format("%.1f", avg / 18.016)} (<3.0)" +
-                        " UKFrawG=${String.format("%.1f", currentUkfRaw / 18.016)} g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}" +
-                        " iob=${String.format("%.2f", iobData.iob)}"
-                    sendSms(avgText)
-                    sendSmsToNumbers(avgText, StringKey.SmsAlarmHypo1Numbers)
-                    uiInteraction.addNotification(id = 9012, text = "H60 avg ${String.format("%.1f", avg / 18.016)}", level = Notification.URGENT)
-                    addGraphAnnouncement("____H60")
-                    addCarePortalNote("AvgLow60")
-                    markRun("UkfRawAvg60Low")
-                }
-            }
-        }
-
-        compressionNotes(dateUtil.now())
-        oneMinuteLoopTierAReset(dateUtil.now())
+        // 2026-10-08: the overnight low alarm, the compression notes and the one-time Tier A revert live in their own functions
+        // (see overnightLowAndCompressionChecks), because invoke() is close to the JVM's 64KB method limit and an inline
+        // block here made the CI build fail with "Method too large".
+        overnightLowAndCompressionChecks(glucoseStatus.glucose, iobData.iob)
 
         // Code port of "Steps Steroids OFF": asserts Steroids=Steroids Off based on sustained
         // activity with moderate IOB, controlled glucose, and no carbs. Per user confirmation, this
@@ -10057,6 +10023,54 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }.onFailure { error ->
             aapsLogger.error(LTag.APS, "AutoISF replay trace capture failed", error)
         }
+    }
+
+    // List 2 "Loop interval" 5.234 relayed by a Client as a coded temp target: same toggle as the local handler, kept out of
+    // invoke() (64KB method limit).
+    private fun applyLoopIntervalToggleTT() {
+        if (readyToRun("LoopIntervalToggleTT", 2) && activeTtNear(5.234, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
+            preferences.put(BooleanKey.ApsAutoIsfLoopEveryMinute, newState)
+            cancelCurrentTempTarget()
+            sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}")
+            addCarePortalNote(if (newState) "Loop1m" else "Loop5m")
+            rxBus.send(EventRefreshOverview("Loop interval toggled", true))
+            markRun("LoopIntervalToggleTT")
+        }
+    }
+
+    // Called once per loop from invoke(): the three additions of 2026-10-08, kept out of invoke() itself (64KB method limit).
+    private fun overnightLowAndCompressionChecks(glucoseMgdl: Double, iob: Double) {
+        ukfAvg60LowAlarm(glucoseMgdl, iob)
+        compressionNotes(dateUtil.now())
+        oneMinuteLoopTierAReset(dateUtil.now())
+    }
+
+    // UkfRawAvg60Low (2026-10-08, per explicit request): ALERT ONLY. Between 00:00 and 07:00, when the 60-minute average
+    // of ukfRawBgl (the saved AIV rows plus the current UKF raw value) is under 3.0 mmol/L, send the hypo alarm, and repeat
+    // it every 30 minutes while the average stays under. Averaging over an hour is what makes this ignore a short
+    // compression dip. No state writes (no AlarmRecent / LowBG), no tier or profile change, nothing in dosing reads it.
+    // The 22:00-07:30 quiet window of AlarmHypo1/2 does not apply: this one is meant to wake. Needs at least 6 rows
+    // spanning 30 minutes, so missing or stale data cannot trigger it.
+    private fun ukfAvg60LowAlarm(glucoseMgdl: Double, iob: Double) {
+        if (!isTimeBetween(0, 0, 7, 0) || !readyToRun("UkfRawAvg60Low", 30)) return
+        val nowMs = dateUtil.now()
+        val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(nowMs - T.mins(60).msecs(), nowMs).filter { it.ukfRawBgl > 0.0 }
+        val currentUkfRaw = computeUkfRawBgl()
+        val values = rows.map { it.ukfRawBgl } + listOfNotNull(currentUkfRaw.takeIf { it > 0.0 })
+        val spanMs = if (rows.isEmpty()) 0L else nowMs - rows.minOf { it.timestamp }
+        if (values.size < 6 || spanMs < T.mins(30).msecs()) return
+        val avg = values.average()
+        if (avg >= 3.0 * GlucoseUnit.MMOLL_TO_MGDL) return
+        val avgText = "AlarmHypo60: 60-min avg UKFrawBGL=${String.format("%.1f", avg / 18.016)} (<3.0)" +
+            " UKFrawG=${String.format("%.1f", currentUkfRaw / 18.016)} g=${String.format("%.1f", glucoseMgdl / 18.016)}" +
+            " iob=${String.format("%.2f", iob)}"
+        sendSms(avgText)
+        sendSmsToNumbers(avgText, StringKey.SmsAlarmHypo1Numbers)
+        uiInteraction.addNotification(id = 9012, text = "H60 avg ${String.format("%.1f", avg / 18.016)}", level = Notification.URGENT)
+        addGraphAnnouncement("____H60")
+        addCarePortalNote("AvgLow60")
+        markRun("UkfRawAvg60Low")
     }
 
     // One-time revert (2026-10-08, per explicit request): the first time the loop is seen running at 1-minute intervals

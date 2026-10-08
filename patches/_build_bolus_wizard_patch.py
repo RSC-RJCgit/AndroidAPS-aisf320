@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.19.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.20.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,18 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .19, 2026-10-06)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .20, 2026-10-08)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.19.patch
-  git apply bolus-calculator-on-3426-aisf321.19.patch
+  git apply --check bolus-calculator-on-3426-aisf321.20.patch
+  git apply bolus-calculator-on-3426-aisf321.20.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .20 (2026-10-08):
+- The calculator now opens with the Corr "%" box ticked every time, so the Corr box shows the wizard percentage
+  (for example 80). It is no longer restored from the last use. Unticking it during use still switches the box to units.
+- Retains all patch .19 changes below.
 
 Changes in patch .19 (2026-10-06):
 - New Overview setting group "Bolus calculator defaults": how the Unreliable SMBs, Small meal and Auto fat/protein
