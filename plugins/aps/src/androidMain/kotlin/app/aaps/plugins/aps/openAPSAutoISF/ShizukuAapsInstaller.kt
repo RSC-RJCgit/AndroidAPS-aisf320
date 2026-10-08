@@ -72,6 +72,16 @@ internal object ShizukuAapsInstaller {
         return ok to "via=$tmp relaunch=$activity exit=$code $text"
     }
 
+    // Launches a package's launcher screen from the Shizuku shell. A shell start is not subject to the background-launch block
+    // that can make a plain startActivity do nothing on Android 12+. Launch only: no force-stop, which once left AnyDesk's
+    // remote listener down.
+    fun launchPackage(pkg: String): Pair<Boolean, String> {
+        if (!Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$").matches(pkg)) return false to "bad package name"
+        val (code, out) = exec(arrayOf("monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"))
+        val ok = code == 0 && !out.contains("No activities found", ignoreCase = true)
+        return ok to "exit=$code $out".trim()
+    }
+
     private fun pruneArchive(archiveName: String, staged: File): Int {
         val archive = ArrayList<File>()
         val seen = HashSet<String>()

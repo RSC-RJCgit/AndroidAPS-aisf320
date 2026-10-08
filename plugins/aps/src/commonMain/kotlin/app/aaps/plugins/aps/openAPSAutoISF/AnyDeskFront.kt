@@ -16,4 +16,10 @@ interface AnyDeskFront {
      * Without it Android 12+ can ignore the launch without an error. Other platforms have no such limit.
      */
     fun overlayGranted(): Boolean = true
+
+    /**
+     * Opens AnyDesk from the Shizuku shell as a second try, when Shizuku is running and granted. Null when it was not tried,
+     * otherwise whether the shell launch worked. Other platforms never try.
+     */
+    fun launchViaShell(): Boolean? = null
 }

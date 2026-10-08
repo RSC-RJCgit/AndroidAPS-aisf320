@@ -54,6 +54,22 @@ class AndroidAnyDeskFront(
     override fun overlayGranted(): Boolean =
         android.provider.Settings.canDrawOverlays(context)
 
+    override fun launchViaShell(): Boolean? {
+        val pkg = anyDeskPackage() ?: return null
+        return try {
+            if (!ShizukuAapsInstaller.hasPermission()) {
+                aapsLogger.info(LTag.APS, "AnyDesk Shizuku launch skipped: Shizuku not running or not granted")
+                return null
+            }
+            val (ok, detail) = ShizukuAapsInstaller.launchPackage(pkg)
+            aapsLogger.info(LTag.APS, "AnyDesk Shizuku launch ($pkg): ok=$ok $detail")
+            ok
+        } catch (error: Throwable) {
+            aapsLogger.warn(LTag.APS, "AnyDesk Shizuku launch failed: ${error.message}")
+            false
+        }
+    }
+
     private fun anyDeskPackage(): String? {
         val packages = context.packageManager
         return CANDIDATES.firstOrNull { packages.getLaunchIntentForPackage(it) != null }

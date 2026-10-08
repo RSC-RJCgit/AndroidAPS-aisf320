@@ -111,6 +111,7 @@ import dev.zacsweers.metro.Provider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -265,6 +266,9 @@ open class OpenAPSAutoISFPlugin(
                 pluginScope.launch {
                     installNewestApk("shizuku-granted")
                 }
+            }
+            pluginScope.launch {
+                receiverStatusStore.networkStatusFlow.drop(1).collect { onNetworkChangeRestartShizuku(it) }
             }
         }
     }
@@ -2303,26 +2307,44 @@ open class OpenAPSAutoISFPlugin(
         val store = states()
         val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
         val podHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
+        val ready = runMarks.ready(RunMark.BASAL_UP, 5, now)
+        val steps5 = steps5(now)
+        val steps15 = steps15(now)
+        val steps60 = steps60(now)
+        val steps30 = steps30(now)
+        val onLowFamily = runningOnLowLadder(
+            profileFunction.getOriginalProfileName(),
+            preferences.get(StringKey.ApsAutoIsfLowProfileName).trim(),
+            lowLadderNames(),
+        )
+        val mj3 = statesOn && store.inState("MJ", "MJ3")
+        val noMjRemains = statesOn && store.inState("MJ", "NOMJremains")
         if (!basalUpShouldFire(
-                ready = runMarks.ready(RunMark.BASAL_UP, 5, now),
-                bg = bg,
-                delta = delta,
-                profilePercent = profilePercent,
-                minuteOfDay = minuteOfDay,
-                steps5 = steps5(now),
-                steps15 = steps15(now),
-                steps60 = steps60(now),
-                steps30 = steps30(now),
-                podHours = podHours,
-                onLowFamily = runningOnLowLadder(
-                    profileFunction.getOriginalProfileName(),
-                    preferences.get(StringKey.ApsAutoIsfLowProfileName).trim(),
-                    lowLadderNames(),
-                ),
-                mj3 = statesOn && store.inState("MJ", "MJ3"),
-                noMjRemains = statesOn && store.inState("MJ", "NOMJremains"),
+                ready = ready, bg = bg, delta = delta, profilePercent = profilePercent, minuteOfDay = minuteOfDay,
+                steps5 = steps5, steps15 = steps15, steps60 = steps60, steps30 = steps30, podHours = podHours,
+                onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains,
             )
-        ) return
+        ) {
+            // 2026-10-08, per explicit request: tell the user when ONLY the MJ and pod condition held BasalUp back, at most once
+            // every 30 minutes. 8 Oct 11:12-12:25 it stayed closed for over an hour with MJ left on "MJ active". Note only.
+            if (basalUpHeldByMjGate(
+                    ready = ready, bg = bg, delta = delta, profilePercent = profilePercent, minuteOfDay = minuteOfDay,
+                    steps5 = steps5, steps15 = steps15, steps60 = steps60, steps30 = steps30, podHours = podHours,
+                    onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains,
+                ) && runMarks.ready(RunMark.BASAL_UP_HELD_ALERT, 30, now)
+            ) {
+                runMarks.mark(RunMark.BASAL_UP_HELD_ALERT, now)
+                val mjNow = store.getState("MJ").ifBlank { "unknown" }
+                notificationManager.post(
+                    id = NotificationId.AUTOISF_NOTE,
+                    text = "BsUp held back: MJ is \"$mjNow\" (needs NOMJremains or MJ3, or 12:00-18:00, or pod age 72h+ or 6h-). " +
+                        "BG ${decimals(bg / Constants.MMOLL_TO_MGDL, 1)} rising ${decimals(delta / Constants.MMOLL_TO_MGDL, 2)}, " +
+                        "pod ${podHours?.let { decimals(it, 0) + "h" } ?: "unknown"}. Note only.",
+                    validMinutes = 30
+                )
+            }
+            return
+        }
         switchToStandardAtSharedTier(now)
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
         runMarks.mark(RunMark.BASAL_UP, now)
@@ -4090,6 +4112,24 @@ open class OpenAPSAutoISFPlugin(
         }
     }
 
+    // 2026-10-08, per explicit request: any network change (a connection coming up) also tries to start Shizuku, because it often
+    // drops after one. Waits 20 s for the connection to settle, does nothing if Shizuku is already running or no wireless-debugging
+    // port is configured, at most once every 5 minutes, never on a client. It may well fail (the port moves when wireless
+    // debugging restarts); "ShzNet" = start.sh ran, "ShzNetNg" = the attempt failed. Never installs anything.
+    private suspend fun onNetworkChangeRestartShizuku(status: ReceiverStatusStore.NetworkStatus?) {
+        if (config.AAPSCLIENT || status == null || !status.isAnyConnection) return
+        val now = dateUtil.now()
+        if (!runMarks.ready(RunMark.NET_SHIZUKU, 5, now)) return
+        runMarks.mark(RunMark.NET_SHIZUKU, now)
+        delay(20_000L)
+        if (apkInstall.shizukuRunning()) return
+        val port = preferences.get(IntKey.ApsAutoIsfAdbConnectPort)
+        if (port <= 0) return
+        val (ok, detail) = withContext(Dispatchers.Default) { apkInstall.attemptAdbStart(port) }
+        aapsLogger.info(LTag.APS, "Network-change Shizuku start: ok=$ok $detail")
+        carePortalNote(if (ok) "ShzNet" else "ShzNetNg")
+    }
+
     // List row 5.208. Virtual pump only. A live pump and a client do not try.
     private suspend fun attemptAdbWirelessStart(reason: String) {
         if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) {
@@ -4106,6 +4146,10 @@ open class OpenAPSAutoISFPlugin(
 
     private fun maybeAutoInstallApk(now: Long, tempTargetSet: Boolean) {
         if (config.AAPSCLIENT) return
+        // 2026-10-08, per explicit request: no automatic install on the real-pump phone, so Shizuku can run there for the AnyDesk
+        // restart without installing new APKs by itself. A virtual pump still auto-installs; the List 2 manual install still
+        // works everywhere. To allow it on a real pump later, replace this check with a setting.
+        if (activePlugin.activePump !is VirtualPump) return
         if (!runMarks.ready(RunMark.AUTO_APK, 15, now)) return
         runMarks.mark(RunMark.AUTO_APK, now)
         val boostActive = tempTargetSet ||
@@ -4317,6 +4361,13 @@ open class OpenAPSAutoISFPlugin(
                 val detail = if (shown) "AnyDesk brought to front" else "AnyDesk was not opened"
                 aapsLogger.info(LTag.APS, "$receipt; $detail")
             }
+        }
+        // Second try from the Shizuku shell, after the HOME-exit and direct launch above have run. "AdSz" = it ran, "AdSzNo" = it
+        // was tried and failed, no note when Shizuku is not available (often down after a reboot or network change).
+        pluginScope.launch {
+            delay(1_500L)
+            val viaShell = withContext(Dispatchers.Default) { anyDeskFront.launchViaShell() }
+            if (viaShell != null) carePortalNote(if (viaShell) "AdSz" else "AdSzNo")
         }
     }
 

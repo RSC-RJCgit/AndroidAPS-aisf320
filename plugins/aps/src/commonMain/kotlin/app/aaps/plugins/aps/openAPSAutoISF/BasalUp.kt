@@ -30,9 +30,40 @@ internal fun basalUpShouldFire(
     if (bg < 81.1 || delta < 3.6) return false
     if (basalUpStepBrake(steps5, steps15, steps30, steps60)) return false
     if (!minuteInWindow(minuteOfDay, 7 * 60, 0)) return false
+    return basalUpMjGateOpen(minuteOfDay, podHours, mj3, noMjRemains)
+}
+
+/** The MJ and pod condition: a pod age of 6 hours or less or 72 or more, no MJ left, MJ3, or 12:00-18:00. */
+internal fun basalUpMjGateOpen(minuteOfDay: Int, podHours: Double?, mj3: Boolean, noMjRemains: Boolean): Boolean {
     val podOk = podHours != null && (podHours >= 72.0 || podHours <= 6.0)
     val afternoon = minuteInWindow(minuteOfDay, 12 * 60, 18 * 60)
     return podOk || noMjRemains || mj3 || afternoon
+}
+
+/**
+ * True when BasalUp would have fired but only the MJ and pod condition stopped it. Every other test is open: ready, Low-family
+ * profile at 100%, glucose and delta over the bars, steps brake open, and inside 07:00-00:00. Used for the overview alert.
+ */
+internal fun basalUpHeldByMjGate(
+    ready: Boolean,
+    bg: Double,
+    delta: Double,
+    profilePercent: Int,
+    minuteOfDay: Int,
+    steps5: Int,
+    steps15: Int,
+    steps60: Int,
+    steps30: Int,
+    podHours: Double?,
+    onLowFamily: Boolean,
+    mj3: Boolean,
+    noMjRemains: Boolean,
+): Boolean {
+    if (!ready || !onLowFamily || profilePercent != 100) return false
+    if (bg < 81.1 || delta < 3.6) return false
+    if (basalUpStepBrake(steps5, steps15, steps30, steps60)) return false
+    if (!minuteInWindow(minuteOfDay, 7 * 60, 0)) return false
+    return !basalUpMjGateOpen(minuteOfDay, podHours, mj3, noMjRemains)
 }
 
 /** True when the step count should keep BasalUp closed. A quiet recent window ignores the 60 minute count. */
