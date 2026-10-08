@@ -787,11 +787,15 @@ fun SecondaryGraphCompose(
         val doses = treatmentData?.boluses.orEmpty().filter { it.amount > 0.0 }.map { it.timestamp to it.amount }
         val totals = smbTimedTotals(doses)
         val stack = smbStackIndex(totals.map { it.first }, windowMs = 30 * 60_000L)
+        // 2026-10-08, per explicit request: the time of the last dose inside each total's 20-minute window.
+        val lastDoseInWindow = totals.map { total -> doses.filter { it.first in (total.first - 20 * 60_000L)..total.first }.maxOfOrNull { it.first } }
         val items = totals.mapIndexed { index, total ->
-            // 2026-10-07, per explicit request: basal delivered from the PRECEDING total's time to this one's (up to now when this
-            // total is dated in the future). The first total in view has no preceding one, so no basal line.
-            val basalLine = if (index == 0 || basalForTotals.isEmpty()) null
-            else "b" + smbDoseFormatter.to2Decimal(basalBetween(basalForTotals, totals[index - 1].first, minOf(total.first, nowTimestamp)))
+            // 2026-10-07, per explicit request: a basal line. 2026-10-08: it counts the basal delivered from the LAST dose of the
+            // PRECEDING stack to the end of this stack's window, this total's own time (up to now when that is in the future).
+            // The first total in view has no preceding stack, so no basal line.
+            val previousLastDose = if (index == 0) null else lastDoseInWindow[index - 1]
+            val basalLine = if (previousLastDose == null || basalForTotals.isEmpty()) null
+            else "b" + smbDoseFormatter.to2Decimal(basalBetween(basalForTotals, previousLastDose, minOf(total.first, nowTimestamp)))
             SmbStackItem(
                 x = timestampToX(total.first, minTimestamp),
                 label = formatBolusLabel(total.second, smbDoseFormatter),

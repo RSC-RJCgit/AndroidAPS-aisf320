@@ -102,6 +102,8 @@
     <string name="pref_summary_aps_tdd_sensitivity">When autosens is off, the sensitivity ratio follows recent insulin use compared with the 7 day average.</string>
     <string name="pref_title_aps_use_live_steps">Stepcount import from remote main AAPS phone</string>
     <string name="pref_summary_aps_use_live_steps">Virtual pump only. On imports the step counts the remote main AAPS phone (the one that runs the real pump) sent to Nightscout, for dosing and for the history table. Off uses this phone\'s own step sensor.</string>
+    <string name="pref_title_aps_use_live_mj_state">Adopt the loop phone\'s MJ state changes on this phone</string>
+    <string name="pref_summary_aps_use_live_mj_state">Needs the live Nightscout site. When on, an MJ note from the loop phone (MJ active, NOMJremains, or the manual state notes MJsAc, MJsNO, MJs2, MJs3) is applied once to this phone\'s own MJ state. After that this phone\'s own automations move the state on their own. One-time copy, not a mirror.</string>
     <string name="pref_title_aps_boost_automations">Enable boost automations (BolusGiven + Mild)</string>
     <string name="pref_summary_aps_boost_automations">Master switch for BolusGiven and BolusGivenMild together. Off disables both.</string>
     <string name="pref_title_aps_custom_automations">Custom AutoISF automations</string>

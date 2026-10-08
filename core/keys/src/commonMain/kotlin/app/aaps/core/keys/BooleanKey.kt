@@ -272,6 +272,14 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_use_live_steps,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // Default on: the existing "MJ active" copy from the live site already ran whenever the secondary site was on.
+    ApsAutoIsfUseLiveMjStateOnVirtual(
+        "autoisf_use_live_mj_state_on_virtual",
+        true,
+        KeysStrings.pref_title_aps_use_live_mj_state,
+        KeysStrings.pref_summary_aps_use_live_mj_state,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfSmbOffsetOverrideEnabled(
         "autoisf_smb_offset_override_enabled",
         false,

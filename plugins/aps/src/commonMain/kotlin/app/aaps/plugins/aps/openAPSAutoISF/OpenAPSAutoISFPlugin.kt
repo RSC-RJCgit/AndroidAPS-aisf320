@@ -1555,6 +1555,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsUseAutosens,
             BooleanKey.AutomationStatesEnabled,
             BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
+            BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual,
             BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
             BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
@@ -2335,9 +2336,11 @@ open class OpenAPSAutoISFPlugin(
                     ready = ready, bg = bg, delta = delta, profilePercent = profilePercent, minuteOfDay = minuteOfDay,
                     steps5 = steps5, steps15 = steps15, steps60 = steps60, steps30 = steps30, podHours = podHours,
                     onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains,
-                ) && runMarks.ready(RunMark.BASAL_UP_HELD_ALERT, 30, now)
+                ) && !config.AAPSCLIENT && activePlugin.activePump is VirtualPump && // 2026-10-08, per explicit request: Virtual only
+                runMarks.ready(RunMark.BASAL_UP_HELD_ALERT, 30, now)
             ) {
                 runMarks.mark(RunMark.BASAL_UP_HELD_ALERT, now)
+                carePortalNote("BsHeld")   // 2026-10-08, per explicit request: a CarePortal note with the alert
                 val mjNow = store.getState("MJ").ifBlank { "unknown" }
                 notificationManager.post(
                     id = NotificationId.AUTOISF_NOTE,
@@ -3445,6 +3448,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_SMS -> RunMark.LOCATION_SMS
             RemoteToggleCode.LOCATION_THIS_PHONE -> RunMark.LOCATION_THIS_PHONE
             RemoteToggleCode.LIVE_STEPS -> RunMark.LIVE_STEPS
+            RemoteToggleCode.LIVE_MJ_STATE -> RunMark.LIVE_MJ_STATE
             RemoteToggleCode.INSULIN_TOTALS -> RunMark.INSULIN_TOTALS
             RemoteToggleCode.LOOP_INTERVAL -> RunMark.LOOP_INTERVAL
             RemoteToggleCode.STAGE_APK -> RunMark.STAGE_APK
@@ -3729,6 +3733,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_SMS -> toggleBool(BooleanKey.AutomationCodedLocationsEnabled, "Location texts", "Loc")
             RemoteToggleCode.LOCATION_THIS_PHONE -> setLocationSmsPhone()
             RemoteToggleCode.LIVE_STEPS -> toggleBool(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, "Stepcount import from remote main AAPS phone", "LSt")
+            RemoteToggleCode.LIVE_MJ_STATE -> toggleBool(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, "MJ state copy from the loop phone", "LMJ")
             RemoteToggleCode.INSULIN_TOTALS -> toggleBool(BooleanKey.ApsAutoIsfShowInsulinTotals, "Insulin totals row", "ITt")
             RemoteToggleCode.LOOP_INTERVAL -> toggleBool(BooleanKey.ApsAutoIsfLoopEveryMinute, "Loop every minute (off = every 5 min)", "Lp1")
             RemoteToggleCode.STAGE_APK -> stageNewestApk("list", notify = true)
@@ -3882,27 +3887,31 @@ open class OpenAPSAutoISFPlugin(
         if (store.hasStateValues(group) && value in store.getStateValues(group)) store.setState(group, value)
     }
 
-    // The live phone's injection note. Only the exact text "MJ active" is copied. MJ2 and the rest are not.
+    // The live phone's MJ notes, copied once. Since 2026-10-08 this also takes NOMJremains and the manual List 1 state notes
+    // (MJsAc, MJsNO, MJs2, MJs3, see mjStateForRelayNote), not only "MJ active": the live phone set MJ3 by hand at 12:25 and this
+    // phone stayed on "MJ active" all evening. The newest such note wins. Switchable with ApsAutoIsfUseLiveMjStateOnVirtual.
     // A note this phone wrote itself is skipped. The press that wrote it already set the state.
     // A note downloaded from the live site still sets the state.
     private suspend fun applyLiveMjNote(now: Long) {
+        if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)) return
         if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
         if (config.AAPSCLIENT || !preferences.get(BooleanKey.AutomationStatesEnabled)) return
         val seen = preferences.get(LongNonKey.ApsAutoIsfMjActiveNoteAt)
         val from = if (seen == 0L) now - 16L * 24 * 60 * 60 * 1000 else seen
         val writtenHere = persistenceLayer.getUserEntryDataFromTime(from)
-            .filter { it.source == Sources.Automation && it.note.trim() == "MJ active" }
+            .filter { it.source == Sources.Automation && mjStateForRelayNote(it.note) != null }
             .map { it.timestamp }
             .toSet()
         val hit = persistenceLayer.getTherapyEventDataFromTime(from, TE.Type.NOTE, true)
             .filter {
-                it.isValid && it.timestamp > seen && it.note?.trim() == "MJ active" && it.timestamp !in writtenHere
+                it.isValid && it.timestamp > seen && mjStateForRelayNote(it.note) != null && it.timestamp !in writtenHere
             }
             .maxByOrNull { it.timestamp } ?: return
+        val wanted = mjStateForRelayNote(hit.note) ?: return
         val store = states()
-        if (store.hasStateValues("MJ") && "MJ active" in store.getStateValues("MJ") && !store.inState("MJ", "MJ active")) {
-            store.setState("MJ", "MJ active")
-            sendAutoSms("MJ active from Nightscout")
+        if (store.hasStateValues("MJ") && wanted in store.getStateValues("MJ") && !store.inState("MJ", wanted)) {
+            store.setState("MJ", wanted)
+            sendAutoSms("$wanted from Nightscout")
         }
         preferences.put(LongNonKey.ApsAutoIsfMjActiveNoteAt, hit.timestamp.coerceAtMost(now))
     }
