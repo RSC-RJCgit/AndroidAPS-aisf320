@@ -9371,7 +9371,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addGraphAnnouncement("_____H4")
                 // 2026-10-07: not marked between 01:00 and 07:00 or with 60 minute steps over 1000 (often compression lows).
                 if (hypoAlarmMarkAllowed(dateUtil.now())) {
-                    markHypoAlarm(dateUtil.now())   // LowBG, AlarmHypo (exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment) and the time
+                    markHypoAlarm(dateUtil.now(), g)   // LowBG, AlarmHypo (exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment) and the time
                 }
                 markRun("AlarmHypo1")
                 markRun("AlarmHypoAny")
@@ -9423,7 +9423,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addGraphAnnouncement("__________A4")
                 // 2026-10-07: not marked between 01:00 and 07:00 or with 60 minute steps over 1000 (often compression lows).
                 if (hypoAlarmMarkAllowed(dateUtil.now())) {
-                    markHypoAlarm(dateUtil.now())   // LowBG, AlarmHypo (exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment) and the time
+                    markHypoAlarm(dateUtil.now(), g)   // LowBG, AlarmHypo (exclusive to AlarmHypo1/2 -- see MoreMJ's own doc comment) and the time
                 }
                 uiInteraction.addNotification(id = 9011, text = "H4", level = Notification.URGENT)
                 addGraphAnnouncement("H4")
@@ -10395,20 +10395,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // 2026-10-09, per explicit request: a low that follows walking must not set the AlarmHypo state (on every phone). Steps over 200 in the last
     // hour, or over 400 in the last 3 hours (400 is the 3 hour limit the SMB/rescue checks already use), at the moment of the alarm.
-    private fun alarmStateStepsBlocked(): Boolean = recentSteps60Minutes > 200 || recentSteps180Minutes > 400
+    // Also, 2026-10-09, per explicit request: the state is set only when glucose at the alarm is under 3.5 mmol/L (g is mg/dL).
+    private fun alarmStateBlocked(g: Double): Boolean = recentSteps60Minutes > 200 || recentSteps180Minutes > 400 || g >= 3.5 * 18.0182
 
     // At the alarm: written at once on other phones (AlarmHypo only when the steps allow it); on the virtual phone only the wait is started
     // (it never restarts).
-    private fun markHypoAlarm(now: Long) {
+    private fun markHypoAlarm(now: Long, g: Double) {
         if (!deferAlarmHypoState()) {
             setAutomationState("LowBG", "50recent")
-            if (!alarmStateStepsBlocked()) setAutomationState("AlarmHypo", "AlarmRecent")
+            if (!alarmStateBlocked(g)) setAutomationState("AlarmHypo", "AlarmRecent")
             preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, now)
             return
         }
         if (preferences.get(LongKey.ApsAutoIsfAlarmStatePendingAt) == 0L) {
             preferences.put(LongKey.ApsAutoIsfAlarmStatePendingAt, now)
-            preferences.put(LongKey.ApsAutoIsfAlarmStateStepsBlocked, if (alarmStateStepsBlocked()) 1L else 0L)
+            preferences.put(LongKey.ApsAutoIsfAlarmStateStepsBlocked, if (alarmStateBlocked(g)) 1L else 0L)
         }
     }
 
@@ -10425,7 +10426,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     setAutomationState("AlarmHypo", "AlarmRecent")
                     aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm")
                 } else {
-                    aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 in 1 hour or over 400 in 3 hours at the alarm")
+                    aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 in 1 hour or over 400 in 3 hours, or glucose 3.5 mmol or more, at the alarm")
                 }
                 preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, pendingAt)
             }
