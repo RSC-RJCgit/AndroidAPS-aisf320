@@ -43,7 +43,7 @@ concurrency:
 jobs:
   testflight:
     # Forks have no signing identity and must not run this, even if they somehow held the secrets.
-    if: github.repository == 'nightscout/AndroidAPS'
+    if: github.repository == 'nightscout/AndroidAPS' || github.repository == 'RSC-RJCgit/AndroidAPS-kmp-aisf321'
     runs-on: macos-latest
     timeout-minutes: 90
 
