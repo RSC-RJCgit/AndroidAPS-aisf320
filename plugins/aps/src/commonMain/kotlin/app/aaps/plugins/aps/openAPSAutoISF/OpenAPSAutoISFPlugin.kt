@@ -86,6 +86,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
 import app.aaps.core.objects.constraints.ConstraintObject
+import app.aaps.core.objects.extensions.asAnnouncement
 import app.aaps.core.objects.extensions.asSettingsExport
 import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.objects.extensions.plannedRemainingMinutes
@@ -2188,6 +2189,20 @@ open class OpenAPSAutoISFPlugin(
             if (!blocked) markHypoAlarm(now)
             if (hypo1) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo1Numbers)
             if (hypo2) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo2Numbers)
+            // 2026-10-09, per explicit request (the same as 3426): the urgent alert and the graph marks. AlarmHypo1 gives H4 and AlarmHypo2
+            // gives A4, both silent between 22:00 and 07:30; AlarmHypo2 then also gives an H4 alert at any hour. The graph marks are
+            // always added, so the event is visible in the morning.
+            val alarmQuiet = timeWindowContains(minuteOfDay, 22, 0, 7, 30)
+            if (hypo1) {
+                if (!alarmQuiet) phoneAlert("H4")
+                addGraphAnnouncement("_____H4")
+            }
+            if (hypo2) {
+                if (!alarmQuiet) phoneAlert("A4")
+                addGraphAnnouncement("__________A4")
+                phoneAlert("H4")
+                addGraphAnnouncement("H4")
+            }
             if (hypo1) runMarks.mark(RunMark.ALARM_HYPO_1, now)
             if (hypo2) runMarks.mark(RunMark.ALARM_HYPO_2, now)
             runMarks.mark(RunMark.ALARM_HYPO_ANY, now)
@@ -4445,6 +4460,24 @@ open class OpenAPSAutoISFPlugin(
             val viaShell = withContext(Dispatchers.Default) { anyDeskFront.launchViaShell() }
             if (viaShell != null) carePortalNote(if (viaShell) "AdSz" else "AdSzNo")
         }
+    }
+
+    // A mark on the graphs at the current time (an Announcement therapy event). Each gets its own millisecond, because two marks in the
+    // same millisecond would count as one.
+    private var lastAnnouncementAt = 0L
+
+    private suspend fun addGraphAnnouncement(note: String) {
+        var ts = dateUtil.now()
+        if (ts <= lastAnnouncementAt) ts = lastAnnouncementAt + 1
+        lastAnnouncementAt = ts
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE.asAnnouncement(note).copy(timestamp = ts),
+            timestamp = ts,
+            action = Action.TREATMENT,
+            source = Sources.Automation,
+            note = note,
+            listValues = listOf(),
+        )
     }
 
     private suspend fun carePortalNote(text: String) {
