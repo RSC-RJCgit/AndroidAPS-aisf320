@@ -76,7 +76,6 @@ import com.patrykandpatrick.vico.compose.cartesian.Zoom
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlin.math.abs
-import kotlin.math.round
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.conflate
@@ -795,13 +794,6 @@ fun GraphsSection(
                     .fillMaxWidth()
                     .height(graphConfig.iobHeight.dp)
             )
-            autoIsfStatus.hypoPrediction?.let { hypo ->
-                GraphCornerLine(
-                    text = "hypoprediction= ${oneDecimalText(hypo)}",
-                    color = Color.White,
-                    modifier = Modifier.align(Alignment.TopStart)
-                )
-            }
             Text(
                 text = buildString {
                     append(stringResource(CoreUiStrings.iob))
@@ -820,7 +812,7 @@ fun GraphsSection(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(start = 36.dp, top = if (autoIsfStatus.hypoPrediction != null) 14.dp else 2.dp)
+                    .padding(start = 36.dp, top = 2.dp)
             )
             if (!isSimpleMode) {
                 GraphEditButton(
@@ -873,7 +865,6 @@ fun GraphsSection(
                 )
                 val corner = when (i) {
                     0 -> autoIsfStatus.statusTarget
-                    1 -> autoIsfStatus.statusRatio
                     else -> null
                 }
                 corner?.let { line ->
@@ -1248,11 +1239,4 @@ private fun GraphCornerLine(
         style = TextStyle(fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.Bold),
         modifier = modifier.padding(start = 8.dp, top = 1.dp)
     )
-}
-
-private fun oneDecimalText(value: Double): String {
-    val scaled = round(value * 10.0).toInt()
-    val sign = if (scaled < 0) "-" else ""
-    val whole = abs(scaled)
-    return "$sign${whole / 10}.${whole % 10}"
 }

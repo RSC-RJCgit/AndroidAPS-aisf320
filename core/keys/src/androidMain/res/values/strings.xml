@@ -430,6 +430,10 @@
     <string name="smscommunicator_broadcastexcludenumbers_summary" comment="Numbers from the allowed list, separated by a semicolon. Example: +XXXXXXXXXX;+YYYYYYYYYY. They can still send commands.">Numbers listed here do not get general automation texts. They can still send commands. Use +XXXXXXXXXX;+YYYYYYYYYY.</string>
     <string name="smscommunicator_battalertnumbers">Battery-alert numbers</string>
     <string name="smscommunicator_battalertnumbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the LowBattery text, as well as the allowed numbers.</string>
+    <string name="smscommunicator_alarmhypo1numbers">AlarmHypo1-alert numbers</string>
+    <string name="smscommunicator_alarmhypo1numbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the general broadcast.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the AlarmHypo1 alert, as well as the general automation text.</string>
+    <string name="smscommunicator_alarmhypo2numbers">AlarmHypo2-alert numbers</string>
+    <string name="smscommunicator_alarmhypo2numbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the general broadcast.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the AlarmHypo2 alert, as well as the general automation text.</string>
     <string name="smscommunicator_pod2numbers">Pod2-alert numbers</string>
     <string name="smscommunicator_pod2numbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the allowed list.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the 78-hour pod text, as well as the allowed numbers.</string>
     <string name="smscommunicator_connectpodnumbers">ConnectPod-alert numbers</string>

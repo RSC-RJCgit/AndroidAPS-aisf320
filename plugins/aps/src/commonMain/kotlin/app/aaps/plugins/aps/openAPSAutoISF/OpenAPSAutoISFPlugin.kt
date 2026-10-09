@@ -644,6 +644,7 @@ open class OpenAPSAutoISFPlugin(
         )
         ukfAvg60LowAlarm(now, minuteOfDay, glucoseStatus.glucose, iobData.iob, ukf.glucose)
         compressionNotes(now, iobData.activity * variableSensitivity * 5.0)
+        applyDeferredAlarmHypoState(now)
         oneMinuteLoopTierAReset(now)
         applyOvernightDuraRescue(
             now = now,
@@ -2157,7 +2158,7 @@ open class OpenAPSAutoISFPlugin(
         val hp1 = rawDelta5MinMgdl(now)?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
         val recentBolusOrCarbs = lastBolusMin < 20
         val hypo1 = alarmHypo1ShouldFire(
-            ready = runMarks.ready(RunMark.ALARM_HYPO_1, 15, now),
+            ready = runMarks.ready(RunMark.ALARM_HYPO_1, 15, now) && (runMarks.ready(RunMark.ALARM_HYPO_ANY, 15, now) || bg < 54.0),
             bg = bg,
             delta = delta,
             shortDelta = shortDelta,
@@ -2169,7 +2170,7 @@ open class OpenAPSAutoISFPlugin(
             recentBolusOrCarbs = recentBolusOrCarbs,
         )
         val hypo2 = alarmHypo2ShouldFire(
-            ready = runMarks.ready(RunMark.ALARM_HYPO_2, 15, now),
+            ready = runMarks.ready(RunMark.ALARM_HYPO_2, 15, now) && runMarks.ready(RunMark.ALARM_HYPO_ANY, 15, now) && !hypo1,
             bg = bg,
             delta = delta,
             shortDelta = shortDelta,
@@ -2183,13 +2184,13 @@ open class OpenAPSAutoISFPlugin(
             // 2026-10-07, per explicit request: an alarm between 01:00 and 07:00, or with 60 minute steps over 1000, is not
             // marked at all (no saved time, no AlarmRecent or LowBG state), so nothing that reads the alarm can act on it.
             // The 15 minute run marks are still set, so this is evaluated and logged once per 15 minutes, not every loop.
-            val blocked = hypoTierDropBlocked(minuteOfDay, steps60(now))
-            if (!blocked) {
-                preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, now)
-                applyAlarmHypoState()
-            }
+            val blocked = !virtualAlarmPhone() && hypoTierDropBlocked(minuteOfDay, steps60(now))
+            if (!blocked) markHypoAlarm(now)
+            if (hypo1) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo1Numbers)
+            if (hypo2) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo2Numbers)
             if (hypo1) runMarks.mark(RunMark.ALARM_HYPO_1, now)
             if (hypo2) runMarks.mark(RunMark.ALARM_HYPO_2, now)
+            runMarks.mark(RunMark.ALARM_HYPO_ANY, now)
             aapsLogger.debug(LTag.APS, "AlarmHypo ${if (blocked) "not marked (01:00-07:00 or steps60 over 1000)" else "marked"} 1=$hypo1 2=$hypo2")
         }
     }
@@ -2855,7 +2856,7 @@ open class OpenAPSAutoISFPlugin(
         // 2026-10-07: an AlarmRecent flag whose alarm time is missing, over 24 hours old, or inside the ignored overnight window
         // is cleared. Before this, the flag stayed set until Not50Recently happened to clear it, and never did when LowBG was already reset.
         if (hypoStatesOn && hypoStore.inState("AlarmHypo", "AlarmRecent") && hypoStore.hasStateValues("AlarmHypo") &&
-            alarmRecentExpired(now, alarmAt, alarmMinuteOfDay)
+            alarmRecentExpired(now, alarmAt, alarmMinuteOfDay, useWindow = !virtualAlarmPhone())
         ) {
             hypoStore.setState("AlarmHypo", "NoAlarmRecent")
             aapsLogger.debug(LTag.APS, "AlarmRecent cleared: alarm time $alarmAt missing, over 24 hours old, or inside 01:00-07:00")
@@ -2867,7 +2868,7 @@ open class OpenAPSAutoISFPlugin(
                 alarmRecent = hypoStore.inState("AlarmHypo", "AlarmRecent"),
                 mjHasValues = hypoStore.hasStateValues("MJ"),
                 noMjRemains = hypoStore.inState("MJ", "NOMJremains"),
-            ) && alarmRevertDue(alarmAt, handledAt) && !hypoDropBlocked(alarmAt)
+            ) && alarmRevertDue(alarmAt, handledAt) && (virtualAlarmPhone() || !hypoDropBlocked(alarmAt))
         ) {
             val moved = resetToRung(now, 0, ready = true)
             preferences.put(LongNonKey.ApsAutoIsfAlarmRevertHandledAt, alarmAt)
@@ -5855,13 +5856,82 @@ open class OpenAPSAutoISFPlugin(
         if (store.hasStateValues("AlarmHypo")) store.setState("AlarmHypo", "NoAlarmRecent")
     }
 
+    // Hypo-alarm marking (2026-10-09, per explicit request).
+    //  - Shared throttle: after an AlarmHypo1 (H) or AlarmHypo2 (A) alarm, neither can fire again for 15 minutes, except AlarmHypo1's
+    //    emergency branch (glucose under 3.0 mmol).
+    //  - Virtual-pump phone only (Live and Client keep the old behaviour): nothing is written at the alarm. 15 minutes later, unless a
+    //    compression warning (CompSusp) was raised within the last 60 minutes (then nothing is written at all), LowBG = 50recent,
+    //    AlarmHypo = AlarmRecent and the saved alarm time (the original alarm time) are written together. A second alarm in the 15
+    //    minutes does not restart the wait, and a wait older than 2 hours (the app was off) is dropped.
+    //  - On those phones an alarm inside the old blocked window (01:00-07:00, or 60 minute steps over 1000) is marked like any other and
+    //    the window no longer clears AlarmRecent or stops the role revert; only the alarm SMS is withheld there.
+    private fun virtualAlarmPhone(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
+
+    // The alarm SMS (2026-10-09, per explicit request; the same as 3426): the general broadcast plus this alarm's own numbers. Not sent
+    // between 22:00 and 07:30, nor above 6.0 mmol, nor with more than 9 g of carbs on board; on the virtual-pump phone also not sent
+    // inside the old blocked window (01:00-07:00, or 60 minute steps over 1000).
+    private suspend fun sendAlarmHypoSms(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        hp: Double?,
+        hp1: Double?,
+        iob: Double,
+        cob: Double,
+        numbersKey: StringKey,
+    ) {
+        if (timeWindowContains(minuteOfDay, 22, 0, 7, 30)) return
+        if (bg > 6.0 * 18.016 || cob > 9.0) return
+        if (virtualAlarmPhone() && hypoTierDropBlocked(minuteOfDay, steps60(now))) return
+        val ukf = ukfRawNow(now)
+        val text = "AlarmHypo: g=${decimals(bg / 18.016, 1)} d=${decimals(delta / 18.016, 2)}" +
+            " UKFrawG=${ukf.glucose?.let { decimals(it / 18.016, 1) } ?: "--"}" +
+            " UKFrawD1=${ukf.delta1?.let { decimals(it / 18.016, 2) } ?: "--"}" +
+            " UKFrawD5=${ukf.delta5?.let { decimals(it / 18.016, 2) } ?: "--"}" +
+            " HP=${hp1?.let { decimals(it, 1) } ?: "--"}" +
+            " HP2=${hp?.let { decimals(it, 1) } ?: "--"}" +
+            " iob=${decimals(iob, 2)}"
+        sendAutoSms(text)
+        sendAutoSmsToNumbers(text, numbersKey)
+    }
+
     // Records a real hypo alarm. The mild meal-leftover floor then stays at 7.0 mmol/L for 60 minutes.
-    // LowBG becomes 50recent, which also keeps the night FastRise skip closed.
-    private fun applyAlarmHypoState() {
+    // LowBG becomes 50recent, which also keeps the night FastRise skip closed. Written together with the saved alarm time.
+    private fun applyAlarmHypoState(alarmAt: Long) {
+        preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, alarmAt)
         val store = states()
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return
         if (store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
         if (store.hasStateValues("AlarmHypo")) store.setState("AlarmHypo", "AlarmRecent")
+    }
+
+    // At the alarm: written at once on other phones; on the virtual phone only the wait is started (it never restarts).
+    private fun markHypoAlarm(now: Long) {
+        if (!virtualAlarmPhone()) {
+            applyAlarmHypoState(now)
+            return
+        }
+        if (preferences.get(LongNonKey.ApsAutoIsfAlarmStatePendingAt) == 0L) preferences.put(LongNonKey.ApsAutoIsfAlarmStatePendingAt, now)
+    }
+
+    private fun compressionWarningWithinHour(now: Long): Boolean {
+        val raisedAt = preferences.get(LongNonKey.ApsAutoIsfCompressionSuspectAt)
+        return raisedAt > 0L && now - raisedAt in 0..60 * 60_000L
+    }
+
+    private fun applyDeferredAlarmHypoState(now: Long) {
+        val pendingAt = preferences.get(LongNonKey.ApsAutoIsfAlarmStatePendingAt)
+        if (pendingAt <= 0L || now - pendingAt < 15 * 60_000L) return
+        preferences.put(LongNonKey.ApsAutoIsfAlarmStatePendingAt, 0L)
+        when {
+            now - pendingAt > 2 * 60 * 60_000L -> aapsLogger.info(LTag.APS, "Hypo alarm wait dropped: older than 2 hours")
+            compressionWarningWithinHour(now)  -> aapsLogger.info(LTag.APS, "Hypo alarm states not set: a compression warning was raised within the last 60 minutes")
+            else                               -> {
+                applyAlarmHypoState(pendingAt)
+                aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm")
+            }
+        }
     }
 
     // Puts a low IOB threshold back to 70, and an acceleration weight above 0.50 down to 0.50.

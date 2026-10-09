@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
+import kotlin.math.round
 import kotlin.time.Clock
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.Square
@@ -1029,7 +1030,7 @@ fun BgGraphCompose(
             }
         }
     }
-    if (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null) {
+    if (topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null)) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
         val linesUp = with(LocalDensity.current) { (lineSp * 1.0f).toDp() }
@@ -1056,7 +1057,56 @@ fun BgGraphCompose(
             }
         }
     }
+    if (!topBandLines) {
+        // 2026-10-09, per explicit request, MAIN graph only (Graph 5 above is unchanged): the ISF line and the steps line sit at the
+        // top, clear of the y-axis numbers; the hypo prediction line and the DR line, which were on the IOB graph and Graph 2, sit at
+        // the bottom, where the ISF and steps lines used to be.
+        val lineSp = 11.sp
+        val tight = TextStyle(
+            fontSize = lineSp,
+            lineHeight = lineSp,
+            fontWeight = FontWeight.Bold,
+            lineHeightStyle = LineHeightStyle(
+                alignment = LineHeightStyle.Alignment.Center,
+                trim = LineHeightStyle.Trim.Both
+            )
+        )
+        if (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null) {
+            Column(modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp)) {
+                autoIsfGraph.statusIsf?.let { line ->
+                    IsfStatusLine(line, tight, acceColor, bgIsfColor, ppColor, duraColor)
+                }
+                autoIsfGraph.statusSteps?.let { line ->
+                    Text(text = line, color = duraColor, style = tight)
+                }
+            }
+        }
+        if (autoIsfGraph.hypoPrediction != null || autoIsfGraph.statusRatio != null) {
+            val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
+            val linesUp = with(LocalDensity.current) { (lineSp * 1.0f).toDp() }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 8.dp, bottom = (44.dp - threeLinesDown + linesUp).coerceAtLeast(0.dp))
+            ) {
+                autoIsfGraph.hypoPrediction?.let { hypo ->
+                    Text(text = "hypoprediction= ${oneDecimalText(hypo)}", color = Color.White, style = tight)
+                }
+                autoIsfGraph.statusRatio?.let { line ->
+                    Text(text = line, color = duraColor, style = tight)
+                }
+            }
+        }
     }
+    }
+}
+
+private fun oneDecimalText(value: Double): String {
+    val scaled = round(value * 10.0).toInt()
+    val sign = if (scaled < 0) "-" else ""
+    val whole = abs(scaled)
+    return "$sign${whole / 10}.${whole % 10}"
 }
 
 /** One colour per field, the same colours as the UK ISF row. */

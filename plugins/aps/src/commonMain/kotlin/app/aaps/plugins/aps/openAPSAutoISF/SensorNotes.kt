@@ -42,8 +42,8 @@ internal fun alarmHypoRoleShouldRevert(statesOn: Boolean, alarmRecent: Boolean, 
     statesOn && alarmRecent && mjHasValues && !noMjRemains
 
 // AlarmRecent is cleared when its saved time is missing, older than 24 hours, or inside the ignored overnight window.
-internal fun alarmRecentExpired(now: Long, alarmAt: Long, alarmMinuteOfDay: Int): Boolean =
-    alarmAt <= 0L || now - alarmAt > 24 * 3_600_000L || inHypoIgnoreWindow(alarmMinuteOfDay)
+internal fun alarmRecentExpired(now: Long, alarmAt: Long, alarmMinuteOfDay: Int, useWindow: Boolean = true): Boolean =
+    alarmAt <= 0L || now - alarmAt > 24 * 3_600_000L || (useWindow && inHypoIgnoreWindow(alarmMinuteOfDay))
 
 // The alarm role revert runs once per alarm: only when the saved alarm time is newer than the last one handled.
 internal fun alarmRevertDue(alarmAt: Long, handledAt: Long): Boolean = alarmAt > handledAt

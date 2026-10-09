@@ -195,6 +195,20 @@ enum class StringKey(
         summary = KeysStrings.smscommunicator_battalertnumbers_summary,
         validator = StringValidator.multiPhone()
     ),
+    SmsAlarmHypo1Numbers(
+        key = "smscommunicator_alarmhypo1numbers",
+        defaultValue = "",
+        title = KeysStrings.smscommunicator_alarmhypo1numbers,
+        summary = KeysStrings.smscommunicator_alarmhypo1numbers_summary,
+        validator = StringValidator.multiPhone()
+    ),
+    SmsAlarmHypo2Numbers(
+        key = "smscommunicator_alarmhypo2numbers",
+        defaultValue = "",
+        title = KeysStrings.smscommunicator_alarmhypo2numbers,
+        summary = KeysStrings.smscommunicator_alarmhypo2numbers_summary,
+        validator = StringValidator.multiPhone()
+    ),
     SmsPod2Numbers(
         key = "smscommunicator_pod2numbers",
         defaultValue = "",

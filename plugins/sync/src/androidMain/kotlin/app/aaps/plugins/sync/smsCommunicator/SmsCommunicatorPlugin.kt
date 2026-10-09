@@ -1134,6 +1134,8 @@ class SmsCommunicatorPlugin(
             StringKey.SmsAllowedNumbers,
             StringKey.SmsBroadcastExcludeNumbers,
             StringKey.SmsBattAlertNumbers,
+            StringKey.SmsAlarmHypo1Numbers,
+            StringKey.SmsAlarmHypo2Numbers,
             StringKey.SmsPod2Numbers,
             StringKey.SmsConnectPodNumbers,
             BooleanKey.SmsAllowRemoteCommands,

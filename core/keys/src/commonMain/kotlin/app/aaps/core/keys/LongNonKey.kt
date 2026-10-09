@@ -95,6 +95,8 @@ enum class LongNonKey(
     // Compression trigger waiting for its 15-minute sustain check (2026-10-08): when the sudden drop was seen, and the level it ended at
     // in tenths of mg/dL. 0 means nothing is waiting. Internal only.
     ApsAutoIsfCompressionTriggerAt("autoisf_compression_trigger_at", 0L, exportable = false),
+    // When a hypo alarm is waiting to set the AlarmHypo = AlarmRecent state 15 minutes later (virtual-pump phone only), 0 when none. Internal only.
+    ApsAutoIsfAlarmStatePendingAt("autoisf_alarm_state_pending_at", 0L, exportable = false),
     ApsAutoIsfCompressionTriggerLevelTenths("autoisf_compression_trigger_level_tenths", 0L, exportable = false),
 
     // Profile-switch time already used as a Set-role duration. Local only.
