@@ -7,10 +7,12 @@ import kotlin.math.abs
  * 40-minute slide (8.2 to 5.9 mmol at about -0.15 mmol per 5 minutes, 0.1-0.35 U on board) raised a warning on 23:03. A slow
  * slide is not a trigger. A compression low starts with a SUDDEN drop out of a flat spell, and the insulin on board cannot
  * account for it:
- *  - the smoothed series falls at least 1.0 mmol within the last 5 minutes (5 loops);
- *  - the 30 minutes before that drop were flat (swing no more than 0.6 mmol);
- *  - the fall is at least three times what the insulin on board explains over those 5 minutes (the loop's BGI), which the
- *    caller passes in.
+ *  - lane A: the smoothed series falls at least 1.0 mmol within the last 5 minutes (5 loops) after 30 flat minutes (swing no
+ *    more than 0.6 mmol); or lane B (added the same day after a true compression at 20:40 came on top of a slow decline, 9.3 to
+ *    7.1 mmol in the half hour before it): it falls at least 1.4 mmol within 5 minutes, at least twice the steepest 5-minute
+ *    fall of the 30 minutes before, which fell no more than 2.5 mmol in all;
+ *  - either way the fall is at least three times what the insulin on board explains over those 5 minutes (the loop's BGI),
+ *    which the caller passes in.
  * Checked on the 5-8 Oct data: of 26 drops of 1.0 mmol or more in 4 days, only 3 also had a flat 30 minutes and a small IOB: the
  * 8 Oct 03:24 compression low, the 8 Oct 21:24 fall and rebound, and a one-step shift on 5 Oct 12:01. Tonight's slow slide and
  * the two on Live (20:39, 21:31) do not qualify. There is no level cap.
@@ -30,6 +32,11 @@ internal object CompressionDetector {
     /** The 30 minutes before the drop must stay within this swing (0.6 mmol) and have enough readings. */
     const val FLAT_MINUTES = 30L
     const val FLAT_SWING_MGDL = 10.8
+
+    /** Lane B: a bigger drop (1.4 mmol) that is at least twice the steepest 5-minute fall of the 30 minutes before, which fell no more than 2.5 mmol in all. */
+    const val STEEP_DROP_MGDL = 25.2
+    const val STEEPEN_FACTOR = 2.0
+    const val PRIOR_NET_FALL_MAX_MGDL = 45.0
 
     /** The drop must be at least this many times the fall the insulin on board explains over the same 5 minutes. */
     const val UNEXPLAINED_FACTOR = 3.0
@@ -64,6 +71,7 @@ internal object CompressionDetector {
     class Suspect(
         val fromMgdl: Double,
         val toMgdl: Double,
+        val steepenedLane: Boolean,
         val steepestMgdlPerMin: Double,
         val fallMinutes: Long,
         val explainedMgdl: Double,
@@ -86,17 +94,27 @@ internal object CompressionDetector {
         if (drop < SUDDEN_DROP_MGDL) return null
         val explained = explainedFall5Mgdl.coerceAtLeast(0.0)
         if (drop < UNEXPLAINED_FACTOR * explained) return null
-        // The flat spell: the 30 minutes ending where the drop began (inclusive of the reading 5 minutes ago).
+        // The 30 minutes ending where the drop began (inclusive of the reading 5 minutes ago).
         val flatEnd = now - DROP_MINUTES * MINUTE
         val flatFrom = flatEnd - FLAT_MINUTES * MINUTE
         val flat = series.filter { it.first in flatFrom..flatEnd }
         if (flat.size < MIN_FLAT_READINGS || flat.first().first > flatFrom + 5 * MINUTE) return null
         val values = flat.map { it.second }
-        if (values.max() - values.min() > FLAT_SWING_MGDL) return null
+        val laneA = values.max() - values.min() <= FLAT_SWING_MGDL
+        var laneB = false
+        if (!laneA && drop >= STEEP_DROP_MGDL) {
+            // The steepest 5-minute fall inside that half hour, and how far it fell in all.
+            val priorSteepest = flat.filter { it.first >= flatFrom + DROP_MINUTES * MINUTE }
+                .mapNotNull { r -> valueNear(series, r.first - DROP_MINUTES * MINUTE)?.let { it - r.second } }
+                .maxOrNull() ?: 0.0
+            val priorNetFall = flat.first().second - flat.last().second
+            laneB = drop >= STEEPEN_FACTOR * priorSteepest.coerceAtLeast(0.0) && priorNetFall <= PRIOR_NET_FALL_MAX_MGDL
+        }
+        if (!laneA && !laneB) return null
         val last5 = series.filter { it.first >= flatEnd }
         val steepest = last5.zipWithNext { a, b -> (b.second - a.second) / ((b.first - a.first) / MINUTE.toDouble()).coerceAtLeast(1.0) }.minOrNull() ?: 0.0
         val fell30 = (valueNear(series, now - FLAT_MINUTES * MINUTE) ?: values.first()) - v
-        return Suspect(before, v, steepest, DROP_MINUTES, explained, fell30)
+        return Suspect(before, v, !laneA, steepest, DROP_MINUTES, explained, fell30)
     }
 
     /**
