@@ -1879,6 +1879,56 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
     }
 
+    // Text of the sensitivity dialog, refreshed with the sensitivity line; a single tap on the ISF icon shows it.
+    private var isfDialogTextCached: String? = null
+
+    // 2026-10-10, per explicit request: a double-tap on the ISF icon opens List 3 (one row so far: Clean graph).
+    // Single tap and long press behave as before (sensitivity dialog; AutoISF history and logs when the algorithm is AUTO_ISF).
+    private val isfGestureDetector by lazy {
+        android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
+                isfDialogTextCached?.let { text -> activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.sensitivity), text) } }
+                return true
+            }
+
+            override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                showList3Dialog()
+                return true
+            }
+
+            override fun onLongPress(e: android.view.MotionEvent) {
+                if (activePlugin.activeAPS.algorithm.name != "AUTO_ISF") return
+                aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=REQUEST result=STARTED")
+                // The dialog writes and uploads AIV first, then starts logs from its cloud-completion
+                // callback. This guarantees AVLs/AVLf -> AVCs/AVCf -> LGsP ordering.
+                uiInteraction.runAutoISFHistoryDialog(childFragmentManager)
+            }
+        })
+    }
+
+    // List 3: local actions only (nothing is relayed to the loop phone, so it works the same on a client).
+    private fun showList3Dialog() {
+        val act = activity ?: return
+        val items = arrayOf("1. Clean graph")
+        androidx.appcompat.app.AlertDialog.Builder(act)
+            .setTitle("List 3")
+            .setItems(items) { _, _ ->
+                androidx.appcompat.app.AlertDialog.Builder(act)
+                    .setTitle("Clean graph")
+                    .setMessage("Hides SMB dose labels and BGL arrowheads on this phone and shows a plain solid green line.")
+                    .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+                        PointsWithLabelGraphSeries.showSmbLabels = false
+                        PointsWithLabelGraphSeries.basalToggleIndex = 2
+                        rxBus.send(EventRefreshOverview("cleanGraphList3", now = true))
+                    }
+                    .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showList3Dialog() }
+                    .setOnCancelListener { showList3Dialog() }
+                    .show()
+            }
+            .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel), null)
+            .show()
+    }
+
     private val basalGestureDetector by lazy {
         android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
@@ -3545,7 +3595,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     okDialogText.add(it)
                 }
             }
-            binding.infoLayout.asLayout.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.sensitivity), okDialogText.joinToString("\n")) } }
+            isfDialogTextCached = okDialogText.joinToString("\n")
 
         } else {
             binding.infoLayout.sensitivity.text =
@@ -3555,14 +3605,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.infoLayout.variableSensitivity.visibility = View.GONE
             binding.infoLayout.sensitivity.visibility = View.VISIBLE
         }
-        if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") {
-            binding.infoLayout.asLayout.setOnLongClickListener {
-                aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=REQUEST result=STARTED")
-                // The dialog writes and uploads AIV first, then starts logs from its cloud-completion
-                // callback. This guarantees AVLs/AVLf -> AVCs/AVCf -> LGsP ordering.
-                uiInteraction.runAutoISFHistoryDialog(childFragmentManager)
-                true
-            }
+        // Tap, double-tap (List 3) and long-press (AutoISF history) all go through one detector, created once.
+        binding.infoLayout.asLayout.setOnTouchListener { _, event ->
+            isfGestureDetector.onTouchEvent(event)
+            true
         }
     }
 
