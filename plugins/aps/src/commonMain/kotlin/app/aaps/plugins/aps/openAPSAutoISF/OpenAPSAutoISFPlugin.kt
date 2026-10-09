@@ -398,7 +398,7 @@ open class OpenAPSAutoISFPlugin(
         var maxBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetHighMgdl(), 0.1), InterfacesStrings.profile_high_target, HardLimits.LIMIT_MAX_BG)
         var targetBg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), CoreUiStrings.temp_target_value, HardLimits.LIMIT_TARGET_BG)
         var isTempTarget = false
-        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
+        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.takeIf { !isCodedControlTt(it) }?.let { tempTarget ->
             isTempTarget = true
             minBg = hardLimits.verifyHardLimits(tempTarget.lowTarget, CoreUiStrings.temp_target_low_target, HardLimits.LIMIT_TEMP_MIN_BG)
             maxBg = hardLimits.verifyHardLimits(tempTarget.highTarget, CoreUiStrings.temp_target_high_target, HardLimits.LIMIT_TEMP_MAX_BG)
@@ -1131,7 +1131,7 @@ open class OpenAPSAutoISFPlugin(
         val high_temptarget_raises_sensitivity = exerciseMode || highTemptargetRaisesSensitivity
         var target_bg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), CoreUiStrings.temp_target_value, HardLimits.LIMIT_TARGET_BG)
         var isTempTarget = false
-        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
+        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.takeIf { !isCodedControlTt(it) }?.let { tempTarget ->
             isTempTarget = true
             target_bg = hardLimits.verifyHardLimits(tempTarget.target(), CoreUiStrings.temp_target_value, HardLimits.LIMIT_TEMP_TARGET_BG)
         }
@@ -5896,9 +5896,20 @@ open class OpenAPSAutoISFPlugin(
     //    compression warning (CompSusp) was raised within the last 60 minutes (then nothing is written at all), LowBG = 50recent,
     //    AlarmHypo = AlarmRecent and the saved alarm time (the original alarm time) are written together. A second alarm in the 15
     //    minutes does not restart the wait, and a wait older than 2 hours (the app was off) is dropped.
+    //  - Steps limit (2026-10-09, per explicit request): the AlarmHypo = AlarmRecent state alone (not LowBG, not the alarm time, not the SMS) is
+    //    not set when the 60 minute steps at the time of the alarm were over 200.
     //  - On those phones an alarm inside the old blocked window (01:00-07:00, or 60 minute steps over 1000) is marked like any other and
     //    the window no longer clears AlarmRecent or stops the role revert; only the alarm SMS is withheld there.
     private fun virtualAlarmPhone(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
+
+    // A List 1 / List 2 relay code travels as a Custom temp target of 5 minutes or less, with low = high, between 5.0 and 5.3 mmol (either
+    // scale: 18.0 from 3426 or 18.01559). It is only a message, so the loop does not treat it as a real temp target (2026-10-09, per
+    // explicit request). Otherwise its first decimal would decide SMB for the cycle it is active through the even/odd rule (5.050-5.149
+    // reads as 5.1, odd, so SMB switches off), and the sensitivity modes would also react to it. The code handlers still read it from the
+    // database as before.
+    private fun isCodedControlTt(tt: TT): Boolean =
+        tt.reason == TT.Reason.CUSTOM && tt.duration <= 5 * 60_000L && tt.lowTarget == tt.highTarget &&
+            tt.lowTarget in 5.0 * 18.0..5.3 * 18.02
 
     // The alarm SMS (2026-10-09, per explicit request; the same as 3426): the general broadcast plus this alarm's own numbers. Not sent
     // between 22:00 and 07:30, nor above 6.0 mmol, nor with more than 9 g of carbs on board; on the virtual-pump phone also not sent
@@ -5931,21 +5942,24 @@ open class OpenAPSAutoISFPlugin(
 
     // Records a real hypo alarm. The mild meal-leftover floor then stays at 7.0 mmol/L for 60 minutes.
     // LowBG becomes 50recent, which also keeps the night FastRise skip closed. Written together with the saved alarm time.
-    private fun applyAlarmHypoState(alarmAt: Long) {
+    private fun applyAlarmHypoState(alarmAt: Long, setAlarmState: Boolean) {
         preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, alarmAt)
         val store = states()
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return
         if (store.hasStateValues("LowBG")) store.setState("LowBG", "50recent")
-        if (store.hasStateValues("AlarmHypo")) store.setState("AlarmHypo", "AlarmRecent")
+        if (setAlarmState && store.hasStateValues("AlarmHypo")) store.setState("AlarmHypo", "AlarmRecent")
     }
 
     // At the alarm: written at once on other phones; on the virtual phone only the wait is started (it never restarts).
-    private fun markHypoAlarm(now: Long) {
+    private suspend fun markHypoAlarm(now: Long) {
         if (!virtualAlarmPhone()) {
-            applyAlarmHypoState(now)
+            applyAlarmHypoState(now, setAlarmState = true)
             return
         }
-        if (preferences.get(LongNonKey.ApsAutoIsfAlarmStatePendingAt) == 0L) preferences.put(LongNonKey.ApsAutoIsfAlarmStatePendingAt, now)
+        if (preferences.get(LongNonKey.ApsAutoIsfAlarmStatePendingAt) == 0L) {
+            preferences.put(LongNonKey.ApsAutoIsfAlarmStatePendingAt, now)
+            preferences.put(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked, if (steps60(now) > 200) 1L else 0L)
+        }
     }
 
     private fun compressionWarningWithinHour(now: Long): Boolean {
@@ -5961,8 +5975,13 @@ open class OpenAPSAutoISFPlugin(
             now - pendingAt > 2 * 60 * 60_000L -> aapsLogger.info(LTag.APS, "Hypo alarm wait dropped: older than 2 hours")
             compressionWarningWithinHour(now)  -> aapsLogger.info(LTag.APS, "Hypo alarm states not set: a compression warning was raised within the last 60 minutes")
             else                               -> {
-                applyAlarmHypoState(pendingAt)
-                aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm")
+                val stepsBlocked = preferences.get(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked) != 0L
+                applyAlarmHypoState(pendingAt, setAlarmState = !stepsBlocked)
+                aapsLogger.info(
+                    LTag.APS,
+                    if (stepsBlocked) "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 at the alarm"
+                    else "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm"
+                )
             }
         }
     }

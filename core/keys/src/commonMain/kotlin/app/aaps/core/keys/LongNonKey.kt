@@ -97,6 +97,8 @@ enum class LongNonKey(
     ApsAutoIsfCompressionTriggerAt("autoisf_compression_trigger_at", 0L, exportable = false),
     // When a hypo alarm is waiting to set the AlarmHypo = AlarmRecent state 15 minutes later (virtual-pump phone only), 0 when none. Internal only.
     ApsAutoIsfAlarmStatePendingAt("autoisf_alarm_state_pending_at", 0L, exportable = false),
+    // 1 when the 60 minute steps at the time of that alarm were over 200, so the AlarmHypo state is not to be set for it. Internal only.
+    ApsAutoIsfAlarmStateStepsBlocked("autoisf_alarm_state_steps_blocked", 0L, exportable = false),
     ApsAutoIsfCompressionTriggerLevelTenths("autoisf_compression_trigger_level_tenths", 0L, exportable = false),
 
     // Profile-switch time already used as a Set-role duration. Local only.
