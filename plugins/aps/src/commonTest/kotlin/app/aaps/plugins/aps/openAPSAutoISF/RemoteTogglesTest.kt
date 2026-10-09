@@ -105,6 +105,8 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.LOCATION_THIS_PHONE, remoteToggleCode(mgdl(5.204)))
         assertEquals(RemoteToggleCode.LIVE_STEPS, remoteToggleCode(mgdl(5.206)))
         assertEquals(RemoteToggleCode.LIVE_MJ_STATE, remoteToggleCode(mgdl(5.236)))
+        assertEquals(RemoteToggleCode.ALARM_HYPO_SET, remoteToggleCode(mgdl(5.240)))
+        assertEquals(RemoteToggleCode.ALARM_HYPO_CLEAR, remoteToggleCode(mgdl(5.242)))
         assertEquals(RemoteToggleCode.INSULIN_TOTALS, remoteToggleCode(mgdl(5.232)))
         assertEquals(RemoteToggleCode.INSTALL_APK, remoteToggleCode(mgdl(5.200)))
         assertEquals(RemoteToggleCode.STAGE_APK, remoteToggleCode(mgdl(5.202)))

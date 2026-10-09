@@ -3470,6 +3470,8 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_THIS_PHONE -> RunMark.LOCATION_THIS_PHONE
             RemoteToggleCode.LIVE_STEPS -> RunMark.LIVE_STEPS
             RemoteToggleCode.LIVE_MJ_STATE -> RunMark.LIVE_MJ_STATE
+            RemoteToggleCode.ALARM_HYPO_SET -> RunMark.ALARM_HYPO_SET
+            RemoteToggleCode.ALARM_HYPO_CLEAR -> RunMark.ALARM_HYPO_CLEAR
             RemoteToggleCode.INSULIN_TOTALS -> RunMark.INSULIN_TOTALS
             RemoteToggleCode.LOOP_INTERVAL -> RunMark.LOOP_INTERVAL
             RemoteToggleCode.STAGE_APK -> RunMark.STAGE_APK
@@ -3804,6 +3806,8 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.LOCATION_SMS -> toggleBool(BooleanKey.AutomationCodedLocationsEnabled, "Location texts", "Loc")
             RemoteToggleCode.LOCATION_THIS_PHONE -> setLocationSmsPhone()
             RemoteToggleCode.LIVE_STEPS -> toggleBool(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, "Stepcount import from remote main AAPS phone", "LSt")
+            RemoteToggleCode.ALARM_HYPO_SET -> setAlarmHypoStateByHand(true)
+            RemoteToggleCode.ALARM_HYPO_CLEAR -> setAlarmHypoStateByHand(false)
             RemoteToggleCode.LIVE_MJ_STATE -> toggleBool(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, "MJ state copy from the loop phone", "LMJ")
             RemoteToggleCode.INSULIN_TOTALS -> toggleBool(BooleanKey.ApsAutoIsfShowInsulinTotals, "Insulin totals row", "ITt")
             RemoteToggleCode.LOOP_INTERVAL -> toggleBool(BooleanKey.ApsAutoIsfLoopEveryMinute, "Loop every minute (off = every 5 min)", "Lp1")
@@ -5901,6 +5905,23 @@ open class OpenAPSAutoISFPlugin(
     //  - On those phones an alarm inside the old blocked window (01:00-07:00, or 60 minute steps over 1000) is marked like any other and
     //    the window no longer clears AlarmRecent or stops the role revert; only the alarm SMS is withheld there.
     private fun virtualAlarmPhone(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
+
+    // List 1 "Hypo alarm state" rows (2026-10-09, per explicit request): 5.240 sets AlarmHypo = AlarmRecent and writes the saved alarm time
+    // (now, or the stale-state clear would remove it next loop); 5.242 sets NoAlarmRecent. A clear also stops a waiting hypo alarm from
+    // setting the state 15 minutes later (its LowBG and alarm time still follow).
+    private suspend fun setAlarmHypoStateByHand(set: Boolean) {
+        val store = states()
+        if (!preferences.get(BooleanKey.AutomationStatesEnabled) || !store.hasStateValues("AlarmHypo")) return
+        if (set) {
+            store.setState("AlarmHypo", "AlarmRecent")
+            preferences.put(LongNonKey.ApsAutoIsfLastAlarmHypoAt, dateUtil.now())
+        } else {
+            store.setState("AlarmHypo", "NoAlarmRecent")
+            if (preferences.get(LongNonKey.ApsAutoIsfAlarmStatePendingAt) > 0L) preferences.put(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked, 1L)
+        }
+        sendAutoSms("AlarmHypo state set by List 1: ${if (set) "AlarmRecent" else "NoAlarmRecent"}")
+        carePortalNote(if (set) "AHSet" else "AHClr")
+    }
 
     // A List 1 / List 2 relay code travels as a Custom temp target of 5 minutes or less, with low = high, between 5.0 and 5.3 mmol (either
     // scale: 18.0 from 3426 or 18.01559). It is only a message, so the loop does not treat it as a real temp target (2026-10-09, per

@@ -150,6 +150,8 @@ internal object RunMark {
     const val LOCATION_THIS_PHONE = "LocationSmsThisPhoneTT"
     const val LIVE_STEPS = "LiveStepsOnVirtualToggleTT"
     const val LIVE_MJ_STATE = "LiveMjStateOnVirtualToggleTT"
+    const val ALARM_HYPO_SET = "AlarmHypoStateSetTT"
+    const val ALARM_HYPO_CLEAR = "AlarmHypoStateClearTT"
     const val INSULIN_TOTALS = "InsulinTotalsToggleTT"
     const val LOOP_INTERVAL = "LoopIntervalToggleTT"
     const val SETTINGS_EXPORT_ACCESS = "SettingsExportLocalAccessSms"

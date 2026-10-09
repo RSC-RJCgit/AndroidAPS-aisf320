@@ -98,6 +98,8 @@ internal enum class RemoteToggleCode {
     LOCATION_THIS_PHONE,
     LIVE_STEPS,
     LIVE_MJ_STATE,
+    ALARM_HYPO_SET,
+    ALARM_HYPO_CLEAR,
     INSULIN_TOTALS,
     LOOP_INTERVAL,
     STAGE_APK,
@@ -196,6 +198,8 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.204, 0.0001) -> RemoteToggleCode.LOCATION_THIS_PHONE
     ttNear(ttMgdl, 5.206, 0.0001) -> RemoteToggleCode.LIVE_STEPS
     ttNear(ttMgdl, 5.236, 0.0001) -> RemoteToggleCode.LIVE_MJ_STATE
+    ttNear(ttMgdl, 5.240, 0.0001) -> RemoteToggleCode.ALARM_HYPO_SET
+    ttNear(ttMgdl, 5.242, 0.0001) -> RemoteToggleCode.ALARM_HYPO_CLEAR
     ttNear(ttMgdl, 5.232, 0.0001) -> RemoteToggleCode.INSULIN_TOTALS
     ttNear(ttMgdl, 5.234, 0.0001) -> RemoteToggleCode.LOOP_INTERVAL
     ttNear(ttMgdl, 5.200, 0.0001) -> RemoteToggleCode.INSTALL_APK

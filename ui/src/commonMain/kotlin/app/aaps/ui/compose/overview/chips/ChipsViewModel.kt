@@ -471,6 +471,8 @@ class ChipsViewModel(
             List1Row("Re-pick coded profiles", "Standard, Low, Steroid", 0.0, null, pickProfiles = true),
             List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
             List1Row("Sensor age code", onOff(preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)), 5.156, null),
+            List1Row("Hypo alarm state: set AlarmRecent", "sets the alarm time to now", 5.240, null),
+            List1Row("Hypo alarm state: clear", "NoAlarmRecent", 5.242, null),
         ))
     }
 
