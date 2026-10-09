@@ -10393,17 +10393,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     private fun alarmSmsWithheld(now: Long): Boolean = deferAlarmHypoState() && hypoDropBlockedAt(now)
 
-    // At the alarm: written at once on other phones; on the virtual phone only the wait is started (it never restarts).
+    // 2026-10-09, per explicit request: a low that follows walking must not set the AlarmHypo state (on every phone). Steps over 200 in the last
+    // hour, or over 400 in the last 3 hours (400 is the 3 hour limit the SMB/rescue checks already use), at the moment of the alarm.
+    private fun alarmStateStepsBlocked(): Boolean = recentSteps60Minutes > 200 || recentSteps180Minutes > 400
+
+    // At the alarm: written at once on other phones (AlarmHypo only when the steps allow it); on the virtual phone only the wait is started
+    // (it never restarts).
     private fun markHypoAlarm(now: Long) {
         if (!deferAlarmHypoState()) {
             setAutomationState("LowBG", "50recent")
-            setAutomationState("AlarmHypo", "AlarmRecent")
+            if (!alarmStateStepsBlocked()) setAutomationState("AlarmHypo", "AlarmRecent")
             preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, now)
             return
         }
         if (preferences.get(LongKey.ApsAutoIsfAlarmStatePendingAt) == 0L) {
             preferences.put(LongKey.ApsAutoIsfAlarmStatePendingAt, now)
-            preferences.put(LongKey.ApsAutoIsfAlarmStateStepsBlocked, if (recentSteps60Minutes > 200) 1L else 0L)
+            preferences.put(LongKey.ApsAutoIsfAlarmStateStepsBlocked, if (alarmStateStepsBlocked()) 1L else 0L)
         }
     }
 
@@ -10420,7 +10425,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     setAutomationState("AlarmHypo", "AlarmRecent")
                     aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm")
                 } else {
-                    aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 at the alarm")
+                    aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 in 1 hour or over 400 in 3 hours at the alarm")
                 }
                 preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, pendingAt)
             }
