@@ -2186,7 +2186,7 @@ open class OpenAPSAutoISFPlugin(
             // marked at all (no saved time, no AlarmRecent or LowBG state), so nothing that reads the alarm can act on it.
             // The 15 minute run marks are still set, so this is evaluated and logged once per 15 minutes, not every loop.
             val blocked = !virtualAlarmPhone() && hypoTierDropBlocked(minuteOfDay, steps60(now))
-            if (!blocked) markHypoAlarm(now)
+            if (!blocked) markHypoAlarm(now, bg)
             if (hypo1) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo1Numbers)
             if (hypo2) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo2Numbers)
             // 2026-10-09, per explicit request (the same as 3426): the urgent alert and the graph marks. AlarmHypo1 gives H4 and AlarmHypo2
@@ -5973,18 +5973,19 @@ open class OpenAPSAutoISFPlugin(
 
     // 2026-10-09, per explicit request: a low that follows walking must not set the AlarmHypo state (on every phone). Steps over 200 in the last
     // hour, or over 400 in the last 3 hours (400 is the 3 hour limit the SMB/rescue checks already use), at the moment of the alarm.
-    private suspend fun alarmStateStepsBlocked(now: Long): Boolean = steps60(now) > 200 || steps180(now) > 400
+    // Also, 2026-10-09, per explicit request: the state is set only when glucose at the alarm is under 3.5 mmol/L (bg is mg/dL).
+    private suspend fun alarmStateBlocked(now: Long, bg: Double): Boolean = steps60(now) > 200 || steps180(now) > 400 || bg >= 3.5 * 18.0182
 
     // At the alarm: written at once on other phones (AlarmHypo only when the steps allow it); on the virtual phone only the wait is started
     // (it never restarts).
-    private suspend fun markHypoAlarm(now: Long) {
+    private suspend fun markHypoAlarm(now: Long, bg: Double) {
         if (!virtualAlarmPhone()) {
-            applyAlarmHypoState(now, setAlarmState = !alarmStateStepsBlocked(now))
+            applyAlarmHypoState(now, setAlarmState = !alarmStateBlocked(now, bg))
             return
         }
         if (preferences.get(LongNonKey.ApsAutoIsfAlarmStatePendingAt) == 0L) {
             preferences.put(LongNonKey.ApsAutoIsfAlarmStatePendingAt, now)
-            preferences.put(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked, if (alarmStateStepsBlocked(now)) 1L else 0L)
+            preferences.put(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked, if (alarmStateBlocked(now, bg)) 1L else 0L)
         }
     }
 
@@ -6005,7 +6006,7 @@ open class OpenAPSAutoISFPlugin(
                 applyAlarmHypoState(pendingAt, setAlarmState = !stepsBlocked)
                 aapsLogger.info(
                     LTag.APS,
-                    if (stepsBlocked) "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 in 1 hour or over 400 in 3 hours at the alarm"
+                    if (stepsBlocked) "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 in 1 hour or over 400 in 3 hours, or glucose 3.5 mmol or more, at the alarm"
                     else "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm"
                 )
             }

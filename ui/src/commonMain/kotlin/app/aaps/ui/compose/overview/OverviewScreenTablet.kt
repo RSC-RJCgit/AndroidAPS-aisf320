@@ -172,6 +172,7 @@ fun OverviewScreenTablet(
                             onIobChipClick = onIobChipClick,
                             onIobChipLongClick = graphViewModel::onIobIconLongPress,
                             onIobChipDoubleClick = chipsViewModel::openList1,
+                            onSensitivityChipDoubleClick = chipsViewModel::openList3,
                             commandsAllowed = commandsAllowed
                         )
                     }

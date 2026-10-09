@@ -68,6 +68,9 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** Marks a List 3 row that is carried out on this phone instead of being sent to the loop phone as a coded TT. */
+const val LOCAL_CLEAN_GRAPH = -42.0
+
 data class List1Row(
     val label: String,
     val current: String,
@@ -281,6 +284,27 @@ class ChipsViewModel(
 
     fun closeList2() {
         list2Open = false
+    }
+
+    // List 3 (2026-10-10, per explicit request): opened by a double-tap on the ISF chip. One row so far, Clean graph. Its actions are local to
+    // this phone (nothing is relayed to the loop phone), so they work the same on a client.
+    var list3Open by mutableStateOf(false)
+        private set
+
+    fun openList3() {
+        list3Open = true
+    }
+
+    fun closeList3() {
+        list3Open = false
+    }
+
+    fun list3Rows(): List<List1Row> = numbered(listOf(
+        List1Row("Clean graph", "hides SMB labels and arrows, plain green line", LOCAL_CLEAN_GRAPH, null),
+    ))
+
+    fun applyList3(code: Double) {
+        if (code == LOCAL_CLEAN_GRAPH) preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, true)
     }
 
     // KMP client relay (2026-10-08, per explicit request): a client has no AutoISF loop of its own, so a List 1 or List 2 tap
