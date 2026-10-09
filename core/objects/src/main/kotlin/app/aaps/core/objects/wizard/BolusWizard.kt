@@ -6,6 +6,7 @@ import android.text.Spanned
 import android.view.View
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
@@ -1407,6 +1408,14 @@ class BolusWizard @Inject constructor(
         ).blockingGet()
     }
 
+    // 2026-10-10, per explicit request: a zero-dose row carries a pump id (its own timestamp, with the active pump's type and serial).
+    // The Nightscout sync only picks boluses that have a pump id (BolusDao.getNextModifiedOrNewAfterExclude), so without one the
+    // row stayed on this phone and the Client never showed it.
+    private fun zeroBolusIds(timestamp: Long): IDs {
+        val pump = activePlugin.activePump
+        return IDs(pumpId = timestamp, pumpType = pump.model(), pumpSerial = pump.serialNumber())
+    }
+
     private fun cancelDoseNote(amount: Double, reason: String, label: String? = null, iobBaseline: Double? = null) {
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
@@ -1425,7 +1434,7 @@ class BolusWizard @Inject constructor(
         if (label != null && iobBaseline != null) {
             val liveIob = currentTotalIob()
             val calculation = followUpCalculation(dateUtil.now(), label, amount, iobBaseline, liveIob, 0.0, "Cancelled: $reason")
-            val cancelledBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = "$label: cancelled ($reason)")
+            val cancelledBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = "$label: cancelled ($reason)", ids = zeroBolusIds(calculation.timestamp))
             persistenceLayer.insertOrUpdateBolus(
                 cancelledBolus, Action.BOLUS,
                 if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
@@ -1470,7 +1479,7 @@ class BolusWizard @Inject constructor(
     // amount was zero.
     private fun insertZeroDoseTreatment(label: String, iobIncrease: Double, calculation: BCR) {
         val zeroNote = "$label: 0U (IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U)"
-        val zeroBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = zeroNote)
+        val zeroBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = zeroNote, ids = zeroBolusIds(calculation.timestamp))
         val source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog
         persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, source, zeroNote).blockingGet()
         persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
