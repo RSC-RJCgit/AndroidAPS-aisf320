@@ -41,10 +41,10 @@ class CompressionDetectorTest {
     }
 
     @Test fun `a drop the insulin on board explains is not suspected`() {
-        // 20 mg/dL in 5 minutes against 10 explained: only twice, the bar is three times.
-        assertThat(CompressionDetector.suspect(series(drop()), explainedFall5Mgdl = 10.0)).isNull()
-        // Against 6 explained it is more than three times.
-        assertThat(CompressionDetector.suspect(series(drop()), explainedFall5Mgdl = 6.0)).isNotNull()
+        // 20 mg/dL in 5 minutes against 17 explained: under 1.25 times, so the insulin accounts for it.
+        assertThat(CompressionDetector.suspect(series(drop()), explainedFall5Mgdl = 17.0)).isNull()
+        // Against 10 explained it is 2 times, above the 1.25 bar.
+        assertThat(CompressionDetector.suspect(series(drop()), explainedFall5Mgdl = 10.0)).isNotNull()
     }
 
     @Test fun `a drop at any glucose level counts`() {

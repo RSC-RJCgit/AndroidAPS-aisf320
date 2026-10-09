@@ -5534,6 +5534,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("SAC${if (newState) "On" else "Off"}")
             markRun("SensorAgeCodeToggleTT")
         }
+        applyAlarmHypoStateTT()
 
         // Client-only relay codes for the basal-icon direct action menu. On the pump phone these run
         // the full Kotlin actions; pump/Virtual selections do not create these TTs at all.
@@ -10358,6 +10359,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     //    not set when the 60 minute steps at the time of the alarm were over 200.
     //  - On those phones an alarm inside the old blocked window (01:00-07:00, or 60 minute steps over 1000) is marked like any other and
     //    the window no longer clears AlarmRecent or stops the role revert; only the alarm SMS is withheld there.
+    // List 1 "Hypo alarm state (manual)" (2026-10-09, per explicit request): 5.240 sets AlarmHypo = AlarmRecent and writes the saved alarm time
+    // (now, or the stale-state clear would remove it next loop); 5.242 sets NoAlarmRecent. Kept out of invoke() (64KB method limit). A clear also
+    // stops a waiting hypo alarm from setting the state 15 minutes later (its LowBG and alarm time still follow).
+    private fun applyAlarmHypoStateTT() {
+        if (readyToRun("AlarmHypoStateSetTT", 2) && activeTtNear(5.240, 0.0001)) {
+            cancelCurrentTempTarget()
+            setAutomationState("AlarmHypo", "AlarmRecent")
+            preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, dateUtil.now())
+            sendSms("AlarmHypo state set by List 1: AlarmRecent")
+            addCarePortalNote("AHSet")
+            markRun("AlarmHypoStateSetTT")
+        }
+        if (readyToRun("AlarmHypoStateClearTT", 2) && activeTtNear(5.242, 0.0001)) {
+            cancelCurrentTempTarget()
+            setAutomationState("AlarmHypo", "NoAlarmRecent")
+            if (preferences.get(LongKey.ApsAutoIsfAlarmStatePendingAt) > 0L) preferences.put(LongKey.ApsAutoIsfAlarmStateStepsBlocked, 1L)
+            sendSms("AlarmHypo state cleared by List 1: NoAlarmRecent")
+            addCarePortalNote("AHClr")
+            markRun("AlarmHypoStateClearTT")
+        }
+    }
+
     private fun deferAlarmHypoState(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
 
     private fun compressionWarningWithinHour(now: Long): Boolean {

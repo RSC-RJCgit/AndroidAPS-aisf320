@@ -2549,7 +2549,21 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             "Tog UKFset1 (Virtual live comparison) on/off", 5.152,
             currentValue = { "Current: ${if (preferences.get(BooleanKey.FslUseUkfSmoothing)) "ON" else "OFF"}" }
         ),
-        TtCode.Single("Run SensorAge code on/off", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" })
+        TtCode.Single("Run SensorAge code on/off", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" }),
+        // 2026-10-09, per explicit request: sets or clears the AlarmHypo state by hand. Setting also writes the saved alarm time (now),
+        // because the stale-state clear removes AlarmRecent whose alarm time is missing or old. Relays 5.240 (set) and 5.242 (clear).
+        TtCode.Action("Hypo alarm state (manual)") {
+            val current = if (config.AAPSCLIENT) mirroredListSetting("automation_state_AlarmHypo")
+            else "Current: ${automationStateService.getState("AlarmHypo").ifEmpty { "unset" }}"
+            val options = arrayOf("AlarmRecent (set)", "NoAlarmRecent (clear)")
+            val codes = doubleArrayOf(5.240, 5.242)
+            androidx.appcompat.app.AlertDialog.Builder(act)
+                .setTitle("Hypo alarm state (manual)\n$current")
+                .setItems(options) { _, which -> applyTtControl(codes[which], origin = "List 1 hypo alarm state") }
+                .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
+                .setOnCancelListener { showTtCodesListDialog() }
+                .show()
+        }
         // Graph toggle entries (UKF1 + Graph5 only; UKF2/UKF3 removed 2026-09-02) live in list2
         // (basal rate icon), not list1 (this one, IOB icon).
     )
