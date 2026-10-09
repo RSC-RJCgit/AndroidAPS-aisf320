@@ -54,9 +54,9 @@ import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
-import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.isLandscape
+import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.icons.IcProfile
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState

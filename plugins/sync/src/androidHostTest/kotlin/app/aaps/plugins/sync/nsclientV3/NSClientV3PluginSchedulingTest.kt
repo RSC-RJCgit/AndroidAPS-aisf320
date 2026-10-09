@@ -4,11 +4,11 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.L
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.keys.BooleanKey
+import app.aaps.plugins.sync.SyncStringsValues
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadStep
-import app.aaps.plugins.sync.SyncStringsValues
 import app.aaps.shared.tests.TestBaseWithProfile
 import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat

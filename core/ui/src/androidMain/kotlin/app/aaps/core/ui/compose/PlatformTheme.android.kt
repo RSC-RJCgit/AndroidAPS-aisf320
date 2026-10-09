@@ -5,8 +5,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.Modifier
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ActivityInfo
-import android.text.format.DateFormat
 import android.content.res.Configuration
+import android.text.format.DateFormat
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect

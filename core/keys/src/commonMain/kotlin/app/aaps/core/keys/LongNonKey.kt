@@ -21,6 +21,12 @@ enum class LongNonKey(
      */
     ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L, exportable = false),
     LastCleanupRun("last_cleanup_run", 0L),
+    /**
+     * The time before which the last automatic cleanup deleted records. `PeriodicMaintenance` lets
+     * it move forward only a little per pass, so a forward clock jump cannot delete the whole
+     * history at once (#5210).
+     */
+    LastCleanupCutoff("last_cleanup_cutoff", 0L),
 
     // When the six-hour AutoISF history files were last written. Local only.
     LastAutoIsfHistoryExport("last_autoisf_history_export", 0L, exportable = false),

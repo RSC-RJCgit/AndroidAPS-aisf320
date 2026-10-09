@@ -64,9 +64,9 @@ import app.aaps.plugins.main.MainStrings
 import app.aaps.plugins.main.iob.iobCobCalculator.data.AutosensDataStoreObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -120,7 +120,8 @@ class IobCobCalculatorPlugin(
         it.pinGridToFiveMinutes = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
     }
 
-    private val dataLock = AapsLock()
+    // Guards iobTable, every read and every write. Internal only so a test can hold it.
+    internal val dataLock = AapsLock()
 
     @OptIn(FlowPreview::class)
     override suspend fun onStart() {
@@ -314,7 +315,10 @@ class IobCobCalculatorPlugin(
     override suspend fun calculateFromTreatmentsAndTemps(toTime: Long, profile: EffectiveProfile): IobTotal {
         val now = dateUtil.now()
         val time = ads.roundUpTime(toTime)
-        val cacheHit = iobTable[time]
+        // Under the same lock as every write. iobTable is a plain LongSparseArray, and the writers
+        // (new BG, history change, clearCache) run on other threads: a read without the lock could
+        // see the arrays half compacted and return the IOB of another time, or throw (#5211).
+        val cacheHit = dataLock.withLock { iobTable[time] }
         if (time < now && cacheHit != null) {
             //og.debug(">>> calculateFromTreatmentsAndTemps Cache hit " + new Date(time).toLocaleString());
             return cacheHit

@@ -6184,7 +6184,6 @@ open class OpenAPSAutoISFPlugin(
         val newest = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 15 * 60 * 1000L, now, ascending = false)
             .firstOrNull() ?: return false
         return newest.sourceSensor == SourceSensor.LIBRE_2 ||
-            newest.sourceSensor == SourceSensor.LIBRE_2_NATIVE ||
             newest.sourceSensor == SourceSensor.LIBRE_3
     }
 

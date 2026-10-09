@@ -28,7 +28,6 @@ import kotlin.math.round
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.AdaptiveStep
 import app.aaps.core.graph.vico.Square
-import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.TherapyEventType
@@ -41,6 +40,7 @@ import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.core.interfaces.utils.DecimalFormatter
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState

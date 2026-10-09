@@ -19,7 +19,6 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.dst.DstHelper
 import app.aaps.core.interfaces.maintenance.AutomaticExport
 import app.aaps.core.interfaces.maintenance.Maintenance
-import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.core.interfaces.pump.PumpRate
 import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.queue.Command
@@ -27,6 +26,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventProfileChangeRequested
 import app.aaps.core.keys.LongNonKey
+import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import com.google.common.util.concurrent.ListenableFuture
@@ -389,7 +389,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
         worker.doWorkAndLog()
 
         // Assert – keeps ~6 months and stamps the run time
-        verify(persistenceLayer).cleanupDatabase(6 * 31, false)
+        verify(persistenceLayer).cleanupDatabase(now - T.days(6 * 31).msecs(), false)
         verify(preferences).put(LongNonKey.LastCleanupRun, now)
     }
 

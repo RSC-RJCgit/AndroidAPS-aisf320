@@ -7,19 +7,15 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
-
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
+import app.aaps.core.objects.workflow.WorkOutcome
 import app.aaps.core.utils.safeGetLongAllowNull
 import app.aaps.core.utils.safeGetStringAllowNull
-import app.aaps.core.objects.workflow.WorkOutcome
-
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import app.aaps.plugins.sync.nsclientV3.NsIncomingDataProcessor
 import dev.zacsweers.metro.Inject
-
-import kotlin.math.max
-
 import kotlinx.serialization.json.JsonObject
+import kotlin.math.max
 
 @Inject
 class LoadProfileStoreRunner(

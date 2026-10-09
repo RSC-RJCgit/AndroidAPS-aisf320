@@ -28,13 +28,13 @@ import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.notifications.AapsNotification
 import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.interfaces.pump.BolusProgressState
-import app.aaps.core.ui.compose.isLandscape
-import app.aaps.core.ui.compose.smallestScreenWidthDp
 import app.aaps.core.ui.compose.TABLET_MIN_SW_DP
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.pump.PumpActivityDialog
 import app.aaps.core.ui.compose.pump.PumpActivityFab
+import app.aaps.core.ui.compose.smallestScreenWidthDp
 import app.aaps.ui.compose.main.TempTargetChipState
 import app.aaps.ui.compose.manageSheet.ManageViewModel
 import app.aaps.ui.compose.notificationsSheet.NotificationBottomSheet
@@ -55,7 +55,7 @@ fun OverviewScreen(
     tempTargetProgress: Float,
     tempTargetReason: TT.Reason?,
     tempTargetRecordId: Long = 0,
-    runningMode: RM.Mode,
+    runningMode: RM.Mode?,
     runningModeText: String,
     runningModeRemaining: String,
     runningModeProgress: Float,
@@ -79,6 +79,7 @@ fun OverviewScreen(
     onAutoShowConsumed: () -> Unit,
     activeSceneState: ActiveSceneState? = null,
     sceneExpired: Boolean = false,
+    activeSceneChainTargetName: String? = null,
     onEndScene: () -> Unit = {},
     onDismissScene: () -> Unit = {},
     endSceneEnabled: Boolean = true,
@@ -164,6 +165,7 @@ fun OverviewScreen(
                 paddingValues = paddingValues,
                 activeSceneState = activeSceneState,
                 sceneExpired = sceneExpired,
+                activeSceneChainTargetName = activeSceneChainTargetName,
                 onEndScene = onEndScene,
                 onDismissScene = onDismissScene,
                 endSceneEnabled = endSceneEnabled,
@@ -200,6 +202,7 @@ fun OverviewScreen(
                     paddingValues = paddingValues,
                     activeSceneState = activeSceneState,
                     sceneExpired = sceneExpired,
+                    activeSceneChainTargetName = activeSceneChainTargetName,
                     onEndScene = onEndScene,
                     onDismissScene = onDismissScene,
                     endSceneEnabled = endSceneEnabled,

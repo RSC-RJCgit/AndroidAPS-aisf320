@@ -49,7 +49,9 @@ import app.aaps.database.entities.TotalDailyDose
 import app.aaps.database.entities.UserEntry
 import app.aaps.database.entities.VersionChange
 
-const val DATABASE_VERSION = 39
+// 40, not upstream's 36: this branch already used 36 to 39 for the AutoISF columns. Upstream's own step 35 to 36 (a data-only
+// rewrite of the glucose source sensor names, same schema) runs here as step 39 to 40.
+const val DATABASE_VERSION = 40
 
 @Database(
     version = DATABASE_VERSION,
