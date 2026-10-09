@@ -52,6 +52,36 @@ class CompressionDetectorTest {
         assertThat(CompressionDetector.suspect(series(drop(flat = 110.0)))).isNotNull()
     }
 
+
+    /** 15 flat, then [netFall] mg/dL of slow decline over 30 minutes, then [perMinute] per minute for 5 minutes. */
+    private fun slideThenDrop(netFall: Double, perMinute: Double, start: Double = 160.0): List<Double> =
+        List(15) { start } + List(30) { start - netFall * (it + 1) / 30.0 } + List(5) { start - netFall - perMinute * (it + 1) }
+
+    @Test fun `a steep drop on top of a slow decline is suspected by lane B`() {
+        // The 8 Oct 20:40 shape: 9.3 to 7.1 mmol over the half hour before, then 1.5 mmol in 5 minutes.
+        val s = CompressionDetector.suspect(series(slideThenDrop(netFall = 34.0, perMinute = 6.0)))
+        assertThat(s).isNotNull()
+        assertThat(s!!.steepenedLane).isTrue()
+    }
+
+    @Test fun `lane B needs 1 4 mmol`() {
+        assertThat(CompressionDetector.suspect(series(slideThenDrop(netFall = 34.0, perMinute = 4.0)))).isNull()
+    }
+
+    @Test fun `lane B needs the half hour before to have fallen no more than 2 5 mmol`() {
+        assertThat(CompressionDetector.suspect(series(slideThenDrop(netFall = 60.0, perMinute = 6.0)))).isNull()
+    }
+
+    @Test fun `lane B needs twice the steepest fall of the half hour before`() {
+        // A 20 mg/dL step down in 5 minutes, then flat, then a 30 mg/dL drop: 30 is under twice 20.
+        val stepped = List(10) { 160.0 } + List(5) { 160.0 - 4.0 * (it + 1) } + List(25) { 140.0 } + List(5) { 140.0 - 6.0 * (it + 1) }
+        assertThat(CompressionDetector.suspect(series(stepped))).isNull()
+    }
+
+    @Test fun `a flat spell is lane A`() {
+        assertThat(CompressionDetector.suspect(series(drop()))!!.steepenedLane).isFalse()
+    }
+
     @Test fun `a repeating swing is not suspected`() {
         // 8 Oct 12:00-12:25 shape: about 16 minutes between troughs, 1.5 mmol each way.
         val swing = List(90) { 90.0 + 14.0 * sin(2 * PI * it / 16.0) }

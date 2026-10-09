@@ -10261,9 +10261,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // of day -- nothing here changes dosing, tiers, profiles or marking. See CompressionDetector for the rules. Three stages,
     // all on the virtual-pump phone only (Live and Client check and record nothing):
     //  1. TRIGGER (silent, log line only): on the UKF-smoothed series, a SUDDEN drop: >= 1.0 mmol within the last 5 minutes,
-    //     out of a flat 30 minutes (swing <= 0.6 mmol), at least 3 times what the insulin on board explains over those 5
-    //     minutes (BGI), with no meal, bolus or SMB in the last 30 minutes. No level cap. A slow slide never triggers it
-    //     (2026-10-08, 23:03 and 23:04: a 40-minute slide at -0.15 mmol per 5 minutes fired the earlier rule).
+    //     out of a flat 30 minutes (swing <= 0.6 mmol) -- or, lane B, >= 1.4 mmol within 5 minutes and at least twice the
+    //     steepest 5-minute fall of the half hour before (which fell <= 2.5 mmol in all), for a drop on top of a slow decline --
+    //     at least 3 times what the insulin on board explains over those 5 minutes (BGI), with no meal, bolus or SMB in the
+    //     last 30 minutes. No level cap. A slow slide never triggers it (2026-10-08, 23:03 and 23:04: a 40-minute slide at
+    //     -0.15 mmol per 5 minutes fired the earlier rule).
     //  2. "CompSusp" note and alert, only once the trigger is CONFIRMED: 15 minutes later the value is still down (not back
     //     above the level the drop ended at plus 0.3 mmol) and has reached 6.0 mmol or under within 30 minutes of the trigger.
     //     A climb back, or 30 minutes without both, drops the trigger with no note and no alert.
@@ -10332,7 +10334,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 aapsLogger.info(
                     LTag.APS,
                     "Compression trigger: ${String.format("%.1f", s.fromMgdl / 18.016)} to ${String.format("%.1f", s.toMgdl / 18.016)} mmol in ${s.fallMinutes} min, " +
-                        "insulin explains ${String.format("%.2f", s.explainedMgdl / 18.016)}, fall over 30 min ${String.format("%.1f", s.fell30Mgdl / 18.016)}; waiting 15 min (no note yet)"
+                        "insulin explains ${String.format("%.2f", s.explainedMgdl / 18.016)}, fall over 30 min ${String.format("%.1f", s.fell30Mgdl / 18.016)}; waiting 15 min (no note yet)${if (s.steepenedLane) ", lane B (steepening on a slow decline)" else ""}"
                 )
             }
         }
