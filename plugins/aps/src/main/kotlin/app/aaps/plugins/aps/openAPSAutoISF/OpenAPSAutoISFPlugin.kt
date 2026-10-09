@@ -2805,6 +2805,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Returns the active TT's lowTarget in mg/dL, or null if no TT is active.
     private fun activeTtMgdl(): Double? = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.lowTarget
 
+    // A List 1 / List 2 relay code travels as a Custom temp target of 5 minutes or less, with low = high, between 5.0 and 5.3 mmol. It is
+    // only a message, so the loop does not treat it as a real temp target (2026-10-09, per explicit request). Otherwise its first decimal
+    // would decide SMB for the cycle it is active through the even/odd rule (5.050-5.149 reads as 5.1, odd, so SMB switches off), and the
+    // sensitivity modes and the activity monitor would also react to it. The code handlers still read it from the database as before.
+    private fun isCodedControlTt(tt: TT): Boolean =
+        tt.reason == TT.Reason.CUSTOM && tt.duration <= T.mins(5).msecs() && tt.lowTarget == tt.highTarget &&
+            tt.lowTarget in mmolToMgdl(5.0)..mmolToMgdl(5.3)
+
     // Returns the active TT's own creation timestamp (TT.timestamp, ms), or null if no TT is active.
     // Used for exact-identity checks (e.g. bmildOwnFiveTtActive()) where matching on value alone would
     // also match an unrelated TT that happens to share the same target.
@@ -3588,7 +3596,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         var maxBg = hardLimits.verifyHardLimits(Round.roundTo(profile.getTargetHighMgdl(), 0.1), app.aaps.core.ui.R.string.profile_high_target, HardLimits.LIMIT_MAX_BG[0], HardLimits.LIMIT_MAX_BG[1])
         var targetBg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TARGET_BG[0], HardLimits.LIMIT_TARGET_BG[1])
         var isTempTarget = false
-        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
+        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.takeIf { !isCodedControlTt(it) }?.let { tempTarget ->
             isTempTarget = true
             minBg = hardLimits.verifyHardLimits(tempTarget.lowTarget, app.aaps.core.ui.R.string.temp_target_low_target, HardLimits.LIMIT_TEMP_MIN_BG[0], HardLimits.LIMIT_TEMP_MIN_BG[1])
             maxBg = hardLimits.verifyHardLimits(tempTarget.highTarget, app.aaps.core.ui.R.string.temp_target_high_target, HardLimits.LIMIT_TEMP_MAX_BG[0], HardLimits.LIMIT_TEMP_MAX_BG[1])
@@ -10346,6 +10354,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     //    compression warning (CompSusp) was raised within the last 60 minutes (then nothing is written at all), LowBG = 50recent,
     //    AlarmHypo = AlarmRecent and the saved alarm time (the original alarm time) are written together. A second alarm in the 15
     //    minutes does not restart the wait, and a wait older than 2 hours (the app was off) is dropped.
+    //  - Steps limit (2026-10-09, per explicit request): the AlarmHypo = AlarmRecent state alone (not LowBG, not the alarm time, not the SMS) is
+    //    not set when the 60 minute steps at the time of the alarm were over 200.
     //  - On those phones an alarm inside the old blocked window (01:00-07:00, or 60 minute steps over 1000) is marked like any other and
     //    the window no longer clears AlarmRecent or stops the role revert; only the alarm SMS is withheld there.
     private fun deferAlarmHypoState(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
@@ -10368,7 +10378,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, now)
             return
         }
-        if (preferences.get(LongKey.ApsAutoIsfAlarmStatePendingAt) == 0L) preferences.put(LongKey.ApsAutoIsfAlarmStatePendingAt, now)
+        if (preferences.get(LongKey.ApsAutoIsfAlarmStatePendingAt) == 0L) {
+            preferences.put(LongKey.ApsAutoIsfAlarmStatePendingAt, now)
+            preferences.put(LongKey.ApsAutoIsfAlarmStateStepsBlocked, if (recentSteps60Minutes > 200) 1L else 0L)
+        }
     }
 
     private fun applyDeferredAlarmHypoState(now: Long) {
@@ -10380,9 +10393,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             compressionWarningWithinHour(now)    -> aapsLogger.info(LTag.APS, "Hypo alarm states not set: a compression warning was raised within the last 60 minutes")
             else                                 -> {
                 setAutomationState("LowBG", "50recent")
-                setAutomationState("AlarmHypo", "AlarmRecent")
+                if (preferences.get(LongKey.ApsAutoIsfAlarmStateStepsBlocked) == 0L) {
+                    setAutomationState("AlarmHypo", "AlarmRecent")
+                    aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm")
+                } else {
+                    aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 at the alarm")
+                }
                 preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, pendingAt)
-                aapsLogger.info(LTag.APS, "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm")
             }
         }
     }
@@ -10731,7 +10748,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val high_temptarget_raises_sensitivity = exerciseMode || highTemptargetRaisesSensitivity
         var target_bg = hardLimits.verifyHardLimits(profile.getTargetMgdl(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TARGET_BG[0], HardLimits.LIMIT_TARGET_BG[1])
         var isTempTarget = false
-        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.let { tempTarget ->
+        persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())?.takeIf { !isCodedControlTt(it) }?.let { tempTarget ->
             isTempTarget = true
             target_bg = hardLimits.verifyHardLimits(tempTarget.target(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TEMP_TARGET_BG[0], HardLimits.LIMIT_TEMP_TARGET_BG[1])
         }

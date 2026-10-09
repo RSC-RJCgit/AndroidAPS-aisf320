@@ -133,6 +133,8 @@ enum class LongKey(
     ApsAutoIsfCompressionTriggerAt("autoisf_compression_trigger_at", 0, defaultedBySM = true),
     // When a hypo alarm is waiting to set the AlarmHypo = AlarmRecent state 15 minutes later (virtual-pump phone only), 0 when none. Internal only.
     ApsAutoIsfAlarmStatePendingAt("autoisf_alarm_state_pending_at", 0, defaultedBySM = true),
+    // 1 when the 60 minute steps at the time of that alarm were over 200, so the AlarmHypo state is not to be set for it. Internal only.
+    ApsAutoIsfAlarmStateStepsBlocked("autoisf_alarm_state_steps_blocked", 0, defaultedBySM = true),
     ApsAutoIsfCompressionTriggerLevelTenths("autoisf_compression_trigger_level_tenths", 0, defaultedBySM = true),
 
     // Added 2026-09-12: the exact TT.timestamp (creation time, ms) of the 5.0mmol TT BMild/
