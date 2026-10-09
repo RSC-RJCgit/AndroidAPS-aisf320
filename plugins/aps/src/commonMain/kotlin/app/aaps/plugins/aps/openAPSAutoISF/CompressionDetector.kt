@@ -11,7 +11,7 @@ import kotlin.math.abs
  *    more than 0.6 mmol); or lane B (added the same day after a true compression at 20:40 came on top of a slow decline, 9.3 to
  *    7.1 mmol in the half hour before it): it falls at least 1.4 mmol within 5 minutes, at least twice the steepest 5-minute
  *    fall of the 30 minutes before, which fell no more than 2.5 mmol in all;
- *  - either way the fall is at least three times what the insulin on board explains over those 5 minutes (the loop's BGI),
+ *  - either way the fall is at least 1.25 times what the insulin on board explains over those 5 minutes (the loop's BGI),
  *    which the caller passes in.
  * Checked on the 5-8 Oct data: of 26 drops of 1.0 mmol or more in 4 days, only 3 also had a flat 30 minutes and a small IOB: the
  * 8 Oct 03:24 compression low, the 8 Oct 21:24 fall and rebound, and a one-step shift on 5 Oct 12:01. Tonight's slow slide and
@@ -39,7 +39,7 @@ internal object CompressionDetector {
     const val PRIOR_NET_FALL_MAX_MGDL = 45.0
 
     /** The drop must be at least this many times the fall the insulin on board explains over the same 5 minutes. */
-    const val UNEXPLAINED_FACTOR = 3.0
+    const val UNEXPLAINED_FACTOR = 1.25
 
     /** After the trigger the value must stay down this long (15 minutes), within this much (0.3 mmol) of the level the drop ended at. */
     const val SUSTAIN_MINUTES = 15L
