@@ -940,6 +940,30 @@ fun BgGraphCompose(
     // =========================================================================
 
     val axisLock = remember { GraphAxisLock() }
+    // 2026-10-09, per explicit request, MAIN graph only (Graph 5 is unchanged): the ISF line and the steps line sit in a strip directly above
+    // the chart, and the hypo prediction line and the DR line in a strip directly under it, both off the plot. The chart keeps the height it
+    // was given; the two strips add height.
+    val stripSp = 11.sp
+    val stripStyle = TextStyle(
+        fontSize = stripSp,
+        lineHeight = stripSp,
+        fontWeight = FontWeight.Bold,
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both
+        )
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+    if (!topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 40.dp, top = 2.dp, bottom = 2.dp)) {
+            autoIsfGraph.statusIsf?.let { line ->
+                IsfStatusLine(line, stripStyle, acceColor, bgIsfColor, ppColor, duraColor)
+            }
+            autoIsfGraph.statusSteps?.let { line ->
+                Text(text = line, color = duraColor, style = stripStyle)
+            }
+        }
+    }
     Box(
         modifier = modifier.fillMaxWidth().then(
             if (isLandscape()) Modifier.nestedScroll(axisLock) else Modifier
@@ -1057,45 +1081,15 @@ fun BgGraphCompose(
             }
         }
     }
-    if (!topBandLines) {
-        // 2026-10-09, per explicit request, MAIN graph only (Graph 5 above is unchanged): the ISF line and the steps line sit at the
-        // top, clear of the y-axis numbers; the hypo prediction line and the DR line, which were on the IOB graph and Graph 2, sit at
-        // the bottom, where the ISF and steps lines used to be.
-        val lineSp = 11.sp
-        val tight = TextStyle(
-            fontSize = lineSp,
-            lineHeight = lineSp,
-            fontWeight = FontWeight.Bold,
-            lineHeightStyle = LineHeightStyle(
-                alignment = LineHeightStyle.Alignment.Center,
-                trim = LineHeightStyle.Trim.Both
-            )
-        )
-        if (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null) {
-            Column(modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp)) {
-                autoIsfGraph.statusIsf?.let { line ->
-                    IsfStatusLine(line, tight, acceColor, bgIsfColor, ppColor, duraColor)
-                }
-                autoIsfGraph.statusSteps?.let { line ->
-                    Text(text = line, color = duraColor, style = tight)
-                }
+    }
+    // The IOB graph below is pulled 8dp up under this strip, hence the extra bottom padding.
+    if (!topBandLines && (autoIsfGraph.hypoPrediction != null || autoIsfGraph.statusRatio != null)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 10.dp)) {
+            autoIsfGraph.hypoPrediction?.let { hypo ->
+                Text(text = "hypoprediction= ${oneDecimalText(hypo)}", color = Color.White, style = stripStyle)
             }
-        }
-        if (autoIsfGraph.hypoPrediction != null || autoIsfGraph.statusRatio != null) {
-            val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
-            val linesUp = with(LocalDensity.current) { (lineSp * 1.0f).toDp() }
-            Column(
-                verticalArrangement = Arrangement.spacedBy(0.dp),
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 8.dp, bottom = (44.dp - threeLinesDown + linesUp).coerceAtLeast(0.dp))
-            ) {
-                autoIsfGraph.hypoPrediction?.let { hypo ->
-                    Text(text = "hypoprediction= ${oneDecimalText(hypo)}", color = Color.White, style = tight)
-                }
-                autoIsfGraph.statusRatio?.let { line ->
-                    Text(text = line, color = duraColor, style = tight)
-                }
+            autoIsfGraph.statusRatio?.let { line ->
+                Text(text = line, color = duraColor, style = stripStyle)
             }
         }
     }

@@ -5971,15 +5971,20 @@ open class OpenAPSAutoISFPlugin(
         if (setAlarmState && store.hasStateValues("AlarmHypo")) store.setState("AlarmHypo", "AlarmRecent")
     }
 
-    // At the alarm: written at once on other phones; on the virtual phone only the wait is started (it never restarts).
+    // 2026-10-09, per explicit request: a low that follows walking must not set the AlarmHypo state (on every phone). Steps over 200 in the last
+    // hour, or over 400 in the last 3 hours (400 is the 3 hour limit the SMB/rescue checks already use), at the moment of the alarm.
+    private suspend fun alarmStateStepsBlocked(now: Long): Boolean = steps60(now) > 200 || steps180(now) > 400
+
+    // At the alarm: written at once on other phones (AlarmHypo only when the steps allow it); on the virtual phone only the wait is started
+    // (it never restarts).
     private suspend fun markHypoAlarm(now: Long) {
         if (!virtualAlarmPhone()) {
-            applyAlarmHypoState(now, setAlarmState = true)
+            applyAlarmHypoState(now, setAlarmState = !alarmStateStepsBlocked(now))
             return
         }
         if (preferences.get(LongNonKey.ApsAutoIsfAlarmStatePendingAt) == 0L) {
             preferences.put(LongNonKey.ApsAutoIsfAlarmStatePendingAt, now)
-            preferences.put(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked, if (steps60(now) > 200) 1L else 0L)
+            preferences.put(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked, if (alarmStateStepsBlocked(now)) 1L else 0L)
         }
     }
 
@@ -6000,7 +6005,7 @@ open class OpenAPSAutoISFPlugin(
                 applyAlarmHypoState(pendingAt, setAlarmState = !stepsBlocked)
                 aapsLogger.info(
                     LTag.APS,
-                    if (stepsBlocked) "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 at the alarm"
+                    if (stepsBlocked) "Hypo alarm states (LowBG, alarm time) set 15 minutes after the alarm; AlarmHypo not set: steps over 200 in 1 hour or over 400 in 3 hours at the alarm"
                     else "Hypo alarm states (LowBG, AlarmHypo, alarm time) set 15 minutes after the alarm"
                 )
             }
