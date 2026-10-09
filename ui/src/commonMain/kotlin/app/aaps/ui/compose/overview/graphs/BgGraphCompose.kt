@@ -941,7 +941,7 @@ fun BgGraphCompose(
 
     val axisLock = remember { GraphAxisLock() }
     // 2026-10-09, per explicit request, MAIN graph only (Graph 5 is unchanged): the ISF line and the steps line sit in a strip directly above
-    // the chart, and the hypo prediction line and the DR line in a strip directly under it, both off the plot. The chart keeps the height it
+    // the chart, and the hypo prediction line in a strip directly under it, the DR line and the target offset line below the ISF and steps lines, both off the plot. The chart keeps the height it
     // was given; the two strips add height.
     val stripSp = 11.sp
     val stripStyle = TextStyle(
@@ -954,12 +954,21 @@ fun BgGraphCompose(
         )
     )
     Column(modifier = Modifier.fillMaxWidth()) {
-    if (!topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null)) {
+    if (!topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
+            autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
+    ) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 40.dp, top = 2.dp, bottom = 2.dp)) {
             autoIsfGraph.statusIsf?.let { line ->
                 IsfStatusLine(line, stripStyle, acceColor, bgIsfColor, ppColor, duraColor)
             }
             autoIsfGraph.statusSteps?.let { line ->
+                Text(text = line, color = duraColor, style = stripStyle)
+            }
+            // The DR line and the target offset line (the latter was in the corner of the IOB graph) follow, still off the plot.
+            autoIsfGraph.statusRatio?.let { line ->
+                Text(text = line, color = duraColor, style = stripStyle)
+            }
+            autoIsfGraph.statusTarget?.let { line ->
                 Text(text = line, color = duraColor, style = stripStyle)
             }
         }
@@ -1083,13 +1092,10 @@ fun BgGraphCompose(
     }
     }
     // The IOB graph below is pulled 8dp up under this strip, hence the extra bottom padding.
-    if (!topBandLines && (autoIsfGraph.hypoPrediction != null || autoIsfGraph.statusRatio != null)) {
+    if (!topBandLines && autoIsfGraph.hypoPrediction != null) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 10.dp)) {
             autoIsfGraph.hypoPrediction?.let { hypo ->
                 Text(text = "hypoprediction= ${oneDecimalText(hypo)}", color = Color.White, style = stripStyle)
-            }
-            autoIsfGraph.statusRatio?.let { line ->
-                Text(text = line, color = duraColor, style = stripStyle)
             }
         }
     }

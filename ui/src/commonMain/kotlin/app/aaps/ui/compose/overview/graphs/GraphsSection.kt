@@ -776,7 +776,6 @@ fun GraphsSection(
                 onDismiss = { editingBgOverlays = false }
             )
         }
-        val autoIsfStatus = graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
         // Fixed IOB graph (Graph 1) with optional Activity overlay
         var editingIobOverlays by remember { mutableStateOf(false) }
         Box(modifier = Modifier.offset(y = (-8).dp)) {
@@ -863,20 +862,13 @@ fun GraphsSection(
                         .fillMaxWidth()
                         .height(secondary.height.dp)
                 )
-                val corner = when (i) {
-                    0 -> autoIsfStatus.statusTarget
-                    else -> null
-                }
-                corner?.let { line ->
-                    GraphCornerLine(text = line, modifier = Modifier.align(Alignment.TopStart))
-                }
                 Text(
                     text = seriesListLabel(secondary.series),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(start = 36.dp, top = if (corner != null) 14.dp else 2.dp)
+                        .padding(start = 36.dp, top = 2.dp)
                 )
                 if (!isSimpleMode) {
                     GraphEditButton(
@@ -1226,17 +1218,3 @@ private fun Scroll.Absolute.ifNotUsable(): Scroll.Absolute =
         val scroll = getValue(context, layerDimensions, bounds, maxValue)
         if (scroll.isFinite() && scroll >= 0f) scroll else 0f
     }
-
-@Composable
-private fun GraphCornerLine(
-    text: String,
-    modifier: Modifier = Modifier,
-    color: Color = AapsTheme.generalColors.duraIsf,
-) {
-    Text(
-        text = text,
-        color = color,
-        style = TextStyle(fontSize = 11.sp, lineHeight = 11.sp, fontWeight = FontWeight.Bold),
-        modifier = modifier.padding(start = 8.dp, top = 1.dp)
-    )
-}
