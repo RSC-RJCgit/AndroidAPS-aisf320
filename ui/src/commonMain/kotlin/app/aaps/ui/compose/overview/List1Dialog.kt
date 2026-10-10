@@ -51,6 +51,18 @@ fun List2Dialog(viewModel: ChipsViewModel) {
 }
 
 @Composable
+fun List3Dialog(viewModel: ChipsViewModel) {
+    val rows = remember(viewModel.list3Open) { viewModel.list3Rows() }
+    DirectListDialog(
+        open = viewModel.list3Open,
+        title = "List 3",
+        rows = rows,
+        onDismiss = viewModel::closeList3,
+        onApply = viewModel::applyList3,
+    )
+}
+
+@Composable
 private fun DirectListDialog(
     open: Boolean,
     title: String,

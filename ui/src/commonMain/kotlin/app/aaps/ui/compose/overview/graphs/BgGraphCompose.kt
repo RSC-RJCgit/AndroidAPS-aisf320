@@ -120,6 +120,9 @@ private const val BG_TOP_BAND_FRACTION = 0.28
  */
 private val SMB_BAND_COLOR = Color(0xFFFF40C0)
 private val PROFILE_BASAL_BAND_COLOR = Color(0xFFFFA040)
+// Top strip of the main graph: the ISF line has a colour per field, the steps line is orange, so the DR line and the target offset line get their own.
+private val STATUS_RATIO_COLOR = Color(0xFF4FC3F7)
+private val STATUS_TARGET_COLOR = Color(0xFF66BB6A)
 
 /**
  * A [CartesianLayerRangeProvider] backed by plain mutable fields instead of an immutable value
@@ -966,10 +969,10 @@ fun BgGraphCompose(
             }
             // The DR line and the target offset line (the latter was in the corner of the IOB graph) follow, still off the plot.
             autoIsfGraph.statusRatio?.let { line ->
-                Text(text = line, color = duraColor, style = stripStyle)
+                Text(text = line, color = STATUS_RATIO_COLOR, style = stripStyle)
             }
             autoIsfGraph.statusTarget?.let { line ->
-                Text(text = line, color = duraColor, style = stripStyle)
+                Text(text = line, color = STATUS_TARGET_COLOR, style = stripStyle)
             }
         }
     }

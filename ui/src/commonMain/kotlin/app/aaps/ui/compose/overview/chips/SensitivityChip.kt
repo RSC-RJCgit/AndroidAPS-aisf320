@@ -48,6 +48,7 @@ internal fun SensitivityChip(
     state: SensitivityUiState,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    onDoubleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val icon = selectSensIcon(ratio = state.ratio, isEnabled = state.isEnabled)
@@ -63,8 +64,8 @@ internal fun SensitivityChip(
         modifier = modifier
             .heightIn(min = AapsSpacing.chipHeight)
             .then(
-                if (onLongClick == null) Modifier.clickable(onClick = onClick)
-                else Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                if (onLongClick == null && onDoubleClick == null) Modifier.clickable(onClick = onClick)
+                else Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick, onDoubleClick = onDoubleClick)
             )
             .then(
                 if (!state.isEnabled) Modifier.semantics { stateDescription = autosensOff }

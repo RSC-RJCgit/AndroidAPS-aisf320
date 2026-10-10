@@ -16,6 +16,7 @@ import app.aaps.ui.compose.overview.chips.SensitivityUiState
 fun SensitivityChipBlock(
     state: SensitivityUiState,
     onOpenAutoIsfHistory: () -> Unit = {},
+    onDoubleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (state.asText.isEmpty() && state.isfFrom.isEmpty() && !state.autoIsfHistory) return
@@ -29,6 +30,7 @@ fun SensitivityChipBlock(
         } else {
             null
         },
+        onDoubleClick = onDoubleClick,
         modifier = modifier
     )
     if (showSensitivityDialog) {

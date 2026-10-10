@@ -13,8 +13,10 @@
 #
 # ## What has to exist before this can work
 #
-#  - the identifiers `app.aaps.client` and `app.aaps.client2`, registered to the team
-#  - an app record in App Store Connect for `app.aaps.client`
+#  - the identifiers `com.rscgit.aapsclient` and `com.rscgit.aapsclient2`, registered to the team
+#    (not `app.aaps.client*`: those belong to the upstream team's TestFlight. The app picks its flavour
+#    from the end of the id - see `clientFlavorFor` - so any id ending `client` / `client2` works)
+#  - an app record in App Store Connect for each of the two
 #  - an Internal Testing group with the testers in it
 #  - the four values below, in an environment called `testflight`
 #
@@ -43,7 +45,7 @@ concurrency:
 jobs:
   testflight:
     # Forks have no signing identity and must not run this, even if they somehow held the secrets.
-    if: github.repository == 'nightscout/AndroidAPS'
+    if: github.repository == 'nightscout/AndroidAPS' || github.repository == 'RSC-RJCgit/AndroidAPS-kmp-aisf321'
     runs-on: macos-latest
     timeout-minutes: 90
 
@@ -61,9 +63,9 @@ jobs:
       matrix:
         include:
           - scheme: AAPSClient
-            bundle: app.aaps.client
+            bundle: com.rscgit.aapsclient
           - scheme: AAPSClient2
-            bundle: app.aaps.client2
+            bundle: com.rscgit.aapsclient2
 
     # Holds the four secrets. Give it required reviewers and restrict it to the `ios` branch: in a
     # public repository that approval is the thing standing between a workflow edit and the signing

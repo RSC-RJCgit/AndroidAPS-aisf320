@@ -213,6 +213,7 @@ fun OverviewScreen(
 
         List1Dialog(chipsViewModel)
         List2Dialog(chipsViewModel)
+        List3Dialog(chipsViewModel)
         if (chipsViewModel.autoIsfHistoryOpen) {
             AutoIsfHistoryDialog(
                 rows = chipsViewModel.autoIsfHistoryRows,

@@ -155,6 +155,7 @@ fun OverviewScreenSplit(
                         onIobChipClick = onIobChipClick,
                         onIobChipLongClick = graphViewModel::onIobIconLongPress,
                         onIobChipDoubleClick = chipsViewModel::openList1,
+                        onSensitivityChipDoubleClick = chipsViewModel::openList3,
                         commandsAllowed = commandsAllowed,
                         modifier = Modifier
                             .weight(1f)
