@@ -57,6 +57,13 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
         assertThat(openAPSAutoISFPlugin.enforcedState()).isEqualTo(EnforcedState.Disabled)
     }
 
+    @Test
+    fun `a client leaves the choice to the user even outside engineering mode`() {
+        whenever(config.isEngineeringMode()).thenReturn(false)
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        assertThat(openAPSAutoISFPlugin.enforcedState()).isNull()
+    }
+
     @Suppress("KotlinConstantConditions")
     @Test
     fun withinISFLimitsTest() {

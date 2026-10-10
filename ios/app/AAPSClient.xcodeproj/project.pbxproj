@@ -291,7 +291,7 @@
 				// iPhone stays portrait. iPad must declare all four or the App Store rejects the
 				// upload as an invalid bundle: an app in the iPad device family takes part in
 				// multitasking, and a multitasking app has to survive being any shape.
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient;
@@ -333,7 +333,7 @@
 				// iPhone stays portrait. iPad must declare all four or the App Store rejects the
 				// upload as an invalid bundle: an app in the iPad device family takes part in
 				// multitasking, and a multitasking app has to survive being any shape.
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2;
@@ -396,7 +396,7 @@
 				// iPhone stays portrait. iPad must declare all four or the App Store rejects the
 				// upload as an invalid bundle: an app in the iPad device family takes part in
 				// multitasking, and a multitasking app has to survive being any shape.
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient;
@@ -438,7 +438,7 @@
 				// iPhone stays portrait. iPad must declare all four or the App Store rejects the
 				// upload as an invalid bundle: an app in the iPad device family takes part in
 				// multitasking, and a multitasking app has to survive being any shape.
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2;

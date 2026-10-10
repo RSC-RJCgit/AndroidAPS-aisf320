@@ -184,7 +184,10 @@ open class OpenAPSAutoISFPlugin(
         // 2026-10-10, per explicit request: the version name is not part of the gate any more. Config.isDev() is false for
         // any "-beta"/"-rc" version name, so the beta-1 build (4.0.0-beta1, whose name must not change) forced AutoISF off
         // and PluginBase.showInList hid it from the APS list.
-        .enforce(EnforcedState.Disabled) { !config.isEngineeringMode() }
+        // A follower (Android/iOS/desktop client) never doses - APS is false and the loop does not run - so there is
+        // nothing for engineering mode to protect there, and without this a client had no way to show AutoISF at all
+        // (an iPhone has no practical way to create the engineering_mode file).
+        .enforce(EnforcedState.Disabled) { !(config.isEngineeringMode() || config.AAPSCLIENT) }
         .description(ApsStrings.description_auto_isf),
     ownPreferences = ApsIntentKey.entries,
     aapsLogger, rh, preferences, notificationManager
