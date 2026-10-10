@@ -105,7 +105,10 @@ class ProfileFunctionImpl @Inject constructor(
         val ps = persistenceLayer.getEffectiveProfileSwitchActiveAt(time)
         if (ps != null) {
             val sealed = ProfileSealed.EPS(ps, activePlugin)
-            synchronized(cache) {
+            // ProfileSealed captures activePlugin.activeAPS at construction. A call made before the plugin store has
+            // chosen an APS sees null, and pinning that wrapper would make getIc() throw "APS not defined" for that
+            // second until the process dies (seen on the KMP line, 10 Oct 2026).
+            if (sealed.aps != null) synchronized(cache) {
                 cache.put(rounded, sealed)
             }
             return sealed
@@ -118,7 +121,7 @@ class ProfileFunctionImpl @Inject constructor(
             processedDeviceStatusData.pumpData?.activeProfileName?.let { activeProfile ->
                 activePlugin.activeProfileSource.profile?.getSpecificProfile(activeProfile)?.let { ap ->
                     val sealed = ProfileSealed.Pure(ap, activePlugin)
-                    synchronized(cache) {
+                    if (sealed.aps != null) synchronized(cache) {
                         cache.put(rounded, sealed)
                     }
                     return sealed
