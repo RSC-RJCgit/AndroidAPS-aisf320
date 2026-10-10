@@ -33,6 +33,7 @@ import app.aaps.ui.compose.overview.aapsClient.AapsClientStatusCard
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.graphs.GraphsSection
+import app.aaps.ui.compose.overview.graphs.pageWheelScroll
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.scenes.ActiveSceneBanner
 
@@ -89,6 +90,7 @@ fun OverviewScreenStacked(
         modifier = modifier
             .fillMaxSize()
             .padding(paddingValues)
+            .pageWheelScroll(pageScroll)
             .verticalScroll(
                 pageScroll,
                 overscrollEffect = if (isLandscape()) null else pageOverscroll,

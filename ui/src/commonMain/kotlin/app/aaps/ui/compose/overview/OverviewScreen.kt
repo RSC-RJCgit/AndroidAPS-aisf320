@@ -29,6 +29,10 @@ import app.aaps.core.interfaces.notifications.AapsNotification
 import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.interfaces.pump.BolusProgressState
 import app.aaps.core.ui.compose.TABLET_MIN_SW_DP
+import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.core.keys.interfaces.AppPlatform
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.LocalDensity
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
@@ -43,6 +47,13 @@ import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import kotlinx.coroutines.delay
+
+/**
+ * Window width, in dp, from which a desktop window gets the full-width overview rather than the split
+ * one. About a 1536 dp window (a 1920 px screen at 125 %) is the full-screen case; a half-screen window
+ * stays split.
+ */
+private const val DESKTOP_FULL_WIDTH_MIN_DP = 1400
 
 @Composable
 fun OverviewScreen(
@@ -132,7 +143,11 @@ fun OverviewScreen(
         ?.let { it == profilePsId && it > 0 } == true
 
     val isLandscape = isLandscape()
-    val isTablet = smallestScreenWidthDp() >= TABLET_MIN_SW_DP && isLandscape
+    // A wide desktop window gets the full-width layout (BG header on top, graphs across the whole window, the page
+    // scrolls) instead of the split with a fixed left panel. Only desktop: a tablet keeps the split at any width.
+    val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
+    val wideDesktopWindow = LocalConfig.current.platform == AppPlatform.Desktop && windowWidthDp >= DESKTOP_FULL_WIDTH_MIN_DP
+    val isTablet = smallestScreenWidthDp() >= TABLET_MIN_SW_DP && isLandscape && !wideDesktopWindow
 
     Box(modifier = modifier.fillMaxSize()) {
         if (isTablet) {
