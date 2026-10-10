@@ -162,7 +162,11 @@ class ProfileFunctionImpl(
                 // dropped (GC'd) when a canonical entry already exists, so the window keeps a single copy.
                 val shared = canonicalEps.getOrPut(ps.id) { ps }
                 val sealed = ProfileSealed.EPS(shared, activePlugin)
-                cache.put(rounded, sealed)
+                // ProfileSealed captures activePlugin.activeAPS at construction. A call made before
+                // ConfigBuilder.initialize() has run (init above, at process start) sees null, and pinning
+                // that wrapper makes getIsfMgdlForCarbs()/getIc() throw "APS not defined" for that second
+                // for the life of the process, which aborts every IobCob run that asks for it.
+                if (sealed.aps != null) cache.put(rounded, sealed)
                 return sealed
             }
         }

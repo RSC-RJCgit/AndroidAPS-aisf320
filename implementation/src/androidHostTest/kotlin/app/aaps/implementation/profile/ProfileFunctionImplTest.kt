@@ -2,6 +2,7 @@ package app.aaps.implementation.profile
 
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.ICfg
+import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -19,6 +20,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.Mock
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -175,6 +177,8 @@ class ProfileFunctionImplTest : TestBaseWithProfile() {
         whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
         // Fresh instance per call (same id), mirroring fromDb()'s deep copy.
         whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong())).thenAnswer { effectiveProfileSwitch.copy() }
+        // Only a wrapper that has an APS is cached, see profileWithoutApsIsNotCached().
+        whenever(activePlugin.activeAPS).thenReturn(mock<APS>())
 
         val sut = createSut()
         advanceUntilIdle()
@@ -193,5 +197,31 @@ class ProfileFunctionImplTest : TestBaseWithProfile() {
         // …and every returned wrapper points at that one shared EPS instance (the throwaway copies were dropped).
         val shared = (profiles.first() as ProfileSealed.EPS).value
         assertThat(profiles.all { (it as ProfileSealed.EPS).value === shared }).isTrue()
+    }
+
+    // Regression: ProfileSealed captures activePlugin.activeAPS when it is built. The init{} read runs at process
+    // start, before the plugin store has chosen an APS, so that wrapper has aps == null. Pinned in the per-second
+    // cache it made getIsfMgdlForCarbs() throw "APS not defined" for that second until the process died, which
+    // aborted every IobCob run that reached it (Flip3 master, 10 Oct 2026: no loop, no AutoISF results).
+    @Test
+    fun profileWithoutApsIsNotCached() = runTest {
+        whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong())).thenAnswer { effectiveProfileSwitch.copy() }
+        whenever(activePlugin.activeAPS).thenReturn(null)
+
+        val sut = createSut()
+        advanceUntilIdle()
+        sut.cache.clear()
+
+        val early = sut.getProfile(1_000_000_000L)
+        assertThat(early).isNotNull()
+        assertThat(sut.cache).isEmpty()
+
+        // Once the store has an APS the same second is cached again, with that APS.
+        val aps = mock<APS>()
+        whenever(activePlugin.activeAPS).thenReturn(aps)
+        val later = sut.getProfile(1_000_000_000L) as ProfileSealed
+        assertThat(later.aps).isSameInstanceAs(aps)
+        assertThat(sut.cache).hasSize(1)
     }
 }
