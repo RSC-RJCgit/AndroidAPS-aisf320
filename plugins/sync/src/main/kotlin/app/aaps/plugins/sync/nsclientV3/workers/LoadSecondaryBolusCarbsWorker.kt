@@ -21,6 +21,7 @@ import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
+import app.aaps.core.nssdk.localmodel.treatment.NSBolusWizard
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.LoggingWorker
@@ -32,6 +33,7 @@ import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
 import app.aaps.plugins.sync.nsShared.isIapsEntry
 import app.aaps.plugins.sync.nsShared.isFollowerPhone
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
+import app.aaps.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent
 import kotlinx.coroutines.Dispatchers
@@ -223,6 +225,12 @@ class LoadSecondaryBolusCarbsWorker(
                         is NSCarbs -> {
                             storeDataForDb.addToCarbs(treatment.toCarbs())
                             pageCarbs++
+                        }
+
+                        // The bolus calculator result ("calc" in Treatments) of a meal entered on the other phone.
+                        // It was dropped by the else branch, so the meal arrived without its calculation.
+                        is NSBolusWizard -> {
+                            treatment.toBolusCalculatorResult()?.let { storeDataForDb.addToBolusCalculatorResults(it) }
                         }
 
                         is NSTherapyEvent -> {
