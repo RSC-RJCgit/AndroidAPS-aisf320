@@ -19,6 +19,11 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Real features that are not ported to desktop yet, refusing rather than pretending.
@@ -109,8 +114,36 @@ class DesktopMaintenance(
         aapsLogger.debug(LTag.CORE, "Coordinated export ($trigger) is not available on desktop yet")
     }
 
-    override suspend fun executeSendLogs(): ExportResult =
-        aapsLogger.failNotOnDesktopYet("Maintenance.executeSendLogs")
+    /**
+     * Zips the live log and its rotated siblings into `AAPS/logs/AndroidAPS_LOG_<time>.zip`.
+     *
+     * A phone offers the zip to an email app or a cloud folder. Neither exists here yet, so the zip is
+     * written where the user can find it and the result says local only. It used to refuse outright,
+     * which showed as "not available".
+     */
+    override suspend fun executeSendLogs(): ExportResult {
+        val sources = logFile.parentFile?.listFiles()
+            ?.filter { it.isFile && (it.name == logFile.name || it.name.startsWith("${logFile.name}.")) }
+            .orEmpty()
+        if (sources.isEmpty()) return ExportResult(localSuccess = false)
+        return try {
+            val folder = File(DesktopFolders.root, "logs").apply { mkdirs() }
+            val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+            val target = File(folder, "AndroidAPS_LOG_$stamp.zip")
+            ZipOutputStream(target.outputStream().buffered()).use { zip ->
+                sources.forEach { file ->
+                    zip.putNextEntry(ZipEntry(file.name))
+                    file.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+            aapsLogger.debug(LTag.CORE, "Logs written to ${target.absolutePath}")
+            ExportResult(localSuccess = true)
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.CORE, "Could not write the log zip", e)
+            ExportResult(localSuccess = false)
+        }
+    }
 
     /**
      * Removes rotated log files, keeping the newest [keep] of them.

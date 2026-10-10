@@ -3,6 +3,8 @@ package app.aaps.core.interfaces.overview.graph
 data class AapsClientStatusData(
     val pump: AapsClientStatusItem? = null,
     val openAps: AapsClientStatusItem? = null,
+    /** The master's latest AutoISF run, from the AutoISF values mirrored to this client. Null when none has arrived. */
+    val autoIsf: AapsClientStatusItem? = null,
     val uploader: AapsClientStatusItem? = null
 )
 

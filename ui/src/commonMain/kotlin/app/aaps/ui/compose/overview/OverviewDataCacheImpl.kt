@@ -1229,6 +1229,26 @@ class OverviewDataCacheImpl(
             )
         } else null
 
+        // AutoISF run of the master, read from the same mirrored values the graph's top strip uses.
+        val autoIsfItem = _autoIsfGraphFlow.value.let { isf ->
+            val last = isf.finalIsf.lastOrNull() ?: return@let null
+            val age = now - last.timestamp
+            val level = when {
+                age > T.mins(preferences.get(IntKey.NsClientUrgentAlarmStaleData).toLong()).msecs() -> AapsClientLevel.URGENT
+                age > T.mins(preferences.get(IntKey.NsClientAlarmStaleData).toLong()).msecs()       -> AapsClientLevel.WARN
+                else                                                                                -> AapsClientLevel.INFO
+            }
+            val ratio = kotlin.math.round(last.value * 100.0) / 100.0
+            val details = listOfNotNull(isf.statusIsf, isf.statusRatio, isf.statusTarget, isf.statusSteps)
+            AapsClientStatusItem(
+                label = "AISF",
+                value = "$ratio ${dateUtil.minAgo(rh, last.timestamp)}",
+                level = level,
+                dialogTitle = "AutoISF",
+                dialogText = (listOf(dateUtil.minAgo(rh, last.timestamp)) + details).joinToString("\n")
+            )
+        }
+
         val uploaderItem = if (processedDeviceStatusData.uploaderMap.isNotEmpty()) {
             var minBattery = 100
             var isCharging = false
@@ -1259,7 +1279,7 @@ class OverviewDataCacheImpl(
             )
         } else null
 
-        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, uploader = uploaderItem)
+        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem)
     }
 
     private suspend fun rebuildHeartRateGraph() {

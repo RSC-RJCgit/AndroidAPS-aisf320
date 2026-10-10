@@ -439,7 +439,8 @@ private fun AapsDesktopApp(graph: DesktopAppGraph, appIcon: Painter, appName: St
                             onNotificationActionClick = { n -> navigator.handleNotificationAction(n.id) },
                             onQuickLaunchActionClick = { action -> navigator.handleQuickLaunchAction(action) },
                             onImportSettingsNavigate = { source -> navController.navigate(AppRoute.ImportSettings.createRoute(source.name)) },
-                            onDirectoryClick = { logger.debug(LTag.CORE, "Desktop reads its own folder") },
+                            // Opens the AAPS folder (exports, preferences, logs, extra) in the file manager. This used to only log.
+                            onDirectoryClick = { openFolder(DesktopFolders.root, logger) },
                             // authBrowser, not urlOpener: the sign in ends at a port this app is
                             // listening on, and DesktopAuthBrowser has the fallback launcher an
                             // ordinary link opener does not. See AuthBrowser.
@@ -456,6 +457,17 @@ private fun AapsDesktopApp(graph: DesktopAppGraph, appIcon: Painter, appName: St
         }
     }
     }
+}
+
+/** Opens [folder] in the system file manager, creating it first so the button never opens nothing. */
+private fun openFolder(folder: File, logger: AAPSLogger) {
+    runCatching {
+        folder.mkdirs()
+        check(java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.OPEN)) {
+            "Opening a folder is not supported here"
+        }
+        java.awt.Desktop.getDesktop().open(folder)
+    }.onFailure { logger.error(LTag.CORE, "Could not open ${folder.absolutePath}", it) }
 }
 
 /** The graph could not be built. The message is the useful part, so it is shown in full. */

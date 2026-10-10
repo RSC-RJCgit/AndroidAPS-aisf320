@@ -48,7 +48,7 @@ fun AapsClientStatusCard(
     flavorTint: Color,
     modifier: Modifier = Modifier
 ) {
-    val items = listOfNotNull(statusData.pump, statusData.openAps, statusData.uploader)
+    val items = listOfNotNull(statusData.pump, statusData.openAps, statusData.autoIsf, statusData.uploader)
     if (items.isEmpty()) return
 
     var expanded by rememberSaveable { mutableStateOf(false) }

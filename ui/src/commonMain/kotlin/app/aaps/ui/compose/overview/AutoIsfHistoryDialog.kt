@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import app.aaps.ui.compose.overview.graphs.horizontalWheelScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -81,7 +82,7 @@ fun AutoIsfHistoryDialog(
                     val headerColor = MaterialTheme.colorScheme.onSurfaceVariant
                     val vertical = rememberScrollState()
                     // Header row stays fixed above the vertical scroll; it shares the horizontal scroll with the data rows.
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1f).horizontalWheelScroll(horizontal)) {
                         Row {
                             HistoryCell(stringResource(UiStrings.autoisf_history_time), headerColor, bold = true)
                             HistoryLine(

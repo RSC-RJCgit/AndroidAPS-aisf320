@@ -43,3 +43,33 @@ fun Modifier.pageWheelScroll(scroll: ScrollState): Modifier {
         }
     }
 }
+
+/**
+ * Sideways wheel for a table that has its own horizontal [scroll].
+ *
+ * Compose Desktop does not scroll on a mouse drag, and a plain wheel is vertical, so a wide table could
+ * not be moved sideways at all. Shift + wheel, a horizontal wheel or a touchpad swipe now moves it. A
+ * plain vertical wheel is left alone and still scrolls the table up and down.
+ */
+@Composable
+fun Modifier.horizontalWheelScroll(scroll: ScrollState): Modifier {
+    val scope = rememberCoroutineScope()
+    return pointerInput(scroll) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                if (event.type != PointerEventType.Scroll) continue
+                val dx = event.changes.fold(0f) { sum, change -> sum + change.scrollDelta.x }
+                val dy = event.changes.fold(0f) { sum, change -> sum + change.scrollDelta.y }
+                val delta = when {
+                    dx != 0f                            -> dx
+                    event.keyboardModifiers.isShiftPressed -> dy
+                    else                                -> 0f
+                }
+                if (delta == 0f) continue
+                event.changes.forEach { it.consume() }
+                scope.launch { scroll.scrollBy(delta * WHEEL_STEP_PX) }
+            }
+        }
+    }
+}

@@ -126,10 +126,22 @@ import kotlin.time.Clock
  * Only pops if the current entry is in RESUMED state (fully visible and interactive).
  */
 fun NavHostController.safePopBackStack() {
-    if (currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
-        popBackStack()
-    }
+    val entry = currentBackStackEntry ?: return
+    // STARTED counts too. On desktop the lifecycle follows window focus, so a screen can sit at STARTED
+    // for as long as the window has not been re-focused, and a RESUMED-only test dropped the tap silently
+    // (the Settings back arrow did nothing until some dialog had been opened and closed). Double taps are
+    // still caught below, which is what the RESUMED test was for.
+    if (!entry.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
+    val now = Clock.System.now().toEpochMilliseconds()
+    if (entry.id == lastPoppedEntryId && now - lastPopMs < DOUBLE_POP_WINDOW_MS) return
+    lastPoppedEntryId = entry.id
+    lastPopMs = now
+    popBackStack()
 }
+
+private var lastPoppedEntryId: String? = null
+private var lastPopMs = 0L
+private const val DOUBLE_POP_WINDOW_MS = 400L
 
 /**
  * All navigation routes except the Main route.

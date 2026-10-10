@@ -10,6 +10,7 @@ import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.EB
 import app.aaps.core.data.model.EPS
+import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TDD
 import app.aaps.core.data.ue.Action
@@ -63,6 +64,9 @@ import kotlinx.coroutines.withContext
  * recalculation over and over while the sync is still running.
  */
 private const val TDD_RELOAD_DEBOUNCE_MS = 5_000L
+
+/** Longer than the totals: a reading arrives every minute, and a glucose reload walks up to 30 days of them. */
+private const val BG_RELOAD_DEBOUNCE_MS = 30_000L
 
 /**
  * ViewModel for StatsScreen managing statistics data loading and state.
@@ -131,6 +135,7 @@ class StatsViewModel(
         }
         loadAllStats()
         observeTddInputs()
+        observeBgInputs()
         // Cycle pattern data is loaded lazily; if the section was left expanded, load it now
         if (tddCycleExpanded) {
             _uiState.update { it.copy(tddCycleLoading = true, tddCycleProgress = 0f) }
@@ -167,6 +172,25 @@ class StatsViewModel(
             .launchIn(viewModelScope)
     }
 
+    /**
+     * Reload the glucose cards when glucose readings change.
+     *
+     * Time in range and the Dexcom card were read once, when the screen was created, and never again,
+     * so a screen opened while a sync was still loading kept the one day that existed then. Debounced
+     * for longer than the totals: a reading arrives every minute and each reload walks up to 30 days of
+     * readings, and a full sync writes in many chunks.
+     */
+    private fun observeBgInputs() {
+        persistenceLayer.observeChanges(GV::class)
+            .map {}
+            .debounce(BG_RELOAD_DEBOUNCE_MS)
+            .onEach {
+                loadTirStats()
+                loadDexcomTirStats()
+            }
+            .launchIn(viewModelScope)
+    }
+
     fun loadAllStats() {
         loadTddStats()
         loadTirStats()
@@ -189,8 +213,12 @@ class StatsViewModel(
         }
     }
 
+    private var tirLoadJob: Job? = null
+    private var dexcomLoadJob: Job? = null
+
     private fun loadTirStats() {
-        viewModelScope.launch {
+        tirLoadJob?.cancel()
+        tirLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(tirLoading = true) }
             val data = withContext(aapsIoDispatcher) {
                 val lowTirMgdl = Constants.STATS_RANGE_LOW_MMOL * Constants.MMOLL_TO_MGDL
@@ -220,7 +248,8 @@ class StatsViewModel(
     }
 
     private fun loadDexcomTirStats() {
-        viewModelScope.launch {
+        dexcomLoadJob?.cancel()
+        dexcomLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(dexcomTirLoading = true) }
             val data = withContext(aapsIoDispatcher) {
                 dexcomTirCalculator.calculate()
