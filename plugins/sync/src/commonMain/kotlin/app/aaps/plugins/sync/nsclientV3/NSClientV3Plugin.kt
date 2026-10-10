@@ -256,6 +256,13 @@ class NSClientV3Plugin(
     override suspend fun onStart() {
         super.onStart()
 
+        // A client takes glucose from its main site unless the user said otherwise. The key defaults to on, which is
+        // right for a master or Virtual that reads Live's site, but a client with a second site then skipped the main
+        // site's glucose and was left with the short windows the second site returns. Written once, only when nothing
+        // was ever stored, so a value set by the user (or imported) is never overwritten.
+        if (config.AAPSCLIENT && preferences.getIfExists(BooleanKey.NsClientBgFromLiveSite) == null)
+            preferences.put(BooleanKey.NsClientBgFromLiveSite, false)
+
         lastLoadedSrvModified = Json.decodeFromString(preferences.get(NsclientStringKey.V3LastModified))
 
         setClient()
@@ -674,6 +681,9 @@ class NSClientV3Plugin(
         fullSyncRequested.store(true)
         // The profile list on the 2-year site must be fetched again, not skipped as already seen.
         preferences.put(LongNonKey.NsClientSecondaryProfileModified, 0L)
+        // Also start the second site's treatments again, so the recovery scan (16 days) brings back the meals the other
+        // phone entered. Without this the cursor kept its place and a meal that came before it was never fetched.
+        preferences.put(LongNonKey.NsClientSecondaryLastModified, 0L)
     }
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {

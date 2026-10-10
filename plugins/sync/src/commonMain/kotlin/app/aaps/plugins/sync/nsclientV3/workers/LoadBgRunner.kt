@@ -38,7 +38,9 @@ class LoadBgRunner(
     suspend fun run(): WorkOutcome {
         if (!nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !nsClientV3Plugin.doingFullSync)
             return WorkOutcome.Skipped("Load not enabled")
-        if (glucoseFromSecondarySite(
+        // A Full synchronization is an explicit request for the history held on this connection, so it is never skipped
+        // for the second site: with the switch on, a client was left with only the short windows the second site returns.
+        if (!nsClientV3Plugin.doingFullSync && glucoseFromSecondarySite(
                 preferences.get(BooleanKey.NsClientSecondaryEnabled),
                 preferences.get(BooleanKey.NsClientBgFromLiveSite)
             )

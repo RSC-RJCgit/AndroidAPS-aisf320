@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -45,6 +47,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
@@ -60,6 +64,8 @@ import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.SecondaryGraph
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.keys.interfaces.TextRef
+import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -79,6 +85,7 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 import kotlin.math.abs
@@ -685,11 +692,50 @@ fun GraphsSection(
     }
 
 
+    // Mouse and keyboard control of the time axis. The zoom sets the main graph's zoom, and the effect that already
+    // copies the main zoom to every other graph does the rest, as it does for a pinch. The zoom itself is about the
+    // middle of the chart, so the current time is put back at the same place on the screen afterwards: nowBias is the
+    // fraction of the chart width it sits at (1 is the right edge, where the graph starts), kept up to date by the
+    // sideways moves below.
+    val zoomScope = rememberCoroutineScope()
+    val nowBias = remember { floatArrayOf(1f) }
+    val chartWidthPx = remember { floatArrayOf(0f) }
+    val zoomStep: (Int) -> Unit = { direction ->
+        zoomScope.launch {
+            val current = bgZoomState.value
+            if (current.isFinite() && current > 0f) {
+                if (followNow) nowBias[0] = 1f
+                bgZoomState.copyFactorIfDifferent(if (direction > 0) current * ZOOM_STEP else current / ZOOM_STEP)
+                val range = latestTimeRange.value
+                val bias = nowBias[0]
+                if (range != null && bias in 0f..1f) {
+                    // The zoom applies its own scroll at the next layout; this one has to come after it.
+                    delay(150)
+                    val nowX = timestampToX(dateUtil.now(), range.first)
+                    if (nowX.isFinite()) {
+                        skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                        bgScrollState.scroll(Scroll.Absolute.x(nowX, bias = bias))
+                    }
+                }
+            }
+        }
+    }
+    val panStep: (Float) -> Unit = { px ->
+        zoomScope.launch {
+            val target = (bgScrollState.value + px).coerceIn(0f, bgScrollState.maxValue)
+            if (chartWidthPx[0] > 0f) nowBias[0] -= (target - bgScrollState.value) / chartWidthPx[0]
+            bgScrollState.scroll(Scroll.Absolute.pixels(target))
+        }
+    }
+    val showZoomButtons = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
+            .graphZoomControls(zoomStep, panStep)
+            .onSizeChanged { chartWidthPx[0] = it.width.toFloat() }
             // Passive: sees every touch before the graphs do and consumes nothing.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
@@ -700,6 +746,16 @@ fun GraphsSection(
                 }
             }
     ) {
+        if (showZoomButtons) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = { zoomStep(-1) }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Filled.Remove, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = { zoomStep(1) }, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
 
@@ -1198,6 +1254,9 @@ private suspend fun VicoZoomState.copyFactorIfDifferent(factor: Float) {
 // Vico saves the zoom factor. A saved NaN is kept, the point position becomes NaN, and the chart crashes.
 // This slot is new, so the old NaN is left behind. A bad factor is replaced before it is stored.
 private const val SAFE_ZOOM_SLOT = "finite-zoom"
+
+/** One wheel notch, key press or button tap changes the time span by this factor. */
+private const val ZOOM_STEP = 1.25f
 private const val SAFE_SCROLL_SLOT = "finite-scroll"
 private const val VICO_MAX_ZOOM = 10f
 private const val MIN_USABLE_ZOOM = 0.0001f

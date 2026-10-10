@@ -2,7 +2,19 @@ package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.focusable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -34,7 +46,8 @@ fun Modifier.pageWheelScroll(scroll: ScrollState): Modifier {
             while (true) {
                 val event = awaitPointerEvent(PointerEventPass.Initial)
                 if (event.type != PointerEventType.Scroll) continue
-                if (event.keyboardModifiers.isShiftPressed) continue
+                // Shift pans the graph, Ctrl zooms it (graphZoomControls): both are left to the graphs.
+                if (event.keyboardModifiers.isShiftPressed || event.keyboardModifiers.isCtrlPressed) continue
                 val dy = event.changes.fold(0f) { sum, change -> sum + change.scrollDelta.y }
                 if (dy == 0f) continue
                 event.changes.forEach { it.consume() }
@@ -73,3 +86,84 @@ fun Modifier.horizontalWheelScroll(scroll: ScrollState): Modifier {
         }
     }
 }
+
+/**
+ * Mouse and keyboard control of the time axis: zoom, and sideways panning.
+ *
+ * - Ctrl + wheel and the + and - keys call [onZoom] with +1 (shorter time span) or -1.
+ * - Shift + wheel, and holding the primary button while moving, call [onPan] with the number of pixels to
+ *   move forward in time (negative is back). Compose Desktop does not scroll a chart on a mouse drag, and
+ *   the wheel alone only goes up and down, so neither was possible before.
+ *
+ * The drag is only seen, never consumed, so taps and the chart's own touch handling are not disturbed. The
+ * keys work while the graphs have focus, which a click on them gives.
+ */
+@Composable
+fun Modifier.graphZoomControls(onZoom: (Int) -> Unit, onPan: (Float) -> Unit): Modifier {
+    val focusRequester = remember { FocusRequester() }
+    return this
+        .focusRequester(focusRequester)
+        .onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.Plus, Key.Equals, Key.NumPadAdd, Key.ZoomIn  -> { onZoom(1); true }
+                Key.Minus, Key.NumPadSubtract, Key.ZoomOut       -> { onZoom(-1); true }
+                else                                             -> false
+            }
+        }
+        .focusable()
+        .pointerInput(onZoom, onPan) {
+            var lastX = 0f
+            var downX = 0f
+            var dragging = false
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull() ?: continue
+                    when (event.type) {
+                        PointerEventType.Press   -> {
+                            focusRequester.requestFocus()
+                            lastX = change.position.x
+                            downX = lastX
+                            dragging = false
+                        }
+
+                        PointerEventType.Move    -> {
+                            if (change.type == PointerType.Mouse && event.buttons.isPrimaryPressed) {
+                                val x = change.position.x
+                                if (!dragging && kotlin.math.abs(x - downX) > DRAG_START_PX) dragging = true
+                                if (dragging) {
+                                    onPan(lastX - x)
+                                }
+                                lastX = x
+                            }
+                        }
+
+                        PointerEventType.Release -> dragging = false
+
+                        PointerEventType.Scroll  -> {
+                            val dy = event.changes.fold(0f) { sum, c -> sum + c.scrollDelta.y }
+                            if (dy != 0f) {
+                                when {
+                                    event.keyboardModifiers.isCtrlPressed  -> {
+                                        event.changes.forEach { it.consume() }
+                                        onZoom(if (dy < 0f) 1 else -1)
+                                    }
+
+                                    event.keyboardModifiers.isShiftPressed -> {
+                                        event.changes.forEach { it.consume() }
+                                        onPan(dy * WHEEL_STEP_PX)
+                                    }
+                                }
+                            }
+                        }
+
+                        else                     -> Unit
+                    }
+                }
+            }
+        }
+}
+
+/** The pointer has to move this far with the button down before it counts as a drag and not a click. */
+private const val DRAG_START_PX = 6f

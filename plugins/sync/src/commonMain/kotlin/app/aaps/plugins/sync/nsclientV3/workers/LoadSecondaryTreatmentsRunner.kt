@@ -16,6 +16,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
+import app.aaps.core.nssdk.localmodel.treatment.NSBolusWizard
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import app.aaps.core.nssdk.localmodel.treatment.NSExtendedBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSProfileSwitch
@@ -25,6 +26,7 @@ import app.aaps.core.objects.workflow.WorkOutcome
 import app.aaps.plugins.sync.nsclientV3.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsclientV3.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
+import app.aaps.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent
 import dev.zacsweers.metro.Inject
@@ -162,6 +164,12 @@ class LoadSecondaryTreatmentsRunner(
                         if (!preferences.get(BooleanKey.NsClientAcceptCarbs)) continue
                         storeDataForDb.addToCarbs(treatment.toCarbs())
                         pageCarbs++
+                    }
+
+                    // The bolus calculator result ("calc" in Treatments) of a meal entered on the other phone. It is only
+                    // a record of the wizard run, it delivers nothing, so it needs no receive switch of its own.
+                    is NSBolusWizard -> {
+                        treatment.toBolusCalculatorResult()?.let { storeDataForDb.addToBolusCalculatorResults(it) }
                     }
 
                     is NSProfileSwitch, is NSTemporaryBasal, is NSExtendedBolus -> Unit
