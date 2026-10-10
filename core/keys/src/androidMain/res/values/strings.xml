@@ -572,6 +572,8 @@
     <string name="pref_summary_loop_every_minute">On: the loop, and one AIV row, runs on every new 1-minute reading. Off: once every 5 minutes. Applies at once.</string>
     <string name="pref_title_show_insulin_totals">Insulin totals row</string>
     <string name="pref_summary_show_insulin_totals">Show twelve insulin totals on the IOB graph.</string>
+    <string name="pref_title_show_graph_text">Show the text lines on the graphs</string>
+    <string name="pref_summary_show_graph_text">On (default): the steps, ISF index, target offset and other text lines are shown. Off: only the hypoprediction line stays. List 3 "Clean graph, no text" turns this off.</string>
     <string name="pref_title_coded_locations">Location texts</string>
     <string name="pref_summary_coded_locations">Send a text and a note when this phone arrives at or leaves a saved place. Starts off.</string>
     <string name="pref_title_location_sms_model">Location text phone</string>

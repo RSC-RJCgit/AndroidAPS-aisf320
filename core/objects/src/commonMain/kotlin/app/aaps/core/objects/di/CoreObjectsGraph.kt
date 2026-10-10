@@ -12,6 +12,7 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.TextResolver
@@ -100,9 +101,10 @@ object CoreObjectsGraph {
         guard: RunningModeGuard,
         ch: ConcentrationHelper,
         executor: WizardBolusExecutor,
+        plugins: ActivePlugin,
         scope: CoroutineScope
     ): BolusWizard = BolusWizard(
         logger, text, bus, prefs, profile, profileU, constraints, loopRef, iobCob, dates, cfg,
-        entryLogger, automationRef, glucose, persistence, deviceStatus, guard, ch, executor, scope
+        entryLogger, automationRef, glucose, persistence, deviceStatus, guard, ch, executor, plugins, scope
     )
 }

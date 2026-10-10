@@ -68,9 +68,6 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** Marks a List 3 row that is carried out on this phone instead of being sent to the loop phone as a coded TT. */
-const val LOCAL_CLEAN_GRAPH = -42.0
-
 data class List1Row(
     val label: String,
     val current: String,
@@ -286,8 +283,8 @@ class ChipsViewModel(
         list2Open = false
     }
 
-    // List 3 (2026-10-10, per explicit request): opened by a double-tap on the ISF chip. One row so far, Clean graph. Its actions are local to
-    // this phone (nothing is relayed to the loop phone), so they work the same on a client.
+    // List 3 (2026-10-10, per explicit request): opened by a double-tap on the ISF chip. One row so far, Clean graph, no text. Like Lists 1
+    // and 2: a client relays the coded TT (and note) to the loop phone, the loop phone and the virtual phone apply it on this phone.
     var list3Open by mutableStateOf(false)
         private set
 
@@ -300,12 +297,10 @@ class ChipsViewModel(
     }
 
     fun list3Rows(): List<List1Row> = numbered(listOf(
-        List1Row("Clean graph", "hides SMB labels and arrows, plain green line", LOCAL_CLEAN_GRAPH, null),
+        List1Row("Clean graph, no text", "no SMB labels or arrows, plain green line, graph text lines off (hypoprediction stays)", 5.244, null),
     ))
 
-    fun applyList3(code: Double) {
-        if (code == LOCAL_CLEAN_GRAPH) preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, true)
-    }
+    fun applyList3(code: Double) = applyList1(code)
 
     // KMP client relay (2026-10-08, per explicit request): a client has no AutoISF loop of its own, so a List 1 or List 2 tap
     // used to do nothing at all (the plugin's handler returns for a client). Now it sends the coded 5-minute TT to the master,

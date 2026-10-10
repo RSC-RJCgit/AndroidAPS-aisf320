@@ -127,6 +127,7 @@ internal object RunMark {
     const val GRAPH2 = "Graph2ToggleTT"
     const val GRAPH5 = "Graph5ToggleTT"
     const val CLEAN_GRAPH = "CleanGraphTT"
+    const val CLEAN_GRAPH_NO_TEXT = "CleanGraphNoTextTT"
     const val CLOUD_LOGS = "CloudLogsUploadTT"
     const val MJ_NO = "MjStateNoMjTT"
     const val MJ3 = "MjStateMj3TT"

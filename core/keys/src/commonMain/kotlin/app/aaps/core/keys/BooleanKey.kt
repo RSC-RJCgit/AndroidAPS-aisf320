@@ -488,6 +488,16 @@ enum class BooleanKey(
         KeysStrings.pref_summary_show_insulin_totals,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // 2026-10-10: the text lines on the graphs (every one but the hypoprediction line). True (default) = shown. List 3 "Clean graph, no
+    // text" (TT 5.244) turns it off; it is switched back on here, in Settings.
+    ApsAutoIsfShowGraphText(
+        "show_graph_text_lines",
+        true,
+        KeysStrings.pref_title_show_graph_text,
+        KeysStrings.pref_summary_show_graph_text,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     AutomationCodedLocationsEnabled(
         "automation_coded_locations",
         false,

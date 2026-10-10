@@ -1611,6 +1611,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled,
             BooleanKey.ApsAutoIsfShowInsulinTotals,
             BooleanKey.ApsAutoIsfLoopEveryMinute,
+            BooleanKey.ApsAutoIsfShowGraphText,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,
             BooleanKey.ApsUseSmbWithCob,
@@ -3418,6 +3419,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.GRAPH2 -> RunMark.GRAPH2
             RemoteToggleCode.GRAPH5 -> RunMark.GRAPH5
             RemoteToggleCode.CLEAN_GRAPH -> RunMark.CLEAN_GRAPH
+            RemoteToggleCode.CLEAN_GRAPH_NO_TEXT -> RunMark.CLEAN_GRAPH_NO_TEXT
             RemoteToggleCode.CLOUD_LOGS -> RunMark.CLOUD_LOGS
             RemoteToggleCode.MJ_NO -> RunMark.MJ_NO
             RemoteToggleCode.MJ3 -> RunMark.MJ3
@@ -3715,6 +3717,14 @@ open class OpenAPSAutoISFPlugin(
                 preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, true)
                 sendAutoSms("CleanGraph: no SMBs/arrows, solid green")
                 carePortalNote("CGrph")
+            }
+            // List 3 "Clean graph, no text" (2026-10-10, per explicit request): what CLEAN_GRAPH does, and the graph text lines off
+            // (the hypoprediction line stays). Switched back on in Settings.
+            RemoteToggleCode.CLEAN_GRAPH_NO_TEXT -> {
+                preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, true)
+                preferences.put(BooleanKey.ApsAutoIsfShowGraphText, false)
+                sendAutoSms("CleanGraph: no SMBs/arrows, solid green, text lines off")
+                carePortalNote("CGrTx")
             }
             RemoteToggleCode.CLOUD_LOGS -> {
                 maintenance.exportCoordinated("REMOTE_TT")

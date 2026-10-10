@@ -41,6 +41,8 @@ import kotlin.concurrent.Volatile
 data class GraphDisplay(
     val basalToggleIndex: Int = 0,
     val showSmbLabels: Boolean = true,
+    /** False hides the text lines on the main graph and graph 5 (the hypoprediction line stays). Settings > AutoISF, or List 3. */
+    val showTextLines: Boolean = true,
 ) {
     val showSmbArrows: Boolean get() = basalToggleIndex == 0
     val uniformGreenBg: Boolean get() = basalToggleIndex == 2
@@ -128,6 +130,10 @@ class GraphViewModel(
                 _graphDisplay.update { it.copy(showSmbLabels = false, basalToggleIndex = 2) }
                 preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, false)
             }
+            .launchIn(viewModelScope)
+        // 2026-10-10: the graph text lines follow Settings > AutoISF "Show the text lines" (List 3 turns it off).
+        preferences.observe(BooleanKey.ApsAutoIsfShowGraphText)
+            .onEach { show -> _graphDisplay.update { it.copy(showTextLines = show) } }
             .launchIn(viewModelScope)
     }
 

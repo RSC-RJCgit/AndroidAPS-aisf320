@@ -47,7 +47,9 @@ jobs:
     # Forks have no signing identity and must not run this, even if they somehow held the secrets.
     if: github.repository == 'nightscout/AndroidAPS' || github.repository == 'RSC-RJCgit/AndroidAPS-kmp-aisf321'
     runs-on: macos-latest
-    timeout-minutes: 90
+    # 2026-10-10: was 90. The first run on RSC-RJCgit/AndroidAPS-kmp-aisf321 passed its tests in about 30 minutes, then the Archive step
+    # (the Kotlin/Native device build) was still compiling when the 90 minute limit cancelled it, 65 minutes in.
+    timeout-minutes: 240
 
     strategy:
       # Both clients, because a tester running two of them needs both updated together - an old

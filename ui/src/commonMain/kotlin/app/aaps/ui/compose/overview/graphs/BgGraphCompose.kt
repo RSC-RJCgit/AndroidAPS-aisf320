@@ -957,7 +957,7 @@ fun BgGraphCompose(
         )
     )
     Column(modifier = Modifier.fillMaxWidth()) {
-    if (!topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
+    if (graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
             autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 40.dp, top = 2.dp, bottom = 2.dp)) {
@@ -1066,7 +1066,7 @@ fun BgGraphCompose(
             }
         }
     }
-    if (topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null)) {
+    if (graphDisplay.showTextLines && topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null)) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
         val linesUp = with(LocalDensity.current) { (lineSp * 1.0f).toDp() }
