@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.main
 
+import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.core.keys.interfaces.AppPlatform
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -36,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -195,7 +198,11 @@ fun MainScreen(
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
-            val landscape = isLandscape()
+            // A phone held sideways hides the bars to give the graphs the room. A desktop window is always wider than
+            // tall, so counting it as landscape removed the menu, search and Manage bar for good (no way to reach
+            // Configuration or Maintenance). Desktop is only ever "short", never "landscape".
+            val desktop = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
+            val landscape = isLandscape() && !desktop
             val previewMode = landscape || maxHeight < PREVIEW_MODE_MIN_HEIGHT
             var chromeVisible by remember { mutableStateOf(false) }
             val showChrome = !landscape && (!previewMode || chromeVisible)
