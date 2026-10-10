@@ -1906,20 +1906,38 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         })
     }
 
-    // List 3: local actions only (nothing is relayed to the loop phone, so it works the same on a client).
+    // List 3 (a display list). Loop phone and virtual phone: items 1 and 2 are applied right here (applyTtControl, which also writes the
+    // note). Client: items 1 and 2 change THIS phone's own display only (2026-10-10, per explicit request: it is only a display matter),
+    // items 3 and 4 are the same two actions relayed to the loop phone as a TT plus a note.
     private fun showList3Dialog() {
         val act = activity ?: return
-        val items = arrayOf("1. Clean graph")
+        val client = config.AAPSCLIENT
+        val items = if (client) arrayOf(
+            "1. Clean graph, no text (this phone)", "2. Graph back to normal (this phone)",
+            "3. Clean graph, no text (loop phone)", "4. Graph back to normal (loop phone)"
+        ) else arrayOf("1. Clean graph, no text", "2. Graph back to normal")
         androidx.appcompat.app.AlertDialog.Builder(act)
             .setTitle("List 3")
-            .setItems(items) { _, _ ->
+            .setItems(items) { _, which ->
+                val reset = which % 2 == 1
+                val remote = client && which >= 2
+                val whereText = if (!client) "" else if (remote) " (on the loop phone)" else " (on this phone only)"
                 androidx.appcompat.app.AlertDialog.Builder(act)
-                    .setTitle("Clean graph")
-                    .setMessage("Hides SMB dose labels and BGL arrowheads on this phone and shows a plain solid green line.")
+                    .setTitle((if (reset) "Graph back to normal" else "Clean graph, no text") + whereText)
+                    .setMessage(
+                        if (reset) "Shows the SMB dose labels and BGL arrowheads again, the normal line colours, and the text lines on the graphs."
+                        else "Hides SMB dose labels and BGL arrowheads, shows a plain solid green line, and hides the text lines on the graphs " +
+                            "(only the hypoprediction line stays). The 'back to normal' item or Settings > AutoISF brings them back."
+                    )
                     .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
-                        PointsWithLabelGraphSeries.showSmbLabels = false
-                        PointsWithLabelGraphSeries.basalToggleIndex = 2
-                        rxBus.send(EventRefreshOverview("cleanGraphList3", now = true))
+                        if (client && !remote) {
+                            // This phone's display only: no TT, no note.
+                            PointsWithLabelGraphSeries.showSmbLabels = reset
+                            PointsWithLabelGraphSeries.basalToggleIndex = if (reset) 0 else 2
+                            preferences.put(BooleanKey.ApsAutoIsfShowGraphText, reset)
+                            rxBus.send(EventRefreshOverview("list3Local", now = true))
+                        } else if (reset) applyTtControl(5.246, "List 3: graph back to normal")
+                        else applyTtControl(5.244, "List 3: clean graph, no text")
                     }
                     .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showList3Dialog() }
                     .setOnCancelListener { showList3Dialog() }
@@ -3155,6 +3173,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             PointsWithLabelGraphSeries.basalToggleIndex = 2
             preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, false)
         }
+        // One-shot from List 3 "Graph back to normal" (TT 5.246): undoes the clean-graph combo above (SMB labels on, arrows and line normal).
+        if (preferences.get(BooleanKey.ApsAutoIsfGraphResetRequested)) {
+            PointsWithLabelGraphSeries.showSmbLabels = true
+            PointsWithLabelGraphSeries.basalToggleIndex = 0
+            preferences.put(BooleanKey.ApsAutoIsfGraphResetRequested, false)
+        }
+        // 2026-10-10: the graph text lines (every one but the hypoprediction line) follow Settings > AutoISF "Show the text lines".
+        PointsWithLabelGraphSeries.showTextRows = preferences.get(BooleanKey.ApsAutoIsfShowGraphText)
         val pump = activePlugin.activePump
         val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData)
         val menuChartSettings = overviewMenus.setting

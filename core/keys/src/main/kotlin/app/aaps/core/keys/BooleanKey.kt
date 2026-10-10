@@ -107,6 +107,10 @@ enum class BooleanKey(
     ApsAutoIsfShowGraph5("show_graph5", false, defaultedBySM = true),
     // 2026-09-26, per explicit request: the row of 12 insulin-delivered totals on the IOB graph (default off).
     ApsAutoIsfShowInsulinTotals("show_insulin_totals_row", false, defaultedBySM = true),
+    // 2026-10-10, per explicit request: the text lines on the graphs (steps, extra row, ISF indices, target offset, pp/acce row). The
+    // hypoprediction line is always shown. True (default) = shown. List 3 "Clean graph, no text" (TT 5.244) turns it off; switched back
+    // on here, in Settings. Local to the phone, like the other graph display switches.
+    ApsAutoIsfShowGraphText("show_graph_text_lines", true, defaultedBySM = true),
     // 2026-09-26, per explicit request: a Quick Wizard press partway up a rise dates its carbs back from the rise onset (CarbTimeFromRise).
     OverviewQuickWizardCarbTimeFromRise("quickwizard_carb_time_from_rise", true, defaultedBySM = true),
     // When graph5 is on: false (default, preserves prior behaviour) = show every series it always has
@@ -230,6 +234,8 @@ enum class BooleanKey(
     // then Basal. plugins:aps has no dependency on core:graph (where those companion fields live), so a
     // plain preference flag is the simplest way to signal across modules. Not shown in any screen.
     ApsAutoIsfCleanGraphRequested("autoisf_clean_graph_requested", false, defaultedBySM = true, exportable = false),
+    // One-shot, like the one above: raised by List 3 "Graph back to normal" (TT 5.246), applied and cleared by OverviewFragment.updateGraph().
+    ApsAutoIsfGraphResetRequested("autoisf_graph_reset_requested", false, defaultedBySM = true, exportable = false),
 
     // Internal, not user-facing. Set by OpenAPSAutoISFPlugin's BolusGivenMild block when it fires while
     // BG < 5.9mmol: forces DetermineBasalAutoISF's varOffset (the "no COB + BG under target+offset ->

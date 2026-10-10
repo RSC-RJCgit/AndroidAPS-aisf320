@@ -3422,6 +3422,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "SmbOffsetDownTT" -> 5.036
         "SmbOffsetUpTT" -> 5.038
         "CleanGraphTT" -> 5.042
+        "CleanGraphNoTextTT" -> 5.244
+        "GraphResetTT" -> 5.246
         "WizardPctDownTT" -> 5.046
         "WizardPctUpTT" -> 5.048
         "MildBoostDownTT" -> 5.052
@@ -5535,6 +5537,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("SensorAgeCodeToggleTT")
         }
         applyAlarmHypoStateTT()
+        applyCleanGraphNoTextTT()
 
         // Client-only relay codes for the basal-icon direct action menu. On the pump phone these run
         // the full Kotlin actions; pump/Virtual selections do not create these TTs at all.
@@ -10381,6 +10384,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    // List 3 "Clean graph, no text" (2026-10-10, per explicit request): 5.244 does what CleanGraphTT (5.042) does and also turns the graph
+    // text lines off (BooleanKey.ApsAutoIsfShowGraphText = false; hypoprediction stays). A Client relays this code like any other list
+    // code; on the loop phone and the virtual phone the list applies it directly. Switched back on in Settings. Kept out of invoke()
+    // (64KB method limit).
+    private fun applyCleanGraphNoTextTT() {
+        if (readyToRun("CleanGraphNoTextTT", 2) && activeTtNear(5.244, 0.0001)) {
+            preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, true)
+            preferences.put(BooleanKey.ApsAutoIsfShowGraphText, false)
+            cancelCurrentTempTarget()
+            sendSms("CleanGraph: no SMBs/arrows, solid green, text lines off")
+            addCarePortalNote("CGrTx")
+            markRun("CleanGraphNoTextTT")
+        }
+        // List 3 "Graph back to normal" (2026-10-10, per explicit request): 5.246 undoes the above: SMB labels on, arrows and line normal
+        // (a one-shot flag OverviewFragment applies) and the graph text lines on.
+        if (readyToRun("GraphResetTT", 2) && activeTtNear(5.246, 0.0001)) {
+            preferences.put(BooleanKey.ApsAutoIsfGraphResetRequested, true)
+            preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
+            cancelCurrentTempTarget()
+            sendSms("Graph back to normal: SMB labels/arrows, line colours, text lines on")
+            addCarePortalNote("CGrOn")
+            markRun("GraphResetTT")
+        }
+    }
+
     private fun deferAlarmHypoState(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
 
     private fun compressionWarningWithinHour(now: Long): Boolean {
@@ -11520,6 +11548,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // alone.
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseUkf1ForDosing, summary = R.string.autoisf_use_ukf1_for_dosing_summary, title = R.string.autoisf_use_ukf1_for_dosing_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLoopEveryMinute, summary = R.string.autoisf_loop_every_minute_summary, title = R.string.autoisf_loop_every_minute_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfShowGraphText, summary = R.string.autoisf_show_graph_text_summary, title = R.string.autoisf_show_graph_text_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfReplayTraceEnabled, summary = R.string.autoisf_replay_trace_summary, title = R.string.autoisf_replay_trace_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationSlope, dialogMessage = R.string.autoisf_ukf1_delta_compensation_slope_summary, title = R.string.autoisf_ukf1_delta_compensation_slope_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfUkf1DeltaCompensationOffset, dialogMessage = R.string.autoisf_ukf1_delta_compensation_offset_summary, title = R.string.autoisf_ukf1_delta_compensation_offset_title))

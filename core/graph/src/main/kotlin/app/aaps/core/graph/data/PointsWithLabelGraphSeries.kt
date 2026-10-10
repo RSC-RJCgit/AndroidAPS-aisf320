@@ -32,6 +32,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
     companion object {
         var showSmbLabels: Boolean = true
 
+        // 2026-10-10, per explicit request: false hides the text rows (steps, DR/AW/LS, ISF indices, target offset, pp/acce row).
+        // The hypoprediction row (Shape.HP_ROW_BOTTOM) always shows. Set from BooleanKey.ApsAutoIsfShowGraphText by OverviewFragment.
+        var showTextRows: Boolean = true
+
         // Basal long-press cycles through 3 display presets (0→1→2→0...). IOB long-press always resets
         // this back to 0 in addition to its own showSmbLabels toggle, regardless of which direction that
         // toggle goes, so the "reset to normal" gesture is independent of the SMB-label state.
@@ -299,6 +303,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             if (duration > 0) {
                 xPlusLength = min(endWithDuration, graphLeft + graphWidth)
             }
+
+            // The text rows can be switched off (Settings, or List 3 "Clean graph, no text"); the hypoprediction row (HP_ROW_BOTTOM) stays.
+            if (!showTextRows && (value.shape == Shape.STEPS_STACKED_BOTTOM || value.shape == Shape.STEPS_EXTRA_ROW ||
+                    value.shape == Shape.TARGET_OFFSET_DUT_GRAPH1 || value.shape == Shape.TARGET_OFFSET_DUT_GRAPH5 ||
+                    value.shape == Shape.PP_ACC_DU_ROW || value.shape == Shape.ISF_INDICES)
+            ) overdraw = true
 
             // draw data point
             if (!overdraw) {
