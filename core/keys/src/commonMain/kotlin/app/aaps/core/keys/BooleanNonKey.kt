@@ -78,4 +78,7 @@ enum class BooleanNonKey(
     // One-shot. The overview applies it on the next draw, then clears it.
     ApsAutoIsfCleanGraphRequested("autoisf_clean_graph_requested", false, exportable = false),
 
+    // One-shot, like the one above: List 3 "Graph back to normal" (TT 5.246) raises it, the overview applies it and clears it.
+    ApsAutoIsfGraphResetRequested("autoisf_graph_reset_requested", false, exportable = false),
+
 }

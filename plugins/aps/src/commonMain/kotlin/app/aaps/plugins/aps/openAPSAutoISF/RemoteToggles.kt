@@ -44,6 +44,7 @@ internal enum class RemoteToggleCode {
     GRAPH5,
     CLEAN_GRAPH,
     CLEAN_GRAPH_NO_TEXT,
+    GRAPH_RESET,
     CLOUD_LOGS,
     MJ_NO,
     MJ3,
@@ -193,6 +194,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.038, 0.0001) -> RemoteToggleCode.SMB_OFFSET_UP
     ttNear(ttMgdl, 5.042, 0.0001) -> RemoteToggleCode.CLEAN_GRAPH
     ttNear(ttMgdl, 5.244, 0.0001) -> RemoteToggleCode.CLEAN_GRAPH_NO_TEXT
+    ttNear(ttMgdl, 5.246, 0.0001) -> RemoteToggleCode.GRAPH_RESET
     ttNear(ttMgdl, 5.164, 0.0001) -> RemoteToggleCode.MJ_BUTTONS
     ttNear(ttMgdl, 5.166, 0.0001) -> RemoteToggleCode.STEROID_BUTTON
     ttNear(ttMgdl, 5.196, 0.0001) -> RemoteToggleCode.UKF1_DOSING

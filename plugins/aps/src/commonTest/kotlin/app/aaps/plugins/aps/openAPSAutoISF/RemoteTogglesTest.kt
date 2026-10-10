@@ -98,6 +98,7 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.SMB_OFFSET_UP, remoteToggleCode(mgdl(5.038)))
         assertEquals(RemoteToggleCode.CLEAN_GRAPH, remoteToggleCode(mgdl(5.042)))
         assertEquals(RemoteToggleCode.CLEAN_GRAPH_NO_TEXT, remoteToggleCode(mgdl(5.244)))
+        assertEquals(RemoteToggleCode.GRAPH_RESET, remoteToggleCode(mgdl(5.246)))
         assertEquals(RemoteToggleCode.PEAK_INSULIN_DOWN, remoteToggleCode(mgdl(5.074)))
         assertEquals(RemoteToggleCode.PEAK_INSULIN_UP, remoteToggleCode(mgdl(5.076)))
         assertEquals(RemoteToggleCode.MJ_BUTTONS, remoteToggleCode(mgdl(5.164)))

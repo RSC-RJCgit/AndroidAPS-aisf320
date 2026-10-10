@@ -3420,6 +3420,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.GRAPH5 -> RunMark.GRAPH5
             RemoteToggleCode.CLEAN_GRAPH -> RunMark.CLEAN_GRAPH
             RemoteToggleCode.CLEAN_GRAPH_NO_TEXT -> RunMark.CLEAN_GRAPH_NO_TEXT
+            RemoteToggleCode.GRAPH_RESET -> RunMark.GRAPH_RESET
             RemoteToggleCode.CLOUD_LOGS -> RunMark.CLOUD_LOGS
             RemoteToggleCode.MJ_NO -> RunMark.MJ_NO
             RemoteToggleCode.MJ3 -> RunMark.MJ3
@@ -3725,6 +3726,13 @@ open class OpenAPSAutoISFPlugin(
                 preferences.put(BooleanKey.ApsAutoIsfShowGraphText, false)
                 sendAutoSms("CleanGraph: no SMBs/arrows, solid green, text lines off")
                 carePortalNote("CGrTx")
+            }
+            // List 3 "Graph back to normal": undoes the two clean-graph codes above (SMB labels on, arrows and line normal, text lines on).
+            RemoteToggleCode.GRAPH_RESET -> {
+                preferences.put(BooleanNonKey.ApsAutoIsfGraphResetRequested, true)
+                preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
+                sendAutoSms("Graph back to normal: SMB labels/arrows, line colours, text lines on")
+                carePortalNote("CGrOn")
             }
             RemoteToggleCode.CLOUD_LOGS -> {
                 maintenance.exportCoordinated("REMOTE_TT")

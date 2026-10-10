@@ -131,6 +131,14 @@ class GraphViewModel(
                 preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, false)
             }
             .launchIn(viewModelScope)
+        // List 3 "Graph back to normal" (TT 5.246): undoes the clean-graph combo above.
+        preferences.observe(BooleanNonKey.ApsAutoIsfGraphResetRequested)
+            .onEach { requested ->
+                if (!requested) return@onEach
+                _graphDisplay.update { it.copy(showSmbLabels = true, basalToggleIndex = 0) }
+                preferences.put(BooleanNonKey.ApsAutoIsfGraphResetRequested, false)
+            }
+            .launchIn(viewModelScope)
         // 2026-10-10: the graph text lines follow Settings > AutoISF "Show the text lines" (List 3 turns it off).
         preferences.observe(BooleanKey.ApsAutoIsfShowGraphText)
             .onEach { show -> _graphDisplay.update { it.copy(showTextLines = show) } }

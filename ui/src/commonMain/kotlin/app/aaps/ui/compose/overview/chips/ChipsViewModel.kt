@@ -68,6 +68,10 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/** List 3 rows carried out on this phone's own display on a Client, instead of being relayed to the loop phone as a coded TT. */
+const val LOCAL_CLEAN_GRAPH = -42.0
+const val LOCAL_GRAPH_RESET = -43.0
+
 data class List1Row(
     val label: String,
     val current: String,
@@ -296,11 +300,37 @@ class ChipsViewModel(
         list3Open = false
     }
 
-    fun list3Rows(): List<List1Row> = numbered(listOf(
-        List1Row("Clean graph, no text", "no SMB labels or arrows, plain green line, graph text lines off (hypoprediction stays)", 5.244, null),
-    ))
+    // Loop phone and virtual phone: two rows, applied on this phone. Client (2026-10-10, per explicit request: it is only a display matter):
+    // the same two rows for THIS phone's own display, then the same two relayed to the loop phone.
+    fun list3Rows(): List<List1Row> {
+        val clean = "no SMB labels or arrows, plain green line, graph text lines off (hypoprediction stays)"
+        val normal = "SMB labels and arrows, line colours and the text lines on again"
+        return numbered(
+            if (config.AAPSCLIENT) listOf(
+                List1Row("Clean graph, no text (this phone)", clean, LOCAL_CLEAN_GRAPH, null),
+                List1Row("Graph back to normal (this phone)", normal, LOCAL_GRAPH_RESET, null),
+                List1Row("Clean graph, no text (loop phone)", clean, 5.244, null),
+                List1Row("Graph back to normal (loop phone)", normal, 5.246, null),
+            ) else listOf(
+                List1Row("Clean graph, no text", clean, 5.244, null),
+                List1Row("Graph back to normal", normal, 5.246, null),
+            )
+        )
+    }
 
-    fun applyList3(code: Double) = applyList1(code)
+    fun applyList3(code: Double) {
+        when (code) {
+            LOCAL_CLEAN_GRAPH -> {
+                preferences.put(BooleanNonKey.ApsAutoIsfCleanGraphRequested, true)
+                preferences.put(BooleanKey.ApsAutoIsfShowGraphText, false)
+            }
+            LOCAL_GRAPH_RESET -> {
+                preferences.put(BooleanNonKey.ApsAutoIsfGraphResetRequested, true)
+                preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
+            }
+            else              -> applyList1(code)
+        }
+    }
 
     // KMP client relay (2026-10-08, per explicit request): a client has no AutoISF loop of its own, so a List 1 or List 2 tap
     // used to do nothing at all (the plugin's handler returns for a client). Now it sends the coded 5-minute TT to the master,
