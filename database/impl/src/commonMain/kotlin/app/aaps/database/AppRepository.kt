@@ -3,6 +3,7 @@ package app.aaps.database
 import androidx.room.Transactor.SQLiteTransactionType
 import androidx.room.useWriterConnection
 import app.aaps.database.entities.APSResult
+import app.aaps.database.entities.AutoIsfValues
 import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.BolusCalculatorResult
 import app.aaps.database.entities.CalibrationEntry
@@ -210,7 +211,6 @@ class AppRepository internal constructor(
             removed.add(Pair("CHANGES HeartRate", database.heartRateDao.deleteTrackedChanges()))
             removed.add(Pair("CHANGES StepsCount", database.stepsCountDao.deleteTrackedChanges()))
         }
-        repositoryScope.launch { _databaseClearedFlow.emit(Unit) }
         val ret = StringBuilder()
         removed
             .filter { it.second > 0 }
@@ -375,6 +375,9 @@ class AppRepository internal constructor(
 
     suspend fun getTemporaryTargetActiveAt(timestamp: Long): TemporaryTarget? =
         database.temporaryTargetDao.getTemporaryTargetActiveAt(timestamp)
+
+    suspend fun getTemporaryTargetsActiveAt(timestamp: Long): List<TemporaryTarget> =
+        database.temporaryTargetDao.getTemporaryTargetsActiveAt(timestamp)
 
     suspend fun getLastTempTargetId(): Long? =
         database.temporaryTargetDao.getLastId()
@@ -784,8 +787,8 @@ class AppRepository internal constructor(
     suspend fun getTemporaryBasalActiveAt(timestamp: Long): TemporaryBasal? =
         database.temporaryBasalDao.getTemporaryBasalActiveAt(timestamp)
 
-    suspend fun getTemporaryBasalsActiveBetweenTimeAndTime(from: Long, to: Long): List<TemporaryBasal> =
-        database.temporaryBasalDao.getTemporaryBasalActiveBetweenTimeAndTime(from, to)
+    suspend fun getTemporaryBasalsActiveAt(timestamp: Long): List<TemporaryBasal> =
+        database.temporaryBasalDao.getTemporaryBasalsActiveAt(timestamp)
 
     suspend fun getTemporaryBasalsStartingFromTime(timestamp: Long, ascending: Boolean): List<TemporaryBasal> =
         database.temporaryBasalDao.getTemporaryBasalDataFromTime(timestamp).reversedIf(!ascending)
@@ -828,6 +831,9 @@ class AppRepository internal constructor(
     suspend fun getExtendedBolusActiveAt(timestamp: Long): ExtendedBolus? =
         database.extendedBolusDao.getExtendedBolusActiveAt(timestamp)
 
+    suspend fun getExtendedBolusesActiveAt(timestamp: Long): List<ExtendedBolus> =
+        database.extendedBolusDao.getExtendedBolusesActiveAt(timestamp)
+
     suspend fun getExtendedBolusesStartingFromTime(timestamp: Long, ascending: Boolean): List<ExtendedBolus> =
         database.extendedBolusDao.getExtendedBolusesStartingFromTime(timestamp).reversedIf(!ascending)
 
@@ -866,6 +872,12 @@ class AppRepository internal constructor(
 
     suspend fun getLastStepsCountFromTimeToTime(startMillis: Long, endMillis: Long): StepsCount? =
         database.stepsCountDao.getLastStepsCountFromTimeToTime(startMillis, endMillis)
+
+    suspend fun insertAutoIsfValue(entry: AutoIsfValues): Long =
+        database.autoIsfValuesDao.insert(entry)
+
+    suspend fun getAutoIsfValuesFromTimeToTime(startMillis: Long, endMillis: Long): List<AutoIsfValues> =
+        database.autoIsfValuesDao.getFromTimeToTime(startMillis, endMillis)
 
     suspend fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int) = NewEntries(
         apsResults = database.apsResultDao.getNewEntriesSince(since, until, limit, offset),

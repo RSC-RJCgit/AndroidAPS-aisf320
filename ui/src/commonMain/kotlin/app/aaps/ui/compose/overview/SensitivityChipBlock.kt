@@ -9,21 +9,28 @@ import androidx.compose.ui.Modifier
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.stringResource
-import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.overview.chips.SensitivityChip
 import app.aaps.ui.compose.overview.chips.SensitivityUiState
 
 @Composable
 fun SensitivityChipBlock(
     state: SensitivityUiState,
+    onOpenAutoIsfHistory: () -> Unit = {},
+    onDoubleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    if (state.asText.isEmpty() && state.isfFrom.isEmpty()) return
+    if (state.asText.isEmpty() && state.isfFrom.isEmpty() && !state.autoIsfHistory) return
 
     var showSensitivityDialog by remember { mutableStateOf(false) }
     SensitivityChip(
         state = state,
         onClick = { if (state.dialogText.isNotEmpty()) showSensitivityDialog = true },
+        onLongClick = if (state.autoIsfHistory) {
+            { onOpenAutoIsfHistory() }
+        } else {
+            null
+        },
+        onDoubleClick = onDoubleClick,
         modifier = modifier
     )
     if (showSensitivityDialog) {

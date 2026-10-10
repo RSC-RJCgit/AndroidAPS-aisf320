@@ -3,6 +3,7 @@ package app.aaps.ui.compose.maintenance
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +29,9 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -51,6 +54,7 @@ import app.aaps.core.interfaces.maintenance.PrefsFileInfo
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.PrefsFile
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.AapsTopAppBar
@@ -117,14 +121,24 @@ fun ImportSettingsScreen(
                 onDecryptionPasswordChanged = { viewModel.onDecryptionPasswordChanged(it) },
                 onDecrypt = { viewModel.decrypt() },
                 onImport = { viewModel.confirmImport() },
+                onEnableAutomationStates = { viewModel.setEnableAutomationStates(it) },
+                onKeepPump = { viewModel.setKeepPump(it) },
+                onKeepPatientName = { viewModel.setKeepPatientName(it) },
+                onKeepBgSource = { viewModel.setKeepBgSource(it) },
+                onKeepSync = { viewModel.setKeepSync(it) },
                 onBack = { viewModel.goBackToFilePicker() }
             )
         }
 
-        is ImportStep.WaitingForPump -> {
-            // Deliberately without the close button the Loading step has: the settings are already
-            // written, and applying them is the only way out. It ends on its own when the pump goes
-            // idle, or with the busy message when it does not.
+        is ImportStep.WaitingForPump,
+        is ImportStep.Applying       -> {
+            // Deliberately without the close button the Loading step has: the apply is under way and
+            // letting it go would leave the configuration half changed. It ends on its own, or with
+            // the busy message if the pump never goes idle.
+            //
+            // Two steps, one screen, differing only in the line of text - "waiting for the pump" is a
+            // lie when there was nothing to wait for, and this screen is the one thing standing
+            // between the user and a second tap on the confirm dialog.
             Scaffold(
                 topBar = { AapsTopAppBar(title = { Text(stringResource(CoreUiStrings.import_setting)) }) }
             ) { padding ->
@@ -137,16 +151,29 @@ fun ImportSettingsScreen(
                 ) {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(AapsTheme.spacing.extraLarge))
-                    Text(stringResource(CoreUiStrings.import_apply_waiting))
+                    Text(
+                        if (currentStep is ImportStep.WaitingForPump) stringResource(CoreUiStrings.import_apply_waiting)
+                        else stringResource(CoreUiStrings.import_applying)
+                    )
                 }
             }
         }
 
         is ImportStep.ApplyConfirm   -> {
-            OkDialog(
+            // Nothing has been written yet, so Cancel genuinely changes nothing - which is why this
+            // is a real confirmation now and not the acknowledgement it used to be. The counts come
+            // from the same filter that will run, so what it says cannot disagree with what happens.
+            OkCancelDialog(
                 title = stringResource(CoreUiStrings.import_apply_title),
-                message = stringResource(CoreUiStrings.import_apply_message),
-                onDismiss = { viewModel.onApplyConfirmed() }
+                message = if (currentStep.keep.keepPump && currentStep.preview.pumpSkipped > 0)
+                    stringResource(
+                        CoreUiStrings.import_apply_message_pump_kept,
+                        currentStep.preview.changed,
+                        currentStep.preview.pumpSkipped
+                    )
+                else stringResource(CoreUiStrings.import_apply_message, currentStep.preview.changed),
+                onConfirm = { viewModel.onApplyConfirmed() },
+                onDismiss = { viewModel.cancelImport(); onClose() }
             )
         }
 
@@ -351,7 +378,7 @@ private fun ImportFileCard(
                 ) {
                     Icon(
                         imageVector = metaKey.icon,
-                        contentDescription = null,
+                        contentDescription = stringResource(metaKey.label),
                         modifier = Modifier
                             .padding(start = iconStartPadding, end = 8.dp)
                             .height(iconSize)
@@ -376,7 +403,7 @@ private fun ImportFileCard(
                 metadata.entries.find { it.key.key == "created_at" }?.let { (metaKey, metaEntry) ->
                     Icon(
                         imageVector = metaKey.icon,
-                        contentDescription = null,
+                        contentDescription = stringResource(metaKey.label),
                         modifier = Modifier
                             .padding(start = iconStartPadding, end = 8.dp)
                             .height(iconSize)
@@ -453,6 +480,11 @@ internal fun ImportReviewContent(
     onDecryptionPasswordChanged: (String) -> Unit,
     onDecrypt: () -> Unit,
     onImport: () -> Unit,
+    onEnableAutomationStates: (Boolean) -> Unit,
+    onKeepPump: (Boolean) -> Unit,
+    onKeepPatientName: (Boolean) -> Unit,
+    onKeepBgSource: (Boolean) -> Unit,
+    onKeepSync: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -666,10 +698,60 @@ internal fun ImportReviewContent(
                                 ImportSummaryItem(metaKey = metaKey, metaEntry = metaEntry, rxBus = rxBus)
                             }
                         }
+                        val hasStates = importedFileHasAutomationStates(result.prefs.values)
+                        Text(
+                            text = stringResource(
+                                if (hasStates) CoreUiStrings.import_automation_states_present
+                                else CoreUiStrings.import_automation_states_absent
+                            ),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        KeepChoice(
+                            checked = state.enableAutomationStates,
+                            label = stringResource(CoreUiStrings.import_enable_automation_states),
+                            enabled = !state.isProcessing,
+                            onCheckedChange = onEnableAutomationStates,
+                        )
+                        if (result.importPossible) {
+                            if (state.showKeepPump) {
+                                KeepChoice(
+                                    checked = state.keepPump,
+                                    label = stringResource(CoreUiStrings.import_keep_pump),
+                                    enabled = !state.isProcessing,
+                                    onCheckedChange = onKeepPump,
+                                )
+                            }
+                            KeepChoice(
+                                checked = state.keepPatientName,
+                                label = stringResource(CoreUiStrings.import_keep_patient_name),
+                                enabled = !state.isProcessing,
+                                onCheckedChange = onKeepPatientName,
+                            )
+                            KeepChoice(
+                                checked = state.keepBgSource,
+                                label = stringResource(CoreUiStrings.import_keep_bg_source),
+                                enabled = !state.isProcessing,
+                                onCheckedChange = onKeepBgSource,
+                            )
+                            KeepChoice(
+                                checked = state.keepSync,
+                                label = stringResource(CoreUiStrings.import_keep_sync),
+                                enabled = !state.isProcessing,
+                                onCheckedChange = onKeepSync,
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun KeepChoice(checked: Boolean, label: String, enabled: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -704,5 +786,14 @@ private fun FileDetailsCard(
                 ImportSummaryItem(metaKey = metaKey, metaEntry = metaEntry, rxBus = rxBus)
             }
         }
+    }
+}
+
+/** True when the settings file carries a non-empty automation-state list. */
+internal fun importedFileHasAutomationStates(values: Map<String, String>): Boolean {
+    val keys = listOf(StringNonKey.AutomationCurrentStates.key, StringNonKey.AutomationStateValues.key)
+    return keys.any { key ->
+        val raw = values[key]?.trim().orEmpty()
+        raw.isNotEmpty() && raw != "{}"
     }
 }

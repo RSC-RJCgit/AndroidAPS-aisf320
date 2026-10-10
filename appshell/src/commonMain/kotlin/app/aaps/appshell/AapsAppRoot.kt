@@ -42,6 +42,7 @@ import app.aaps.core.interfaces.protection.PasswordHasher
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.interfaces.ui.SnackbarHostPresence
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.interfaces.Preferences
@@ -53,6 +54,7 @@ import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalMasterControlAllowed
+import app.aaps.core.ui.compose.LocalClientPaired
 import app.aaps.core.ui.compose.LocalMasterReachable
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.LocalProfileUtil
@@ -86,6 +88,8 @@ import app.aaps.ui.compose.clientcontrol.ClientControlPendingDialog
  * @param onNavControllerReady handed the controller as soon as it exists, for a platform entry point
  *   that has to route from outside the composition - an Android intent, for example.
  * @param onClose leaves the app when initialization failed and there is nothing to show.
+ * @param snackbarHostPresence held by the snackbar host below while it collects, so that
+ *   `SnackbarNotificationFallback` posts a system notification only when no host is up.
  */
 @Composable
 fun AapsAppRoot(
@@ -105,6 +109,7 @@ fun AapsAppRoot(
     visibilityContext: VisibilityContext,
     nsClient: NsClient,
     rxBus: RxBus,
+    snackbarHostPresence: SnackbarHostPresence,
     clientControlActionDispatcher: ClientControlActionDispatcher,
     appIcon: @Composable (Modifier) -> Unit,
     splashLogo: @Composable (Modifier) -> Unit,
@@ -114,6 +119,7 @@ fun AapsAppRoot(
 ) {
     val navController = rememberNavController().also(onNavControllerReady)
     val masterReachable by nsClient.masterReachable.collectAsStateWithLifecycle()
+    val clientPaired by nsClient.masterOrPairedClientFlow.collectAsStateWithLifecycle()
     val masterControlAllowed by nsClient.masterControlAllowed.collectAsStateWithLifecycle()
 
     // Global self-heal — event-driven, NOT a poll (a timer would keep the CPU awake). Probe once when
@@ -139,6 +145,7 @@ fun AapsAppRoot(
         LocalAppIcon provides { modifier -> appIcon(modifier) },
         LocalConfig provides config,
         LocalMasterReachable provides masterReachable,
+        LocalClientPaired provides clientPaired,
         LocalMasterControlAllowed provides masterControlAllowed,
         LocalProfileUtil provides profileUtil,
         LocalCheckPassword provides passwordHasher::checkPassword,
@@ -175,6 +182,7 @@ fun AapsAppRoot(
                     // and is the single visible SnackbarHost across every screen.
                     GlobalSnackbarHost(
                         rxBus = rxBus,
+                        snackbarHostPresence = snackbarHostPresence,
                         hostState = rootSnackbarHostState,
                         modifier = Modifier.align(Alignment.BottomCenter)
                     )

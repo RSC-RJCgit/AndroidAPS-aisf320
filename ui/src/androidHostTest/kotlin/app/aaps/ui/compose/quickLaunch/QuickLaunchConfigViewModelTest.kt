@@ -48,7 +48,7 @@ internal class QuickLaunchConfigViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has empty selected and available items`() {
+    fun defaultUiStateHasEmptySelectedAndAvailableItems() {
         val state = sut.uiState.value
         assertThat(state.selectedItems).isEmpty()
         assertThat(state.availableStaticItems).isEmpty()

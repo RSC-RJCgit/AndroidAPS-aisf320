@@ -8,7 +8,9 @@ import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+import app.aaps.core.interfaces.plugin.EnforcedState
 import app.aaps.core.interfaces.profiling.Profiler
+import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
@@ -18,6 +20,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
@@ -28,27 +31,30 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     @Mock lateinit var determineBasalSMB: DetermineBasalAutoISF
     @Mock lateinit var bgQualityCheck: BgQualityCheck
     @Mock lateinit var profiler: Profiler
+    @Mock lateinit var tddCalculator: TddCalculator
     private lateinit var openAPSAutoISFPlugin: OpenAPSAutoISFPlugin
 
     @BeforeEach fun prepare() {
         openAPSAutoISFPlugin = OpenAPSAutoISFPlugin(
-            aapsLogger, rxBus, constraintChecker, rh, profileFunction, profileUtil, config, activePlugin,
+            aapsLogger, rxBus, constraintChecker, rh, profileFunction, profileRepository, profileUtil, config, activePlugin,
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             bgQualityCheck, notificationManager, determineBasalSMB, profiler,
-            GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator), { apsResultProvider() }, ch
+            GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator), { apsResultProvider() }, ch,
+            tddCalculator, mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock()
         )
     }
 
     @Test
-    fun specialEnableConditionTest() {
+    fun `an engineering dev build leaves the choice to the user`() {
         whenever(config.isEngineeringMode()).thenReturn(true)
         whenever(config.isDev()).thenReturn(true)
-        assertThat(openAPSAutoISFPlugin.specialEnableCondition()).isTrue()
+        assertThat(openAPSAutoISFPlugin.enforcedState()).isNull()
     }
 
     @Test
-    fun specialShowInListConditionTest() {
-        assertThat(openAPSAutoISFPlugin.specialShowInListCondition()).isTrue()
+    fun `any other build forces it off`() {
+        whenever(config.isEngineeringMode()).thenReturn(false)
+        assertThat(openAPSAutoISFPlugin.enforcedState()).isEqualTo(EnforcedState.Disabled)
     }
 
     @Suppress("KotlinConstantConditions")

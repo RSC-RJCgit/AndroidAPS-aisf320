@@ -10,7 +10,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.notifications.NotificationManager
-import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.versionChecker.VersionCheckerUtils
 import app.aaps.core.interfaces.versionChecker.VersionDefinition
@@ -26,10 +26,11 @@ import kotlinx.serialization.json.JsonObject
 
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
-class VersionCheckerUtilsImpl @Inject constructor(
+@Inject
+class VersionCheckerUtilsImpl(
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
-    private val rh: ResourceHelper,
+    private val rh: TextResolver,
     private val config: () -> Config,
     private val dateUtil: DateUtil,
     private val notificationManager: NotificationManager,

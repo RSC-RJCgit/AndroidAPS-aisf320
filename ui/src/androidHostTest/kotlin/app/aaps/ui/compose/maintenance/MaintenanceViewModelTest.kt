@@ -13,14 +13,24 @@ import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.PumpSync
-import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.sync.DataSyncSelectorXdrip
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
@@ -37,7 +47,6 @@ import org.mockito.kotlin.whenever
 internal class MaintenanceViewModelTest {
 
     @Mock private lateinit var aapsLogger: AAPSLogger
-    @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var l: L
     @Mock private lateinit var maintenance: Maintenance
     @Mock private lateinit var importExportPrefs: ImportExportPrefs
@@ -55,6 +64,7 @@ internal class MaintenanceViewModelTest {
     @Mock private lateinit var nsClient: NsClient
 
     private lateinit var sut: MaintenanceViewModel
+    private lateinit var testDispatcher: TestDispatcher
 
     @BeforeEach
     fun setUp() {
@@ -62,9 +72,10 @@ internal class MaintenanceViewModelTest {
         // StandardTestDispatcher does NOT run the init{}-launched refreshExportConfig() coroutine
         // (no advanceUntilIdle), so construction stays clean and we test the synchronous state methods
         // against the default state.
-        Dispatchers.setMain(StandardTestDispatcher())
+        testDispatcher = StandardTestDispatcher()
+        Dispatchers.setMain(testDispatcher)
         sut = MaintenanceViewModel(
-            aapsLogger, rh, l, maintenance, importExportPrefs, fileListProvider, cloudDirectoryManager,
+            aapsLogger, generatedTextResolver(), l, maintenance, importExportPrefs, fileListProvider, cloudDirectoryManager,
             activePlugin, persistenceLayer, fabricPrivacy, uel, dataSyncSelectorXdrip, pumpSync,
             iobCobCalculator, overviewData, overviewDataCache, nsClient
         )
@@ -74,7 +85,7 @@ internal class MaintenanceViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default state is idle export, hidden cloud directory, no config`() {
+    fun defaultStateIsIdleExportHiddenCloudDirectoryNoConfig() {
         assertThat(sut.exportState.value).isEqualTo(MaintenanceViewModel.ExportState.Idle)
         assertThat(sut.cloudDirectoryState.value).isEqualTo(MaintenanceViewModel.CloudDirectoryState.Hidden)
         assertThat(sut.exportConfig.value).isNull()
@@ -82,14 +93,14 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `onExportConfirmed moves export state to AskPassword`() {
+    fun onExportConfirmedMovesExportStateToAskPassword() {
         sut.onExportConfirmed()
 
         assertThat(sut.exportState.value).isEqualTo(MaintenanceViewModel.ExportState.AskPassword())
     }
 
     @Test
-    fun `cancelExport resets export state to Idle`() {
+    fun cancelExportResetsExportStateToIdle() {
         sut.onExportConfirmed()
         sut.cancelExport()
 
@@ -97,7 +108,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `onExportPasswordEntered rejects a password that is not the master password`() {
+    fun onExportPasswordEnteredRejectsAPasswordThatIsNotTheMasterPassword() {
         whenever(importExportPrefs.isMasterPasswordCorrect("not-the-master")).thenReturn(false)
         sut.onExportConfirmed()
 
@@ -110,7 +121,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `onExportPasswordEntered accepts and caches the master password`() {
+    fun onExportPasswordEnteredAcceptsAndCachesTheMasterPassword() {
         whenever(importExportPrefs.isMasterPasswordCorrect("master")).thenReturn(true)
         whenever(importExportPrefs.cacheExportPassword("master")).thenReturn("master")
         sut.onExportConfirmed()
@@ -119,5 +130,86 @@ internal class MaintenanceViewModelTest {
 
         verify(importExportPrefs).cacheExportPassword("master")
         assertThat(sut.exportState.value).isEqualTo(MaintenanceViewModel.ExportState.Idle)
+    }
+
+    // The four below wait in real time rather than on the test scheduler. Every maintenance action
+    // hops to `aapsIoDispatcher` for its slow part, and that is a real dispatcher on a real thread
+    // pool - a global `expect val`, so a test cannot swap it. Virtual time simply does not reach it:
+    // `advanceUntilIdle` returns while the work is still on its way, and the assertion then reads an
+    // empty list and calls a working feature broken. `Main` is moved to an unconfined dispatcher for
+    // the same reason, so the coroutine finishes on whichever thread resumed it.
+
+    @Test
+    fun sendLogsSaysSoOnScreenWhenThePlatformHasNoWayToSendThem() = runBlocking {
+        // What iOS does: there is no mail composer, so Maintenance throws instead of pretending.
+        // NotImplementedError is an Error rather than an Exception, so before the shared handler it
+        // walked straight past `catch (e: Exception)` and took the app down.
+        runEagerly()
+        whenever(maintenance.executeSendLogs()).thenAnswer { throw NotImplementedError("no mail composer") }
+        val event = expectEvent()
+
+        sut.sendLogs()
+
+        assertThat(event.await()).isEqualTo(MaintenanceEvent.Error("This function is not ready on this platform yet"))
+    }
+
+    @Test
+    fun resetDatabasesSaysSoOnScreenWhenThePlatformCannotClearThem() = runBlocking {
+        // Desktop still answers this way, and iOS did until the tables were cleared with SQL.
+        runEagerly()
+        whenever(persistenceLayer.clearDatabases()).thenAnswer { throw UnsupportedOperationException("no clearAllTables") }
+        val event = expectEvent()
+
+        sut.resetDatabases()
+
+        assertThat(event.await()).isEqualTo(MaintenanceEvent.Error("This function is not ready on this platform yet"))
+    }
+
+    @Test
+    fun aRealFailureGetsThePlainErrorMessageNotTheNotReadyOne() = runBlocking {
+        runEagerly()
+        whenever(persistenceLayer.cleanupDatabase(any(), any())).thenAnswer { throw IllegalStateException("database is locked") }
+        val event = expectEvent()
+
+        sut.cleanupDatabases()
+
+        assertThat(event.await()).isEqualTo(MaintenanceEvent.Error("Error"))
+    }
+
+    @Test
+    fun cleanupDatabasesReportsWhatItRemovedWhenItWorks() = runBlocking {
+        runEagerly()
+        whenever(persistenceLayer.cleanupDatabase(any(), any())).thenReturn("GlucoseValue 12")
+        val event = expectEvent()
+
+        sut.cleanupDatabases()
+
+        assertThat(event.await()).isEqualTo(MaintenanceEvent.CleanupResult("GlucoseValue 12"))
+    }
+
+    /**
+     * Lets the view model's coroutines run as they are started.
+     *
+     * Called after the view model is built, never before: the standard dispatcher from `setUp` is
+     * what keeps the `init` block's `refreshExportConfig` from running against mocks nothing has
+     * stubbed, and that would fail every test in the class rather than only these.
+     */
+    private fun runEagerly() = Dispatchers.setMain(UnconfinedTestDispatcher())
+
+    /**
+     * Starts listening and returns before the action does anything.
+     *
+     * `events` has no replay and no buffer, so an event sent before anybody listens is not kept and
+     * not delivered - waiting for the subscription first is what makes the test about the action
+     * rather than about who won the race. The timeout is only so a broken action fails as a test
+     * instead of hanging the build.
+     */
+    private suspend fun CoroutineScope.expectEvent(): Deferred<MaintenanceEvent> {
+        val listening = CompletableDeferred<Unit>()
+        val event = async(Dispatchers.Default) {
+            withTimeout(10_000) { sut.events.onSubscription { listening.complete(Unit) }.first() }
+        }
+        listening.await()
+        return event
     }
 }

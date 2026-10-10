@@ -62,7 +62,7 @@ internal class HistoryViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is empty date and at-now, progress starts idle`() {
+    fun defaultUiStateIsEmptyDateAndAtNowProgressStartsIdle() {
         val state = sut.uiState.value
         // fromTime == 0L -> dateText stays blank; toTime(0) >= now(0) -> isAtNow true.
         assertThat(state.dateText).isEqualTo("")
@@ -71,7 +71,7 @@ internal class HistoryViewModelTest {
     }
 
     @Test
-    fun `onPause stops the history calculation`() = runTest(dispatcher) {
+    fun onPauseStopsTheHistoryCalculation() = runTest(dispatcher) {
         sut.onPause()
         // onPause launches on viewModelScope now, so let that run before verifying.
         advanceUntilIdle()
@@ -80,14 +80,14 @@ internal class HistoryViewModelTest {
     }
 
     @Test
-    fun `selectedDateMillis returns the timestamp from dateUtil`() {
+    fun selectedDateMillisReturnsTheTimestampFromDateUtil() {
         whenever(dateUtil.getTimestampWithCurrentTimeOfDay(any())).thenReturn(999L)
 
         assertThat(sut.selectedDateMillis()).isEqualTo(999L)
     }
 
     @Test
-    fun `changing the window clears the cache before recalculating`() = runTest(dispatcher) {
+    fun changingTheWindowClearsTheCacheBeforeRecalculating() = runTest(dispatcher) {
         // The worker refills the cache one series at a time and blood glucose comes last, so without
         // the clear the graph shows the previous day's readings under the new date for several
         // seconds. Order matters: clearing after starting the calculation could wipe fresh results.
@@ -109,7 +109,7 @@ internal class HistoryViewModelTest {
     }
 
     @Test
-    fun `jumping to now also clears the cache`() = runTest(dispatcher) {
+    fun jumpingToNowAlsoClearsTheCache() = runTest(dispatcher) {
         clearInvocations(cache)
 
         sut.jumpToNow()

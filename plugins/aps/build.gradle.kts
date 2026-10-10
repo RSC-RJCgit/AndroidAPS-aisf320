@@ -65,7 +65,7 @@ kotlin {
 
                 implementation(libs.androidx.collection)
                 implementation(libs.kotlinx.coroutines.core)
-                implementation(libs.cmp.runtime)
+                implementation(libs.jetbrains.compose.runtime)
                 api(kotlin("reflect"))
             }
         }
@@ -78,6 +78,9 @@ kotlin {
                 implementation(libs.androidx.compose.ui.tooling.preview)
                 implementation(libs.androidx.work.runtime)
                 implementation(libs.org.slf4j.api)
+                implementation(libs.shizuku.api)
+                implementation(libs.shizuku.provider)
+                implementation(libs.dadb)
                 // APS (it should be androidTestImplementation but it doesn't work)
                 runtimeOnly(libs.org.mozilla.rhino)
             }

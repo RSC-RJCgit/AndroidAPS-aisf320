@@ -57,6 +57,11 @@ class ImportReviewContentTest {
                     onDecryptionPasswordChanged = {},
                     onDecrypt = {},
                     onImport = {},
+                    onEnableAutomationStates = {},
+                    onKeepPump = {},
+                    onKeepPatientName = {},
+                    onKeepBgSource = {},
+                    onKeepSync = {},
                     onBack = { back = true }
                 )
             }

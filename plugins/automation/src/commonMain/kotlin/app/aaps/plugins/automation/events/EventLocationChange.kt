@@ -18,4 +18,8 @@ import app.aaps.plugins.automation.GeoPosition
  * @param provider which source reported it ("gps", "network", ...) - kept because it is the quickest
  *   way to tell a precise fix from a coarse one when reading a log
  */
-data class EventLocationChange(val position: GeoPosition, val provider: String?) : Event()
+data class EventLocationChange(
+    val position: GeoPosition,
+    val provider: String?,
+    val accuracyMetres: Float? = null,
+) : Event()

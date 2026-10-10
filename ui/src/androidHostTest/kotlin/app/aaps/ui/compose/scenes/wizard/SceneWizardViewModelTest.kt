@@ -4,14 +4,12 @@ import androidx.lifecycle.SavedStateHandle
 import app.aaps.core.data.model.SceneAction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
-import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.scenes.SceneStore
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.ui.CoreUiStrings
-import app.aaps.ui.UiStrings
+import app.aaps.shared.tests.generatedTextResolver
 import app.aaps.ui.compose.scenes.SceneTemplate
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +34,6 @@ internal class SceneWizardViewModelTest {
     @Mock private lateinit var preferences: Preferences
     @Mock private lateinit var translator: Translator
     @Mock private lateinit var dateUtil: DateUtil
-    @Mock private lateinit var rh: ResourceHelper
 
     private lateinit var sut: SceneWizardViewModel
 
@@ -53,7 +50,7 @@ internal class SceneWizardViewModelTest {
         whenever(preferences.get(StringNonKey.TempTargetPresets)).thenReturn("[]")
         sut = SceneWizardViewModel(
             SavedStateHandle(), sceneRepository, profileRepository, profileUtil,
-            preferences, translator, dateUtil, rh
+            preferences, translator, dateUtil, generatedTextResolver()
         )
     }
 
@@ -61,7 +58,7 @@ internal class SceneWizardViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default state is the template step with empty selections`() {
+    fun defaultStateIsTheTemplateStepWithEmptySelections() {
         val state = sut.state.value
         assertThat(state.currentStep).isEqualTo(SceneWizardViewModel.STEP_TEMPLATE)
         assertThat(state.template).isNull()
@@ -77,7 +74,7 @@ internal class SceneWizardViewModelTest {
     }
 
     @Test
-    fun `setName and setDuration update the state`() {
+    fun setNameAndSetDurationUpdateTheState() {
         sut.setName("Morning walk")
         sut.setDuration(120)
 
@@ -87,7 +84,7 @@ internal class SceneWizardViewModelTest {
     }
 
     @Test
-    fun `setIcon and setChainTarget update the state`() {
+    fun setIconAndSetChainTargetUpdateTheState() {
         sut.setIcon("heart")
         sut.setChainTarget("scene-123")
 
@@ -97,7 +94,7 @@ internal class SceneWizardViewModelTest {
     }
 
     @Test
-    fun `action toggles flip their flags independently`() {
+    fun actionTogglesFlipTheirFlagsIndependently() {
         sut.setProfileEnabled(true)
         sut.setTtEnabled(true)
         sut.setSmbEnabled(true)
@@ -113,7 +110,7 @@ internal class SceneWizardViewModelTest {
     }
 
     @Test
-    fun `updateProfileAction applies matching type and ignores mismatched type`() {
+    fun updateProfileActionAppliesMatchingTypeAndIgnoresMismatchedType() {
         val profile = SceneAction.ProfileSwitch(profileName = "Work", percentage = 80)
         sut.updateProfileAction(profile)
         assertThat(sut.state.value.profileAction).isEqualTo(profile)
@@ -124,15 +121,13 @@ internal class SceneWizardViewModelTest {
     }
 
     @Test
-    fun `updateTtAction ignores non-TempTarget actions`() {
+    fun updateTtActionIgnoresNonTempTargetActions() {
         sut.updateTtAction(SceneAction.SmbToggle(enabled = true))
         assertThat(sut.state.value.ttAction).isNull()
     }
 
     @Test
     fun `selectTemplate for a bundled template enables its actions and jumps to info step`() {
-        whenever(rh.gs(CoreUiStrings.scene_template_exercise)).thenReturn("Exercise")
-
         sut.selectTemplate(SceneTemplate.EXERCISE)
 
         val state = sut.state.value
@@ -149,8 +144,6 @@ internal class SceneWizardViewModelTest {
 
     @Test
     fun `selectTemplate BLANK jumps to profile step with no actions and empty name`() {
-        whenever(rh.gs(CoreUiStrings.scene_template_blank)).thenReturn("Blank")
-
         sut.selectTemplate(SceneTemplate.BLANK)
 
         val state = sut.state.value

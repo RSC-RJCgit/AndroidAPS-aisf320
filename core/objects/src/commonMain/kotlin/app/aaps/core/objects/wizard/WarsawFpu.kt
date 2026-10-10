@@ -1,0 +1,136 @@
+package app.aaps.core.objects.wizard
+
+import app.aaps.core.data.configuration.Constants
+import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.objects.profile.ProfileSealed
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.math.floor
+import kotlin.math.max
+
+/**
+ * Protein and fat insulin, spread as one dose per hour.
+ *
+ * The immediate wizard bolus does not include this insulin. Fat-protein units pick a length:
+ * up to 1 gives 3 hours, up to 2 gives 4 hours, up to 3 gives 5 hours, and above 3 gives 8 hours.
+ * Each dose is the total divided by that full length. On the 8 hour length, [durationHoursCap]
+ * only drops the later hours. It does not make the earlier doses bigger.
+ */
+data class WarsawFpuPlan(
+    val fpu: Double,
+    val durationMinutes: Int,
+    val numDoses: Int,
+    val perDoseInsulin: Double,
+    val totalInsulin: Double,
+    val fullTierInsulin: Double,
+    val capped: Boolean,
+)
+
+fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap: Double = 5.0): WarsawFpuPlan? {
+    if (ic <= 0.0) return null
+    val totalRequiredInsulin = (proteinGrams * 0.4 + fatGrams * 0.9) / ic
+    if (totalRequiredInsulin <= 0.0) return null
+    val fpu = (9.0 * fatGrams + 4.0 * proteinGrams) / 100.0
+    val tierHours = when {
+        fpu <= 1.0 -> 3
+        fpu <= 2.0 -> 4
+        fpu <= 3.0 -> 5
+        else       -> 8
+    }
+    val perDoseInsulin = totalRequiredInsulin / tierHours
+    val numDoses = if (tierHours == 8) floor(durationHoursCap.coerceIn(0.0, 8.0)).toInt() else tierHours
+    if (numDoses <= 0) return null
+    return WarsawFpuPlan(
+        fpu = fpu,
+        durationMinutes = numDoses * 60,
+        numDoses = numDoses,
+        perDoseInsulin = perDoseInsulin,
+        totalInsulin = perDoseInsulin * numDoses,
+        fullTierInsulin = perDoseInsulin * tierHours,
+        capped = numDoses < tierHours,
+    )
+}
+
+/** Add [units] onto an existing hourly plan, or start a 3 hour plan when there is none. */
+fun warsawPlanPlusUnits(plan: WarsawFpuPlan?, units: Double): WarsawFpuPlan? {
+    if (units <= 0.0) return plan
+    if (plan == null) {
+        val hours = 3
+        return WarsawFpuPlan(
+            fpu = 0.0,
+            durationMinutes = hours * 60,
+            numDoses = hours,
+            perDoseInsulin = units / hours,
+            totalInsulin = units,
+            fullTierInsulin = units,
+            capped = false,
+        )
+    }
+    val total = plan.totalInsulin + units
+    val perDose = total / plan.numDoses
+    return plan.copy(
+        perDoseInsulin = perDose,
+        totalInsulin = total,
+        fullTierInsulin = plan.fullTierInsulin + units,
+    )
+}
+
+/** Hour 1 is the first delay. A single dose waits the whole length. */
+fun warsawDoseDelayMinutes(index: Int, numDoses: Int, durationMinutes: Int): Int {
+    if (numDoses <= 1) return durationMinutes.coerceAtLeast(1)
+    return (durationMinutes.toLong() * index / numDoses).toInt()
+}
+
+/** A dose that fails a check at its hour is checked again every 10 minutes. */
+const val WARSAW_RETRY_MINUTES = 10
+
+/** The last dose has no next dose, so it keeps trying for 30 minutes after its own hour. */
+const val WARSAW_LAST_DOSE_WINDOW_MINUTES = 30
+
+private const val MS_PER_MINUTE = 60_000L
+
+/**
+ * The latest time a re-check may still run. An earlier dose may be re-checked until 10 minutes before the next
+ * dose is due. The last dose may be re-checked until 30 minutes after its own first due time.
+ */
+fun warsawRetryDeadlineMs(firstDueAt: Long, nextDueAt: Long?): Long =
+    nextDueAt?.let { it - WARSAW_RETRY_MINUTES * MS_PER_MINUTE } ?: (firstDueAt + WARSAW_LAST_DOSE_WINDOW_MINUTES * MS_PER_MINUTE)
+
+/** True when one more re-check, 10 minutes from [now], still falls inside the window. Otherwise the dose is dropped. */
+fun warsawCanRetry(now: Long, firstDueAt: Long, nextDueAt: Long?): Boolean =
+    now + WARSAW_RETRY_MINUTES * MS_PER_MINUTE <= warsawRetryDeadlineMs(firstDueAt, nextDueAt)
+
+/** Amount as it is written in a care portal note: two decimals, for example 1.30. */
+fun warsawNoteAmount(units: Double): String {
+    val cents = kotlin.math.round(units * 100.0).toLong()
+    return "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
+}
+
+fun profileSwitchPercent(profile: Profile): Int =
+    if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
+
+/** Glucose must be above 5.5 mmol, and both delta and short delta must be above 0.2 mmol. */
+fun warsawDoseBgAllows(glucoseMgdl: Double?, delta: Double?, shortDelta: Double?): Boolean {
+    if (glucoseMgdl == null || delta == null || shortDelta == null) return false
+    val toMmol = Constants.MGDL_TO_MMOLL
+    return glucoseMgdl * toMmol > 5.5 && delta * toMmol > 0.2 && shortDelta * toMmol > 0.2
+}
+
+/** Subtract any insulin-on-board rise since the immediate bolus. A result of 0 or less is not delivered. */
+fun warsawDoseAfterIobRise(planned: Double, iobBaseline: Double, liveIob: Double, bolusStep: Double): Double =
+    Round.roundTo(planned - max(0.0, liveIob - iobBaseline), bolusStep)
+
+/**
+ * A new wizard confirm replaces an older protein/fat series. The doses live only in this process.
+ * If the app is killed, the remaining doses are not delivered.
+ */
+@OptIn(ExperimentalAtomicApi::class)
+internal object WarsawScheduleGate {
+
+    private val generation = AtomicLong(0)
+
+    fun next(): Long = generation.addAndFetch(1)
+
+    fun isCurrent(token: Long): Boolean = generation.load() == token
+}

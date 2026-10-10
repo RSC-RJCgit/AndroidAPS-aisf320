@@ -1,0 +1,247 @@
+package app.aaps.plugins.aps.openAPSAutoISF
+
+import kotlin.math.abs
+import kotlin.math.round
+
+// A hand-set temp target used as a remote switch. The values are 0.002 mmol apart,
+// so the match window is 0.0001 mmol. A wider window would hit the neighbour.
+internal enum class RemoteToggleCode {
+    SMB_DOWN,
+    SMB_UP,
+    SENSOR_AGE,
+    BOOST,
+    PP_DOWN,
+    PP_UP,
+    PP_HIGH_DOWN,
+    PP_HIGH_UP,
+    ACCE_DOWN,
+    ACCE_UP,
+    ACCE_HIGH_DOWN,
+    ACCE_HIGH_UP,
+    HIGH_ISF_DOWN,
+    HIGH_ISF_UP,
+    MAX_LOW_DOWN,
+    MAX_LOW_UP,
+    MAX_DOWN,
+    MAX_UP,
+    TOD_0002_DOWN,
+    TOD_0002_UP,
+    TOD_0204_DOWN,
+    TOD_0204_UP,
+    TOD_0406_DOWN,
+    TOD_0406_UP,
+    TOD_0609_DOWN,
+    TOD_0609_UP,
+    TOD_0912_DOWN,
+    TOD_0912_UP,
+    TOD_1218_DOWN,
+    TOD_1218_UP,
+    TOD_1822_DOWN,
+    TOD_1822_UP,
+    TOD_2200_DOWN,
+    TOD_2200_UP,
+    GRAPH2,
+    GRAPH5,
+    CLEAN_GRAPH,
+    CLOUD_LOGS,
+    MJ_NO,
+    MJ3,
+    MJ_ACTIVE,
+    MJ2,
+    PROFILE_STANDARD,
+    PROFILE_LOW,
+    SENSOR_AGE_CODE,
+    LIBRE_UKF1,
+    MJ_START,
+    MJ_RESTORE,
+    STEROID_START,
+    STEROID_130,
+    STEROID_150,
+    STEROID_190,
+    STEROID_250,
+    STEROID_OFF,
+    MJ_BUTTONS,
+    STEROID_BUTTON,
+    ANYDESK,
+    UKF1_DOSING,
+    TIER3_BOOST,
+    PROFILE_BATCH_AUTO,
+    PROFILE_BATCH_REVERT,
+    PROFILE_BATCH_REVERT_C,
+    TIER_SET_A,
+    TIER_SET_B,
+    TIER_SET_C,
+    FAST_RISE,
+    LOW_REBOUND,
+    T3_UNRESTRICTED,
+    BOOST_SCALE_DOWN,
+    BOOST_SCALE_UP,
+    BOOST_MAX_DOWN,
+    BOOST_MAX_UP,
+    BOOST_IOB_DOWN,
+    BOOST_IOB_UP,
+    DURA_WEIGHT_DOWN,
+    DURA_WEIGHT_UP,
+    LIBRE_SLOPE_DOWN,
+    LIBRE_SLOPE_UP,
+    LIBRE_OFFSET_DOWN,
+    LIBRE_OFFSET_UP,
+    WIZARD_PCT_DOWN,
+    WIZARD_PCT_UP,
+    MILD_BOOST_DOWN,
+    MILD_BOOST_UP,
+    SMB_OFFSET_DOWN,
+    SMB_OFFSET_UP,
+    PEAK_INSULIN_DOWN,
+    PEAK_INSULIN_UP,
+    LOCATION_SMS,
+    LOCATION_THIS_PHONE,
+    LIVE_STEPS,
+    LIVE_MJ_STATE,
+    ALARM_HYPO_SET,
+    ALARM_HYPO_CLEAR,
+    INSULIN_TOTALS,
+    LOOP_INTERVAL,
+    STAGE_APK,
+    INSTALL_APK,
+    ADB_START,
+}
+
+internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
+    ttNear(ttMgdl, 5.002, 0.0001) -> RemoteToggleCode.SMB_DOWN
+    ttNear(ttMgdl, 5.004, 0.0001) -> RemoteToggleCode.SMB_UP
+    ttNear(ttMgdl, 5.006, 0.0001) -> RemoteToggleCode.SENSOR_AGE
+    ttNear(ttMgdl, 5.008, 0.0001) -> RemoteToggleCode.BOOST
+    ttNear(ttMgdl, 5.012, 0.0001) -> RemoteToggleCode.PP_DOWN
+    ttNear(ttMgdl, 5.014, 0.0001) -> RemoteToggleCode.PP_UP
+    ttNear(ttMgdl, 5.056, 0.0001) -> RemoteToggleCode.PP_HIGH_DOWN
+    ttNear(ttMgdl, 5.058, 0.0001) -> RemoteToggleCode.PP_HIGH_UP
+    ttNear(ttMgdl, 5.016, 0.0001) -> RemoteToggleCode.ACCE_DOWN
+    ttNear(ttMgdl, 5.018, 0.0001) -> RemoteToggleCode.ACCE_UP
+    ttNear(ttMgdl, 5.062, 0.0001) -> RemoteToggleCode.ACCE_HIGH_DOWN
+    ttNear(ttMgdl, 5.064, 0.0001) -> RemoteToggleCode.ACCE_HIGH_UP
+    ttNear(ttMgdl, 5.068, 0.0001) -> RemoteToggleCode.HIGH_ISF_DOWN
+    ttNear(ttMgdl, 5.070, 0.0001) -> RemoteToggleCode.HIGH_ISF_UP
+    ttNear(ttMgdl, 5.080, 0.0001) -> RemoteToggleCode.MAX_LOW_DOWN
+    ttNear(ttMgdl, 5.082, 0.0001) -> RemoteToggleCode.MAX_LOW_UP
+    ttNear(ttMgdl, 5.086, 0.0001) -> RemoteToggleCode.MAX_DOWN
+    ttNear(ttMgdl, 5.088, 0.0001) -> RemoteToggleCode.MAX_UP
+    ttNear(ttMgdl, 5.092, 0.0001) -> RemoteToggleCode.TOD_0002_DOWN
+    ttNear(ttMgdl, 5.094, 0.0001) -> RemoteToggleCode.TOD_0002_UP
+    ttNear(ttMgdl, 5.098, 0.0001) -> RemoteToggleCode.TOD_0204_DOWN
+    ttNear(ttMgdl, 5.100, 0.0001) -> RemoteToggleCode.TOD_0204_UP
+    ttNear(ttMgdl, 5.104, 0.0001) -> RemoteToggleCode.TOD_0406_DOWN
+    ttNear(ttMgdl, 5.106, 0.0001) -> RemoteToggleCode.TOD_0406_UP
+    ttNear(ttMgdl, 5.110, 0.0001) -> RemoteToggleCode.TOD_0609_DOWN
+    ttNear(ttMgdl, 5.112, 0.0001) -> RemoteToggleCode.TOD_0609_UP
+    ttNear(ttMgdl, 5.116, 0.0001) -> RemoteToggleCode.TOD_0912_DOWN
+    ttNear(ttMgdl, 5.118, 0.0001) -> RemoteToggleCode.TOD_0912_UP
+    ttNear(ttMgdl, 5.122, 0.0001) -> RemoteToggleCode.TOD_1218_DOWN
+    ttNear(ttMgdl, 5.124, 0.0001) -> RemoteToggleCode.TOD_1218_UP
+    ttNear(ttMgdl, 5.128, 0.0001) -> RemoteToggleCode.TOD_1822_DOWN
+    ttNear(ttMgdl, 5.130, 0.0001) -> RemoteToggleCode.TOD_1822_UP
+    ttNear(ttMgdl, 5.134, 0.0001) -> RemoteToggleCode.TOD_2200_DOWN
+    ttNear(ttMgdl, 5.136, 0.0001) -> RemoteToggleCode.TOD_2200_UP
+    ttNear(ttMgdl, 5.138, 0.0001) -> RemoteToggleCode.GRAPH2
+    ttNear(ttMgdl, 5.140, 0.0001) -> RemoteToggleCode.CLOUD_LOGS
+    ttNear(ttMgdl, 5.142, 0.0001) -> RemoteToggleCode.GRAPH5
+    ttNear(ttMgdl, 5.144, 0.0001) -> RemoteToggleCode.MJ_NO
+    ttNear(ttMgdl, 5.146, 0.0001) -> RemoteToggleCode.MJ3
+    ttNear(ttMgdl, 5.222, 0.0001) -> RemoteToggleCode.MJ_ACTIVE
+    ttNear(ttMgdl, 5.224, 0.0001) -> RemoteToggleCode.MJ2
+    ttNear(ttMgdl, 5.148, 0.0001) -> RemoteToggleCode.PROFILE_STANDARD
+    ttNear(ttMgdl, 5.150, 0.0001) -> RemoteToggleCode.PROFILE_LOW
+    ttNear(ttMgdl, 5.156, 0.0001) -> RemoteToggleCode.SENSOR_AGE_CODE
+    ttNear(ttMgdl, 5.152, 0.0001) -> RemoteToggleCode.LIBRE_UKF1
+    ttNear(ttMgdl, 5.158, 0.0001) -> RemoteToggleCode.MJ_START
+    ttNear(ttMgdl, 5.160, 0.0001) -> RemoteToggleCode.MJ_RESTORE
+    ttNear(ttMgdl, 5.162, 0.0001) -> RemoteToggleCode.STEROID_START
+    ttNear(ttMgdl, 5.168, 0.0001) -> RemoteToggleCode.STEROID_130
+    ttNear(ttMgdl, 5.170, 0.0001) -> RemoteToggleCode.STEROID_150
+    ttNear(ttMgdl, 5.172, 0.0001) -> RemoteToggleCode.STEROID_190
+    ttNear(ttMgdl, 5.174, 0.0001) -> RemoteToggleCode.STEROID_250
+    ttNear(ttMgdl, 5.176, 0.0001) -> RemoteToggleCode.STEROID_OFF
+    ttNear(ttMgdl, 5.178, 0.0001) -> RemoteToggleCode.ANYDESK
+    ttNear(ttMgdl, 5.194, 0.0001) -> RemoteToggleCode.TIER3_BOOST
+    ttNear(ttMgdl, 5.210, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_AUTO
+    ttNear(ttMgdl, 5.212, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_REVERT
+    ttNear(ttMgdl, 5.214, 0.0001) -> RemoteToggleCode.PROFILE_BATCH_REVERT_C
+    ttNear(ttMgdl, 5.216, 0.0001) -> RemoteToggleCode.TIER_SET_A
+    ttNear(ttMgdl, 5.218, 0.0001) -> RemoteToggleCode.TIER_SET_B
+    ttNear(ttMgdl, 5.220, 0.0001) -> RemoteToggleCode.TIER_SET_C
+    ttNear(ttMgdl, 5.226, 0.0001) -> RemoteToggleCode.FAST_RISE
+    ttNear(ttMgdl, 5.228, 0.0001) -> RemoteToggleCode.LOW_REBOUND
+    ttNear(ttMgdl, 5.230, 0.0001) -> RemoteToggleCode.T3_UNRESTRICTED
+    ttNear(ttMgdl, 5.182, 0.0001) -> RemoteToggleCode.BOOST_SCALE_DOWN
+    ttNear(ttMgdl, 5.184, 0.0001) -> RemoteToggleCode.BOOST_SCALE_UP
+    ttNear(ttMgdl, 5.186, 0.0001) -> RemoteToggleCode.BOOST_MAX_DOWN
+    ttNear(ttMgdl, 5.188, 0.0001) -> RemoteToggleCode.BOOST_MAX_UP
+    ttNear(ttMgdl, 5.190, 0.0001) -> RemoteToggleCode.BOOST_IOB_DOWN
+    ttNear(ttMgdl, 5.192, 0.0001) -> RemoteToggleCode.BOOST_IOB_UP
+    ttNear(ttMgdl, 5.022, 0.0001) -> RemoteToggleCode.DURA_WEIGHT_DOWN
+    ttNear(ttMgdl, 5.024, 0.0001) -> RemoteToggleCode.DURA_WEIGHT_UP
+    ttNear(ttMgdl, 5.026, 0.0001) -> RemoteToggleCode.LIBRE_SLOPE_DOWN
+    ttNear(ttMgdl, 5.028, 0.0001) -> RemoteToggleCode.LIBRE_SLOPE_UP
+    ttNear(ttMgdl, 5.032, 0.0001) -> RemoteToggleCode.LIBRE_OFFSET_DOWN
+    ttNear(ttMgdl, 5.034, 0.0001) -> RemoteToggleCode.LIBRE_OFFSET_UP
+    ttNear(ttMgdl, 5.046, 0.0001) -> RemoteToggleCode.WIZARD_PCT_DOWN
+    ttNear(ttMgdl, 5.048, 0.0001) -> RemoteToggleCode.WIZARD_PCT_UP
+    ttNear(ttMgdl, 5.052, 0.0001) -> RemoteToggleCode.MILD_BOOST_DOWN
+    ttNear(ttMgdl, 5.054, 0.0001) -> RemoteToggleCode.MILD_BOOST_UP
+    ttNear(ttMgdl, 5.036, 0.0001) -> RemoteToggleCode.SMB_OFFSET_DOWN
+    ttNear(ttMgdl, 5.038, 0.0001) -> RemoteToggleCode.SMB_OFFSET_UP
+    ttNear(ttMgdl, 5.042, 0.0001) -> RemoteToggleCode.CLEAN_GRAPH
+    ttNear(ttMgdl, 5.164, 0.0001) -> RemoteToggleCode.MJ_BUTTONS
+    ttNear(ttMgdl, 5.166, 0.0001) -> RemoteToggleCode.STEROID_BUTTON
+    ttNear(ttMgdl, 5.196, 0.0001) -> RemoteToggleCode.UKF1_DOSING
+    ttNear(ttMgdl, 5.198, 0.0001) -> RemoteToggleCode.LOCATION_SMS
+    ttNear(ttMgdl, 5.204, 0.0001) -> RemoteToggleCode.LOCATION_THIS_PHONE
+    ttNear(ttMgdl, 5.206, 0.0001) -> RemoteToggleCode.LIVE_STEPS
+    ttNear(ttMgdl, 5.236, 0.0001) -> RemoteToggleCode.LIVE_MJ_STATE
+    ttNear(ttMgdl, 5.240, 0.0001) -> RemoteToggleCode.ALARM_HYPO_SET
+    ttNear(ttMgdl, 5.242, 0.0001) -> RemoteToggleCode.ALARM_HYPO_CLEAR
+    ttNear(ttMgdl, 5.232, 0.0001) -> RemoteToggleCode.INSULIN_TOTALS
+    ttNear(ttMgdl, 5.234, 0.0001) -> RemoteToggleCode.LOOP_INTERVAL
+    ttNear(ttMgdl, 5.200, 0.0001) -> RemoteToggleCode.INSTALL_APK
+    ttNear(ttMgdl, 5.202, 0.0001) -> RemoteToggleCode.STAGE_APK
+    ttNear(ttMgdl, 5.208, 0.0001) -> RemoteToggleCode.ADB_START
+    ttNear(ttMgdl, 5.074, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_DOWN
+    ttNear(ttMgdl, 5.076, 0.0001) -> RemoteToggleCode.PEAK_INSULIN_UP
+    else -> null
+}
+
+internal fun nudgeDown(value: Double, floor: Double, step: Double = 0.01): Double = (value - step).coerceAtLeast(floor)
+
+internal fun nudgeUp(value: Double, cap: Double, step: Double = 0.01): Double = (value + step).coerceAtMost(cap)
+
+// Same 0.001 gap the 3.2.1 live-weight check uses.
+internal fun liveMatchesBaseline(live: Double, baseline: Double): Boolean = abs(live - baseline) <= 0.001
+
+// Short care-portal label. A leading zero can be dropped, and trailing zeros are cut once the label is longer than 5.
+internal fun compactSettingNote(prefix: String, value: Double, places: Int, omitLeadingZero: Boolean = false): String {
+    var formatted = fixedDecimals(value, places)
+    if (omitLeadingZero) formatted = formatted.removePrefix("0")
+    var note = prefix + formatted
+    while (note.length > 5 && note.endsWith("0") && note.contains('.')) note = note.dropLast(1)
+    return note
+}
+
+// Wizard bolus percent, three digits, so 80 is "W080%" and 100 is "W100%".
+internal fun wizardBolusNote(percent: Int): String = "W" + percent.toString().padStart(3, '0') + "%"
+
+internal fun todOffsetNote(value: Double): String {
+    val text = fixedDecimals(value, 1)
+    return if (text.startsWith("-")) "T$text" else "T+$text"
+}
+
+internal fun fixedDecimals(value: Double, places: Int): String {
+    var scale = 1.0
+    repeat(places) { scale *= 10.0 }
+    val scaled = round(value * scale).toLong()
+    val sign = if (scaled < 0) "-" else ""
+    val absScaled = abs(scaled)
+    val factor = scale.toLong()
+    val whole = absScaled / factor
+    val frac = (absScaled % factor).toString().padStart(places, '0')
+    return "$sign$whole.$frac"
+}

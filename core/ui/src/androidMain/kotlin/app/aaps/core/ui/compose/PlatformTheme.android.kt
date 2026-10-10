@@ -1,6 +1,8 @@
 package app.aaps.core.ui.compose
 
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.Modifier
 import androidx.appcompat.app.AppCompatActivity
 import android.content.pm.ActivityInfo
 import android.text.format.DateFormat
@@ -52,3 +54,5 @@ actual fun LockPortraitOrientation() {
         }
     }
 }
+
+actual fun Modifier.blockSystemEdgeGesture(): Modifier = systemGestureExclusion()

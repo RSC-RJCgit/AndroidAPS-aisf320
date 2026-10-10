@@ -3,11 +3,9 @@ package app.aaps.ui.compose.treatments.viewmodels
 import app.aaps.core.data.model.RM
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.ui.CoreUiStrings
-import app.aaps.ui.UiStrings
+import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,7 +25,6 @@ import org.mockito.kotlin.whenever
 internal class RunningModeViewModelTest {
 
     @Mock private lateinit var persistenceLayer: PersistenceLayer
-    @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var aapsLogger: AAPSLogger
     @Mock private lateinit var rxBus: RxBus
@@ -39,14 +36,14 @@ internal class RunningModeViewModelTest {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         whenever(persistenceLayer.observeChanges(RM::class)).thenReturn(emptyFlow())
-        sut = RunningModeViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus)
+        sut = RunningModeViewModel(persistenceLayer, generatedTextResolver(), dateUtil, aapsLogger, rxBus)
     }
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is not in removing mode and has no selection`() {
+    fun defaultUiStateIsNotInRemovingModeAndHasNoSelection() {
         val state = sut.uiState.value
         assertThat(state.isRemovingMode).isFalse()
         assertThat(state.selectedItems).isEmpty()
@@ -55,7 +52,7 @@ internal class RunningModeViewModelTest {
     }
 
     @Test
-    fun `enterSelectionMode selects the item and enables removing mode`() {
+    fun enterSelectionModeSelectsTheItemAndEnablesRemovingMode() {
         val item = mock<RM>()
 
         sut.enterSelectionMode(item)
@@ -65,7 +62,7 @@ internal class RunningModeViewModelTest {
     }
 
     @Test
-    fun `exitSelectionMode clears selection`() {
+    fun exitSelectionModeClearsSelection() {
         sut.enterSelectionMode(mock<RM>())
 
         sut.exitSelectionMode()
@@ -75,7 +72,7 @@ internal class RunningModeViewModelTest {
     }
 
     @Test
-    fun `toggleSelection adds then removes an item`() {
+    fun toggleSelectionAddsThenRemovesAnItem() {
         val first = mock<RM>()
         val second = mock<RM>()
         sut.enterSelectionMode(first)
@@ -88,18 +85,17 @@ internal class RunningModeViewModelTest {
     }
 
     @Test
-    fun `toggleInvalidated flips the flag`() {
+    fun toggleInvalidatedFlipsTheFlag() {
         sut.toggleInvalidated()
         assertThat(sut.uiState.value.showInvalidated).isTrue()
     }
 
     @Test
-    fun `getDeleteConfirmationMessage empty when nothing selected, plural for many`() {
+    fun getDeleteConfirmationMessageEmptyWhenNothingSelectedPluralForMany() {
         assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("")
 
-        whenever(rh.gs(CoreUiStrings.confirm_remove_multiple_items, 2)).thenReturn("Remove 2 items")
         sut.enterSelectionMode(mock<RM>())
         sut.toggleSelection(mock<RM>())
-        assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("Remove 2 items")
+        assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("Are you sure you want to remove 2 items")
     }
 }

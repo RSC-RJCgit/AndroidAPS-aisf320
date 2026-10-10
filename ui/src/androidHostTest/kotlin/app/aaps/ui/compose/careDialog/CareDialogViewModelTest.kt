@@ -62,7 +62,7 @@ internal class CareDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `updateBgValue sets the value and auto-switches the meter from sensor to finger`() {
+    fun updateBgValueSetsTheValueAndAutoSwitchesTheMeterFromSensorToFinger() {
         assertThat(sut.uiState.value.meterType).isEqualTo(TE.MeterType.SENSOR)
 
         sut.updateBgValue(120.0)
@@ -72,7 +72,7 @@ internal class CareDialogViewModelTest {
     }
 
     @Test
-    fun `updateDuration and updateNotes update the state`() {
+    fun updateDurationAndUpdateNotesUpdateTheState() {
         sut.updateDuration(30.0)
         sut.updateNotes("check")
 
@@ -81,7 +81,7 @@ internal class CareDialogViewModelTest {
     }
 
     @Test
-    fun `updateEventTime records the time and marks it changed`() {
+    fun updateEventTimeRecordsTheTimeAndMarksItChanged() {
         sut.updateEventTime(123_456L)
 
         assertThat(sut.uiState.value.eventTime).isEqualTo(123_456L)

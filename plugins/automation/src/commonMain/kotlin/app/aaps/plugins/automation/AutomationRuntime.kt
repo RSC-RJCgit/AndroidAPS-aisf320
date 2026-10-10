@@ -30,13 +30,16 @@ import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.collectResilient
+import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventBTChange
 import app.aaps.core.interfaces.rx.events.EventWearUpdateTiles
 import app.aaps.core.interfaces.scenes.SceneAutomationApi
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.ComposablePluginContent
@@ -98,6 +101,8 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -126,7 +131,8 @@ import kotlin.time.Duration.Companion.seconds
 @ContributesIntoSet(AppScope::class, binding = binding<PermissionProvider>())
 @SingleIn(AppScope::class)
 @OptIn(ExperimentalAtomicApi::class)
-class AutomationRuntime @Inject constructor(
+@Inject
+class AutomationRuntime(
     private val locationPermissions: LocationPermissions,
     private val automationEventFactory: AutomationEventFactory,
     private val aapsLogger: AAPSLogger,
@@ -148,7 +154,8 @@ class AutomationRuntime @Inject constructor(
     private val uel: UserEntryLogger,
     private val profileRepository: ProfileRepository,
     private val sceneApi: SceneAutomationApi,
-    private val pairedBtDevices: PairedBtDevices
+    private val pairedBtDevices: PairedBtDevices,
+    private val codedLocations: CodedLocations,
 ) : Automation, PermissionProvider, BtConnectionSource {
 
     override val executionEnabled: Boolean get() = config.APS
@@ -171,6 +178,12 @@ class AutomationRuntime @Inject constructor(
             pairedBtDevices = pairedBtDevices
         )
 
+    /** Declared automation states and the value each one holds now. Read only. */
+    fun currentAutomationStates(): List<Pair<String, String>> = automationStateRows(
+        currentJson = preferences.get(StringNonKey.AutomationCurrentStates),
+        valuesJson = preferences.get(StringNonKey.AutomationStateValues)
+    )
+
     private var scope: CoroutineScope? = null
 
     private val automationEvents = ArrayList<AutomationEventObject>()
@@ -185,15 +198,52 @@ class AutomationRuntime @Inject constructor(
      */
     private val eventsLock = AapsLock()
 
+    /**
+     * One [processActions] run at a time. A rule's [AutomationEventObject.lastRun] is set only after all
+     * of its actions finished, and the actions suspend (temp targets, profile switches, pump commands).
+     * Two overlapping runs would both see the rule as due and execute it twice.
+     *
+     * Before 3.1.0 `processActions()` was `@Synchronized`. That was dropped to fix an ANR - it held the
+     * instance monitor for the whole run, and the UI took the same monitor - and nothing replaced it.
+     * A separate suspending lock serializes the runs without blocking any thread or touching
+     * [eventsLock], which the UI takes. Overlaps became more likely once new BG data started runs too.
+     */
+    private val processActionsMutex = Mutex()
+
     // AnnotatedString, not HTML in a String: the only entry that carries formatting is built below, and
     // the screen renders this list directly. Nothing here ever leaves the app.
     var executionLog: MutableList<AnnotatedString> = ArrayList()
 
-    /** BT connect/disconnect events accumulated between processActions() runs (master only). The
-     *  single external reader is TriggerBTDevice, via [recentBtConnects]. */
-    private val btConnects: MutableList<EventBTChange> = ArrayList()
+    /**
+     * Adds a status line that every run repeats while the state lasts (loop suspended, loop not enabled,
+     * a constraint). Skipped when it is already among the last few entries: runs now come with every BG
+     * calculation too, and a loop disabled for days would otherwise fill the log. Checking a few
+     * entries, not only the last one, covers two or three of these lines alternating.
+     */
+    private fun addStatusToLog(text: String) {
+        if (executionLog.takeLast(3).none { it.text == text }) executionLog.add(AnnotatedString(text))
+    }
 
-    override fun recentBtConnects(): List<EventBTChange> = ArrayList(btConnects)
+    /** BT connect/disconnect events accumulated between processActions() runs (master only). The
+     *  single external reader is TriggerBTDevice, via [recentBtConnects]. Guarded by [btConnectsLock]:
+     *  the BT collector adds on one thread while a run reads and trims on another. */
+    private val btConnects: MutableList<EventBTChange> = ArrayList()
+    private val btConnectsLock = AapsLock()
+
+    override fun recentBtConnects(): List<EventBTChange> = btConnectsLock.withLock { ArrayList(btConnects) }
+
+    override fun pendingCodedAutomationReviews(): List<String> {
+        val events = eventsLock.withLock { automationEvents.map { it.title to it.userAction } }
+        return CodedAutomationNames.pendingCloseTitles(events, loadCodedAutomationDecisions())
+    }
+
+    override fun saveCodedAutomationDecisions(accepted: Map<String, Boolean>) {
+        val merged = loadCodedAutomationDecisions() + accepted
+        preferences.put(StringNonKey.CodedAutomationDecisions, CodedAutomationNames.encodeDecisions(merged))
+    }
+
+    private fun loadCodedAutomationDecisions(): Map<String, Boolean> =
+        CodedAutomationNames.decodeDecisions(preferences.get(StringNonKey.CodedAutomationDecisions))
 
     /**
      * Snapshot stream of [automationEvents]. Replaces the old `EventAutomationDataChanged` RxBus
@@ -278,7 +328,10 @@ class AutomationRuntime @Inject constructor(
      * collection pass, so the permission appears/disappears as the event set changes.
      */
     override fun requiredPermissions(): List<PermissionGroup> =
-        if (config.APS && usesLocationTrigger()) locationPermissions.groups() else emptyList()
+        if (config.APS && locationNeeded()) locationPermissions.groups() else emptyList()
+
+    private fun locationNeeded(): Boolean =
+        usesLocationTrigger() || preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
 
     /** True when any enabled event's trigger tree contains a [TriggerLocation]. */
     private fun usesLocationTrigger(): Boolean =
@@ -336,6 +389,10 @@ class AutomationRuntime @Inject constructor(
         // location service, no event processing.
         if (!config.APS) return
 
+        // The timer below is not enough on its own. delay() runs on a clock that stops while the phone is
+        // in deep sleep, so with the screen off 150 seconds can take ten minutes and more, and a
+        // fixed-time rule's 5-minute window closes unchecked (issue #5137). The new-BG subscription
+        // further down is what keeps rules checked at CGM pace.
         newScope.launch {
             delay(1.minutes)
             while (isActive) {
@@ -365,20 +422,34 @@ class AutomationRuntime @Inject constructor(
             updateLocationService()
         }.launchIn(newScope)
 
-        // processActions() stays launched rather than called inline. A Flow collector is sequential, so
-        // calling it directly would serialize rule processing, which the Rx version did not do - it
-        // fired scope.launch and returned. That may well be an improvement, but changing when
-        // automation rules can run concurrently is not something to do as a side effect of swapping
-        // the subscription mechanism.
+        preferences.observe(BooleanKey.AutomationCodedLocationsEnabled).drop(1).onEach {
+            updateLocationService()
+        }.launchIn(newScope)
+
+        // processActions() stays launched rather than called inline, so a slow run never holds up the
+        // collector that delivers the next event. Runs do not overlap: processActionsMutex serializes
+        // them.
         rxBus.toFlow(EventLocationChange::class)
             .collectResilient(newScope, aapsLogger, LTag.AUTOMATION, start = CoroutineStart.UNDISPATCHED) {
                 aapsLogger.debug(LTag.AUTOMATION, "Grabbed location: ${it.position.latitude} ${it.position.longitude} Provider: ${it.provider}")
-                scope?.launch { processActions() }
+                scope?.launch {
+                    codedLocations.onFix(it.position.latitude, it.position.longitude, it.accuracyMetres)
+                    processActions()
+                }
             }
         rxBus.toFlow(EventBTChange::class)
             .collectResilient(newScope, aapsLogger, LTag.AUTOMATION, start = CoroutineStart.UNDISPATCHED) {
                 aapsLogger.debug(LTag.AUTOMATION, "Grabbed new BT event: $it")
-                btConnects.add(it)
+                btConnectsLock.withLock { btConnects.add(it) }
+                scope?.launch { processActions() }
+            }
+        // New BG data. Every new reading ends in a calculation that sends this event, in the background
+        // too - it is the one wake-up that is always there while the loop runs. Automation listened to it
+        // until 3.1.0, when the calculation moved into a workflow and this subscription was dropped
+        // without a replacement; since then only the timer above and the odd charging, network,
+        // location or BT event started runs, and fixed-time rules were missed in deep sleep.
+        rxBus.toFlow(EventAutosensCalculationFinished::class)
+            .collectResilient(newScope, aapsLogger, LTag.AUTOMATION, start = CoroutineStart.UNDISPATCHED) {
                 scope?.launch { processActions() }
             }
     }
@@ -395,7 +466,7 @@ class AutomationRuntime @Inject constructor(
     // right now - waiting for the process to be in foreground, and retrying after a location
     // permission grant.
     private fun updateLocationService() {
-        val need = eventsLock.withLock { usesLocationTrigger() }
+        val need = locationNeeded()
         locationServiceController.setLocationUpdatesEnabled(need)
     }
 
@@ -476,8 +547,14 @@ class AutomationRuntime @Inject constructor(
     }
 
     internal suspend fun processActions() {
+        processActionsMutex.withLock { processActionsLocked() }
+    }
+
+    private suspend fun processActionsLocked() {
         if (!config.appInitialized) return
         if (!config.APS) return // execution is master-only — clients never run automation
+        // BT events this run is responsible for; see the end of the run.
+        val seenBtConnects = btConnectsLock.withLock { btConnects.size }
         // Reconcile the location service each tick: retries a start that earlier no-op'd because the
         // location permission wasn't granted yet, and stops it if the last location event was removed.
         updateLocationService()
@@ -492,7 +569,7 @@ class AutomationRuntime @Inject constructor(
         val runningMode = loop.runningMode()
         if (runningMode.pausesLoopExecution() || !runningMode.isLoopRunning()) {
             aapsLogger.debug(LTag.AUTOMATION, "Loop suspended")
-            executionLog.add(AnnotatedString(rh.gs(InterfacesStrings.loopsuspended)))
+            addStatusToLog(rh.gs(InterfacesStrings.loopsuspended))
             rxBus.send(EventAutomationUpdateGui())
             commonEventsEnabled = false
         }
@@ -501,7 +578,7 @@ class AutomationRuntime @Inject constructor(
          */
         if (!(loop as PluginBase).isEnabled()) {
             aapsLogger.debug(LTag.AUTOMATION, "Loop not enabled")
-            executionLog.add(AnnotatedString(rh.gs(CoreUiStrings.disconnected)))
+            addStatusToLog(rh.gs(CoreUiStrings.disconnected))
             rxBus.send(EventAutomationUpdateGui())
             commonEventsEnabled = false
         }
@@ -510,17 +587,29 @@ class AutomationRuntime @Inject constructor(
          */
         val enabled = constraintChecker.isAutomationEnabled()
         if (!enabled.value()) {
-            val reason = enabled.getMostLimitedReasons()
-            if (executionLog.lastOrNull()?.text != reason) executionLog.add(AnnotatedString(reason))
+            addStatusToLog(enabled.getMostLimitedReasons())
             rxBus.send(EventAutomationUpdateGui())
             commonEventsEnabled = false
         }
 
         aapsLogger.debug(LTag.AUTOMATION, "processActions")
+        // Exact names stay blocked while this switch is on. Close names stay blocked unless the
+        // review allowed that exact title. Other names are never touched. The switch does nothing
+        // unless AutoISF is the running algorithm, because the coded names belong to that algorithm.
+        // codedAutomationBodiesPresent stays false until the coded automations themselves run here.
+        // An imported 3.2.1 file can already have this switch on. That must not stop a native
+        // automation while nothing in this app replaces it.
+        val codedAutomationBodiesPresent = false
+        val customAutomationsOn = codedAutomationBodiesPresent &&
+            preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled) &&
+            activePlugin.activeAPS?.algorithm?.name == "AUTO_ISF"
+        val codedDecisions = if (customAutomationsOn) loadCodedAutomationDecisions() else emptyMap()
         val iterator = eventsLock.withLock { automationEvents.toMutableList().iterator() }
         while (iterator.hasNext()) {
             val event = iterator.next()
-            if (event.isEnabled && !event.userAction && event.shouldRun())
+            val suppressed = CodedAutomationNames.nativeEventSuppressed(event.title, codedDecisions, customAutomationsOn)
+            if (suppressed) aapsLogger.debug(LTag.AUTOMATION, "Native automation suppressed: ${event.title}")
+            if (event.isEnabled && !event.userAction && event.shouldRun() && !suppressed)
                 if (event.systemAction || commonEventsEnabled) {
                     processEvent(event)
                     if (event.hasStopProcessing()) break
@@ -532,10 +621,16 @@ class AutomationRuntime @Inject constructor(
          * So, let's collect all connection/disconnections between 2 runs of processActions()
          * TriggerBTDevice can pick up and process these events
          * after processing clear events to prevent repeated actions
+         *
+         * Only the events that were there when this run started. One that arrived during the run
+         * belongs to the run waiting behind this one on processActionsMutex - clearing everything
+         * would leave that run an empty list, and the connect would never fire its rule.
          */
-        btConnects.clear()
-
-        requestPersist() // persist last-run time (edit-driven trigger; master only)
+        btConnectsLock.withLock { btConnects.subList(0, seenBtConnects).clear() }
+        // No persist here. lastRun is not part of the stored JSON, so a write after every run stored
+        // the same definitions again - and each write of this synced key moves its "last modified"
+        // stamp, which made a client's automation edit lose to the master more often. A run that does
+        // change a definition persists it where it happens (processEvent, remove).
     }
 
     override suspend fun processEvent(someEvent: AutomationEvent) {
@@ -554,6 +649,7 @@ class AutomationRuntime @Inject constructor(
                 executionLog.add(AnnotatedString("Invalid action: ${action.shortDescription()}"))
                 aapsLogger.debug(LTag.AUTOMATION, "Invalid action: ${action.shortDescription()}")
             }
+            markEdited() // the rule is now disabled - store that and refresh the list
             rxBus.send(EventAutomationUpdateGui())
             return
         }
@@ -656,6 +752,7 @@ class AutomationRuntime @Inject constructor(
             actionFactory.actionProfileSwitch(),
             actionFactory.actionSendSMS(),
             actionFactory.actionSMBChange(),
+            actionFactory.actionSmoothingChange(),
             actionFactory.actionRunScene(),
             actionFactory.actionEnableScene(),
             actionFactory.actionDisableScene()

@@ -134,7 +134,8 @@ import dev.zacsweers.metro.SingleIn
 @PumpDriver
 @MetroIntKey(1070)
 @SingleIn(AppScope::class)
-class OmnipodErosPumpPlugin @Inject constructor(
+@Inject
+class OmnipodErosPumpPlugin(
     aapsLogger: AAPSLogger,
     override val rh: ResourceHelper,
     preferences: Preferences,
@@ -150,7 +151,7 @@ class OmnipodErosPumpPlugin @Inject constructor(
     private val omnipodAlertUtil: OmnipodAlertUtil,
     private val pumpSync: PumpSync,
     private val uiInteraction: UiInteraction,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     private val erosHistoryDatabase: ErosHistoryDatabase,
     private val pumpEnactResultProvider: () -> PumpEnactResult,
     private val protectionCheck: app.aaps.core.interfaces.protection.ProtectionCheck,
@@ -167,10 +168,9 @@ class OmnipodErosPumpPlugin @Inject constructor(
         }
         .icon(IcPluginOmnipod)
         .pluginName(TextRef.AndroidRes(R.string.omnipod_eros_name))
-        .shortName(TextRef.AndroidRes(R.string.omnipod_eros_name_short))
         .description(TextRef.AndroidRes(R.string.omnipod_eros_pump_description)),
     ownPreferences = ErosBooleanPreferenceKey.entries + ErosLongNonPreferenceKey.entries + ErosStringNonPreferenceKey.entries,
-    aapsLogger, rh, preferences, commandQueue
+    aapsLogger, rh, preferences, commandQueue, notificationManager
 ), Pump, RileyLinkPumpDevice, OmnipodEros, OwnDatabasePlugin {
 
     private var scope: CoroutineScope? = null
@@ -400,8 +400,16 @@ class OmnipodErosPumpPlugin @Inject constructor(
         aapsLogger.debug(LTag.PUMP, "OmnipodPumpPlugin.onStop()")
         scope?.cancel()
         scope = null
+        // statusChecker re-posts itself every STATUS_CHECK_INTERVAL_MILLIS, so without this the chain
+        // kept running after the plugin stopped - reading pod status and touching the service this same
+        // method has just unbound. The looper is deliberately NOT quit: loopHandler is created once with
+        // the plugin, so a later onStart posts to this same handler and a dead looper would swallow it.
+        loopHandler.removeCallbacksAndMessages(null)
         serviceConnection?.let { context.unbindService(it) }
         serviceConnection = null
+        // onServiceDisconnected is not called after unbindService, so drop the reference here.
+        // Otherwise the destroyed service stays alive after a pump switch or config change.
+        rileyLinkOmnipodService = null
     }
 
     private fun queueAcknowledgeAlertsCommand() {

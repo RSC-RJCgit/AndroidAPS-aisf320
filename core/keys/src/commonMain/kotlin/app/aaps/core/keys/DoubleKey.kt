@@ -218,6 +218,105 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfMaxLow(
+        key = "autoISF_max_low",
+        defaultValue = 1.0,
+        min = 1.0,
+        max = 3.0,
+        title = KeysStrings.pref_title_autoisf_max_low,
+        summary = KeysStrings.openapsama_autoISF_max_low_summary,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset0002(
+        key = "autoisf_tod_offset_0002",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_0002,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset0204(
+        key = "autoisf_tod_offset_0204",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_0204,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset0609(
+        key = "autoisf_tod_offset_0609",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_0609,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset0912(
+        key = "autoisf_tod_offset_0912",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_0912,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset1218(
+        key = "autoisf_tod_offset_1218",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_1218,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset1822(
+        key = "autoisf_tod_offset_1822",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_1822,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset2200(
+        key = "autoisf_tod_offset_2200",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_2200,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTodOffset0406(
+        key = "autoisf_tod_offset_0406",
+        defaultValue = 0.0,
+        min = -2.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_tod_offset_0406,
+        summary = KeysStrings.pref_summary_aps_tod_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfBgAccelWeight(
         key = "bgAccel_ISF_weight",
         defaultValue = 0.0,
@@ -284,6 +383,50 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_3,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    ApsAutoIsfBgAccelWeightHigh(
+        key = "autoisf_bgaccel_isf_weight_high",
+        defaultValue = 0.95,
+        min = 0.0,
+        max = 1.0,
+        title = KeysStrings.pref_title_aps_bg_accel_weight_high,
+        summary = KeysStrings.pref_summary_aps_bg_accel_weight_high,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfBgAccelWeightNormal(
+        key = "autoisf_bgaccel_isf_weight_normal",
+        defaultValue = 0.70,
+        min = 0.0,
+        max = 1.0,
+        title = KeysStrings.pref_title_aps_bg_accel_weight_normal,
+        summary = KeysStrings.pref_summary_aps_bg_accel_weight_normal,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfPpWeightNormal(
+        key = "autoisf_pp_isf_weight_normal",
+        defaultValue = 0.08,
+        min = 0.0,
+        max = 0.15,
+        title = KeysStrings.pref_title_aps_pp_weight_normal,
+        summary = KeysStrings.pref_summary_aps_pp_weight_normal,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_3,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfPpWeightHigh(
+        key = "autoisf_pp_isf_weight_high",
+        defaultValue = 0.15,
+        min = 0.0,
+        max = 0.15,
+        title = KeysStrings.pref_title_aps_pp_weight_high,
+        summary = KeysStrings.pref_summary_aps_pp_weight_high,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_3,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfDuraWeight(
         key = "dura_ISF_weight",
         defaultValue = 0.0,
@@ -292,6 +435,123 @@ enum class DoubleKey(
         title = KeysStrings.pref_title_dura_weight,
         summary = KeysStrings.openapsama_dura_ISF_weight_summary,
         defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfTddFactorFallback(
+        key = "autoisf_tdd_factor_fallback",
+        defaultValue = 1.0,
+        min = 0.8,
+        max = 1.2,
+        title = KeysStrings.pref_title_aps_tdd_factor_fallback,
+        summary = KeysStrings.pref_summary_aps_tdd_factor_fallback,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSmbDeliveryBaseline(
+        key = "autoisf_smb_delivery_baseline",
+        defaultValue = 0.14,
+        min = 0.1,
+        max = 0.5,
+        title = KeysStrings.pref_title_aps_smb_delivery_baseline,
+        summary = KeysStrings.pref_summary_aps_smb_delivery_baseline,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSmbOffsetOverride(
+        key = "autoisf_smb_offset_override",
+        defaultValue = 0.5,
+        min = 0.0,
+        max = 2.0,
+        title = KeysStrings.pref_title_aps_smb_offset_override,
+        summary = KeysStrings.pref_summary_aps_smb_offset_override,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfMildBoostRatio(
+        key = "autoisf_mild_boost_ratio",
+        defaultValue = 0.20,
+        min = 0.1,
+        max = 1.0,
+        title = KeysStrings.pref_title_aps_mild_boost_ratio,
+        summary = KeysStrings.pref_summary_aps_mild_boost_ratio,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostMaxBolus(
+        key = "boost_bolus_cap",
+        defaultValue = 2.5,
+        min = 0.1,
+        max = 10.0,
+        title = KeysStrings.pref_title_aps_uam_boost_max_bolus,
+        summary = KeysStrings.pref_summary_aps_uam_boost_max_bolus,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUamBoostEnabled,
+        unitType = UnitType.INSULIN,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUkf1DeltaCompensationSlope(
+        key = "autoisf_ukf1_delta_compensation_slope",
+        defaultValue = 1.0,
+        min = 0.3,
+        max = 3.0,
+        title = KeysStrings.pref_title_aps_ukf1_delta_compensation_slope,
+        summary = KeysStrings.pref_summary_aps_ukf1_delta_compensation_slope,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUseUkf1ForDosing,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUkf1DeltaCompensationOffset(
+        key = "autoisf_ukf1_delta_compensation_offset",
+        defaultValue = 0.0,
+        min = -5.0,
+        max = 5.0,
+        title = KeysStrings.pref_title_aps_ukf1_delta_compensation_offset,
+        summary = KeysStrings.pref_summary_aps_ukf1_delta_compensation_offset,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUseUkf1ForDosing,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfUamBoostScale(
+        key = "boost_scale_value",
+        defaultValue = 1.0,
+        min = 0.1,
+        max = 3.0,
+        title = KeysStrings.pref_title_aps_uam_boost_scale,
+        summary = KeysStrings.pref_summary_aps_uam_boost_scale,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsAutoIsfUamBoostEnabled,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsActivityScaleFactor(
+        key = "activity_scale_factor",
+        defaultValue = 1.0,
+        min = 0.0,
+        max = 1.5,
+        title = KeysStrings.pref_title_aps_activity_scale,
+        summary = KeysStrings.pref_summary_aps_activity_scale,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsActivityDetection,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsInactivityScaleFactor(
+        key = "inactivity_scale_factor",
+        defaultValue = 1.0,
+        min = 0.0,
+        max = 1.5,
+        title = KeysStrings.pref_title_aps_inactivity_scale,
+        summary = KeysStrings.pref_summary_aps_inactivity_scale,
+        defaultedBySM = true,
+        dependency = BooleanKey.ApsActivityDetection,
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
@@ -338,6 +598,35 @@ enum class DoubleKey(
         defaultedBySM = true,
         unitType = UnitType.DOUBLE,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+
+    // Same stored names the hidden keys used. Not tied to simple mode, so a saved slope stays in use.
+    FslCalOffset(
+        key = "fslCal_Offset",
+        defaultValue = 0.0,
+        min = -50.0,
+        max = 50.0,
+        title = KeysStrings.fslCal_Offset_title,
+        summary = KeysStrings.fslCal_Offset_summary,
+        unitType = UnitType.DOUBLE_2
+    ),
+    FslCalSlope(
+        key = "fslCal_Slope",
+        defaultValue = 1.0,
+        min = 0.5,
+        max = 1.5,
+        title = KeysStrings.fslCal_Slope_title,
+        summary = KeysStrings.fslCal_Slope_summary,
+        unitType = UnitType.DOUBLE_2
+    ),
+    FslSmoothAlpha(
+        key = "fsl_exp1_factor",
+        defaultValue = 0.3,
+        min = 0.1,
+        max = 1.0,
+        title = KeysStrings.fsl_exp1_factor_title,
+        summary = KeysStrings.fsl_exp1_factor_summary,
+        unitType = UnitType.DOUBLE_2
     ),
 
     ;

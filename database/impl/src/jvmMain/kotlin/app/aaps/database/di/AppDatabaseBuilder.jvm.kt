@@ -3,10 +3,15 @@ package app.aaps.database.di
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
 import app.aaps.database.AppDatabase
 import app.aaps.database.AppRepository
+import app.aaps.database.migration35to36
+import app.aaps.database.migration36to37
+import app.aaps.database.migration37to38
+import app.aaps.database.migration38to39
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 
@@ -49,12 +54,13 @@ class JvmAppDatabaseBuilder {
     fun provideAppRepository(fileName: String): AppRepository =
         AppRepository { provideAppDatabase(fileName) }
 
-    internal fun provideAppDatabase(fileName: String): AppDatabase =
+    /** [driver] is only changed by tests, which wrap it to see the SQL the DAOs run. */
+    internal fun provideAppDatabase(fileName: String, driver: SQLiteDriver = BundledSQLiteDriver()): AppDatabase =
         Room
             .databaseBuilder<AppDatabase>(name = databasePath(fileName))
             // Same driver as Android and Apple: SQLite compiled from source, so the engine matches on
             // every platform rather than following whatever the OS happens to ship.
-            .setDriver(BundledSQLiteDriver())
+            .setDriver(driver)
             .setQueryCoroutineContext(Dispatchers.IO)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(connection: SQLiteConnection) {
@@ -63,6 +69,7 @@ class JvmAppDatabaseBuilder {
                 }
             })
             .fallbackToDestructiveMigration(false)
+            .addMigrations(migration35to36, migration36to37, migration37to38, migration38to39)
             .build()
 
     /**

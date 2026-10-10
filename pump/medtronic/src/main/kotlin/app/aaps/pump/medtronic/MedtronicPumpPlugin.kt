@@ -126,7 +126,8 @@ import kotlin.math.floor
 @PumpDriver
 @MetroIntKey(1090)
 @SingleIn(AppScope::class)
-class MedtronicPumpPlugin @Inject constructor(
+@Inject
+class MedtronicPumpPlugin(
     aapsLogger: AAPSLogger,
     override val rh: ResourceHelper,
     preferences: Preferences,
@@ -139,7 +140,7 @@ class MedtronicPumpPlugin @Inject constructor(
     private val rileyLinkServiceData: RileyLinkServiceData,
     private val serviceTaskExecutor: ServiceTaskExecutor,
     private val uiInteraction: UiInteraction,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     dateUtil: DateUtil,
     pumpSync: PumpSync,
     pumpSyncStorage: PumpSyncStorage,
@@ -160,7 +161,6 @@ class MedtronicPumpPlugin @Inject constructor(
         }
         .icon(IcPluginMedtronic)
         .pluginName(TextRef.AndroidRes(R.string.medtronic_name))
-        .shortName(TextRef.AndroidRes(R.string.medtronic_name_short))
         .description(TextRef.AndroidRes(R.string.description_pump_medtronic)),
     ownPreferences = RileylinkBooleanPreferenceKey.entries + RileyLinkDoubleKey.entries + RileyLinkLongKey.entries + RileyLinkStringKey.entries +
         RileyLinkStringPreferenceKey.entries + MedtronicBooleanPreferenceKey.entries + MedtronicIntPreferenceKey.entries +
@@ -180,7 +180,8 @@ class MedtronicPumpPlugin @Inject constructor(
     //instantiator = instantiator,
     pumpEnactResultProvider = pumpEnactResultProvider,
     bolusProgressData = bolusProgressData,
-    pumpDriverConfigurationInternal = MedtronicPumpDriverConfiguration()
+    pumpDriverConfigurationInternal = MedtronicPumpDriverConfiguration(),
+    notificationManager = notificationManager
 ), Pump, RileyLinkPumpDevice, PumpSyncEntriesCreator {
 
     private var rileyLinkMedtronicService: RileyLinkMedtronicService? = null
@@ -238,7 +239,10 @@ class MedtronicPumpPlugin @Inject constructor(
     override suspend fun onStop() {
         scope?.cancel()
         scope = null
-        super.onStop()
+        super.onStop() // unbinds the service
+        // onServiceDisconnected is not called after unbindService, so drop the reference here.
+        // Otherwise the destroyed service stays alive after a pump switch or config change.
+        rileyLinkMedtronicService = null
     }
 
     override fun initPumpStatusData() {
@@ -256,7 +260,8 @@ class MedtronicPumpPlugin @Inject constructor(
             preferences.put(MedtronicLongNonKey.FirstPumpUse, System.currentTimeMillis())
         migrateSettings()
 
-        pumpSyncStorage.initStorage()
+        // pumpSyncStorage.initStorage() was here. It no longer exists: the storage reads the
+        // preference on every call now, so there is nothing to prime and nothing that can go stale.
 
         this.displayConnectionMessages = false
     }

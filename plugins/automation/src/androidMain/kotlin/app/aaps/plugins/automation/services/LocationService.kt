@@ -71,7 +71,7 @@ class LocationService : MetroService() {
         override fun onLocationChanged(location: Location) {
             aapsLogger.debug(LTag.LOCATION, "onLocationChanged: $location")
             lastLocationDataContainer.lastLocation = location
-            rxBus.send(EventLocationChange(GeoPosition(location.latitude, location.longitude), location.provider))
+            rxBus.send(EventLocationChange(GeoPosition(location.latitude, location.longitude), location.provider, if (location.hasAccuracy()) location.accuracy else null))
         }
 
         override fun onProviderDisabled(provider: String) {

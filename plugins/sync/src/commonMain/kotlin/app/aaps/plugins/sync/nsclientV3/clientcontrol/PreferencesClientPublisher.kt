@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.LongComposedKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
 import app.aaps.core.keys.interfaces.DoubleNonPreferenceKey
 import app.aaps.core.keys.interfaces.IntNonPreferenceKey
@@ -40,7 +41,8 @@ import kotlinx.coroutines.launch
  * until the modal resolves), so edits made meanwhile accumulate in [pending] and ship in the next
  * round-trip. That sidesteps the single-in-flight contention and the shared `preferences_update`
  * identifier — there is never more than one pref round-trip outstanding. The settle window also lets a
- * slider drag finish before the modal appears.
+ * few taps on the +/- buttons ship as one round-trip. A slider drag is saved only when the finger is
+ * lifted (`PreferenceSliderWithButtons`), so a pause in the middle of a drag does not start one.
  *
  * No echo: applied-from-sync writes go through `Preferences.putRemote`, never emitted on
  * [Preferences.syncedLocalChanges]. Only genuine user edits reach here (programmatic synced-key writes
@@ -56,7 +58,8 @@ import kotlinx.coroutines.launch
  */
 @OptIn(FlowPreview::class)
 @SingleIn(AppScope::class)
-class PreferencesClientPublisher @Inject constructor(
+@Inject
+class PreferencesClientPublisher(
     private val preferences: Preferences,
     private val clientControlRoundTrip: ClientControlRoundTrip,
     private val config: Config,
@@ -84,6 +87,12 @@ class PreferencesClientPublisher @Inject constructor(
                 .onEach { key -> pendingMutex.withLock { pending.add(key) } }
                 .debounce(SETTLE_MS)
                 .collect {
+                    // No master yet. The value is already stored on this phone. A round-trip would
+                    // only show a not-paired error.
+                    if (preferences.get(StringNonKey.NsClientControlClientId).isEmpty()) {
+                        pendingMutex.withLock { pending.clear() }
+                        return@collect
+                    }
                     val batch = pendingMutex.withLock { pending.toList().also { pending.clear() } }
                     val changes = batch.mapNotNull { key -> serialize(key)?.let { key.key to it } }.toMap()
                     if (changes.isEmpty()) return@collect
@@ -130,8 +139,8 @@ class PreferencesClientPublisher @Inject constructor(
 
     private companion object {
 
-        // Settle window before a round-trip fires: collapses a slider drag / a burst of edits into one
-        // batched, confirmed round-trip (one modal), short enough to still feel responsive.
-        private const val SETTLE_MS = 500L
+        // Settle window before a round-trip fires: collapses a burst of edits (e.g. slow taps on +/-)
+        // into one batched, confirmed round-trip (one modal), short enough to still feel responsive.
+        private const val SETTLE_MS = 1500L
     }
 }

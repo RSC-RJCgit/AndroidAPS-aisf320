@@ -11,8 +11,22 @@ enum class LongNonKey(
     LocalProfileLastChange("local_profile_last_change", 0L),
 
     BtWatchdogLastBark("bt_watchdog_last", 0L),
-    ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L),
+    /**
+     * When this phone registered its current pump. NOT exportable, and it is the third of the trio
+     * with `StringNonKey.ActivePumpType` and `ActivePumpSerialNumber` - see the note there.
+     *
+     * It is the "accept nothing older than this" line for pump history: `confirmActivePump` rejects
+     * records stamped before it. Another phone's value would silently drop a stretch of this pump's
+     * history, or accept a stretch that belongs to a different one.
+     */
+    ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L, exportable = false),
     LastCleanupRun("last_cleanup_run", 0L),
+
+    // When the six-hour AutoISF history files were last written. Local only.
+    LastAutoIsfHistoryExport("last_autoisf_history_export", 0L, exportable = false),
+
+    // When the six-hour cloud log upload last started. Local only.
+    LastCloudLogExport("last_cloud_log_export", 0L, exportable = false),
 
     // NSCv3 client-control pairing (excluded from export — replay protection regresses if restored)
     NsClientControlCounterSent("nsclient_control_counter_sent", 0L, exportable = false),
@@ -22,5 +36,90 @@ enum class LongNonKey(
     // hasn't republished the roster yet). Not exported — re-pair regenerates this.
     NsClientControlPairedAt("nsclient_control_paired_at", 0L, exportable = false),
     LastVacuumRun("last_vacuum_run", 0L),
+
+    // Epoch millis of the last AlarmHypo1 or AlarmHypo2. 0 means none yet.
+    ApsAutoIsfLastAlarmHypoAt("autoisf_last_alarm_hypo_at", 0L),
+
+    // Epoch millis when the current rapid-SMB stack started. 0 means no stack. Local only.
+    ApsAutoIsfSmbStackStart("autoisf_smb_stack_start", 0L, exportable = false),
+
+    // Epoch millis until an overnight duration rescue must not start another one. Local only.
+    ApsAutoIsfOvernightRescueUntil("autoisf_overnight_rescue_until", 0L, exportable = false),
+
+    // Epoch millis when a mild rise with no SMB started. 0 means it is not holding. Local only.
+    ApsAutoIsfPersistentRiseStartedAt("autoisf_persistent_rise_started_at", 0L, exportable = false),
+
+    // Epoch millis of the temp target HiBrkTwilight wrote. 0 means none. Local only.
+    ApsAutoIsfHiBrkTwilightTtAt("autoisf_hibrk_twilight_tt_at", 0L, exportable = false),
+
+    // Epoch millis when glucose first stayed over 8.0 mmol with no meal yet. 0 means not holding. Local only.
+    ApsAutoIsfUnexplainedHighSince("autoisf_unexplained_high_since", 0L, exportable = false),
+
+    // Epoch millis when glucose first stayed over 12.0 mmol. 0 means not holding. Local only.
+    ApsAutoIsfBatchBgl12Since("autoisf_batch_bgl12_since_ts", 0L, exportable = false),
+
+    // Epoch millis when UKF raw first stayed over 14.0 mmol. 0 means not holding. Local only.
+    ApsAutoIsfBatchUkf14Since("autoisf_batch_ukf14_since_ts", 0L, exportable = false),
+
+    // Epoch millis of the 5.0 mmol hold the mild boost just started. 0 means none. Local only.
+    ApsAutoIsfLastBmildTtAt("autoisf_last_bmild_tt_at", 0L, exportable = false),
+
+    // Newest UKF raw over 12.0 mmol. 0 means none seen. Local only.
+    ApsAutoIsfLibreOver12Ts("autoisf_libre_over_12_ts", 0L, exportable = false),
+    // When an old pod's high glucose started. 0 means not high. Local only.
+    ApsAutoIsfOldPodHighSinceTs("autoisf_old_pod_high_since_ts", 0L, exportable = false),
+
+    // Server-modified time of the last secondary Nightscout page. 0 means the first download
+    // still has to walk back 16 days. Local only: restoring it would skip treatments.
+    NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0L, exportable = false),
+
+    // Server time of the profile store last taken from the secondary Nightscout.
+    NsClientSecondaryProfileModified("nsclient_secondary_profile_modified", 0L, exportable = false),
+
+    // Server time of the newest glucose page taken from the secondary Nightscout. 0 means not yet.
+    NsClientSecondaryGlucoseModified("nsclient_secondary_glucose_modified", 0L, exportable = false),
+
+    // Time of the newest "SetRole ..." Note already handled. Local only.
+    ApsAutoIsfSetRoleNoteHandledAt("autoisf_set_role_note_handled_at", 0L, exportable = false),
+
+    // Hypo-alarm time the alarm role revert has already acted on. Local only.
+    ApsAutoIsfAlarmRevertHandledAt("autoisf_alarm_revert_handled_at", 0L, exportable = false),
+
+    // 2026-10-08: time of the last "compression suspected" note (sharp, clean fall in the raw readings) and of the last
+    // "compression confirmed" note (a sharp rebound after it). Notes only; nothing in dosing reads them. Local only.
+    // 2026-10-08: set once, the first time the loop is seen running at 1-minute intervals; the one-time revert of the
+    // Standard and Low roles to Tier A is done at that moment (0 = not yet done). Local only.
+    ApsAutoIsfOneMinuteTierAResetAt("autoisf_one_minute_tier_a_reset_at", 0L, exportable = false),
+    ApsAutoIsfCompressionSuspectAt("autoisf_compression_suspect_at", 0L, exportable = false),
+    ApsAutoIsfCompressionConfirmedAt("autoisf_compression_confirmed_at", 0L, exportable = false),
+    // Compression trigger waiting for its 15-minute sustain check (2026-10-08): when the sudden drop was seen, and the level it ended at
+    // in tenths of mg/dL. 0 means nothing is waiting. Internal only.
+    ApsAutoIsfCompressionTriggerAt("autoisf_compression_trigger_at", 0L, exportable = false),
+    // When a hypo alarm is waiting to set the AlarmHypo = AlarmRecent state 15 minutes later (virtual-pump phone only), 0 when none. Internal only.
+    ApsAutoIsfAlarmStatePendingAt("autoisf_alarm_state_pending_at", 0L, exportable = false),
+    // 1 when the 60 minute steps at the time of that alarm were over 200, so the AlarmHypo state is not to be set for it. Internal only.
+    ApsAutoIsfAlarmStateStepsBlocked("autoisf_alarm_state_steps_blocked", 0L, exportable = false),
+    ApsAutoIsfCompressionTriggerLevelTenths("autoisf_compression_trigger_level_tenths", 0L, exportable = false),
+
+    // Profile-switch time already used as a Set-role duration. Local only.
+    ApsAutoIsfSetRoleDurationHandledAt("autoisf_set_role_duration_handled_at", 0L, exportable = false),
+
+    // Newest "MJ active" note already copied onto this phone. Other MJ notes are ignored. Local only.
+    ApsAutoIsfMjActiveNoteAt("autoisf_mj_active_note_at", 0L, exportable = false),
+
+    // Time of the last LibreSpecial step. -1 means none yet.
+    FslSmoothLastTimeRaw("fsl_last_time_raw", -1L),
+
+    // Last Shizuku APK install start. Survives a restart so a bounce cannot install again for 45 minutes. Local only.
+    ApsAutoIsfApkAutoLastAt("autoisf_apk_auto_last_at", 0L, exportable = false),
+
+    // Newest pump APK number seen on this phone. 0 means none yet. Local only.
+    ApsAutoIsfApkNewestNnn("autoisf_apk_newest_nnn", 0L, exportable = false),
+
+    // Latest loop HP1 in milli-mmol. 0 means none yet. Local only.
+    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0L, exportable = false),
+
+    // When a delayed carb or fat-protein dose was delivered. 0 means none yet. Local only.
+    ApsAutoIsfLastDelayedBolusAt("autoisf_last_delayed_bolus_at", 0L, exportable = false),
 }
 

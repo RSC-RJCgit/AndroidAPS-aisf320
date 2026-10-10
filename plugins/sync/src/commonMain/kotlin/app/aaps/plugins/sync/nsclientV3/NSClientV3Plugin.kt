@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.nsclientV3
 
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.sync.SyncStrings
 import androidx.annotation.VisibleForTesting
@@ -36,20 +37,20 @@ import app.aaps.core.interfaces.sync.Sync
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.KeysStrings
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.clientcontrol.ClientState
 import app.aaps.core.nssdk.remotemodel.LastModified
-import app.aaps.core.objects.extensions.freshness
 import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
+import app.aaps.core.ui.compose.preference.libreSpecialSettings
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.AuthorizedClientsRepository
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.ClientControlReceiver
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.ClientControlRoundTrip
@@ -77,6 +78,7 @@ import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadStep
 import app.aaps.plugins.sync.nsclientV3.services.RunningConfigurationPublisher
+import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.ContributesIntoMap
@@ -94,10 +96,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -111,11 +111,12 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.encodeToJsonElement
@@ -126,7 +127,8 @@ import kotlinx.serialization.json.encodeToJsonElement
 @ContributesBinding(AppScope::class, binding = binding<NsClient>())
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
 @MetroIntKey(310)
-class NSClientV3Plugin @Inject constructor(
+@Inject
+class NSClientV3Plugin(
     aapsLogger: AAPSLogger,
     override val rh: TextResolver,
     preferences: Preferences,
@@ -151,12 +153,12 @@ class NSClientV3Plugin @Inject constructor(
     private val profileRepository: ProfileRepository,
     private val nsConnection: NsConnection,
     private val nsLoadExecutor: NsLoadExecutor,
+    notificationManager: NotificationManager,
 ) : NsClient, Sync, PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.SYNC)
         .icon(IcPluginNsClient)
         .pluginName(SyncStrings.ns_client_v3_title)
-        .shortName(SyncStrings.ns_client_v3_short_name)
         .description(SyncStrings.description_ns_client_v3)
         .composeContent { plugin ->
             NSClientComposeContent(
@@ -170,7 +172,7 @@ class NSClientV3Plugin @Inject constructor(
             )
         },
     ownPreferences = NsclientBooleanKey.entries + NsclientStringKey.entries + NsclientLongKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ) {
 
     @Suppress("PrivatePropertyName")
@@ -183,6 +185,11 @@ class NSClientV3Plugin @Inject constructor(
         // Rate-limit for requestMasterProbe so screen recompositions / banner flaps / reconnect bursts
         // don't spam pings + settings re-fetches at the master.
         private val PROBE_MIN_INTERVAL_MS = T.secs(5).msecs()
+
+        // How long onStop waits for background work to really finish. Long enough for a network call
+        // to notice it was cancelled, short enough that a child which never cooperates cannot hold
+        // the stop open.
+        private val STOP_JOIN_TIMEOUT_MS = T.secs(5).msecs()
     }
 
     private var scope = CoroutineScope(aapsIoDispatcher + SupervisorJob())
@@ -196,7 +203,7 @@ class NSClientV3Plugin @Inject constructor(
     private val pendingUpload = AtomicBoolean(false)
     override val dataSyncSelector: DataSyncSelector get() = dataSyncSelectorV3
     override val status
-        get() =
+        get() = withVirtualUploadWarning(
             when {
                 preferences.get(NsclientBooleanKey.NsPaused)                                          -> rh.gs(CoreUiStrings.paused)
                 isAllowed.not()                                                                       -> blockingReason
@@ -209,6 +216,14 @@ class NSClientV3Plugin @Inject constructor(
                 nsAndroidClient?.lastStatus?.apiPermissions?.isRead() == true                         -> rh.gs(SyncStrings.read_only)
                 else                                                                                  -> rh.gs(CoreUiStrings.unknown)
             }
+        )
+
+    // The upload switch works on a virtual pump. The status says to check the site first.
+    private fun withVirtualUploadWarning(base: String): String {
+        if (!dataSyncSelectorV3.virtualPumpSelected()) return base
+        if (!preferences.get(BooleanKey.NsClientUploadData)) return base
+        return rh.gs(SyncStrings.ns_status_virtual_upload_warning, base)
+    }
     var lastOperationError: String? = null
 
     internal var nsAndroidClient: NSAndroidClient? = null
@@ -272,11 +287,17 @@ class NSClientV3Plugin @Inject constructor(
                     }
                 }
         }
-        // Client: probe the master the moment the WS (re)connects — the pong clears the offline banner
-        // fast, and the bundled config re-fetch picks up anything missed while disconnected.
+        // Client: ask the master when the websocket connects, and again every 3 minutes while it
+        // stays up. One missed answer does not end the link. The master's answer resets the 9 minutes.
         if (config.AAPSCLIENT) {
             scope.launch {
                 wsConnectedFlow.collect { connected -> if (connected) requestMasterProbe() }
+            }
+            scope.launch {
+                while (isActive) {
+                    delay(linkProbeIntervalMs)
+                    if (wsConnectedFlow.value) requestMasterProbe()
+                }
             }
         }
         rxBus.toFlow(EventAppExit::class)
@@ -363,11 +384,27 @@ class NSClientV3Plugin @Inject constructor(
                     }
                 // Polls when websockets are switched off, and also when the platform has none at all -
                 // otherwise a desktop client would wait for pushes that can never arrive.
+                // The secondary site has its own address. A dead token on this phone's Nightscout,
+                // or a websocket that never calls the load round, must not stop carbs and boluses.
+                enqueueSecondaryTreatments()
                 if (!preferences.get(BooleanKey.NsClient3UseWs) || !nsConnection.supportsWebsocket)
                     executeLoop("MAIN_LOOP")
                 else
                     nsClientRepository.addLog("● TICK", "")
                 delay(refreshInterval)
+            }
+        }
+        // 2026-10-08: with the secondary Nightscout as the glucose source, a reading only arrives when that site is read, and the
+        // tick above reads it every 5 minutes, five readings at once - so the loop saw one new reading per 5 minutes. While
+        // "Loop every minute" is on, read just the glucose from that site every minute (not the treatments or profile).
+        // Not on an AAPSClient: it does not run the loop.
+        scope.launch {
+            delay(T.mins(1).msecs())
+            while (isActive) {
+                if (!config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute) &&
+                    glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite))
+                ) nsLoadExecutor.enqueueSecondaryGlucose()
+                delay(T.mins(1).msecs())
             }
         }
     }
@@ -435,8 +472,11 @@ class NSClientV3Plugin @Inject constructor(
                 toTime = dateUtil.now() + T.mins(1).plus(T.secs(0)).msecs()
                 origin = "1_MIN_OLD_DATA"
             }
-            // A delayed one-shot. Successive calls stack up, exactly as the Handler posts did;
-            // executeLoop is guarded, and the scope cancels them all on stop.
+            // A delayed one-shot. Successive calls stack up, exactly as the Handler posts did, and
+            // the scope cancels them all on stop. Note that executeLoop's isRunning check is NOT
+            // atomic with the enqueue after it, so two calls arriving together can both start a
+            // round. That costs a redundant REPLACE and a repeated fetch, nothing worse: rows
+            // already read stay staged in StoreDataForDb until they reach the database.
             scope.launch {
                 delay(toTime - dateUtil.now())
                 executeLoop(origin)
@@ -448,10 +488,35 @@ class NSClientV3Plugin @Inject constructor(
     override suspend fun onStop() {
         runningConfigurationPublisher.stop()
         preferencesClientPublisher.stop()
-        scope.cancel()
+        // Cancel and then WAIT. cancel() only asks: a coroutine keeps running until it reaches its
+        // next suspension point, so without the join the stop returns while background work is still
+        // alive and touching things the caller is about to tear down. NonCancellable so a cancelled
+        // caller still completes the stop, and a timeout so a child that ignores cancellation cannot
+        // hold the stop open for ever.
+        withContext(NonCancellable) {
+            val scopeJob = scope.coroutineContext.job
+            if (withTimeoutOrNull(STOP_JOIN_TIMEOUT_MS) { scopeJob.cancelAndJoin() } == null)
+                aapsLogger.warn(LTag.NSCLIENT, "Background work did not stop within $STOP_JOIN_TIMEOUT_MS ms")
+        }
         nsConnection.stop()
         nsLoadExecutor.cancel()
         super.onStop()
+    }
+
+    /**
+     * Cancels everything this plugin started, including the app-lifetime [reachableScope] that
+     * [onStop] deliberately leaves running so `masterReachable` survives a service restart.
+     *
+     * For tests only. A test builds a plugin per test method, and a scope that outlives the method
+     * goes on calling mocks that Mockito has already disabled. The throw then lands on whatever
+     * test starts next, far away from the test that actually caused it.
+     */
+    @VisibleForTesting
+    suspend fun shutdownForTest() {
+        onStop()
+        withContext(NonCancellable) {
+            withTimeoutOrNull(STOP_JOIN_TIMEOUT_MS) { reachableScope.coroutineContext.job.cancelAndJoin() }
+        }
     }
 
     override val hasWritePermission: Boolean get() = nsAndroidClient?.lastStatus?.apiPermissions?.isFull() == true
@@ -461,15 +526,9 @@ class NSClientV3Plugin @Inject constructor(
     // rebinds, so UI subscribers persist across them.
     override val wsConnectedFlow: StateFlow<Boolean> get() = nsConnection.connected
 
-    // Heartbeat from master's devicestatus stream. Stays 0L until the first batch arrives; combined
-    // with freshness(pristine=false) this FAILS CLOSED at boot — masterReachable stays false until a
-    // first master heartbeat positively confirms the master is alive, instead of optimistically
-    // enabling. (A 0L seed + pristine=true, or any non-zero seed, would let a client that boots while
-    // the master is offline edit for the whole stale window and silently lose those edits; the WS term
-    // can't catch that, since WS is client↔NS, not client↔master.) On AAPSCLIENT, NSDeviceStatusHandler
-    // bumps this from the newest devicestatus's own created_at — but ONLY for a LIVE WS push (live=true),
-    // never the catch-up/initial worker load, so a stale historical devicestatus pulled at boot can't mark
-    // a long-offline master alive. So the client waits for the master's first real-time devicestatus.
+    // Heartbeat from the master's device status. Stays 0 until the first status arrives, so the
+    // client waits. A live push and a download both count. The 9-minute check uses the time on
+    // the status, so an old status does not keep the master reachable.
     private val _lastDevicestatusReceivedAt = MutableStateFlow(0L)
     override val lastDevicestatusReceivedAt: StateFlow<Long> = _lastDevicestatusReceivedAt.asStateFlow()
 
@@ -482,10 +541,8 @@ class NSClientV3Plugin @Inject constructor(
         bumpMasterSignal(heartbeatAt)
     }
 
-    // Unified liveness clock: the newest of ANY authenticated, real-time master signal — a devicestatus
-    // heartbeat, a verified Client-Control ACK/pong, or a live config republish. [masterReachable]'s
-    // freshness term reads THIS (not devicestatus alone), so an active PING-PONG clears the offline
-    // banner without waiting for the next devicestatus push. Same fail-closed seed (0L) + pristine=false.
+    // Newest master signal: a device status, a verified answer, or a live config republish.
+    // The live link does not read this. A missed command does not clear it.
     private val _lastMasterSignalAt = MutableStateFlow(0L)
 
     /** Bump the liveness clock from a real-time master signal (pong / live republish / heartbeat). Monotonic. */
@@ -494,60 +551,27 @@ class NSClientV3Plugin @Inject constructor(
         _lastMasterSignalAt.update { maxOf(it, at) }
     }
 
-    /**
-     * Force [masterReachable] offline by staling the liveness clock. Called when a client-control action
-     * gets no ack (Unconfirmed): we don't actually know the master is alive, so flip offline — that drives
-     * the app-level probe to ping + re-pull, reconciling the real state instead of leaving a stale guess.
-     * Self-heals: a pong/heartbeat bumps the clock fresh again within seconds if the master is up.
-     */
-    internal suspend fun markMasterUnreachable() {
-        _lastMasterSignalAt.value = 0L
-    }
+    // While the websocket stays up, ask the master this often. The answer is not required
+    // to keep the live link.
+    private val linkProbeIntervalMs = 3 * 60_000L
 
-    // Grace before flagging offline on a WS drop — swallows brief flaps (reconnect storms during NS
-    // restarts), short enough that a real outage surfaces in seconds.
-    private val wsDisconnectGraceMs = 5_000L
-
-    // Heartbeat staleness threshold (~1.8 loop cycles): one missed devicestatus publication of grace.
-    private val heartbeatStaleMs = 9 * 60_000L
-    private val heartbeatTickMs = 60_000L
-
-    // App-lifetime scope for [masterReachable] — independent of the restartable [scope] so the derived
-    // signal (and its freshness ticker) survives service stop/start.
+    // App-lifetime scope for [masterReachable]. It survives a service stop and start.
     private val reachableScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
-    // See [NsClient.masterReachable]. Master: always reachable. Client: ALL of — live WS (falling-edge
-    // grace), a fresh master devicestatus heartbeat, a current Client-Control pairing, and not being
-    // orphaned (master still lists us in its authorizedClients roster). The pairing + authorized terms
-    // matter because a client→master edit rides the signed Client-Control channel: an unpaired (but
-    // NS-connected) client looks "reachable" yet has every edit dropped (nextSignedEnvelope returns null
-    // when unpaired), and a revoked/orphaned client would have its commands rejected by the master.
-    // NsClientControlClientId is the canonical paired marker (see ClientPairingRepository.isPaired),
-    // observed so pairing/unpairing updates live; OrphanDetector.authorized is the roster signal
-    // (optimistic until a doc proves us excluded). The heartbeat term uses pristine=false so a client
-    // FAILS CLOSED before its first master heartbeat (disabled until the master is positively confirmed
-    // alive — see the _lastDevicestatusReceivedAt seed above) and times out to stale if heartbeats later
-    // stop. Single shared flow (WhileSubscribed) — consumers no longer each rebuild the combine on their own scope.
-    @OptIn(ExperimentalCoroutinesApi::class)
+    // See [NsClient.masterReachable]. Master: always reachable. Client: paired, still on the
+    // master's list, and remote control on. Silence does not end the link. A down websocket
+    // does not end the link. A missed command does not end the link.
     override val masterReachable: StateFlow<Boolean> =
         if (!config.AAPSCLIENT) MutableStateFlow(true).asStateFlow()
         else combine(
-            wsConnectedFlow.transformLatest { connected ->
-                if (connected) emit(true) else {
-                    delay(wsDisconnectGraceMs); emit(false)
-                }
-            },
-            _lastMasterSignalAt.freshness(thresholdMs = heartbeatStaleMs, scope = reachableScope, tickMs = heartbeatTickMs, pristine = false, now = dateUtil::now),
             preferences.observe(StringNonKey.NsClientControlClientId).map { it.isNotEmpty() },
             orphanDetector.authorized,
             // Master's "allow client control" switch, synced master→client (effective value — see
             // RunningConfigurationImpl). Off ⇒ master silently drops commands, so block fast here instead.
             preferences.observe(BooleanKey.NsClientAllowClientControl)
-        ) { ws, fresh, paired, authorized, controlAllowed ->
-            val reachable = ws && fresh && paired && authorized && controlAllowed
-            // Diagnostic (lazy — string built only when NSCLIENT logging is on): shows WHICH term gates.
-            // heartbeatAgeMs > heartbeatStaleMs (9 min) ⇒ fresh=false.
-            aapsLogger.debug(LTag.NSCLIENT) { "masterReachable=$reachable (ws=$ws fresh=$fresh paired=$paired authorized=$authorized controlAllowed=$controlAllowed heartbeatAgeMs=${dateUtil.now() - lastDevicestatusReceivedAt.value})" }
+        ) { paired, authorized, controlAllowed ->
+            val reachable = paired && authorized && controlAllowed
+            aapsLogger.debug(LTag.NSCLIENT) { "masterReachable=$reachable (paired=$paired authorized=$authorized controlAllowed=$controlAllowed)" }
             reachable
         }
             // Seed FALSE (fail-closed): before the combine first computes — and on a cold start / WS
@@ -650,6 +674,8 @@ class NSClientV3Plugin @Inject constructor(
         storeLastLoadedSrvModified()
         dataSyncSelectorV3.resetToNextFullSync()
         fullSyncRequested.store(true)
+        // The profile list on the 2-year site must be fetched again, not skipped as already seen.
+        preferences.put(LongNonKey.NsClientSecondaryProfileModified, 0L)
     }
 
     override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
@@ -1091,7 +1117,19 @@ class NSClientV3Plugin @Inject constructor(
         preferences.put(NsclientStringKey.V3LastModified, Json.encodeToString(LastModified.serializer(), lastLoadedSrvModified))
     }
 
+    private fun enqueueSecondaryTreatments(force: Boolean = false) {
+        if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return
+        nsLoadExecutor.enqueueSecondaryTreatments(force)
+    }
+
     internal fun executeLoop(origin: String) {
+        val fullSync = fullSyncRequested.load()
+        if (fullSync && preferences.get(BooleanKey.NsClientSecondaryEnabled))
+            nsClientRepository.addLog("● RUN", "Full sync also reads the secondary Nightscout")
+        // Before the pause and token checks. Virtual 5 Sep: a 401 on the primary site blocked
+        // this download all morning, so the virtual pump never saw carbs or boluses.
+        // A full sync replaces a download that is already queued, so the 2-year site is read now.
+        enqueueSecondaryTreatments(force = fullSync)
         if (preferences.get(BooleanKey.NsClient3UseWs) && initialLoadFinished) return
         if (preferences.get(NsclientBooleanKey.NsPaused)) {
             nsClientRepository.addLog("● RUN", "paused  $origin")
@@ -1164,6 +1202,7 @@ class NSClientV3Plugin @Inject constructor(
             StringKey.NsClientUrl,
             StringKey.NsClientAccessToken,
             BooleanKey.NsClient3UseWs,
+            libreSpecialSettings("ns_libre_special_settings"),
             PreferenceSubScreenDef(
                 key = "ns_client_synchronization",
                 title = SyncStrings.ns_sync_options,
@@ -1179,6 +1218,17 @@ class NSClientV3Plugin @Inject constructor(
                     BooleanKey.NsClientAcceptTherapyEvent,
                     BooleanKey.NsClientAcceptRunningMode,
                     BooleanKey.NsClientAcceptTbrEb
+                )
+            ),
+            PreferenceSubScreenDef(
+                key = "ns_secondary_settings",
+                title = KeysStrings.ns_secondary_settings,
+                items = listOf(
+                    BooleanKey.NsClientSecondaryEnabled,
+                    BooleanKey.NsClientBgFromLiveSite,
+                    BooleanKey.NsClientSecondaryAcceptTherapyEvent,
+                    StringKey.NsClientSecondaryUrl,
+                    StringKey.NsClientSecondaryAccessToken
                 )
             ),
             PreferenceSubScreenDef(

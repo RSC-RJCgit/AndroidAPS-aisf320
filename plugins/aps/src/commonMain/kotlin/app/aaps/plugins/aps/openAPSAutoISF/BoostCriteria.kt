@@ -1,0 +1,179 @@
+package app.aaps.plugins.aps.openAPSAutoISF
+
+/**
+ * True when [minuteOfDay] sits in the clock window.
+ * A window that passes midnight (start later than end) covers the late hours and the early hours.
+ * An end of 00:00 does not wrap: 08:30 to 00:00 means from 08:30 until the end of the day.
+ */
+internal fun timeWindowContains(minuteOfDay: Int, startHour: Int, startMinute: Int, endHour: Int, endMinute: Int): Boolean {
+    val startMins = startHour * 60 + startMinute
+    val endMins = endHour * 60 + endMinute
+    return if (startMins <= endMins) minuteOfDay in startMins until endMins
+    else minuteOfDay >= startMins || minuteOfDay < endMins
+}
+
+/**
+ * Mild bolus-boost gate. Marks only. It does not change the delivery ratio, the IOB threshold, or the profile.
+ * Raw deltas are Libre raw mg/dL. A missing raw value must be passed as -9999 so the rise gate stays closed.
+ * [deliveryBaseline] is the SMB delivery baseline preference. 0.17 is the old tuning point the IOB gate was built from.
+ * [iob] is current insulin on board. Mild stays closed at 2.5 U and above.
+ * That ceiling is higher than bg3's flat 2.0 U on purpose. 2.0 U still stops a clear overstack,
+ * as at 09:08. 2.5 U leaves room when glucose stays high and keeps rising, as from 11:49 to 12:00.
+ */
+internal fun mildBoostShouldFire(
+    readyMild: Boolean,
+    readyBg3: Boolean,
+    profilePercent: Int,
+    tempTargetSet: Boolean,
+    boostAutomationsOn: Boolean,
+    minuteOfDay: Int,
+    daytimeBypass: Boolean,
+    bg: Double,
+    delta: Double,
+    shortDelta: Double,
+    rawDelta5: Double,
+    rawDelta1: Double,
+    iobChange5: Double,
+    cob: Double,
+    minutesSinceNormalBolus: Int,
+    recentAlarmHypo: Boolean,
+    onLowProfile: Boolean,
+    mjActive: Boolean,
+    steps5: Int,
+    steps30: Int,
+    smbIntervalSec: Double,
+    deliveryBaseline: Double,
+    iob: Double,
+    riseHold: Boolean = false,
+    // 2026-10-08: the 5-minute IOB change from boluses and SMBs only, without temp basal. Defaults to the total.
+    bolusIobChange5: Double = iobChange5,
+): Boolean {
+    if (!(profilePercent == 100 && !tempTargetSet && boostAutomationsOn && readyMild)) return false
+    val stackK = if (smbIntervalSec <= 70.0) 1.10 else 1.0
+    val thresholdScale = deliveryBaseline / 0.17
+    val rawDelta1FloorOk = bg < 162.1 || rawDelta1 >= 4.5 * stackK
+    // 2026-10-08: raised to 6.5 mmol and put back to 6.0 the same day, per explicit request (BMild and Tier 3 respect the SMB offset
+    // numbers instead).
+    val mealFloor = if (recentAlarmHypo) 126.1 else 108.1
+    val mealLeftover = bg >= mealFloor && (cob >= 4.0 || minutesSinceNormalBolus < 180) && shortDelta >= 2.7
+    // 2026-10-08: "IOB rising" counts only the bolus and SMB IOB change, not temp basal, and needs BG of 6.0 mmol or more. 8 Oct
+    // 16:08 a temp basal climbing 0.6 to 3.35 U/h with no SMB passed the old test and BMild then Tier 3 gave 0.65 U at BG 5.5.
+    // The total iobChange5 still feeds the sub-7.5 delivery ceiling below.
+    // The bar is scaled x0.6 because it now measures SMB and bolus IOB only: across 190 past BMild firings that part was a median
+    // 58% of the total 5-minute IOB rise, so 0.24 x baseline/0.17 keeps the sensitivity the path had (about 0.14 U at baseline 0.10).
+    val iobRising = bolusIobChange5 > 0.24 * stackK * thresholdScale   // the 6.0 mmol floor that stood here was withdrawn (2026-10-08)
+    // A high rise, or a recent bolus or carb entry, keeps this open past 02:00 and past 2.5 U.
+    val inWindow = timeWindowContains(minuteOfDay, 8, 30, 2, 0) || daytimeBypass || riseHold
+    return inWindow &&
+        (riseHold || iobRising || mealLeftover) &&
+        delta >= 5.4 * stackK &&
+        rawDelta5 >= 5.4 * stackK &&
+        (mealLeftover || rawDelta5 < 14.4 * stackK) &&
+        rawDelta1FloorOk &&
+        (mealLeftover || rawDelta1 < 14.4 * stackK) &&
+        !onLowProfile &&
+        !mjActive &&
+        readyBg3 &&
+        steps5 <= 20 &&
+        steps30 <= 100 &&
+        !(bg < 135.1 && iobChange5 > 0.8) &&
+        (riseHold || iob < 2.5)
+}
+
+/**
+ * Strong bolus-boost gate (bg3). A temp target does not block this gate.
+ * The caller must still drop the mark when [bg3BoostBlocked] is true.
+ */
+internal fun bg3BoostShouldFire(
+    readyBolusGiven: Boolean,
+    readyBg3: Boolean,
+    readyMild: Boolean,
+    profilePercent: Int,
+    boostAutomationsOn: Boolean,
+    minuteOfDay: Int,
+    daytimeBypass: Boolean,
+    bg: Double,
+    delta: Double,
+    longDelta: Double,
+    rawDelta5: Double,
+    rawDelta1: Double,
+    iobChange5: Double,
+    smbCount5: Int,
+    onLowProfile: Boolean,
+    mjActive: Boolean,
+    steps5: Int,
+    steps30: Int,
+    steps60: Int,
+    smbIntervalSec: Double,
+    deliveryBaseline: Double,
+    riseHold: Boolean = false,
+): Boolean {
+    if (!(profilePercent == 100 && boostAutomationsOn && readyBolusGiven && readyBg3)) return false
+    val stackK = if (smbIntervalSec <= 70.0) 1.10 else 1.0
+    val thresholdScale = deliveryBaseline / 0.17
+    val rawDelta1FloorOk = bg < 162.1 || rawDelta1 >= 4.5 * stackK
+    val deliverySuppressed = smbCount5 <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4 && bg >= 117.1 && delta >= 0.0
+    val inWindow = timeWindowContains(minuteOfDay, 8, 30, 0, 0) || daytimeBypass || riseHold
+    return inWindow &&
+        ((iobChange5 > 0.85 * stackK * thresholdScale && delta >= 10.8 * stackK) || deliverySuppressed) &&
+        rawDelta5 >= 14.4 * stackK &&
+        rawDelta1FloorOk &&
+        !onLowProfile &&
+        !mjActive &&
+        readyMild &&
+        steps5 <= 20 &&
+        steps30 <= 100 &&
+        steps60 < 300 &&
+        (deliverySuppressed || longDelta > 7.2)
+}
+
+/**
+ * Mild-failsafe gate. From 09:00 until 21:00, or at any hour when [daytimeBypass] is set.
+ * Glucose, delta, short delta, and long delta are mg/dL. 5.4 mg/dL is 0.3 mmol/L. 3.6 mg/dL is 0.2 mmol/L.
+ * 117 mg/dL is 6.5 mmol/L. The mark raises the post-meal weight only.
+ */
+internal fun mildFailsafeShouldFire(
+    readyFailsafe: Boolean,
+    readyMild: Boolean,
+    readyBg3: Boolean,
+    profilePercent: Int,
+    tempTargetSet: Boolean,
+    boostAutomationsOn: Boolean,
+    minuteOfDay: Int,
+    daytimeBypass: Boolean,
+    bg: Double,
+    delta: Double,
+    shortDelta: Double,
+    longDelta: Double,
+    iob: Double,
+    smbCount20: Int,
+    steps5: Int,
+    steps30: Int,
+): Boolean {
+    if (!(profilePercent == 100 && !tempTargetSet && boostAutomationsOn && readyFailsafe && readyMild && readyBg3)) return false
+    val inWindow = timeWindowContains(minuteOfDay, 9, 0, 21, 0) || daytimeBypass
+    return inWindow &&
+        bg > 117.0 &&
+        delta >= 5.4 &&
+        shortDelta >= 5.4 &&
+        longDelta >= 3.6 &&
+        iob <= 0.20 &&
+        smbCount20 == 0 &&
+        steps5 <= 20 &&
+        steps30 <= 100
+}
+
+/** True when a bg3 fire must not be marked. Matches the 60 minute re-arm and the IOB ceilings. */
+internal fun bg3BoostBlocked(
+    recentBolusGiven: Boolean,
+    recentMild: Boolean,
+    recentMildFailsafe: Boolean,
+    iob: Double,
+    riseHold: Boolean = false,
+): Boolean {
+    if (recentBolusGiven) return true
+    if (riseHold) return false
+    if (iob >= 2.0) return true
+    if ((recentMild || recentMildFailsafe) && iob >= 1.5) return true
+    return false
+}

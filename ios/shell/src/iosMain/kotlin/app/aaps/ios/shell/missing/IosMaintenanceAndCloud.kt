@@ -30,11 +30,18 @@ import dev.zacsweers.metro.SingleIn
 @OptIn(ExperimentalForeignApi::class)
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class)
-class IosMaintenance @Inject constructor(
+@Inject
+class IosMaintenance(
     private val aapsLogger: AAPSLogger,
     /** Overridden in a test, so it neither reads the real log nor deletes it. */
     private val logDirectory: String? = defaultLogDirectory()
 ) : Maintenance {
+
+    override suspend fun uploadLogsToCloud(): Boolean = false
+
+    override suspend fun exportCoordinated(trigger: String) {
+        aapsLogger.debug(LTag.CORE, "Coordinated export ($trigger) is not available on iOS yet")
+    }
 
     override suspend fun executeSendLogs(): ExportResult =
         aapsLogger.failNotOnIosYet("Maintenance.executeSendLogs")

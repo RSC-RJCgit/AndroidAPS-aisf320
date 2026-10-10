@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -43,8 +43,6 @@ import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import kotlinx.coroutines.delay
-
-private val SPLIT_LAYOUT_MIN_WIDTH: Dp = 720.dp
 
 @Composable
 fun OverviewScreen(
@@ -100,9 +98,20 @@ fun OverviewScreen(
     var showPumpActivityDialog by remember { mutableStateOf(false) }
     val showPumpFab = isPumpCommunicating || (bolusState != null && bolusState.isSMB)
 
+    // Three seconds is enough to glance at the card, but not to hear it read out. Ask the platform
+    // how long this content needs instead: with a screen reader on it stretches the timeout, and
+    // with one off calculateRecommendedTimeoutMillis hands back the original 3 seconds unchanged.
+    val accessibilityManager = LocalAccessibilityManager.current
     LaunchedEffect(showPumpFab) {
         if (!showPumpFab && showPumpActivityDialog) {
-            delay(3_000)
+            delay(
+                accessibilityManager?.calculateRecommendedTimeoutMillis(
+                    originalTimeoutMillis = 3_000,
+                    containsIcons = true,
+                    containsText = true,
+                    containsControls = true
+                ) ?: 3_000
+            )
             showPumpActivityDialog = false
         }
     }
@@ -161,9 +170,8 @@ fun OverviewScreen(
                 commandsAllowed = commandsAllowed,
                 formatDuration = formatDuration
             )
-        } else BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            if (isLandscape && maxWidth >= SPLIT_LAYOUT_MIN_WIDTH) {
-                OverviewScreenSplit(
+        } else {
+            OverviewScreenStacked(
                     profileName = profileName,
                     isProfileModified = isProfileModified,
                     profileProgress = profileProgress,
@@ -197,44 +205,17 @@ fun OverviewScreen(
                     endSceneEnabled = endSceneEnabled,
                     commandsAllowed = commandsAllowed,
                     formatDuration = formatDuration
-                )
-            } else {
-                OverviewScreenStacked(
-                    profileName = profileName,
-                    isProfileModified = isProfileModified,
-                    profileProgress = profileProgress,
-                    profileSceneManaged = profileSceneManaged,
-                    tempTargetText = tempTargetText,
-                    tempTargetState = tempTargetState,
-                    tempTargetProgress = tempTargetProgress,
-                    tempTargetReason = tempTargetReason,
-                    tempTargetSceneManaged = tempTargetSceneManaged,
-                    runningMode = runningMode,
-                    runningModeText = runningModeText,
-                    runningModeRemaining = runningModeRemaining,
-                    runningModeProgress = runningModeProgress,
-                    runningModeSceneManaged = runningModeSceneManaged,
-                    tbrState = tbrState,
-                    smbEnabled = smbEnabled,
-                    isSimpleMode = isSimpleMode,
-                    graphViewModel = graphViewModel,
-                    chipsViewModel = chipsViewModel,
-                    manageViewModel = manageViewModel,
-                    statusViewModel = statusViewModel,
-                    statusLightsDef = statusLightsDef,
-                    onNavigate = onNavigate,
-                    onTbrChipClick = onTbrChipClick,
-                    onIobChipClick = onIobChipClick,
-                    paddingValues = paddingValues,
-                    activeSceneState = activeSceneState,
-                    sceneExpired = sceneExpired,
-                    onEndScene = onEndScene,
-                    onDismissScene = onDismissScene,
-                    endSceneEnabled = endSceneEnabled,
-                    commandsAllowed = commandsAllowed,
-                    formatDuration = formatDuration
-                )
-            }
+            )
+        }
+
+        List1Dialog(chipsViewModel)
+        List2Dialog(chipsViewModel)
+        List3Dialog(chipsViewModel)
+        if (chipsViewModel.autoIsfHistoryOpen) {
+            AutoIsfHistoryDialog(
+                rows = chipsViewModel.autoIsfHistoryRows,
+                onDismiss = chipsViewModel::closeAutoIsfHistory
+            )
         }
 
         // Calculation progress (IOB / graph data). Overlaid on top of content so it never reflows

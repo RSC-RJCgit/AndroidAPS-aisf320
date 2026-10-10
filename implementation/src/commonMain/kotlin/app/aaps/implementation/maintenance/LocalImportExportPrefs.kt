@@ -10,6 +10,8 @@ import app.aaps.core.interfaces.maintenance.ExportPreparation
 import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepChoices
+import app.aaps.core.interfaces.maintenance.ImportKeepOffer
 import app.aaps.core.interfaces.maintenance.PrefMetadata
 import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefMetadataMap
@@ -27,6 +29,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.implementation.maintenance.cloud.CloudConstants
 import app.aaps.implementation.maintenance.cloud.CloudStorageManager
@@ -36,6 +39,8 @@ import app.aaps.core.objects.crypto.platformCryptoPrimitives
 import app.aaps.implementation.maintenance.formats.ExportMetadata
 import app.aaps.implementation.maintenance.formats.PrefsFormatCodec
 import app.aaps.implementation.maintenance.formats.PrefsTransfer
+import app.aaps.implementation.maintenance.formats.importKeepOfferFor
+import app.aaps.implementation.maintenance.formats.preserveKeys
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -75,6 +80,7 @@ class LocalImportExportPrefs(
     private val persistenceLayer: PersistenceLayer,
     private val userEntryPresentationHelper: UserEntryPresentationHelper,
     private val appScope: CoroutineScope,
+    private val applier: PreferenceImportApplier,
     secureEncrypt: SecureEncrypt,
     textResolver: TextResolver
 ) : ImportExportPrefs {
@@ -273,11 +279,32 @@ class LocalImportExportPrefs(
         transfer.importResult(file.content, password, config.isEngineeringMode())
             .also { if (it is ImportDecryptResult.Error) aapsLogger.error(LTag.CORE, "Reading ${file.name} failed: ${it.message}") }
 
-    override fun executeImport(prefs: Prefs) {
+    override fun importKeepOffer(prefs: Prefs): ImportKeepOffer =
+        importKeepOfferFor(activePlugin, transfer.currentEntries(), prefs.values)
+
+    override suspend fun executeImport(
+        prefs: Prefs,
+        keep: ImportKeepChoices,
+        enableAutomationStates: Boolean
+    ): ImportExportPrefs.ImportOutcome {
         activePlugin.beforeImport()
-        transfer.applyImported(prefs)
+        val outcome = applier.apply(prefs, keep.keepPump, preserveKeys(activePlugin, keep))
+        // Automation states come in off unless the import screen checkbox asked for them, whatever the file says.
+        preferences.put(BooleanKey.AutomationStatesEnabled, enableAutomationStates)
         activePlugin.afterImport()
+        aapsLogger.info(
+            LTag.CORE,
+            "Import applied: ${outcome.changed} changed, ${outcome.unchanged} already matched, " +
+                "${outcome.keptByChoice} kept by choice, ${outcome.pumpSkipped} pump settings kept (${outcome.pumpWouldChange} would have changed), " +
+                "${outcome.syncedSkipped} synced keys left to the master, ${outcome.notExportable} refused as device state, " +
+                "${outcome.unresolved.size} unknown names left alone, ${outcome.unreadable.size} unreadable values skipped"
+        )
+        if (outcome.unresolved.isNotEmpty()) aapsLogger.debug(LTag.CORE, "Import: names this build does not know: ${outcome.unresolved}")
+        return outcome
     }
+
+    override fun previewImport(prefs: Prefs, keep: ImportKeepChoices): ImportExportPrefs.ImportOutcome =
+        applier.preview(prefs, keep.keepPump, preserveKeys(activePlugin, keep))
 
     override fun prepareImportedSettings() {
         preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)
@@ -335,7 +362,8 @@ class LocalImportExportPrefs(
  * round.
  */
 @SingleIn(AppScope::class)
-class PrefsFileLister @Inject constructor(
+@Inject
+class PrefsFileLister(
     private val files: PrefsFileAccess,
     secureEncrypt: SecureEncrypt,
     textResolver: TextResolver

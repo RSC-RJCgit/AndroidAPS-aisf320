@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import dev.zacsweers.metro.Inject
 
 // @Singleton (not @Reusable): Config owns the single app-global init-progress flow that
@@ -28,7 +29,8 @@ import dev.zacsweers.metro.Inject
 @Suppress("KotlinConstantConditions")
 @ContributesBinding(AppScope::class, binding = binding<Config>())
 @SingleIn(AppScope::class)
-class ConfigImpl @Inject constructor(
+@Inject
+class ConfigImpl(
     private val fileListProvider: () -> FileListProvider,
     private val externalOptionsOverride: ExternalOptionsOverride
 ) : Config {
@@ -76,6 +78,16 @@ class ConfigImpl @Inject constructor(
         _initProgressFlow.value = _initProgressFlow.value.copy(error = error)
     }
 
+    // update() rather than a read-modify-write of .value: these are called from the import screen's
+    // dispatcher while other threads read the same flow, and update() retries on conflict.
+    override fun beginReconfiguring() {
+        _initProgressFlow.update { it.enteringReconfigure() }
+    }
+
+    override fun endReconfiguring() {
+        _initProgressFlow.update { it.leavingReconfigure() }
+    }
+
     private val _initSnackbarFlow = MutableSharedFlow<String>(extraBufferCapacity = 1)
     override val initSnackbarFlow: SharedFlow<String> = _initSnackbarFlow.asSharedFlow()
     override fun showInitSnackbar(message: String) {
@@ -93,6 +105,6 @@ class ConfigImpl @Inject constructor(
     override fun isEnabled(option: ExternalOptions): Boolean =
         option in externalOptionsOverride.enabled() ||
             enabledOptionsCache.getOrPut(option) {
-                fileListProvider().ensureExtraDirExists()?.findFile(option.filename) != null
+                fileListProvider().extraFileExists(option.filename)
             }
 }

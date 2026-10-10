@@ -38,6 +38,12 @@ class LoadBgRunner(
     suspend fun run(): WorkOutcome {
         if (!nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !nsClientV3Plugin.doingFullSync)
             return WorkOutcome.Skipped("Load not enabled")
+        if (glucoseFromSecondarySite(
+                preferences.get(BooleanKey.NsClientSecondaryEnabled),
+                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+            )
+        )
+            return WorkOutcome.Skipped("secondary")
 
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return WorkOutcome.Failure("AndroidClient is null")
         var continueLoading = true

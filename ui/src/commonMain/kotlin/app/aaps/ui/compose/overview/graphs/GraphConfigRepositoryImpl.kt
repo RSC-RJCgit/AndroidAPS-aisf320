@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
+import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.graph.GraphConfig
@@ -13,7 +14,6 @@ import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,12 +34,16 @@ import kotlinx.serialization.json.put
 
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
-class GraphConfigRepositoryImpl @Inject constructor(
+@Inject
+class GraphConfigRepositoryImpl(
     private val preferences: Preferences,
     private val aapsLogger: AAPSLogger
 ) : GraphConfigRepository {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // Not the main dispatcher: all this scope does is parse a preference string into a StateFlow,
+    // which is safe from any thread, and reaching for `Dispatchers.Main` in a constructor makes the
+    // object graph unbuildable in a plain JVM unit test (no main looper).
+    private val scope = CoroutineScope(SupervisorJob() + aapsIoDispatcher)
     private val _graphConfigFlow = MutableStateFlow(load())
     override val graphConfigFlow: StateFlow<GraphConfig> = _graphConfigFlow.asStateFlow()
 
@@ -76,6 +80,7 @@ class GraphConfigRepositoryImpl @Inject constructor(
         private const val KEY_IOB_OVERLAYS = "iobOverlays"
         private const val KEY_BG_HEIGHT = "bgHeight"
         private const val KEY_IOB_HEIGHT = "iobHeight"
+        private const val KEY_GRAPH5_HEIGHT = "graph5Height"
         private const val KEY_SERIES = "series"
         private const val KEY_HEIGHT = "height"
 
@@ -103,6 +108,7 @@ class GraphConfigRepositoryImpl @Inject constructor(
                 put(KEY_IOB_OVERLAYS, overlaysToJson(config.iobOverlays))
                 put(KEY_BG_HEIGHT, config.bgHeight)
                 put(KEY_IOB_HEIGHT, config.iobHeight)
+                put(KEY_GRAPH5_HEIGHT, config.graph5Height)
                 put(
                     KEY_SECONDARY_GRAPHS,
                     buildJsonArray {
@@ -124,15 +130,17 @@ class GraphConfigRepositoryImpl @Inject constructor(
                 if (type == SeriesType.IOB) continue
                 if (type !in series) series.add(type)
             }
-            return series.take(2)
+            return series.take(3)
         }
 
         fun fromJson(json: String): GraphConfig {
             val obj = Json.parseToJsonElement(json) as JsonObject
             val bgOverlays = overlaysFromJson(obj.array(KEY_BG_OVERLAYS), listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS))
             val iobOverlays = overlaysFromJson(obj.array(KEY_IOB_OVERLAYS), listOf(SeriesType.ACTIVITY))
-            val bgHeight = obj.height(KEY_BG_HEIGHT)
+            val bgHeight = obj.height(KEY_BG_HEIGHT, GraphConfig.MAX_BG_GRAPH_HEIGHT_DP)
             val iobHeight = obj.height(KEY_IOB_HEIGHT)
+            // Graph 5 used to share the IOB graph's height, so a config saved before this key existed keeps that height.
+            val graph5Height = if (obj.containsKey(KEY_GRAPH5_HEIGHT)) obj.height(KEY_GRAPH5_HEIGHT, GraphConfig.MAX_BG_GRAPH_HEIGHT_DP) else iobHeight
             val graphs = mutableListOf<SecondaryGraph>()
             for (raw in obj.array(KEY_SECONDARY_GRAPHS).orEmpty()) {
                 // Legacy format: element is an array of series names.
@@ -149,6 +157,7 @@ class GraphConfigRepositoryImpl @Inject constructor(
                 iobOverlays = iobOverlays,
                 bgHeight = bgHeight,
                 iobHeight = iobHeight,
+                graph5Height = graph5Height,
                 secondaryGraphs = graphs
             )
         }
@@ -157,9 +166,9 @@ class GraphConfigRepositoryImpl @Inject constructor(
         private fun JsonObject.array(key: String): JsonArray? = this[key] as? JsonArray
 
         /** A stored height, defaulted when absent and always brought inside the allowed range. */
-        private fun JsonObject.height(key: String): Int =
+        private fun JsonObject.height(key: String, max: Int = GraphConfig.MAX_GRAPH_HEIGHT_DP): Int =
             ((this[key] as? JsonPrimitive)?.let { runCatching { it.int }.getOrNull() } ?: GraphConfig.DEFAULT_GRAPH_HEIGHT_DP)
-                .coerceIn(GraphConfig.DEFAULT_GRAPH_HEIGHT_DP, GraphConfig.MAX_GRAPH_HEIGHT_DP)
+                .coerceIn(GraphConfig.DEFAULT_GRAPH_HEIGHT_DP, max)
 
         /** The series this element names, or null if it is not a name this version knows. */
         private fun JsonElement.seriesTypeOrNull(): SeriesType? =

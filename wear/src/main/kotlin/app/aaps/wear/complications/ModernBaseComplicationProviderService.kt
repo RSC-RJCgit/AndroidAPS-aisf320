@@ -51,10 +51,10 @@ abstract class ModernBaseComplicationProviderService : ComplicationDataSourceSer
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // Not derived from WearMetroService, so inject here for every concrete subclass. AndroidInjection
-    // resolves the injector by this instance's concrete runtime class, so each subclass is injected
-    // through its own @ContributesAndroidInjector binding in WearServicesModule — kept in the base to
-    // avoid duplicating the identical override in every complication.
+    // Not derived from WearMetroService, so inject here for every concrete subclass. The injector is
+    // resolved by this instance's concrete runtime class, so each subclass needs its own entry in
+    // WearMemberInjectors even when it adds no injected field of its own - kept in the base to avoid
+    // duplicating the identical override in every complication.
     override fun onCreate() {
         injectMetroMembers(this)
         super.onCreate()
@@ -64,7 +64,7 @@ abstract class ModernBaseComplicationProviderService : ComplicationDataSourceSer
      * Build complication data using modern DataStore-backed data models
      *
      * Supports multiple datasets for AAPSClient mode:
-     * - Dataset 0 (data.bgData, data.statusData): Primary AndroidAPS instance
+     * - Dataset 0 (data.bgData, data.statusData): Primary AAPS instance
      * - Dataset 1 (data.bgData1, data.statusData1): AAPSClient1 (follower mode)
      * - Dataset 2 (data.bgData2, data.statusData2): AAPSClient2 (follower mode)
      *

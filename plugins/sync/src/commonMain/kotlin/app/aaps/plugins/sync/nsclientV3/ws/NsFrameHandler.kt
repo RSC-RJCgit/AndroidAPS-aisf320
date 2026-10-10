@@ -29,6 +29,7 @@ import app.aaps.plugins.sync.nsclientV3.SettingsIdentifiers
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.ClientControlPublisher
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.OrphanDetector
 import app.aaps.plugins.sync.nsclientV3.data.NSDeviceStatusHandler
+import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.extensions.toRunningConfiguration
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -62,7 +63,8 @@ import kotlinx.serialization.json.JsonObject
  * here is Android-specific and nothing needs `org.json`.
  */
 @SingleIn(AppScope::class)
-class NsFrameHandler @Inject constructor(
+@Inject
+class NsFrameHandler(
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
     private val config: Config,
@@ -104,12 +106,20 @@ class NsFrameHandler @Inject constructor(
         }
 
         when (collection) {
-            "devicestatus" -> nsDeviceStatusHandler.handleNewData(arrayOf(docString.toNSDeviceStatus()), live = true)
+            "devicestatus" -> nsDeviceStatusHandler.handleNewData(arrayOf(docString.toNSDeviceStatus()))
 
             "entries"      -> {
-                docString.toNSSgvV3()?.let {
-                    nsIncomingDataProcessor().processSgvs(listOf(it), doFullSync = false)
-                    storeDataForDb.requestStoreGlucoseValues()
+                // The full app and a client ignore main-site glucose when the second site supplies it.
+                // Those frames would put the other value back.
+                if (!glucoseFromSecondarySite(
+                        preferences.get(BooleanKey.NsClientSecondaryEnabled),
+                        preferences.get(BooleanKey.NsClientBgFromLiveSite)
+                    )
+                ) {
+                    docString.toNSSgvV3()?.let {
+                        nsIncomingDataProcessor().processSgvs(listOf(it), doFullSync = false)
+                        storeDataForDb.requestStoreGlucoseValues()
+                    }
                 }
                 // The same collection also carries AAPS calibration entries.
                 docString.toCalibrationMbg()?.let {

@@ -32,7 +32,7 @@ import app.aaps.core.ui.compose.AapsTopAppBar
 import app.aaps.core.ui.compose.ComposeScreenContent
 import app.aaps.core.ui.compose.LocalSnackbarHostState
 import app.aaps.core.ui.compose.MasterOfflineBanner
-import app.aaps.core.ui.compose.masterEditingEnabled
+import app.aaps.core.ui.compose.settingsEditingEnabled
 import app.aaps.core.ui.compose.stringResource
 import kotlinx.coroutines.launch
 
@@ -173,7 +173,7 @@ private fun SinglePluginPreferencesRenderer(
                     .verticalScrollIndicators(listState),
                 state = listState
             ) {
-                item { MasterOfflineBanner(editingEnabled = masterEditingEnabled()) }
+                item { MasterOfflineBanner(editingEnabled = settingsEditingEnabled()) }
                 // Use the same addPreferenceContent() as AllPreferencesScreen
                 // This renders as collapsible sections, not navigation
                 addPreferenceContent(

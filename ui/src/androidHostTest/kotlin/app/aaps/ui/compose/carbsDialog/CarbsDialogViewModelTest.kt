@@ -61,7 +61,7 @@ internal class CarbsDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `hypo temp-target is mutually exclusive with the others`() {
+    fun hypoTempTargetIsMutuallyExclusiveWithTheOthers() {
         sut.updateEatingSoonTt(true)
         sut.updateHypoTt(true)
 
@@ -72,7 +72,7 @@ internal class CarbsDialogViewModelTest {
     }
 
     @Test
-    fun `eating-soon temp-target clears hypo and activity`() {
+    fun eatingSoonTempTargetClearsHypoAndActivity() {
         sut.updateActivityTt(true)
         sut.updateEatingSoonTt(true)
 
@@ -83,7 +83,7 @@ internal class CarbsDialogViewModelTest {
     }
 
     @Test
-    fun `activity temp-target clears hypo and eating-soon`() {
+    fun activityTempTargetClearsHypoAndEatingSoon() {
         sut.updateHypoTt(true)
         sut.updateActivityTt(true)
 
@@ -94,7 +94,7 @@ internal class CarbsDialogViewModelTest {
     }
 
     @Test
-    fun `updateNotes and flag setters update the state`() {
+    fun updateNotesAndFlagSettersUpdateTheState() {
         sut.updateNotes("late dinner")
         sut.updateAlarm(true)
         sut.updateBolusReminder(true)

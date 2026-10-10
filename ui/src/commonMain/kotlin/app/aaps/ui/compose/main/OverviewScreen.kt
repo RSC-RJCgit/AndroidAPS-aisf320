@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingFlat
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -14,6 +15,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.Objectives
 import app.aaps.core.interfaces.notifications.AapsNotification
 import app.aaps.core.interfaces.notifications.AlarmSound
+import app.aaps.core.interfaces.notifications.NotificationHandle
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
@@ -24,6 +26,7 @@ import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.dialogs.OkDialog
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
+import app.aaps.ui.compose.automation.NativeAutomationReviewDialog
 import app.aaps.ui.compose.loopSheet.LoopActionViewModel
 import app.aaps.ui.compose.maintenance.ImportSource
 import app.aaps.ui.compose.maintenance.MaintenanceViewModel
@@ -110,6 +113,8 @@ fun OverviewScreen(
     onAutoShowConsumed: () -> Unit
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
+    val codedAutomationReview by mainViewModel.codedAutomationReview.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { mainViewModel.offerCodedAutomationReview() }
     val searchState by searchViewModel.uiState.collectAsStateWithLifecycle()
     val calcProgress by mainViewModel.calcProgressFlow.collectAsStateWithLifecycle()
     val notifications by notificationManager.notifications.collectAsStateWithLifecycle()
@@ -215,7 +220,9 @@ fun OverviewScreen(
         onRecreateActivity = onRecreateActivity,
         // Notifications
         notifications = notifications,
-        onDismissNotification = { notification -> notificationManager.dismiss(notification.id) },
+        // By handle, not by id: dismiss(id) removes EVERY card carrying that id, so on an allowMultiple
+        // notification - patch alerts, automation messages, a failed plugin - dismissing one wiped them all.
+        onDismissNotification = { notification -> notificationManager.dismiss(NotificationHandle(notification.instanceKey)) },
         onNotificationActionClick = onNotificationActionClick,
         autoShowNotificationSheet = autoShowNotificationSheet,
         onAutoShowConsumed = onAutoShowConsumed,
@@ -250,4 +257,11 @@ fun OverviewScreen(
             }
         }
     )
+    if (codedAutomationReview.isNotEmpty()) {
+        NativeAutomationReviewDialog(
+            titles = codedAutomationReview,
+            onSave = { mainViewModel.saveCodedAutomationReview(it) },
+            onDismiss = { mainViewModel.dismissCodedAutomationReview() }
+        )
+    }
 }

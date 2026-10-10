@@ -40,7 +40,7 @@ internal class FoodManagementViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is loading with empty filters`() {
+    fun defaultUiStateIsLoadingWithEmptyFilters() {
         val state = sut.uiState.value
         assertThat(state.isLoading).isTrue()
         assertThat(state.searchQuery).isEmpty()
@@ -50,14 +50,14 @@ internal class FoodManagementViewModelTest {
     }
 
     @Test
-    fun `setSearchQuery updates the state`() {
+    fun setSearchQueryUpdatesTheState() {
         sut.setSearchQuery("apple")
 
         assertThat(sut.uiState.value.searchQuery).isEqualTo("apple")
     }
 
     @Test
-    fun `setFilterCategory sets category and clears subcategory`() {
+    fun setFilterCategorySetsCategoryAndClearsSubcategory() {
         sut.setFilterSubCategory("Sub")
         sut.setFilterCategory("Fruit")
 
@@ -67,14 +67,14 @@ internal class FoodManagementViewModelTest {
     }
 
     @Test
-    fun `setFilterSubCategory updates the state`() {
+    fun setFilterSubCategoryUpdatesTheState() {
         sut.setFilterSubCategory("Berries")
 
         assertThat(sut.uiState.value.filterSubCategory).isEqualTo("Berries")
     }
 
     @Test
-    fun `editor update setters update the state`() {
+    fun editorUpdateSettersUpdateTheState() {
         sut.updateEditorName("Banana")
         sut.updateEditorCategory("Fruit")
         sut.updateEditorSubCategory("Tropical")
@@ -98,7 +98,7 @@ internal class FoodManagementViewModelTest {
     }
 
     @Test
-    fun `openEditor with null resets editor fields to defaults and shows editor`() {
+    fun openEditorWithNullResetsEditorFieldsToDefaultsAndShowsEditor() {
         sut.updateEditorName("stale")
         sut.openEditor(null)
 
@@ -111,7 +111,7 @@ internal class FoodManagementViewModelTest {
     }
 
     @Test
-    fun `closeEditor hides the editor`() {
+    fun closeEditorHidesTheEditor() {
         sut.openEditor(null)
         sut.closeEditor()
 
@@ -119,7 +119,7 @@ internal class FoodManagementViewModelTest {
     }
 
     @Test
-    fun `clearUndo clears the undo food`() {
+    fun clearUndoClearsTheUndoFood() {
         sut.clearUndo()
 
         assertThat(sut.uiState.value.undoFood).isNull()

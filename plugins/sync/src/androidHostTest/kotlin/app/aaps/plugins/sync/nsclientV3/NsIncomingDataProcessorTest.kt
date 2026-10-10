@@ -5,6 +5,7 @@ import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
+import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.sync.NsClient
@@ -53,6 +54,7 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
     @Mock lateinit var storeDataForDb: StoreDataForDb
     @Mock lateinit var nsClientRepository: NSClientRepository
     @Mock lateinit var nsClient: NsClient
+    @Mock lateinit var displayRawSmoothing: DisplayRawSmoothing
     @Mock lateinit var dataSyncSelector: DataSyncSelector
     private val nsiCfg = NSICfg(insulinLabel = "Fake", insulinEndTime = 9 * 3600 * 1000, insulinPeakTime = 60 * 60 * 1000, concentration = 1.0)
 
@@ -78,7 +80,8 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
             config = config,
             profileStoreProvider = { profileStoreProvider() },
             notificationManager = notificationManager,
-            nsClientRepository = nsClientRepository
+            nsClientRepository = nsClientRepository,
+            displayRawSmoothing = displayRawSmoothing,
         )
     }
 
@@ -120,6 +123,69 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         val result = processor.processSgvs(sgvList, doFullSync = false)
         assertFalse(result)
         verify(storeDataForDb, never()).addToGlucoseValues(any())
+    }
+
+    @Test
+    fun `processSgvs from the live site is stored on a full app when NSClient BG is off`() {
+        whenever(nsClientSource.isEnabled()).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientAcceptCgmData)).thenReturn(false)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        val sgvTime = now - T.mins(1).msecs()
+        val sgvList = listOf(
+            NSSgvV3(
+                device = "share2",
+                date = sgvTime,
+                identifier = "live",
+                utcOffset = null,
+                isValid = true,
+                units = NsUnits.MG_DL,
+                sgv = 110.0,
+                direction = Direction.FLAT,
+                noise = 1.0,
+                filtered = 110.0,
+                unfiltered = 110.0
+            )
+        )
+
+        val result = processor.processSgvs(sgvList, doFullSync = false, fromLiveSite = true)
+
+        assertTrue(result)
+        verify(storeDataForDb).addToGlucoseValues(argThat {
+            size == 1 && get(0).ids.nightscoutId == null
+        })
+    }
+
+    @Test
+    fun `processSgvs from the live site keeps the site value when Libre slope is on`() {
+        whenever(nsClientSource.isEnabled()).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientAcceptCgmData)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.FslApplySmoothing)).thenReturn(true)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        val sgvTime = now - T.mins(1).msecs()
+        val sgvList = listOf(
+            NSSgvV3(
+                device = "share2",
+                date = sgvTime,
+                identifier = "live-slope",
+                utcOffset = null,
+                isValid = true,
+                units = NsUnits.MG_DL,
+                sgv = 110.0,
+                direction = Direction.FLAT,
+                noise = 1.0,
+                filtered = 110.0,
+                unfiltered = 110.0
+            )
+        )
+
+        val result = processor.processSgvs(sgvList, doFullSync = false, fromLiveSite = true)
+
+        assertTrue(result)
+        verify(storeDataForDb).addToGlucoseValues(argThat {
+            size == 1 &&
+                get(0).value == 110.0 &&
+                get(0).ids.nightscoutId == null
+        })
     }
 
     @Test

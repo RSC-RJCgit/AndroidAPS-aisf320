@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="cancel_action_with_details" comment="%1$s=the word Cancel, %2$s=the active item being cancelled (e.g. a running temp basal or extended bolus description). Example: 'Cancel 150% 30min'">%1$s %2$s</string>
     <string name="no_temp_basal_running">No temp basal running</string>
     <string name="start_activity_tt">Start Activity TT</string>
@@ -12,6 +12,7 @@
     <string name="configure">Configure opacity</string>
     <string name="widget_description">AAPS widget</string>
     <string name="widget_bg_graph_description">AAPS BG graph</string>
+    <string name="widget_glucose_circle_description">AAPS glucose circle</string>
     <string name="widget_compact_bg_description">AAPS BG + IOB + COB (compact)</string>
     <string name="widget_small_description">AAPS Small</string>
 
@@ -181,6 +182,14 @@
     <string name="wizard_carbs_type_bread_desc">100% immediate carbs, no extended carbs</string>
     <string name="wizard_carbs_type_desc">Carbs reduced by %1$d%%, added eCarbs %2$d%% delayed %3$dmin for %4$dh</string>
     <string name="wizard_include_info">Tap to include/exclude from calculation:\n• BG — blood glucose (ON at start)\n• TT — temp target (ON at start)\n• Trend — BG trend (last state remembered)\n• IOB — insulin on board (ON at start)\n• COB — carbs on board (last state remembered)</string>
+    <string name="wizard_walking_soon" comment="Checkbox on the bolus calculator. Ticked means the user will walk soon, so the immediate dose is cut to 70 percent.">Walking soon</string>
+    <string name="wizard_fpu_instead" comment="Checkbox. Ticked accepts automatic fat and protein from the carb grams. Fat is 0.35 times the carbs. Protein is 0.4 times the carbs. Those are later hourly doses. Extended carbs are off. Unticked leaves the typed fat and protein. Grams above 0 still schedule hourly doses.">Accept automatic fat and protein later</string>
+    <string name="wizard_give_rest_later" comment="Checkbox, on by default. The fall caution removes part of the bolus now. Ticked gives that part later as hourly boluses. The first dose waits an hour. Unticked, that part is not given.">Delay part of the bolus (safety)</string>
+    <string name="wizard_give_rest_later_hint" comment="Small text under the Delay part of the bolus checkbox. Says why part of the dose is held back and what the box does.">For safety the calculator can give only part of the dose now, when glucose is falling or you will walk soon. Ticked: the held-back part is given later, in hourly doses, if glucose allows. Unticked: it is not given.</string>
+    <string name="wizard_delay_fpu_instead_of_cancel" comment="Checkbox, on by default. A protein or fat dose that is not safe at its hour is checked again every 10 minutes instead of being cancelled.">Delay protein and fat doses instead of cancelling</string>
+    <string name="wizard_delay_fpu_instead_of_cancel_hint" comment="Small text under the Delay protein and fat doses checkbox.">A protein or fat dose that is not safe at its hour (glucose, insulin on board, profile, pump) is checked again every 10 minutes and given when it is safe, until 10 minutes before the next dose is due. Unticked: it is cancelled.</string>
+    <string name="wizard_unreliable_smb" comment="Checkbox. Used when SMB cannot be trusted. Wizard percent is 90. Fat and protein are double the average: fat 0.7 and protein 0.8 times the carb grams. Later doses. Max bolus stays at the saved limit.">Unreliable SMB / bad sensor / high protein</string>
+    <string name="wizard_small_meal" comment="Checkbox. Halves the automatic fat and protein from the carb grams (average is fat 0.35 and protein 0.4 times the carbs). With the unreliable box ticked as well, the two cancel out.">Small meal (half fat and protein)</string>
 
     <!-- Treatments -->
     <string name="no_records_available">No records available</string>
@@ -191,10 +200,80 @@
     <string name="careportal_remove_started_events">Remove AAPS started entries</string>
     <string name="user_entry">User entry</string>
     <string name="clone_label">Clone</string>
+    <string name="a11y_bg_graph_summary" comment="Screen-reader description of the glucose graph, which is drawn and so cannot be read otherwise. %1$s=the recent glucose values newest first, already joined and carrying their unit, %2$s=insulin on board with its label, %3$s=carbs on board with its label. Example: Glucose graph. Recent values 7.2, 7.0, 6.8. IOB: 1.20 U. COB: 45 g">Glucose graph. Recent values %1$s. %2$s. %3$s</string>
+    <string name="a11y_bg_graph_summary_values_only" comment="Same as a11y_bg_graph_summary but for the history browser, where insulin and carbs on board are current values and would be wrong beside a past day. %1$s=the glucose values newest first, already joined and carrying their unit.">Glucose graph. Recent values %1$s</string>
+    <string name="execute_label" comment="Button that runs the selected quick wizard, which delivers its bolus.">Execute</string>
     <string name="add_new_profile">Add new profile</string>
     <string name="edit_label">Edit</string>
     <string name="activate_label">Activate</string>
     <string name="activate_profile">Activate profile</string>
+    <string name="review_native_automations">Review native automations</string>
+    <string name="review_native_automations_body">These names are close to a coded automation. Check any that should keep running when custom AutoISF automations are on. Unchecked names stay blocked while that switch is on. Nothing is blocked yet, because those coded automations are not in this app.</string>
+    <string name="autoisf_history_title">AutoISF history</string>
+    <string name="autoisf_history_empty">No AutoISF data in the last 6 hours</string>
+    <string name="autoisf_history_no_smb">No SMB in the last 6 hours</string>
+    <string name="autoisf_history_smb_only" comment="Button. Shows only rows where an SMB was given.">SMB only</string>
+    <string name="autoisf_history_all" comment="Button. Shows every AutoISF row, not only SMB rows.">All</string>
+    <string name="autoisf_history_time">Time</string>
+    <string name="autoisf_history_bgl">BGL</string>
+    <string name="autoisf_history_ukf">UKF</string>
+    <string name="autoisf_history_ukf_delta_5" comment="Change in the UKF glucose over about 5 minutes.">UKF d5</string>
+    <string name="autoisf_history_ukf_delta_15" comment="Change in the UKF glucose over about 15 minutes.">UKF d15</string>
+    <string name="autoisf_history_final" comment="The final ISF factor after acce, bg, pp and dura.">Final</string>
+    <string name="autoisf_history_acce" comment="The acce ISF factor. Example: 1.20">acce</string>
+    <string name="autoisf_history_bg" comment="The bg ISF factor. Example: 1.10">bg</string>
+    <string name="autoisf_history_pp" comment="The pp ISF factor. Example: 0.90">pp</string>
+    <string name="autoisf_history_dura" comment="The dura ISF factor. Example: 1.05">dura</string>
+    <string name="autoisf_history_accel" comment="BG acceleration. This is not the acce ISF factor.">accel</string>
+    <string name="autoisf_history_delta">Delta</string>
+    <string name="autoisf_history_short_delta" comment="Short average BG delta.">Short delta</string>
+    <string name="autoisf_history_long_delta" comment="Long average BG delta.">Long delta</string>
+    <string name="autoisf_history_iob">IOB</string>
+    <string name="autoisf_history_iod5" comment="Change in IOB over about 5 minutes, in units. Example: 0.12">IOd5</string>
+    <string name="autoisf_history_iob_th" comment="Effective IOB threshold for this row, in units.">iobTH</string>
+    <string name="autoisf_history_target" comment="Glucose target for this loop, in the user's units.">Target</string>
+    <string name="autoisf_history_uam" comment="Unannounced meal for this loop, in grams.">UAMci</string>
+    <string name="autoisf_history_smb_ratio" comment="SMB delivery ratio in force for this loop. Example: 0.50">SMB ratio</string>
+    <string name="autoisf_history_acce_weight" comment="Acceleration ISF weight in force for this loop. Example: 0.50">acWt</string>
+    <string name="autoisf_history_pp_weight" comment="Post-prandial ISF weight in force for this loop. Example: 0.25">ppWt</string>
+    <string name="autoisf_history_slope" comment="Libre calibration slope in force for this loop. Example: 1.00">slope</string>
+    <string name="autoisf_history_cob" comment="Carbs still on board, in grams.">COB</string>
+    <string name="autoisf_history_basal" comment="Running basal rate (temp basal in force), in U/h. Example: 0.80">TBR</string>
+    <string name="autoisf_history_profile_basal" comment="Basal rate the active profile has at this time, in U/h. Example: 0.80">Basal</string>
+    <string name="autoisf_history_note" comment="Care-portal notes written during this loop.">notes</string>
+    <string name="autoisf_history_smb">SMB</string>
+    <string name="autoisf_history_steps_5" comment="Steps in the last 5 minutes.">S5</string>
+    <string name="autoisf_history_steps_15" comment="Steps in the last 15 minutes.">S15</string>
+    <string name="autoisf_history_steps_30" comment="Steps in the last 30 minutes.">S30</string>
+    <string name="autoisf_history_steps_60" comment="Steps in the last 60 minutes.">S60</string>
+    <string name="autoisf_history_steps_180" comment="Steps in the last 180 minutes.">S180</string>
+    <string name="coded_profiles">Coded profiles</string>
+    <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
+    <string name="coded_profiles_empty">Add a profile first.</string>
+    <string name="coded_profiles_blocked" comment="%1$d = how many names were refused. Example: Steroid names left unchanged: 2">Steroid names left unchanged: %1$d</string>
+    <string name="fill_tiers_from_standard">Fill tiers from Standard tier A</string>
+    <string name="fill_tiers_need_source">Set Standard tier A to a profile in the list first.</string>
+    <string name="fill_tiers_replace_title">Replace set profiles?</string>
+    <string name="fill_tiers_replace_message">These roles already have a profile. Replace them with a copy scaled from Standard tier A? Empty roles are filled either way.</string>
+    <string name="fill_tiers_done">Tier profiles saved.</string>
+    <string name="coded_role_label">Profile role</string>
+    <string name="coded_role_not_set">Not set</string>
+    <string name="coded_role_no_change">No role change</string>
+    <string name="coded_role_auto" comment="%1$s = role name. Example: This profile is stored as Steroid tier B">This profile is stored as %1$s</string>
+    <string name="coded_role_standard">Standard, current</string>
+    <string name="coded_role_low">Low, current</string>
+    <string name="coded_role_standard_a">Standard tier A</string>
+    <string name="coded_role_standard_b">Standard tier B</string>
+    <string name="coded_role_standard_c">Standard tier C</string>
+    <string name="coded_role_low_a">Low tier A</string>
+    <string name="coded_role_low_b">Low tier B</string>
+    <string name="coded_role_low_c">Low tier C</string>
+    <string name="coded_role_steroid_a">Steroid tier A</string>
+    <string name="coded_role_steroid_b">Steroid tier B</string>
+    <string name="coded_role_steroid_c">Steroid tier C</string>
+    <string name="coded_role_steroid_d">Steroid tier D</string>
+    <string name="coded_role_steroid_e">Steroid tier E</string>
+    <string name="coded_role_steroid_f">Steroid tier F</string>
     <string name="remove_label">Remove</string>
     <string name="active_profile_indicator">ACTIVE</string>
     <string name="confirm_remove_profile">Remove profile \"%1$s\"?</string>
@@ -332,5 +411,14 @@
     <string name="cal_precheck_no_pair">No CGM reading in the last 10 minutes. Check sensor connection.</string>
     <string name="cal_precheck_delta_too_high">Glucose is changing too fast (Δ %1$s %3$s per 5 min, limit %2$s). Wait for stability.</string>
     <string name="cal_precheck_mark_sensor_change">Mark sensor change</string>
+    <string name="overview_action_confirm">Run this now?</string>
+    <string name="overview_mj_start">Press if MJ or want 3 days of 80% as hypo concern</string>
+    <string name="overview_mj_restore">Press if MJ dose is 4 or more days old, or to restore the 100% profile</string>
+    <string name="overview_steroid_on">Steroids are off. Turn steroids on?</string>
+    <string name="overview_steroid_130">Steroids 110% are on. Increase to 130?</string>
+    <string name="overview_steroid_150">Steroids 130% are on. Increase to 150?</string>
+    <string name="overview_steroid_190">Steroids 150% are on. Increase to 190?</string>
+    <string name="overview_steroid_250">Steroids 190% are on. Increase to 250?</string>
+    <string name="overview_steroid_off">Steroids are on, or restart over 8.0. Turn off?</string>
 
 </resources>

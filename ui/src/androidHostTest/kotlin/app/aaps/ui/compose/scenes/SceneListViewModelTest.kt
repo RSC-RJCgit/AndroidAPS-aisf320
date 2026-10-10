@@ -78,7 +78,7 @@ internal class SceneListViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default state exposes empty scenes, no invalid ids and no dialog`() {
+    fun defaultStateExposesEmptyScenesNoInvalidIdsAndNoDialog() {
         assertThat(sut.scenes.value).isEmpty()
         assertThat(sut.invalidSceneIds.value).isEmpty()
         assertThat(sut.dialogState.value).isNull()
@@ -86,14 +86,14 @@ internal class SceneListViewModelTest {
     }
 
     @Test
-    fun `dismissDialog clears the dialog state`() {
+    fun dismissDialogClearsTheDialogState() {
         sut.dismissDialog()
 
         assertThat(sut.dialogState.value).isNull()
     }
 
     @Test
-    fun `toggleEnabled with unknown scene id is a no-op`() {
+    fun toggleEnabledWithUnknownSceneIdIsANoOp() {
         // getScene defaults to null on the mock → early return, nothing saved.
         sut.toggleEnabled("missing")
 
@@ -101,7 +101,7 @@ internal class SceneListViewModelTest {
     }
 
     @Test
-    fun `toggleEnabled flips isEnabled and saves the scene`() {
+    fun toggleEnabledFlipsIsEnabledAndSavesTheScene() {
         val scene = Scene(id = "s1", name = "Morning", isEnabled = true)
         whenever(sceneRepository.getScene("s1")).thenReturn(scene)
 

@@ -22,11 +22,7 @@ interface NsClient : Sync {
 
     /**
      * Wall-clock (ms epoch) when the local client last received a devicestatus batch from the
-     * master, or `0L` if none has been seen yet. Pure WS-state can't detect "master itself is
-     * offline" — the client may be cheerfully connected to NS while master's phone is dead;
-     * absence of a recent devicestatus is the most reliable indicator that the loop publisher
-     * has gone silent. AAPSCLIENT scene gating combines this with [wsConnectedFlow] to lock
-     * controls when no heartbeat has arrived within the staleness window.
+     * master, or `0L` if none has been seen yet. This does not end the live link.
      *
      * Default exposes a static `0L` flow — impls without a WS / NS receive pipeline don't
      * carry this signal and shouldn't appear reachable on its strength.
@@ -35,20 +31,15 @@ interface NsClient : Sync {
         get() = MutableStateFlow(0L).asStateFlow()
 
     /**
-     * Derived "master is reachable for remote control / config edits" signal. On a client it requires
-     * ALL of: [wsConnectedFlow] (with a short falling-edge grace so brief WS flaps don't lock the UI),
-     * a fresh UNIFIED liveness signal, a current Client-Control pairing, and not being orphaned (master
-     * still authorizes this device). The freshness term is the LATEST of any master-alive evidence —
-     * the [lastDevicestatusReceivedAt] devicestatus heartbeat, an authenticated Client-Control pong, or
-     * a live running-config republish — so an active channel keeps the UI unlocked even when one source
-     * (e.g. devicestatus) momentarily goes quiet. It is short-circuited to always-`true`
-     * on a master device. The pairing + authorization terms matter because client→master edits/commands
-     * ride the signed Client-Control channel: an unpaired client's writes are silently dropped and a
-     * revoked client's are rejected, so neither must look reachable. Consumers — scene gating and
+     * Derived "master is reachable for remote control / config edits" signal. On a client it stays
+     * up while the pair is saved, this client is still on the master's list, and remote control is
+     * on. Silence does not end it. A down websocket does not end it. A missed command does not end
+     * it. It ends when someone unpairs, the master removes this client, or remote control is turned
+     * off. It is short-circuited to always-`true` on a master device. Consumers — scene gating and
      * client→master config edits — read this instead of reassembling the raw signals, and share one
      * computed flow.
      *
-     * Default exposes a static always-`true` flow: impls without a WS/heartbeat pipeline must never
+     * Default exposes a static always-`true` flow: impls without a pairing pipeline must never
      * lock controls on its strength.
      */
     val masterReachable: StateFlow<Boolean>

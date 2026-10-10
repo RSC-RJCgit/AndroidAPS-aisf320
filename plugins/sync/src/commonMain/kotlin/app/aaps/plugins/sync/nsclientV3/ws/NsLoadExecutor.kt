@@ -60,4 +60,22 @@ interface NsLoadExecutor {
 
     /** Cancels the round, if one is going. */
     fun cancel()
+
+    /**
+     * Downloads boluses, carbs, and the profile from the secondary Nightscout site.
+     *
+     * Kept if one download is already going, unless [force] is set. A full sync sets [force] so the
+     * 2-year site is read again. It is not part of the main round, so a failure on this phone's own
+     * Nightscout cannot skip it, and it cannot cancel that round.
+     */
+    fun enqueueSecondaryTreatments(force: Boolean = false)
+
+    /**
+     * Reads only the glucose from the secondary Nightscout site, nothing else. Kept if one is already going.
+     *
+     * Called every minute while the loop runs every minute and that site is the glucose source, so a reading
+     * is stored when it appears instead of with the 5 minute round. A platform that does not poll this way
+     * does nothing, which is the default.
+     */
+    fun enqueueSecondaryGlucose() {}
 }

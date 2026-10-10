@@ -5,6 +5,7 @@ import platform.Foundation.NSDateFormatter
 import platform.Foundation.NSDateFormatterShortStyle
 import platform.Foundation.NSDateFormatterNoStyle
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import kotlin.math.min
@@ -50,3 +51,6 @@ actual fun is24HourClock(): Boolean {
 /** See the expect declaration: iOS cannot pin orientation from inside a view, so this does nothing. */
 @Composable
 actual fun LockPortraitOrientation() = Unit
+
+/** See the expect declaration: iOS has no system edge gesture to block. */
+actual fun Modifier.blockSystemEdgeGesture(): Modifier = this

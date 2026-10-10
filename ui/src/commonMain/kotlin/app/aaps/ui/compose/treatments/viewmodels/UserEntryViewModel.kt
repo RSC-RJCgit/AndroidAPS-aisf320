@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.model.UE
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.db.observeChanges
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -34,12 +36,15 @@ import kotlinx.coroutines.launch
  * ViewModel for UserEntryScreen managing user entry log state and business logic.
  */
 @Stable
-class UserEntryViewModel @Inject constructor(
+@Inject
+class UserEntryViewModel(
     private val persistenceLayer: PersistenceLayer,
     val rh: TextResolver,
     val dateUtil: DateUtil,
     private val aapsLogger: AAPSLogger,
-    private val rxBus: RxBus
+    private val rxBus: RxBus,
+    private val maintenance: Maintenance,
+    private val importExportPrefs: ImportExportPrefs,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(UserEntryUiState())
@@ -56,6 +61,13 @@ class UserEntryViewModel @Inject constructor(
     /**
      * Load user entries
      */
+    fun exportUserEntries() {
+        viewModelScope.launch {
+            maintenance.exportCoordinated("USER_ENTRIES")
+            importExportPrefs.exportUserEntriesCsv()
+        }
+    }
+
     fun loadData() {
         viewModelScope.launch {
             // Only show loading on initial load, not on refreshes

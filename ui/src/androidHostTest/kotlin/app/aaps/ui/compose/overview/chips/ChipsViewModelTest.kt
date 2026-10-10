@@ -2,22 +2,25 @@ package app.aaps.ui.compose.overview.chips
 
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
-import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.overview.SensitivityOverview
 import app.aaps.core.interfaces.overview.graph.CobGraphData
 import app.aaps.core.interfaces.overview.graph.IobGraphData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
+import app.aaps.core.interfaces.constraints.ConstraintsChecker
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
-import app.aaps.core.keys.interfaces.Preferences
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,15 +45,18 @@ internal class ChipsViewModelTest {
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var constraintChecker: ConstraintsChecker
     @Mock private lateinit var profileFunction: ProfileFunction
+    @Mock private lateinit var profileRepository: ProfileRepository
     @Mock private lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
     @Mock private lateinit var profileUtil: ProfileUtil
     @Mock private lateinit var activePlugin: ActivePlugin
+    @Mock private lateinit var sensitivityOverview: SensitivityOverview
     @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var decimalFormatter: DecimalFormatter
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var aapsLogger: AAPSLogger
     @Mock private lateinit var preferences: Preferences
     @Mock private lateinit var rxBus: RxBus
+    @Mock private lateinit var maintenance: Maintenance
 
     private lateinit var sut: ChipsViewModel
 
@@ -62,10 +68,11 @@ internal class ChipsViewModelTest {
         Dispatchers.setMain(StandardTestDispatcher())
         whenever(cache.iobGraphFlow).thenReturn(MutableStateFlow(IobGraphData(emptyList(), emptyList())))
         whenever(cache.cobGraphFlow).thenReturn(MutableStateFlow(CobGraphData(emptyList(), emptyList())))
+        whenever(cache.predictionsFlow).thenReturn(MutableStateFlow(emptyList()))
         sut = ChipsViewModel(
             cache, iobCobCalculator, loop, config, persistenceLayer, constraintChecker, profileFunction,
-            processedDeviceStatusData, profileUtil, activePlugin, rh, decimalFormatter, dateUtil, aapsLogger,
-            preferences, rxBus
+            profileRepository, processedDeviceStatusData, profileUtil, activePlugin, rh, decimalFormatter,
+            dateUtil, aapsLogger, preferences, rxBus, maintenance, sensitivityOverview
         )
     }
 
@@ -73,7 +80,7 @@ internal class ChipsViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState exposes empty initial values`() {
+    fun defaultUiStateExposesEmptyInitialValues() {
         assertThat(sut.iobUiState.value.iobTotal).isEqualTo(0.0)
         assertThat(sut.iobUiState.value.text).isEmpty()
         assertThat(sut.cobUiState.value.text).isEmpty()

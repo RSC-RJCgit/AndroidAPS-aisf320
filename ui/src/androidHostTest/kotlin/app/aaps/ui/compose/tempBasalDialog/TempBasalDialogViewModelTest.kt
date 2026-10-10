@@ -48,7 +48,7 @@ internal class TempBasalDialogViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `basal and duration setters update the state`() {
+    fun basalAndDurationSettersUpdateTheState() {
         sut.updateBasalPercent(150.0)
         sut.updateBasalAbsolute(1.5)
         sut.updateDuration(60.0)

@@ -50,7 +50,8 @@ import dev.zacsweers.metro.binding
  */
 @ContributesIntoSet(AppScope::class, binding = binding<SearchableProvider>())
 @SingleIn(AppScope::class)
-class BuiltInSearchables @Inject constructor(
+@Inject
+class BuiltInSearchables(
     private val rh: TextResolver,
     private val insulinManager: InsulinManager,
     private val profileFunction: ProfileFunction,
@@ -157,6 +158,7 @@ class BuiltInSearchables @Inject constructor(
         items = listOf(
             StringKey.MaintenanceEmail,
             IntKey.MaintenanceLogsAmount,
+            BooleanKey.MaintenanceAutoExportLogsToCloud,
             PreferenceSubScreenDef(
                 key = "data_choice_setting",
                 title = CoreUiStrings.data_choices,
@@ -306,7 +308,10 @@ class BuiltInSearchables @Inject constructor(
         items = listOf(
             IntKey.OverviewBolusPercentage,
             IntKey.OverviewResetBolusPercentageTime,
-            BooleanKey.OverviewUseBolusAdvisor
+            BooleanKey.OverviewUseBolusAdvisor,
+            BooleanKey.WizardDefaultUnreliableSmbs,
+            BooleanKey.WizardDefaultSmallMeal,
+            BooleanKey.WizardDefaultAutoFpu
         ),
         icon = IcCalculator
     )
@@ -335,7 +340,20 @@ class BuiltInSearchables @Inject constructor(
         key = "automation_settings",
         title = CoreUiStrings.automation,
         items = listOf(
-            StringKey.AutomationLocation
+            StringKey.AutomationLocation,
+            BooleanKey.AutomationCodedLocationsEnabled,
+            StringKey.AutomationLocationSmsDeviceModel,
+            StringKey.AutomationLocationSmsNumbers,
+            StringKey.AutomationAirport1,
+            StringKey.AutomationAirport2,
+            StringKey.AutomationAirport3,
+            StringKey.AutomationAirport4,
+            StringKey.AutomationAirport5,
+            StringKey.AutomationAddress1,
+            StringKey.AutomationAddress2,
+            StringKey.AutomationAddress3,
+            StringKey.AutomationAddress4,
+            StringKey.AutomationAddress5,
         ),
         icon = IcPluginAutomation
     )

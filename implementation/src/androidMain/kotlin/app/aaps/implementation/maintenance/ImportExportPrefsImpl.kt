@@ -25,6 +25,8 @@ import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepChoices
+import app.aaps.core.interfaces.maintenance.ImportKeepOffer
 import app.aaps.core.interfaces.maintenance.PrefMetadata
 import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefsFile
@@ -44,6 +46,7 @@ import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -61,6 +64,8 @@ import app.aaps.implementation.maintenance.data.PrefIOError
 import app.aaps.implementation.maintenance.data.PrefsFormat
 import app.aaps.implementation.maintenance.data.PrefsStatusImpl
 import app.aaps.implementation.maintenance.formats.EncryptedPrefsFormat
+import app.aaps.implementation.maintenance.formats.importKeepOfferFor
+import app.aaps.implementation.maintenance.formats.preserveKeys
 import app.aaps.implementation.maintenance.formats.ExportMetadata
 import app.aaps.shared.impl.weardata.ZipWatchfaceFormat
 import dev.zacsweers.metro.Assisted
@@ -91,7 +96,8 @@ private fun filenameTimestamp(): String =
 
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
-class ImportExportPrefsImpl @Inject constructor(
+@Inject
+class ImportExportPrefsImpl(
     private var aapsLogger: AAPSLogger,
     private val rh: ResourceHelper,
     private val sp: SP,
@@ -111,7 +117,8 @@ class ImportExportPrefsImpl @Inject constructor(
     private val cloudStorageManager: CloudStorageManager,
     private val userEntryPresentationHelper: UserEntryPresentationHelper,
     private val storage: Storage,
-    private val cryptoUtil: CryptoUtil
+    private val cryptoUtil: CryptoUtil,
+    private val applier: PreferenceImportApplier
 ) : ImportExportPrefs {
 
     private var pendingExportFile: DocumentFile? = null
@@ -617,18 +624,32 @@ class ImportExportPrefsImpl @Inject constructor(
         }
     }
 
-    override fun executeImport(prefs: Prefs) {
+    override fun importKeepOffer(prefs: Prefs): ImportKeepOffer =
+        importKeepOfferFor(activePlugin, sp.getAll(), prefs.values)
+
+    override suspend fun executeImport(
+        prefs: Prefs,
+        keep: ImportKeepChoices,
+        enableAutomationStates: Boolean
+    ): ImportExportPrefs.ImportOutcome {
         activePlugin.beforeImport()
-        sp.clear()
-        for ((key, value) in prefs.values) {
-            if (value == "true" || value == "false") {
-                sp.putBoolean(key, value.toBoolean())
-            } else {
-                sp.putString(key, value)
-            }
-        }
+        val outcome = applier.apply(prefs, keep.keepPump, preserveKeys(activePlugin, keep))
+        // Automation states come in off unless the import screen checkbox asked for them, whatever the file says.
+        preferences.put(BooleanKey.AutomationStatesEnabled, enableAutomationStates)
         activePlugin.afterImport()
+        aapsLogger.info(
+            LTag.CORE,
+            "Import applied: ${outcome.changed} changed, ${outcome.unchanged} already matched, " +
+                "${outcome.keptByChoice} kept by choice, ${outcome.pumpSkipped} pump settings kept (${outcome.pumpWouldChange} would have changed), " +
+                "${outcome.syncedSkipped} synced keys left to the master, ${outcome.notExportable} refused as device state, " +
+                "${outcome.unresolved.size} unknown names left alone, ${outcome.unreadable.size} unreadable values skipped"
+        )
+        if (outcome.unresolved.isNotEmpty()) aapsLogger.debug(LTag.CORE, "Import: names this build does not know: ${outcome.unresolved}")
+        return outcome
     }
+
+    override fun previewImport(prefs: Prefs, keep: ImportKeepChoices): ImportExportPrefs.ImportOutcome =
+        applier.preview(prefs, keep.keepPump, preserveKeys(activePlugin, keep))
 
     override fun prepareImportedSettings() {
         rxBus.send(EventDiaconnG8PumpLogReset())
@@ -709,7 +730,8 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
 
-    class CsvExportWorker @AssistedInject constructor(
+    @AssistedInject
+    class CsvExportWorker(
         @Assisted private val context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,
@@ -856,7 +878,8 @@ class ImportExportPrefsImpl @Inject constructor(
     }
 
 
-    class ApsResultExportWorker @AssistedInject constructor(
+    @AssistedInject
+    class ApsResultExportWorker(
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         aapsLogger: AAPSLogger,

@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.openhumans
 
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.sync.SyncStrings
 import android.content.Context
@@ -21,14 +22,12 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.notifications.NotificationAction
 import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.sync.Sync
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.icons.IcPluginOpenHumans
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.plugins.sync.di.OpenHumansScope
@@ -65,14 +64,15 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 @SingleIn(OpenHumansScope::class)
-class OpenHumansUploaderPlugin @Inject internal constructor(
+@Inject
+class OpenHumansUploaderPlugin internal constructor(
     override val rh: ResourceHelper,
     aapsLogger: AAPSLogger,
     preferences: Preferences,
     internal val context: Context,
     private val persistenceLayer: PersistenceLayer,
     private val openHumansAPI: OpenHumansAPI,
-    private val notificationManager: NotificationManager,
+    notificationManager: NotificationManager,
     internal val stateDelegate: OHStateDelegate,
     counterDelegate: OHCounterDelegate,
     appIdDelegate: OHAppIDDelegate,
@@ -81,7 +81,6 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
         .mainType(PluginType.SYNC)
         .icon(IcPluginOpenHumans)
         .pluginName(SyncStrings.open_humans)
-        .shortName(SyncStrings.open_humans_short)
         .description(SyncStrings.open_humans_description)
         .composeContent { plugin ->
             OHComposeContent(
@@ -90,7 +89,7 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
             )
         },
     ownPreferences = OhStringKey.entries + OhLongKey.entries,
-    aapsLogger, rh, preferences
+    aapsLogger, rh, preferences, notificationManager
 ) {
 
     private var openHumansState by stateDelegate

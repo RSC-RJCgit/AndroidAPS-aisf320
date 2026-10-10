@@ -4,11 +4,9 @@ import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.profile.ProfileUtil
-import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.ui.CoreUiStrings
-import app.aaps.ui.UiStrings
+import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,7 +27,6 @@ internal class TempTargetViewModelTest {
 
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var profileUtil: ProfileUtil
-    @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var aapsLogger: AAPSLogger
     @Mock private lateinit var rxBus: RxBus
@@ -41,14 +38,14 @@ internal class TempTargetViewModelTest {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         whenever(persistenceLayer.observeChanges(TT::class)).thenReturn(emptyFlow())
-        sut = TempTargetViewModel(persistenceLayer, profileUtil, rh, dateUtil, aapsLogger, rxBus)
+        sut = TempTargetViewModel(persistenceLayer, profileUtil, generatedTextResolver(), dateUtil, aapsLogger, rxBus)
     }
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is not in removing mode and has no selection`() {
+    fun defaultUiStateIsNotInRemovingModeAndHasNoSelection() {
         val state = sut.uiState.value
         assertThat(state.isRemovingMode).isFalse()
         assertThat(state.selectedItems).isEmpty()
@@ -57,7 +54,7 @@ internal class TempTargetViewModelTest {
     }
 
     @Test
-    fun `enterSelectionMode selects the item and enables removing mode`() {
+    fun enterSelectionModeSelectsTheItemAndEnablesRemovingMode() {
         val item = mock<TT>()
 
         sut.enterSelectionMode(item)
@@ -67,7 +64,7 @@ internal class TempTargetViewModelTest {
     }
 
     @Test
-    fun `exitSelectionMode clears selection`() {
+    fun exitSelectionModeClearsSelection() {
         sut.enterSelectionMode(mock<TT>())
 
         sut.exitSelectionMode()
@@ -77,7 +74,7 @@ internal class TempTargetViewModelTest {
     }
 
     @Test
-    fun `toggleSelection adds then removes an item`() {
+    fun toggleSelectionAddsThenRemovesAnItem() {
         val first = mock<TT>()
         val second = mock<TT>()
         sut.enterSelectionMode(first)
@@ -90,18 +87,17 @@ internal class TempTargetViewModelTest {
     }
 
     @Test
-    fun `toggleInvalidated flips the flag`() {
+    fun toggleInvalidatedFlipsTheFlag() {
         sut.toggleInvalidated()
         assertThat(sut.uiState.value.showInvalidated).isTrue()
     }
 
     @Test
-    fun `getDeleteConfirmationMessage empty when nothing selected, plural for many`() {
+    fun getDeleteConfirmationMessageEmptyWhenNothingSelectedPluralForMany() {
         assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("")
 
-        whenever(rh.gs(CoreUiStrings.confirm_remove_multiple_items, 2)).thenReturn("Remove 2 items")
         sut.enterSelectionMode(mock<TT>())
         sut.toggleSelection(mock<TT>())
-        assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("Remove 2 items")
+        assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("Are you sure you want to remove 2 items")
     }
 }

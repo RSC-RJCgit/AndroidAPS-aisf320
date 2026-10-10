@@ -18,6 +18,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -36,21 +37,21 @@ internal class UserEntryViewModelTest {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         whenever(persistenceLayer.observeChanges(UE::class)).thenReturn(emptyFlow())
-        sut = UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus)
+        sut = UserEntryViewModel(persistenceLayer, rh, dateUtil, aapsLogger, rxBus, mock(), mock())
     }
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has no entries and loop hidden`() {
+    fun defaultUiStateHasNoEntriesAndLoopHidden() {
         val state = sut.uiState.value
         assertThat(state.userEntries).isEmpty()
         assertThat(state.showLoop).isFalse()
     }
 
     @Test
-    fun `toggleLoop flips the showLoop flag`() {
+    fun toggleLoopFlipsTheShowLoopFlag() {
         sut.toggleLoop()
         assertThat(sut.uiState.value.showLoop).isTrue()
 

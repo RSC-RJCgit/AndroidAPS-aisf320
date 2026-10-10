@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,6 +68,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -192,6 +195,10 @@ fun WizardDialogScreen(
         unitsLabel = uiState.units.displayLabel,
         onBgChange = { viewModel.updateBg(it) },
         onCarbsChange = { viewModel.updateCarbs(it.toInt()) },
+        onProteinChange = { viewModel.updateProtein(it.toInt()) },
+        onFatChange = { viewModel.updateFat(it.toInt()) },
+        onWarsawDurationChange = { viewModel.updateWarsawDuration(it) },
+        onMaxBolusChange = { viewModel.updateMaxBolus(it) },
         onAddCarbs = viewModel::addCarbs,
         onCarbsTypeChange = viewModel::updateCarbsType,
         onPercentageChange = { viewModel.updatePercentage(it.toInt()) },
@@ -204,6 +211,12 @@ fun WizardDialogScreen(
         onTrendToggle = viewModel::toggleTrend,
         onIOBToggle = viewModel::toggleIOB,
         onCOBToggle = viewModel::toggleCOB,
+        onWalkingSoonToggle = viewModel::toggleWalkingSoon,
+        onFpuInsteadToggle = viewModel::toggleFpuInstead,
+        onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
+        onDelayFpuInsteadOfCancelToggle = viewModel::toggleDelayFpuInsteadOfCancel,
+        onUnreliableSmbToggle = viewModel::toggleUnreliableSmb,
+        onSmallMealToggle = viewModel::toggleSmallMeal,
         onAlarmToggle = viewModel::toggleAlarm,
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
         onNavigateBack = onNavigateBack,
@@ -220,6 +233,10 @@ internal fun WizardDialogContent(
     unitsLabel: String,
     onBgChange: (Double) -> Unit,
     onCarbsChange: (Double) -> Unit,
+    onProteinChange: (Double) -> Unit = {},
+    onFatChange: (Double) -> Unit = {},
+    onWarsawDurationChange: (Double) -> Unit = {},
+    onMaxBolusChange: (Double) -> Unit = {},
     onAddCarbs: (Int) -> Unit,
     onCarbsTypeChange: (CarbsType) -> Unit,
     onPercentageChange: (Double) -> Unit,
@@ -232,6 +249,12 @@ internal fun WizardDialogContent(
     onTrendToggle: (Boolean) -> Unit,
     onIOBToggle: (Boolean) -> Unit,
     onCOBToggle: (Boolean) -> Unit,
+    onWalkingSoonToggle: (Boolean) -> Unit = {},
+    onFpuInsteadToggle: (Boolean) -> Unit = {},
+    onGiveRestLaterToggle: (Boolean) -> Unit = {},
+    onDelayFpuInsteadOfCancelToggle: (Boolean) -> Unit = {},
+    onUnreliableSmbToggle: (Boolean) -> Unit = {},
+    onSmallMealToggle: (Boolean) -> Unit = {},
     onAlarmToggle: (Boolean) -> Unit,
     onCalculationExpandToggle: () -> Unit,
     onNavigateBack: () -> Unit,
@@ -264,6 +287,11 @@ internal fun WizardDialogContent(
             )
         },
         bottomBar = {
+            // The button shows only the amounts, so a screen reader would say just "2.5 U" and never
+            // what pressing it does. The verb only: the Texts below are still read, so repeating the
+            // amounts here would have them announced twice. This also sidesteps the insulin/carbs
+            // branching, which no single template could join without leaving a gap.
+            val confirmDescription = stringResource(CoreUiStrings.confirm)
             Button(
                 onClick = {
                     focusManager.clearFocus()
@@ -274,6 +302,7 @@ internal fun WizardDialogContent(
                     .fillMaxWidth()
                     .bottomBarSafeArea()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .semantics { contentDescription = confirmDescription }
             ) {
                 Icon(
                     imageVector = Icons.Filled.Check,
@@ -385,7 +414,7 @@ internal fun WizardDialogContent(
                             }
                             Icon(
                                 imageVector = if (uiState.calculationExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                                contentDescription = null,
+                                contentDescription = stringResource(if (uiState.calculationExpanded) CoreUiStrings.collapse else CoreUiStrings.expand),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -484,11 +513,27 @@ internal fun WizardDialogContent(
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Info,
-                                    contentDescription = null,
+                                    contentDescription = stringResource(CoreUiStrings.carousel_show_card),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = uiState.walkingSoon,
+                            onCheckedChange = onWalkingSoonToggle
+                        )
+                        Text(
+                            text = stringResource(UiStrings.wizard_walking_soon),
+                            modifier = Modifier.clickable { onWalkingSoonToggle(!uiState.walkingSoon) }
+                        )
                     }
 
                     AnimatedVisibility(
@@ -614,6 +659,15 @@ internal fun WizardDialogContent(
                     // Carbs Input
                     Column(modifier = itemModifier) {
                         NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
+                            value = uiState.maxBolus,
+                            onValueChange = onMaxBolusChange,
+                            valueRange = 0.1..60.0,
+                            step = if (uiState.bolusStep > 0.0) uiState.bolusStep else 0.05,
+                            unitLabel = TextRef.Literal("U"),
+                            decimalPlaces = 2
+                        )
+                        NumberInputRow(
                             labelRef = InterfacesStrings.carbs,
                             value = uiState.carbs.toDouble(),
                             onValueChange = onCarbsChange,
@@ -627,6 +681,110 @@ internal fun WizardDialogContent(
                             increment3 = uiState.carbsButtonIncrement3,
                             onAddCarbs = onAddCarbs
                         )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_protein,
+                            value = uiState.protein.toDouble(),
+                            onValueChange = onProteinChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_fat,
+                            value = uiState.fat.toDouble(),
+                            onValueChange = onFatChange,
+                            valueRange = 0.0..250.0,
+                            step = 1.0,
+                            unitLabel = TextRef.Literal("g")
+                        )
+                        NumberInputRow(
+                            labelRef = InterfacesStrings.wizard_fpu_duration,
+                            value = uiState.warsawDurationHours,
+                            onValueChange = onWarsawDurationChange,
+                            valueRange = 0.0..24.0,
+                            step = 0.5,
+                            unitLabel = TextRef.Literal("h"),
+                            decimalPlaces = 1
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.fpuInstead,
+                                onCheckedChange = onFpuInsteadToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_fpu_instead),
+                                modifier = Modifier.clickable { onFpuInsteadToggle(!uiState.fpuInstead) }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.giveRestLater,
+                                onCheckedChange = onGiveRestLaterToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_give_rest_later),
+                                modifier = Modifier.clickable { onGiveRestLaterToggle(!uiState.giveRestLater) }
+                            )
+                        }
+                        Text(
+                            text = stringResource(UiStrings.wizard_give_rest_later_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.delayFpuInsteadOfCancel,
+                                onCheckedChange = onDelayFpuInsteadOfCancelToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel),
+                                modifier = Modifier.clickable { onDelayFpuInsteadOfCancelToggle(!uiState.delayFpuInsteadOfCancel) }
+                            )
+                        }
+                        Text(
+                            text = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.unreliableSmb,
+                                onCheckedChange = onUnreliableSmbToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_unreliable_smb),
+                                modifier = Modifier.clickable { onUnreliableSmbToggle(!uiState.unreliableSmb) }
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = uiState.smallMeal,
+                                onCheckedChange = onSmallMealToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_small_meal),
+                                modifier = Modifier.clickable { onSmallMealToggle(!uiState.smallMeal) }
+                            )
+                        }
 
                         // Carbs type selector
                         Row(
@@ -695,7 +853,7 @@ internal fun WizardDialogContent(
                                 IconButton(onClick = { scope.launch { tooltipState.show() } }) {
                                     Icon(
                                         imageVector = Icons.Outlined.Info,
-                                        contentDescription = null,
+                                        contentDescription = stringResource(CoreUiStrings.carousel_show_card),
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }

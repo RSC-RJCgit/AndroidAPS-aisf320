@@ -38,7 +38,7 @@ class DefaultProfileTest : TestBaseWithProfile() {
      * `[0, -4, -1, -2, -4, 0, -4]` at 00, 06, 09, 11, 14, 16 and 19 hours.
      */
     @Test
-    fun `ic blocks change at the right hours`() {
+    fun icBlocksChangeAtTheRightHours() {
         val p = ProfileSealed.Pure(DefaultProfile(dateUtil, profileUtil).profile(5, 5.1 / 0.3, 0.0, GlucoseUnit.MMOL)!!, activePlugin)
         val base = 15.0
 
@@ -55,7 +55,7 @@ class DefaultProfileTest : TestBaseWithProfile() {
 
     /** The basal schedule is 24 hourly blocks, so every hour must be readable. */
     @Test
-    fun `basal is defined for every hour of the day`() {
+    fun basalIsDefinedForEveryHourOfTheDay() {
         val p = ProfileSealed.Pure(DefaultProfile(dateUtil, profileUtil).profile(5, 5.1 / 0.3, 0.0, GlucoseUnit.MMOL)!!, activePlugin)
 
         for (hour in 0..23) {
@@ -65,7 +65,7 @@ class DefaultProfileTest : TestBaseWithProfile() {
 
     /** A single target block covering the whole day, at 108 mg/dl expressed in the profile's units. */
     @Test
-    fun `target covers the whole day in both units`() {
+    fun targetCoversTheWholeDayInBothUnits() {
         val mmol = ProfileSealed.Pure(DefaultProfile(dateUtil, profileUtil).profile(5, 5.1 / 0.3, 0.0, GlucoseUnit.MMOL)!!, activePlugin)
         assertThat(mmol.getTargetLowMgdlTimeFromMidnight(0)).isWithin(0.01).of(108.0)
         assertThat(mmol.getTargetLowMgdlTimeFromMidnight(23 * 3600)).isWithin(0.01).of(108.0)
@@ -75,7 +75,7 @@ class DefaultProfileTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `ages outside one to eighteen have no default profile`() {
+    fun agesOutsideOneToEighteenHaveNoDefaultProfile() {
         assertThat(DefaultProfile(dateUtil, profileUtil).profile(0, 20.0, 0.0, GlucoseUnit.MMOL)).isNull()
         assertThat(DefaultProfile(dateUtil, profileUtil).profile(19, 20.0, 0.0, GlucoseUnit.MMOL)).isNull()
     }

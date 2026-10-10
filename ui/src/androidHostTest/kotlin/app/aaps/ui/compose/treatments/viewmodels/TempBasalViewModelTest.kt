@@ -5,12 +5,10 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
-import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
-import app.aaps.core.ui.CoreUiStrings
-import app.aaps.ui.UiStrings
+import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,7 +31,6 @@ internal class TempBasalViewModelTest {
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var profileFunction: ProfileFunction
     @Mock private lateinit var activePlugin: ActivePlugin
-    @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var decimalFormatter: DecimalFormatter
     @Mock private lateinit var aapsLogger: AAPSLogger
@@ -46,14 +43,14 @@ internal class TempBasalViewModelTest {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         whenever(persistenceLayer.observeChanges(TB::class)).thenReturn(emptyFlow())
-        sut = TempBasalViewModel(persistenceLayer, profileFunction, activePlugin, rh, dateUtil, decimalFormatter, aapsLogger, rxBus)
+        sut = TempBasalViewModel(persistenceLayer, profileFunction, activePlugin, generatedTextResolver(), dateUtil, decimalFormatter, aapsLogger, rxBus)
     }
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState is not in removing mode and has no selection`() {
+    fun defaultUiStateIsNotInRemovingModeAndHasNoSelection() {
         val state = sut.uiState.value
         assertThat(state.isRemovingMode).isFalse()
         assertThat(state.selectedItems).isEmpty()
@@ -62,7 +59,7 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `enterSelectionMode selects the item and enables removing mode`() {
+    fun enterSelectionModeSelectsTheItemAndEnablesRemovingMode() {
         val item = mock<TB>()
 
         sut.enterSelectionMode(item)
@@ -72,7 +69,7 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `exitSelectionMode clears selection`() {
+    fun exitSelectionModeClearsSelection() {
         sut.enterSelectionMode(mock<TB>())
 
         sut.exitSelectionMode()
@@ -82,7 +79,7 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `toggleSelection adds then removes an item`() {
+    fun toggleSelectionAddsThenRemovesAnItem() {
         val first = mock<TB>()
         val second = mock<TB>()
         sut.enterSelectionMode(first)
@@ -95,19 +92,18 @@ internal class TempBasalViewModelTest {
     }
 
     @Test
-    fun `toggleInvalidated flips the flag`() {
+    fun toggleInvalidatedFlipsTheFlag() {
         sut.toggleInvalidated()
         assertThat(sut.uiState.value.showInvalidated).isTrue()
     }
 
     @Test
-    fun `getDeleteConfirmationMessage empty when nothing selected, plural for many`() = runBlocking {
+    fun getDeleteConfirmationMessageEmptyWhenNothingSelectedPluralForMany() = runBlocking {
         // getDeleteConfirmationMessage is suspend on this VM (unlike the sibling VMs).
         assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("")
 
-        whenever(rh.gs(CoreUiStrings.confirm_remove_multiple_items, 2)).thenReturn("Remove 2 items")
         sut.enterSelectionMode(mock<TB>())
         sut.toggleSelection(mock<TB>())
-        assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("Remove 2 items")
+        assertThat(sut.getDeleteConfirmationMessage()).isEqualTo("Are you sure you want to remove 2 items")
     }
 }

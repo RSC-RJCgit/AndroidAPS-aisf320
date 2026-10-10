@@ -51,6 +51,28 @@ class RealNightscoutTreatmentTest {
     }
 
     @Test
+    fun `a 0 U meal bolus with no carbs is kept as a bolus`() {
+        val json = """
+            {"eventType":"Meal Bolus","date":1785992179555,"insulin":0.0,"type":"NORMAL","isValid":true,
+             "notes":"Carb split: cancelled (pump suspended)","identifier":"zero-1","utcOffset":120,"carbs":null}
+        """.trimIndent()
+
+        val treatment = json.toNSTreatment()
+        assertThat(treatment).isInstanceOf(NSBolus::class.java)
+        assertThat((treatment as NSBolus).insulin).isEqualTo(0.0)
+    }
+
+    @Test
+    fun `a 0 U record with carbs is still a carbs record`() {
+        val json = """
+            {"eventType":"Meal Bolus","date":1785992179555,"insulin":0.0,"carbs":20.0,"isValid":true,
+             "identifier":"zero-2","utcOffset":120}
+        """.trimIndent()
+
+        assertThat(json.toNSTreatment()).isInstanceOf(NSCarbs::class.java)
+    }
+
+    @Test
     fun `parses a real temp basal`() {
         val json = """
             {"_id":"6a740f444d1ba8c2e419e301","absolute":2,"app":"AAPS","date":1785990980390,

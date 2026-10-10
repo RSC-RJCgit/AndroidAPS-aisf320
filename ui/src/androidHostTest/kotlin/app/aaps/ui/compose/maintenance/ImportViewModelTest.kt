@@ -1,21 +1,31 @@
 package app.aaps.ui.compose.maintenance
 
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.profile.ProfileRepository
+import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.data.pump.defs.PumpDescription
+import app.aaps.core.interfaces.notifications.AlarmSound
+import app.aaps.core.interfaces.notifications.NotificationAction
+import app.aaps.core.interfaces.notifications.NotificationId
+import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.queue.CommandQueue
-import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.interfaces.ui.UiRestartImpl
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.maintenance.FileListProvider
+import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
+import app.aaps.core.interfaces.maintenance.ImportKeepOffer
+import app.aaps.core.interfaces.maintenance.Prefs
 import app.aaps.core.interfaces.maintenance.PrefsFile
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
@@ -31,15 +41,21 @@ import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
-import app.aaps.core.ui.CoreUiStrings
+import app.aaps.shared.tests.generatedTextResolver
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+
+/** A pump that is also the virtual one, which is what the fallback check looks for. */
+internal interface VirtualPumpForTest : PumpWithConcentration, VirtualPump
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class ImportViewModelTest {
@@ -48,7 +64,8 @@ internal class ImportViewModelTest {
     @Mock private lateinit var importExportPrefs: ImportExportPrefs
     @Mock private lateinit var prefFileList: FileListProvider
     @Mock private lateinit var configBuilder: ConfigBuilder
-    @Mock private lateinit var rh: TextResolver
+    @Mock private lateinit var config: Config
+    private val rh: TextResolver = generatedTextResolver()
     @Mock private lateinit var uel: UserEntryLogger
     @Mock private lateinit var commandQueue: CommandQueue
     @Mock private lateinit var pumpSync: PumpSync
@@ -57,6 +74,9 @@ internal class ImportViewModelTest {
     @Mock private lateinit var iobCobCalculator: IobCobCalculator
     @Mock private lateinit var pump: PumpWithConcentration
     @Mock private lateinit var ads: AutosensDataStore
+    @Mock private lateinit var notificationManager: NotificationManager
+    @Mock private lateinit var profileRepository: ProfileRepository
+    @Mock private lateinit var virtualPump: VirtualPumpForTest
     private val uiRestart = UiRestartImpl()
 
     private lateinit var testDispatcher: TestDispatcher
@@ -73,12 +93,11 @@ internal class ImportViewModelTest {
         whenever(pump.serialNumber()).thenReturn("sn")
         whenever(pump.pumpDescription).thenReturn(PumpDescription())
         whenever(iobCobCalculator.ads).thenReturn(ads)
-        // The steps carry resolved text, and an unstubbed mock hands back null into a non-null
-        // parameter. Tests that care about the wording stub their own ref over the top of this.
-        whenever(rh.gs(any<TextRef>())).thenReturn("message")
+        whenever(importExportPrefs.importKeepOffer(any())).thenReturn(ImportKeepOffer(showKeepPump = false, keepPumpChecked = false))
         sut = ImportViewModel(
-            aapsLogger, importExportPrefs, prefFileList, configBuilder, rh, uel,
-            commandQueue, pumpSync, activePlugin, overviewDataCache, iobCobCalculator, uiRestart
+            aapsLogger, importExportPrefs, prefFileList, configBuilder, config, rh, uel,
+            commandQueue, pumpSync, activePlugin, overviewDataCache, iobCobCalculator, uiRestart,
+            notificationManager, profileRepository
         )
         // Production hands the apply to the IO dispatcher, which a test cannot advance or observe.
         // Unconfined runs it inline instead, so `advanceUntilIdle` really does mean "the apply is done".
@@ -89,24 +108,24 @@ internal class ImportViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default step is Idle`() {
+    fun defaultStepIsIdle() {
         assertThat(sut.importStep.value).isEqualTo(ImportStep.Idle)
     }
 
     @Test
-    fun `cancelImport resets to Idle`() {
+    fun cancelImportResetsToIdle() {
         sut.cancelImport()
         assertThat(sut.importStep.value).isEqualTo(ImportStep.Idle)
     }
 
     @Test
-    fun `dismissError resets to Idle`() {
+    fun dismissErrorResetsToIdle() {
         sut.dismissError()
         assertThat(sut.importStep.value).isEqualTo(ImportStep.Idle)
     }
 
     @Test
-    fun `goBackToFilePicker shows empty FilePicker with default LOCAL source`() {
+    fun goBackToFilePickerShowsEmptyFilePickerWithDefaultLOCALSource() {
         sut.goBackToFilePicker()
         val step = sut.importStep.value
         assertThat(step).isInstanceOf(ImportStep.FilePicker::class.java)
@@ -118,7 +137,7 @@ internal class ImportViewModelTest {
     }
 
     @Test
-    fun `selectFile moves to Review carrying file and needsDecryptionPassword when no master password`() {
+    fun selectFileMovesToReviewCarryingFileAndNeedsDecryptionPasswordWhenNoMasterPassword() {
         val prefsFile = PrefsFile("backup.json", "", emptyMap())
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(false)
 
@@ -133,7 +152,7 @@ internal class ImportViewModelTest {
     }
 
     @Test
-    fun `selectFile does not request decryption password when master password is set`() {
+    fun selectFileDoesNotRequestDecryptionPasswordWhenMasterPasswordIsSet() {
         val prefsFile = PrefsFile("backup.json", "", emptyMap())
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
 
@@ -145,7 +164,7 @@ internal class ImportViewModelTest {
     }
 
     @Test
-    fun `onMasterPasswordChanged is a no-op while step is Idle`() {
+    fun onMasterPasswordChangedIsANoOpWhileStepIsIdle() {
         sut.onMasterPasswordChanged("secret")
         assertThat(sut.importStep.value).isEqualTo(ImportStep.Idle)
     }
@@ -156,8 +175,29 @@ internal class ImportViewModelTest {
      * Stands in for the real queue's `withHold`: runs the block when the hold is granted, skips it
      * when it is not. The production version is what actually stops a command starting mid-apply;
      * here it only has to reproduce the two outcomes the view model branches on.
+     *
+     * It also puts the screen on the confirm step, because every apply test needs to be there and
+     * none of them is about getting there - reaching it for real means picking a file and decrypting
+     * it. Deliberately NOT in `setUp`: the tests that assert the initial Idle state would then fail.
      */
+    /**
+     * Stubs the queue ONLY, leaving the step alone.
+     *
+     * The retry test needs this: [queueGrantsHold] also calls `readyToApply`, which puts the step
+     * back to `ApplyConfirm` - and that is precisely what hid a dead `retryApply`. A retry starts
+     * from `ApplyFailed`, so a test that repairs the step first cannot see the bug.
+     */
+    private suspend fun queueHoldOnly(granted: Boolean) {
+        whenever(commandQueue.withHold(any(), any(), any())).thenAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            val block = invocation.getArgument<suspend () -> Unit>(2)
+            if (granted) runBlocking { block() }
+            granted
+        }
+    }
+
     private suspend fun queueGrantsHold(granted: Boolean) {
+        sut.readyToApply(Prefs(emptyMap(), mutableMapOf()))
         whenever(commandQueue.withHold(any(), any(), any())).thenAnswer { invocation ->
             @Suppress("UNCHECKED_CAST")
             val block = invocation.getArgument<suspend () -> Unit>(2)
@@ -171,7 +211,7 @@ internal class ImportViewModelTest {
      * Applying in place is the only ending iOS can have, so these pin what "applied" now means.
      */
     @Test
-    fun `applying re-reads the plugin configuration`() = runTest(testDispatcher) {
+    fun applyingReReadsThePluginConfiguration() = runTest(testDispatcher) {
         queueGrantsHold(true)
 
         sut.onApplyConfirmed()
@@ -184,11 +224,98 @@ internal class ImportViewModelTest {
     }
 
     /**
+     * `applyConfiguration` disables the old pump and elects the new one, and between those two
+     * `PluginStore.activePumpInternal` has no answer and throws "No pump selected" - which is
+     * deliberate, so the readers have to stay away rather than the assertion being softened. Roughly
+     * 35 call sites already guard on `config.appInitialized`, and this is what closes it for them.
+     */
+    @Test
+    fun thePluginRebuildRunsInsideAReconfiguringWindow() = runTest(testDispatcher) {
+        queueGrantsHold(true)
+
+        sut.onApplyConfirmed()
+        advanceUntilIdle()
+
+        inOrder(config, configBuilder) {
+            verify(config).beginReconfiguring()
+            verify(configBuilder).applyConfiguration()
+            verify(config).endReconfiguring()
+        }
+    }
+
+    /**
+     * The window must close even when the apply blows up, and the existing test below proves a
+     * throwing `applyConfiguration` reaches `ApplyFailed`. Left open, `appInitialized` would stay
+     * false for the rest of the process and `WizardBolusExecutorImpl` refuses on it in two places -
+     * the user could not bolus. That is worse than the crash this change prevents.
+     */
+    @Test
+    fun theReconfiguringWindowClosesEvenWhenTheApplyThrows() = runTest(testDispatcher) {
+        queueGrantsHold(true)
+        whenever(configBuilder.applyConfiguration()).thenThrow(IllegalStateException("plugin blew up"))
+
+        sut.onApplyConfirmed()
+        advanceUntilIdle()
+
+        // Twice, because the apply opens two windows in sequence and BOTH have to close: one around
+        // the write, one around the plugin rebuild. They are deliberately not nested into one - the
+        // cache refreshes at the end of `applySettings` must run with the app reported as
+        // initialized, or the overview comes back showing "NO PROFILE SET".
+        verify(config, times(2)).endReconfiguring()
+    }
+
+    /**
+     * Confirming the FILE writes nothing. It only works out what would change, so the tap that
+     * follows still means something - the store used to be rewritten before the user was asked,
+     * which made cancelling a lie.
+     */
+    @Test
+    fun `confirming the file previews and writes nothing`() = runTest(testDispatcher) {
+        val prefsFile = PrefsFile("backup.json", "", emptyMap())
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        whenever(importExportPrefs.decryptImportFile(any(), any()))
+            .thenReturn(ImportDecryptResult.Success(Prefs(mapOf("k" to "v"), mutableMapOf()), importOk = true, importPossible = true))
+        whenever(importExportPrefs.previewImport(any(), any())).thenReturn(ImportExportPrefs.ImportOutcome())
+
+        sut.selectFile(ImportFileItem(prefsFile, ImportSource.LOCAL))
+        sut.onMasterPasswordChanged("pw")
+        sut.decrypt()
+        advanceUntilIdle()
+
+        sut.confirmImport()
+        advanceUntilIdle()
+
+        verify(importExportPrefs).previewImport(any(), any())
+        verify(importExportPrefs, never()).executeImport(any(), any(), any())
+        assertThat(sut.importStep.value).isInstanceOf(ImportStep.ApplyConfirm::class.java)
+    }
+
+    /**
+     * The write happens on the user's tap, inside the reconfiguring window and inside the queue hold.
+     * Until it returns every preference reads as its default - the safety limits included - and a
+     * pump driver reacting to its own changed key queues behind the apply instead of racing it.
+     */
+    @Test
+    fun `the preference rewrite runs inside its own reconfiguring window`() = runTest(testDispatcher) {
+        queueGrantsHold(true)
+
+        sut.onApplyConfirmed()
+        advanceUntilIdle()
+
+        inOrder(config, importExportPrefs) {
+            verify(config).beginReconfiguring()
+            verify(importExportPrefs).executeImport(any(), any(), any())
+            verify(importExportPrefs).prepareImportedSettings()
+            verify(config).endReconfiguring()
+        }
+    }
+
+    /**
      * The success ending has to be its own step. It used to fall back to Idle, which the screen draws
      * as a spinner that nothing ever takes down - so a finished import looked like a hung one.
      */
     @Test
-    fun `applying ends on the applied step, not back on the spinner`() = runTest(testDispatcher) {
+    fun applyingEndsOnTheAppliedStepNotBackOnTheSpinner() = runTest(testDispatcher) {
         queueGrantsHold(true)
 
         sut.onApplyConfirmed()
@@ -199,7 +326,7 @@ internal class ImportViewModelTest {
 
     /** One audit entry per import, written when it is applied - not when the picker is opened. */
     @Test
-    fun `applying writes one audit entry`() = runTest(testDispatcher) {
+    fun applyingWritesOneAuditEntry() = runTest(testDispatcher) {
         queueGrantsHold(true)
 
         sut.onApplyConfirmed()
@@ -208,9 +335,54 @@ internal class ImportViewModelTest {
         verify(uel).log(Action.IMPORT_SETTINGS, Sources.Maintenance)
     }
 
+    /**
+     * The file cannot name plugins this build does not have, so without this an import from a smaller
+     * build leaves those plugins with no stored value at all - and the next start fills each from a
+     * default, which is a different configuration from the one the user just imported.
+     */
+    @Test
+    fun `applying stores the settings so every plugin has an explicit value`() = runTest(testDispatcher) {
+        queueGrantsHold(true)
+
+        sut.onApplyConfirmed()
+        advanceUntilIdle()
+
+        verify(configBuilder).storeSettings(any())
+    }
+
+    /**
+     * `verifySelectionInCategories` enables the virtual pump when a category ends up empty, so an
+     * import naming a driver this build does not have ends with the user on a pump they never chose,
+     * delivering nothing. Silence there is the dangerous outcome.
+     */
+    @Test
+    fun `an import that leaves no pump selected says which pump is active`() = runTest(testDispatcher) {
+        queueGrantsHold(true)
+        // Consecutive returns, because the apply reads the active pump three times: once to remember
+        // what it was, once for the identity check inside applySettings, and once afterwards to see
+        // what it ended up as.
+        whenever(activePlugin.activePump).thenReturn(pump, pump, virtualPump)
+        whenever(virtualPump.pumpDescription).thenReturn(PumpDescription())
+
+        sut.onApplyConfirmed()
+        advanceUntilIdle()
+
+        verify(notificationManager).post(eq(NotificationId.WRONG_DRIVER), anyOrNull<String>(), any<NotificationLevel>(), any<Int>(), anyOrNull<AlarmSound>(), any<List<NotificationAction>>(), anyOrNull<(() -> Boolean)>())
+    }
+
+    @Test
+    fun `an import that keeps the same pump says nothing`() = runTest(testDispatcher) {
+        queueGrantsHold(true)
+
+        sut.onApplyConfirmed()
+        advanceUntilIdle()
+
+        verify(notificationManager, never()).post(eq(NotificationId.WRONG_DRIVER), anyOrNull<String>(), any<NotificationLevel>(), any<Int>(), anyOrNull<AlarmSound>(), any<List<NotificationAction>>(), anyOrNull<(() -> Boolean)>())
+    }
+
     /** The caches meant something under the old profile and targets; they cannot survive an import. */
     @Test
-    fun `applying resets the calculation caches`() = runTest(testDispatcher) {
+    fun applyingResetsTheCalculationCaches() = runTest(testDispatcher) {
         queueGrantsHold(true)
 
         sut.onApplyConfirmed()
@@ -230,7 +402,7 @@ internal class ImportViewModelTest {
      * profile without trouble. The restart used to rebuild all of this on the way back up.
      */
     @Test
-    fun `applying reloads the overview cache it just emptied`() = runTest(testDispatcher) {
+    fun applyingReloadsTheOverviewCacheItJustEmptied() = runTest(testDispatcher) {
         queueGrantsHold(true)
 
         sut.onApplyConfirmed()
@@ -244,7 +416,7 @@ internal class ImportViewModelTest {
 
     /** ...and in that order: emptied first, then filled, never the other way round. */
     @Test
-    fun `the overview cache is reloaded after it is reset`() = runTest(testDispatcher) {
+    fun theOverviewCacheIsReloadedAfterItIsReset() = runTest(testDispatcher) {
         queueGrantsHold(true)
 
         sut.onApplyConfirmed()
@@ -262,7 +434,7 @@ internal class ImportViewModelTest {
      * would end.
      */
     @Test
-    fun `an unchanged pump is not reconnected`() = runTest(testDispatcher) {
+    fun anUnchangedPumpIsNotReconnected() = runTest(testDispatcher) {
         queueGrantsHold(true)
         whenever(pumpSync.verifyPumpIdentification(any(), any())).thenReturn(true)
 
@@ -274,18 +446,18 @@ internal class ImportViewModelTest {
 
     /** ...and its queued commands are still for it, so they must survive the apply. */
     @Test
-    fun `an unchanged pump keeps its queued commands`() = runTest(testDispatcher) {
+    fun anUnchangedPumpKeepsItsQueuedCommands() = runTest(testDispatcher) {
         queueGrantsHold(true)
         whenever(pumpSync.verifyPumpIdentification(any(), any())).thenReturn(true)
 
         sut.onApplyConfirmed()
         advanceUntilIdle()
 
-        verify(commandQueue, never()).completeAllAsNoOp(any())
+        verify(commandQueue, never()).cancelAll(any(), any())
     }
 
     @Test
-    fun `a pump that no longer matches is reconnected`() = runTest(testDispatcher) {
+    fun aPumpThatNoLongerMatchesIsReconnected() = runTest(testDispatcher) {
         queueGrantsHold(true)
         whenever(pumpSync.verifyPumpIdentification(any(), any())).thenReturn(false)
 
@@ -301,14 +473,14 @@ internal class ImportViewModelTest {
      * so whoever is waiting on one is told it did not happen.
      */
     @Test
-    fun `commands queued for the old pump are cancelled when the pump changes`() = runTest(testDispatcher) {
+    fun commandsQueuedForTheOldPumpAreCancelledWhenThePumpChanges() = runTest(testDispatcher) {
         queueGrantsHold(true)
         whenever(pumpSync.verifyPumpIdentification(any(), any())).thenReturn(false)
 
         sut.onApplyConfirmed()
         advanceUntilIdle()
 
-        verify(commandQueue).completeAllAsNoOp(any())
+        verify(commandQueue).cancelAll(any(), eq(false))
     }
 
     /**
@@ -317,7 +489,7 @@ internal class ImportViewModelTest {
      * `withHold` - what matters here is that a refused hold applies nothing at all.
      */
     @Test
-    fun `a pump that stays busy applies nothing`() = runTest(testDispatcher) {
+    fun aPumpThatStaysBusyAppliesNothing() = runTest(testDispatcher) {
         queueGrantsHold(false)
 
         sut.onApplyConfirmed()
@@ -330,33 +502,53 @@ internal class ImportViewModelTest {
 
     /** ...and says so in a way the user can act on, rather than a dead end. */
     @Test
-    fun `a pump that stays busy ends on a retryable step`() = runTest(testDispatcher) {
+    fun aPumpThatStaysBusyEndsOnARetryableStep() = runTest(testDispatcher) {
         queueGrantsHold(false)
-        whenever(rh.gs(CoreUiStrings.import_apply_pump_busy)).thenReturn("busy")
 
         sut.onApplyConfirmed()
         advanceUntilIdle()
 
-        assertThat(sut.importStep.value).isEqualTo(ImportStep.ApplyFailed("busy"))
+        assertThat(sut.importStep.value).isEqualTo(ImportStep.ApplyFailed("The pump is still busy, so the settings were not applied."))
     }
 
     /**
-     * The settings are already written by this point, so a failed apply must not be the end of it.
-     * Before, the busy message closed the screen and left the app running the old configuration with
-     * no way back to it short of restarting the process - which iOS may never do.
+     * A busy pump must not be the end of the import. The retry starts from `ApplyFailed`, which is
+     * the whole point: `onApplyConfirmed` cannot take the file from the STEP, because by then the
+     * step is no longer `ApplyConfirm`. It reads a field that outlives the step instead.
+     *
+     * Deliberately re-stubs with [queueHoldOnly] rather than [queueGrantsHold]: the latter calls
+     * `readyToApply`, which would put the step back to `ApplyConfirm` and repair exactly the
+     * condition under test. That is how a dead `retryApply` passed this test before.
      */
     @Test
-    fun `retrying after a busy pump applies the settings`() = runTest(testDispatcher) {
+    fun retryingAfterABusyPumpAppliesTheSettings() = runTest(testDispatcher) {
         queueGrantsHold(false)
         sut.onApplyConfirmed()
         advanceUntilIdle()
+        assertThat(sut.importStep.value).isInstanceOf(ImportStep.ApplyFailed::class.java)
 
-        queueGrantsHold(true)
+        queueHoldOnly(true)
         sut.retryApply()
         advanceUntilIdle()
 
         verify(configBuilder).applyConfiguration()
         assertThat(sut.importStep.value).isEqualTo(ImportStep.Applied)
+    }
+
+    /** Abandoning an import must not leave a file a later retry could still apply. */
+    @Test
+    fun `cancelling drops the pending import so a retry does nothing`() = runTest(testDispatcher) {
+        queueGrantsHold(false)
+        sut.onApplyConfirmed()
+        advanceUntilIdle()
+
+        sut.cancelImport()
+        queueHoldOnly(true)
+        sut.retryApply()
+        advanceUntilIdle()
+
+        verify(configBuilder, never()).applyConfiguration()
+        assertThat(sut.importStep.value).isEqualTo(ImportStep.Idle)
     }
 
     /**
@@ -365,7 +557,7 @@ internal class ImportViewModelTest {
      * and no screen left to finish the job.
      */
     @Test
-    fun `a plugin that throws while applying ends on a retryable step`() = runTest(testDispatcher) {
+    fun aPluginThatThrowsWhileApplyingEndsOnARetryableStep() = runTest(testDispatcher) {
         queueGrantsHold(true)
         whenever(configBuilder.applyConfiguration()).thenThrow(IllegalStateException("plugin blew up"))
 
@@ -377,7 +569,7 @@ internal class ImportViewModelTest {
 
     /** Only after the user has seen the outcome does the screen go back to Idle and close. */
     @Test
-    fun `finishing the apply returns to Idle`() = runTest(testDispatcher) {
+    fun finishingTheApplyReturnsToIdle() = runTest(testDispatcher) {
         queueGrantsHold(true)
         sut.onApplyConfirmed()
         advanceUntilIdle()
@@ -396,7 +588,7 @@ internal class ImportViewModelTest {
      * it could be read.
      */
     @Test
-    fun `finishing a successful apply asks the ui to rebuild`() = runTest(testDispatcher) {
+    fun finishingASuccessfulApplyAsksTheUiToRebuild() = runTest(testDispatcher) {
         queueGrantsHold(true)
         val before = uiRestart.signal.value
 
@@ -414,7 +606,7 @@ internal class ImportViewModelTest {
      * and the user is told rather than left in a dialog for ever.
      */
     @Test
-    fun `a pump that never goes idle gives up instead of applying`() = runTest(testDispatcher) {
+    fun aPumpThatNeverGoesIdleGivesUpInsteadOfApplying() = runTest(testDispatcher) {
         queueGrantsHold(false)
         val before = uiRestart.signal.value
 

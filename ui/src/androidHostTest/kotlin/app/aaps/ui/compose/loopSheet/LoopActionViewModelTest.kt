@@ -51,7 +51,7 @@ internal class LoopActionViewModelTest {
     fun tearDown() = Dispatchers.resetMain()
 
     @Test
-    fun `default uiState has no action available`() {
+    fun defaultUiStateHasNoActionAvailable() {
         val state = sut.uiState.value
         assertThat(state.actionAvailable).isFalse()
         assertThat(state.request).isEmpty()

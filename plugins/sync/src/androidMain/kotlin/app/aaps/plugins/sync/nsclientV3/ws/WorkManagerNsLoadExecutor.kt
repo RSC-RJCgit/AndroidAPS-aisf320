@@ -6,6 +6,7 @@ import androidx.work.ListenableWorker
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.workDataOf
 import app.aaps.plugins.sync.nsclientV3.workers.DataSyncWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadBgWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadDeviceStatusWorker
@@ -13,6 +14,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadFoodsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadSettingsWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryTreatmentsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
 import dev.zacsweers.metro.AppScope
@@ -33,7 +35,8 @@ import kotlinx.coroutines.flow.map
  */
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class)
-class WorkManagerNsLoadExecutor @Inject constructor(
+@Inject
+class WorkManagerNsLoadExecutor(
     private val context: Context
 ) : NsLoadExecutor {
 
@@ -72,6 +75,25 @@ class WorkManagerNsLoadExecutor @Inject constructor(
         workManager.cancelUniqueWork(JOB_NAME)
     }
 
+    override fun enqueueSecondaryTreatments(force: Boolean) {
+        workManager.enqueueUniqueWork(
+            SECONDARY_JOB_NAME,
+            if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequest.Builder(LoadSecondaryTreatmentsWorker::class.java).build()
+        )
+    }
+
+    // The same worker, told to read only the glucose, under its own name so it neither waits for nor replaces the full download.
+    override fun enqueueSecondaryGlucose() {
+        workManager.enqueueUniqueWork(
+            SECONDARY_GLUCOSE_JOB_NAME,
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequest.Builder(LoadSecondaryTreatmentsWorker::class.java)
+                .setInputData(workDataOf(LoadSecondaryTreatmentsWorker.GLUCOSE_ONLY to true))
+                .build()
+        )
+    }
+
     private fun request(step: NsLoadStep): OneTimeWorkRequest =
         OneTimeWorkRequest.Builder(workerFor(step)).build()
 
@@ -99,5 +121,11 @@ class WorkManagerNsLoadExecutor @Inject constructor(
          * anything already enqueued by an older build.
          */
         private const val JOB_NAME = "NSClientV3Plugin"
+
+        /** Own name, so a primary-token failure cannot cancel or replace this download. */
+        private const val SECONDARY_JOB_NAME = "LoadSecondaryBolusCarbs"
+
+        /** Own name again: the every-minute glucose read must not wait behind a long treatments download. */
+        private const val SECONDARY_GLUCOSE_JOB_NAME = "LoadSecondaryGlucose"
     }
 }

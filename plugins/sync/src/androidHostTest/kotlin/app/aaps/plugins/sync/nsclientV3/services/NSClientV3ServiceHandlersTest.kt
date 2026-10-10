@@ -105,7 +105,7 @@ class NSClientV3ServiceHandlersTest : TestBaseWithProfile() {
     fun `entries document is processed as glucose and queued for storage`() = runTest {
         sut.onDataCreateUpdate(envelope("entries", sgvDoc()))
 
-        verify(nsIncomingDataProcessor).processSgvs(any(), eq(false))
+        verify(nsIncomingDataProcessor).processSgvs(any(), eq(false), eq(false))
         verify(storeDataForDb).requestStoreGlucoseValues()
     }
 
@@ -119,12 +119,12 @@ class NSClientV3ServiceHandlersTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `devicestatus document goes to the device status handler as live data`() = runTest {
+    fun `devicestatus document goes to the device status handler`() = runTest {
         val doc = """{"identifier":"d1","srvModified":1000,"created_at":"2024-01-01T00:00:00Z"}"""
 
         sut.onDataCreateUpdate(envelope("devicestatus", doc))
 
-        verify(nsDeviceStatusHandler).handleNewData(any(), eq(true))
+        verify(nsDeviceStatusHandler).handleNewData(any())
     }
 
     /**
@@ -246,7 +246,7 @@ class NSClientV3ServiceHandlersTest : TestBaseWithProfile() {
 
         sut.onDataCreateUpdate(envelope("profile", doc))
 
-        verify(nsIncomingDataProcessor).processProfile(any(), eq(false))
+        verify(nsIncomingDataProcessor).processProfile(any(), eq(false), eq(false))
     }
 
     // ------------------------------------------------------------------------- delete

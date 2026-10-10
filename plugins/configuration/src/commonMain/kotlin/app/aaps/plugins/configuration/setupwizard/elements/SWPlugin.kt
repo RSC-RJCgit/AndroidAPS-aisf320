@@ -28,7 +28,8 @@ import app.aaps.core.ui.compose.ConfigPluginUiModel
 import app.aaps.core.ui.compose.SelectionMode
 import dev.zacsweers.metro.Inject
 
-class SWPlugin @Inject constructor(
+@Inject
+class SWPlugin(
     aapsLogger: AAPSLogger, rh: TextResolver, rxBus: RxBus, preferences: Preferences, passwordCheck: PasswordCheck,
     private val activePlugin: ActivePlugin,
     private val configBuilder: ConfigBuilder
@@ -77,7 +78,7 @@ class SWPlugin @Inject constructor(
                     description = plugin.description,
                     composeIcon = plugin.pluginDescription.icon,
                     isEnabled = pluginEnabled,
-                    canToggle = !plugin.pluginDescription.alwaysEnabled && (!pluginEnabled || isMultiSelect(pType)),
+                    canToggle = plugin.enforcedState() == null && (!pluginEnabled || isMultiSelect(pType)),
                     showPreferences = plugin.hasPreferences() && pluginEnabled,
                     hasContent = plugin.hasComposeContent()
                 )

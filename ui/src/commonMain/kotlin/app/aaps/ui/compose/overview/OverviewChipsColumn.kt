@@ -26,6 +26,8 @@ import app.aaps.ui.compose.overview.chips.IobCobChipsRow
 import app.aaps.ui.compose.overview.chips.IobUiState
 import app.aaps.ui.compose.overview.chips.ProfileChip
 import app.aaps.ui.compose.overview.chips.RunningModeChip
+import app.aaps.ui.compose.overview.chips.OverviewAction
+import app.aaps.ui.compose.overview.chips.OverviewActionButtons
 import app.aaps.ui.compose.overview.chips.SensitivityUiState
 import app.aaps.ui.compose.overview.chips.TbrChip
 import app.aaps.ui.compose.overview.chips.TempTargetChip
@@ -51,9 +53,17 @@ fun OverviewChipsColumn(
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
+    onOpenAutoIsfHistory: () -> Unit = {},
+    actionButtons: List<OverviewAction> = emptyList(),
+    onAction: (Double) -> Unit = {},
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
+    onTbrChipLongClick: () -> Unit = {},
+    onTbrChipDoubleClick: () -> Unit = {},
     onIobChipClick: () -> Unit,
+    onIobChipLongClick: () -> Unit = {},
+    onIobChipDoubleClick: () -> Unit = {},
+    onSensitivityChipDoubleClick: () -> Unit = {},
     // The command chips (running mode / profile / temp target) open mutating screens — their click is disabled on an
     // unpaired client (same MASTER_OR_PAIRED_CLIENT gate as nav/Manage), while the chip stays visible as status.
     commandsAllowed: Boolean = true,
@@ -64,6 +74,9 @@ fun OverviewChipsColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        if (actionButtons.isNotEmpty()) {
+            OverviewActionButtons(actions = actionButtons, onAction = onAction)
+        }
         if (trailingContent != null) {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
                 val chipsWidth = (maxWidth * 0.4f).coerceIn(140.dp, 220.dp)
@@ -94,6 +107,8 @@ fun OverviewChipsColumn(
                             tbrState = tbrState,
                             onNavigate = onNavigate,
                             onTbrChipClick = onTbrChipClick,
+                            onTbrChipLongClick = onTbrChipLongClick,
+                            onTbrChipDoubleClick = onTbrChipDoubleClick,
                             commandsAllowed = commandsAllowed
                         )
                     }
@@ -123,16 +138,22 @@ fun OverviewChipsColumn(
                 tbrState = tbrState,
                 onNavigate = onNavigate,
                 onTbrChipClick = onTbrChipClick,
+                onTbrChipLongClick = onTbrChipLongClick,
+                onTbrChipDoubleClick = onTbrChipDoubleClick,
                 commandsAllowed = commandsAllowed
             )
         }
         IobCobChipsRow(
             iobUiState = iobUiState,
             cobUiState = cobUiState,
-            onIobChipClick = onIobChipClick
+            onIobChipClick = onIobChipClick,
+            onIobChipLongClick = onIobChipLongClick,
+            onIobChipDoubleClick = onIobChipDoubleClick
         )
         SensitivityChipBlock(
             state = sensitivityUiState,
+            onOpenAutoIsfHistory = onOpenAutoIsfHistory,
+            onDoubleClick = onSensitivityChipDoubleClick,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -158,6 +179,8 @@ private fun NarrowChips(
     tbrState: TbrState,
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
+    onTbrChipLongClick: () -> Unit = {},
+    onTbrChipDoubleClick: () -> Unit = {},
     commandsAllowed: Boolean
 ) {
     Row(
@@ -205,7 +228,9 @@ private fun NarrowChips(
         }
         TbrChip(
             state = tbrState,
-            onClick = onTbrChipClick
+            onClick = onTbrChipClick,
+            onLongClick = onTbrChipLongClick,
+            onDoubleClick = onTbrChipDoubleClick
         )
     }
 }

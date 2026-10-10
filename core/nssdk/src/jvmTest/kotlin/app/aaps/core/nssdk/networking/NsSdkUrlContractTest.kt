@@ -101,6 +101,9 @@ class NsSdkUrlContractTest {
 
         assertThat(pathOf { client.getTreatmentsModifiedSince(1700000000000, 250) })
             .isEqualTo("/api/v3/treatments/history/1700000000000?limit=250")
+
+        assertThat(pathOf { client.getLatestProfileSwitch() })
+            .isEqualTo("/api/v3/treatments?eventType=Profile%20Switch&sort\$desc=created_at&limit=1")
     }
 
     // ---------------------------------------------------------------- profile
