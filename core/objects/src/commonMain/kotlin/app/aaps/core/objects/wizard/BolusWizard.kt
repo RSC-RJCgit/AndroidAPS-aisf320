@@ -3,7 +3,9 @@ package app.aaps.core.objects.wizard
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.model.BCR
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.BolusWizardData
+import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
@@ -29,6 +31,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -76,6 +79,7 @@ class BolusWizard(
     private val runningModeGuard: RunningModeGuard,
     private val ch: ConcentrationHelper,
     private val wizardBolusExecutor: WizardBolusExecutor,
+    private val activePlugin: ActivePlugin,
     private val appScope: CoroutineScope
 ) {
 
@@ -470,7 +474,7 @@ class BolusWizard(
                 scheduledAt + warsawDoseDelayMinutes(index + 1, plan.numDoses, plan.durationMinutes) * 60_000L
             } else null
             val planned = plan.perDoseInsulin
-            appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater) }
+            appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, "fpu$index") }
         }
     }
 
@@ -482,6 +486,7 @@ class BolusWizard(
         firstDueAt: Long,
         nextDueAt: Long?,
         retryLater: Boolean,
+        label: String,
     ) {
         var dueAt = firstDueAt
         var deferralNoted = false
@@ -490,6 +495,7 @@ class BolusWizard(
             while (true) {
                 if (!WarsawScheduleGate.isCurrent(token)) {
                     warsawNote("C", planned, "superseded by a newer entry", source)
+                    recordCancelledDose(label, planned, "superseded by newer entry", iobBaseline, source)
                     return
                 }
                 val wait = dueAt - dateUtil.now()
@@ -507,7 +513,9 @@ class BolusWizard(
                 dueAt = now + WARSAW_RETRY_MINUTES * 60_000L
             } else {
                 aapsLogger.info(LTag.CORE, "Warsaw dose dropped: $reason")
-                warsawNote("C", planned, if (retryLater) "$reason, not delivered within the retry window" else reason, source)
+                val dropReason = if (retryLater) "$reason, not delivered within the retry window" else reason
+                warsawNote("C", planned, dropReason, source)
+                recordCancelledDose(label, planned, dropReason, iobBaseline, source)
                 return
             }
         }
@@ -536,8 +544,82 @@ class BolusWizard(
 
     private var lastWarsawNoteAt = 0L
 
+    /**
+     * A cancelled dose is also written as a real 0 U bolus row and a calculator record, so it shows in the Treatments list and
+     * (with a pump id) uploads to Nightscout, where a Client shows it. The same three records as the 3426 app writes.
+     * The bolus table is only uploaded for rows that carry a pump id, so the row gets its own timestamp as the pump id,
+     * with the active pump's type and serial.
+     */
+    private var lastZeroRowAt = 0L
+
+    private fun zeroBolusIds(timestamp: Long): IDs {
+        val pump = activePlugin.activePump
+        return IDs(pumpId = timestamp, pumpType = pump.model(), pumpSerial = pump.serialNumber())
+    }
+
+    private suspend fun recordCancelledDose(label: String, amount: Double, reason: String, iobBaseline: Double, source: Sources) {
+        val profile = profileFunction.getProfile() ?: run {
+            aapsLogger.info(LTag.CORE, "Cancelled dose row not written, no profile: $label $amount U, $reason")
+            return
+        }
+        val now = dateUtil.now()
+        val timestamp = max(now, lastZeroRowAt + 1)
+        lastZeroRowAt = timestamp
+        val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(now, profile).iob
+        val calculation = followUpCalculation(timestamp, label, amount, iobBaseline, liveIob, "Cancelled: $reason", source)
+        val notes = "$label: cancelled ($reason)"
+        val bolus = BS(
+            timestamp = timestamp,
+            amount = 0.0,
+            type = BS.Type.NORMAL,
+            notes = notes,
+            ids = zeroBolusIds(timestamp),
+            iCfg = profile.iCfg
+        )
+        persistenceLayer.insertOrUpdateBolus(bolus, Action.BOLUS, source, notes)
+        persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation)
+    }
+
+    /** A follow-up is an IOB-delta record, not a second calculation of the meal: its inputs are the base dose and the IOB rise. */
+    private suspend fun followUpCalculation(
+        timestamp: Long,
+        label: String,
+        baseDose: Double,
+        iobBaseline: Double,
+        liveIob: Double,
+        detail: String,
+        source: Sources,
+    ): BCR {
+        val gs = glucoseStatusProvider.glucoseStatusData
+        val iobIncrease = max(0.0, liveIob - iobBaseline)
+        return BCR(
+            timestamp = timestamp,
+            targetBGLow = 0.0, targetBGHigh = 0.0,
+            isf = 0.0, ic = ic,
+            bolusIOB = iobIncrease, wasBolusIOBUsed = true,
+            basalIOB = 0.0, wasBasalIOBUsed = false,
+            glucoseValue = gs?.glucose ?: 0.0, wasGlucoseUsed = false,
+            glucoseDifference = 0.0, glucoseInsulin = 0.0,
+            glucoseTrend = 0.0, wasTrendUsed = false, trendInsulin = 0.0,
+            cob = 0.0, wasCOBUsed = false, cobInsulin = 0.0,
+            carbs = 0.0, wereCarbsUsed = false, carbsInsulin = 0.0,
+            otherCorrection = baseDose,
+            wasSuperbolusUsed = false, superbolusInsulin = 0.0,
+            wasTempTargetUsed = false, totalInsulin = 0.0,
+            percentageCorrection = 100, profileName = profileFunction.getProfileName(),
+            note = "$label (${if (source == Sources.QuickWizard) "QuickWizard" else "WizardDialog"}): " +
+                "base ${warsawNoteAmount(baseDose)}U, " +
+                "total IOB baseline ${warsawNoteAmount(iobBaseline)}U, " +
+                "now ${warsawNoteAmount(liveIob)}U, " +
+                "rise ${warsawNoteAmount(iobIncrease)}U; " +
+                "calculated 0.00U after residual cap/pump-step rounding. " +
+                "IOB row represents the rise in total IOB. BG is a safety gate, not a correction. " +
+                "Gate BG=${gs?.glucose}, delta=${gs?.delta}, short delta=${gs?.shortAvgDelta} mg/dL. " + detail
+        )
+    }
+
     /** A one minute care portal note, "D1.30" for a deferred dose or "C1.30" for a dropped one. */
-    private suspend fun warsawNote(prefix: String, amount: Double, text: String, source: Sources) {
+    private suspend fun warsawNote(prefix: String, amount: Double, text: String, source: Sources, what: String = "Protein and fat dose") {
         val timestamp = max(dateUtil.now(), lastWarsawNoteAt + 1)
         lastWarsawNoteAt = timestamp
         val label = "$prefix${warsawNoteAmount(amount)}"
@@ -552,7 +634,7 @@ class BolusWizard(
             timestamp = timestamp,
             action = Action.CAREPORTAL,
             source = source,
-            note = "Protein and fat dose: $text",
+            note = "$what: $text",
             listValues = listOf(ValueWithUnit.SimpleString(label)),
         )
     }
@@ -623,6 +705,12 @@ class BolusWizard(
         }
     }
 
+    /** The leftover split was dropped: one care portal note ("C1.30"), a 0 U bolus row and a calculator record. */
+    private suspend fun cancelSplitPart(remaining: Double, reason: String, iobBaseline: Double, source: Sources) {
+        warsawNote("C", remaining, reason, source, "Split leftover dose")
+        recordCancelledDose("Carb split", remaining, reason, iobBaseline, source)
+    }
+
     private fun launchSplitPart(
         remaining: Double,
         previousPart: Double,
@@ -640,14 +728,19 @@ class BolusWizard(
         appScope.launch {
             val wait = (deliverAt - dateUtil.now()).coerceAtLeast(1_000L)
             delay(min(wait, 120_000L))
-            if (!SplitScheduleGate.isCurrent(token)) return@launch
+            if (!SplitScheduleGate.isCurrent(token)) {
+                cancelSplitPart(remaining, "superseded by newer entry", iobBaseline, source)
+                return@launch
+            }
             val profile = profileFunction.getProfile()
             if (profile == null || profileSwitchPercent(profile) < 100) {
                 aapsLogger.info(LTag.CORE, "Split leftover cancelled: profile is under 100%")
+                cancelSplitPart(remaining, "profile under 100%", iobBaseline, source)
                 return@launch
             }
             if (loop.runningMode() == RM.Mode.SUPER_BOLUS || runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null) {
                 aapsLogger.info(LTag.CORE, "Split leftover cancelled: pump will not take a bolus")
+                cancelSplitPart(remaining, "pump will not take a bolus", iobBaseline, source)
                 return@launch
             }
             val now = dateUtil.now()
@@ -657,6 +750,7 @@ class BolusWizard(
             }
             if (now > deadline) {
                 aapsLogger.info(LTag.CORE, "Split leftover cancelled: time limit passed with ${remaining} U left")
+                cancelSplitPart(remaining, "time limit passed", iobBaseline, source)
                 return@launch
             }
             val status = glucoseStatusProvider.glucoseStatusData
@@ -669,6 +763,7 @@ class BolusWizard(
                     val count = unsafeCount + 1
                     if (count >= unsafeLimit) {
                         aapsLogger.info(LTag.CORE, "Split leftover cancelled: glucose unsafe $count times, ${remaining} U left")
+                        cancelSplitPart(remaining, "glucose unsafe $count times", iobBaseline, source)
                     } else {
                         aapsLogger.info(LTag.CORE, "Split leftover waiting: glucose unsafe $count of $unsafeLimit, ${remaining} U left")
                         launchSplitPart(
