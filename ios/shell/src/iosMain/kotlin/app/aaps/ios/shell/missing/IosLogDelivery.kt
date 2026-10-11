@@ -19,6 +19,8 @@ import platform.Foundation.NSURL
 import platform.Foundation.dataWithContentsOfFile
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.UIKit.UIDevice
+import platform.UIKit.UIUserInterfaceIdiomPad
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.posix.memcpy
@@ -86,8 +88,13 @@ class IosLogDeliveryImpl(
                 aapsLogger.error(LTag.CORE, "No view controller to show the share sheet from")
                 return@dispatch_async
             }
-            // An iPad shows the sheet as a popover and refuses without a source view.
-            controller.popoverPresentationController?.sourceView = top.view
+            // An iPad shows the sheet as a popover and refuses without a source view, and that property is not
+            // reachable from Kotlin without an extra import this build cannot test. The copies are already in the
+            // Files app, so on an iPad the sheet is simply not shown rather than risking a crash.
+            if (UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+                aapsLogger.info(LTag.CORE, "Share sheet skipped on iPad; the log copies are in the app folder")
+                return@dispatch_async
+            }
             top.presentViewController(controller, animated = true, completion = null)
         }
     }
