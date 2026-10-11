@@ -152,7 +152,10 @@ class LoadSecondaryTreatmentsRunner(
                 if (treatment.date == null) continue
                 when (treatment) {
                     is NSBolus -> {
-                        if (!preferences.get(BooleanKey.NsClientAcceptInsulin)) continue
+                        // A client has no Receive insulin switch (the setting is hidden there and stays off), and it takes
+                        // every treatment on the main site anyway. Without this the meal boluses entered on the other
+                        // phone never reached the client's graph, while their calculator records did.
+                        if (!(preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) continue
                         val bolus = treatment.toBolus(insulin)
                         if (secondaryBolusAccepted(bolus.type)) {
                             storeDataForDb.addToBoluses(bolus)
@@ -161,7 +164,8 @@ class LoadSecondaryTreatmentsRunner(
                     }
 
                     is NSCarbs -> {
-                        if (!preferences.get(BooleanKey.NsClientAcceptCarbs)) continue
+                        // Same reason as for the boluses above: a client has no Receive carbs switch.
+                        if (!(preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT)) continue
                         storeDataForDb.addToCarbs(treatment.toCarbs())
                         pageCarbs++
                     }
@@ -177,7 +181,7 @@ class LoadSecondaryTreatmentsRunner(
                     is NSTherapyEvent -> {
                         if (!acceptTherapyEvents) continue
                         val therapyEvent = treatment.toTherapyEvent()
-                        if (secondaryTherapyEventAccepted(therapyEvent.type, therapyEvent.note)) {
+                        if (secondaryTherapyEventAccepted(therapyEvent.type, therapyEvent.note, config.AAPSCLIENT)) {
                             storeDataForDb.addToTherapyEvents(therapyEvent)
                             pageTherapyEvents++
                         }

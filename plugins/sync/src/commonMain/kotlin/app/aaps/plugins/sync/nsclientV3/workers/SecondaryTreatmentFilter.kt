@@ -12,9 +12,11 @@ import app.aaps.core.data.model.TE
  */
 internal fun secondaryBolusAccepted(type: BS.Type): Boolean = type == BS.Type.NORMAL
 
-internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?): Boolean {
+internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?, isClient: Boolean = false): Boolean {
     if (type !in secondaryDeviceEventTypes) return false
     if (type != TE.Type.NOTE) return true
+    // A client mirrors the other phone, so it takes every note that phone wrote, as the 3426 client does.
+    if (isClient) return true
     val raw = note.orEmpty()
     val trimmed = raw.trim()
     return raw.startsWith("StLow ") ||

@@ -494,8 +494,9 @@ class BolusWizard(
             // Wait for the due time in steps of at most 2 minutes, so a newer confirm cancels this dose at once.
             while (true) {
                 if (!WarsawScheduleGate.isCurrent(token)) {
+                    // Only the note. A newer entry replacing the waiting series is not a dose that was calculated and
+                    // dropped, so it gets no 0 U bolus row and no calculator record on the graph or in Treatments.
                     warsawNote("C", planned, "superseded by a newer entry", source)
-                    recordCancelledDose(label, planned, "superseded by newer entry", iobBaseline, source)
                     return
                 }
                 val wait = dueAt - dateUtil.now()
@@ -729,7 +730,8 @@ class BolusWizard(
             val wait = (deliverAt - dateUtil.now()).coerceAtLeast(1_000L)
             delay(min(wait, 120_000L))
             if (!SplitScheduleGate.isCurrent(token)) {
-                cancelSplitPart(remaining, "superseded by newer entry", iobBaseline, source)
+                // Only the note, for the same reason as the Warsaw doses above.
+                warsawNote("C", remaining, "superseded by newer entry", source, "Split leftover dose")
                 return@launch
             }
             val profile = profileFunction.getProfile()
