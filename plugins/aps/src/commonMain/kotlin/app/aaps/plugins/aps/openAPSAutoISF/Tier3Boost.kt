@@ -11,6 +11,8 @@ internal data class Tier3Result(
     val finalIobAllowance: Double?,
     val fastCarbObserved: Boolean,
     val reason: String,
+    /** Extra lines for the script debug, one per line. Empty when there is nothing to add. */
+    val console: String = "",
 )
 
 // Raises the ordinary SMB when a mild or bg3 rise fired this cycle and the size checks pass.
@@ -47,9 +49,24 @@ internal fun tier3BoostMicroBolus(
 ): Tier3Result {
     val unchanged = Tier3Result(microBolus, false, null, false, "")
     if (!enabled) return unchanged
-    val timeAllowed = hour in 9 until 21 || daytimeBypass || riseHold
-    if (!timeAllowed) return Tier3Result(microBolus, false, null, false, "Tier 3 blocked outside 09:00-21:00; ")
+    val inWindow = hour in 9 until 21
+    val timeAllowed = inWindow || daytimeBypass || riseHold
+    if (!timeAllowed) {
+        return Tier3Result(
+            microBolus, false, null, false, "Tier 3 blocked outside 09:00-21:00; ",
+            "Tier 3 UAM Boost blocked outside 09:00-21:00 (local hour $hour)"
+        )
+    }
     if (!mildThisCycle && !bg3ThisCycle) return unchanged
+
+    // The wording is the 3426 master's, so a client reads the same text from either master.
+    val notes = StringBuilder()
+    val console = StringBuilder()
+    if (!inWindow && daytimeBypass) {
+        notes.append("T3anyTime new-pod>9 or Usual2forTH; ")
+        console.append("Tier 3 UAM Boost day window bypassed (pod <2h and BG > 9.0, or recent Usual2forTH rise)\n")
+    }
+    if (unrestricted) notes.append("T3 unrestricted (compare); ")
 
     val boostMax = if (unrestricted) maxBolusSetting else min(maxBolusSetting, maxIob / 9.5)
     val boostMaxIob = maxIob * maxIobPercent / 100.0
@@ -60,8 +77,16 @@ internal fun tier3BoostMicroBolus(
     // count temp-basal IOB.
     if (scale >= 3.0 || bg < targetBgOffsetMgdl) return unchanged
     if (!riseHold && !unrestricted && (iob >= boostMaxIob || allowance <= 0.0)) return unchanged
-    if (!riseHold && !unrestricted && uamBoostRecent) return Tier3Result(microBolus, false, null, false, "T3skip<20min; ")
-    if (!riseHold && !unrestricted && smbDeliveryRatio > 0.50) return Tier3Result(microBolus, false, null, false, "T3skip SMBdel>$smbDeliveryRatio; ")
+    if (!riseHold && !unrestricted && uamBoostRecent) {
+        console.append("Tier 3 UAM Boost skipped: last UamBst <20 min")
+        return Tier3Result(microBolus, false, null, false, notes.toString() + "T3skip<20min; ", console.toString())
+    }
+    if (!riseHold && !unrestricted && smbDeliveryRatio > 0.50) {
+        console.append("Tier 3 UAM Boost skipped: SMBdel ${twoDec(smbDeliveryRatio)} > 0.50")
+        return Tier3Result(
+            microBolus, false, null, false, notes.toString() + "T3skip SMBdel>${twoDec(smbDeliveryRatio)}; ", console.toString()
+        )
+    }
 
     val ratio = smbDeliveryRatio.coerceAtLeast(0.05)
     val insulinDivisor = 1.0 / ratio
@@ -77,7 +102,6 @@ internal fun tier3BoostMicroBolus(
     }
     val capped = if (unrestricted || riseHold) uncapped else min(uncapped, allowance)
     val rounded = if (roundSmbTo > 0.0) floor(capped * roundSmbTo) / roundSmbTo else capped
-    val notes = StringBuilder()
     var smb = microBolus
     var enhanced = false
     var finalAllowance: Double? = null
@@ -85,7 +109,13 @@ internal fun tier3BoostMicroBolus(
         smb = rounded
         enhanced = true
         finalAllowance = if (unrestricted) null else allowance
-        notes.append("UAM Boost candidate $microBolus -> ${smb}U; ")
+        notes.append("UAM Boost candidate ${twoDec(microBolus)} -> ${twoDec(smb)}U; IOB ceiling ${oneDec(maxIobPercent)}%=${twoDec(boostMaxIob)}U; ")
+        console.append(">>> TIER 3: UAM Boost candidate <<<\n")
+        console.append("Tier 3 usual SMB ${twoDec(microBolus)}U x scale ${twoDec(scale)} = ${twoDec(boostedUsual)}U before Tier 3 ceilings\n")
+        console.append(
+            "Tier 3 SMB candidate ${twoDec(smb)}U vs ordinary ${twoDec(microBolus)}U; IOB ${twoDec(iob)}U + allowance ${twoDec(allowance)}U " +
+                "under ${oneDec(maxIobPercent)}% max_iob ceiling ${twoDec(boostMaxIob)}U\n"
+        )
     }
 
     var fastCarb = false
@@ -94,18 +124,30 @@ internal fun tier3BoostMicroBolus(
     val reversalTriggered = reversalScore > 30.0
     if (!riseHold && (lowTriggered || reversalTriggered) && cob == 0.0 && bgAcceleration > 0.90 * 18.0 && bg < 170.0) {
         val genuineSpike = delta > 15.0 && bg > targetBg + 20.0
-        if (!genuineSpike) {
+        val trigger = if (lowTriggered) "recentLow" else "reversal"
+        if (genuineSpike) {
+            console.append("[Tier3FastCarb] conditions met but velocity override: delta ${oneDec(delta)} > 15, BG ${oneDec(bg)} > target+20 -- treating as genuine spike, no rebound\n")
+        } else {
             fastCarb = true
             if (enhanced && smb > 0.0) {
                 val scaleDown = if (bg < 120.0) 0.3 else 0.3 + 0.7 * (bg - 120.0) / 50.0
                 val before = smb
                 smb = if (roundSmbTo > 0.0) floor(smb * scaleDown * roundSmbTo) / roundSmbTo else smb * scaleDown
-                notes.append("Tier3FastCarb $before -> $smb; ")
+                val pct = (scaleDown * 100.0).toInt()
+                notes.append("[Tier3FastCarb] rebound ($trigger): Tier 3 SMB ${twoDec(before)} -> ${twoDec(smb)} ($pct%); ")
+                console.append("[Tier3FastCarb] rebound ($trigger, bg_acce ${oneDec(bgAcceleration)}): Tier 3 SMB ${twoDec(before)} -> ${twoDec(smb)} ($pct%)\n")
+            } else {
+                notes.append("[Tier3FastCarb] rebound observed (Tier 3 not active this cycle); ")
+                console.append("[Tier3FastCarb] rebound detected ($trigger, bg_acce ${oneDec(bgAcceleration)}) -- Tier 3 did not raise SMB this cycle, nothing to scale\n")
             }
         }
     }
-    return Tier3Result(smb, enhanced, finalAllowance, fastCarb, notes.toString())
+    return Tier3Result(smb, enhanced, finalAllowance, fastCarb, notes.toString(), console.toString())
 }
+
+private fun twoDec(value: Double): Double = kotlin.math.round(value * 100.0) / 100.0
+
+private fun oneDec(value: Double): Double = kotlin.math.round(value * 10.0) / 10.0
 
 // True when this cycle's mild or bg3 rise must not start a UAM boost.
 // The temp target has to be the 4.0 high brake, the rise has to be quiet, and a missing 15 minute raw fails open.

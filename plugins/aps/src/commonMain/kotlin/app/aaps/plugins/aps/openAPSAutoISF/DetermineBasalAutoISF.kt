@@ -685,6 +685,15 @@ internal fun smbCap30Min(microBolus: Double, smbSum30: Double): SmbStepResult {
     )
 }
 
+// Overnight delivery brake, as in the 3426 master: from 00:00 up to 08:00 the SMB delivery ratio is 0.03 lower, never below zero.
+internal fun overnightSmbDeliveryRatio(smbRatio: Double, hour: Int): Double =
+    if (hour in 0 until 8) (smbRatio - 0.03).coerceAtLeast(0.0) else smbRatio
+
+// Overnight cadence floor, as in the 3426 master (added there after the 8 to 9 Sep 2026 hypo): from 22:00 to 04:00, while BG is
+// under 8.0 mmol/L, at least 3 minutes between SMBs. It never shortens an interval that is already longer.
+internal fun overnightSmbIntervalSec(intervalSec: Double, minuteOfDay: Int, bgMgdl: Double): Double =
+    if ((minuteOfDay >= 1320 || minuteOfDay < 240) && bgMgdl < 144.0 && intervalSec < 180.0) 180.0 else intervalSec
+
 // 00:00-04:00 is 0.6 U under 8.0 mmol/L. 22:00-00:00 is 1.0 U under 8.0. Otherwise 1.5 U.
 internal fun smbCap10Min(microBolus: Double, smbSum10: Double, minuteOfDay: Int, bg: Double): SmbStepResult {
     val bgUnder8 = bg < 144.0
@@ -2009,7 +2018,14 @@ class DetermineBasalAutoISF(
                 //var microBolus: Double
                 var microBolus = kotlin.math.floor(kotlin.math.min(insulinReq / 2, maxBolus) * roundSMBTo) / roundSMBTo
                 if (autoIsfMode) {
-                    microBolus = kotlin.math.min(insulinReq * smb_ratio, maxBolus)
+                    val ratioHour = if (hour in 0..23) hour
+                    else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                    val effectiveSmbRatio = overnightSmbDeliveryRatio(smb_ratio, ratioHour)
+                    if (effectiveSmbRatio != smb_ratio) {
+                        consoleError.add("Overnight SMB delivery ratio: ${round(smb_ratio, 2)} -> ${round(effectiveSmbRatio, 2)} (00:00-08:00)")
+                        rT.reason.append("overnight SMB ratio ${round(smb_ratio, 2)} -> ${round(effectiveSmbRatio, 2)}; ")
+                    }
+                    microBolus = kotlin.math.min(insulinReq * effectiveSmbRatio, maxBolus)
                     if (microBolus > iobTHvirtual - iob_data.iob && (loop_wanted_smb == "fullLoop" || loop_wanted_smb == "enforced")) {
                         microBolus = iobTHvirtual - iob_data.iob
                         consoleError.add("Full loop capped SMB at ${round(microBolus, 2)} to not exceed $iobTHtolerance% of effective iobTH ${round(iobTHvirtual / iobTHtolerance * 100, 2)}U")
@@ -2081,6 +2097,7 @@ class DetermineBasalAutoISF(
                 val tier3Enhanced = tier3.enhanced
                 val tier3Allowance = tier3.finalIobAllowance
                 if (tier3.reason.isNotEmpty()) rT.reason.append(tier3.reason)
+                tier3.console.lines().filter { it.isNotBlank() }.forEach { consoleError.add(it) }
                 if (fastRiseSettingOn != null) {
                     val nowHour = if (hour in 0..23) hour
                     else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
@@ -2095,8 +2112,14 @@ class DetermineBasalAutoISF(
                         csf = 1.0,
                         recentLowReboundGuardEnabled = lowReboundGuardEnabled,
                     )
+                    if (!lowReboundGuardEnabled) rT.reason.append("LoReb OFF (test) ")
                     val slope = if (fastRiseSlopeRatio > 0.0) fastRiseSlopeRatio else 1.0
                     val uncappedMicroBolus = microBolus
+                    // The delta threshold the fast-rise tiers use, written out as the 3426 master does.
+                    val thresholdForFastRise = tddFactor * 0.030 * profile.max_iob
+                    val thresholdText = "Delta threshold TDDfactor * 0.030 * profile.max_iob = (${round(tddFactor, 2)} * 0.030 * ${round(profile.max_iob, 2)})= ${round(thresholdForFastRise, 2)} "
+                    rT.reason.append(thresholdText)
+                    consoleError.add(thresholdText)
                     val morningAndGlitch = morningThenGlitch(
                         showerInput = ShowerTwilightInput(
                             hour = nowHour,
@@ -2263,11 +2286,24 @@ class DetermineBasalAutoISF(
                 val lastBolusAge = (systemTime - iob_data.lastBolusTime) / 1000.0
                 //console.error(lastBolusAge);
                 // allow SMBIntervals between 1 and 10 minutes
-                val SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
+                var SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
+                val cadenceMinuteOfDay = Instant.fromEpochMilliseconds(currentTime)
+                    .toLocalDateTime(TimeZone.currentSystemDefault())
+                    .let { it.hour * 60 + it.minute }
+                val flooredInterval = overnightSmbIntervalSec(SMBInterval, cadenceMinuteOfDay, bg)
+                if (flooredInterval != SMBInterval) {
+                    consoleError.add("Overnight SMB cadence floor: interval ${round(SMBInterval / 60.0, 1)}m -> 3.0m (22:00-04:00, BG ${round(bg, 0)} < 8.0mmol)")
+                    SMBInterval = flooredInterval
+                }
                 //console.error(naive_eventualBG, insulinReq, worstCaseInsulinReq, durationReq);
                 consoleError.add("naive_eventualBG $naive_eventualBG,${durationReq}m ${smbLowTempReq}U/h temp needed; last bolus ${round(lastBolusAge / 60.0, 1)}m ago; maxBolus: $maxBolus")
+                consoleError.add("offsetSoZeroSMB ${offset.offsetSoZeroSmb}")
                 tier3Allowance?.let { allowance ->
-                    if (microBolus > allowance) microBolus = allowance
+                    if (microBolus > allowance) {
+                        val beforeTier3FinalCap = microBolus
+                        microBolus = allowance
+                        rT.reason.append(" Tier 3 final IOB allowance: ${round(beforeTier3FinalCap, 2)} -> ${round(microBolus, 2)}U ")
+                    }
                 }
                 val gated = applyTargetOffsetToSmb(
                     microBolus = microBolus,
@@ -2283,7 +2319,10 @@ class DetermineBasalAutoISF(
                 if (lastBolusAge > SMBInterval - 6.0) {   // 6s tolerance
                     if (microBolus > 0) {
                         rT.units = microBolus
-                        if (tier3Enhanced) uamBoostFiredThisCycle = true
+                        if (tier3Enhanced) {
+                            uamBoostFiredThisCycle = true
+                            rT.reason.append("Tier 3 UAM Boost survived final safety modifiers and reached delivery output. ")
+                        }
                         rT.reason.append("Microbolusing ${microBolus}U. ")
                     }
                 } else {

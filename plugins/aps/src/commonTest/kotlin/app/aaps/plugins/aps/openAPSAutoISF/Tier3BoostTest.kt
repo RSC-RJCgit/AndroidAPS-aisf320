@@ -39,6 +39,32 @@ class Tier3BoostTest {
         )
         assertTrue(result.enhanced)
         assertTrue(result.microBolus > 0.1)
+        // The text a client reads is the same as the 3426 master writes.
+        assertTrue(result.reason.startsWith("UAM Boost candidate 0.1 -> "), result.reason)
+        assertTrue(result.reason.contains("IOB ceiling 50.0%=4.75U;"), result.reason)
+        assertTrue(result.console.contains(">>> TIER 3: UAM Boost candidate <<<"), result.console)
+    }
+
+    @Test
+    fun theBlockedAndSkippedCasesKeepTheirNotesAndAddTheScriptDebugLine() {
+        val night = tier3BoostMicroBolus(
+            enabled = true, hour = 3, daytimeBypass = false, unrestricted = false, mildThisCycle = true, bg3ThisCycle = false,
+            uamBoostRecent = false, smbDeliveryRatio = 0.5, microBolus = 0.1, insulinReq = 1.0, basal = 0.4, maxBolusSetting = 2.5,
+            maxIob = 9.5, maxIobPercent = 50.0, scaleSetting = 1.0, profilePercent = 100, bg = 140.0, targetBg = 100.0,
+            targetBgOffsetMgdl = 100.0, iob = 0.2, cob = 0.0, delta = 2.0, longAvgDelta = 1.0, bgAcceleration = 0.0,
+            recentLowBg = 999.0, roundSmbTo = 20.0,
+        )
+        assertEquals("Tier 3 blocked outside 09:00-21:00; ", night.reason)
+        assertEquals("Tier 3 UAM Boost blocked outside 09:00-21:00 (local hour 3)", night.console)
+        val recent = tier3BoostMicroBolus(
+            enabled = true, hour = 12, daytimeBypass = false, unrestricted = false, mildThisCycle = true, bg3ThisCycle = false,
+            uamBoostRecent = true, smbDeliveryRatio = 0.5, microBolus = 0.1, insulinReq = 1.0, basal = 0.4, maxBolusSetting = 2.5,
+            maxIob = 9.5, maxIobPercent = 50.0, scaleSetting = 1.0, profilePercent = 100, bg = 140.0, targetBg = 100.0,
+            targetBgOffsetMgdl = 100.0, iob = 0.2, cob = 0.0, delta = 2.0, longAvgDelta = 1.0, bgAcceleration = 0.0,
+            recentLowBg = 999.0, roundSmbTo = 20.0,
+        )
+        assertEquals("T3skip<20min; ", recent.reason)
+        assertEquals("Tier 3 UAM Boost skipped: last UamBst <20 min", recent.console)
     }
 
     @Test
