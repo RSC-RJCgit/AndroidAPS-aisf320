@@ -1595,7 +1595,8 @@ class BolusWizard @Inject constructor(
             if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superseded by a newer bolus/carbs entry — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "superseded by newer entry", "Carb split", iobBaselineForNextGap)
+                // Replaced by a newer entry: the note only, with no 0 U bolus row and no calculator record.
+                cancelDoseNote(remainingResidual, "superseded by newer entry")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
@@ -1775,7 +1776,8 @@ class BolusWizard @Inject constructor(
             }
             if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): superseded by a newer bolus/carbs entry — cancelling ${dose}U")
-                cancelDoseNote(dose, "$label dose: superseded by newer entry", label, iobBaseline)
+                // Replaced by a newer entry: the note only, with no 0 U bolus row and no calculator record.
+                cancelDoseNote(dose, "$label dose: superseded by newer entry")
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
