@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.20.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.21.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -45,13 +45,25 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .20, 2026-10-08)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .21, 2026-10-11, from fork commit bc111d0 aisf321UK_1032next)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.20.patch
-  git apply bolus-calculator-on-3426-aisf321.20.patch
+  git apply --check bolus-calculator-on-3426-aisf321.21.patch
+  git apply bolus-calculator-on-3426-aisf321.21.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .21 (2026-10-11):
+- A protein/fat (fpu) dose or a carb-split leftover that is replaced because a NEWER bolus/carbs entry was
+  recorded now writes only its CarePortal cancel note ("C1.30"). It no longer writes the 0 U bolus row or the
+  calculator record, so a replaced dose does not put a zero bolus on the graph or an extra "calc" in Treatments.
+  Every other drop (profile under 100%, pump suspended, superbolus, BG safety, IOB rise, retry window over)
+  still writes the note, the 0 U row and the calculator record as before.
+  (BolusWizard.scheduleReducedPartsSplitBolus and scheduleSingleDelayedDose: cancelDoseNote called without a label.)
+- Every 0 U marker row the wizard writes (a dropped fpu dose, a carb-split part, "Wizard: 0U") now carries a pump id
+  (its own timestamp, with the active pump's type and serial). Nightscout upload only picks boluses that have a
+  pump id, so before this the zero row stayed on the phone and a Client never showed it (BolusWizard.zeroBolusIds).
+- Retains all patch .20 changes below.
 
 Changes in patch .20 (2026-10-08):
 - The calculator now opens with the Corr "%" box ticked every time, so the Corr box shows the wizard percentage
