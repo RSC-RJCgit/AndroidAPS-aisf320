@@ -1,6 +1,8 @@
 package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.MaterialTheme
@@ -1168,30 +1170,31 @@ fun SecondaryGraphCompose(
         insulinLabelsFor(samples, start, end)
     }
     Column(modifier = modifier.fillMaxWidth()) {
-        if (iobThOnLeft || iobThOnRight) {
-            Row(modifier = Modifier.fillMaxWidth()) {
+        // The scales belong to the three lines in the bottom half of this graph. Since 2026-10-04 those lines are drawn on
+        // Graph 5 instead (SHOW_BOTTOM_HALF_LINES_ON_IOB_TH_GRAPH is off), so the legend row stayed behind describing
+        // lines that are not here. It is shown only when the lines are, and then packed to the left instead of
+        // spread across the whole width.
+        if ((iobThOnLeft || iobThOnRight) && SHOW_BOTTOM_HALF_LINES_ON_IOB_TH_GRAPH) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
                     text = stringResource(CoreUiStrings.graph_smb_delivery_scale),
-                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelSmall,
                     color = SMB_DELIVERY_COLOR,
-                    textAlign = TextAlign.Center,
                     maxLines = 1
                 )
                 Text(
                     text = stringResource(CoreUiStrings.graph_acce_weight_scale),
-                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelSmall,
                     color = seriesColors.acceIsf,
-                    textAlign = TextAlign.Center,
                     maxLines = 1
                 )
                 Text(
                     text = stringResource(CoreUiStrings.graph_pp_weight_scale),
-                    modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelSmall,
                     color = seriesColors.ppIsf,
-                    textAlign = TextAlign.Center,
                     maxLines = 1
                 )
             }

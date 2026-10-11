@@ -78,8 +78,12 @@ import app.aaps.ui.search.SearchViewModel
 import dev.zacsweers.metro.createGraphFactory
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIViewController
 
@@ -421,8 +425,14 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
                                 // already handed to it above, so this is the same call the other two
                                 // shells make. It was a placeholder only while iOS had no importer.
                                 onImportSettingsNavigate = { source -> navController.navigate(AppRoute.ImportSettings.createRoute(source.name)) },
-                                // Needs a UIDocumentPicker, which nothing on iOS has yet.
-                                onDirectoryClick = { reportNotReady("directory picker") },
+                                // Opens the Files app at this app's own Documents folder (the log, `extra`, `preferences`
+                                // and the copied logs are in it). A folder PICKER still needs a UIDocumentPicker, which
+                                // nothing on iOS has yet, but nothing here needs one: the folder is always the same.
+                                onDirectoryClick = {
+                                    val documents = appDocumentsPath()
+                                    if (documents == null) reportNotReady("the app folder")
+                                    else graph.urlOpener.open("shareddocuments://$documents")
+                                },
                                 // The Google sign in, and the only thing that reaches this callback.
                                 // Shown *over* AAPS rather than handed to Safari: switching to Safari
                                 // lets iOS suspend this app within seconds, and the loopback listener
@@ -490,3 +500,8 @@ internal fun guardedBy(protectionCheck: ProtectionCheck): (ProtectionCheck.Prote
             if (result == ProtectionResult.GRANTED) action()
         }
     }
+
+/** The app's own Documents folder, which the Files app shows as "On My iPhone > <app name>". */
+@OptIn(ExperimentalForeignApi::class)
+private fun appDocumentsPath(): String? =
+    NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, true).firstOrNull() as? String

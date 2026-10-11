@@ -143,16 +143,20 @@ fun Modifier.graphZoomControls(onZoom: (Int) -> Unit, onPan: (Float) -> Unit): M
 
                         PointerEventType.Scroll  -> {
                             val dy = event.changes.fold(0f) { sum, c -> sum + c.scrollDelta.y }
-                            if (dy != 0f) {
-                                when {
-                                    event.keyboardModifiers.isCtrlPressed  -> {
-                                        event.changes.forEach { it.consume() }
-                                        onZoom(if (dy < 0f) 1 else -1)
-                                    }
+                            val dx = event.changes.fold(0f) { sum, c -> sum + c.scrollDelta.x }
+                            when {
+                                event.keyboardModifiers.isCtrlPressed  -> if (dy != 0f) {
+                                    event.changes.forEach { it.consume() }
+                                    onZoom(if (dy < 0f) 1 else -1)
+                                }
 
-                                    event.keyboardModifiers.isShiftPressed -> {
+                                // Windows reports Shift + wheel as a sideways scroll (x), other systems keep it in y, so
+                                // either one moves the graph. Only reading y made Shift + wheel do nothing on Windows.
+                                event.keyboardModifiers.isShiftPressed || dx != 0f -> {
+                                    val delta = if (dx != 0f) dx else dy
+                                    if (delta != 0f) {
                                         event.changes.forEach { it.consume() }
-                                        onPan(dy * WHEEL_STEP_PX)
+                                        onPan(delta * WHEEL_STEP_PX)
                                     }
                                 }
                             }

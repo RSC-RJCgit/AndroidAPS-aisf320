@@ -105,27 +105,43 @@ class DesktopMaintenance(
      * The live log, whose siblings are the rotated ones. Overridden in a test so it neither reads
      * nor deletes anything in the user's real data directory.
      */
-    private val logFile: File = DesktopFolders.log
+    private val logFile: File = DesktopFolders.log,
+    /** Cloud and mail. A test builds this class without one, and then nothing is delivered. */
+    private val delivery: LogDelivery = NoLogDelivery
 ) : Maintenance {
 
-    override suspend fun uploadLogsToCloud(): Boolean = false
-
-    override suspend fun exportCoordinated(trigger: String) {
-        aapsLogger.debug(LTag.CORE, "Coordinated export ($trigger) is not available on desktop yet")
+    override suspend fun uploadLogsToCloud(): Boolean {
+        val zip = writeLogZip() ?: return false
+        return delivery.uploadToCloud(zip) == true
     }
 
     /**
-     * Zips the live log and its rotated siblings into `AAPS/logs/AndroidAPS_LOG_<time>.zip`.
-     *
-     * A phone offers the zip to an email app or a cloud folder. Neither exists here yet, so the zip is
-     * written where the user can find it and the result says local only. It used to refuse outright,
-     * which showed as "not available".
+     * The scheduled and manual export. Only the log zip is written and uploaded here; the AutoISF history
+     * files are written by the phone's `HistoryFilesWriter`, which the desktop does not have yet.
+     */
+    override suspend fun exportCoordinated(trigger: String) {
+        val uploaded = uploadLogsToCloud()
+        aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOGS result=${if (uploaded) "SUCCESS" else "FAILURE"}")
+    }
+
+    /**
+     * Zips the log, then offers the zip to the cloud folder and the mail client, as the phone does.
+     * The zip is always kept in `AAPS/logs`, so a failed upload or mail still leaves the file.
      */
     override suspend fun executeSendLogs(): ExportResult {
+        val zip = writeLogZip() ?: return ExportResult(localSuccess = false)
+        val mailed = delivery.mail(zip)
+        val uploaded = delivery.uploadToCloud(zip)
+        // localSuccess is the mail side on the phone; with no mail attempted the zip itself is the local result.
+        return ExportResult(localSuccess = mailed ?: true, cloudSuccess = uploaded)
+    }
+
+    /** Zips `aaps.log` and its rotated siblings into `AAPS/logs/AndroidAPS_LOG_<time>.zip`. Null when nothing was written. */
+    private fun writeLogZip(): File? {
         val sources = logFile.parentFile?.listFiles()
             ?.filter { it.isFile && (it.name == logFile.name || it.name.startsWith("${logFile.name}.")) }
             .orEmpty()
-        if (sources.isEmpty()) return ExportResult(localSuccess = false)
+        if (sources.isEmpty()) return null
         return try {
             val folder = File(DesktopFolders.root, "logs").apply { mkdirs() }
             val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
@@ -138,10 +154,10 @@ class DesktopMaintenance(
                 }
             }
             aapsLogger.debug(LTag.CORE, "Logs written to ${target.absolutePath}")
-            ExportResult(localSuccess = true)
+            target
         } catch (e: Exception) {
             aapsLogger.error(LTag.CORE, "Could not write the log zip", e)
-            ExportResult(localSuccess = false)
+            null
         }
     }
 

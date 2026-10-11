@@ -978,6 +978,7 @@ open class OpenAPSAutoISFPlugin(
                     cob = mealData.mealCOB,
                     basal = currentTemp.rate,
                     profile = oapsProfile,
+                    profilePercentage = profile_percentage,
                 )
             }
             determineBasalAutoISF.smbStackStartToStore?.let { start ->
@@ -6476,6 +6477,7 @@ open class OpenAPSAutoISFPlugin(
         cob: Double,
         basal: Double,
         profile: OapsProfileAutoIsf,
+        profilePercentage: Int,
     ) {
         rt.autoIsfAcce = factors.acceIsf
         rt.autoIsfBg = factors.bgIsf
@@ -6497,6 +6499,19 @@ open class OpenAPSAutoISFPlugin(
         rt.reason.append("mealCOB: ${round(cob, 1)} ;")
         rt.reason.append("basalRate: ${round(basal, 2)} ;")
         rt.reason.append("targetMgdl: ${round(targetMgdl, 1)} ;")
+        // Display-only text, the same names the 3426 master writes, so a client shows the same detail from either
+        // master. Nothing here feeds the dosing.
+        val deltaAccl = if (kotlin.math.abs(factors.shortAvgDelta) == 0.0) 0.0
+        else 100 * round((factors.delta - factors.shortAvgDelta) / kotlin.math.abs(factors.shortAvgDelta), 2)
+        rt.reason.append("delta_accl: ${round(deltaAccl, 1)} ;")
+        rt.reason.append("profile_percentage: $profilePercentage ;")
+        rt.reason.append("TwilightTimeDec: 8 ;")
+        rt.reason.append("applyWeights=${preferences.get(BooleanKey.ApsUseAutoIsfWeights)} ;;")
+        rt.reason.append("iobThUser is ${preferences.get(IntKey.ApsAutoIsfIobThPercent)} ;;")
+        rt.reason.append("bgAccel_ISF_weight is ${round(acceIsfWeight, 2)} ;;")
+        rt.reason.append("dura_ISF_weight is ${round(dura_ISF_weight, 2)} ;;")
+        rt.reason.append("higher_ISFrange_weight is ${round(higher_ISFrange_weight, 2)} ;;")
+        rt.reason.append("pp_ISF_weight is ${round(ppIsfWeight, 2)} ;;")
     }
 
 }
