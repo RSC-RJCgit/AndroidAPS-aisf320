@@ -1208,16 +1208,17 @@ class OverviewDataCacheImpl(
             val value = dateUtil.minAgo(rh, clockSuggested)
             val clockEnacted = processedDeviceStatusData.openAPSData.clockEnacted
             val enacted = processedDeviceStatusData.openAPSData.enacted
-            val sameCycle = enacted != null && clockSuggested - clockEnacted <= 60_000L
+            // Both the enacted and the suggested run, as the 3426 client shows them, so what was suggested after the
+            // last enact is not hidden when the two are a cycle apart.
             val dialogText = buildString {
-                if (sameCycle) {
+                enacted?.let {
                     append("Enacted: ${dateUtil.minAgo(rh, clockEnacted)}")
-                    append(" ${enacted.reason}")
-                } else {
-                    processedDeviceStatusData.openAPSData.suggested?.let {
-                        append("Suggested: ${dateUtil.minAgo(rh, clockSuggested)}")
-                        append(" ${it.reason}")
-                    }
+                    append(" ${it.reason}")
+                }
+                processedDeviceStatusData.openAPSData.suggested?.let {
+                    if (isNotEmpty()) append("\n\n")
+                    append("Suggested: ${dateUtil.minAgo(rh, clockSuggested)}")
+                    append(" ${it.reason}")
                 }
             }
             AapsClientStatusItem(
@@ -1242,10 +1243,19 @@ class OverviewDataCacheImpl(
             val details = listOfNotNull(isf.statusIsf, isf.statusRatio, isf.statusTarget, isf.statusSteps)
             AapsClientStatusItem(
                 label = "AISF",
-                value = "$ratio ${dateUtil.minAgo(rh, last.timestamp)}",
+                // The age is in the colour and in the detail. A longer value pushed the chip onto a second row of the bar.
+                value = "$ratio",
                 level = level,
                 dialogTitle = "AutoISF",
-                dialogText = (listOf(dateUtil.minAgo(rh, last.timestamp)) + details).joinToString("\n")
+                dialogText = buildString {
+                    append((listOf(dateUtil.minAgo(rh, last.timestamp)) + details).joinToString("\n"))
+                    // The master's script debug, which the 3426 client shows in its own dialog.
+                    val debug = processedDeviceStatusData.getAPSResult()?.scriptDebug
+                    if (!debug.isNullOrEmpty()) {
+                        append("\n\n")
+                        append(debug.joinToString("\n"))
+                    }
+                }
             )
         }
 

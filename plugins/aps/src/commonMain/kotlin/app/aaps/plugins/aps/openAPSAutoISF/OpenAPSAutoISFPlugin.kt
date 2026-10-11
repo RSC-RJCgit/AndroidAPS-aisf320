@@ -5035,18 +5035,37 @@ open class OpenAPSAutoISFPlugin(
         val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
         val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
         val running = profileFunction.getOriginalProfileName()
+        val morningReady = runMarks.ready(RunMark.MORNING_ROLE_SWAP, 240, now)
+        val morningSteroidsOff = statesOn && store.inState("Steroids", "Steroids Off")
+        val morningMjKnown = statesOn && store.hasStateValues("MJ")
+        val morningNoMj = store.inState("MJ", "NOMJremains")
+        val morningRecentHigh = recentBgStaysInRange(now, 8, samples, 90.0, null)
+        val morningRecentNormal = recentBgStaysInRange(now, 8, samples, 81.1, 126.1)
+        val morningSource = sourceRoleRung(standardCurrent, lowCurrent, running, standardRungs, lowRungs)
         val nextIndex = morningRoleIndex(
-            ready = runMarks.ready(RunMark.MORNING_ROLE_SWAP, 240, now),
-            steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
+            ready = morningReady,
+            steroidsOff = morningSteroidsOff,
             minuteOfDay = minuteOfDay,
             hp = hp1,
-            mjKnown = statesOn && store.hasStateValues("MJ"),
-            noMjRemains = store.inState("MJ", "NOMJremains"),
-            recentBgHigh = recentBgStaysInRange(now, 8, samples, 90.0, null),
-            recentBgNormal = recentBgStaysInRange(now, 8, samples, 81.1, 126.1),
-            sourceIndex = sourceRoleRung(standardCurrent, lowCurrent, running, standardRungs, lowRungs),
+            mjKnown = morningMjKnown,
+            noMjRemains = morningNoMj,
+            recentBgHigh = morningRecentHigh,
+            recentBgNormal = morningRecentNormal,
+            sourceIndex = morningSource,
             ladderSize = standardRungs.size,
         )
+        // Why-not record for 03:00 to 07:00: every input of the morning role step, once per half hour, so a missed
+        // step can be explained from the log. (Asked for after the 11 Oct 2026 03:00 miss on the beta-1 master.)
+        if (minuteOfDay in 3 * 60 until 7 * 60 && now - lastMorningGateLogMs >= 30 * 60 * 1000L) {
+            lastMorningGateLogMs = now
+            aapsLogger.info(
+                LTag.APS,
+                "MorningRoleSwap gates: ready=$morningReady statesOn=$statesOn steroidsOff=$morningSteroidsOff " +
+                    "mjKnown=$morningMjKnown noMjRemains=$morningNoMj hp=$hp1 recentBgHigh=$morningRecentHigh " +
+                    "recentBgNormal=$morningRecentNormal sourceIndex=$morningSource ladder=${standardRungs.size} " +
+                    "running=$running standard=$standardCurrent low=$lowCurrent -> step=$nextIndex"
+            )
+        }
         if (nextIndex != null && stepSharedRung(now, nextIndex)) {
             val nowLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
             val nowStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
@@ -5058,6 +5077,8 @@ open class OpenAPSAutoISFPlugin(
             aapsLogger.debug(LTag.APS, "Morning role step to letter $nextIndex")
         }
     }
+
+    private var lastMorningGateLogMs = 0L
 
     // Writes both role names for one letter. Switches the running profile when it was the old Low or Standard name.
     // Returns true when a name changed or the running profile was one of those roles.

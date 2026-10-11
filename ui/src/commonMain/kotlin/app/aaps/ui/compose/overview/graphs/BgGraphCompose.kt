@@ -961,15 +961,17 @@ fun BgGraphCompose(
             autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
     ) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 40.dp, top = 2.dp, bottom = 2.dp)) {
+            // The last item of the first three lines (smb=, HP=, IOd5=) is left off the strip. It is still in the data, so the
+            // AutoISF detail dialog shows the whole line.
             autoIsfGraph.statusIsf?.let { line ->
-                IsfStatusLine(line, stripStyle, acceColor, bgIsfColor, ppColor, duraColor)
+                IsfStatusLine(line.withoutLastItem("smb="), stripStyle, acceColor, bgIsfColor, ppColor, duraColor)
             }
             autoIsfGraph.statusSteps?.let { line ->
-                Text(text = line, color = duraColor, style = stripStyle)
+                Text(text = line.withoutLastItem("HP="), color = duraColor, style = stripStyle)
             }
             // The DR line and the target offset line (the latter was in the corner of the IOB graph) follow, still off the plot.
             autoIsfGraph.statusRatio?.let { line ->
-                Text(text = line, color = STATUS_RATIO_COLOR, style = stripStyle)
+                Text(text = line.withoutLastItem("IOd5="), color = STATUS_RATIO_COLOR, style = stripStyle)
             }
             autoIsfGraph.statusTarget?.let { line ->
                 Text(text = line, color = STATUS_TARGET_COLOR, style = stripStyle)
@@ -1194,4 +1196,10 @@ private class GraphAxisLock : NestedScrollConnection {
             else -> Offset.Zero
         }
     }
+}
+
+/** The line without its last space separated item, when that item starts with [prefix]. Otherwise the line as it was. */
+private fun String.withoutLastItem(prefix: String): String {
+    val items = trim().split(' ')
+    return if (items.size > 1 && items.last().startsWith(prefix)) items.dropLast(1).joinToString(" ") else this
 }
