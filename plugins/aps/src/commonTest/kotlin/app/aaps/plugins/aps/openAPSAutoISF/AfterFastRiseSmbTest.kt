@@ -122,14 +122,14 @@ class AfterFastRiseSmbTest {
     fun thirtyMinuteCapTrimsEvenWhenTheRiseHasStopped() {
         val result = smbCap30Min(microBolus = 1.0, smbSum30 = 1.8)
         assertEquals(0.3, result.microBolus, 0.001)
-        assertEquals("30 min SMB cap 1.0 -> 0.3. ", result.reason)
+        assertEquals(" 30min SMB cap: 1.0 -> 0.3 (last30min 1.8U of 2.1U cap) ", result.reason)
     }
 
     @Test
     fun deepNightTenMinuteCapIsPointSixUnderEightMmol() {
         val result = smbCap10Min(microBolus = 0.4, smbSum10 = 0.3, minuteOfDay = 30, bg = 140.0)
         assertEquals(0.3, result.microBolus, 0.001)
-        assertEquals("10 min SMB cap 0.4 -> 0.3. ", result.reason)
+        assertEquals(" 10min SMB cap: 0.4 -> 0.3 (last10min 0.3U of 0.6U cap) ", result.reason)
     }
 
     @Test
@@ -143,7 +143,7 @@ class AfterFastRiseSmbTest {
     fun eveningShoulderCapIsOneUnitUnderEightMmol() {
         val result = smbCap10Min(microBolus = 0.4, smbSum10 = 0.8, minuteOfDay = 1320, bg = 140.0)
         assertEquals(0.2, result.microBolus, 0.001)
-        assertEquals("10 min SMB cap 0.4 -> 0.2. ", result.reason)
+        assertEquals(" 10min SMB cap: 0.4 -> 0.2 (last10min 0.8U of 1.0U cap) ", result.reason)
     }
 
     @Test

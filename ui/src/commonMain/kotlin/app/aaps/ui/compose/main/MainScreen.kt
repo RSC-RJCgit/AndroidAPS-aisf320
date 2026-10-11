@@ -38,6 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -158,6 +163,7 @@ fun MainScreen(
     LocalDateUtil.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val isDesktopWindow = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
     var showTreatmentSheet by remember { mutableStateOf(false) }
     var showAutomationSheet by remember { mutableStateOf(false) }
     var showLoopActionSheet by remember { mutableStateOf(false) }
@@ -193,8 +199,17 @@ fun MainScreen(
                 showExit = mainViewModel.showExit
             )
         },
-        gesturesEnabled = !isLandscape(),
-        modifier = modifier
+        // Gestures are off in landscape so a sideways drag on the graphs is not taken for opening the drawer. That
+        // also switches off the tap on the dimmed area, which is the only way to close the drawer without picking an
+        // item, and a desktop window is always landscape. There is no touch to confuse there, so desktop keeps them on.
+        gesturesEnabled = !isLandscape() || isDesktopWindow,
+        modifier = modifier.onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape && drawerState.isOpen) {
+                scope.launch { drawerState.close() }
+                onDrawerClosed()
+                true
+            } else false
+        }
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current

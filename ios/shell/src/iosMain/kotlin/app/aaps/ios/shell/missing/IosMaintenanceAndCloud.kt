@@ -34,7 +34,9 @@ class IosMaintenance(
     /** Overridden in a test, so it neither reads the real log nor deletes it. */
     private val logDirectory: String? = defaultLogDirectory(),
     /** Cloud and the share sheet. A test builds this class without one, and then nothing is delivered. */
-    private val delivery: IosLogDelivery = NoIosLogDelivery
+    private val delivery: IosLogDelivery = NoIosLogDelivery,
+    /** The AutoISF history files. A test builds this class without one, and then none are written. */
+    private val history: IosHistoryExport = NoIosHistoryExport
 ) : Maintenance {
 
     override suspend fun uploadLogsToCloud(): Boolean {
@@ -44,10 +46,11 @@ class IosMaintenance(
     }
 
     /**
-     * The scheduled and manual export: a copy of the log, uploaded to the cloud folder when that is on. The
-     * AutoISF history files are written by the phone's `HistoryFilesWriter`, which iOS does not have yet.
+     * The scheduled and manual export: the AutoISF history files, then a copy of the log, each uploaded to the
+     * cloud folder when that is on.
      */
     override suspend fun exportCoordinated(trigger: String) {
+        history.writeAndUpload(trigger)
         val uploaded = uploadLogsToCloud()
         aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOGS result=${if (uploaded) "SUCCESS" else "FAILURE"}")
     }

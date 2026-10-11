@@ -107,7 +107,9 @@ class DesktopMaintenance(
      */
     private val logFile: File = DesktopFolders.log,
     /** Cloud and mail. A test builds this class without one, and then nothing is delivered. */
-    private val delivery: LogDelivery = NoLogDelivery
+    private val delivery: LogDelivery = NoLogDelivery,
+    /** The AutoISF history files. A test builds this class without one, and then none are written. */
+    private val history: HistoryExport = NoHistoryExport
 ) : Maintenance {
 
     override suspend fun uploadLogsToCloud(): Boolean {
@@ -116,10 +118,11 @@ class DesktopMaintenance(
     }
 
     /**
-     * The scheduled and manual export. Only the log zip is written and uploaded here; the AutoISF history
-     * files are written by the phone's `HistoryFilesWriter`, which the desktop does not have yet.
+     * The scheduled and manual export: the AutoISF history files, then the log zip, each uploaded to the cloud
+     * folder when that is on.
      */
     override suspend fun exportCoordinated(trigger: String) {
+        history.writeAndUpload(trigger)
         val uploaded = uploadLogsToCloud()
         aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOGS result=${if (uploaded) "SUCCESS" else "FAILURE"}")
     }

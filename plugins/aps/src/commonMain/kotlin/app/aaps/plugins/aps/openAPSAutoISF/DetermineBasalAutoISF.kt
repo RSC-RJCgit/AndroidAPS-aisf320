@@ -410,6 +410,8 @@ internal fun sensorGlitchSmb(input: SensorGlitchInput): SensorGlitchResult {
 internal data class SmbStepResult(
     val microBolus: Double,
     val reason: String,
+    /** Extra lines for the script debug, one per line. Empty when the step had nothing to add. */
+    val console: String = "",
 )
 
 // Early-morning and twilight run only when the FastRise size cascade did not take a branch,
@@ -672,9 +674,15 @@ internal fun lateFastRiseTaper(
 }
 
 internal fun smbCap30Min(microBolus: Double, smbSum30: Double): SmbStepResult {
-    val allowance = (2.1 - smbSum30).coerceAtLeast(0.0)
+    val cap = 2.1
+    val allowance = (cap - smbSum30).coerceAtLeast(0.0)
     if (microBolus <= allowance) return SmbStepResult(microBolus, "")
-    return SmbStepResult(allowance, "30 min SMB cap ${twoDecimals(microBolus)} -> ${twoDecimals(allowance)}. ")
+    // Same wording as the 3426 master, so a client reads the same text from either.
+    return SmbStepResult(
+        allowance,
+        " 30min SMB cap: ${twoDecimals(microBolus)} -> ${twoDecimals(allowance)} (last30min ${twoDecimals(smbSum30)}U of ${twoDecimals(cap)}U cap) ",
+        "Cumulative SMB cap: ${twoDecimals(smbSum30)}U already delivered in last 30min vs ${twoDecimals(cap)}U cap -> microBolus ${twoDecimals(microBolus)} trimmed to ${twoDecimals(allowance)} "
+    )
 }
 
 // 00:00-04:00 is 0.6 U under 8.0 mmol/L. 22:00-00:00 is 1.0 U under 8.0. Otherwise 1.5 U.
@@ -688,7 +696,11 @@ internal fun smbCap10Min(microBolus: Double, smbSum10: Double, minuteOfDay: Int,
     val allowance = cap - smbSum10
     if (microBolus <= allowance) return SmbStepResult(microBolus, "")
     val cut = if (allowance > 0.0) allowance else 0.0
-    return SmbStepResult(cut, "10 min SMB cap ${twoDecimals(microBolus)} -> ${twoDecimals(cut)}. ")
+    return SmbStepResult(
+        cut,
+        " 10min SMB cap: ${twoDecimals(microBolus)} -> ${twoDecimals(cut)} (last10min ${twoDecimals(smbSum10)}U of ${twoDecimals(cap)}U cap) ",
+        "Cumulative SMB cap: ${twoDecimals(smbSum10)}U already delivered in last 10min vs ${twoDecimals(cap)}U cap -> microBolus ${twoDecimals(microBolus)} trimmed to ${twoDecimals(cut)} "
+    )
 }
 
 internal data class AfterFastRiseInput(
@@ -728,6 +740,7 @@ internal data class AfterFastRiseInput(
 // boost restore, LoReb trim, late taper, the two caps, then the under-7.5 pause.
 internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     val reason = StringBuilder()
+    val console = StringBuilder()
     var smb = input.microBolus
     if (earlyMorningFollowOnAllowed(input.tier, input.libreActive, input.tempTargetSet)) {
         val early = earlyMorningThenTwilight(input.earlyMorning.copy(microBolus = smb))
@@ -774,15 +787,17 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     val cap30 = smbCap30Min(smb, input.smbSum30)
     smb = cap30.microBolus
     reason.append(cap30.reason)
+    if (cap30.console.isNotEmpty()) console.append(cap30.console).append('\n')
     val cap10 = smbCap10Min(smb, input.smbSum10, input.minuteOfDay, input.bg)
     smb = cap10.microBolus
     reason.append(cap10.reason)
+    if (cap10.console.isNotEmpty()) console.append(cap10.console).append('\n')
     val sub75 = sub75CooldownCut(smb, input.sub75Cooldown, input.bg)
     smb = sub75.microBolus
     reason.append(sub75.reason)
     if (input.roundSmbTo > 0.0 && smb.isFinite()) smb = floor(smb * input.roundSmbTo) / input.roundSmbTo
     if (!smb.isFinite() || smb <= 0.0) smb = 0.0
-    return SmbStepResult(smb, reason.toString())
+    return SmbStepResult(smb, reason.toString(), console.toString())
 }
 
 internal data class BlendedTdd(
@@ -2200,6 +2215,7 @@ class DetermineBasalAutoISF(
                     )
                     microBolus = after.microBolus
                     if (after.reason.isNotEmpty()) rT.reason.append(after.reason)
+                    after.console.lines().filter { it.isNotBlank() }.forEach { consoleError.add(it) }
                 }
 
                 // calculate a long enough zero temp to eventually correct back up to target
