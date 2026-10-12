@@ -49,7 +49,7 @@ android {
         getByName("debug")
     }
     buildTypes {
-        release {
+        configureEach {
             // R8 with no entry points strips the generated R class entirely, so no classes.dex is
             // packaged — Watch Face Push validation rejects any APK containing code (same recipe
             // as Google's WatchFaceFormat samples)
@@ -59,6 +59,8 @@ android {
             // Face Format finds res/xml/watch_face.xml by convention. With shrinking on, the
             // face would be stripped.
             isShrinkResources = false
+        }
+        release {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
