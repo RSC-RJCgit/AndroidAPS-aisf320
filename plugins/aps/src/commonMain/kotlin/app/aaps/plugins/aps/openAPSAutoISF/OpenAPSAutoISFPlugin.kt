@@ -348,6 +348,7 @@ open class OpenAPSAutoISFPlugin(
         cycleNotes.setLength(0)
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
+        preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt, 0L)
         val fetchedGlucose = glucoseStatusProvider.glucoseStatusData
         val glucoseStatus = (fetchedGlucose as? GlucoseStatusAutoIsf)?.let { applyUkf1DosingOverride(it) } ?: fetchedGlucose
         val profile = profileFunction.getProfile()
@@ -430,7 +431,11 @@ open class OpenAPSAutoISFPlugin(
         val hp1Now = rawDelta5MinMgdl(now)?.let {
             hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, it, iobData.iob, mealData.mealCOB)
         }
-        if (hp1Now != null) preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000.0).toLong())
+        preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, 0L)
+        if (hp1Now != null && hp1Now.isFinite()) {
+            preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000.0).toLong())
+            preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
+        }
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
         val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
 
@@ -997,6 +1002,11 @@ open class OpenAPSAutoISFPlugin(
             determineBasalResult.oapsProfileAutoIsf = oapsProfile
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
+            val followUpReq = it.insulinReq
+            if (followUpReq != null && followUpReq.isFinite()) {
+                preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqMilliU, (followUpReq * 1000).toLong())
+                preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt, now)
+            }
             lastAPSRun = now
             lastCycleSmb = determineBasalResult.smb
             lastCycleSmbAt = now

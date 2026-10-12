@@ -487,8 +487,9 @@ class BolusWizard(
         nextDueAt: Long?,
         retryLater: Boolean,
         label: String,
+        initialDueAt: Long = firstDueAt,
     ) {
-        var dueAt = firstDueAt
+        var dueAt = initialDueAt
         var deferralNoted = false
         while (true) {
             // Wait for the due time in steps of at most 2 minutes, so a newer confirm cancels this dose at once.
@@ -503,9 +504,22 @@ class BolusWizard(
                 if (wait <= 0L) break
                 delay(min(wait, 120_000L))
             }
-            val reason = tryDeliverWarsawDose(planned, iobBaseline, source) ?: return
+            val reason = tryDeliverWarsawDose(planned, iobBaseline, source) { remaining, nextBaseline ->
+                appScope.launch {
+                    val now = dateUtil.now()
+                    if (warsawCanRetry(now, firstDueAt, nextDueAt)) {
+                        runWarsawDose(remaining, nextBaseline, source, token, firstDueAt, nextDueAt, retryLater, label,
+                            initialDueAt = now + WARSAW_RETRY_MINUTES * 60_000L)
+                    } else {
+                        val expired = "insulinReq-limited remainder expired"
+                        warsawNote("C", remaining, expired, source)
+                        recordCancelledDose(label, remaining, expired, nextBaseline, source)
+                    }
+                }
+            } ?: return
             val now = dateUtil.now()
-            if (retryLater && warsawCanRetry(now, firstDueAt, nextDueAt)) {
+            val capWait = reason.startsWith("insulinReq")
+            if ((retryLater || capWait) && warsawCanRetry(now, firstDueAt, nextDueAt)) {
                 aapsLogger.info(LTag.CORE, "Warsaw dose deferred: $reason, checking again in $WARSAW_RETRY_MINUTES min")
                 if (!deferralNoted) {
                     warsawNote("D", planned, "deferred, checking every $WARSAW_RETRY_MINUTES min: $reason", source)
@@ -514,7 +528,7 @@ class BolusWizard(
                 dueAt = now + WARSAW_RETRY_MINUTES * 60_000L
             } else {
                 aapsLogger.info(LTag.CORE, "Warsaw dose dropped: $reason")
-                val dropReason = if (retryLater) "$reason, not delivered within the retry window" else reason
+                val dropReason = if (retryLater || capWait) "$reason, not delivered within the retry window" else reason
                 warsawNote("C", planned, dropReason, source)
                 recordCancelledDose(label, planned, dropReason, iobBaseline, source)
                 return
@@ -523,24 +537,38 @@ class BolusWizard(
     }
 
     /** Null when the dose was handed to the pump. Otherwise the reason it was not given now. */
-    private suspend fun tryDeliverWarsawDose(planned: Double, iobBaseline: Double, source: Sources): String? {
+    private suspend fun tryDeliverWarsawDose(planned: Double, iobBaseline: Double, source: Sources, onCappedRemainder: (Double, Double) -> Unit): String? {
         if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return "superbolus active"
         val profile = profileFunction.getProfile() ?: return "no profile"
         if (profileSwitchPercent(profile) < 100) return "profile under 100%"
         val status = glucoseStatusProvider.glucoseStatusData
         if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) return "glucose check failed"
         val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
-        val dose = warsawDoseAfterIobRise(planned, iobBaseline, liveIob, ch.bolusStep(planned))
-        if (dose <= 0.0) return "insulin on board already covers it"
+        val step = ch.bolusStep(planned)
+        val iobAdjustedDose = warsawDoseAfterIobRise(planned, iobBaseline, liveIob, step)
+        if (iobAdjustedDose <= 0.0) return "insulin on board already covers it"
+        val dose = cappedFollowUpDose(iobAdjustedDose, step) ?: return "insulinReq missing or stale"
+        if (dose <= 0.0) return "insulinReq cap is below one pump step"
+        val capRemaining = Round.roundTo(max(0.0, iobAdjustedDose - dose), 0.001)
         wizardBolusExecutor.deliverInsulin(
             insulin = dose,
             note = null,
             source = source,
             onError = { failure -> aapsLogger.info(LTag.CORE, "Warsaw dose not delivered: ${failure.comment}") },
             treatmentNote = rh.gs(InterfacesStrings.wizard_warsaw_dose),
-            onSuccess = { preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now()) },
+            onSuccess = {
+                preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
+                if (capRemaining >= step / 2.0) onCappedRemainder(capRemaining, liveIob + dose)
+            },
         )
         return null
+    }
+
+    private fun cappedFollowUpDose(candidate: Double, step: Double): Double? {
+        val at = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)
+        val requirement = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqMilliU)
+        if (at != preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)) return null
+        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
     }
 
     private var lastWarsawNoteAt = 0L
@@ -755,6 +783,22 @@ class BolusWizard(
                 cancelSplitPart(remaining, "time limit passed", iobBaseline, source)
                 return@launch
             }
+            val hpAt = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)
+            val hpValue = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
+            val hpCheck = if (hpAt == preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At))
+                splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
+            when (hpCheck) {
+                SplitHpCheck.Cancel -> {
+                    cancelSplitPart(remaining, "HP1 below 4.0 mmol/L", iobBaseline, source)
+                    return@launch
+                }
+                SplitHpCheck.Wait -> {
+                    aapsLogger.info(LTag.CORE, "Split leftover waiting: HP1 missing or stale, ${remaining} U left")
+                    launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit)
+                    return@launch
+                }
+                SplitHpCheck.Allow -> Unit
+            }
             val status = glucoseStatusProvider.glucoseStatusData
             when (splitBgCheck(status?.glucose, status?.delta, status?.shortAvgDelta)) {
                 SplitBgCheck.Missing -> {
@@ -776,12 +820,22 @@ class BolusWizard(
                 }
                 SplitBgCheck.Allowed -> {
                     val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(now, profile).iob
-                    val dose = splitNextDose(previousPart, remaining, iobBaseline, liveIob, step)
+                    val budget = splitBolusBudget(remaining, previousPart, iobBaseline, liveIob, step)
+                    val reducedRemaining = budget.remaining
+                    val cappedDose = cappedFollowUpDose(budget.dose, step)
+                    val dose = cappedDose ?: 0.0
+                    if (budget.creditedIob > 0.0)
+                        aapsLogger.info(LTag.CORE, "Split leftover removed ${budget.creditedIob} U for IOB rise; ${reducedRemaining} U remains")
+                    if (reducedRemaining < step / 2.0) {
+                        cancelSplitPart(remaining, "IOB rise covers remaining split", iobBaseline, source)
+                        return@launch
+                    }
                     if (dose <= 0.0) {
-                        aapsLogger.info(LTag.CORE, "Split leftover waiting: insulin on board covers the next part, ${remaining} U left")
+                        val reason = if (cappedDose == null) "insulinReq missing or stale" else if (budget.dose > 0.0) "insulinReq cap is below one pump step" else "IOB rise covers next part"
+                        aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${reducedRemaining} U left")
                         launchSplitPart(
-                            remaining, previousPart, iobBaseline, token, source,
-                            now + intervalMinutes * 60_000L, deadline, 0, intervalMinutes, unsafeLimit,
+                            reducedRemaining, previousPart, max(iobBaseline, liveIob), token, source,
+                            now + (if (budget.dose > 0.0) 120_000L else intervalMinutes * 60_000L), deadline, 0, intervalMinutes, unsafeLimit,
                         )
                         return@launch
                     }
@@ -790,10 +844,10 @@ class BolusWizard(
                         note = null,
                         source = source,
                         onError = { failure -> aapsLogger.info(LTag.CORE, "Split leftover part not delivered: ${failure.comment}") },
-                        treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, remaining - dose, intervalMinutes),
+                        treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, reducedRemaining - dose, intervalMinutes),
                         onSuccess = {
                             preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
-                            val left = Round.roundTo(remaining - dose, 0.001)
+                            val left = Round.roundTo(reducedRemaining - dose, 0.001)
                             if (left >= step / 2.0) {
                                 launchSplitPart(
                                     remaining = left,
