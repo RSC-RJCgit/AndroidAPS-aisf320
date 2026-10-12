@@ -7,14 +7,18 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.drawable.AnimationDrawable
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import android.graphics.drawable.AnimationDrawable
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.HandlerThread
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.StyleSpan
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
@@ -29,7 +33,6 @@ import android.widget.Spinner
 import android.widget.TextView
 import androidx.core.text.toSpanned
 import androidx.recyclerview.widget.LinearLayoutManager
-import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
@@ -51,7 +54,6 @@ import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
-import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
@@ -68,8 +70,8 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.BolusProgressData
-import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
@@ -80,8 +82,8 @@ import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
 import app.aaps.core.interfaces.rx.events.EventEffectiveProfileSwitchChanged
 import app.aaps.core.interfaces.rx.events.EventExtendedBolusChange
 import app.aaps.core.interfaces.rx.events.EventInitializationChanged
-import app.aaps.core.interfaces.rx.events.EventMobileToWear
 import app.aaps.core.interfaces.rx.events.EventMjUserAction
+import app.aaps.core.interfaces.rx.events.EventMobileToWear
 import app.aaps.core.interfaces.rx.events.EventNewOpenLoopNotification
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
@@ -102,12 +104,14 @@ import app.aaps.core.interfaces.source.XDripSource
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.utils.NoteTimestampAllocator
 import app.aaps.core.interfaces.utils.TrendCalculator
-import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongKey
@@ -115,7 +119,6 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
-import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.directionToIcon
 import app.aaps.core.objects.extensions.displayText
@@ -125,29 +128,30 @@ import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.WizardRecentEntry
-import app.aaps.core.ui.UIRunnable
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.elements.SingleClickButton
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.extensions.toVisibilityKeepSpace
 import app.aaps.core.ui.toast.ToastUtils
-import app.aaps.plugins.main.R
+import app.aaps.core.ui.UIRunnable
+import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.plugins.main.databinding.DialogQuickWizardMaxBolusBinding
 import app.aaps.plugins.main.databinding.OverviewFragmentBinding
 import app.aaps.plugins.main.general.overview.graphData.GraphData
 import app.aaps.plugins.main.general.overview.keys.OverviewStringKey
-import app.aaps.plugins.main.general.overview.notifications.NotificationStore
 import app.aaps.plugins.main.general.overview.notifications.events.EventUpdateOverviewNotification
+import app.aaps.plugins.main.general.overview.notifications.NotificationStore
 import app.aaps.plugins.main.general.overview.ui.StatusLightHandler
+import app.aaps.plugins.main.R
 import app.aaps.plugins.main.skins.SkinProvider
 import com.jjoe64.graphview.GraphView
 import dagger.android.support.DaggerFragment
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.Calendar
-import java.util.Locale
 import java.util.concurrent.TimeUnit
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Provider
 import kotlin.math.abs
@@ -1333,22 +1337,32 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 binding.infoLayout.apsModeText.visibility = View.GONE
             }
 
-            // pump status from ns
-            binding.pump.text = processedDeviceStatusData.pumpStatus(nsSettingsStatus)
-            binding.pump.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.pump), processedDeviceStatusData.extendedPumpStatus) } }
-
-            // OpenAPS status from ns
+            binding.pump.text = rh.gs(R.string.client_settings1_chip)
+            binding.pump.setOnClickListener { showTtCodesListDialog() }
             binding.openaps.text = processedDeviceStatusData.openApsStatus
-            binding.openaps.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(R.string.openaps), processedDeviceStatusData.extendedOpenApsStatus) } }
-
-            // Uploader status from ns
-            binding.uploader.text = processedDeviceStatusData.uploaderStatusSpanned
-            binding.uploader.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(R.string.uploader), processedDeviceStatusData.extendedUploaderStatus) } }
-
-            // AISF status from ns
-            binding.aisfdebug.text = processedDeviceStatusData.aisfStatus
-            binding.aisfdebug.setOnClickListener { activity?.let { OKDialog.show(it, rh.gs(R.string.aisfdebug), processedDeviceStatusData.extendedAisfStatus) } }
+            binding.openaps.setOnClickListener { showClientStatusDetails() }
+            binding.uploader.text = rh.gs(R.string.client_settings2_chip)
+            binding.uploader.setOnClickListener { showBasalDirectActionListDialog() }
+            binding.aisfdebug.text = rh.gs(R.string.client_settings3_chip)
+            binding.aisfdebug.setOnClickListener { showList3Dialog() }
         }
+    }
+
+    private fun showClientStatusDetails() {
+        val details = SpannableStringBuilder()
+        fun section(title: String, status: CharSequence, description: Spanned) {
+            if (details.isNotEmpty()) details.append("\n\n")
+            val start = details.length
+            details.append(title)
+            details.setSpan(StyleSpan(Typeface.BOLD), start, details.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (status.isNotEmpty()) details.append("\n").append(status)
+            if (description.isNotEmpty()) details.append("\n").append(description)
+        }
+        section(rh.gs(app.aaps.core.ui.R.string.pump), processedDeviceStatusData.pumpStatus(nsSettingsStatus), processedDeviceStatusData.extendedPumpStatus)
+        section(rh.gs(R.string.openaps), processedDeviceStatusData.openApsStatus, processedDeviceStatusData.extendedOpenApsStatus)
+        section(rh.gs(R.string.client_autoisf_detail), processedDeviceStatusData.aisfStatus, processedDeviceStatusData.extendedAisfStatus)
+        section(rh.gs(R.string.uploader), processedDeviceStatusData.uploaderStatusSpanned, processedDeviceStatusData.extendedUploaderStatus)
+        activity?.let { OKDialog.show(it, rh.gs(R.string.client_status_details), details) }
     }
 
     private fun prepareGraphsIfNeeded(numOfGraphs: Int) {

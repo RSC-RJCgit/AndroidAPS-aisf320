@@ -197,4 +197,10 @@
         <item>Negative only</item>
     </string-array>
 
+    <string name="calc_detail_trend">BG Δ15m: %1$s</string>
+    <string name="calc_detail_subtotal">Subtotal</string>
+    <string name="calc_detail_correction">Correction</string>
+    <string name="calc_detail_total">Total</string>
+    <string name="calc_detail_profile">Profile: %1$s</string>
+    <string name="calc_detail_notes">Notes: %1$s</string>
 </resources>
