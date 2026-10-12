@@ -539,6 +539,7 @@ data class SmbStackItem(
     /** Optional second line drawn just above [label], for example the basal since the preceding SMB total. */
     val subLabel: String? = null,
     val subColor: Color = Color(0xFF64C8FF),
+    val tapTimestamp: Long? = null,
 )
 
 /**
@@ -707,9 +708,12 @@ class SmbStackLabels(
     private val pinToBottom: Boolean,
     private val stackStepFraction: Float = 0.6f,
     private val labelSize: TextUnit = 12.sp,
+    private val onBounds: ((List<Pair<SmbStackItem, Rect>>) -> Unit)? = null,
 ) : Decoration {
 
     override fun drawOverLayers(context: CartesianDrawingContext) {
+        onBounds?.invoke(emptyList())
+        val hitBounds = mutableListOf<Pair<SmbStackItem, Rect>>()
         with(context) {
             val xStep = ranges.xStep
             if (xStep == 0.0) return
@@ -742,6 +746,10 @@ class SmbStackLabels(
                         anchor - layout.size.height - item.stackIndex * step
                     }
                     drawText(layout, topLeft = Offset(drawX - layout.size.width / 2f, top))
+                    if (onBounds != null) hitBounds.add(item to Rect(
+                        drawX - layout.size.width / 2f, top,
+                        drawX + layout.size.width / 2f, top + layout.size.height,
+                    ).inflate(8.dp.toPx()))
                     item.subLabel?.let { sub ->
                         val subLayout = textMeasurer.measure(sub, TextStyle(color = item.subColor, fontSize = labelSize, fontWeight = FontWeight.Bold))
                         drawText(subLayout, topLeft = Offset(drawX - subLayout.size.width / 2f, top - subLayout.size.height))
@@ -749,6 +757,7 @@ class SmbStackLabels(
                 }
             }
         }
+        onBounds?.invoke(hitBounds)
     }
 }
 

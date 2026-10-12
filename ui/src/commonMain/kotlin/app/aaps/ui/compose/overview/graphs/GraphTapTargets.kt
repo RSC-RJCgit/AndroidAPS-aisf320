@@ -1,0 +1,67 @@
+package app.aaps.ui.compose.overview.graphs
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.dp
+import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
+import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
+import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
+import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
+import kotlin.concurrent.Volatile
+import kotlin.math.abs
+
+/** Calculations and treatments have no shared ID. Accept only an unambiguous creation timestamp. */
+internal fun matchingCalculationTimestamp(bolus: Long, calculations: List<Long>): Long? {
+    val exact = calculations.filter { it == bolus }
+    if (exact.isNotEmpty()) return exact.singleOrNull()
+    return calculations.filter { abs(it - bolus) <= 1_000L }.singleOrNull()
+}
+
+internal data class GraphTapHit(val bounds: Rect, val bg: BgDataPoint? = null, val bolus: BolusGraphPoint? = null)
+
+/** Updated during drawing, so hit testing uses the current scroll, zoom and axis bounds. */
+internal class GraphTapTargets {
+    @Volatile var points: List<GraphTapHit> = emptyList()
+    @Volatile var labels: List<GraphTapHit> = emptyList()
+
+    fun at(position: Offset): GraphTapHit? {
+        fun nearest(hits: List<GraphTapHit>) = hits.filter { position in it.bounds }
+            .minByOrNull { (it.bounds.center - position).getDistanceSquared() }
+        return nearest(labels) ?: nearest(points.filter { it.bolus != null }) ?: nearest(points.filter { it.bg != null })
+    }
+}
+
+internal class GraphPointTapReporter(
+    private val targets: GraphTapTargets,
+    private val readings: List<BgDataPoint>,
+    private val bolusReadings: List<BgDataPoint>,
+    private val boluses: List<BolusGraphPoint>,
+    private val minTimestamp: Long,
+) : Decoration {
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        targets.points = emptyList()
+        with(context) {
+            val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
+            if (ranges.xStep == 0.0 || yRange.length == 0.0) return
+            fun position(timestamp: Long, value: Double): Offset = Offset(
+                layerBounds.left + layerDimensions.startPadding + layerDimensions.xSpacing *
+                    ((timestampToX(timestamp, minTimestamp) - ranges.minX) / ranges.xStep).toFloat() - scroll,
+                layerBounds.bottom - layerBounds.height * ((value - yRange.minY) / yRange.length).toFloat(),
+            )
+            val radius = with(mutableDrawScope) { 12.dp.toPx() }
+            val triangleHeight = with(mutableDrawScope) { 24.dp.toPx() }
+            targets.points = buildList {
+                for (reading in readings) {
+                    val point = position(reading.timestamp, reading.value)
+                    if (point in layerBounds) add(GraphTapHit(Rect(point.x - radius, point.y - radius, point.x + radius, point.y + radius), bg = reading))
+                }
+                for (bolus in boluses) {
+                    val reading = bolusReadings.minByOrNull { abs(it.timestamp - bolus.timestamp) } ?: continue
+                    val point = position(bolus.timestamp, reading.value)
+                    if (point in layerBounds) add(GraphTapHit(Rect(point.x - radius, point.y, point.x + radius, point.y + triangleHeight), bolus = bolus))
+                }
+            }
+        }
+    }
+}

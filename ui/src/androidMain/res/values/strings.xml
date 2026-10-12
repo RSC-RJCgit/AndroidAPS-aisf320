@@ -430,4 +430,5 @@
     <string name="overview_steroid_250">Steroids 190% are on. Increase to 250?</string>
     <string name="overview_steroid_off">Steroids are on, or restart over 8.0. Turn off?</string>
 
+    <string name="graph_bolus_calculation_unavailable">Calculation unavailable</string>
 </resources>

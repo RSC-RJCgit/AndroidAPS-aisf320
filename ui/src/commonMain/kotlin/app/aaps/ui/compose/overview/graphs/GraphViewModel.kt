@@ -5,6 +5,8 @@ import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.BCR
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
@@ -23,6 +25,7 @@ import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -69,7 +72,8 @@ class GraphViewModel(
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
     private val dateUtil: DateUtil,
-    private val rh: TextResolver
+    private val rh: TextResolver,
+    private val persistenceLayer: PersistenceLayer,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -86,6 +90,17 @@ class GraphViewModel(
     }
 
     private val _graphDisplay = MutableStateFlow(GraphDisplay())
+    suspend fun calculationForBolus(timestamp: Long): BCR? = try {
+        val records = persistenceLayer.getBolusCalculatorResultsFromTime(timestamp - 1_000L, false).filter { it.isValid }
+        val stamp = matchingCalculationTimestamp(timestamp, records.map { it.timestamp })
+        records.singleOrNull { it.timestamp == stamp }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        aapsLogger.error(LTag.UI, "Could not read graph bolus calculation", error)
+        null
+    }
+
     val graphDisplay: StateFlow<GraphDisplay> = _graphDisplay.asStateFlow()
 
     /** Second copy of the main glucose graph. Off until the Graph 5 switch is turned on. */
