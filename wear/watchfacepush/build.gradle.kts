@@ -58,7 +58,6 @@ android {
             // manifest is the shrinker's whole root set, and it does not name the face: Watch
             // Face Format finds res/xml/watch_face.xml by convention. With shrinking on, the
             // face would be stripped.
-            isShrinkResources = false
         }
         release {
             signingConfig = signingConfigs.getByName("debug")
