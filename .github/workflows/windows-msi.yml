@@ -1,0 +1,98 @@
+name: Windows MSI
+run-name: Windows MSI · ${{ github.event.head_commit.message || github.ref_name }}
+
+on:
+  push:
+    branches: [merge-4.0.0-beta1]
+  workflow_dispatch:
+    inputs:
+      client:
+        description: Desktop client to package
+        type: choice
+        default: '1'
+        options: ['1', '2', '3']
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and upload Windows installer
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DESKTOP_CLIENT: ${{ inputs.client || '1' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Read Java version and build folder
+        run: |
+          $jdk = (Get-Content .github/jdk-map.json -Raw | ConvertFrom-Json).default
+          "JAVA_VERSION=$jdk" >> $env:GITHUB_ENV
+          $versions = Get-Content buildSrc/src/main/kotlin/Versions.kt -Raw
+          $match = [regex]::Match($versions, 'val appVersion\s*=\s*"([^"]+)"')
+          if (!$match.Success) { throw 'Could not read Versions.appVersion' }
+          $version = $match.Groups[1].Value
+          $subject = git log -1 --format=%s
+          $kmp = [regex]::Match($subject, '^kmp[0-9]{3}').Value
+          $commitDate = [DateTimeOffset]::Parse((git log -1 --format=%cI))
+          $adelaide = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($commitDate, 'Cen. Australia Standard Time')
+          $stamp = $adelaide.ToString('yyyyMMdd_HHmm')
+          $hash = git rev-parse --short=7 HEAD
+          $kmpSuffix = if ($kmp) { "_$kmp" } else { '' }
+          "MSI_DRIVE_FOLDER=${version}${kmpSuffix}_${stamp}_${hash}" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Make WiX available to jpackage
+        run: |
+          $roots = @()
+          if ($env:WIX) { $roots += $env:WIX }
+          $roots += Get-ChildItem -LiteralPath 'C:\Program Files (x86)' -Directory -Filter 'WiX Toolset*' | Select-Object -ExpandProperty FullName
+          $wixBin = $roots | ForEach-Object { Join-Path $_ 'bin' } | Where-Object {
+            (Test-Path (Join-Path $_ 'candle.exe')) -and (Test-Path (Join-Path $_ 'light.exe'))
+          } | Select-Object -First 1
+          if (!$wixBin) { throw 'WiX 3 candle.exe and light.exe are missing from the Windows runner' }
+          $wixBin >> $env:GITHUB_PATH
+
+      - name: Build MSI
+        run: |
+          .\gradlew.bat :desktop:shell:packageMsi "-Pclient=$env:DESKTOP_CLIENT" --no-daemon --console=plain `
+            '-Dorg.gradle.jvmargs=-Xmx6g -XX:+UseParallelGC -Xss4m' `
+            '-Dkotlin.compiler.execution.strategy=in-process' --max-workers=2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Collect installer
+        run: |
+          $installers = @(Get-ChildItem -LiteralPath 'desktop/shell/build/compose/binaries/main/msi' -Filter '*.msi' -File)
+          if ($installers.Count -ne 1) { throw "Expected one MSI, found $($installers.Count)" }
+          New-Item -ItemType Directory -Path 'msi-artifacts' -Force | Out-Null
+          Copy-Item -LiteralPath $installers[0].FullName -Destination 'msi-artifacts'
+          "Installer: $($installers[0].Name)" >> $env:GITHUB_STEP_SUMMARY
+          "Drive folder: AAPS/$env:MSI_DRIVE_FOLDER" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload installer to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-client${{ env.DESKTOP_CLIENT }}-${{ github.sha }}
+          path: msi-artifacts/*.msi
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload installer to Google Drive
+        env:
+          GDRIVE_OAUTH2: ${{ secrets.GDRIVE_OAUTH2 }}
+        run: python .github/scripts/upload_windows_msi.py
