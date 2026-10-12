@@ -14,10 +14,16 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.21.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.22.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCap.kt",
+    "implementation/src/test/kotlin/app/aaps/implementation/wizard/FollowUpInsulinCapTest.kt",
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitBolusBudget.kt",
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt",
+    "implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitBolusBudgetTest.kt",
+    "implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitHpCheckTest.kt",
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt",
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt",
     "ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt",
@@ -45,13 +51,25 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .21, 2026-10-11, from fork commit bc111d0 aisf321UK_1032next)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .22, 2026-10-12)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.21.patch
-  git apply bolus-calculator-on-3426-aisf321.21.patch
+  git apply --check bolus-calculator-on-3426-aisf321.22.patch
+  git apply bolus-calculator-on-3426-aisf321.22.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .22 (2026-10-12):
+- Carb-split and Warsaw FPU follow-ups also require a loop insulinReq result no older than 5 minutes.
+  Each request is capped at max(0, insulinReq) and rounded down to the pump step. Missing or stale
+  results, or a cap below one pump step, wait within the existing deadline. A partially capped dose
+  keeps its remainder pending within that same deadline; pump errors do not schedule a retry.
+- An IOB rise permanently reduces the pending carb-split budget. Insulin credited this way is not
+  delivered later when IOB falls. Requests stay on the pump step and within the reduced budget.
+- Follow-up carb splits cancel their remainder when fresh HP1 is below 4.0 mmol/L. Missing HP1 or
+  a glucose sample older than 5 minutes waits and rechecks within the existing retry deadline.
+- Includes an HP1 producer for the clean base, plus budget and freshness regression tests.
+  The HP1 gate applies to carb-split follow-ups. Initial meal boluses and SMBs retain their existing checks.
 
 Changes in patch .21 (2026-10-11):
 - A protein/fat (fpu) dose or a carb-split leftover that is replaced because a NEWER bolus/carbs entry was
@@ -467,7 +485,16 @@ def apply_surgical(staging: Path) -> None:
         '    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),\n'
-        '    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0, defaultedBySM = true),\n',
+        '    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfLastCycleHp1At("autoisf_last_cycle_hp1_at", 0, defaultedBySM = true),\n',
+        "LongKey",
+    )
+    t = must_replace(
+        t,
+        '    ApsAutoIsfLastCycleHp1At("autoisf_last_cycle_hp1_at", 0, defaultedBySM = true),\n',
+        '    ApsAutoIsfLastCycleHp1At("autoisf_last_cycle_hp1_at", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfFollowUpInsulinReqMilliU("autoisf_follow_up_insulin_req_milliu", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfFollowUpInsulinReqAt("autoisf_follow_up_insulin_req_at", 0, defaultedBySM = true),\n',
         "LongKey",
     )
     write(staging, p, t)
@@ -668,12 +695,36 @@ def apply_surgical(staging: Path) -> None:
         "            preferences.put(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU, Math.round((it.insulinReq ?: 0.0) * 1000))\n",
         "OpenAPSAutoISFPlugin insulinReq mirror",
     )
-    # NOTE (2026-09-30): NOT adding a surgical hp1-cache mirror here, unlike the insulinReq one above --
-    # hypoPrediction1Mmol() is a fork-only function (confirmed absent from a clean tobias/3.4.2.6+aisf3.2.1
-    # checkout) that only exists once this repo's full coded-automations layer is also present, which this
-    # patch does not carry. ApsAutoIsfLastCycleHp1MilliMmol (added to LongKey above) simply stays at its
-    # default 0 on a clean base -- WizardDropTrendCaution.applies() already treats that as hp1Mmol=null and
-    # just falls back to its BGL<6 / IOB-vs-rise checks, so this degrades safely rather than failing to compile.
+    # The clean base needs its own HP1 producer; do not copy the unrelated fork automations.
+    t = must_replace(t, "        lastAPSResult = null\n", "        lastAPSResult = null\n        preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, 0L)\n", "clear follow-up requirement")
+    t = must_replace(t, "            lastAPSResult = determineBasalResult\n", '''            lastAPSResult = determineBasalResult
+            val followUpReq = it.insulinReq
+            if (followUpReq != null && followUpReq.isFinite()) {
+                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU, (followUpReq * 1000).toLong())
+                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, now)
+            }
+''', "follow-up requirement mirror")
+    hp_cache = '''        preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, 0L)
+        val hpReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 7 * 60_000L, now, ascending = false)
+        if (hpReadings.size >= 2) {
+            val hpNewest = hpReadings[0]
+            val hpReference = hpReadings.minByOrNull { abs(it.timestamp - (now - 5 * 60_000L)) }
+            val hpRawNow = hpNewest.noise
+            val hpRawBefore = hpReference?.noise
+            if (hpReference != null && hpReference.timestamp != hpNewest.timestamp && hpRawNow != null && hpRawBefore != null) {
+                val hp1 = glucoseStatus.glucose / 18.0182 - iobData.iob +
+                    0.25 * glucoseStatus.shortAvgDelta / 18.0182 +
+                    0.25 * (hpRawNow - hpRawBefore) / 18.0182 + mealData.mealCOB / 12.0
+                if (hp1.isFinite()) {
+                    preferences.put(LongKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1 * 1000).toLong())
+                    preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
+                }
+            }
+        }
+'''
+    t = must_replace(t, "        val iobData = iobArray[0]\n", "        val iobData = iobArray[0]\n" + hp_cache, "HP1 producer")
+    if "import kotlin.math.abs\n" not in t:
+        t = must_replace(t, "import kotlin.math.", "import kotlin.math.abs\nimport kotlin.math.", "HP1 abs import")
     write(staging, p, t)
 
     # OverviewFragment

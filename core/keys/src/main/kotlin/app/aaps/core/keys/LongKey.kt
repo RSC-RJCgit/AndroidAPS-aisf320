@@ -46,6 +46,9 @@ enum class LongKey(
     // as ApsAutoIsfLastCycleInsulinReqMilliU above -- lets WizardDropTrendCaution (BolusWizard/WizardDialog,
     // a lower module) read a recent HP1 value without duplicating the formula. Stored as HP1(mmol) x 1000.
     ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0, defaultedBySM = true),
+    ApsAutoIsfLastCycleHp1At("autoisf_last_cycle_hp1_at", 0, defaultedBySM = true),
+    ApsAutoIsfFollowUpInsulinReqMilliU("autoisf_follow_up_insulin_req_milliu", 0, defaultedBySM = true),
+    ApsAutoIsfFollowUpInsulinReqAt("autoisf_follow_up_insulin_req_at", 0, defaultedBySM = true),
     // Live "how much is still pending" from BolusWizard's own carb-split and Warsaw-FPU protein/fat
     // series (milliunits, x1000), so DelayedBolusWorker -- in a different Gradle module, with no
     // visibility into BolusWizard's own in-process Handler-scheduled doses -- can show them in its own

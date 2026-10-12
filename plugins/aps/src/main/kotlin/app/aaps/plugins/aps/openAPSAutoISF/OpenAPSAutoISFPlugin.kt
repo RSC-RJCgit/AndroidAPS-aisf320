@@ -3533,6 +3533,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         smbDeliveryBoostedThisCycle = false
         lastAPSResult = null
+        preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, 0L)
         if (useLiveStepsOnVirtual() && liveStepsForCycle?.hasDosingBuckets() != true) {
             aapsLogger.debug(LTag.APS, "LiveStepsMirror: skipping Virtual loop; core step buckets missing or stale")
             preferences.put(BooleanKey.ActivityMonitorStepsActive, false)
@@ -4048,7 +4049,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // cycle, regardless of what any automation below decides.
         run {
             val hp1Now = hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB)
-            if (hp1Now != null) preferences.put(LongKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000).toLong())
+            preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, 0L)
+            if (hp1Now != null && hp1Now.isFinite()) {
+                preferences.put(LongKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000).toLong())
+                preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
+            }
         }
 
         // The real-pump phone owns the storage check. It publishes a plain Note so Nightscout can
@@ -9983,6 +9988,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             determineBasalResult.oapsProfileAutoIsf = oapsProfile
             determineBasalResult.mealData = mealData
             lastAPSResult = determineBasalResult
+            val followUpReq = it.insulinReq
+            if (followUpReq != null && followUpReq.isFinite()) {
+                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU, (followUpReq * 1000).toLong())
+                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, now)
+            }
             stepsCalculationSummary = buildString {
                 append("Calculation: ${dateUtil.dateAndTimeString(now)}\nSource: $stepsSourceForDisplay")
                 stepsAgeForDisplay?.let { age -> append("\nSample age at capture: ${age}s") }

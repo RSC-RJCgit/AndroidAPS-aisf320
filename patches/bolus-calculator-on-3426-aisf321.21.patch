@@ -1,10 +1,18 @@
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .21, 2026-10-11, from fork commit bc111d0 aisf321UK_1032next)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .21, updated 2026-10-12)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
   git apply --check bolus-calculator-on-3426-aisf321.21.patch
   git apply bolus-calculator-on-3426-aisf321.21.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Safety update (2026-10-12):
+- An IOB rise permanently reduces the pending carb-split budget. Insulin credited this way is not
+  delivered later when IOB falls. Requests stay on the pump step and within the reduced budget.
+- Follow-up carb splits cancel their remainder when fresh HP1 is below 4.0 mmol/L. Missing HP1 or
+  a glucose sample older than 5 minutes waits and rechecks within the existing retry deadline.
+- Includes an HP1 producer for the clean base, plus budget and freshness regression tests.
+  Initial meal boluses, SMBs and Warsaw FPU doses retain their existing checks.
 
 Changes in patch .21 (2026-10-11):
 - A protein/fat (fpu) dose or a carb-split leftover that is replaced because a NEWER bolus/carbs entry was
@@ -334,10 +342,10 @@ index 0021959c8c..0b8be47dfd 100644
      FslMaxSmoothGap("Exp1SmoothGap", 20, 10, 60, defaultedBySM = true),
      FslCalibrationDuration("Calibration_Duration", 20, 20, 20, defaultedBySM = true),   // effectively frozen
 diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
-index 5de6a0cc63..0521e4879c 100644
+index 5de6a0cc63..1fb3a5163d 100644
 --- a/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
 +++ b/core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt
-@@ -23,5 +23,11 @@ enum class LongKey(
+@@ -23,5 +23,12 @@ enum class LongKey(
      FslSmoothLastTimeRaw("fsl_last_time_raw", -1, -1, defaultedBySM = true),
      FslCalibrationStart("fsl_cal_start_time", -1, -1, defaultedBySM = true),
      AppStart("app_start_time", 0, defaultedBySM = true),
@@ -347,6 +355,7 @@ index 5de6a0cc63..0521e4879c 100644
 +    ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),
 +    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),
 +    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0, defaultedBySM = true),
++    ApsAutoIsfLastCycleHp1At("autoisf_last_cycle_hp1_at", 0, defaultedBySM = true),
  
  }
 \ No newline at end of file
@@ -387,7 +396,7 @@ index 336209de6f..7ef57d06cc 100644
  
      @Suppress("DEPRECATION")
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
-index 811cd2a748..ec69c0f7d5 100644
+index 811cd2a748..99048ba375 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
 @@ -3,10 +3,14 @@ package app.aaps.core.objects.wizard
@@ -1218,7 +1227,7 @@ index 811cd2a748..ec69c0f7d5 100644
                  }
              }
              if (quickWizardEntry != null) {
-@@ -555,6 +1132,740 @@ class BolusWizard @Inject constructor(
+@@ -555,6 +1132,774 @@ class BolusWizard @Inject constructor(
          })
      }
  
@@ -1632,9 +1641,9 @@ index 811cd2a748..ec69c0f7d5 100644
 +    // given, plus that dose's own amount" (i.e. IOB right AFTER the previous dose joined the pool). At
 +    // delivery time, iobIncrease = max(0, liveIob - iobBaselineForNextGap) — only a genuine rise counts;
 +    // if IOB net fell during the gap (decay outpacing anything new), the dose stays at previousPartDose,
-+    // never gets boosted. thisDose = previousPartDose - iobIncrease; if that's <=0, this interval is
-+    // skipped and retried at the next one (IOB may have risen only temporarily, e.g. from an SMB, and
-+    // decayed back down by then) rather than dropping the whole remaining residual outright.
++    // never gets boosted. The rise also permanently reduces remainingResidual. Credited insulin
++    // is not owed again after IOB decays. thisDose is capped by that reduced remainder. A skipped
++    // interval carries the reduced budget and advances the baseline so a rise is credited once.
 +    //
 +    // Changed 2026-10-01, per explicit request, after real data showed a fixed "3 consecutive unsafe
 +    // checks" cancel (~14-21min into an unsafe run at the default 7min interval) was too short to
@@ -1725,6 +1734,28 @@ index 811cd2a748..ec69c0f7d5 100644
 +                setSplitPendingRemaining(0.0)
 +                return@postDelayed
 +            }
++            val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
++            val hpValue = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
++            val hpCheck = if (hpAt == preferences.get(LongKey.ApsAutoIsfLastCycleHp1At))
++                splitHpCheck(hpValue, hpAt, dateUtil.now()) else SplitHpCheck.Wait
++            when (hpCheck) {
++                SplitHpCheck.Cancel -> {
++                    aapsLogger.info(LTag.CORE, "ReducedSplitBolus: HP1 below 4.0 mmol/L — cancelling remaining ${remainingResidual}U")
++                    writeLastSkippedZero(lastSkippedZero)
++                    cancelDoseNote(remainingResidual, "HP1 below 4.0 mmol/L", "Carb split", iobBaselineForNextGap)
++                    setSplitPendingRemaining(0.0)
++                    return@postDelayed
++                }
++                SplitHpCheck.Wait -> {
++                    aapsLogger.info(LTag.CORE, "ReducedSplitBolus: HP1 missing or stale — retrying in 2min, remaining ${remainingResidual}U")
++                    scheduleReducedPartsSplitBolus(
++                        remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
++                        dateUtil.now() + T.mins(2).msecs(), retryDeadline, lastSkippedZero
++                    )
++                    return@postDelayed
++                }
++                SplitHpCheck.Allow -> Unit
++            }
 +            // Live BG safety gate — checked fresh at delivery time via glucoseStatusProvider, not the
 +            // wizard's own glucoseStatus field (that was only ever captured once, at calc time). Split
 +            // into two cases: missing/stale data (gs == null, e.g. a sensor gap >7min — see
@@ -1768,17 +1799,29 @@ index 811cd2a748..ec69c0f7d5 100644
 +            }
 +            val liveIob = currentTotalIob()
 +            val iobIncrease = max(0.0, liveIob - iobBaselineForNextGap)
-+            val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
++            val budget = splitBolusBudget(remainingResidual, previousPartDose, iobBaselineForNextGap, liveIob, pumpStepForResidual)
++            val reducedResidual = budget.remaining
++            val thisDose = budget.dose
++            setSplitPendingRemaining(reducedResidual)
++            if (budget.creditedIob > 0.0) {
++                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: removed ${budget.creditedIob}U from pending budget for IOB rise; ${reducedResidual}U remains")
++            }
++            if (reducedResidual < pumpStepForResidual / 2.0) {
++                writeLastSkippedZero(lastSkippedZero)
++                cancelDoseNote(remainingResidual, "IOB rise covers remaining split", "Carb split", iobBaselineForNextGap)
++                setSplitPendingRemaining(0.0)
++                return@postDelayed
++            }
 +            if (thisDose <= 0) {
-+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, retrying next interval, remaining ${remainingResidual}U")
++                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, retrying next interval, remaining ${reducedResidual}U")
 +                // Deferred (2026-09-20): nothing is written for a skip now; the latest one is remembered and written once,
 +                // only if the split ends without delivering (see writeLastSkippedZero / terminal paths above).
 +                val skippedCalc = followUpCalculation(
 +                    dateUtil.now(), "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, 0.0,
-+                    "No insulin delivered. Remaining ${decimalFormatter.to2Decimal(remainingResidual)}U; retry in ${intervalMins}min."
++                    "No insulin delivered. IOB credit ${decimalFormatter.to2Decimal(budget.creditedIob)}U; remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; retry in ${intervalMins}min."
 +                )
 +                scheduleReducedPartsSplitBolus(
-+                    remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
++                    reducedResidual, previousPartDose, max(iobBaselineForNextGap, liveIob), intervalMins, schedulingPct, myScheduleToken,
 +                    dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline,
 +                    lastSkippedZero = SkippedZero(iobIncrease, skippedCalc)
 +                )
@@ -1790,7 +1833,7 @@ index 811cd2a748..ec69c0f7d5 100644
 +                notes = "Reduced split bolus part"
 +                val calculation = followUpCalculation(
 +                    timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
-+                    "Remaining before this request ${decimalFormatter.to2Decimal(remainingResidual)}U."
++                    "Remaining before IOB credit ${decimalFormatter.to2Decimal(remainingResidual)}U; credit ${decimalFormatter.to2Decimal(budget.creditedIob)}U; remaining before request ${decimalFormatter.to2Decimal(reducedResidual)}U."
 +                )
 +                uel.log(
 +                    action = Action.BOLUS,
@@ -1807,7 +1850,7 @@ index 811cd2a748..ec69c0f7d5 100644
 +                        else {
 +                            // Rounded to 0.001 so floating-point dust (5.2 - 5.0 - 0.2 = 1.7e-16) is not mistaken for a remainder;
 +                            // the guard at the top of this function then finishes anything under half a pump step.
-+                            val newResidual = Round.roundTo(remainingResidual - thisDose, 0.001)
++                            val newResidual = Round.roundTo(reducedResidual - thisDose, 0.001)
 +                            if (newResidual > 0.0)
 +                                scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
 +                            else
@@ -2627,6 +2670,46 @@ index fd34e33415..3f1371deac 100644
 +
 +    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
  }
+diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitBolusBudget.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitBolusBudget.kt
+new file mode 100644
+index 0000000000..1111111111
+--- /dev/null
++++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitBolusBudget.kt
+@@ -0,0 +1,19 @@
++package app.aaps.core.objects.wizard
++
++import app.aaps.core.interfaces.utils.Round
++import kotlin.math.floor
++import kotlin.math.max
++import kotlin.math.min
++
++data class SplitBolusBudget(val remaining: Double, val dose: Double, val creditedIob: Double)
++
++/** IOB credited against a pending split is removed from its budget, not delayed for later delivery. */
++fun splitBolusBudget(remaining: Double, previousPart: Double, baselineIob: Double, liveIob: Double, step: Double): SplitBolusBudget {
++    val rise = max(0.0, liveIob - baselineIob)
++    val credit = min(remaining, rise)
++    val reducedRemaining = Round.roundTo(max(0.0, remaining - credit), 0.001)
++    val pumpCap = Round.roundTo(floor((reducedRemaining + 1e-9) / step) * step, step)
++    val dose = Round.roundTo(max(0.0, min(previousPart - rise, reducedRemaining)), step)
++        .coerceAtMost(pumpCap)
++    return SplitBolusBudget(reducedRemaining, dose, credit)
++}
+diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt
+new file mode 100644
+index 0000000000..1111111111
+--- /dev/null
++++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt
+@@ -0,0 +1,9 @@
++package app.aaps.core.objects.wizard
++
++enum class SplitHpCheck { Wait, Cancel, Allow }
++
++/** Follow-up carb doses need a recent HP1 prediction from the glucose sample. */
++fun splitHpCheck(hpMilliMmol: Long, measuredAt: Long, now: Long): SplitHpCheck {
++    if (measuredAt <= 0L || measuredAt > now || now - measuredAt > 300_000L) return SplitHpCheck.Wait
++    return if (hpMilliMmol < 4_000L) SplitHpCheck.Cancel else SplitHpCheck.Allow
++}
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardActivitySteps.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardActivitySteps.kt
 new file mode 100644
 index 0000000000..1111111111
@@ -2908,13 +2991,113 @@ index a5b575dd10..d7829fd952 100644
      @SuppressLint("InflateParams")
      fun showConfirmation(context: Context, title: String, message: String, ok: Runnable?, cancel: Runnable? = null) {
          var okClicked = false
+diff --git a/implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitBolusBudgetTest.kt b/implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitBolusBudgetTest.kt
+new file mode 100644
+index 0000000000..1111111111
+--- /dev/null
++++ b/implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitBolusBudgetTest.kt
+@@ -0,0 +1,42 @@
++package app.aaps.implementation.wizard
++
++import app.aaps.core.objects.wizard.splitBolusBudget
++import com.google.common.truth.Truth.assertThat
++import org.junit.jupiter.api.Test
++
++class SplitBolusBudgetTest {
++    @Test fun doseStaysOnPumpStepWithoutExceedingBudget() {
++        val budget = splitBolusBudget(0.43, 0.50, 2.0, 2.0, 0.05)
++        assertThat(budget.remaining).isWithin(0.000001).of(0.43)
++        assertThat(budget.dose).isWithin(0.000001).of(0.40)
++    }
++
++    @Test fun mealRecordDoesNotDeliverCreditedInsulinLater() {
++        val budget = splitBolusBudget(1.95, 2.0, 2.10, 3.65, 0.05)
++        assertThat(budget.creditedIob).isWithin(0.000001).of(1.55)
++        assertThat(budget.remaining).isWithin(0.000001).of(0.40)
++        assertThat(budget.dose).isWithin(0.000001).of(0.40)
++        assertThat(budget.remaining - budget.dose).isWithin(0.000001).of(0.0)
++    }
++
++    @Test fun creditCanFinishSplitWithoutDelivery() {
++        val budget = splitBolusBudget(1.0, 0.5, 2.0, 3.5, 0.05)
++        assertThat(budget.remaining).isEqualTo(0.0)
++        assertThat(budget.dose).isEqualTo(0.0)
++        assertThat(budget.creditedIob).isEqualTo(1.0)
++    }
++
++    @Test fun retryDoesNotCreditSameRiseTwice() {
++        val first = splitBolusBudget(2.0, 0.5, 2.0, 2.8, 0.05)
++        val retry = splitBolusBudget(first.remaining, 0.5, 2.8, 2.8, 0.05)
++        assertThat(first.dose).isEqualTo(0.0)
++        assertThat(retry.remaining).isEqualTo(first.remaining)
++        assertThat(retry.creditedIob).isEqualTo(0.0)
++    }
++
++    @Test fun decayDoesNotRestoreRemovedBudget() {
++        val budget = splitBolusBudget(0.40, 0.45, 4.10, 3.8, 0.05)
++        assertThat(budget.remaining).isWithin(0.000001).of(0.40)
++        assertThat(budget.dose).isWithin(0.000001).of(0.40)
++    }
++}
+diff --git a/implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitHpCheckTest.kt b/implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitHpCheckTest.kt
+new file mode 100644
+index 0000000000..1111111111
+--- /dev/null
++++ b/implementation/src/test/kotlin/app/aaps/implementation/wizard/SplitHpCheckTest.kt
+@@ -0,0 +1,20 @@
++package app.aaps.implementation.wizard
++
++import app.aaps.core.objects.wizard.SplitHpCheck
++import app.aaps.core.objects.wizard.splitHpCheck
++import com.google.common.truth.Truth.assertThat
++import org.junit.jupiter.api.Test
++
++class SplitHpCheckTest {
++    @Test fun freshLowPredictionCancels() {
++        assertThat(splitHpCheck(3800L, 1_000_000L, 1_000_000L)).isEqualTo(SplitHpCheck.Cancel)
++        assertThat(splitHpCheck(4000L, 1_000_000L, 1_000_000L)).isEqualTo(SplitHpCheck.Allow)
++    }
++
++    @Test fun unavailableOrStalePredictionWaits() {
++        assertThat(splitHpCheck(3800L, 0L, 1_000_000L)).isEqualTo(SplitHpCheck.Wait)
++        assertThat(splitHpCheck(3800L, 1_000_000L, 1_300_001L)).isEqualTo(SplitHpCheck.Wait)
++        assertThat(splitHpCheck(3800L, 1_000_001L, 1_000_000L)).isEqualTo(SplitHpCheck.Wait)
++        assertThat(splitHpCheck(4000L, 1_000_000L, 1_300_000L)).isEqualTo(SplitHpCheck.Allow)
++    }
++}
 diff --git a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
-index c78699cf99..3f268edff3 100644
+index c78699cf99..7ef83afaf9 100644
 --- a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
 +++ b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
-@@ -369,7 +369,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
+@@ -87,6 +87,7 @@ import java.util.Locale
+ import javax.inject.Inject
+ import javax.inject.Provider
+ import javax.inject.Singleton
++import kotlin.math.abs
+ import kotlin.math.floor
+ import kotlin.math.max
+ import kotlin.math.min
+@@ -368,8 +369,31 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
+         val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens), preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget)
          val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
          val iobData = iobArray[0]
++        preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, 0L)
++        val hpReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 7 * 60_000L, now, ascending = false)
++        if (hpReadings.size >= 2) {
++            val hpNewest = hpReadings[0]
++            val hpReference = hpReadings.minByOrNull { abs(it.timestamp - (now - 5 * 60_000L)) }
++            val hpRawNow = hpNewest.noise
++            val hpRawBefore = hpReference?.noise
++            if (hpReference != null && hpReference.timestamp != hpNewest.timestamp && hpRawNow != null && hpRawBefore != null) {
++                val hp1 = glucoseStatus.glucose / 18.0182 - iobData.iob +
++                    0.25 * glucoseStatus.shortAvgDelta / 18.0182 +
++                    0.25 * (hpRawNow - hpRawBefore) / 18.0182 + mealData.mealCOB / 12.0
++                if (hp1.isFinite()) {
++                    preferences.put(LongKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1 * 1000).toLong())
++                    preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
++                }
++            }
++        }
          val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
 -        val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
 +        val delayedBolusBlockUntil = preferences.get(LongKey.DelayedBolusBlockSmbUntil)
@@ -2927,7 +3110,7 @@ index c78699cf99..3f268edff3 100644
  
          aapsLogger.debug(LTag.APS, "invoke found step counts 5m:$recentSteps5Minutes, 10m:$recentSteps10Minutes, 15m:$recentSteps15Minutes, 30m:$recentSteps30Minutes, 60m:$recentSteps60Minutes")
          consoleError.clear()
-@@ -543,6 +549,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
+@@ -543,6 +567,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
              determineBasalResult.mealData = mealData
              lastAPSResult = determineBasalResult
              lastAPSRun = now

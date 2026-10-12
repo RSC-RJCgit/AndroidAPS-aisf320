@@ -1543,9 +1543,9 @@ class BolusWizard @Inject constructor(
     // given, plus that dose's own amount" (i.e. IOB right AFTER the previous dose joined the pool). At
     // delivery time, iobIncrease = max(0, liveIob - iobBaselineForNextGap) — only a genuine rise counts;
     // if IOB net fell during the gap (decay outpacing anything new), the dose stays at previousPartDose,
-    // never gets boosted. thisDose = previousPartDose - iobIncrease; if that's <=0, this interval is
-    // skipped and retried at the next one (IOB may have risen only temporarily, e.g. from an SMB, and
-    // decayed back down by then) rather than dropping the whole remaining residual outright.
+    // never gets boosted. The rise also permanently reduces remainingResidual. Credited insulin
+    // is not owed again after IOB decays. thisDose is capped by that reduced remainder. A skipped
+    // interval carries the reduced budget and advances the baseline so a rise is credited once.
     //
     // Changed 2026-10-01, per explicit request, after real data showed a fixed "3 consecutive unsafe
     // checks" cancel (~14-21min into an unsafe run at the default 7min interval) was too short to
@@ -1562,6 +1562,13 @@ class BolusWizard @Inject constructor(
     // rise like 15 Sep's, instead of writing off the residual ~20min into it. The hard-stop conditions
     // above (explicit cancel, superseded, profile switch, pump unavailable and superbolus) still end
     // the schedule immediately regardless of retryDeadline.
+    private fun cappedFollowUpDose(candidate: Double, step: Double): Double? {
+        val at = preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqAt)
+        val requirement = preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU)
+        if (at != preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqAt)) return null
+        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
+    }
+
     private fun scheduleReducedPartsSplitBolus(
         remainingResidual: Double, previousPartDose: Double, iobBaselineForNextGap: Double, intervalMins: Int, schedulingPct: Int, myScheduleToken: Long,
         deliverAt: Long = dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
@@ -1636,6 +1643,28 @@ class BolusWizard @Inject constructor(
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
+            val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
+            val hpValue = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
+            val hpCheck = if (hpAt == preferences.get(LongKey.ApsAutoIsfLastCycleHp1At))
+                splitHpCheck(hpValue, hpAt, dateUtil.now()) else SplitHpCheck.Wait
+            when (hpCheck) {
+                SplitHpCheck.Cancel -> {
+                    aapsLogger.info(LTag.CORE, "ReducedSplitBolus: HP1 below 4.0 mmol/L — cancelling remaining ${remainingResidual}U")
+                    writeLastSkippedZero(lastSkippedZero)
+                    cancelDoseNote(remainingResidual, "HP1 below 4.0 mmol/L", "Carb split", iobBaselineForNextGap)
+                    setSplitPendingRemaining(0.0)
+                    return@postDelayed
+                }
+                SplitHpCheck.Wait -> {
+                    aapsLogger.info(LTag.CORE, "ReducedSplitBolus: HP1 missing or stale — retrying in 2min, remaining ${remainingResidual}U")
+                    scheduleReducedPartsSplitBolus(
+                        remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
+                        dateUtil.now() + T.mins(2).msecs(), retryDeadline, lastSkippedZero
+                    )
+                    return@postDelayed
+                }
+                SplitHpCheck.Allow -> Unit
+            }
             // Live BG safety gate — checked fresh at delivery time via glucoseStatusProvider, not the
             // wizard's own glucoseStatus field (that was only ever captured once, at calc time). Split
             // into two cases: missing/stale data (gs == null, e.g. a sensor gap >7min — see
@@ -1679,18 +1708,33 @@ class BolusWizard @Inject constructor(
             }
             val liveIob = currentTotalIob()
             val iobIncrease = max(0.0, liveIob - iobBaselineForNextGap)
-            val thisDose = Round.roundTo(min(previousPartDose - iobIncrease, remainingResidual), activePlugin.activePump.pumpDescription.bolusStep)
+            val budget = splitBolusBudget(remainingResidual, previousPartDose, iobBaselineForNextGap, liveIob, pumpStepForResidual)
+            val reducedResidual = budget.remaining
+            val cappedDose = cappedFollowUpDose(budget.dose, pumpStepForResidual)
+            val thisDose = cappedDose ?: 0.0
+            setSplitPendingRemaining(reducedResidual)
+            if (budget.creditedIob > 0.0) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: removed ${budget.creditedIob}U from pending budget for IOB rise; ${reducedResidual}U remains")
+            }
+            if (reducedResidual < pumpStepForResidual / 2.0) {
+                writeLastSkippedZero(lastSkippedZero)
+                cancelDoseNote(remainingResidual, "IOB rise covers remaining split", "Carb split", iobBaselineForNextGap)
+                setSplitPendingRemaining(0.0)
+                return@postDelayed
+            }
             if (thisDose <= 0) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: IOB rose ${iobIncrease}U since last split (baseline ${iobBaselineForNextGap}U, now ${liveIob}U) — next dose would be <=0, retrying next interval, remaining ${remainingResidual}U")
+                val reason = if (cappedDose == null) "insulinReq missing or stale" else if (budget.dose > 0.0) "insulinReq cap is below one pump step" else "IOB rise covers next part"
+                val retryMins = if (budget.dose > 0.0) 2 else intervalMins
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: $reason — retrying in ${retryMins}min, remaining ${reducedResidual}U")
                 // Deferred (2026-09-20): nothing is written for a skip now; the latest one is remembered and written once,
                 // only if the split ends without delivering (see writeLastSkippedZero / terminal paths above).
                 val skippedCalc = followUpCalculation(
                     dateUtil.now(), "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, 0.0,
-                    "No insulin delivered. Remaining ${decimalFormatter.to2Decimal(remainingResidual)}U; retry in ${intervalMins}min."
+                    "No insulin delivered: $reason. IOB credit ${decimalFormatter.to2Decimal(budget.creditedIob)}U; remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; retry in ${retryMins}min."
                 )
                 scheduleReducedPartsSplitBolus(
-                    remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
-                    dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline,
+                    reducedResidual, previousPartDose, max(iobBaselineForNextGap, liveIob), intervalMins, schedulingPct, myScheduleToken,
+                    dateUtil.now() + T.mins(retryMins.toLong()).msecs(), retryDeadline,
                     lastSkippedZero = SkippedZero(iobIncrease, skippedCalc)
                 )
                 return@postDelayed
@@ -1701,7 +1745,7 @@ class BolusWizard @Inject constructor(
                 notes = "Reduced split bolus part"
                 val calculation = followUpCalculation(
                     timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
-                    "Remaining before this request ${decimalFormatter.to2Decimal(remainingResidual)}U."
+                    "Remaining before IOB credit ${decimalFormatter.to2Decimal(remainingResidual)}U; credit ${decimalFormatter.to2Decimal(budget.creditedIob)}U; remaining before request ${decimalFormatter.to2Decimal(reducedResidual)}U; dose after insulinReq cap ${decimalFormatter.to2Decimal(thisDose)}U."
                 )
                 uel.log(
                     action = Action.BOLUS,
@@ -1718,7 +1762,7 @@ class BolusWizard @Inject constructor(
                         else {
                             // Rounded to 0.001 so floating-point dust (5.2 - 5.0 - 0.2 = 1.7e-16) is not mistaken for a remainder;
                             // the guard at the top of this function then finishes anything under half a pump step.
-                            val newResidual = Round.roundTo(remainingResidual - thisDose, 0.001)
+                            val newResidual = Round.roundTo(reducedResidual - thisDose, 0.001)
                             if (newResidual > 0.0)
                                 scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
                             else
@@ -1792,17 +1836,17 @@ class BolusWizard @Inject constructor(
             // A check failed at/after the due time: re-check in 10 min unless that would be inside the last 10 min before the
             // next FPU part is due (30 min after its own due time for the last part), in which case drop it as expired.
             // The dose stays counted in the Warsaw pending total while it waits. onExpired runs only on that final drop.
-            fun deferOrCancel(logReason: String, noteReason: String, withLabel: Boolean = true, onExpired: (() -> Unit)? = null) {
+            fun deferOrCancel(logReason: String, noteReason: String, withLabel: Boolean = true, forceRetry: Boolean = false, onExpired: (() -> Unit)? = null) {
                 val retryAt = dateUtil.now() + T.mins(10).msecs()
                 val deadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
-                if (retryLater && retryAt <= deadline) {
+                if ((retryLater || forceRetry) && retryAt <= deadline) {
                     aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — deferring ${dose}U, re-check at ${dateUtil.timeString(retryAt)} (window ends ${dateUtil.timeString(deadline)})")
                     if (!deferNoted) deferDoseNote(dose, noteReason)
                     scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, retryAt, isLast, nextDueAt, firstDueAt, true, retryLater)
                 } else {
                     aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — ${if (retryLater) "retry window over, " else ""}cancelling ${dose}U")
                     onExpired?.invoke()
-                    val expired = if (retryLater) "$noteReason (not delivered within the retry window)" else noteReason
+                    val expired = if (retryLater || forceRetry) "$noteReason (not delivered within the retry window)" else noteReason
                     if (withLabel) cancelDoseNote(dose, expired, label, iobBaseline) else cancelDoseNote(dose, expired)
                     decrementWarsawPendingRemaining(dose)
                 }
@@ -1828,8 +1872,9 @@ class BolusWizard @Inject constructor(
             }
             val liveIob = currentTotalIob()
             val iobIncrease = max(0.0, liveIob - iobBaseline)
-            val thisDose = Round.roundTo(dose - iobIncrease, activePlugin.activePump.pumpDescription.bolusStep)
-            if (thisDose <= 0) {
+            val pumpStep = activePlugin.activePump.pumpDescription.bolusStep
+            val iobAdjustedDose = Round.roundTo(dose - iobIncrease, pumpStep)
+            if (iobAdjustedDose <= 0) {
                 deferOrCancel(
                     "IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0",
                     "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U",
@@ -1843,24 +1888,45 @@ class BolusWizard @Inject constructor(
                 }
                 return@postDelayed
             }
+            val thisDose = cappedFollowUpDose(iobAdjustedDose, pumpStep)
+            if (thisDose == null || thisDose <= 0.0) {
+                val reason = if (thisDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
+                deferOrCancel(reason, "$label dose: $reason", forceRetry = true)
+                return@postDelayed
+            }
+            val capResidual = Round.roundTo(max(0.0, iobAdjustedDose - thisDose), 0.001)
+            val capRemaining = if (capResidual >= pumpStep / 2.0) capResidual else 0.0
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Delayed $label dose"
-                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "")
+                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "Dose after insulinReq cap; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.")
                 uel.log(
                     action = Action.BOLUS,
                     source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
                     note = notes,
                     listValues = listOf(ValueWithUnit.Insulin(thisDose))
                 )
-                decrementWarsawPendingRemaining(dose)
+                decrementWarsawPendingRemaining(dose - capRemaining)
                 commandQueue.bolus(this, object : Callback() {
                     override fun run() {
                         calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
                         persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
-                        if (!result.success)
+                        if (!result.success) {
+                            decrementWarsawPendingRemaining(capRemaining)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+                        }
+                        else if (capRemaining >= pumpStep / 2.0) {
+                            val retryAt = dateUtil.now() + T.mins(10).msecs()
+                            val deadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
+                            if (retryAt <= deadline) {
+                                scheduleSingleDelayedDose(capRemaining, delayMins, label, schedulingPct, liveIob + thisDose, myScheduleToken,
+                                    retryAt, isLast, nextDueAt, firstDueAt, false, retryLater)
+                            } else {
+                                cancelDoseNote(capRemaining, "$label dose: insulinReq-limited remainder expired", label, liveIob + thisDose)
+                                decrementWarsawPendingRemaining(capRemaining)
+                            }
+                        }
                     }
                 })
             }
