@@ -3515,6 +3515,1184 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         lastRunTimestamps[key] = dateUtil.now()
     }
 
+    // Keep these non-inline: the JVM limits each method to 65535 bytes of bytecode.
+    private fun applyRemoteWeightAndOffsetActions(glucoseStatus: GlucoseStatus) {
+        // --- SmbDeliveryDownTT: manually setting a TT of 5.02 mmol is used as a remote -0.01 nudge on
+        // both SMB delivery settings (ApsAutoIsfSmbDeliveryBaseline, ApsAutoIsfMildBoostRatio) — not a
+        // real target. Clamped to each key's own min (0.1 for both). Same activeTtNear()/cancel/notify
+        // pattern as SensorAgeToggleTT/BoostToggleTT above. Tight 0.001mmol tolerance (not the usual
+        // 0.02) — 5.02 and 5.04 (SmbDeliveryUpTT) are only 0.02mmol apart, so 0.02 tolerance would make
+        // their windows overlap each other (and creep into 5.0's own "own boost TT" territory).
+        if (readyToRun("SmbDeliveryDownTT", 2) && activeTtNear(5.002, 0.0001)) {
+            val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) - 0.01).coerceAtLeast(0.1)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.01).coerceAtLeast(0.1)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
+            cancelCurrentTempTarget()
+            sendSms("SmbDeliveryDown: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
+            addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true))
+            addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true))
+            markRun("SmbDeliveryDownTT")
+        }
+
+        // --- SmbDeliveryUpTT: manually setting a TT of 5.04 mmol is used as a remote +0.01 nudge on
+        // both SMB delivery settings, clamped to each key's own max -- 0.5 for ApsAutoIsfSmbDeliveryBaseline,
+        // 1.0 for ApsAutoIsfMildBoostRatio (widened 2026-08-29, see DoubleKey.kt; this combined block's own
+        // ±0.01 step is untouched, unlike the dedicated MildBoostDownTT/UpTT pair below which now steps by
+        // 0.25). Same pattern and same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
+        if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.004, 0.0001)) {
+            val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) + 0.01).coerceAtMost(0.5)
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
+            cancelCurrentTempTarget()
+            sendSms("SmbDeliveryUp: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
+            addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true))
+            addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true))
+            markRun("SmbDeliveryUpTT")
+        }
+
+        // --- PpWeightDownTT: manually setting a TT of 5.12 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfPpWeightNormal (ppISFwt_orig), clamped to its own min (0.0) — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the SmbDelivery*/SensorAge/Boost toggle TTs above.
+        if (readyToRun("PpWeightDownTT", 2) && activeTtNear(5.012, 0.0001)) {
+            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+            val newPp = (currentPp - 0.01).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
+            // If the live weight currently equals its own baseline (nothing has it diverged away right
+            // now), nudge both together so the change is felt immediately — otherwise only the baseline
+            // moves, leaving whatever's currently overriding it undisturbed until it next restores.
+            if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive - 0.01).coerceAtLeast(0.0))
+            cancelCurrentTempTarget()
+            sendSms("PpWeightDown: ppISFwt_orig=${round(newPp, 2)}")
+            addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true))
+            markRun("PpWeightDownTT")
+        }
+
+        // --- PpWeightUpTT: manually setting a TT of 5.14 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfPpWeightNormal, clamped to its own max (0.15). Same pattern as PpWeightDownTT above.
+        if (readyToRun("PpWeightUpTT", 2) && activeTtNear(5.014, 0.0001)) {
+            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+            val newPp = (currentPp + 0.01).coerceAtMost(0.15)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
+            if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive + 0.01).coerceAtMost(0.15))
+            cancelCurrentTempTarget()
+            sendSms("PpWeightUp: ppISFwt_orig=${round(newPp, 2)}")
+            addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true))
+            markRun("PpWeightUpTT")
+        }
+
+        // --- PpWeightHighDownTT: manually setting a TT of 5.056 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfPpWeightHigh (ppISFwt_high — the boosted value the 7 fast-rise automations set,
+        // previously a hardcoded 0.15 literal in each), clamped to its own min (0.0) — not a real target.
+        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. No dual-update:
+        // unlike PpWeightNormal/PpWeight, this only ever gets written into the live weight transiently
+        // when a boost automation actually fires, not continuously.
+        if (readyToRun("PpWeightHighDownTT", 2) && activeTtNear(5.056, 0.0001)) {
+            val currentPpHigh = preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)
+            val newPpHigh = (currentPpHigh - 0.01).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
+            cancelCurrentTempTarget()
+            sendSms("PpWeightHighDown: ppISFwt_high=${round(newPpHigh, 2)}")
+            addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true))
+            markRun("PpWeightHighDownTT")
+        }
+
+        // --- PpWeightHighUpTT: manually setting a TT of 5.058 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfPpWeightHigh, clamped to its own max (0.15). Same pattern as PpWeightHighDownTT above.
+        if (readyToRun("PpWeightHighUpTT", 2) && activeTtNear(5.058, 0.0001)) {
+            val currentPpHigh = preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)
+            val newPpHigh = (currentPpHigh + 0.01).coerceAtMost(0.15)
+            preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
+            cancelCurrentTempTarget()
+            sendSms("PpWeightHighUp: ppISFwt_high=${round(newPpHigh, 2)}")
+            addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true))
+            markRun("PpWeightHighUpTT")
+        }
+
+        // --- PpWeightRevertUnder8_5: genuine automatic (not TT-triggered) counterpart to the boost
+        // automations that set ApsAutoIsfPpWeight to 0.15 (BolusGiven, BolusGivenMild, High6PP,
+        // HighOldPod, PodChangeHighPP130, OldPod2, RecentPod) — always-on, fires whenever the live PP
+        // weight currently differs from its own baseline (ApsAutoIsfPpWeightNormal) AND either BG is
+        // back under 8.5mmol OR recent activity is high enough — same recentSteps5Minutes/
+        // recentSteps30Minutes thresholds (100/200) already used as the movement-guard BLOCKER in
+        // BolusGiven/BolusGivenMild/bg3's own fire conditions, plus bg3's own extra recentSteps60Minutes
+        // (300) gate, all reused here as POSITIVE triggers instead: active movement is independent
+        // evidence the elevated PP weight is no longer needed. No profile%/TT preconditions: unlike the
+        // 6 existing restore automations (Usual2forTH/CarbsTHoff/etc.), this is a direct rule — it can
+        // revert PP even while a boost's own profile% duration is still running. 5-min throttle is a
+        // defensive backstop only; the fuzzyEquals check already makes this a no-op once reverted.
+        // Nested acce check: under the same trigger (BG<8.5mmol or high activity), also revert
+        // ApsAutoIsfBgAccelWeight to its own baseline (ApsAutoIsfBgAccelWeightNormal) if it's currently
+        // ABOVE baseline — deliberately one-directional (only reverts an elevated/boosted acce, never
+        // touches a legitimately-reduced protective acce like NightAcce's 0.35 or GentleHypoRisk's
+        // 0.07/0.02, which sit below baseline and are unrelated to this rule).
+        //
+        // Fixed 2026-09-13: this had NO grace period at all -- the 5-min readyToRun above only throttles
+        // REPEAT fires, it does not delay the FIRST one, so this could (and, confirmed against real
+        // 2026-09-12 data, routinely did) revert a boost within 1 cycle of it being set, sometimes on
+        // the very same minute. All three trigger conditions are individually easy to satisfy at almost
+        // any moment in a normal day (BG<8.5mmol is exactly the range these boosts are meant to act in
+        // -- they exist to catch a RISE starting low, not one already high; genuine movement is common;
+        // "no raw Libre >12mmol in 48h" can span a whole quiet day) -- so in practice the elevated PP/
+        // acce weight almost never got to persist long enough to do the job the boost automations set it
+        // for, regardless of whether the rise that justified it was still ongoing. Real evidence: BMild
+        // fired at 08:41 PM 12 Sep 2026 (Virtual), reverted at 08:42 PM -- one minute later, BG still
+        // only 7.9mmol, nowhere near resolved. Fix: require that NONE of the 7 boost automations this
+        // revert exists to counter (named in this block's own comment above) has fired within the last
+        // 15 minutes, before allowing a revert -- gives the boost an actual window to act, still reverts
+        // reasonably promptly once genuinely stale. 15 min is a first estimate, not yet verified against
+        // real data -- retune if boosts still get cut short, or if stale weights now linger too long.
+        if (readyToRun("PpWeightRevertUnder8_5", 5)) {
+            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
+            val baselinePp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
+            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val baselineAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+            val lowBg = glucoseStatus.glucose < 153.1 /* 8.5 mmol */
+            val activeMovement = recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300
+            // No genuine recent high (raw Libre >12.0mmol within 48h) is also grounds to revert -- the
+            // elevated PP/acce weights are calibrated against a genuinely-occurring high, not a stale one.
+            val noRecentHigh = !recentLibreOver12(48)
+            val trigger = lowBg || activeMovement || noRecentHigh
+            // Added 2026-09-13: HighDaytimeBrake/HighEveNightBrake (HiBrkDay/HiBrkDayMid) were missing
+            // from this list despite calling the SAME applyBMildOutcomeFactors() that elevates PP weight
+            // (see its own ApsAutoIsfPpWeight=PpWeightHigh line) -- confirmed against real same-day data
+            // (13 Sep 01:27-01:38 PM): PPrv reverted HiBrkDayMid's PP weight within 1 minute of it firing,
+            // over and over (same 6-14min fire/revert/cut cycle repeating all afternoon), exactly the
+            // failure mode this whole grace-period mechanism exists to prevent -- just missed for this
+            // one automation pair when the list above was built.
+            val recentPpBoostFire = !readyToRun("BolusGiven", 15) || !readyToRun("BolusGivenMild", 15) ||
+                !readyToRun("High6PP", 15) || !readyToRun("HighOldPod", 15) ||
+                !readyToRun("PodChangeHighPP130", 15) || !readyToRun("OldPod2", 15) || !readyToRun("RecentPod", 15) ||
+                !readyToRun("HighDaytimeBrake", 15) || !readyToRun("HighEveNightBrake", 15)
+            val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger && !recentPpBoostFire
+            val acceNeedsRevert = currentAcce > baselineAcce && trigger && !recentPpBoostFire
+            if (ppNeedsRevert || acceNeedsRevert) {
+                if (ppNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
+                if (acceNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, baselineAcce)
+                val reason = if (lowBg) "BG<8.5mmol" else if (activeMovement) "activity" else "noRecentHigh48h"
+                val what = when {
+                    ppNeedsRevert && acceNeedsRevert -> "ppISFwt=${round(baselinePp, 2)} acceISFwt=${round(baselineAcce, 2)}"
+                    ppNeedsRevert                    -> "ppISFwt=${round(baselinePp, 2)}"
+                    else                              -> "acceISFwt=${round(baselineAcce, 2)}"
+                }
+                sendSms("PpWeightRevert: $what ($reason)")
+                val note = if (ppNeedsRevert && acceNeedsRevert) "PArv" else if (ppNeedsRevert) "PPrv" else "ACrv"
+                addCarePortalNote(note)
+                markRun("PpWeightRevertUnder8_5")
+            }
+        }
+
+        // --- AcceWeightDownTT: manually setting a TT of 5.16 mmol is used as a remote -0.05 nudge on
+        // ApsAutoIsfBgAccelWeightNormal (acceISFwt_orig), clamped to a min of 0.55 — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("AcceWeightDownTT", 2) && activeTtNear(5.016, 0.0001)) {
+            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val newAcce = (currentAcce - 0.05).coerceAtLeast(0.55)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
+            if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive - 0.05).coerceAtLeast(0.55))
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightDown: acceISFwt_orig=${round(newAcce, 2)}")
+            addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true))
+            markRun("AcceWeightDownTT")
+        }
+
+        // --- AcceWeightUpTT: manually setting a TT of 5.18 mmol is used as a remote +0.05 nudge on
+        // ApsAutoIsfBgAccelWeightNormal, clamped to a max of 1.00. Same pattern as AcceWeightDownTT above.
+        if (readyToRun("AcceWeightUpTT", 2) && activeTtNear(5.018, 0.0001)) {
+            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
+            val newAcce = (currentAcce + 0.05).coerceAtMost(1.00)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
+            if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive + 0.05).coerceAtMost(1.00))
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
+            addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true))
+            markRun("AcceWeightUpTT")
+        }
+
+        // --- AcceWeightHighDownTT: manually setting a TT of 5.062 mmol is used as a remote -0.01 nudge
+        // on ApsAutoIsfBgAccelWeightHigh (acceISFwt_high — the boosted value OldPod2/RecentPod/AcceUp0.5
+        // set, previously a hardcoded 0.95 literal in each), clamped to its own min (0.0) — not a real
+        // target. Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. No
+        // dual-update: unlike AcceWeightNormal/AcceWeight, this only ever gets written into the live
+        // weight transiently when a boost automation actually fires, not continuously.
+        if (readyToRun("AcceWeightHighDownTT", 2) && activeTtNear(5.062, 0.0001)) {
+            val currentAcceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
+            val newAcceHigh = (currentAcceHigh - 0.01).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightHighDown: acceISFwt_high=${round(newAcceHigh, 2)}")
+            addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true))
+            markRun("AcceWeightHighDownTT")
+        }
+
+        // --- AcceWeightHighUpTT: manually setting a TT of 5.064 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfBgAccelWeightHigh, clamped to its own max (1.00). Same pattern as
+        // AcceWeightHighDownTT above.
+        if (readyToRun("AcceWeightHighUpTT", 2) && activeTtNear(5.064, 0.0001)) {
+            val currentAcceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
+            val newAcceHigh = (currentAcceHigh + 0.01).coerceAtMost(1.00)
+            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
+            cancelCurrentTempTarget()
+            sendSms("AcceWeightHighUp: acceISFwt_high=${round(newAcceHigh, 2)}")
+            addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true))
+            markRun("AcceWeightHighUpTT")
+        }
+
+        // --- HigherIsfRangeWeightDownTT: manually setting a TT of 5.068 mmol is used as a remote -0.1 nudge on
+        // ApsAutoIsfHighBgWeight (higher_ISFrange_weight), clamped to a min of 0.0 — not a real target. Same
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("HigherIsfRangeWeightDownTT", 2) && activeTtNear(5.068, 0.0001)) {
+            val currentHigh = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
+            val newHigh = (currentHigh - 0.1).coerceAtLeast(0.0)
+            preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
+            cancelCurrentTempTarget()
+            sendSms("HigherIsfRangeWeightDown: higher_ISFrange_weight=${round(newHigh, 2)}")
+            addCarePortalNote(compactSettingNote("HI", newHigh, 1))
+            markRun("HigherIsfRangeWeightDownTT")
+        }
+
+        // --- HigherIsfRangeWeightUpTT: manually setting a TT of 5.070 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfHighBgWeight, clamped to a max of 2.0. Same pattern as HigherIsfRangeWeightDownTT above.
+        if (readyToRun("HigherIsfRangeWeightUpTT", 2) && activeTtNear(5.070, 0.0001)) {
+            val currentHigh = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
+            val newHigh = (currentHigh + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
+            cancelCurrentTempTarget()
+            sendSms("HigherIsfRangeWeightUp: higher_ISFrange_weight=${round(newHigh, 2)}")
+            addCarePortalNote(compactSettingNote("HI", newHigh, 1))
+            markRun("HigherIsfRangeWeightUpTT")
+        }
+
+        // --- PeakInsulinTimeDownTT: manually setting a TT of 5.074 mmol is used as a remote -5 nudge on
+        // InsulinOrefPeak (peak insulin activity time, minutes), clamped to its own min (35) — not a real
+        // target. Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("PeakInsulinTimeDownTT", 2) && activeTtNear(5.074, 0.0001)) {
+            val newPeak = (preferences.get(IntKey.InsulinOrefPeak) - 5).coerceAtLeast(35)
+            preferences.put(IntKey.InsulinOrefPeak, newPeak)
+            cancelCurrentTempTarget()
+            sendSms("PeakInsulinTimeDown: insulinPeak=$newPeak")
+            addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak))
+            markRun("PeakInsulinTimeDownTT")
+        }
+
+        // --- PeakInsulinTimeUpTT: manually setting a TT of 5.076 mmol is used as a remote +5 nudge on
+        // InsulinOrefPeak, clamped to its own max (120). Same pattern as PeakInsulinTimeDownTT above.
+        if (readyToRun("PeakInsulinTimeUpTT", 2) && activeTtNear(5.076, 0.0001)) {
+            val newPeak = (preferences.get(IntKey.InsulinOrefPeak) + 5).coerceAtMost(120)
+            preferences.put(IntKey.InsulinOrefPeak, newPeak)
+            cancelCurrentTempTarget()
+            sendSms("PeakInsulinTimeUp: insulinPeak=$newPeak")
+            addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak))
+            markRun("PeakInsulinTimeUpTT")
+        }
+
+        // --- AutoIsfMaxLowDownTT: manually setting a TT of 5.080 mmol is used as a remote -0.1 nudge on
+        // ApsAutoIsfMaxLow (autoISF_max_low — not yet wired into any calculation, see DoubleKey.kt),
+        // clamped to a min of 1.0 — not a real target. Same pattern/tight 0.0001mmol tolerance as the
+        // other settings-nudge TTs above.
+        if (readyToRun("AutoIsfMaxLowDownTT", 2) && activeTtNear(5.080, 0.0001)) {
+            val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) - 0.1).coerceAtLeast(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxLowDown: autoISF_max_low=${round(newMaxLow, 2)}")
+            addCarePortalNote(compactSettingNote("ML", newMaxLow, 1))
+            markRun("AutoIsfMaxLowDownTT")
+        }
+
+        // --- AutoIsfMaxLowUpTT: manually setting a TT of 5.082 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfMaxLow, clamped to a max of 3.0. Same pattern as AutoIsfMaxLowDownTT above.
+        if (readyToRun("AutoIsfMaxLowUpTT", 2) && activeTtNear(5.082, 0.0001)) {
+            val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) + 0.1).coerceAtMost(3.0)
+            preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxLowUp: autoISF_max_low=${round(newMaxLow, 2)}")
+            addCarePortalNote(compactSettingNote("ML", newMaxLow, 1))
+            markRun("AutoIsfMaxLowUpTT")
+        }
+
+        // --- AutoIsfMaxNormalDownTT: manually setting a TT of 5.086 mmol is used as a remote -0.1 nudge
+        // on ApsAutoIsfMax (autoISF_max — the existing, already-live setting; "Normal" here just
+        // distinguishes it from AutoIsfMaxLow above), clamped to a min of 1.0 — not a real target. Same
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("AutoIsfMaxNormalDownTT", 2) && activeTtNear(5.086, 0.0001)) {
+            val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) - 0.1).coerceAtLeast(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxNormalDown: autoISF_max=${round(newMax, 2)}")
+            addCarePortalNote(compactSettingNote("MN", newMax, 1))
+            markRun("AutoIsfMaxNormalDownTT")
+        }
+
+        // --- AutoIsfMaxNormalUpTT: manually setting a TT of 5.088 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfMax, clamped to a max of 3.0. Same pattern as AutoIsfMaxNormalDownTT above.
+        if (readyToRun("AutoIsfMaxNormalUpTT", 2) && activeTtNear(5.088, 0.0001)) {
+            val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) + 0.1).coerceAtMost(3.0)
+            preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
+            cancelCurrentTempTarget()
+            sendSms("AutoIsfMaxNormalUp: autoISF_max=${round(newMax, 2)}")
+            addCarePortalNote(compactSettingNote("MN", newMax, 1))
+            markRun("AutoIsfMaxNormalUpTT")
+        }
+
+        // --- TodOffset*TT (8 pairs, T1-T8): manually setting a TT of 5.092-5.136 mmol is used as a
+        // remote +/-0.1 nudge on one of the 8 fixed time-of-day varOffset windows (ApsAutoIsfTodOffset*,
+        // see DetermineBasalAutoISF.kt), clamped to +/-2.0 — not a real target. T1=00-02h, T2=02-04h,
+        // T3=04-06h, T4=06-09h, T5=09-12h, T6=12-18h, T7=18-22h, T8=22-00h. Same pattern/tight 0.0001mmol
+        // tolerance as the other settings-nudge TTs above.
+        if (readyToRun("TodOffset0002DownTT", 2) && activeTtNear(5.092, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0002Down: tod_offset_0002=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0002DownTT")
+        }
+        if (readyToRun("TodOffset0002UpTT", 2) && activeTtNear(5.094, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0002Up: tod_offset_0002=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0002UpTT")
+        }
+        if (readyToRun("TodOffset0204DownTT", 2) && activeTtNear(5.098, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0204Down: tod_offset_0204=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0204DownTT")
+        }
+        if (readyToRun("TodOffset0204UpTT", 2) && activeTtNear(5.100, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0204Up: tod_offset_0204=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0204UpTT")
+        }
+        if (readyToRun("TodOffset0406DownTT", 2) && activeTtNear(5.104, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0406Down: tod_offset_0406=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0406DownTT")
+        }
+        if (readyToRun("TodOffset0406UpTT", 2) && activeTtNear(5.106, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0406Up: tod_offset_0406=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0406UpTT")
+        }
+        if (readyToRun("TodOffset0609DownTT", 2) && activeTtNear(5.110, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0609Down: tod_offset_0609=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0609DownTT")
+        }
+        if (readyToRun("TodOffset0609UpTT", 2) && activeTtNear(5.112, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0609Up: tod_offset_0609=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0609UpTT")
+        }
+        if (readyToRun("TodOffset0912DownTT", 2) && activeTtNear(5.116, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0912Down: tod_offset_0912=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0912DownTT")
+        }
+        if (readyToRun("TodOffset0912UpTT", 2) && activeTtNear(5.118, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset0912Up: tod_offset_0912=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset0912UpTT")
+        }
+        if (readyToRun("TodOffset1218DownTT", 2) && activeTtNear(5.122, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1218Down: tod_offset_1218=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset1218DownTT")
+        }
+        if (readyToRun("TodOffset1218UpTT", 2) && activeTtNear(5.124, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1218Up: tod_offset_1218=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset1218UpTT")
+        }
+        if (readyToRun("TodOffset1822DownTT", 2) && activeTtNear(5.128, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1822Down: tod_offset_1822=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset1822DownTT")
+        }
+        if (readyToRun("TodOffset1822UpTT", 2) && activeTtNear(5.130, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset1822Up: tod_offset_1822=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset1822UpTT")
+        }
+        if (readyToRun("TodOffset2200DownTT", 2) && activeTtNear(5.134, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) - 0.1).coerceAtLeast(-2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset2200Down: tod_offset_2200=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset2200DownTT")
+        }
+        if (readyToRun("TodOffset2200UpTT", 2) && activeTtNear(5.136, 0.0001)) {
+            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) + 0.1).coerceAtMost(2.0)
+            preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
+            cancelCurrentTempTarget()
+            sendSms("TodOffset2200Up: tod_offset_2200=${round(newVal, 2)}")
+            addCarePortalNote(todOffsetCarePortalNote(newVal))
+            markRun("TodOffset2200UpTT")
+        }
+    }
+
+    private fun applyRemoteDisplayAndRoleActions() {
+        // --- Graph2ToggleTT: manually setting a TT of 5.138 mmol is used as a remote toggle for
+        // ApsAutoIsfShowCarbModelCurve (the "graph2" carb model curve display) — not a real target.
+        // Next value after TodOffset2200UpTT's 5.136 in the settings-nudge TT cluster. Same
+        // activeTtNear()/cancel/notify/toggle pattern as SensorAgeToggleTT/BoostToggleTT above.
+        if (readyToRun("Graph2ToggleTT", 2) && activeTtNear(5.138, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
+            preferences.put(BooleanKey.ApsAutoIsfShowCarbModelCurve, newState)
+            cancelCurrentTempTarget()
+            sendSms("Graph2Toggle: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("G2${if (newState) "On" else "Off"}")
+            markRun("Graph2ToggleTT")
+        }
+
+        // --- Graph5ToggleTT: manually setting a TT of 5.142 mmol is used as a remote toggle for
+        // ApsAutoIsfShowGraph5 (the 5th graph — a fixed clone of the main graph, minus basal) — not a
+        // real target. Next value after Graph2ToggleTT's 5.138 / CloudLogsUploadTT's 5.140. Same
+        // activeTtNear()/cancel/notify/toggle pattern as Graph2ToggleTT above. Independent switch —
+        // deliberately does not touch graphs 2/3/4's own settings.
+        if (readyToRun("Graph5ToggleTT", 2) && activeTtNear(5.142, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowGraph5)
+            preferences.put(BooleanKey.ApsAutoIsfShowGraph5, newState)
+            cancelCurrentTempTarget()
+            sendSms("Graph5Toggle: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("G5${if (newState) "On" else "Off"}")
+            markRun("Graph5ToggleTT")
+        }
+
+        // --- MjStateNoMjTT / MjStateMj3TT: manually setting a TT of 5.144 / 5.146 mmol sets the MJ
+        // automation state directly to NOMJremains / MJ3 — not real targets. Next values after
+        // Graph5ToggleTT's 5.142. Paired in ttCodesList() as a single TtCode.Stepped row ("MJ state"),
+        // so the two land as the pair of mutually-exclusive checkboxes in that row's confirm dialog
+        // rather than as two separate scannable entries.
+        //
+        // A manual override, deliberately unconditional: every other writer of this state is gated on
+        // time and/or BGL (MJ2old 02:10-03:10, MJ3old 01:05-02:05, MoreMJ 06:00-23:59 plus its own
+        // condition tree), which is exactly why a stuck state can't always be corrected from within the
+        // automations. Same activeTtNear()/cancel/notify pattern as the other remote-signal TTs above;
+        // no toggle state, each fires once per TT-set. Kept as two one-way setters rather than one
+        // toggling TT so the resulting state is always known from which code was sent, never dependent
+        // on what the state happened to be beforehand.
+        if (readyToRun("MjStateNoMjTT", 2) && activeTtNear(5.144, 0.0001)) {
+            setAutomationState("MJ", "NOMJremains")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: NOMJremains")
+            addCarePortalNote("MJsNO")
+            markRun("MjStateNoMjTT")
+        }
+
+        if (readyToRun("MjStateMj3TT", 2) && activeTtNear(5.146, 0.0001)) {
+            setAutomationState("MJ", "MJ3")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: MJ3")
+            addCarePortalNote("MJs3")
+            markRun("MjStateMj3TT")
+        }
+
+        // MjStateActiveTT / MjStateMj2TT (5.222/5.224) -- added 2026-09-17, same unconditional
+        // manual-override shape as MjStateNoMjTT/MjStateMj3TT above, completing the MJ-state row on
+        // List1 to all four real states (MJ active/MJ2/MJ3/NOMJremains) instead of just two.
+        if (readyToRun("MjStateActiveTT", 2) && activeTtNear(5.222, 0.0001)) {
+            setAutomationState("MJ", "MJ active")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: MJ active")
+            addCarePortalNote("MJsAc")
+            markRun("MjStateActiveTT")
+        }
+
+        if (readyToRun("MjStateMj2TT", 2) && activeTtNear(5.224, 0.0001)) {
+            setAutomationState("MJ", "MJ2")
+            cancelCurrentTempTarget()
+            sendSms("MJstate: MJ2")
+            addCarePortalNote("MJs2")
+            markRun("MjStateMj2TT")
+        }
+
+        // ProfileStandardTT/ProfileLowTT (5.148/5.150) -- re-added 2026-08-23. Removed earlier the same
+        // day as redundant with switching profiles directly, then reinstated: switching profiles
+        // directly in AAPS's own picker requires knowing/finding the actual profile NAME currently
+        // filling each role, whereas these two read StringKey.ApsAutoIsfStandardProfileName/
+        // LowProfileName live -- same never-hardcode-the-name principle as every switchProfileIfNeeded()
+        // call in this file -- so a re-pick via "Re-pick coded profiles" (List 1) takes effect here too
+        // without editing anything. List 1's own row presents both as one Strong/Low choice dialog (see
+        // OverviewFragment.kt's ttCodesList()), each button relaying whichever of these two TT codes.
+        if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
+            switchToStandardAtSharedTier()
+            cancelCurrentTempTarget()
+            sendSms("Profile: Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})")
+            addCarePortalNote("PrSt")
+            markRun("ProfileStandardTT")
+        }
+
+        if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
+            switchToLowAtSharedTier()
+            cancelCurrentTempTarget()
+            sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})")
+            addCarePortalNote("PrLow")
+            markRun("ProfileLowTT")
+        }
+
+        // --- SetRole (coded-duration channel): the fast counterpart to the SetRole Note block above
+        // (added 2026-08-31). ProfileSwitchDialog on another device, when a Standard/Low base or tier is
+        // picked on an otherwise indefinite 100% switch, sends the switch with a coded duration of
+        // 51..57 min (role index = durationMinutes - 50). This rides the normal profile-switch sync
+        // (minutes, not the ~40-70 min secondary-NS lag), applies the role, then immediately re-issues
+        // the switch as indefinite so the coded duration never actually expires in normal use. 100% +
+        // the odd (non-10-multiple) minute value keep a genuine short switch from being misread.
+        // Cursor-tracked by PS timestamp; idempotent with the Note channel.
+        run {
+            val cursor = preferences.get(LongKey.ApsAutoIsfSetRoleDurationHandledAt)
+            val activePs = persistenceLayer.getProfileSwitchActiveAt(dateUtil.now())
+            if (activePs != null && activePs.isValid && activePs.timestamp > cursor) {
+                val roleIndex = (activePs.duration / 60_000L).toInt() - 50
+                if (activePs.percentage == 100 && roleIndex in 1..7) {
+                    val roleKey = setRoleKeyForIndex(roleIndex)
+                    if (roleKey != null && applySetRole(roleKey, activePs.profileName)) {
+                        reassertProfileIndefinite(activePs.profileName)   // supersede the coded short switch so it can't expire/revert
+                        sendSms("SetRole(dur): ${roleKey.key} -> ${activePs.profileName}")
+                        addCarePortalNote("RoleSet")
+                    }
+                }
+                preferences.put(LongKey.ApsAutoIsfSetRoleDurationHandledAt, activePs.timestamp)
+            }
+        }
+
+        // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
+        // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling moved to list2's "Graph:
+        // UKF2" entry (see GraphToggleEntry.syncedLiveKey in OverviewFragment.kt). The mutual-exclusion
+        // write here (turning UKFset1 on used to also force FslUseUkfLibreSpecialSmoothing off) was
+        // removed 2026-08-15 for the same reason it was dropped from list2's popup: that flag no longer
+        // has any dosing effect (XdripSourcePlugin.kt/NsIncomingDataProcessor.kt call
+        // smoothLibreSpecialRealtime() only for its graph-history side effect and discard the return
+        // value) -- it now only gates whether UKF2's graph history accumulates. Silently clearing it here
+        // every time UKFset1 got toggled on was the actual cause of UKF2's graph never accumulating
+        // points: the two settings are independent now, so toggling one must not touch the other.
+        if (readyToRun("LibreUkf1ToggleTT", 2) && activeTtNear(5.152, 0.0001)) {
+            val virtualComparisonAllowed = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
+            if (virtualComparisonAllowed) {
+                val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
+                preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
+                sendSms("LibreUKFset1 Virtual: ${if (newState) "ON" else "OFF"}")
+                addCarePortalNote("UKF1V${if (newState) "On" else "Off"}")
+            } else {
+                preferences.put(BooleanKey.FslUseUkfSmoothing, false)
+                sendSms("LibreUKFset1 blocked: Virtual Pump only")
+                addCarePortalNote("UKF1Block")
+            }
+            cancelCurrentTempTarget()
+            markRun("LibreUkf1ToggleTT")
+        }
+
+        // --- SensorAgeCodeToggleTT: master execution toggle for the complete SensorAge calibration
+        // routine, separate from the existing 5.006 aging-sensor adjustment preference toggle.
+        if (readyToRun("SensorAgeCodeToggleTT", 2) && activeTtNear(5.156, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("SAC${if (newState) "On" else "Off"}")
+            markRun("SensorAgeCodeToggleTT")
+        }
+        applyAlarmHypoStateTT()
+        applyCleanGraphNoTextTT()
+
+        // Client-only relay codes for the basal-icon direct action menu. On the pump phone these run
+        // the full Kotlin actions; pump/Virtual selections do not create these TTs at all.
+        if (readyToRun("MjStartActionTT", 2) && activeTtNear(5.158, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectMjUserAction(EventMjUserAction.Action.START, directMenu = true)
+            markRun("MjStartActionTT")
+        }
+
+        if (readyToRun("MjRestoreActionTT", 2) && activeTtNear(5.160, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectMjUserAction(EventMjUserAction.Action.RESTORE, directMenu = true)
+            markRun("MjRestoreActionTT")
+        }
+
+        if (readyToRun("SteroidStartActionTT", 2) && activeTtNear(5.162, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(directMenu = true)
+            markRun("SteroidStartActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease130ActionTT", 2) && activeTtNear(5.168, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_130,
+                directMenu = true
+            )
+            markRun("SteroidIncrease130ActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease150ActionTT", 2) && activeTtNear(5.170, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_150,
+                directMenu = true
+            )
+            markRun("SteroidIncrease150ActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease190ActionTT", 2) && activeTtNear(5.172, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_190,
+                directMenu = true
+            )
+            markRun("SteroidIncrease190ActionTT")
+        }
+
+        if (readyToRun("SteroidIncrease250ActionTT", 2) && activeTtNear(5.174, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.INCREASE_250,
+                directMenu = true
+            )
+            markRun("SteroidIncrease250ActionTT")
+        }
+
+        if (readyToRun("SteroidTurnOffActionTT", 2) && activeTtNear(5.176, 0.0001)) {
+            cancelCurrentTempTarget()
+            handleDirectSteroidUserAction(
+                action = EventSteroidUserAction.Action.TURN_OFF,
+                directMenu = true
+            )
+            markRun("SteroidTurnOffActionTT")
+        }
+
+        // --- AnyDeskRestartActionTT: second, redundant channel for the "Send AnyDesk restart" list2
+        // button (see runBasalDirectAction()'s ANYDESK_RESTART branch in OverviewFragment.kt), which
+        // fires this TT alongside the existing "ADesk" secondary-NS Note above rather than instead of
+        // it -- this one rides Client's primary NS sync so it can land before the secondary-NS
+        // worker's next poll picks up the Note's revision. launchAnyDeskDirect() only (no Tasker,
+        // no RESTART_ANYDESK broadcast). AdOn/AdMs are startActivity only, not that Unattended
+        // Access is accepting connections.
+        if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
+            cancelCurrentTempTarget()
+            // Virtual skip added 2026-09-18 at explicit request: same reasoning as the secondary-NS
+            // receiver above -- Virtual never launches AnyDesk (isRealLoopPhone() already excludes
+            // it), so its own "AcTTV relay-TT receipt" note was pure noise. cancelCurrentTempTarget()
+            // and markRun() still run unconditionally so the relayed TT gets consumed properly.
+            if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) {
+                val deviceRole = when {
+                    config.AAPSCLIENT -> "C"
+                    activePlugin.activePump is VirtualPump -> "V"
+                    else -> "R"
+                }
+                val receiptNote = "AcTT$deviceRole relay-TT receipt"
+                addCarePortalNote(receiptNote)
+                if (isRealLoopPhone()) {
+                    launchAnyDeskDirect()
+                    aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
+                } else {
+                    aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
+                }
+            }
+            markRun("AnyDeskRestartActionTT")
+        }
+
+        // --- ShizukuApkInstallTT: List2 "Install newest AAPS333 APK (Shizuku)". Live List2 fires
+        // immediately via EventAutoIsfDirectTtCode 5.200; Client relays this 5.200 TT. 5-min
+        // throttle so a double-tap cannot start two pm installs.
+        if (readyToRun("ShizukuApkInstallTT", 5) && activeTtNear(5.200, 0.0001)) {
+            cancelCurrentTempTarget()
+            installNewestAaps333Apk("list2-tt")
+            markRun("ShizukuApkInstallTT")
+        }
+
+        // --- StageAaps333NewestTT: List2 "Stage newest APK (keep 20)". Copy + prune only.
+        if (readyToRun("StageAaps333NewestTT", 5) && activeTtNear(5.202, 0.0001)) {
+            cancelCurrentTempTarget()
+            stageNewestAaps333Apk("list2-tt")
+            markRun("StageAaps333NewestTT")
+        }
+
+        // Every 15 min on Live and Virtual: stage newest/, then Shizuku-install only if the
+        // archive NNN is strictly higher than the running APK and no install started in the
+        // last 45 min (persisted — survives the pm-install kill). sh -c still relaunches.
+        if (readyToRun("AutoApkInstall", 15) && !config.AAPSCLIENT) {
+            markRun("AutoApkInstall")
+            Schedulers.io().scheduleDirect { tryAutoInstallNewerApk() }
+        }
+
+        if (readyToRun("MjKotlinButtonsToggleTT", 2) && activeTtNear(5.164, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("MJ Kotlin buttons: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("MJB${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("MJ Kotlin buttons toggled", true))
+            markRun("MjKotlinButtonsToggleTT")
+        }
+
+        if (readyToRun("SteroidKotlinButtonToggleTT", 2) && activeTtNear(5.166, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Steroid Kotlin button: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("StB${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Steroid Kotlin button toggled", true))
+            markRun("SteroidKotlinButtonToggleTT")
+        }
+
+        // Added 2026-08-23: List 2 on/off for Tier 3 "UAM Boost" (ApsAutoIsfUamBoostEnabled), same flag
+        // uamBoostActive already reads (see its own getter's doc comment) and the same one the
+        // Settings-screen AdaptiveSwitchPreference exposes -- this is just a quicker toggle path, not a
+        // second independent flag. Same activeTtNear()/cancel/notify shape as the two toggles above.
+        if (readyToRun("Tier3BoostToggleTT", 2) && activeTtNear(5.194, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfUamBoostEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Tier 3 UAM Boost: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("T3B${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Tier 3 UAM Boost toggled", true))
+            markRun("Tier3BoostToggleTT")
+        }
+
+        if (readyToRun("ProfileBatchAutoToggleTT", 2) && activeTtNear(5.210, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Bt1${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Profile batch auto toggled", true))
+            markRun("ProfileBatchAutoToggleTT")
+        }
+        if (readyToRun("ProfileBatchRevertToggleTT", 2) && activeTtNear(5.212, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
+            setProfileBatchRevertA(newState, "List2 Toggle2")
+            cancelCurrentTempTarget()
+            sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Bt2${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
+            markRun("ProfileBatchRevertToggleTT")
+        }
+        if (readyToRun("ProfileBatchRevertCToggleTT", 2) && activeTtNear(5.214, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
+            setProfileBatchRevertC(newState, "List2 Toggle3")
+            cancelCurrentTempTarget()
+            sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Bt3${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Profile batch revert TierC toggled", true))
+            markRun("ProfileBatchRevertCToggleTT")
+        }
+
+        // --- List 1 direct tier set (added 2026-09-15, per explicit request): jump Standard+Low to a
+        // named rung in one tap, rather than only stepping one rung at a time (ProfileBatchStep, via
+        // List2 Toggle1/BtchUp/BtchDn) or holding at the two extremes (List2 Toggle2/Toggle3, TierA/
+        // TierC only -- TierB was previously unreachable except by passing through it during a step).
+        // Both roles always move together -- applySharedRoleRung() already writes Standard+Low as one
+        // shared rung; this just exposes picking the destination rung directly from List 1.
+        // Turns off both hold toggles first: leaving one active would have it revert this pick straight
+        // back to A or C on the very next cycle, the same class of fight-every-cycle regression the
+        // Toggle2/Toggle3 doc comment above already warns about.
+        if (readyToRun("ProfileBatchSetATT", 2) && activeTtNear(5.216, 0.0001)) {
+            cancelCurrentTempTarget()
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+            if (applySharedRoleRung(0, "List1 TierSetA", switchRunning = true, announce = true)) addCarePortalNote("TierSetA")
+            rxBus.send(EventRefreshOverview("List1 tier set A", true))
+            markRun("ProfileBatchSetATT")
+        }
+        if (readyToRun("ProfileBatchSetBTT", 2) && activeTtNear(5.218, 0.0001)) {
+            cancelCurrentTempTarget()
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+            if (applySharedRoleRung(1, "List1 TierSetB", switchRunning = true, announce = true)) addCarePortalNote("TierSetB")
+            rxBus.send(EventRefreshOverview("List1 tier set B", true))
+            markRun("ProfileBatchSetBTT")
+        }
+        if (readyToRun("ProfileBatchSetCTT", 2) && activeTtNear(5.220, 0.0001)) {
+            cancelCurrentTempTarget()
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
+            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
+            if (applySharedRoleRung(2, "List1 TierSetC", switchRunning = true, announce = true)) addCarePortalNote("TierSetC")
+            rxBus.send(EventRefreshOverview("List1 tier set C", true))
+            markRun("ProfileBatchSetCTT")
+        }
+
+        // Added 2026-08-23: List 2 on/off for ApsAutoIsfUseUkf1ForDosing -- see
+        // applyUkf1DosingOverride()'s own doc comment for scope. Same activeTtNear()/cancel/notify shape
+        // as the two toggles above.
+        if (readyToRun("Ukf1DosingToggleTT", 2) && activeTtNear(5.196, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
+            preferences.put(BooleanKey.ApsAutoIsfUseUkf1ForDosing, newState)
+            cancelCurrentTempTarget()
+            sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("U1D${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
+            markRun("Ukf1DosingToggleTT")
+        }
+
+        // Test toggles (2026-09-20): FastRise size tiers / LoReb guard, List 2 on/off. Same activeTtNear()/cancel/notify
+        // shape as Ukf1DosingToggleTT above -- this is the path a Client relay (TT 5.226 / 5.228) takes on the loop phone.
+        if (readyToRun("FastRiseToggleTT", 2) && activeTtNear(5.226, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfFastRiseEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("FastRise tiers: ${if (newState) "ON" else "OFF"} (test toggle)")
+            addCarePortalNote("FRt${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("FastRise tiers toggled", true))
+            markRun("FastRiseToggleTT")
+        }
+        if (readyToRun("LowReboundGuardToggleTT", 2) && activeTtNear(5.228, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfLowReboundGuardEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("LoReb guard: ${if (newState) "ON" else "OFF"} (test toggle)")
+            addCarePortalNote("LRb${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
+            markRun("LowReboundGuardToggleTT")
+        }
+        if (readyToRun("T3UnrestrictedToggleTT", 2) && activeTtNear(5.230, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("T3u${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
+            markRun("T3UnrestrictedToggleTT")
+        }
+        if (readyToRun("InsulinTotalsToggleTT", 2) && activeTtNear(5.232, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
+            preferences.put(BooleanKey.ApsAutoIsfShowInsulinTotals, newState)
+            cancelCurrentTempTarget()
+            sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("ITt${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
+            markRun("InsulinTotalsToggleTT")
+        }
+        applyLoopIntervalToggleTT()
+
+        // List 2 coded-location master switch. This changes only the enable preference; the five
+        // airport/five address definitions remain editable local preferences under Automation.
+        if (readyToRun("LocationSmsToggleTT", 2) && activeTtNear(5.198, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
+            preferences.put(BooleanKey.AutomationCodedLocationsEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}")
+            addCarePortalNote("Loc${if (newState) "On" else "Off"}")
+            rxBus.send(EventRefreshOverview("Coded locations toggled", true))
+            markRun("LocationSmsToggleTT")
+        }
+
+        // Client-relayed 5.204: allow/deny location SMS from this loop phone by storing its model.
+        if (readyToRun("LocationSmsThisPhoneTT", 2) && activeTtNear(5.204, 0.0001)) {
+            applyLocationSmsThisPhoneToggle()
+            cancelCurrentTempTarget()
+            markRun("LocationSmsThisPhoneTT")
+        }
+    }
+
+    private fun applyRemoteWizardAndBoostActions() {
+        // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
+        // upload as the "Send logs" button on the Maintenance screen (zips logs, sends to cloud
+        // storage if configured, else email) — for AAPSClient users who have no settings access to
+        // trigger it directly. Next value after Graph2ToggleTT's 5.138. Same
+        // activeTtNear()/cancel/notify pattern as the other remote-signal TTs above; no toggle state,
+        // just fires once per TT-set.
+        if (readyToRun("CloudLogsUploadTT", 2) && activeTtNear(5.140, 0.0001)) {
+            importExportPrefs.sendLogs(trigger = "REMOTE_TT")
+            cancelCurrentTempTarget()
+            sendSms("CloudLogsUpload: triggered")
+            addCarePortalNote("CLup")
+            markRun("CloudLogsUploadTT")
+        }
+
+        // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
+        // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
+        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("DuraWeightDownTT", 2) && activeTtNear(5.022, 0.0001)) {
+            val currentDura = preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
+            val newDura = (currentDura - 0.1).coerceAtLeast(0.00)
+            preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
+            if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive - 0.1).coerceAtLeast(0.00))
+            cancelCurrentTempTarget()
+            sendSms("DuraWeightDown: duraISFwt_orig=${round(newDura, 2)}")
+            // 3 trailing chars (not 2) — Dura's 0-3.00 range needs the whole-number digit too, e.g. "Dd2.4"
+            addCarePortalNote(compactSettingNote("D", newDura, 2))
+            markRun("DuraWeightDownTT")
+        }
+
+        // --- DuraWeightUpTT: manually setting a TT of 5.24 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfDuraWeightNormal, clamped to a max of 3.00. Same pattern as DuraWeightDownTT above.
+        if (readyToRun("DuraWeightUpTT", 2) && activeTtNear(5.024, 0.0001)) {
+            val currentDura = preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)
+            val currentLive = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
+            val newDura = (currentDura + 0.1).coerceAtMost(3.00)
+            preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
+            if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive + 0.1).coerceAtMost(3.00))
+            cancelCurrentTempTarget()
+            sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}")
+            addCarePortalNote(compactSettingNote("D", newDura, 2))
+            markRun("DuraWeightUpTT")
+        }
+
+        // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.1 nudge on
+        // ApsAutoIsfSmbOffsetOverride (SMBoffset), clamped to a min of 0.50 — not a real target. Same
+        // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("SmbOffsetDownTT", 2) && activeTtNear(5.036, 0.0001)) {
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.1).coerceAtLeast(0.50)
+            preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
+            cancelCurrentTempTarget()
+            sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}")
+            addCarePortalNote(compactSettingNote("SO", newOffset, 1))
+            markRun("SmbOffsetDownTT")
+        }
+
+        // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.1 nudge on
+        // ApsAutoIsfSmbOffsetOverride, clamped to a max of 1.50. Same pattern as SmbOffsetDownTT above.
+        if (readyToRun("SmbOffsetUpTT", 2) && activeTtNear(5.038, 0.0001)) {
+            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.1).coerceAtMost(1.50)
+            preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
+            cancelCurrentTempTarget()
+            sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")
+            addCarePortalNote(compactSettingNote("SO", newOffset, 1))
+            markRun("SmbOffsetUpTT")
+        }
+
+        // --- LibreSlopeDownTT: manually setting a TT of 5.026 mmol is used as a remote -0.01 nudge on
+        // ApsAutoIsfLibreSlopeOrig (LibreSlope_orig), clamped to a min of 0.60 — not a real target.
+        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. If FslCalSlope
+        // (the live setting) currently equals its own baseline, nudge both together.
+        if (readyToRun("LibreSlopeDownTT", 2) && activeTtNear(5.026, 0.0001)) {
+            val currentSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalSlope)
+            val newSlope = (currentSlopeOrig - 0.01).coerceAtLeast(0.60)
+            preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
+            if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive - 0.01).coerceAtLeast(0.60))
+            cancelCurrentTempTarget()
+            sendSms("LibreSlopeDown: LibreSlope_orig=${round(newSlope, 2)}")
+            addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true))
+            markRun("LibreSlopeDownTT")
+        }
+
+        // --- LibreSlopeUpTT: manually setting a TT of 5.028 mmol is used as a remote +0.01 nudge on
+        // ApsAutoIsfLibreSlopeOrig, clamped to a max of 1.00. Same pattern as LibreSlopeDownTT above.
+        if (readyToRun("LibreSlopeUpTT", 2) && activeTtNear(5.028, 0.0001)) {
+            val currentSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalSlope)
+            val newSlope = (currentSlopeOrig + 0.01).coerceAtMost(1.00)
+            preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
+            if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive + 0.01).coerceAtMost(1.00))
+            cancelCurrentTempTarget()
+            sendSms("LibreSlopeUp: LibreSlope_orig=${round(newSlope, 2)}")
+            addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true))
+            markRun("LibreSlopeUpTT")
+        }
+
+        // --- LibreOffsetDownTT: manually setting a TT of 5.032 mmol is used as a remote -0.05 nudge on
+        // ApsAutoIsfLibreOffsetOrig (LibreOffset_orig), clamped to a min of 1.20 — not a real target.
+        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. If FslCalOffset
+        // currently equals its own baseline, nudge both together. Note suffix uses takeLast(4) (not the
+        // usual 2) since this setting is >=1.0 — the one outlier allowed to run to 6 total chars
+        // ("Ld1.25") rather than dropping the leading digit, so the note stays unambiguous on its own.
+        if (readyToRun("LibreOffsetDownTT", 2) && activeTtNear(5.032, 0.0001)) {
+            val currentOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalOffset)
+            val newOffsetOrig = (currentOffsetOrig - 0.05).coerceAtLeast(1.20)
+            preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
+            if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive - 0.05).coerceAtLeast(1.20))
+            cancelCurrentTempTarget()
+            sendSms("LibreOffsetDown: LibreOffset_orig=${round(newOffsetOrig, 2)}")
+            addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2))
+            markRun("LibreOffsetDownTT")
+        }
+
+        // --- LibreOffsetUpTT: manually setting a TT of 5.034 mmol is used as a remote +0.05 nudge on
+        // ApsAutoIsfLibreOffsetOrig, clamped to a max of 1.60. Same pattern as LibreOffsetDownTT above.
+        if (readyToRun("LibreOffsetUpTT", 2) && activeTtNear(5.034, 0.0001)) {
+            val currentOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
+            val currentLive = preferences.get(DoubleKey.FslCalOffset)
+            val newOffsetOrig = (currentOffsetOrig + 0.05).coerceAtMost(1.60)
+            preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
+            if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive + 0.05).coerceAtMost(1.60))
+            cancelCurrentTempTarget()
+            sendSms("LibreOffsetUp: LibreOffset_orig=${round(newOffsetOrig, 2)}")
+            addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2))
+            markRun("LibreOffsetUpTT")
+        }
+
+        // --- CleanGraphTT: manually setting a TT of 5.042 mmol is used as a remote trigger for the
+        // "clean main graph" display combo (no SMB labels, no BGL arrowheads, solid uniform-green line)
+        // — the same combo as long-pressing the IOB icon then the Basal icon. Not a real target. Since
+        // this plugin has no dependency on core:graph (where the actual display state — showSmbLabels/
+        // basalToggleIndex — lives), it can't set those companion fields directly; it just raises a
+        // one-shot flag that OverviewFragment's updateGraph() picks up and clears on its next run. Same
+        // tight 0.0001mmol tolerance/cancel/notify pattern as the other settings-nudge TTs above.
+        if (readyToRun("CleanGraphTT", 2) && activeTtNear(5.042, 0.0001)) {
+            preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, true)
+            cancelCurrentTempTarget()
+            sendSms("CleanGraph: no SMBs/arrows, solid green")
+            addCarePortalNote("CGrph")
+            markRun("CleanGraphTT")
+        }
+
+        // --- WizardPctDownTT: manually setting a TT of 5.046 mmol is used as a remote -5 nudge on
+        // OverviewBolusPercentage (Wizard bolus %), clamped to a min of 50 — not a real target. Same
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("WizardPctDownTT", 2) && activeTtNear(5.046, 0.0001)) {
+            val newPct = (preferences.get(IntKey.OverviewBolusPercentage) - 5).coerceAtLeast(50)
+            preferences.put(IntKey.OverviewBolusPercentage, newPct)
+            cancelCurrentTempTarget()
+            sendSms("WizardPctDown: BolusPct=$newPct")
+            addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct))
+            markRun("WizardPctDownTT")
+        }
+
+        // --- WizardPctUpTT: manually setting a TT of 5.048 mmol is used as a remote +5 nudge on
+        // OverviewBolusPercentage, clamped to a max of 100. Same pattern as WizardPctDownTT above.
+        if (readyToRun("WizardPctUpTT", 2) && activeTtNear(5.048, 0.0001)) {
+            val newPct = (preferences.get(IntKey.OverviewBolusPercentage) + 5).coerceAtMost(100)
+            preferences.put(IntKey.OverviewBolusPercentage, newPct)
+            cancelCurrentTempTarget()
+            sendSms("WizardPctUp: BolusPct=$newPct")
+            addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct))
+            markRun("WizardPctUpTT")
+        }
+
+        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.25 nudge on
+        // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.002, which nudges it together with
+        // ApsAutoIsfSmbDeliveryBaseline, and stays at its own separate ±0.01 step), clamped to its own
+        // min of 0.1 — not a real target. Step widened 0.01 -> 0.05 -> 0.25 on 2026-08-29, alongside the
+        // key's own max widening 0.5->1.0 (see ApsAutoIsfMildBoostRatio in DoubleKey.kt). Same
+        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
+        if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.052, 0.0001)) {
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.25).coerceAtLeast(0.1)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
+            cancelCurrentTempTarget()
+            sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
+            addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true))
+            markRun("MildBoostDownTT")
+        }
+
+        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.25 nudge on
+        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 1.0 (widened from 0.5 on 2026-08-29).
+        // Same pattern as MildBoostDownTT above.
+        if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.054, 0.0001)) {
+            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.25).coerceAtMost(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
+            cancelCurrentTempTarget()
+            sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
+            addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true))
+            markRun("MildBoostUpTT")
+        }
+
+        // --- BoostScaleDownTT / BoostScaleUpTT: remote ±0.25 nudge (widened from ±0.1 -> ±0.05 -> ±0.25,
+        // 2026-08-29, per explicit request) on ApsAutoIsfUamBoostScale (Tier 3 UAM Boost's boost_scale
+        // multiplier) -- not real targets. Same pattern as MildBoostDownTT/UpTT above. Up is clamped to
+        // 2.9, NOT the preference's own nominal max of 3.0: DetermineBasalAutoISF.kt's entry gate
+        // requires "boost_scale < 3" -- at exactly 3.0 Tier 3 stops firing entirely, a silent cliff
+        // rather than a graceful cap, so 2.9 keeps this control from ever landing on that trap.
+        if (readyToRun("BoostScaleDownTT", 2) && activeTtNear(5.182, 0.0001)) {
+            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) - 0.25).coerceAtLeast(0.1)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
+            cancelCurrentTempTarget()
+            sendSms("BoostScaleDown: boost_scale=${round(newScale, 2)}")
+            addCarePortalNote(compactSettingNote("BS", newScale, 2))
+            markRun("BoostScaleDownTT")
+        }
+
+        if (readyToRun("BoostScaleUpTT", 2) && activeTtNear(5.184, 0.0001)) {
+            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) + 0.25).coerceAtMost(2.9)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
+            cancelCurrentTempTarget()
+            sendSms("BoostScaleUp: boost_scale=${round(newScale, 2)}")
+            addCarePortalNote(compactSettingNote("BS", newScale, 2))
+            markRun("BoostScaleUpTT")
+        }
+
+        // --- BoostMaxDownTT / BoostMaxUpTT: remote ±0.25U nudge on ApsAutoIsfUamBoostMaxBolus (Tier 3's
+        // per-SMB boost_bolus_cap setting). Dosing also min's with max_iob/9.5 (1.0U at max_iob 9.5).
+        // Not real targets. Same pattern as above.
+        if (readyToRun("BoostMaxDownTT", 2) && activeTtNear(5.186, 0.0001)) {
+            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) - 0.25)
+                .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
+            cancelCurrentTempTarget()
+            sendSms("BoostMaxDown: boost_max=${round(newBoostMax, 2)}U")
+            addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2))
+            markRun("BoostMaxDownTT")
+        }
+
+        if (readyToRun("BoostMaxUpTT", 2) && activeTtNear(5.188, 0.0001)) {
+            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) + 0.25)
+                .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
+            cancelCurrentTempTarget()
+            sendSms("BoostMaxUp: boost_max=${round(newBoostMax, 2)}U")
+            addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2))
+            markRun("BoostMaxUpTT")
+        }
+
+        // --- BoostIobMaxDownTT / BoostIobMaxUpTT: remote ±5% nudge on ApsAutoIsfUamBoostMaxIobPercent
+        // (Tier 3's IOB ceiling, live default 10.0% of max_iob -- e.g. 0.95U at max_iob 9.5) -- not real
+        // targets. Same pattern as above. This is the ceiling that was actually binding the 22 Aug 2026
+        // real UamBst firing (see the AIV review checklist's item 06), not boost_max, so this is the more
+        // relevant of the two boost-strength controls to reach for first.
+        if (readyToRun("BoostIobMaxDownTT", 2) && activeTtNear(5.190, 0.0001)) {
+            val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) - 5.0).coerceAtLeast(1.0)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
+            cancelCurrentTempTarget()
+            sendSms("BoostIobMaxDown: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
+            addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1))
+            markRun("BoostIobMaxDownTT")
+        }
+
+        if (readyToRun("BoostIobMaxUpTT", 2) && activeTtNear(5.192, 0.0001)) {
+            val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) + 5.0).coerceAtMost(100.0)
+            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
+            cancelCurrentTempTarget()
+            sendSms("BoostIobMaxUp: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
+            addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1))
+            markRun("BoostIobMaxUpTT")
+        }
+    }
+
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
         val stepsCapturedAt = dateUtil.now()
         liveStepsForCycle = if (useLiveStepsOnVirtual()) liveStepsMirror.at(stepsCapturedAt) else null
@@ -4823,461 +6001,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("BoostToggleTT")
         }
 
-        // --- SmbDeliveryDownTT: manually setting a TT of 5.02 mmol is used as a remote -0.01 nudge on
-        // both SMB delivery settings (ApsAutoIsfSmbDeliveryBaseline, ApsAutoIsfMildBoostRatio) — not a
-        // real target. Clamped to each key's own min (0.1 for both). Same activeTtNear()/cancel/notify
-        // pattern as SensorAgeToggleTT/BoostToggleTT above. Tight 0.001mmol tolerance (not the usual
-        // 0.02) — 5.02 and 5.04 (SmbDeliveryUpTT) are only 0.02mmol apart, so 0.02 tolerance would make
-        // their windows overlap each other (and creep into 5.0's own "own boost TT" territory).
-        if (readyToRun("SmbDeliveryDownTT", 2) && activeTtNear(5.002, 0.0001)) {
-            val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) - 0.01).coerceAtLeast(0.1)
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.01).coerceAtLeast(0.1)
-            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
-            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
-            cancelCurrentTempTarget()
-            sendSms("SmbDeliveryDown: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true))
-            addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true))
-            markRun("SmbDeliveryDownTT")
-        }
-
-        // --- SmbDeliveryUpTT: manually setting a TT of 5.04 mmol is used as a remote +0.01 nudge on
-        // both SMB delivery settings, clamped to each key's own max -- 0.5 for ApsAutoIsfSmbDeliveryBaseline,
-        // 1.0 for ApsAutoIsfMildBoostRatio (widened 2026-08-29, see DoubleKey.kt; this combined block's own
-        // ±0.01 step is untouched, unlike the dedicated MildBoostDownTT/UpTT pair below which now steps by
-        // 0.25). Same pattern and same tight 0.001mmol tolerance as SmbDeliveryDownTT above.
-        if (readyToRun("SmbDeliveryUpTT", 2) && activeTtNear(5.004, 0.0001)) {
-            val newBaseline = (preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) + 0.01).coerceAtMost(0.5)
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.01).coerceAtMost(1.0)
-            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
-            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
-            cancelCurrentTempTarget()
-            sendSms("SmbDeliveryUp: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true))
-            addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true))
-            markRun("SmbDeliveryUpTT")
-        }
-
-        // --- PpWeightDownTT: manually setting a TT of 5.12 mmol is used as a remote -0.01 nudge on
-        // ApsAutoIsfPpWeightNormal (ppISFwt_orig), clamped to its own min (0.0) — not a real target.
-        // Same pattern/tight 0.001mmol tolerance as the SmbDelivery*/SensorAge/Boost toggle TTs above.
-        if (readyToRun("PpWeightDownTT", 2) && activeTtNear(5.012, 0.0001)) {
-            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
-            val currentLive = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
-            val newPp = (currentPp - 0.01).coerceAtLeast(0.0)
-            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
-            // If the live weight currently equals its own baseline (nothing has it diverged away right
-            // now), nudge both together so the change is felt immediately — otherwise only the baseline
-            // moves, leaving whatever's currently overriding it undisturbed until it next restores.
-            if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive - 0.01).coerceAtLeast(0.0))
-            cancelCurrentTempTarget()
-            sendSms("PpWeightDown: ppISFwt_orig=${round(newPp, 2)}")
-            addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true))
-            markRun("PpWeightDownTT")
-        }
-
-        // --- PpWeightUpTT: manually setting a TT of 5.14 mmol is used as a remote +0.01 nudge on
-        // ApsAutoIsfPpWeightNormal, clamped to its own max (0.15). Same pattern as PpWeightDownTT above.
-        if (readyToRun("PpWeightUpTT", 2) && activeTtNear(5.014, 0.0001)) {
-            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
-            val currentLive = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
-            val newPp = (currentPp + 0.01).coerceAtMost(0.15)
-            preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
-            if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive + 0.01).coerceAtMost(0.15))
-            cancelCurrentTempTarget()
-            sendSms("PpWeightUp: ppISFwt_orig=${round(newPp, 2)}")
-            addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true))
-            markRun("PpWeightUpTT")
-        }
-
-        // --- PpWeightHighDownTT: manually setting a TT of 5.056 mmol is used as a remote -0.01 nudge on
-        // ApsAutoIsfPpWeightHigh (ppISFwt_high — the boosted value the 7 fast-rise automations set,
-        // previously a hardcoded 0.15 literal in each), clamped to its own min (0.0) — not a real target.
-        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. No dual-update:
-        // unlike PpWeightNormal/PpWeight, this only ever gets written into the live weight transiently
-        // when a boost automation actually fires, not continuously.
-        if (readyToRun("PpWeightHighDownTT", 2) && activeTtNear(5.056, 0.0001)) {
-            val currentPpHigh = preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)
-            val newPpHigh = (currentPpHigh - 0.01).coerceAtLeast(0.0)
-            preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
-            cancelCurrentTempTarget()
-            sendSms("PpWeightHighDown: ppISFwt_high=${round(newPpHigh, 2)}")
-            addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true))
-            markRun("PpWeightHighDownTT")
-        }
-
-        // --- PpWeightHighUpTT: manually setting a TT of 5.058 mmol is used as a remote +0.01 nudge on
-        // ApsAutoIsfPpWeightHigh, clamped to its own max (0.15). Same pattern as PpWeightHighDownTT above.
-        if (readyToRun("PpWeightHighUpTT", 2) && activeTtNear(5.058, 0.0001)) {
-            val currentPpHigh = preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)
-            val newPpHigh = (currentPpHigh + 0.01).coerceAtMost(0.15)
-            preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
-            cancelCurrentTempTarget()
-            sendSms("PpWeightHighUp: ppISFwt_high=${round(newPpHigh, 2)}")
-            addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true))
-            markRun("PpWeightHighUpTT")
-        }
-
-        // --- PpWeightRevertUnder8_5: genuine automatic (not TT-triggered) counterpart to the boost
-        // automations that set ApsAutoIsfPpWeight to 0.15 (BolusGiven, BolusGivenMild, High6PP,
-        // HighOldPod, PodChangeHighPP130, OldPod2, RecentPod) — always-on, fires whenever the live PP
-        // weight currently differs from its own baseline (ApsAutoIsfPpWeightNormal) AND either BG is
-        // back under 8.5mmol OR recent activity is high enough — same recentSteps5Minutes/
-        // recentSteps30Minutes thresholds (100/200) already used as the movement-guard BLOCKER in
-        // BolusGiven/BolusGivenMild/bg3's own fire conditions, plus bg3's own extra recentSteps60Minutes
-        // (300) gate, all reused here as POSITIVE triggers instead: active movement is independent
-        // evidence the elevated PP weight is no longer needed. No profile%/TT preconditions: unlike the
-        // 6 existing restore automations (Usual2forTH/CarbsTHoff/etc.), this is a direct rule — it can
-        // revert PP even while a boost's own profile% duration is still running. 5-min throttle is a
-        // defensive backstop only; the fuzzyEquals check already makes this a no-op once reverted.
-        // Nested acce check: under the same trigger (BG<8.5mmol or high activity), also revert
-        // ApsAutoIsfBgAccelWeight to its own baseline (ApsAutoIsfBgAccelWeightNormal) if it's currently
-        // ABOVE baseline — deliberately one-directional (only reverts an elevated/boosted acce, never
-        // touches a legitimately-reduced protective acce like NightAcce's 0.35 or GentleHypoRisk's
-        // 0.07/0.02, which sit below baseline and are unrelated to this rule).
-        //
-        // Fixed 2026-09-13: this had NO grace period at all -- the 5-min readyToRun above only throttles
-        // REPEAT fires, it does not delay the FIRST one, so this could (and, confirmed against real
-        // 2026-09-12 data, routinely did) revert a boost within 1 cycle of it being set, sometimes on
-        // the very same minute. All three trigger conditions are individually easy to satisfy at almost
-        // any moment in a normal day (BG<8.5mmol is exactly the range these boosts are meant to act in
-        // -- they exist to catch a RISE starting low, not one already high; genuine movement is common;
-        // "no raw Libre >12mmol in 48h" can span a whole quiet day) -- so in practice the elevated PP/
-        // acce weight almost never got to persist long enough to do the job the boost automations set it
-        // for, regardless of whether the rise that justified it was still ongoing. Real evidence: BMild
-        // fired at 08:41 PM 12 Sep 2026 (Virtual), reverted at 08:42 PM -- one minute later, BG still
-        // only 7.9mmol, nowhere near resolved. Fix: require that NONE of the 7 boost automations this
-        // revert exists to counter (named in this block's own comment above) has fired within the last
-        // 15 minutes, before allowing a revert -- gives the boost an actual window to act, still reverts
-        // reasonably promptly once genuinely stale. 15 min is a first estimate, not yet verified against
-        // real data -- retune if boosts still get cut short, or if stale weights now linger too long.
-        if (readyToRun("PpWeightRevertUnder8_5", 5)) {
-            val currentPp = preferences.get(DoubleKey.ApsAutoIsfPpWeight)
-            val baselinePp = preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)
-            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val baselineAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
-            val lowBg = glucoseStatus.glucose < 153.1 /* 8.5 mmol */
-            val activeMovement = recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300
-            // No genuine recent high (raw Libre >12.0mmol within 48h) is also grounds to revert -- the
-            // elevated PP/acce weights are calibrated against a genuinely-occurring high, not a stale one.
-            val noRecentHigh = !recentLibreOver12(48)
-            val trigger = lowBg || activeMovement || noRecentHigh
-            // Added 2026-09-13: HighDaytimeBrake/HighEveNightBrake (HiBrkDay/HiBrkDayMid) were missing
-            // from this list despite calling the SAME applyBMildOutcomeFactors() that elevates PP weight
-            // (see its own ApsAutoIsfPpWeight=PpWeightHigh line) -- confirmed against real same-day data
-            // (13 Sep 01:27-01:38 PM): PPrv reverted HiBrkDayMid's PP weight within 1 minute of it firing,
-            // over and over (same 6-14min fire/revert/cut cycle repeating all afternoon), exactly the
-            // failure mode this whole grace-period mechanism exists to prevent -- just missed for this
-            // one automation pair when the list above was built.
-            val recentPpBoostFire = !readyToRun("BolusGiven", 15) || !readyToRun("BolusGivenMild", 15) ||
-                !readyToRun("High6PP", 15) || !readyToRun("HighOldPod", 15) ||
-                !readyToRun("PodChangeHighPP130", 15) || !readyToRun("OldPod2", 15) || !readyToRun("RecentPod", 15) ||
-                !readyToRun("HighDaytimeBrake", 15) || !readyToRun("HighEveNightBrake", 15)
-            val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger && !recentPpBoostFire
-            val acceNeedsRevert = currentAcce > baselineAcce && trigger && !recentPpBoostFire
-            if (ppNeedsRevert || acceNeedsRevert) {
-                if (ppNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfPpWeight, baselinePp)
-                if (acceNeedsRevert) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, baselineAcce)
-                val reason = if (lowBg) "BG<8.5mmol" else if (activeMovement) "activity" else "noRecentHigh48h"
-                val what = when {
-                    ppNeedsRevert && acceNeedsRevert -> "ppISFwt=${round(baselinePp, 2)} acceISFwt=${round(baselineAcce, 2)}"
-                    ppNeedsRevert                    -> "ppISFwt=${round(baselinePp, 2)}"
-                    else                              -> "acceISFwt=${round(baselineAcce, 2)}"
-                }
-                sendSms("PpWeightRevert: $what ($reason)")
-                val note = if (ppNeedsRevert && acceNeedsRevert) "PArv" else if (ppNeedsRevert) "PPrv" else "ACrv"
-                addCarePortalNote(note)
-                markRun("PpWeightRevertUnder8_5")
-            }
-        }
-
-        // --- AcceWeightDownTT: manually setting a TT of 5.16 mmol is used as a remote -0.05 nudge on
-        // ApsAutoIsfBgAccelWeightNormal (acceISFwt_orig), clamped to a min of 0.55 — not a real target.
-        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("AcceWeightDownTT", 2) && activeTtNear(5.016, 0.0001)) {
-            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
-            val currentLive = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val newAcce = (currentAcce - 0.05).coerceAtLeast(0.55)
-            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
-            if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive - 0.05).coerceAtLeast(0.55))
-            cancelCurrentTempTarget()
-            sendSms("AcceWeightDown: acceISFwt_orig=${round(newAcce, 2)}")
-            addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true))
-            markRun("AcceWeightDownTT")
-        }
-
-        // --- AcceWeightUpTT: manually setting a TT of 5.18 mmol is used as a remote +0.05 nudge on
-        // ApsAutoIsfBgAccelWeightNormal, clamped to a max of 1.00. Same pattern as AcceWeightDownTT above.
-        if (readyToRun("AcceWeightUpTT", 2) && activeTtNear(5.018, 0.0001)) {
-            val currentAcce = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)
-            val currentLive = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
-            val newAcce = (currentAcce + 0.05).coerceAtMost(1.00)
-            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
-            if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive + 0.05).coerceAtMost(1.00))
-            cancelCurrentTempTarget()
-            sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
-            addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true))
-            markRun("AcceWeightUpTT")
-        }
-
-        // --- AcceWeightHighDownTT: manually setting a TT of 5.062 mmol is used as a remote -0.01 nudge
-        // on ApsAutoIsfBgAccelWeightHigh (acceISFwt_high — the boosted value OldPod2/RecentPod/AcceUp0.5
-        // set, previously a hardcoded 0.95 literal in each), clamped to its own min (0.0) — not a real
-        // target. Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. No
-        // dual-update: unlike AcceWeightNormal/AcceWeight, this only ever gets written into the live
-        // weight transiently when a boost automation actually fires, not continuously.
-        if (readyToRun("AcceWeightHighDownTT", 2) && activeTtNear(5.062, 0.0001)) {
-            val currentAcceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
-            val newAcceHigh = (currentAcceHigh - 0.01).coerceAtLeast(0.0)
-            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
-            cancelCurrentTempTarget()
-            sendSms("AcceWeightHighDown: acceISFwt_high=${round(newAcceHigh, 2)}")
-            addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true))
-            markRun("AcceWeightHighDownTT")
-        }
-
-        // --- AcceWeightHighUpTT: manually setting a TT of 5.064 mmol is used as a remote +0.01 nudge on
-        // ApsAutoIsfBgAccelWeightHigh, clamped to its own max (1.00). Same pattern as
-        // AcceWeightHighDownTT above.
-        if (readyToRun("AcceWeightHighUpTT", 2) && activeTtNear(5.064, 0.0001)) {
-            val currentAcceHigh = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)
-            val newAcceHigh = (currentAcceHigh + 0.01).coerceAtMost(1.00)
-            preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
-            cancelCurrentTempTarget()
-            sendSms("AcceWeightHighUp: acceISFwt_high=${round(newAcceHigh, 2)}")
-            addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true))
-            markRun("AcceWeightHighUpTT")
-        }
-
-        // --- HigherIsfRangeWeightDownTT: manually setting a TT of 5.068 mmol is used as a remote -0.1 nudge on
-        // ApsAutoIsfHighBgWeight (higher_ISFrange_weight), clamped to a min of 0.0 — not a real target. Same
-        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("HigherIsfRangeWeightDownTT", 2) && activeTtNear(5.068, 0.0001)) {
-            val currentHigh = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
-            val newHigh = (currentHigh - 0.1).coerceAtLeast(0.0)
-            preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
-            cancelCurrentTempTarget()
-            sendSms("HigherIsfRangeWeightDown: higher_ISFrange_weight=${round(newHigh, 2)}")
-            addCarePortalNote(compactSettingNote("HI", newHigh, 1))
-            markRun("HigherIsfRangeWeightDownTT")
-        }
-
-        // --- HigherIsfRangeWeightUpTT: manually setting a TT of 5.070 mmol is used as a remote +0.1 nudge on
-        // ApsAutoIsfHighBgWeight, clamped to a max of 2.0. Same pattern as HigherIsfRangeWeightDownTT above.
-        if (readyToRun("HigherIsfRangeWeightUpTT", 2) && activeTtNear(5.070, 0.0001)) {
-            val currentHigh = preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)
-            val newHigh = (currentHigh + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
-            cancelCurrentTempTarget()
-            sendSms("HigherIsfRangeWeightUp: higher_ISFrange_weight=${round(newHigh, 2)}")
-            addCarePortalNote(compactSettingNote("HI", newHigh, 1))
-            markRun("HigherIsfRangeWeightUpTT")
-        }
-
-        // --- PeakInsulinTimeDownTT: manually setting a TT of 5.074 mmol is used as a remote -5 nudge on
-        // InsulinOrefPeak (peak insulin activity time, minutes), clamped to its own min (35) — not a real
-        // target. Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("PeakInsulinTimeDownTT", 2) && activeTtNear(5.074, 0.0001)) {
-            val newPeak = (preferences.get(IntKey.InsulinOrefPeak) - 5).coerceAtLeast(35)
-            preferences.put(IntKey.InsulinOrefPeak, newPeak)
-            cancelCurrentTempTarget()
-            sendSms("PeakInsulinTimeDown: insulinPeak=$newPeak")
-            addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak))
-            markRun("PeakInsulinTimeDownTT")
-        }
-
-        // --- PeakInsulinTimeUpTT: manually setting a TT of 5.076 mmol is used as a remote +5 nudge on
-        // InsulinOrefPeak, clamped to its own max (120). Same pattern as PeakInsulinTimeDownTT above.
-        if (readyToRun("PeakInsulinTimeUpTT", 2) && activeTtNear(5.076, 0.0001)) {
-            val newPeak = (preferences.get(IntKey.InsulinOrefPeak) + 5).coerceAtMost(120)
-            preferences.put(IntKey.InsulinOrefPeak, newPeak)
-            cancelCurrentTempTarget()
-            sendSms("PeakInsulinTimeUp: insulinPeak=$newPeak")
-            addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak))
-            markRun("PeakInsulinTimeUpTT")
-        }
-
-        // --- AutoIsfMaxLowDownTT: manually setting a TT of 5.080 mmol is used as a remote -0.1 nudge on
-        // ApsAutoIsfMaxLow (autoISF_max_low — not yet wired into any calculation, see DoubleKey.kt),
-        // clamped to a min of 1.0 — not a real target. Same pattern/tight 0.0001mmol tolerance as the
-        // other settings-nudge TTs above.
-        if (readyToRun("AutoIsfMaxLowDownTT", 2) && activeTtNear(5.080, 0.0001)) {
-            val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) - 0.1).coerceAtLeast(1.0)
-            preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
-            cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxLowDown: autoISF_max_low=${round(newMaxLow, 2)}")
-            addCarePortalNote(compactSettingNote("ML", newMaxLow, 1))
-            markRun("AutoIsfMaxLowDownTT")
-        }
-
-        // --- AutoIsfMaxLowUpTT: manually setting a TT of 5.082 mmol is used as a remote +0.1 nudge on
-        // ApsAutoIsfMaxLow, clamped to a max of 3.0. Same pattern as AutoIsfMaxLowDownTT above.
-        if (readyToRun("AutoIsfMaxLowUpTT", 2) && activeTtNear(5.082, 0.0001)) {
-            val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) + 0.1).coerceAtMost(3.0)
-            preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
-            cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxLowUp: autoISF_max_low=${round(newMaxLow, 2)}")
-            addCarePortalNote(compactSettingNote("ML", newMaxLow, 1))
-            markRun("AutoIsfMaxLowUpTT")
-        }
-
-        // --- AutoIsfMaxNormalDownTT: manually setting a TT of 5.086 mmol is used as a remote -0.1 nudge
-        // on ApsAutoIsfMax (autoISF_max — the existing, already-live setting; "Normal" here just
-        // distinguishes it from AutoIsfMaxLow above), clamped to a min of 1.0 — not a real target. Same
-        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("AutoIsfMaxNormalDownTT", 2) && activeTtNear(5.086, 0.0001)) {
-            val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) - 0.1).coerceAtLeast(1.0)
-            preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
-            cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxNormalDown: autoISF_max=${round(newMax, 2)}")
-            addCarePortalNote(compactSettingNote("MN", newMax, 1))
-            markRun("AutoIsfMaxNormalDownTT")
-        }
-
-        // --- AutoIsfMaxNormalUpTT: manually setting a TT of 5.088 mmol is used as a remote +0.1 nudge on
-        // ApsAutoIsfMax, clamped to a max of 3.0. Same pattern as AutoIsfMaxNormalDownTT above.
-        if (readyToRun("AutoIsfMaxNormalUpTT", 2) && activeTtNear(5.088, 0.0001)) {
-            val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) + 0.1).coerceAtMost(3.0)
-            preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
-            cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxNormalUp: autoISF_max=${round(newMax, 2)}")
-            addCarePortalNote(compactSettingNote("MN", newMax, 1))
-            markRun("AutoIsfMaxNormalUpTT")
-        }
-
-        // --- TodOffset*TT (8 pairs, T1-T8): manually setting a TT of 5.092-5.136 mmol is used as a
-        // remote +/-0.1 nudge on one of the 8 fixed time-of-day varOffset windows (ApsAutoIsfTodOffset*,
-        // see DetermineBasalAutoISF.kt), clamped to +/-2.0 — not a real target. T1=00-02h, T2=02-04h,
-        // T3=04-06h, T4=06-09h, T5=09-12h, T6=12-18h, T7=18-22h, T8=22-00h. Same pattern/tight 0.0001mmol
-        // tolerance as the other settings-nudge TTs above.
-        if (readyToRun("TodOffset0002DownTT", 2) && activeTtNear(5.092, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0002Down: tod_offset_0002=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0002DownTT")
-        }
-        if (readyToRun("TodOffset0002UpTT", 2) && activeTtNear(5.094, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0002Up: tod_offset_0002=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0002UpTT")
-        }
-        if (readyToRun("TodOffset0204DownTT", 2) && activeTtNear(5.098, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0204Down: tod_offset_0204=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0204DownTT")
-        }
-        if (readyToRun("TodOffset0204UpTT", 2) && activeTtNear(5.100, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0204Up: tod_offset_0204=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0204UpTT")
-        }
-        if (readyToRun("TodOffset0406DownTT", 2) && activeTtNear(5.104, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0406Down: tod_offset_0406=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0406DownTT")
-        }
-        if (readyToRun("TodOffset0406UpTT", 2) && activeTtNear(5.106, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0406Up: tod_offset_0406=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0406UpTT")
-        }
-        if (readyToRun("TodOffset0609DownTT", 2) && activeTtNear(5.110, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0609Down: tod_offset_0609=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0609DownTT")
-        }
-        if (readyToRun("TodOffset0609UpTT", 2) && activeTtNear(5.112, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0609Up: tod_offset_0609=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0609UpTT")
-        }
-        if (readyToRun("TodOffset0912DownTT", 2) && activeTtNear(5.116, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0912Down: tod_offset_0912=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0912DownTT")
-        }
-        if (readyToRun("TodOffset0912UpTT", 2) && activeTtNear(5.118, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset0912Up: tod_offset_0912=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset0912UpTT")
-        }
-        if (readyToRun("TodOffset1218DownTT", 2) && activeTtNear(5.122, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset1218Down: tod_offset_1218=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset1218DownTT")
-        }
-        if (readyToRun("TodOffset1218UpTT", 2) && activeTtNear(5.124, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset1218Up: tod_offset_1218=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset1218UpTT")
-        }
-        if (readyToRun("TodOffset1822DownTT", 2) && activeTtNear(5.128, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset1822Down: tod_offset_1822=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset1822DownTT")
-        }
-        if (readyToRun("TodOffset1822UpTT", 2) && activeTtNear(5.130, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset1822Up: tod_offset_1822=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset1822UpTT")
-        }
-        if (readyToRun("TodOffset2200DownTT", 2) && activeTtNear(5.134, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) - 0.1).coerceAtLeast(-2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset2200Down: tod_offset_2200=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset2200DownTT")
-        }
-        if (readyToRun("TodOffset2200UpTT", 2) && activeTtNear(5.136, 0.0001)) {
-            val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) + 0.1).coerceAtMost(2.0)
-            preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
-            cancelCurrentTempTarget()
-            sendSms("TodOffset2200Up: tod_offset_2200=${round(newVal, 2)}")
-            addCarePortalNote(todOffsetCarePortalNote(newVal))
-            markRun("TodOffset2200UpTT")
-        }
+        applyRemoteWeightAndOffsetActions(glucoseStatus)
 
         // Automatically clear TOD offsets when their sign no longer suits the current MJ/HP2 state.
         // The NOMJ condition is the exact automation state MJ=NOMJremains. A missing HP2 does not
@@ -5381,720 +6105,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             markRun("TodOffsetsZero")
         }
 
-        // --- Graph2ToggleTT: manually setting a TT of 5.138 mmol is used as a remote toggle for
-        // ApsAutoIsfShowCarbModelCurve (the "graph2" carb model curve display) — not a real target.
-        // Next value after TodOffset2200UpTT's 5.136 in the settings-nudge TT cluster. Same
-        // activeTtNear()/cancel/notify/toggle pattern as SensorAgeToggleTT/BoostToggleTT above.
-        if (readyToRun("Graph2ToggleTT", 2) && activeTtNear(5.138, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
-            preferences.put(BooleanKey.ApsAutoIsfShowCarbModelCurve, newState)
-            cancelCurrentTempTarget()
-            sendSms("Graph2Toggle: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("G2${if (newState) "On" else "Off"}")
-            markRun("Graph2ToggleTT")
-        }
+        applyRemoteDisplayAndRoleActions()
 
-        // --- Graph5ToggleTT: manually setting a TT of 5.142 mmol is used as a remote toggle for
-        // ApsAutoIsfShowGraph5 (the 5th graph — a fixed clone of the main graph, minus basal) — not a
-        // real target. Next value after Graph2ToggleTT's 5.138 / CloudLogsUploadTT's 5.140. Same
-        // activeTtNear()/cancel/notify/toggle pattern as Graph2ToggleTT above. Independent switch —
-        // deliberately does not touch graphs 2/3/4's own settings.
-        if (readyToRun("Graph5ToggleTT", 2) && activeTtNear(5.142, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowGraph5)
-            preferences.put(BooleanKey.ApsAutoIsfShowGraph5, newState)
-            cancelCurrentTempTarget()
-            sendSms("Graph5Toggle: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("G5${if (newState) "On" else "Off"}")
-            markRun("Graph5ToggleTT")
-        }
-
-        // --- MjStateNoMjTT / MjStateMj3TT: manually setting a TT of 5.144 / 5.146 mmol sets the MJ
-        // automation state directly to NOMJremains / MJ3 — not real targets. Next values after
-        // Graph5ToggleTT's 5.142. Paired in ttCodesList() as a single TtCode.Stepped row ("MJ state"),
-        // so the two land as the pair of mutually-exclusive checkboxes in that row's confirm dialog
-        // rather than as two separate scannable entries.
-        //
-        // A manual override, deliberately unconditional: every other writer of this state is gated on
-        // time and/or BGL (MJ2old 02:10-03:10, MJ3old 01:05-02:05, MoreMJ 06:00-23:59 plus its own
-        // condition tree), which is exactly why a stuck state can't always be corrected from within the
-        // automations. Same activeTtNear()/cancel/notify pattern as the other remote-signal TTs above;
-        // no toggle state, each fires once per TT-set. Kept as two one-way setters rather than one
-        // toggling TT so the resulting state is always known from which code was sent, never dependent
-        // on what the state happened to be beforehand.
-        if (readyToRun("MjStateNoMjTT", 2) && activeTtNear(5.144, 0.0001)) {
-            setAutomationState("MJ", "NOMJremains")
-            cancelCurrentTempTarget()
-            sendSms("MJstate: NOMJremains")
-            addCarePortalNote("MJsNO")
-            markRun("MjStateNoMjTT")
-        }
-
-        if (readyToRun("MjStateMj3TT", 2) && activeTtNear(5.146, 0.0001)) {
-            setAutomationState("MJ", "MJ3")
-            cancelCurrentTempTarget()
-            sendSms("MJstate: MJ3")
-            addCarePortalNote("MJs3")
-            markRun("MjStateMj3TT")
-        }
-
-        // MjStateActiveTT / MjStateMj2TT (5.222/5.224) -- added 2026-09-17, same unconditional
-        // manual-override shape as MjStateNoMjTT/MjStateMj3TT above, completing the MJ-state row on
-        // List1 to all four real states (MJ active/MJ2/MJ3/NOMJremains) instead of just two.
-        if (readyToRun("MjStateActiveTT", 2) && activeTtNear(5.222, 0.0001)) {
-            setAutomationState("MJ", "MJ active")
-            cancelCurrentTempTarget()
-            sendSms("MJstate: MJ active")
-            addCarePortalNote("MJsAc")
-            markRun("MjStateActiveTT")
-        }
-
-        if (readyToRun("MjStateMj2TT", 2) && activeTtNear(5.224, 0.0001)) {
-            setAutomationState("MJ", "MJ2")
-            cancelCurrentTempTarget()
-            sendSms("MJstate: MJ2")
-            addCarePortalNote("MJs2")
-            markRun("MjStateMj2TT")
-        }
-
-        // ProfileStandardTT/ProfileLowTT (5.148/5.150) -- re-added 2026-08-23. Removed earlier the same
-        // day as redundant with switching profiles directly, then reinstated: switching profiles
-        // directly in AAPS's own picker requires knowing/finding the actual profile NAME currently
-        // filling each role, whereas these two read StringKey.ApsAutoIsfStandardProfileName/
-        // LowProfileName live -- same never-hardcode-the-name principle as every switchProfileIfNeeded()
-        // call in this file -- so a re-pick via "Re-pick coded profiles" (List 1) takes effect here too
-        // without editing anything. List 1's own row presents both as one Strong/Low choice dialog (see
-        // OverviewFragment.kt's ttCodesList()), each button relaying whichever of these two TT codes.
-        if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
-            switchToStandardAtSharedTier()
-            cancelCurrentTempTarget()
-            sendSms("Profile: Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})")
-            addCarePortalNote("PrSt")
-            markRun("ProfileStandardTT")
-        }
-
-        if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
-            switchToLowAtSharedTier()
-            cancelCurrentTempTarget()
-            sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})")
-            addCarePortalNote("PrLow")
-            markRun("ProfileLowTT")
-        }
-
-        // --- SetRole (coded-duration channel): the fast counterpart to the SetRole Note block above
-        // (added 2026-08-31). ProfileSwitchDialog on another device, when a Standard/Low base or tier is
-        // picked on an otherwise indefinite 100% switch, sends the switch with a coded duration of
-        // 51..57 min (role index = durationMinutes - 50). This rides the normal profile-switch sync
-        // (minutes, not the ~40-70 min secondary-NS lag), applies the role, then immediately re-issues
-        // the switch as indefinite so the coded duration never actually expires in normal use. 100% +
-        // the odd (non-10-multiple) minute value keep a genuine short switch from being misread.
-        // Cursor-tracked by PS timestamp; idempotent with the Note channel.
-        run {
-            val cursor = preferences.get(LongKey.ApsAutoIsfSetRoleDurationHandledAt)
-            val activePs = persistenceLayer.getProfileSwitchActiveAt(dateUtil.now())
-            if (activePs != null && activePs.isValid && activePs.timestamp > cursor) {
-                val roleIndex = (activePs.duration / 60_000L).toInt() - 50
-                if (activePs.percentage == 100 && roleIndex in 1..7) {
-                    val roleKey = setRoleKeyForIndex(roleIndex)
-                    if (roleKey != null && applySetRole(roleKey, activePs.profileName)) {
-                        reassertProfileIndefinite(activePs.profileName)   // supersede the coded short switch so it can't expire/revert
-                        sendSms("SetRole(dur): ${roleKey.key} -> ${activePs.profileName}")
-                        addCarePortalNote("RoleSet")
-                    }
-                }
-                preferences.put(LongKey.ApsAutoIsfSetRoleDurationHandledAt, activePs.timestamp)
-            }
-        }
-
-        // --- LibreUkf1ToggleTT: 5.152 is the "Tog UKFset1" row in the IOB double-tap popup. Its old
-        // sibling LibreUkf2ToggleTT (5.154) is removed -- UKFset2 toggling moved to list2's "Graph:
-        // UKF2" entry (see GraphToggleEntry.syncedLiveKey in OverviewFragment.kt). The mutual-exclusion
-        // write here (turning UKFset1 on used to also force FslUseUkfLibreSpecialSmoothing off) was
-        // removed 2026-08-15 for the same reason it was dropped from list2's popup: that flag no longer
-        // has any dosing effect (XdripSourcePlugin.kt/NsIncomingDataProcessor.kt call
-        // smoothLibreSpecialRealtime() only for its graph-history side effect and discard the return
-        // value) -- it now only gates whether UKF2's graph history accumulates. Silently clearing it here
-        // every time UKFset1 got toggled on was the actual cause of UKF2's graph never accumulating
-        // points: the two settings are independent now, so toggling one must not touch the other.
-        if (readyToRun("LibreUkf1ToggleTT", 2) && activeTtNear(5.152, 0.0001)) {
-            val virtualComparisonAllowed = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT
-            if (virtualComparisonAllowed) {
-                val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
-                preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
-                sendSms("LibreUKFset1 Virtual: ${if (newState) "ON" else "OFF"}")
-                addCarePortalNote("UKF1V${if (newState) "On" else "Off"}")
-            } else {
-                preferences.put(BooleanKey.FslUseUkfSmoothing, false)
-                sendSms("LibreUKFset1 blocked: Virtual Pump only")
-                addCarePortalNote("UKF1Block")
-            }
-            cancelCurrentTempTarget()
-            markRun("LibreUkf1ToggleTT")
-        }
-
-        // --- SensorAgeCodeToggleTT: master execution toggle for the complete SensorAge calibration
-        // routine, separate from the existing 5.006 aging-sensor adjustment preference toggle.
-        if (readyToRun("SensorAgeCodeToggleTT", 2) && activeTtNear(5.156, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("SAC${if (newState) "On" else "Off"}")
-            markRun("SensorAgeCodeToggleTT")
-        }
-        applyAlarmHypoStateTT()
-        applyCleanGraphNoTextTT()
-
-        // Client-only relay codes for the basal-icon direct action menu. On the pump phone these run
-        // the full Kotlin actions; pump/Virtual selections do not create these TTs at all.
-        if (readyToRun("MjStartActionTT", 2) && activeTtNear(5.158, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectMjUserAction(EventMjUserAction.Action.START, directMenu = true)
-            markRun("MjStartActionTT")
-        }
-
-        if (readyToRun("MjRestoreActionTT", 2) && activeTtNear(5.160, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectMjUserAction(EventMjUserAction.Action.RESTORE, directMenu = true)
-            markRun("MjRestoreActionTT")
-        }
-
-        if (readyToRun("SteroidStartActionTT", 2) && activeTtNear(5.162, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectSteroidUserAction(directMenu = true)
-            markRun("SteroidStartActionTT")
-        }
-
-        if (readyToRun("SteroidIncrease130ActionTT", 2) && activeTtNear(5.168, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectSteroidUserAction(
-                action = EventSteroidUserAction.Action.INCREASE_130,
-                directMenu = true
-            )
-            markRun("SteroidIncrease130ActionTT")
-        }
-
-        if (readyToRun("SteroidIncrease150ActionTT", 2) && activeTtNear(5.170, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectSteroidUserAction(
-                action = EventSteroidUserAction.Action.INCREASE_150,
-                directMenu = true
-            )
-            markRun("SteroidIncrease150ActionTT")
-        }
-
-        if (readyToRun("SteroidIncrease190ActionTT", 2) && activeTtNear(5.172, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectSteroidUserAction(
-                action = EventSteroidUserAction.Action.INCREASE_190,
-                directMenu = true
-            )
-            markRun("SteroidIncrease190ActionTT")
-        }
-
-        if (readyToRun("SteroidIncrease250ActionTT", 2) && activeTtNear(5.174, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectSteroidUserAction(
-                action = EventSteroidUserAction.Action.INCREASE_250,
-                directMenu = true
-            )
-            markRun("SteroidIncrease250ActionTT")
-        }
-
-        if (readyToRun("SteroidTurnOffActionTT", 2) && activeTtNear(5.176, 0.0001)) {
-            cancelCurrentTempTarget()
-            handleDirectSteroidUserAction(
-                action = EventSteroidUserAction.Action.TURN_OFF,
-                directMenu = true
-            )
-            markRun("SteroidTurnOffActionTT")
-        }
-
-        // --- AnyDeskRestartActionTT: second, redundant channel for the "Send AnyDesk restart" list2
-        // button (see runBasalDirectAction()'s ANYDESK_RESTART branch in OverviewFragment.kt), which
-        // fires this TT alongside the existing "ADesk" secondary-NS Note above rather than instead of
-        // it -- this one rides Client's primary NS sync so it can land before the secondary-NS
-        // worker's next poll picks up the Note's revision. launchAnyDeskDirect() only (no Tasker,
-        // no RESTART_ANYDESK broadcast). AdOn/AdMs are startActivity only, not that Unattended
-        // Access is accepting connections.
-        if (readyToRun("AnyDeskRestartActionTT", 2) && activeTtNear(5.178, 0.0001)) {
-            cancelCurrentTempTarget()
-            // Virtual skip added 2026-09-18 at explicit request: same reasoning as the secondary-NS
-            // receiver above -- Virtual never launches AnyDesk (isRealLoopPhone() already excludes
-            // it), so its own "AcTTV relay-TT receipt" note was pure noise. cancelCurrentTempTarget()
-            // and markRun() still run unconditionally so the relayed TT gets consumed properly.
-            if (activePlugin.activePump !is VirtualPump || config.AAPSCLIENT) {
-                val deviceRole = when {
-                    config.AAPSCLIENT -> "C"
-                    activePlugin.activePump is VirtualPump -> "V"
-                    else -> "R"
-                }
-                val receiptNote = "AcTT$deviceRole relay-TT receipt"
-                addCarePortalNote(receiptNote)
-                if (isRealLoopPhone()) {
-                    launchAnyDeskDirect()
-                    aapsLogger.info(LTag.APS, "$receiptNote; AAPS AnyDesk restart dispatched")
-                } else {
-                    aapsLogger.info(LTag.APS, "$receiptNote; not the AnyDesk host, launch skipped")
-                }
-            }
-            markRun("AnyDeskRestartActionTT")
-        }
-
-        // --- ShizukuApkInstallTT: List2 "Install newest AAPS333 APK (Shizuku)". Live List2 fires
-        // immediately via EventAutoIsfDirectTtCode 5.200; Client relays this 5.200 TT. 5-min
-        // throttle so a double-tap cannot start two pm installs.
-        if (readyToRun("ShizukuApkInstallTT", 5) && activeTtNear(5.200, 0.0001)) {
-            cancelCurrentTempTarget()
-            installNewestAaps333Apk("list2-tt")
-            markRun("ShizukuApkInstallTT")
-        }
-
-        // --- StageAaps333NewestTT: List2 "Stage newest APK (keep 20)". Copy + prune only.
-        if (readyToRun("StageAaps333NewestTT", 5) && activeTtNear(5.202, 0.0001)) {
-            cancelCurrentTempTarget()
-            stageNewestAaps333Apk("list2-tt")
-            markRun("StageAaps333NewestTT")
-        }
-
-        // Every 15 min on Live and Virtual: stage newest/, then Shizuku-install only if the
-        // archive NNN is strictly higher than the running APK and no install started in the
-        // last 45 min (persisted — survives the pm-install kill). sh -c still relaunches.
-        if (readyToRun("AutoApkInstall", 15) && !config.AAPSCLIENT) {
-            markRun("AutoApkInstall")
-            Schedulers.io().scheduleDirect { tryAutoInstallNewerApk() }
-        }
-
-        if (readyToRun("MjKotlinButtonsToggleTT", 2) && activeTtNear(5.164, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("MJ Kotlin buttons: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("MJB${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("MJ Kotlin buttons toggled", true))
-            markRun("MjKotlinButtonsToggleTT")
-        }
-
-        if (readyToRun("SteroidKotlinButtonToggleTT", 2) && activeTtNear(5.166, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("Steroid Kotlin button: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("StB${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("Steroid Kotlin button toggled", true))
-            markRun("SteroidKotlinButtonToggleTT")
-        }
-
-        // Added 2026-08-23: List 2 on/off for Tier 3 "UAM Boost" (ApsAutoIsfUamBoostEnabled), same flag
-        // uamBoostActive already reads (see its own getter's doc comment) and the same one the
-        // Settings-screen AdaptiveSwitchPreference exposes -- this is just a quicker toggle path, not a
-        // second independent flag. Same activeTtNear()/cancel/notify shape as the two toggles above.
-        if (readyToRun("Tier3BoostToggleTT", 2) && activeTtNear(5.194, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfUamBoostEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("Tier 3 UAM Boost: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("T3B${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("Tier 3 UAM Boost toggled", true))
-            markRun("Tier3BoostToggleTT")
-        }
-
-        if (readyToRun("ProfileBatchAutoToggleTT", 2) && activeTtNear(5.210, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("Bt1${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("Profile batch auto toggled", true))
-            markRun("ProfileBatchAutoToggleTT")
-        }
-        if (readyToRun("ProfileBatchRevertToggleTT", 2) && activeTtNear(5.212, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
-            setProfileBatchRevertA(newState, "List2 Toggle2")
-            cancelCurrentTempTarget()
-            sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("Bt2${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
-            markRun("ProfileBatchRevertToggleTT")
-        }
-        if (readyToRun("ProfileBatchRevertCToggleTT", 2) && activeTtNear(5.214, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
-            setProfileBatchRevertC(newState, "List2 Toggle3")
-            cancelCurrentTempTarget()
-            sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("Bt3${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("Profile batch revert TierC toggled", true))
-            markRun("ProfileBatchRevertCToggleTT")
-        }
-
-        // --- List 1 direct tier set (added 2026-09-15, per explicit request): jump Standard+Low to a
-        // named rung in one tap, rather than only stepping one rung at a time (ProfileBatchStep, via
-        // List2 Toggle1/BtchUp/BtchDn) or holding at the two extremes (List2 Toggle2/Toggle3, TierA/
-        // TierC only -- TierB was previously unreachable except by passing through it during a step).
-        // Both roles always move together -- applySharedRoleRung() already writes Standard+Low as one
-        // shared rung; this just exposes picking the destination rung directly from List 1.
-        // Turns off both hold toggles first: leaving one active would have it revert this pick straight
-        // back to A or C on the very next cycle, the same class of fight-every-cycle regression the
-        // Toggle2/Toggle3 doc comment above already warns about.
-        if (readyToRun("ProfileBatchSetATT", 2) && activeTtNear(5.216, 0.0001)) {
-            cancelCurrentTempTarget()
-            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
-            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
-            if (applySharedRoleRung(0, "List1 TierSetA", switchRunning = true, announce = true)) addCarePortalNote("TierSetA")
-            rxBus.send(EventRefreshOverview("List1 tier set A", true))
-            markRun("ProfileBatchSetATT")
-        }
-        if (readyToRun("ProfileBatchSetBTT", 2) && activeTtNear(5.218, 0.0001)) {
-            cancelCurrentTempTarget()
-            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
-            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
-            if (applySharedRoleRung(1, "List1 TierSetB", switchRunning = true, announce = true)) addCarePortalNote("TierSetB")
-            rxBus.send(EventRefreshOverview("List1 tier set B", true))
-            markRun("ProfileBatchSetBTT")
-        }
-        if (readyToRun("ProfileBatchSetCTT", 2) && activeTtNear(5.220, 0.0001)) {
-            cancelCurrentTempTarget()
-            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled, false)
-            if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) preferences.put(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled, false)
-            if (applySharedRoleRung(2, "List1 TierSetC", switchRunning = true, announce = true)) addCarePortalNote("TierSetC")
-            rxBus.send(EventRefreshOverview("List1 tier set C", true))
-            markRun("ProfileBatchSetCTT")
-        }
-
-        // Added 2026-08-23: List 2 on/off for ApsAutoIsfUseUkf1ForDosing -- see
-        // applyUkf1DosingOverride()'s own doc comment for scope. Same activeTtNear()/cancel/notify shape
-        // as the two toggles above.
-        if (readyToRun("Ukf1DosingToggleTT", 2) && activeTtNear(5.196, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
-            preferences.put(BooleanKey.ApsAutoIsfUseUkf1ForDosing, newState)
-            cancelCurrentTempTarget()
-            sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("U1D${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
-            markRun("Ukf1DosingToggleTT")
-        }
-
-        // Test toggles (2026-09-20): FastRise size tiers / LoReb guard, List 2 on/off. Same activeTtNear()/cancel/notify
-        // shape as Ukf1DosingToggleTT above -- this is the path a Client relay (TT 5.226 / 5.228) takes on the loop phone.
-        if (readyToRun("FastRiseToggleTT", 2) && activeTtNear(5.226, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfFastRiseEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("FastRise tiers: ${if (newState) "ON" else "OFF"} (test toggle)")
-            addCarePortalNote("FRt${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("FastRise tiers toggled", true))
-            markRun("FastRiseToggleTT")
-        }
-        if (readyToRun("LowReboundGuardToggleTT", 2) && activeTtNear(5.228, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfLowReboundGuardEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("LoReb guard: ${if (newState) "ON" else "OFF"} (test toggle)")
-            addCarePortalNote("LRb${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
-            markRun("LowReboundGuardToggleTT")
-        }
-        if (readyToRun("T3UnrestrictedToggleTT", 2) && activeTtNear(5.230, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
-            preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("T3u${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
-            markRun("T3UnrestrictedToggleTT")
-        }
-        if (readyToRun("InsulinTotalsToggleTT", 2) && activeTtNear(5.232, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
-            preferences.put(BooleanKey.ApsAutoIsfShowInsulinTotals, newState)
-            cancelCurrentTempTarget()
-            sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("ITt${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
-            markRun("InsulinTotalsToggleTT")
-        }
-        applyLoopIntervalToggleTT()
-
-        // List 2 coded-location master switch. This changes only the enable preference; the five
-        // airport/five address definitions remain editable local preferences under Automation.
-        if (readyToRun("LocationSmsToggleTT", 2) && activeTtNear(5.198, 0.0001)) {
-            val newState = !preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
-            preferences.put(BooleanKey.AutomationCodedLocationsEnabled, newState)
-            cancelCurrentTempTarget()
-            sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}")
-            addCarePortalNote("Loc${if (newState) "On" else "Off"}")
-            rxBus.send(EventRefreshOverview("Coded locations toggled", true))
-            markRun("LocationSmsToggleTT")
-        }
-
-        // Client-relayed 5.204: allow/deny location SMS from this loop phone by storing its model.
-        if (readyToRun("LocationSmsThisPhoneTT", 2) && activeTtNear(5.204, 0.0001)) {
-            applyLocationSmsThisPhoneToggle()
-            cancelCurrentTempTarget()
-            markRun("LocationSmsThisPhoneTT")
-        }
-
-        // --- CloudLogsUploadTT: manually setting a TT of 5.140 mmol remotely triggers the same log
-        // upload as the "Send logs" button on the Maintenance screen (zips logs, sends to cloud
-        // storage if configured, else email) — for AAPSClient users who have no settings access to
-        // trigger it directly. Next value after Graph2ToggleTT's 5.138. Same
-        // activeTtNear()/cancel/notify pattern as the other remote-signal TTs above; no toggle state,
-        // just fires once per TT-set.
-        if (readyToRun("CloudLogsUploadTT", 2) && activeTtNear(5.140, 0.0001)) {
-            importExportPrefs.sendLogs(trigger = "REMOTE_TT")
-            cancelCurrentTempTarget()
-            sendSms("CloudLogsUpload: triggered")
-            addCarePortalNote("CLup")
-            markRun("CloudLogsUploadTT")
-        }
-
-        // --- DuraWeightDownTT: manually setting a TT of 5.22 mmol is used as a remote -0.1 nudge on
-        // ApsAutoIsfDuraWeightNormal (duraISFwt_orig), clamped to a min of 0.00 — not a real target.
-        // Same pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("DuraWeightDownTT", 2) && activeTtNear(5.022, 0.0001)) {
-            val currentDura = preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)
-            val currentLive = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
-            val newDura = (currentDura - 0.1).coerceAtLeast(0.00)
-            preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
-            if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive - 0.1).coerceAtLeast(0.00))
-            cancelCurrentTempTarget()
-            sendSms("DuraWeightDown: duraISFwt_orig=${round(newDura, 2)}")
-            // 3 trailing chars (not 2) — Dura's 0-3.00 range needs the whole-number digit too, e.g. "Dd2.4"
-            addCarePortalNote(compactSettingNote("D", newDura, 2))
-            markRun("DuraWeightDownTT")
-        }
-
-        // --- DuraWeightUpTT: manually setting a TT of 5.24 mmol is used as a remote +0.1 nudge on
-        // ApsAutoIsfDuraWeightNormal, clamped to a max of 3.00. Same pattern as DuraWeightDownTT above.
-        if (readyToRun("DuraWeightUpTT", 2) && activeTtNear(5.024, 0.0001)) {
-            val currentDura = preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)
-            val currentLive = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
-            val newDura = (currentDura + 0.1).coerceAtMost(3.00)
-            preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
-            if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive + 0.1).coerceAtMost(3.00))
-            cancelCurrentTempTarget()
-            sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}")
-            addCarePortalNote(compactSettingNote("D", newDura, 2))
-            markRun("DuraWeightUpTT")
-        }
-
-        // --- SmbOffsetDownTT: manually setting a TT of 5.36 mmol is used as a remote -0.1 nudge on
-        // ApsAutoIsfSmbOffsetOverride (SMBoffset), clamped to a min of 0.50 — not a real target. Same
-        // pattern/tight 0.001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("SmbOffsetDownTT", 2) && activeTtNear(5.036, 0.0001)) {
-            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.1).coerceAtLeast(0.50)
-            preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
-            cancelCurrentTempTarget()
-            sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}")
-            addCarePortalNote(compactSettingNote("SO", newOffset, 1))
-            markRun("SmbOffsetDownTT")
-        }
-
-        // --- SmbOffsetUpTT: manually setting a TT of 5.38 mmol is used as a remote +0.1 nudge on
-        // ApsAutoIsfSmbOffsetOverride, clamped to a max of 1.50. Same pattern as SmbOffsetDownTT above.
-        if (readyToRun("SmbOffsetUpTT", 2) && activeTtNear(5.038, 0.0001)) {
-            val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.1).coerceAtMost(1.50)
-            preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
-            cancelCurrentTempTarget()
-            sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")
-            addCarePortalNote(compactSettingNote("SO", newOffset, 1))
-            markRun("SmbOffsetUpTT")
-        }
-
-        // --- LibreSlopeDownTT: manually setting a TT of 5.026 mmol is used as a remote -0.01 nudge on
-        // ApsAutoIsfLibreSlopeOrig (LibreSlope_orig), clamped to a min of 0.60 — not a real target.
-        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. If FslCalSlope
-        // (the live setting) currently equals its own baseline, nudge both together.
-        if (readyToRun("LibreSlopeDownTT", 2) && activeTtNear(5.026, 0.0001)) {
-            val currentSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
-            val currentLive = preferences.get(DoubleKey.FslCalSlope)
-            val newSlope = (currentSlopeOrig - 0.01).coerceAtLeast(0.60)
-            preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
-            if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive - 0.01).coerceAtLeast(0.60))
-            cancelCurrentTempTarget()
-            sendSms("LibreSlopeDown: LibreSlope_orig=${round(newSlope, 2)}")
-            addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true))
-            markRun("LibreSlopeDownTT")
-        }
-
-        // --- LibreSlopeUpTT: manually setting a TT of 5.028 mmol is used as a remote +0.01 nudge on
-        // ApsAutoIsfLibreSlopeOrig, clamped to a max of 1.00. Same pattern as LibreSlopeDownTT above.
-        if (readyToRun("LibreSlopeUpTT", 2) && activeTtNear(5.028, 0.0001)) {
-            val currentSlopeOrig = preferences.get(DoubleKey.ApsAutoIsfLibreSlopeOrig)
-            val currentLive = preferences.get(DoubleKey.FslCalSlope)
-            val newSlope = (currentSlopeOrig + 0.01).coerceAtMost(1.00)
-            preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
-            if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive + 0.01).coerceAtMost(1.00))
-            cancelCurrentTempTarget()
-            sendSms("LibreSlopeUp: LibreSlope_orig=${round(newSlope, 2)}")
-            addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true))
-            markRun("LibreSlopeUpTT")
-        }
-
-        // --- LibreOffsetDownTT: manually setting a TT of 5.032 mmol is used as a remote -0.05 nudge on
-        // ApsAutoIsfLibreOffsetOrig (LibreOffset_orig), clamped to a min of 1.20 — not a real target.
-        // Same pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above. If FslCalOffset
-        // currently equals its own baseline, nudge both together. Note suffix uses takeLast(4) (not the
-        // usual 2) since this setting is >=1.0 — the one outlier allowed to run to 6 total chars
-        // ("Ld1.25") rather than dropping the leading digit, so the note stays unambiguous on its own.
-        if (readyToRun("LibreOffsetDownTT", 2) && activeTtNear(5.032, 0.0001)) {
-            val currentOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
-            val currentLive = preferences.get(DoubleKey.FslCalOffset)
-            val newOffsetOrig = (currentOffsetOrig - 0.05).coerceAtLeast(1.20)
-            preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
-            if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive - 0.05).coerceAtLeast(1.20))
-            cancelCurrentTempTarget()
-            sendSms("LibreOffsetDown: LibreOffset_orig=${round(newOffsetOrig, 2)}")
-            addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2))
-            markRun("LibreOffsetDownTT")
-        }
-
-        // --- LibreOffsetUpTT: manually setting a TT of 5.034 mmol is used as a remote +0.05 nudge on
-        // ApsAutoIsfLibreOffsetOrig, clamped to a max of 1.60. Same pattern as LibreOffsetDownTT above.
-        if (readyToRun("LibreOffsetUpTT", 2) && activeTtNear(5.034, 0.0001)) {
-            val currentOffsetOrig = preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig)
-            val currentLive = preferences.get(DoubleKey.FslCalOffset)
-            val newOffsetOrig = (currentOffsetOrig + 0.05).coerceAtMost(1.60)
-            preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
-            if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive + 0.05).coerceAtMost(1.60))
-            cancelCurrentTempTarget()
-            sendSms("LibreOffsetUp: LibreOffset_orig=${round(newOffsetOrig, 2)}")
-            addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2))
-            markRun("LibreOffsetUpTT")
-        }
-
-        // --- CleanGraphTT: manually setting a TT of 5.042 mmol is used as a remote trigger for the
-        // "clean main graph" display combo (no SMB labels, no BGL arrowheads, solid uniform-green line)
-        // — the same combo as long-pressing the IOB icon then the Basal icon. Not a real target. Since
-        // this plugin has no dependency on core:graph (where the actual display state — showSmbLabels/
-        // basalToggleIndex — lives), it can't set those companion fields directly; it just raises a
-        // one-shot flag that OverviewFragment's updateGraph() picks up and clears on its next run. Same
-        // tight 0.0001mmol tolerance/cancel/notify pattern as the other settings-nudge TTs above.
-        if (readyToRun("CleanGraphTT", 2) && activeTtNear(5.042, 0.0001)) {
-            preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, true)
-            cancelCurrentTempTarget()
-            sendSms("CleanGraph: no SMBs/arrows, solid green")
-            addCarePortalNote("CGrph")
-            markRun("CleanGraphTT")
-        }
-
-        // --- WizardPctDownTT: manually setting a TT of 5.046 mmol is used as a remote -5 nudge on
-        // OverviewBolusPercentage (Wizard bolus %), clamped to a min of 50 — not a real target. Same
-        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("WizardPctDownTT", 2) && activeTtNear(5.046, 0.0001)) {
-            val newPct = (preferences.get(IntKey.OverviewBolusPercentage) - 5).coerceAtLeast(50)
-            preferences.put(IntKey.OverviewBolusPercentage, newPct)
-            cancelCurrentTempTarget()
-            sendSms("WizardPctDown: BolusPct=$newPct")
-            addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct))
-            markRun("WizardPctDownTT")
-        }
-
-        // --- WizardPctUpTT: manually setting a TT of 5.048 mmol is used as a remote +5 nudge on
-        // OverviewBolusPercentage, clamped to a max of 100. Same pattern as WizardPctDownTT above.
-        if (readyToRun("WizardPctUpTT", 2) && activeTtNear(5.048, 0.0001)) {
-            val newPct = (preferences.get(IntKey.OverviewBolusPercentage) + 5).coerceAtMost(100)
-            preferences.put(IntKey.OverviewBolusPercentage, newPct)
-            cancelCurrentTempTarget()
-            sendSms("WizardPctUp: BolusPct=$newPct")
-            addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct))
-            markRun("WizardPctUpTT")
-        }
-
-        // --- MildBoostDownTT: manually setting a TT of 5.052 mmol is used as a remote -0.25 nudge on
-        // ApsAutoIsfMildBoostRatio alone (unlike SmbDeliveryDownTT/5.002, which nudges it together with
-        // ApsAutoIsfSmbDeliveryBaseline, and stays at its own separate ±0.01 step), clamped to its own
-        // min of 0.1 — not a real target. Step widened 0.01 -> 0.05 -> 0.25 on 2026-08-29, alongside the
-        // key's own max widening 0.5->1.0 (see ApsAutoIsfMildBoostRatio in DoubleKey.kt). Same
-        // pattern/tight 0.0001mmol tolerance as the other settings-nudge TTs above.
-        if (readyToRun("MildBoostDownTT", 2) && activeTtNear(5.052, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.25).coerceAtLeast(0.1)
-            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
-            cancelCurrentTempTarget()
-            sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true))
-            markRun("MildBoostDownTT")
-        }
-
-        // --- MildBoostUpTT: manually setting a TT of 5.054 mmol is used as a remote +0.25 nudge on
-        // ApsAutoIsfMildBoostRatio alone, clamped to its own max of 1.0 (widened from 0.5 on 2026-08-29).
-        // Same pattern as MildBoostDownTT above.
-        if (readyToRun("MildBoostUpTT", 2) && activeTtNear(5.054, 0.0001)) {
-            val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.25).coerceAtMost(1.0)
-            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
-            cancelCurrentTempTarget()
-            sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
-            addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true))
-            markRun("MildBoostUpTT")
-        }
-
-        // --- BoostScaleDownTT / BoostScaleUpTT: remote ±0.25 nudge (widened from ±0.1 -> ±0.05 -> ±0.25,
-        // 2026-08-29, per explicit request) on ApsAutoIsfUamBoostScale (Tier 3 UAM Boost's boost_scale
-        // multiplier) -- not real targets. Same pattern as MildBoostDownTT/UpTT above. Up is clamped to
-        // 2.9, NOT the preference's own nominal max of 3.0: DetermineBasalAutoISF.kt's entry gate
-        // requires "boost_scale < 3" -- at exactly 3.0 Tier 3 stops firing entirely, a silent cliff
-        // rather than a graceful cap, so 2.9 keeps this control from ever landing on that trap.
-        if (readyToRun("BoostScaleDownTT", 2) && activeTtNear(5.182, 0.0001)) {
-            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) - 0.25).coerceAtLeast(0.1)
-            preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
-            cancelCurrentTempTarget()
-            sendSms("BoostScaleDown: boost_scale=${round(newScale, 2)}")
-            addCarePortalNote(compactSettingNote("BS", newScale, 2))
-            markRun("BoostScaleDownTT")
-        }
-
-        if (readyToRun("BoostScaleUpTT", 2) && activeTtNear(5.184, 0.0001)) {
-            val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) + 0.25).coerceAtMost(2.9)
-            preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
-            cancelCurrentTempTarget()
-            sendSms("BoostScaleUp: boost_scale=${round(newScale, 2)}")
-            addCarePortalNote(compactSettingNote("BS", newScale, 2))
-            markRun("BoostScaleUpTT")
-        }
-
-        // --- BoostMaxDownTT / BoostMaxUpTT: remote ±0.25U nudge on ApsAutoIsfUamBoostMaxBolus (Tier 3's
-        // per-SMB boost_bolus_cap setting). Dosing also min's with max_iob/9.5 (1.0U at max_iob 9.5).
-        // Not real targets. Same pattern as above.
-        if (readyToRun("BoostMaxDownTT", 2) && activeTtNear(5.186, 0.0001)) {
-            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) - 0.25)
-                .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
-            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
-            cancelCurrentTempTarget()
-            sendSms("BoostMaxDown: boost_max=${round(newBoostMax, 2)}U")
-            addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2))
-            markRun("BoostMaxDownTT")
-        }
-
-        if (readyToRun("BoostMaxUpTT", 2) && activeTtNear(5.188, 0.0001)) {
-            val newBoostMax = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus) + 0.25)
-                .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
-            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
-            cancelCurrentTempTarget()
-            sendSms("BoostMaxUp: boost_max=${round(newBoostMax, 2)}U")
-            addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2))
-            markRun("BoostMaxUpTT")
-        }
-
-        // --- BoostIobMaxDownTT / BoostIobMaxUpTT: remote ±5% nudge on ApsAutoIsfUamBoostMaxIobPercent
-        // (Tier 3's IOB ceiling, live default 10.0% of max_iob -- e.g. 0.95U at max_iob 9.5) -- not real
-        // targets. Same pattern as above. This is the ceiling that was actually binding the 22 Aug 2026
-        // real UamBst firing (see the AIV review checklist's item 06), not boost_max, so this is the more
-        // relevant of the two boost-strength controls to reach for first.
-        if (readyToRun("BoostIobMaxDownTT", 2) && activeTtNear(5.190, 0.0001)) {
-            val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) - 5.0).coerceAtLeast(1.0)
-            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
-            cancelCurrentTempTarget()
-            sendSms("BoostIobMaxDown: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
-            addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1))
-            markRun("BoostIobMaxDownTT")
-        }
-
-        if (readyToRun("BoostIobMaxUpTT", 2) && activeTtNear(5.192, 0.0001)) {
-            val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) + 5.0).coerceAtMost(100.0)
-            preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
-            cancelCurrentTempTarget()
-            sendSms("BoostIobMaxUp: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
-            addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1))
-            markRun("BoostIobMaxUpTT")
-        }
+        applyRemoteWizardAndBoostActions()
 
         // --- GentleHypoRiskOver4.5: escalates from prepare50 state (weight 0.07) to Skittles state (0.02) ---
         // Guard: acce weight 0.03–0.08 (only fires when prepare50 is active; Skittles weight 0.02 falls below).
