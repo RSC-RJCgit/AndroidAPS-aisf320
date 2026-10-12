@@ -8,7 +8,9 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongNonKey
@@ -35,7 +37,8 @@ import dev.zacsweers.metro.Inject
  * Downloads the live phone's treatments from the secondary Nightscout.
  *
  * Runs when that site is turned on. The two addresses are not compared. Manual boluses and carbs
- * follow the receive switches. Temp basals and extended boluses are never taken. Notes stay on
+ * are automatic for clients and the Virtual Pump master; real pumps follow the receive switches.
+ * Temp basals and extended boluses are never taken. Notes stay on
  * the short keep-list, including the one note "MJ active". The profile store and the live step
  * counts come from this site as well. The full app and a client take glucose from this site
  * when "Get BG from this connection" is on.
@@ -51,6 +54,7 @@ class LoadSecondaryTreatmentsRunner(
     private val nsClientRepository: NSClientRepository,
     private val nsIncomingDataProcessor: NsIncomingDataProcessor,
     private val nsDeviceStatusHandler: NSDeviceStatusHandler,
+    private val activePlugin: ActivePlugin,
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -108,6 +112,14 @@ class LoadSecondaryTreatmentsRunner(
     }
 
     private suspend fun download(client: NSAndroidClientImpl): WorkOutcome {
+        val isVirtualMaster = !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
+        if (isVirtualMaster && preferences.get(LongNonKey.NsClientSecondaryVirtualMealRecoveryVersion) < 1L) {
+            // Old scans advanced past meals when the separate receive switches were off.
+            // Re-use the existing paged 16-day recovery; upserts retain already stored records.
+            preferences.put(LongNonKey.NsClientSecondaryLastModified, 0L)
+            preferences.put(LongNonKey.NsClientSecondaryVirtualMealRecoveryVersion, 1L)
+            nsClientRepository.addLog("◄ SEC-NS", "Recovering 16 days of manual boluses and carbs for the Virtual Pump master")
+        }
         var cursor = preferences.get(LongNonKey.NsClientSecondaryLastModified)
         val recoveryScan = cursor == 0L
         var queryFrom = if (recoveryScan) {
@@ -155,7 +167,7 @@ class LoadSecondaryTreatmentsRunner(
                         // A client has no Receive insulin switch (the setting is hidden there and stays off), and it takes
                         // every treatment on the main site anyway. Without this the meal boluses entered on the other
                         // phone never reached the client's graph, while their calculator records did.
-                        if (!(preferences.get(BooleanKey.NsClientAcceptInsulin) || config.AAPSCLIENT)) continue
+                        if (!secondaryMealTreatmentsAccepted(preferences.get(BooleanKey.NsClientAcceptInsulin), config.AAPSCLIENT, isVirtualMaster)) continue
                         val bolus = treatment.toBolus(insulin)
                         if (secondaryBolusAccepted(bolus.type)) {
                             storeDataForDb.addToBoluses(bolus)
@@ -165,7 +177,7 @@ class LoadSecondaryTreatmentsRunner(
 
                     is NSCarbs -> {
                         // Same reason as for the boluses above: a client has no Receive carbs switch.
-                        if (!(preferences.get(BooleanKey.NsClientAcceptCarbs) || config.AAPSCLIENT)) continue
+                        if (!secondaryMealTreatmentsAccepted(preferences.get(BooleanKey.NsClientAcceptCarbs), config.AAPSCLIENT, isVirtualMaster)) continue
                         storeDataForDb.addToCarbs(treatment.toCarbs())
                         pageCarbs++
                     }

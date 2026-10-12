@@ -6,11 +6,16 @@ import app.aaps.core.data.model.TE
 /**
  * What the secondary Nightscout download keeps.
  *
- * Manual boluses and carbs come in only when their receive switches are on. SMBs and priming never do:
+ * Clients and the Virtual Pump master take manual boluses and carbs whenever this connection is enabled;
+ * real pumps require their receive switches. SMBs and priming never come in:
  * those were delivered on the other phone and must not be copied onto this one. Device events come in
  * only when that option is on, and a Note only when it is one of the messages the other phone sends on purpose.
  */
 internal fun secondaryBolusAccepted(type: BS.Type): Boolean = type == BS.Type.NORMAL
+
+/** An enabled secondary connection supplies meals automatically to clients and the Virtual Pump master. */
+internal fun secondaryMealTreatmentsAccepted(receiveEnabled: Boolean, isClient: Boolean, isVirtualMaster: Boolean): Boolean =
+    receiveEnabled || isClient || isVirtualMaster
 
 internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?, isClient: Boolean = false): Boolean {
     if (type !in secondaryDeviceEventTypes) return false

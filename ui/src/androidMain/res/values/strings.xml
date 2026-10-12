@@ -434,4 +434,5 @@
     <string name="client_settings1_chip">Settings1</string>
     <string name="client_settings2_chip">Set2</string>
     <string name="client_settings3_chip">Set3</string>
+    <string name="direct_list_setting_value">%1$s: %2$s</string>
 </resources>

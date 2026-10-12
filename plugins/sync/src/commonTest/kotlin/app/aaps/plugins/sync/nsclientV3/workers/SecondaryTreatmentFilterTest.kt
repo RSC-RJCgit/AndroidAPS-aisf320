@@ -13,6 +13,18 @@ import kotlin.test.assertTrue
 class SecondaryTreatmentFilterTest {
 
     @Test
+    fun `clients and Virtual Pump master accept meals without the hidden or separate switches`() {
+        assertTrue(secondaryMealTreatmentsAccepted(false, isClient = true, isVirtualMaster = false))
+        assertTrue(secondaryMealTreatmentsAccepted(false, isClient = false, isVirtualMaster = true))
+    }
+
+    @Test
+    fun `real pump still requires the explicit receive switch`() {
+        assertFalse(secondaryMealTreatmentsAccepted(false, isClient = false, isVirtualMaster = false))
+        assertTrue(secondaryMealTreatmentsAccepted(true, isClient = false, isVirtualMaster = false))
+    }
+
+    @Test
     fun `a normal bolus is kept and an SMB is not`() {
         assertTrue(secondaryBolusAccepted(BS.Type.NORMAL))
         assertFalse(secondaryBolusAccepted(BS.Type.SMB))

@@ -78,6 +78,8 @@ enum class LongNonKey(
     // Server-modified time of the last secondary Nightscout page. 0 means the first download
     // still has to walk back 16 days. Local only: restoring it would skip treatments.
     NsClientSecondaryLastModified("nsclient_secondary_last_modified", 0L, exportable = false),
+    // One-time history recovery after enabling automatic meal imports on the Virtual Pump master.
+    NsClientSecondaryVirtualMealRecoveryVersion("nsclient_secondary_virtual_meal_recovery_version", 0L, exportable = false),
 
     // Server time of the profile store last taken from the secondary Nightscout.
     NsClientSecondaryProfileModified("nsclient_secondary_profile_modified", 0L, exportable = false),

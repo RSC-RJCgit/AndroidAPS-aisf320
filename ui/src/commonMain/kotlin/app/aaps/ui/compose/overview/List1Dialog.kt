@@ -1,11 +1,18 @@
 package app.aaps.ui.compose.overview
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -14,7 +21,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import app.aaps.core.ui.CoreUiStrings
+import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.chips.CodedProfileRole
 import app.aaps.ui.compose.overview.chips.List1Row
@@ -74,32 +88,41 @@ private fun DirectListDialog(
 ) {
     if (!open) return
     var picked by remember { mutableStateOf<List1Row?>(null) }
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                // Codes sent from a client that wait for a running TT to end (2026-10-08).
-                if (queuedText != null) Text(queuedText)
-                LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                    items(rows, key = { it.label }) { row ->
-                        TextButton(onClick = {
-                            if (row.pickProfiles) onPickProfiles() else picked = row
-                        }) {
-                            Column {
-                                Text(row.label)
-                                Text("Current: ${row.current}")
-                            }
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth(0.95f)) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().heightIn(max = maxHeight * 0.85f),
+                shape = MaterialTheme.shapes.extraLarge
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
+                    // Codes sent from a client that wait for a running TT to end (2026-10-08).
+                    if (queuedText != null) Text(queuedText, modifier = Modifier.padding(bottom = 8.dp))
+                    LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                        items(rows, key = { it.label }) { row ->
+                            Text(
+                                text = if (row.current.isBlank()) row.label else stringResource(UiStrings.direct_list_setting_value, row.label, row.current),
+                                fontSize = 15.sp,
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
+                                    .clickable(role = Role.Button) {
+                                        if (row.pickProfiles) onPickProfiles() else picked = row
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = onDismiss) {
+                            Text(stringResource(CoreUiStrings.cancel))
                         }
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    )
+    }
     val row = picked
     if (row != null) {
         val up = row.upMmol
