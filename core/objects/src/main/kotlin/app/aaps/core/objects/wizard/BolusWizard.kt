@@ -1836,6 +1836,12 @@ class BolusWizard @Inject constructor(
             // A check failed at/after the due time: re-check in 10 min unless that would be inside the last 10 min before the
             // next FPU part is due (30 min after its own due time for the last part), in which case drop it as expired.
             // The dose stays counted in the Warsaw pending total while it waits. onExpired runs only on that final drop.
+            val doseDeadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
+            if (dateUtil.now() > doseDeadline) {
+                cancelDoseNote(dose, "$label dose: retry window expired", label, iobBaseline)
+                decrementWarsawPendingRemaining(dose)
+                return@postDelayed
+            }
             fun deferOrCancel(logReason: String, noteReason: String, withLabel: Boolean = true, forceRetry: Boolean = false, onExpired: (() -> Unit)? = null) {
                 val retryAt = dateUtil.now() + T.mins(10).msecs()
                 val deadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
