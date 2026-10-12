@@ -504,6 +504,12 @@ class BolusWizard(
                 if (wait <= 0L) break
                 delay(min(wait, 120_000L))
             }
+            if (dateUtil.now() > warsawRetryDeadlineMs(firstDueAt, nextDueAt)) {
+                val expired = "retry window expired"
+                warsawNote("C", planned, expired, source)
+                recordCancelledDose(label, planned, expired, iobBaseline, source)
+                return
+            }
             val reason = tryDeliverWarsawDose(planned, iobBaseline, source) { remaining, nextBaseline ->
                 appScope.launch {
                     val now = dateUtil.now()
