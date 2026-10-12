@@ -9,22 +9,29 @@ on:
       client:
         description: Desktop client to package
         type: choice
-        default: '1'
-        options: ['1', '2', '3']
+        default: '2'
+        options: ['1', '2', '3', 'both']
 
 permissions:
   contents: read
 
 jobs:
   package:
-    name: Build and upload Windows installer
+    name: Build and upload Windows installer (Client${{ matrix.client }})
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        client: ${{ fromJSON(github.event_name == 'push' && '["2","1"]' || inputs.client == 'both' && '["2","1"]' || format('["{0}"]', inputs.client || '2')) }}
     runs-on: windows-2025
     timeout-minutes: 90
     defaults:
       run:
         shell: pwsh
     env:
-      DESKTOP_CLIENT: ${{ inputs.client || '1' }}
+      DESKTOP_CLIENT: ${{ matrix.client }}
+      # Same AAPS folder reported by the APK uploader; a repository variable can override it.
+      GDRIVE_AAPS_FOLDER_ID: ${{ vars.GDRIVE_AAPS_FOLDER_ID || '1l7LZElkOLI1DVwd3o9rbtwqwtAjRloRz' }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -98,4 +105,13 @@ jobs:
       - name: Upload installer to Google Drive
         env:
           GDRIVE_OAUTH2: ${{ secrets.GDRIVE_OAUTH2 }}
-        run: python .github/scripts/upload_windows_msi.py
+        run: |
+          for ($attempt = 1; $attempt -le 4; $attempt++) {
+            python .github/scripts/upload_windows_msi.py
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 4) {
+              Write-Host "Drive upload attempt $attempt failed; retrying. Installer is already available in GitHub Actions."
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+          exit 1

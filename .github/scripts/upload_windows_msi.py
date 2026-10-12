@@ -118,11 +118,14 @@ def main():
     with urllib.request.urlopen(request, timeout=120) as response:
         token = json.load(response)["access_token"]
     print(f"::add-mask::{token}")
-    root = get_folder(token, "AAPS")
+    root = os.environ.get("GDRIVE_AAPS_FOLDER_ID") or get_folder(token, "AAPS")
     parent = get_folder(token, folder_name, root)
+    print(f"Drive AAPS folder: https://drive.google.com/drive/folders/{root}")
+    print(f"Drive build folder: https://drive.google.com/drive/folders/{parent}")
     file_id = upload(token, files[0], parent)
     link = f"https://drive.google.com/file/d/{file_id}/view"
     print(f"Uploaded {files[0].name} to AAPS/{folder_name}")
+    print(f"Download Windows installer: {link}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as stream:
