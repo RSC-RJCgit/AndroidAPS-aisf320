@@ -4,10 +4,12 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 import urllib.error
 
+sys.dont_write_bytecode = True
 import upload_windows_msi as uploader
 
 

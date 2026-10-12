@@ -57,6 +57,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Test Drive uploader
+        run: python .github/scripts/test_upload_windows_msi.py
+
       - name: Make WiX available to jpackage
         run: |
           $roots = @()
