@@ -204,7 +204,10 @@ fun OverviewScreenTablet(
                     }
                     AapsClientStatusCard(
                         statusData = nsClientStatus,
-                        flavorTint = flavorTint
+                        flavorTint = flavorTint,
+                        onOpenList1 = chipsViewModel::openList1,
+                        onOpenList2 = chipsViewModel::openList2,
+                        onOpenList3 = chipsViewModel::openList3
                     )
                 }
             }

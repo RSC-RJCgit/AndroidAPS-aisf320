@@ -1,6 +1,8 @@
 package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -22,6 +27,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -43,6 +50,16 @@ import kotlin.math.abs
 import kotlin.math.round
 import kotlin.time.Clock
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.BCR
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
+import app.aaps.core.ui.CoreUiStrings
+import app.aaps.core.ui.compose.LocalDecimalFormatter
+import app.aaps.core.ui.compose.LocalProfileUtil
+import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.treatments.WizardInfoDialog
 import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
@@ -173,6 +190,39 @@ fun BgGraphCompose(
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
+    val decimalFormatter = LocalDecimalFormatter.current
+    val profileUtil = LocalProfileUtil.current
+    val tapTargets = remember { GraphTapTargets() }
+    var selectedBg by remember { mutableStateOf<BgDataPoint?>(null) }
+    var selectedBolus by remember { mutableStateOf<BolusGraphPoint?>(null) }
+    var selectedCalculation by remember { mutableStateOf<BCR?>(null) }
+    var calculationLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(selectedBolus) {
+        calculationLoaded = false
+        selectedCalculation = selectedBolus?.let { viewModel.calculationForBolus(it.timestamp) }
+        calculationLoaded = true
+    }
+    if (selectedBolus != null && calculationLoaded) {
+        val calculation = selectedCalculation
+        if (calculation != null) {
+            WizardInfoDialog(calculation, decimalFormatter, onDismiss = { selectedBolus = null })
+        } else {
+            val bolus = selectedBolus!!
+            AlertDialog(
+                onDismissRequest = { selectedBolus = null },
+                title = { Text(stringResource(InterfacesStrings.bolus)) },
+                text = {
+                    Column {
+                        Text(dateUtil.dateAndTimeAndSecondsString(bolus.timestamp))
+                        Text(stringResource(InterfacesStrings.format_insulin_units, bolus.amount))
+                        if (!bolus.isValid) Text(stringResource(CoreUiStrings.invalid))
+                        Text(stringResource(UiStrings.graph_bolus_calculation_unavailable))
+                    }
+                },
+                confirmButton = { TextButton(onClick = { selectedBolus = null }) { Text(stringResource(CoreUiStrings.close)) } },
+            )
+        }
+    }
     // Collect flows independently - each triggers recomposition only when it changes
     val bgReadings by viewModel.bgReadingsFlow.collectAsStateWithLifecycle()
     val graphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
@@ -908,11 +958,16 @@ fun BgGraphCompose(
                 stackIndex = stack[index],
                 anchorY = lowMark,
                 color = Color(0xFFFFFF00),
+                tapTimestamp = bolus.timestamp,
             )
         }
     }
-    val bolusNumbers = remember(bolusStack, bolusText) {
-        SmbStackLabels(bolusStack, bolusText, pinToBottom = false)
+    val bolusNumbers = remember(bolusStack, bolusText, treatments) {
+        SmbStackLabels(bolusStack, bolusText, pinToBottom = false, onBounds = { bounds ->
+            tapTargets.labels = bounds.mapNotNull { (item, rect) ->
+                treatments.boluses.singleOrNull { it.timestamp == item.tapTimestamp }?.let { GraphTapHit(rect, bolus = it) }
+            }
+        })
     }
     val epsText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val epsNumbers = remember(epsLabelAnchors, epsText, profileSwitchColor) {
@@ -924,8 +979,14 @@ fun BgGraphCompose(
     }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers)
+    val tapReadings = bgReadings + bucketedData +
+        (if (showRaw) seriesRegistry[SERIES_RAW].orEmpty() else emptyList()) +
+        (if (showUkf) seriesRegistry[SERIES_UKF].orEmpty() else emptyList())
+    val tapReporter = remember(tapReadings, bgReadings, treatments, minTimestamp) {
+        GraphPointTapReporter(tapTargets, tapReadings, bgReadings, treatments.boluses.filter { it.bolusType == BolusType.NORMAL }, minTimestamp)
+    }
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter)
     }
 
     // =========================================================================
@@ -1041,10 +1102,47 @@ fun BgGraphCompose(
             getXStep = { _, _, _ -> 1.0 }
         ),
         modelProducer = modelProducer,
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize().pointerInput(tapTargets) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                var moved = false
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (event.changes.size > 1 || event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) {
+                        moved = true
+                        selectedBg = null
+                    }
+                    if (event.changes.none { it.pressed }) {
+                        val up = event.changes.firstOrNull { it.id == down.id }
+                        if (!moved && up != null && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
+                            val hit = tapTargets.at(up.position)
+                            selectedBg = hit?.bg
+                            hit?.bolus?.let { bolus ->
+                                calculationLoaded = false
+                                selectedBolus = bolus
+                            }
+                            if (hit != null) up.consume()
+                        }
+                        break
+                    }
+                } while (true)
+            }
+        },
         scrollState = scrollState,
         zoomState = zoomState
     )
+    selectedBg?.let { reading ->
+        val mgdl = if (profileUtil.units == GlucoseUnit.MGDL) reading.value else reading.value * Constants.MMOLL_TO_MGDL
+        Surface(modifier = Modifier.align(Alignment.TopStart).padding(8.dp), tonalElevation = 4.dp, shadowElevation = 4.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
+                Column {
+                    Text(profileUtil.fromMgdlToStringWithUnits(mgdl))
+                    Text(dateUtil.dateAndTimeString(reading.timestamp))
+                }
+                TextButton(onClick = { selectedBg = null }) { Text(stringResource(CoreUiStrings.close)) }
+            }
+        }
+    }
     if (topBandLines) {
         // Legend for the four top band lines, each name in its own line colour, followed by that line's last-24-hour range
         // (lowest on the lane bottom, highest on its top). A name is shown only when that line really has data to draw,

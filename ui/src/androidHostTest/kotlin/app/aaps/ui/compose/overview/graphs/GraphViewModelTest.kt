@@ -1,6 +1,7 @@
 package app.aaps.ui.compose.overview.graphs
 
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
@@ -38,6 +39,7 @@ internal class GraphViewModelTest {
     @Mock private lateinit var preferences: Preferences
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var rh: ResourceHelper
+    @Mock private lateinit var persistenceLayer: PersistenceLayer
 
     private lateinit var sut: GraphViewModel
 
@@ -54,7 +56,7 @@ internal class GraphViewModelTest {
         whenever(preferences.observe(UnitDoubleKey.OverviewHighMark)).thenReturn(MutableStateFlow(180.0))
         whenever(preferences.observe(UnitDoubleKey.OverviewLowMark)).thenReturn(MutableStateFlow(72.0))
         // fullWindow = false: the overview behaviour, where the axis hugs the data.
-        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh)
+        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer)
     }
 
     @AfterEach
@@ -87,7 +89,7 @@ internal class GraphViewModelTest {
         whenever(cache.predictionsFlow).thenReturn(MutableStateFlow(predictions))
         whenever(cache.timeRangeFlow).thenReturn(MutableStateFlow(TimeRange(fromTime = windowStart, toTime = now, endTime = now + 2 * 3600_000L)))
         whenever(graphConfigRepository.graphConfigFlow).thenReturn(MutableStateFlow(GraphConfig()))
-        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh)
+        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer)
 
         val range = vm.derivedTimeRange.filterNotNull().first()
 

@@ -431,4 +431,7 @@
     <string name="overview_steroid_off">Steroids are on, or restart over 8.0. Turn off?</string>
 
     <string name="graph_bolus_calculation_unavailable">Calculation unavailable</string>
+    <string name="client_settings1_chip">Settings1</string>
+    <string name="client_settings2_chip">Set2</string>
+    <string name="client_settings3_chip">Set3</string>
 </resources>

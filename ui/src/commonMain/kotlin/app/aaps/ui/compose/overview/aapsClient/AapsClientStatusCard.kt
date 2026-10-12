@@ -23,6 +23,7 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,6 +37,7 @@ import app.aaps.core.interfaces.overview.graph.AapsClientStatusData
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.rememberBringIntoViewOnExpand
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 
 /**
  * @see AapsClientStatusCardCollapsedPreview
@@ -46,7 +48,10 @@ import app.aaps.core.ui.compose.stringResource
 fun AapsClientStatusCard(
     statusData: AapsClientStatusData,
     flavorTint: Color,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenList1: () -> Unit = {},
+    onOpenList2: () -> Unit = {},
+    onOpenList3: () -> Unit = {}
 ) {
     val items = listOfNotNull(statusData.pump, statusData.openAps, statusData.autoIsf, statusData.uploader)
     if (items.isEmpty()) return
@@ -80,9 +85,24 @@ fun AapsClientStatusCard(
                         .padding(vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
                 ) {
-                    items.forEach { item ->
+                    Text(
+                        text = stringResource(UiStrings.client_settings1_chip),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.clickable(onClick = onOpenList1)
+                    )
+                    statusData.openAps?.let { item ->
                         AapsClientStatusChip(item = item)
                     }
+                    Text(
+                        text = stringResource(UiStrings.client_settings3_chip),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.clickable(onClick = onOpenList3)
+                    )
+                    Text(
+                        text = stringResource(UiStrings.client_settings2_chip),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.clickable(onClick = onOpenList2)
+                    )
                 }
                 Icon(
                     imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
