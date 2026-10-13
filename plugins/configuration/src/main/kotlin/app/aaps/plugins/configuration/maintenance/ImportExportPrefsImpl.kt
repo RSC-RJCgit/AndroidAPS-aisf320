@@ -1081,20 +1081,23 @@ class ImportExportPrefsImpl @Inject constructor(
         fun matches(key: String): Boolean = key in exactKeys || prefixes.any { key.startsWith(it) }
     }
 
-    private fun baselineKeyAllowed(key: String): Boolean {
-        val lower = key.lowercase()
+    private fun baselineKeyFilter(): (String) -> Boolean {
         val bg = pluginDomainKeyMatcher(PluginType.BGSOURCE)
-        return preferences.isExportableKey(key) &&
-            key != StringKey.GeneralPatientName.key &&
-            (preferences.getIfExists(key) as? StringPreferenceKey)?.isPassword != true &&
-            !bg.matches(key) && key !in coreKeysByNamePrefix("BgSource") &&
-            !listOf("Objectives_", "ExamTask_", "UITask_", "DisabledTo_").any { key.startsWith(it) } &&
-            !lower.contains("password") &&
-            !(lower.startsWith("nsclient") && listOf("url", "token", "secret").any { lower.contains(it) })
+        val bgCoreKeys = coreKeysByNamePrefix("BgSource")
+        return { key ->
+            val lower = key.lowercase()
+            preferences.isExportableKey(key) &&
+                key != StringKey.GeneralPatientName.key &&
+                (preferences.getIfExists(key) as? StringPreferenceKey)?.isPassword != true &&
+                !bg.matches(key) && key !in bgCoreKeys &&
+                !listOf("Objectives_", "ExamTask_", "UITask_", "DisabledTo_").any { key.startsWith(it) } &&
+                !lower.contains("password") &&
+                !(lower.startsWith("nsclient") && listOf("url", "token", "secret").any { lower.contains(it) })
+        }
     }
 
     private fun saveRestoreBaseline(values: Map<String, String>) {
-        val selected = values.filterKeys { baselineKeyAllowed(it) }
+        val selected = values.filterKeys(baselineKeyFilter())
         require(selected.isNotEmpty()) { "No settings are available for the restore baseline" }
         val encrypted = secureEncrypt.encrypt(JSONObject(selected).toString(), "import_restore_baseline")
         check(encrypted.isNotEmpty()) { "Could not encrypt restore baseline" }
@@ -1109,7 +1112,7 @@ class ImportExportPrefsImpl @Inject constructor(
         val saved = secureEncrypt.decrypt(encrypted)
         check(saved.isNotEmpty()) { "Could not open restore baseline; load it again" }
         val json = JSONObject(saved)
-        val baseline = json.keys().asSequence().filter { baselineKeyAllowed(it) }.associateWith { json.getString(it) }
+        val baseline = json.keys().asSequence().filter(baselineKeyFilter()).associateWith { json.getString(it) }
         val restored = baseline.keys.count { it !in values }
         aapsLogger.info(LTag.CORE, "Import: filled $restored missing settings from restore baseline")
         return baseline + values

@@ -72,9 +72,11 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.pump.BolusProgressData
+import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.pump.defs.determineCorrectBolusStepSize
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.queue.CommandQueue
+import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -202,6 +204,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var graphDataProvider: Provider<GraphData>
     @Inject lateinit var commandQueue: CommandQueue
     @Inject lateinit var importExportPrefs: ImportExportPrefs
+    @Inject lateinit var pumpStatusProvider: PumpStatusProvider
+    @Inject lateinit var receiverStatusStore: ReceiverStatusStore
 
     private val disposable = CompositeDisposable()
 
@@ -262,8 +266,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             config.PUMPCONTROL -> R.string.overview_app_pump_control
             else -> R.string.overview_app_master
         })
+        // Only the major version: "3426+ai321_1039" has no dot, so cutting at the first dot kept the whole name.
         binding.infoLayout.appVersionLabel.text = rh.gs(
-            R.string.overview_app_version, appName, config.VERSION_NAME.substringBefore('.')
+            R.string.overview_app_version, appName, config.VERSION_NAME.firstOrNull { it.isDigit() }?.toString().orEmpty()
         )
 
         skinProvider.activeSkin().preProcessLandscapeOverviewLayout(binding, landscape, rh.gb(app.aaps.core.ui.R.bool.isTablet), smallHeight)
@@ -1360,10 +1365,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.openaps.text = if (config.AAPSCLIENT) processedDeviceStatusData.openApsStatus else rh.gs(R.string.openaps)
             binding.openaps.setOnClickListener {
                 if (config.AAPSCLIENT) showClientStatusDetails()
-                else activity?.let {
-                    OKDialog.show(it, rh.gs(R.string.openaps),
-                        activePlugin.activeAPS.lastAPSResult?.resultAsSpanned() ?: rh.gs(R.string.not_available_full).toSpanned())
-                }
+                else showMasterStatusDetails()
             }
             binding.uploader.text = rh.gs(R.string.client_settings2_chip)
             binding.uploader.setOnClickListener { showBasalDirectActionListDialog() }
@@ -1387,6 +1389,47 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         section(rh.gs(R.string.client_autoisf_detail), processedDeviceStatusData.aisfStatus, processedDeviceStatusData.extendedAisfStatus)
         section(rh.gs(R.string.uploader), processedDeviceStatusData.uploaderStatusSpanned, processedDeviceStatusData.extendedUploaderStatus)
         activity?.let { OKDialog.show(it, rh.gs(R.string.client_status_details), details) }
+    }
+
+    /**
+     * The same four sections as [showClientStatusDetails], but from this phone's own data.
+     * A master sends its device status to Nightscout and never reads it back, so
+     * [processedDeviceStatusData] stays empty here.
+     */
+    private fun showMasterStatusDetails() {
+        val details = SpannableStringBuilder()
+        fun section(title: String, text: CharSequence) {
+            if (details.isNotEmpty()) details.append("\n\n")
+            val start = details.length
+            details.append(title)
+            details.setSpan(StyleSpan(Typeface.BOLD), start, details.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (text.isNotEmpty()) details.append("\n").append(text)
+        }
+        section(rh.gs(app.aaps.core.ui.R.string.pump), pumpStatusProvider.shortStatus(false))
+        val lastRun = loop.lastRun
+        val openAps = buildString {
+            lastRun?.let { run ->
+                val enacted = listOfNotNull(run.tbrSetByPump, run.smbSetByPump).filter { it.success && it.enacted }
+                if (enacted.isNotEmpty()) {
+                    append("Enacted: ").append(dateUtil.minAgo(rh, max(run.lastTBREnact, run.lastSMBEnact))).append(" ")
+                    append(enacted.joinToString(" ") { it.comment })
+                }
+                run.request?.let {
+                    if (isNotEmpty()) append("\n\n")
+                    append("Suggested: ").append(dateUtil.minAgo(rh, run.lastAPSRun)).append(" ").append(it.reason)
+                }
+            }
+        }
+        section(rh.gs(R.string.openaps), openAps.ifEmpty { rh.gs(R.string.not_available_full) })
+        val apsResult = activePlugin.activeAPS.lastAPSResult
+        val autoIsf = buildString {
+            apsResult?.let { append(it.algorithm.name) }
+            apsResult?.scriptDebug?.takeIf { it.isNotEmpty() }?.let { append("\n").append(it.joinToString("\n")) }
+        }
+        section(rh.gs(R.string.client_autoisf_detail), autoIsf)
+        val battery = (if (receiverStatusStore.isCharging) "ᴪ " else "") + "${receiverStatusStore.batteryLevel}%"
+        section(rh.gs(R.string.uploader), battery)
+        activity?.let { OKDialog.show(it, rh.gs(R.string.openaps), details) }
     }
 
     private fun prepareGraphsIfNeeded(numOfGraphs: Int) {

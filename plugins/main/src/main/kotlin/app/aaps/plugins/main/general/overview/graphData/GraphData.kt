@@ -34,7 +34,6 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.R as CoreUiR
 import app.aaps.core.ui.toast.ToastUtils
-import app.aaps.plugins.main.R
 import com.jjoe64.graphview.GraphView
 import com.jjoe64.graphview.series.DataPoint
 import com.jjoe64.graphview.series.Series
@@ -121,11 +120,11 @@ class GraphData @Inject constructor(
         val scale = preferences.get(UnitDoubleKey.OverviewLowMark) / maxY / 1.2
         overviewData.basalScale.multiplier = maxY * scale / maxBasalValue
         addHourPeak(overviewData.absoluteBasalGraphSeries as LineGraphSeries<ScaledDataPoint>, overviewData.basalScale,
-            rh.gac(graph.context, CoreUiR.attr.tempBasalColor), R.string.graph_basal_hour_peak, stepped = true)
+            rh.gac(graph.context, CoreUiR.attr.tempBasalColor), stepped = true)
     }
 
-    /** Select using raw values; only the label position follows the graph scale. */
-    private fun addHourPeak(source: Series<ScaledDataPoint>, scale: Scale, colorValue: Int, labelResource: Int, stepped: Boolean = false) {
+    /** Select using raw values; only the label position follows the graph scale. The label is the bare number. */
+    private fun addHourPeak(source: Series<ScaledDataPoint>, scale: Scale, colorValue: Int, stepped: Boolean = false) {
         val now = dateUtil.now().toDouble()
         val start = now - 60 * 60_000L
         val samples = source.getValues(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY).asSequence()
@@ -143,7 +142,7 @@ class GraphData @Inject constructor(
         val labelTime = if (stepped) peak.x + (next - peak.x) / 2 else peak.x
         val point = object : ScaledDataPoint(labelTime, peak.rawValue, scale), DataPointWithLabelInterface {
             override fun setY(y: Double) {}
-            override val label = rh.gs(labelResource, decimalFormatter.to2Decimal(peak.rawValue))
+            override val label = decimalFormatter.to2Decimal(peak.rawValue)
             override val duration = 0L
             override val shape = Shape.HOUR_PEAK
             override val size = 0f
@@ -431,7 +430,7 @@ class GraphData @Inject constructor(
         addSeries(overviewData.iobPredictions1Series as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         addSeries(overviewData.iobPeakSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         addHourPeak(overviewData.iobSeries as FixedLineGraphSeries<ScaledDataPoint>, overviewData.iobScale,
-            rh.gac(graph.context, CoreUiR.attr.iobColor), R.string.graph_iob_hour_peak)
+            rh.gac(graph.context, CoreUiR.attr.iobColor))
         //addSeries(overviewData.iobPredictions2Series)
     }
 
