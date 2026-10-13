@@ -46,6 +46,7 @@ import app.aaps.desktop.shell.config.GeneratedBuildInfo
 import app.aaps.desktop.shell.di.DesktopAppGraph
 import app.aaps.desktop.shell.di.GeneratedStringOwners
 import app.aaps.implementation.logging.AAPSLoggerDesktop
+import app.aaps.desktop.shell.platform.openFolder
 import app.aaps.implementation.maintenance.DesktopFolders
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import app.aaps.shared.clientbindings.ClientViewModelFactory
@@ -208,6 +209,10 @@ private fun startPlugins(graph: DesktopAppGraph) {
     // preference row happens to be drawn. An option that is switched off and a marker file that is
     // looked for in the wrong folder produce exactly the same silence, which is how desktop went a
     // long time reading these from the data directory while Android reads them from AAPS/extra.
+    // Created up front so the user finds the folder to put a marker file in (#5250). Nothing else
+    // creates it: only Config reads it.
+    if (!DesktopFolders.extra.isDirectory && !DesktopFolders.extra.mkdirs())
+        graph.logger.error(LTag.CORE, "Cannot create ${DesktopFolders.extra.path}")
     val enabledOptions = ExternalOptions.entries.filter { graph.config.isEnabled(it) }
     graph.logger.debug(
         LTag.CORE,

@@ -2,6 +2,7 @@ package app.aaps.plugins.sync.nsclientV3.data
 
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.SC
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -111,7 +112,6 @@ class NSDeviceStatusHandler(
                 updateDeviceData(nsDeviceStatus)
                 updateOpenApsData(nsDeviceStatus)
                 updateUploaderData(nsDeviceStatus)
-                appScope.launch { calculationWorkflow.runOnReceivedPredictions(overviewData) }
             }
             if (config.APS) {
                 nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
@@ -126,6 +126,8 @@ class NSDeviceStatusHandler(
                 .mapNotNull { ds -> ds.createdAt?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() } ?: ds.date }
                 .maxOrNull() ?: 0L
             if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
+            // Rebuild predictions once for the newest data in this batch.
+            appScope.launch { calculationWorkflow.runOnReceivedPredictions(overviewData) }
             rxBus.send(EventNsClientStatusUpdated())
         }
     }
@@ -187,7 +189,12 @@ class NSDeviceStatusHandler(
                     }
                     processedDeviceStatusData.openAPSData.clockSuggested = clock
                     processedDeviceStatusData.getAPSResult()?.let { apsResult ->
-                        appScope.launch { persistenceLayer.insertOrUpdateApsResult(apsResult) }
+                        // A result that does not say which algorithm made it cannot be stored: `toDb` throws,
+                        // and in this scope that would end the app. It is still shown from the data above.
+                        if (apsResult.algorithm == APSResult.Algorithm.UNKNOWN)
+                            aapsLogger.debug(LTag.NSCLIENT, "APS result without algorithm from ${nsDeviceStatus.device}, not stored")
+                        else
+                            appScope.launch { persistenceLayer.insertOrUpdateApsResult(apsResult) }
                     }
                 }
             }

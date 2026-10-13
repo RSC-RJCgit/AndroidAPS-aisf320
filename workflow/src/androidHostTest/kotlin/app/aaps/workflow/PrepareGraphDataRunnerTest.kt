@@ -99,6 +99,7 @@ class PrepareGraphDataRunnerTest : TestBaseWithProfile() {
         whenever(persistenceLayer.getBgReadingsDataFromTimeToTime(any(), any(), any())).thenReturn(emptyList())
         whenever(persistenceLayer.getApsResults(any(), any())).thenReturn(emptyList())
         whenever(persistenceLayer.getAutoIsfValuesFromTimeToTime(any(), any())).thenReturn(emptyList())
+        whenever(persistenceLayer.getVariableSensitivities(any(), any())).thenReturn(emptyList())
         whenever(persistenceLayer.getTemporaryTargetActiveAt(any())).thenReturn(null)
         whenever(dataIobCob.calculateIobArrayForSMB(any(), any(), any(), any())).thenReturn(emptyArray())
         whenever(dataIobCob.iobArrayToString(any())).thenReturn("")

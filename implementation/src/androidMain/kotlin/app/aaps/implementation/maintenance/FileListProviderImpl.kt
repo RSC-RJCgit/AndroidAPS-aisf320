@@ -312,4 +312,32 @@ class FileListProviderImpl(
             it.uri == uri && it.isReadPermission && it.isWritePermission
         }
     }
+
+    override fun directoryPath(): String? {
+        val uriString = preferences().getIfExists(StringKey.AapsDirectoryUri)
+        if (uriString.isNullOrEmpty()) return null
+        val uri = uriString.toUri()
+        // A tree from another storage provider may have no document id; its folder name is still better than a content URI.
+        val documentId = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull()
+        return documentId?.let { treeDocumentIdToPath(it) }
+            ?: runCatching { DocumentFile.fromTreeUri(context, uri)?.name }.getOrNull()
+            ?: uriString
+    }
+}
+
+/**
+ * Turns a Storage Access Framework tree document id into a path the user recognises.
+ *
+ * Internal storage ids look like `primary:Documents/AAPS`, which becomes `Documents/AAPS`. Other
+ * volumes (an SD card is `1234-5678:AAPS`) keep the volume part, because it tells the user which
+ * card. The root of internal storage has an empty path and is shown as `/`.
+ */
+internal fun treeDocumentIdToPath(documentId: String): String {
+    val volume = documentId.substringBefore(':', missingDelimiterValue = "")
+    val path = documentId.substringAfter(':')
+    return when {
+        volume != "primary" -> documentId
+        path.isEmpty()      -> "/"
+        else                -> path
+    }
 }

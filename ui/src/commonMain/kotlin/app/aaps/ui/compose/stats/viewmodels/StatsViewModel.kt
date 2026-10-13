@@ -16,7 +16,6 @@ import app.aaps.core.data.model.TDD
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
-import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -28,10 +27,7 @@ import app.aaps.core.interfaces.stats.TirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntNonKey
-import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.ui.activityMonitor.ActivityStats
-import app.aaps.ui.activityMonitor.ActivityStatsProvider
 import app.aaps.ui.compose.stats.CycleSeries
 import app.aaps.ui.compose.stats.TddCyclePatternData
 import app.aaps.ui.compose.stats.TddStatsData
@@ -82,26 +78,13 @@ class StatsViewModel(
     private val tddCalculator: TddCalculator,
     private val tirCalculator: TirCalculator,
     private val dexcomTirCalculator: DexcomTirCalculator,
-    private val activityMonitor: ActivityStatsProvider,
     private val persistenceLayer: PersistenceLayer,
     val rh: TextResolver,
     private val uel: UserEntryLogger,
     val dateUtil: DateUtil,
     val profileUtil: ProfileUtil,
-    private val preferences: Preferences,
-    private val config: Config
+    private val preferences: Preferences
 ) : ViewModel() {
-
-    /**
-     * Whether the activity monitor card is worth drawing.
-     *
-     * Android only. It counts time spent on each screen from an `ActivityLifecycleCallbacks`, which
-     * has no counterpart elsewhere: both `IosActivityStatsProvider` and the desktop one return an
-     * empty list and log "not on this platform", and their KDocs call that an answer rather than a
-     * gap. The card was drawn anyway - no empty check - so those users got a headed card with
-     * nothing in it and a Reset button that reset nothing.
-     */
-    val showActivityStats: Boolean get() = config.platform == AppPlatform.Android
 
     private val _uiState = MutableStateFlow(StatsUiState())
     val uiState: StateFlow<StatsUiState> = _uiState.asStateFlow()
@@ -121,7 +104,6 @@ class StatsViewModel(
         val tddExpanded = preferences.get(BooleanNonKey.StatsTddExpanded)
         val tirExpanded = preferences.get(BooleanNonKey.StatsTirExpanded)
         val dexcomTirExpanded = preferences.get(BooleanNonKey.StatsDexcomTirExpanded)
-        val activityExpanded = preferences.get(BooleanNonKey.StatsActivityExpanded)
         val tddCycleExpanded = preferences.get(BooleanNonKey.StatsTddCycleExpanded)
         _uiState.update {
             it.copy(
@@ -129,7 +111,6 @@ class StatsViewModel(
                 tddExpanded = tddExpanded,
                 tirExpanded = tirExpanded,
                 dexcomTirExpanded = dexcomTirExpanded,
-                activityExpanded = activityExpanded,
                 tddCycleExpanded = tddCycleExpanded
             )
         }
@@ -195,8 +176,6 @@ class StatsViewModel(
         loadTddStats()
         loadTirStats()
         loadDexcomTirStats()
-        // Skipped where the card is not drawn - the provider would only log that it has nothing.
-        if (showActivityStats) loadActivityStats()
     }
 
     private fun loadTddStats() {
@@ -258,16 +237,6 @@ class StatsViewModel(
         }
     }
 
-    private fun loadActivityStats() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(activityLoading = true) }
-            val data = withContext(aapsIoDispatcher) {
-                activityMonitor.getActivityStats()
-            }
-            _uiState.update { it.copy(activityStatsData = data, activityLoading = false) }
-        }
-    }
-
     fun toggleTddExpanded() {
         val expanded = !uiState.value.tddExpanded
         preferences.put(BooleanNonKey.StatsTddExpanded, expanded)
@@ -284,12 +253,6 @@ class StatsViewModel(
         val expanded = !uiState.value.dexcomTirExpanded
         preferences.put(BooleanNonKey.StatsDexcomTirExpanded, expanded)
         _uiState.update { it.copy(dexcomTirExpanded = expanded) }
-    }
-
-    fun toggleActivityExpanded() {
-        val expanded = !uiState.value.activityExpanded
-        preferences.put(BooleanNonKey.StatsActivityExpanded, expanded)
-        _uiState.update { it.copy(activityExpanded = expanded) }
     }
 
     fun toggleTddCycleExpanded() {
@@ -429,23 +392,6 @@ class StatsViewModel(
             loadTddStats()
         }
     }
-
-    fun showResetActivityDialog() {
-        _uiState.update { it.copy(showResetActivityDialog = true) }
-    }
-
-    fun dismissResetActivityDialog() {
-        _uiState.update { it.copy(showResetActivityDialog = false) }
-    }
-
-    fun confirmResetActivityStats() {
-        _uiState.update { it.copy(showResetActivityDialog = false) }
-        uel.log(Action.STAT_RESET, Sources.Stats)
-        viewModelScope.launch(aapsIoDispatcher) {
-            activityMonitor.reset()
-            loadActivityStats()
-        }
-    }
 }
 
 /**
@@ -456,21 +402,17 @@ data class StatsUiState(
     val tddStatsData: TddStatsData? = null,
     val tirStatsData: TirStatsData? = null,
     val dexcomTirData: DexcomTIR? = null,
-    val activityStatsData: List<ActivityStats>? = null,
     val tddCycleEntries: List<TDD> = emptyList(),
     val tddCyclePatternData: TddCyclePatternData? = null,
     val tddLoading: Boolean = true,
     val tirLoading: Boolean = true,
     val dexcomTirLoading: Boolean = true,
-    val activityLoading: Boolean = true,
     val tddCycleLoading: Boolean = true,
     val tddCycleProgress: Float = 0f,
     val tddExpanded: Boolean = true,
     val tirExpanded: Boolean = true,
     val dexcomTirExpanded: Boolean = true,
-    val activityExpanded: Boolean = true,
     val tddCycleExpanded: Boolean = false,
     val tddCycleOffset: Int = 0,
-    val showRecalculateDialog: Boolean = false,
-    val showResetActivityDialog: Boolean = false
+    val showRecalculateDialog: Boolean = false
 )

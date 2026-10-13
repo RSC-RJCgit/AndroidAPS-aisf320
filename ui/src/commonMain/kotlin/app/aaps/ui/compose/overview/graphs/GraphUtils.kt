@@ -3,6 +3,7 @@ package app.aaps.ui.compose.overview.graphs
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -16,6 +17,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -29,9 +33,11 @@ import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
-import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -206,6 +212,45 @@ const val STARTUP_GUARD_MS = 180_000L
 const val GRAPH_TOUCH_WINDOW_MS = 3_000L
 const val STARTUP_GUARD_INTERVAL_MS = 5_000L
 const val STARTUP_GUARD_GAP_MINUTES = 12.0
+
+/**
+ * Calls [onGesture] when the user scrolls or zooms the chart with a pointer: when a finger moves past the
+ * touch slop or a second finger comes down, again when the gesture ends (so the [INTERACTION_GRACE_MS]
+ * window counts from the last touch), and on a mouse wheel event.
+ *
+ * Taps do not count. Scroll or zoom changes made by code do not reach here, which is the point: the
+ * "use scroll or zoom on BG chart" objective must only be completed by the user.
+ *
+ * Events are observed in the [PointerEventPass.Initial] pass and never consumed, so the chart still
+ * gets every event.
+ */
+fun Modifier.onScrollOrZoomGesture(onGesture: () -> Unit): Modifier = pointerInput(onGesture) {
+    awaitPointerEventScope {
+        var downPosition: Offset? = null
+        var moved = false
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            val pressed = event.changes.filter { it.pressed }
+            val start = downPosition
+            when {
+                event.type == PointerEventType.Scroll -> onGesture()
+
+                pressed.isEmpty()                     -> {
+                    if (moved) onGesture()
+                    downPosition = null
+                    moved = false
+                }
+
+                start == null                         -> downPosition = pressed.first().position
+
+                !moved && (pressed.size > 1 || (pressed.first().position - start).getDistance() > viewConfiguration.touchSlop) -> {
+                    moved = true
+                    onGesture()
+                }
+            }
+        }
+    }
+}
 
 /**
  * Fraction of the graph height occupied by the basal overlay.
@@ -809,18 +854,23 @@ fun rememberNowLine(minTimestamp: Long, nowTimestamp: Long, color: Color): NowLi
 }
 
 /**
- * Plain (non-Compose-state) holder for the latest visible x-range, written from
- * [VisibleRangeReporter.drawOverLayers] on every draw pass.
+ * Holder for the latest visible x-range, written from [VisibleRangeReporter.drawOverLayers] on
+ * every draw pass.
  *
  * Deliberately NOT a Compose `State`: writing Compose state synchronously from the draw phase
  * fights with Vico's own gesture-driven scroll/zoom mutations — the resulting invalidate-during-draw
- * starves pinch-zoom gesture recognition (observed: zoom became unresponsive). Callers must poll
- * [value] from a coroutine (e.g. a `LaunchedEffect` with a periodic `delay`) and only then write it
- * into real Compose state.
+ * starves pinch-zoom gesture recognition (observed: zoom became unresponsive). A [StateFlow] write
+ * invalidates nothing: it only schedules the collector, which runs after the draw pass and writes
+ * real Compose state there. Equal values are not emitted, so a redraw without scroll or zoom (or no
+ * draw at all, e.g. the app in background) wakes nobody. Do not replace this with a polling loop.
  */
 class VisibleRangeHolder {
-    @Volatile
-    var value: Pair<Double, Double>? = null
+    private val _value = MutableStateFlow<Pair<Double, Double>?>(null)
+    val value: StateFlow<Pair<Double, Double>?> = _value.asStateFlow()
+
+    fun report(range: Pair<Double, Double>) {
+        _value.value = range
+    }
 }
 
 /**
@@ -844,7 +894,7 @@ class VisibleRangeReporter(
 
             val visibleMinX = ranges.minX + xStep * (scroll - layerDimensions.startPadding) / xSpacing
             val visibleWidth = xStep * layerBounds.width / xSpacing
-            holder.value = visibleMinX to (visibleMinX + visibleWidth)
+            holder.report(visibleMinX to (visibleMinX + visibleWidth))
         }
     }
 

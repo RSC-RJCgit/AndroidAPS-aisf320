@@ -1,6 +1,11 @@
 package app.aaps.ui.compose.stats.viewmodels
 
-import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.data.model.BS
+import app.aaps.core.data.model.CA
+import app.aaps.core.data.model.EB
+import app.aaps.core.data.model.EPS
+import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.TB
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -9,12 +14,11 @@ import app.aaps.core.interfaces.stats.DexcomTirCalculator
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.ui.activityMonitor.ActivityMonitor
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -31,30 +35,32 @@ internal class StatsViewModelTest {
     @Mock private lateinit var tddCalculator: TddCalculator
     @Mock private lateinit var tirCalculator: TirCalculator
     @Mock private lateinit var dexcomTirCalculator: DexcomTirCalculator
-    @Mock private lateinit var activityMonitor: ActivityMonitor
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var uel: UserEntryLogger
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var profileUtil: ProfileUtil
     @Mock private lateinit var preferences: Preferences
-    @Mock private lateinit var config: Config
 
     private lateinit var sut: StatsViewModel
 
     @BeforeEach
     fun setUp() {
         MockitoAnnotations.openMocks(this)
+        whenever(persistenceLayer.observeChanges(BS::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(CA::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(TB::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(EB::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
+        whenever(persistenceLayer.observeChanges(GV::class)).thenReturn(emptyFlow())
         // StandardTestDispatcher defers every init{}-launched loadXxxStats() coroutine (no advanceUntilIdle),
         // so construction stays clean and we test the synchronous update/toggle/dialog methods against the
-        // default state. init only reads preferences.get(...) which return primitives (default false/0 on
+        // default state. The observation flows above are idle; preferences return primitives (default false/0 on
         // unstubbed mocks) -> tddCycleExpanded is false, so loadCyclePatternData() is never invoked.
         Dispatchers.setMain(StandardTestDispatcher())
-        // Android, so the activity monitor card is drawn and loadAllStats behaves as it always did.
-        whenever(config.platform).thenReturn(AppPlatform.Android)
         sut = StatsViewModel(
-            tddCalculator, tirCalculator, dexcomTirCalculator, activityMonitor, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences, config
+            tddCalculator, tirCalculator, dexcomTirCalculator, persistenceLayer,
+            rh, uel, dateUtil, profileUtil, preferences
         )
     }
 
@@ -65,7 +71,6 @@ internal class StatsViewModelTest {
     fun defaultUiStateHasDialogsHiddenAndZeroCycleOffset() {
         val state = sut.uiState.value
         assertThat(state.showRecalculateDialog).isFalse()
-        assertThat(state.showResetActivityDialog).isFalse()
         assertThat(state.tddCycleOffset).isEqualTo(0)
     }
 
@@ -92,12 +97,6 @@ internal class StatsViewModelTest {
         assertThat(sut.uiState.value.dexcomTirExpanded).isEqualTo(!initial)
     }
 
-    @Test
-    fun toggleActivityExpandedFlipsTheExpandedFlag() {
-        val initial = sut.uiState.value.activityExpanded
-        sut.toggleActivityExpanded()
-        assertThat(sut.uiState.value.activityExpanded).isEqualTo(!initial)
-    }
 
     @Test
     fun recalculateDialogIsShownThenDismissed() {
@@ -107,11 +106,4 @@ internal class StatsViewModelTest {
         assertThat(sut.uiState.value.showRecalculateDialog).isFalse()
     }
 
-    @Test
-    fun resetActivityDialogIsShownThenDismissed() {
-        sut.showResetActivityDialog()
-        assertThat(sut.uiState.value.showResetActivityDialog).isTrue()
-        sut.dismissResetActivityDialog()
-        assertThat(sut.uiState.value.showResetActivityDialog).isFalse()
-    }
 }

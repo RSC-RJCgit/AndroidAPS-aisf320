@@ -8,21 +8,21 @@ class SmbLabelSizeTest {
 
     @Test
     fun fullSizeAt500Dp() {
-        assertEquals(12.sp, smbLabelSize(500f))
+        assertEquals(9.6.sp, smbLabelSize(500f))
     }
 
     @Test
     fun halfSizeAt250Dp() {
-        assertEquals(6.sp, smbLabelSize(250f))
+        assertEquals(4.8.sp, smbLabelSize(250f))
     }
 
     @Test
     fun tallerThan500DpStaysFullSize() {
-        assertEquals(12.sp, smbLabelSize(800f))
+        assertEquals(9.6.sp, smbLabelSize(800f))
     }
 
     @Test
     fun unknownHeightStaysFullSize() {
-        assertEquals(12.sp, smbLabelSize(0f))
+        assertEquals(9.6.sp, smbLabelSize(0f))
     }
 }

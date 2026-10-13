@@ -15,7 +15,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -66,8 +65,8 @@ import com.patrykandpatrick.vico.compose.common.component.TextComponent
 import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.delay
 
 /**
  * CartesianChartModelProducer.update() skips notifying receivers (and thus skips recomputing axis
@@ -465,39 +464,27 @@ fun SecondaryGraphCompose(
     // Visible-window bounds (same x-unit as processed* points — minutes from minTimestamp) for
     // windowing the Y-axis scale to only the currently scrolled/zoomed portion of this graph's
     // own chart, instead of the full loaded time range.
-    // The reporter writes into a plain (non-Compose-state) holder on every draw pass — see
-    // VisibleRangeHolder — so we poll it here rather than observing it directly, keeping Compose
-    // state writes off the draw path.
+    // The reporter writes into a StateFlow holder (not Compose state) on every draw pass — see
+    // VisibleRangeHolder — and we collect it here, keeping Compose state writes off the draw path.
     // Computed here (before the model-rebuild LaunchedEffect below) so visibleMinX/visibleMaxX can
     // be included in that effect's keys — Vico only reliably re-applies axis ranges via a real
     // modelProducer.runTransaction, not merely by swapping the CartesianLayerRangeProvider instance.
     val visibleRangeHolder = remember { VisibleRangeHolder() }
     val visibleRangeReporter = rememberVisibleRangeReporter(visibleRangeHolder)
 
-    var rawVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     var visibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var settledVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
+    // Keep labels current during a drag without polling while the app is idle.
     LaunchedEffect(visibleRangeHolder) {
-        while (true) {
+        visibleRangeHolder.value.collect {
+            visibleRange = it
             delay(50)
-            val current = visibleRangeHolder.value
-            if (current != rawVisibleRange) rawVisibleRange = current
         }
     }
-
-    LaunchedEffect(Unit) {
-        snapshotFlow { rawVisibleRange }
-            .debounce(30)
-            .collect { visibleRange = it }
-    }
-
-    // The live window above is for the insulin labels. Rebuilding the chart model on every
-    // scroll tick makes a drag on the main graph wait, so the axis scale waits until the finger stops.
-    var settledVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    LaunchedEffect(Unit) {
-        snapshotFlow { rawVisibleRange }
-            .debounce(280)
-            .collect { settledVisibleRange = it }
+    // Axis model rebuilds wait until the finger stops, as in beta1.
+    LaunchedEffect(visibleRangeHolder) {
+        visibleRangeHolder.value.debounce(280).collect { settledVisibleRange = it }
     }
     val settledMinX = settledVisibleRange?.first
     val settledMaxX = settledVisibleRange?.second
