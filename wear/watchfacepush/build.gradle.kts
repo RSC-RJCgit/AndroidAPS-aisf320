@@ -53,6 +53,8 @@ android {
             // R8 with no entry points strips the generated R class entirely, so no classes.dex is
             // packaged — Watch Face Push validation rejects any APK containing code (same recipe
             // as Google's WatchFaceFormat samples)
+            // Resource shrinking is intentionally off for this resource-only watch face.
+            //noinspection NotShrinkingResources
             isMinifyEnabled = true
             // The watch face IS resources — never shrink them. This APK has no code, so the
             // manifest is the shrinker's whole root set, and it does not name the face: Watch
