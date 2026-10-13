@@ -12,6 +12,7 @@ build/
 !.idea/dictionaries/project-dictionary.xml
 .idea/*
 !.idea/codeStyles/
+!.idea/inspectionProfiles/
 full/
 app/com.crashlytics.settings.json
 app/session_analytics.tap
