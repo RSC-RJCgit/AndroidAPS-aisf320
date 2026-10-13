@@ -48,7 +48,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -223,9 +222,9 @@ fun GraphsSection(
     // decoration on BG's own chart, since that was tried and found to break BG's pinch-zoom
     // gesture handling.
     var iobVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    val automaticCleanGraph = iobVisibleRange?.let { (start, end) ->
-        end - start > maxOf(180.0, DEFAULT_GRAPH_ZOOM_MINUTES) + 0.01
-    } ?: false
+    val automaticCleanGraph = useCleanGraphForWindow(
+        iobVisibleRange?.let { (start, end) -> end - start }, DEFAULT_GRAPH_ZOOM_MINUTES
+    )
 
     // Settle further before feeding into BG specifically: unlike the secondary graphs (which are
     // non-interactive and unaffected by frequent updates), BG has live pinch-zoom. Updating its
@@ -685,8 +684,8 @@ fun GraphsSection(
     // Wheel zoom keeps the time already at the right edge, including a historical time.
     val zoomScope = rememberCoroutineScope()
     val wheelZoomMutex = remember(bgZoomState) { Mutex() }
-    val chartWidthPx = remember { floatArrayOf(0f) }
     val zoomStep: (Int) -> Unit = { direction ->
+        graphViewModel.onGraphInteraction()
         zoomScope.launch {
             wheelZoomMutex.withLock {
                 val current = bgZoomState.value
@@ -714,7 +713,6 @@ fun GraphsSection(
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
             .graphZoomControls(zoomStep, panStep)
-            .onSizeChanged { chartWidthPx[0] = it.width.toFloat() }
             // Passive: sees every touch before the graphs do and consumes nothing.
             .pointerInput(Unit) {
                 awaitPointerEventScope {

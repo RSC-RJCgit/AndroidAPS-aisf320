@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
@@ -233,7 +234,7 @@ fun Modifier.onScrollOrZoomGesture(onGesture: () -> Unit): Modifier = pointerInp
             val pressed = event.changes.filter { it.pressed }
             val start = downPosition
             when {
-                event.type == PointerEventType.Scroll -> onGesture()
+                event.type == PointerEventType.Scroll -> if (!event.keyboardModifiers.isCtrlPressed) onGesture()
 
                 pressed.isEmpty()                     -> {
                     if (moved) onGesture()
