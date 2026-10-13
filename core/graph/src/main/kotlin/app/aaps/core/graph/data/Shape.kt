@@ -6,6 +6,7 @@ package app.aaps.core.graph.data
  * You can also render a custom drawing via [com.jjoe64.graphview.series.PointsGraphSeries.CustomShape]
  */
 enum class Shape {
+    HOUR_PEAK, // highest historical IOB or basal rate in the last hour
 
     BG,
     PREDICTION,

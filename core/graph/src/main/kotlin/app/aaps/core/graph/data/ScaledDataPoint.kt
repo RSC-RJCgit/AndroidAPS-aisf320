@@ -21,6 +21,9 @@ open class ScaledDataPoint : DataPointInterface {
         this.scale = scale
     }
 
+    /** Value before the graph scale is applied. */
+    val rawValue: Double get() = y
+
     override fun getX(): Double = x
     override fun getY(): Double = scale.transform(y)
     override fun toString(): String = "[$x/$y]"

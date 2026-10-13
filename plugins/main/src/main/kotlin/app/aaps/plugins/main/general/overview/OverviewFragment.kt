@@ -31,6 +31,7 @@ import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
+import app.aaps.core.ui.R as CoreUiR
 import androidx.core.text.toSpanned
 import androidx.recyclerview.widget.LinearLayoutManager
 import app.aaps.core.data.configuration.Constants
@@ -247,10 +248,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (config.AAPSCLIENT2)
             binding.nsclientCard.setBackgroundColor(Color.argb(80, 0x0F, 0xBB, 0xE0))
 
+        if (config.APS)
+            binding.nsclientCard.setBackgroundColor(Color.argb(80, 0x8B, 0x60, 0xC8))
+
         overview.setVersionView(binding.infoLayout.version)
 
         skinProvider.activeSkin().preProcessLandscapeOverviewLayout(binding, landscape, rh.gb(app.aaps.core.ui.R.bool.isTablet), smallHeight)
-        binding.nsclientCard.visibility = config.AAPSCLIENT.toVisibility()
+        binding.nsclientCard.visibility = (config.AAPSCLIENT || config.APS).toVisibility()
 
         binding.notifications.setHasFixedSize(false)
         binding.notifications.layoutManager = LinearLayoutManager(view.context)
@@ -1339,8 +1343,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
             binding.pump.text = rh.gs(R.string.client_settings1_chip)
             binding.pump.setOnClickListener { showTtCodesListDialog() }
-            binding.openaps.text = processedDeviceStatusData.openApsStatus
-            binding.openaps.setOnClickListener { showClientStatusDetails() }
+            binding.openaps.text = if (config.AAPSCLIENT) processedDeviceStatusData.openApsStatus else rh.gs(R.string.openaps)
+            binding.openaps.setOnClickListener {
+                if (config.AAPSCLIENT) showClientStatusDetails()
+                else activity?.let {
+                    OKDialog.show(it, rh.gs(R.string.openaps),
+                        activePlugin.activeAPS.lastAPSResult?.resultAsSpanned() ?: rh.gs(CoreUiR.string.not_available_full))
+                }
+            }
             binding.uploader.text = rh.gs(R.string.client_settings2_chip)
             binding.uploader.setOnClickListener { showBasalDirectActionListDialog() }
             binding.aisfdebug.text = rh.gs(R.string.client_settings3_chip)

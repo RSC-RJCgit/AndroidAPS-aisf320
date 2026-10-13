@@ -459,6 +459,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, scaledPxSize, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
+                } else if (value.shape == Shape.HOUR_PEAK) {
+                    mPaint.color = value.color(graphView.context)
+                    mPaint.style = Paint.Style.FILL
+                    mPaint.strokeWidth = 0f
+                    mPaint.textSize = (scaledTextSize * 0.65f).toFloat()
+                    mPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    mPaint.textAlign = Paint.Align.LEFT
+                    val width = mPaint.measureText(value.label)
+                    val labelX = (endX - width / 2f).coerceIn(graphLeft.toFloat(), maxOf(graphLeft.toFloat(), (graphLeft + graphWidth).toFloat() - width))
+                    val labelY = (endY - 5f).coerceIn(graphTop.toFloat() + mPaint.textSize, (graphTop + graphHeight).toFloat())
+                    canvas.drawText(value.label, labelX, labelY, mPaint)
                 } else if (value.shape == Shape.ACTIVITY_PEAK || value.shape == Shape.IOB_PEAK) {
                     // Same style as GENERAL's drawLabel45Right, but below the peak point instead of above.
                     // Shared rendering for both peak-label shapes -- they differ only in which graph they're

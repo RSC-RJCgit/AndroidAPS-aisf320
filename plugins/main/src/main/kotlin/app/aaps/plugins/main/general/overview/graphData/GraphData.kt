@@ -19,16 +19,22 @@ import app.aaps.core.graph.data.GlucoseValueDataPoint
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.ScaledDataPoint
+import app.aaps.core.graph.data.Shape
 import app.aaps.core.graph.data.TimeAsXAxisLabelFormatter
+import app.aaps.core.interfaces.graph.Scale
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.ui.R as CoreUiR
 import app.aaps.core.ui.toast.ToastUtils
+import app.aaps.plugins.main.R
 import com.jjoe64.graphview.GraphView
 import com.jjoe64.graphview.series.DataPoint
 import com.jjoe64.graphview.series.Series
@@ -43,7 +49,9 @@ private const val TOP_BAND_FRACTION = 0.28
 class GraphData @Inject constructor(
     private val profileFunction: ProfileFunction,
     private val preferences: Preferences,
-    private val rh: ResourceHelper
+    private val rh: ResourceHelper,
+    private val decimalFormatter: DecimalFormatter,
+    private val dateUtil: DateUtil
 ) {
 
     private var maxY = Double.MIN_VALUE
@@ -112,6 +120,37 @@ class GraphData @Inject constructor(
         maxY = max(maxY, preferences.get(UnitDoubleKey.OverviewHighMark))
         val scale = preferences.get(UnitDoubleKey.OverviewLowMark) / maxY / 1.2
         overviewData.basalScale.multiplier = maxY * scale / maxBasalValue
+        addHourPeak(overviewData.absoluteBasalGraphSeries as LineGraphSeries<ScaledDataPoint>, overviewData.basalScale,
+            rh.gac(graph.context, CoreUiR.attr.tempBasalColor), R.string.graph_basal_hour_peak, stepped = true)
+    }
+
+    /** Select using raw values; only the label position follows the graph scale. */
+    private fun addHourPeak(source: Series<ScaledDataPoint>, scale: Scale, colorValue: Int, labelResource: Int, stepped: Boolean = false) {
+        val now = dateUtil.now().toDouble()
+        val start = now - 60 * 60_000L
+        val samples = source.getValues(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY).asSequence()
+            .filter { it.x <= now && it.rawValue.isFinite() }
+            .toList().groupBy { it.x }.values.map { it.last() }.sortedBy { it.x }
+        val values = if (stepped) samples.filterIndexed { index, point ->
+            index == 0 || point.rawValue != samples[index - 1].rawValue
+        } else samples
+        val candidates = values.filter { it.x >= start }.toMutableList()
+        if (stepped) values.lastOrNull { it.x < start }?.let {
+            candidates.add(ScaledDataPoint(start, it.rawValue, scale))
+        }
+        val peak = candidates.maxWithOrNull(compareBy<ScaledDataPoint> { it.rawValue }.thenBy { it.x }) ?: return
+        val next = values.firstOrNull { it.x > peak.x }?.x ?: now
+        val labelTime = if (stepped) peak.x + (next - peak.x) / 2 else peak.x
+        val point = object : ScaledDataPoint(labelTime, peak.rawValue, scale), DataPointWithLabelInterface {
+            override fun setY(y: Double) {}
+            override val label = rh.gs(labelResource, decimalFormatter.to2Decimal(peak.rawValue))
+            override val duration = 0L
+            override val shape = Shape.HOUR_PEAK
+            override val size = 0f
+            override val paintStyle = Paint.Style.FILL
+            override fun color(context: Context?): Int = colorValue
+        }
+        addSeries(PointsWithLabelGraphSeries<DataPointWithLabelInterface>(arrayOf(point)))
     }
 
     fun addTargetLine() {
@@ -391,6 +430,8 @@ class GraphData @Inject constructor(
         addSeries(overviewData.iobSeries as FixedLineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.iobPredictions1Series as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         addSeries(overviewData.iobPeakSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
+        addHourPeak(overviewData.iobSeries as FixedLineGraphSeries<ScaledDataPoint>, overviewData.iobScale,
+            rh.gac(graph.context, CoreUiR.attr.iobColor), R.string.graph_iob_hour_peak)
         //addSeries(overviewData.iobPredictions2Series)
     }
 

@@ -409,4 +409,6 @@
     <string name="client_settings3_chip">Set3</string>
     <string name="client_autoisf_detail">AutoISF</string>
     <string name="client_status_details">Client status</string>
+    <string name="graph_iob_hour_peak">IOB %1$s U</string>
+    <string name="graph_basal_hour_peak">Basal %1$s U/h</string>
 </resources>

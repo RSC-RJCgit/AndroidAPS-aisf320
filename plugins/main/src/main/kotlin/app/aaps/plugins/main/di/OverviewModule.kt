@@ -4,6 +4,8 @@ import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.OverviewMenus
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.main.general.overview.OverviewDataImpl
 import app.aaps.plugins.main.general.overview.OverviewFragment
@@ -35,8 +37,10 @@ abstract class OverviewModule {
         fun providesGraphData(
             profileFunction: ProfileFunction,
             preferences: Preferences,
-            rh: ResourceHelper
-        ): GraphData = GraphData(profileFunction, preferences, rh)
+            rh: ResourceHelper,
+            decimalFormatter: DecimalFormatter,
+            dateUtil: DateUtil
+        ): GraphData = GraphData(profileFunction, preferences, rh, decimalFormatter, dateUtil)
     }
 
     @Module
