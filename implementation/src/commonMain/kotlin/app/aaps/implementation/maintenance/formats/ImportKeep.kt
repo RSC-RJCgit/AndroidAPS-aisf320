@@ -68,6 +68,19 @@ internal fun pumpOffer(
     return ImportKeepOffer(showKeepPump = changesPump, keepPumpChecked = changesSession)
 }
 
+internal fun restoreBaselineAllowed(activePlugin: ActivePlugin): (String) -> Boolean {
+    val bg = domainFor(activePlugin, PluginType.BGSOURCE) + coreKeysByEnumNamePrefix("BgSource")
+    val passwords = StringKey.entries.filter { it.isPassword }.map { it.key }.toSet()
+    return { name ->
+        val lower = name.lowercase()
+        name != StringKey.GeneralPatientName.key && name !in passwords && !bg.matches(name) &&
+            name != StringNonKey.ImportRestoreBaseline.key &&
+            !listOf("Objectives_", "ExamTask_", "UITask_", "DisabledTo_").any { name.startsWith(it) } &&
+            !lower.contains("password") &&
+            !(lower.startsWith("nsclient") && listOf("url", "token", "secret").any { lower.contains(it) })
+    }
+}
+
 internal fun coreKeysByEnumNamePrefix(vararg prefixes: String): Set<String> =
     listOf(
         BooleanKey.entries, StringKey.entries, IntKey.entries, DoubleKey.entries,

@@ -27,6 +27,14 @@ import app.aaps.core.keys.interfaces.SyncDirection
 import app.aaps.core.keys.interfaces.UnitDoublePreferenceKey
 import app.aaps.implementation.maintenance.migration.FileKeyValueStore
 import app.aaps.implementation.maintenance.migration.PreferenceMigrations
+import app.aaps.core.interfaces.protection.SecureEncrypt
+import app.aaps.core.keys.interfaces.StringPreferenceKey
+import app.aaps.core.keys.StringNonKey
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import app.aaps.implementation.sharedPreferences.PreferenceKeyResolverFactory
 import dev.zacsweers.metro.Inject
 import kotlin.math.max
@@ -67,8 +75,31 @@ class PreferenceImportApplier(
     private val config: Config,
     private val aapsLogger: AAPSLogger,
     private val dateUtil: DateUtil,
-    private val migrations: PreferenceMigrations
+    private val migrations: PreferenceMigrations,
+    private val secureEncrypt: SecureEncrypt
 ) {
+
+    fun saveRestoreBaseline(prefs: Prefs, allowed: (String) -> Boolean) {
+        val resolver = resolverFactory.create()
+        val selected = prefs.values.filterKeys { name ->
+            val key = resolver.resolve(name)?.key
+            allowed(name) && key?.exportable != false && (key as? StringPreferenceKey)?.isPassword != true
+        }
+        require(selected.isNotEmpty()) { "No settings are available for the restore baseline" }
+        val json = JsonObject(selected.mapValues { JsonPrimitive(it.value) }).toString()
+        val encrypted = secureEncrypt.encrypt(json, "import_restore_baseline")
+        check(encrypted.isNotEmpty()) { "Could not encrypt restore baseline" }
+        store.putString(StringNonKey.ImportRestoreBaseline.key, encrypted)
+    }
+
+    private fun completeFromBaseline(values: Map<String, String>): Map<String, String> {
+        val encrypted = store.getString(StringNonKey.ImportRestoreBaseline.key, "")
+        if (encrypted.isEmpty()) return values
+        val text = secureEncrypt.decrypt(encrypted)
+        check(text.isNotEmpty()) { "Could not open restore baseline; load it again" }
+        val baseline = Json.parseToJsonElement(text).jsonObject.mapValues { it.value.jsonPrimitive.content }
+        return baseline + values
+    }
 
     /** Works out what would change, and writes nothing. For the confirm screen. */
     fun preview(prefs: Prefs, keepPumpSettings: Boolean, preserve: (String) -> Boolean = { false }): ImportExportPrefs.ImportOutcome =
@@ -115,7 +146,7 @@ class PreferenceImportApplier(
         val unreadable = mutableListOf<String>()
         val syncedWritten = mutableListOf<NonPreferenceKey>()
 
-        for ((name, value) in values) {
+        for ((name, value) in completeFromBaseline(values)) {
             if (preserve(name)) {
                 keptByChoice++
                 continue

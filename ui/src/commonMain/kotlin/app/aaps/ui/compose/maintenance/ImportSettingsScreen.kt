@@ -54,6 +54,7 @@ import app.aaps.core.interfaces.maintenance.PrefsFile
 import app.aaps.core.interfaces.maintenance.PrefsFileInfo
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.keys.StringNonKey
+import app.aaps.ui.UiStrings
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.AapsTopAppBar
@@ -164,7 +165,9 @@ fun ImportSettingsScreen(
             // from the same filter that will run, so what it says cannot disagree with what happens.
             OkCancelDialog(
                 title = stringResource(CoreUiStrings.import_apply_title),
-                message = if (currentStep.keep.keepPump && currentStep.preview.pumpSkipped > 0)
+                message = if (currentStep.isRestoreBaseline)
+                    stringResource(UiStrings.import_save_restore_baseline)
+                else if (currentStep.keep.keepPump && currentStep.preview.pumpSkipped > 0)
                     stringResource(
                         CoreUiStrings.import_apply_message_pump_kept,
                         currentStep.preview.changed,
@@ -172,6 +175,14 @@ fun ImportSettingsScreen(
                     )
                 else stringResource(CoreUiStrings.import_apply_message, currentStep.preview.changed),
                 onConfirm = { viewModel.onApplyConfirmed() },
+                onDismiss = { viewModel.cancelImport(); onClose() }
+            )
+        }
+
+        is ImportStep.BaselineSaved -> {
+            OkDialog(
+                title = stringResource(CoreUiStrings.import_setting),
+                message = stringResource(UiStrings.import_restore_baseline_saved),
                 onDismiss = { viewModel.cancelImport(); onClose() }
             )
         }

@@ -103,7 +103,8 @@ sealed interface ImportStep {
         val prefs: Prefs,
         val keep: ImportKeepChoices,
         val enableAutomationStates: Boolean,
-        val preview: ImportExportPrefs.ImportOutcome
+        val preview: ImportExportPrefs.ImportOutcome,
+        val isRestoreBaseline: Boolean = false
     ) : ImportStep
 
     /**
@@ -133,6 +134,7 @@ sealed interface ImportStep {
      * spinner with no sign that anything had happened.
      */
     data object Applied : ImportStep
+    data object BaselineSaved : ImportStep
 
     /**
      * The settings were NOT applied, because the pump stayed busy or a plugin threw.
@@ -471,6 +473,10 @@ class ImportViewModel(
         if (current !is ImportStep.Review) return
         val result = current.decryptResult
         if (result !is ImportDecryptResult.Success || !result.importPossible) return
+        if (current.file.name.endsWith("_restore_baseline.json") && !result.importOk) {
+            _importStep.value = ImportStep.Error(rh.gs(CoreUiStrings.error))
+            return
+        }
 
         _importStep.value = current.copy(isProcessing = true)
 
@@ -498,7 +504,8 @@ class ImportViewModel(
                 prefs = result.prefs,
                 keep = current.keep,
                 enableAutomationStates = current.enableAutomationStates,
-                preview = preview
+                preview = preview,
+                isRestoreBaseline = current.file.name.endsWith("_restore_baseline.json")
             )
             pending = confirm
             _importStep.value = confirm
@@ -524,6 +531,21 @@ class ImportViewModel(
         // dialog's button do nothing - and the test did not catch it, because its helper put the step
         // back to ApplyConfirm before retrying.
         val confirmed = pending ?: return
+        if (confirmed.isRestoreBaseline) {
+            viewModelScope.launch {
+                _importStep.value = ImportStep.Applying
+                try {
+                    withContext(applyDispatcher) { importExportPrefs.saveRestoreBaseline(confirmed.prefs) }
+                    pending = null
+                    _importStep.value = ImportStep.BaselineSaved
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    _importStep.value = ImportStep.ApplyFailed(error.message ?: rh.gs(CoreUiStrings.error))
+                }
+            }
+            return
+        }
         viewModelScope.launch {
             // Leave ApplyConfirm FIRST, always. It used to move only when the queue was busy, so on
             // an idle pump - the normal case - the confirm dialog stayed on screen and tappable for

@@ -1,6 +1,7 @@
 package app.aaps.implementation.maintenance
 
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.protection.SecureEncrypt
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -39,6 +40,11 @@ import org.mockito.kotlin.whenever
  * user did not ask for - or, for the pump rows, a pump that stops working.
  */
 class PreferenceImportApplierTest {
+    private val secureEncrypt = mock<SecureEncrypt>().also {
+        whenever(it.encrypt(any(), any())).thenAnswer { invocation -> "encrypted:" + invocation.getArgument<String>(0) }
+        whenever(it.decrypt(any())).thenAnswer { invocation -> invocation.getArgument<String>(0).removePrefix("encrypted:") }
+    }
+
 
     private val store = FakeStore()
     private val preferences = mock<Preferences>()
@@ -60,6 +66,7 @@ class PreferenceImportApplierTest {
         whenever(config.AAPSCLIENT).thenReturn(client)
         return PreferenceImportApplier(
             store = store,
+            secureEncrypt = secureEncrypt,
             preferences = preferences,
             resolverFactory = PreferenceKeyResolverFactory(preferences, activePlugin),
             config = config,
@@ -70,6 +77,46 @@ class PreferenceImportApplierTest {
     }
 
     private fun prefs(vararg pairs: Pair<String, String>) = Prefs(mapOf(*pairs), mutableMapOf())
+
+    @Test fun `baseline is saved without changing live settings and fills missing keys`() = runTest {
+        val applier = sut()
+        store.putBoolean(BooleanKey.GeneralSimpleMode.key, false)
+        applier.saveRestoreBaseline(prefs(BooleanKey.GeneralSimpleMode.key to "true")) { true }
+        assertThat(store.getBoolean(BooleanKey.GeneralSimpleMode.key, false)).isFalse()
+        assertThat(store.getString(StringNonKey.ImportRestoreBaseline.key, "")).startsWith("encrypted:")
+        assertThat(applier.preview(prefs(), false).changed).isEqualTo(1)
+        applier.apply(prefs(), false)
+        assertThat(store.getBoolean(BooleanKey.GeneralSimpleMode.key, false)).isTrue()
+    }
+
+    @Test fun `explicit false and empty imported values override baseline`() = runTest {
+        val applier = sut()
+        applier.saveRestoreBaseline(prefs(
+            BooleanKey.GeneralSimpleMode.key to "true",
+            StringKey.GeneralUnits.key to "mmol"
+        )) { true }
+        applier.apply(prefs(
+            BooleanKey.GeneralSimpleMode.key to "false",
+            StringKey.GeneralUnits.key to ""
+        ), false)
+        assertThat(store.getBoolean(BooleanKey.GeneralSimpleMode.key, true)).isFalse()
+        assertThat(store.getString(StringKey.GeneralUnits.key, "missing")).isEmpty()
+    }
+
+    @Test fun `baseline omits passwords refused keys and device state`() {
+        val applier = sut()
+        applier.saveRestoreBaseline(prefs(
+            BooleanKey.GeneralSimpleMode.key to "true",
+            StringKey.ProtectionMasterPassword.key to "test-only",
+            StringNonKey.ActivePluginPump.key to "test-pump",
+            "excluded" to "test"
+        )) { it != "excluded" }
+        val saved = store.getString(StringNonKey.ImportRestoreBaseline.key, "")
+        assertThat(saved).doesNotContain("test-only")
+        assertThat(saved).doesNotContain("test-pump")
+        assertThat(saved).doesNotContain("excluded")
+    }
+
 
     @Test fun `a changed value is written and published once`() = runTest {
         store.putBoolean(BooleanKey.GeneralSimpleMode.key, true)

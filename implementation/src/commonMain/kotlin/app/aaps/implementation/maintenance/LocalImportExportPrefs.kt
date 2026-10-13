@@ -39,6 +39,7 @@ import app.aaps.implementation.maintenance.cloud.CloudStorageManager
 import app.aaps.implementation.maintenance.formats.ExportMetadata
 import app.aaps.implementation.maintenance.formats.PrefsFormatCodec
 import app.aaps.implementation.maintenance.formats.PrefsTransfer
+import app.aaps.implementation.maintenance.formats.restoreBaselineAllowed
 import app.aaps.implementation.maintenance.formats.importKeepOfferFor
 import app.aaps.implementation.maintenance.formats.preserveKeys
 import dev.zacsweers.metro.AppScope
@@ -302,6 +303,9 @@ class LocalImportExportPrefs(
         if (outcome.unresolved.isNotEmpty()) aapsLogger.debug(LTag.CORE, "Import: names this build does not know: ${outcome.unresolved}")
         return outcome
     }
+
+    override fun saveRestoreBaseline(prefs: Prefs) =
+        applier.saveRestoreBaseline(prefs, restoreBaselineAllowed(activePlugin))
 
     override fun previewImport(prefs: Prefs, keep: ImportKeepChoices): ImportExportPrefs.ImportOutcome =
         applier.preview(prefs, keep.keepPump, preserveKeys(activePlugin, keep))

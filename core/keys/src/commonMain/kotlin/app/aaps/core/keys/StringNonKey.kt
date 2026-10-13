@@ -12,6 +12,8 @@ enum class StringNonKey(
     override val sync: SyncSpec? = null
 ) : StringNonPreferenceKey {
 
+    ImportRestoreBaseline("import_restore_baseline", "{}", exportable = false),
+
     QuickWizard(key = "QuickWizard", defaultValue = "[]", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     WearCwfWatchfaceName(key = "wear_cwf_watchface_name", defaultValue = ""),
     WearCwfAuthorVersion(key = "wear_cwf_author_version", defaultValue = ""),

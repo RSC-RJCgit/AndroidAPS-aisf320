@@ -64,6 +64,7 @@ import app.aaps.implementation.maintenance.data.PrefIOError
 import app.aaps.implementation.maintenance.data.PrefsFormat
 import app.aaps.implementation.maintenance.data.PrefsStatusImpl
 import app.aaps.implementation.maintenance.formats.EncryptedPrefsFormat
+import app.aaps.implementation.maintenance.formats.restoreBaselineAllowed
 import app.aaps.implementation.maintenance.formats.importKeepOfferFor
 import app.aaps.implementation.maintenance.formats.preserveKeys
 import app.aaps.implementation.maintenance.formats.ExportMetadata
@@ -647,6 +648,9 @@ class ImportExportPrefsImpl(
         if (outcome.unresolved.isNotEmpty()) aapsLogger.debug(LTag.CORE, "Import: names this build does not know: ${outcome.unresolved}")
         return outcome
     }
+
+    override fun saveRestoreBaseline(prefs: Prefs) =
+        applier.saveRestoreBaseline(prefs, restoreBaselineAllowed(activePlugin))
 
     override fun previewImport(prefs: Prefs, keep: ImportKeepChoices): ImportExportPrefs.ImportOutcome =
         applier.preview(prefs, keep.keepPump, preserveKeys(activePlugin, keep))

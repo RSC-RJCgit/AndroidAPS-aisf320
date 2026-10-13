@@ -3,7 +3,7 @@ run-name: Windows MSI · ${{ github.event.head_commit.message || github.ref_name
 
 on:
   push:
-    branches: [merge-4.0.0-beta1]
+    branches: [merge-4.0.0-beta1, 'test-beta1-*']
   workflow_dispatch:
     inputs:
       client:

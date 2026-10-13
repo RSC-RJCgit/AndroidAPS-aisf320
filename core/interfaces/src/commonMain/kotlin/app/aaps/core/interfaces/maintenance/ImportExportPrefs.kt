@@ -158,6 +158,11 @@ interface ImportExportPrefs {
      * prepare a restart and there is no longer one to prepare - the work itself (dropping pump log
      * state that belongs to the old settings, marking the setup wizard done) is still needed.
      */
+    /** Save a separate local fallback without applying it to live settings. */
+    fun saveRestoreBaseline(prefs: Prefs) {
+        throw UnsupportedOperationException("Restore baseline is not supported")
+    }
+
     fun prepareImportedSettings()
 }
 

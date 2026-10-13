@@ -447,4 +447,6 @@
     <string name="overview_app_client3" translatable="false">Client3</string>
     <string name="overview_app_pump_control" translatable="false">PumpControl</string>
     <string name="overview_app_version" translatable="false">%1$s-v%2$s</string>
+    <string name="import_save_restore_baseline">Save this file as the restore baseline? It will fill missing settings in future imports. Current settings will stay unchanged.</string>
+    <string name="import_restore_baseline_saved">Restore baseline saved. Missing settings in future imports will be filled from it. Current settings were not changed.</string>
 </resources>
