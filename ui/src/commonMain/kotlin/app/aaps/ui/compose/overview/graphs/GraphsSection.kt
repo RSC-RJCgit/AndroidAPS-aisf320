@@ -180,12 +180,17 @@ fun GraphsSection(
     // firing wrong corrections (this caused the secondary graphs to visibly "dance"/flash on the
     // first attempt at this).
     var bgViewportResetTrigger by remember { mutableIntStateOf(0) }
+    // Vico zooms on every mouse wheel event by itself, about the pointer, even when the event was already
+    // consumed. On desktop that added a second zoom to each Ctrl + wheel step (too much per notch) and moved
+    // the time at the right edge. Desktop zoom goes only through zoomStep below; Vico's direct zoom calls
+    // still work with this off. Phones and tablets keep Vico's pinch zoom.
+    val vicoZoomEnabled = LocalConfig.current.platform != AppPlatform.Desktop
     val (bgScrollState, bgZoomState) = key(bgViewportResetTrigger) {
         rememberSafeScrollState(
             scrollEnabled = true,
             initialScroll = Scroll.Absolute.End
         ) to rememberSafeZoomState(
-            zoomEnabled = true,
+            zoomEnabled = vicoZoomEnabled,
             initialZoom = startZoom,
             minZoom = bgMinZoom,
             maxZoom = bgMaxZoom
@@ -197,15 +202,15 @@ fun GraphsSection(
     // A drag here moves the other lower graphs. A pinch uses the same width limits as the main graph,
     // so the copied width is not clamped back.
     val sec0scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec0zoom = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
+    val sec0zoom = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
     val sec1scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec1zoom = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
+    val sec1zoom = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
     val sec2scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec2zoom = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
+    val sec2zoom = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
     val sec3scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec3zoom = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
+    val sec3zoom = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
     val sec4scroll = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val sec4zoom = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
+    val sec4zoom = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
 
     // Collect nowTimestamp ONCE so all graphs use the same value (avoids separate recompositions every 30s)
     val nowTimestamp by graphViewModel.nowTimestamp.collectAsStateWithLifecycle()
@@ -258,11 +263,11 @@ fun GraphsSection(
 
     // Fixed IOB graph. A drag here moves the other lower graphs, not the main graph.
     val iobScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val iobZoomState = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
+    val iobZoomState = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
 
     // Graph 5 is a second copy of the main glucose graph. A drag here moves the other lower graphs.
     val g5ScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
-    val g5ZoomState = rememberSafeZoomState(zoomEnabled = true, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
+    val g5ZoomState = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
     val showGraph5 by graphViewModel.showGraph5.collectAsStateWithLifecycle()
     val showGraph5Now = rememberUpdatedState(showGraph5)
 

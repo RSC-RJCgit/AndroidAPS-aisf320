@@ -842,18 +842,23 @@ fun SecondaryGraphCompose(
             SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 0.5f),
         )
     }
-    val recentIobPeak = remember(iobData, nowTimestamp) {
-        lastHourPeak(iobData?.iob.orEmpty(), nowTimestamp)
+    // One label per hour, counted back from now. The newest is drawn first, so it always shows.
+    val iobPeaks = remember(iobData, nowTimestamp) {
+        hourlyPeaks(iobData?.iob.orEmpty(), nowTimestamp)
     }
-    val recentBasalPeak = remember(basalData, nowTimestamp, hasBasalLayer) {
-        if (hasBasalLayer) lastHourPeak(basalData?.actualBasal.orEmpty(), nowTimestamp, stepped = true) else null
+    val basalPeaks = remember(basalData, nowTimestamp, hasBasalLayer) {
+        if (hasBasalLayer) hourlyPeaks(basalData?.actualBasal.orEmpty(), nowTimestamp, stepped = true) else emptyList()
     }
-    val iobPeakText = recentIobPeak?.let { smbDoseFormatter.to2Decimal(it.value) }.orEmpty()
-    val basalPeakText = recentBasalPeak?.let { smbDoseFormatter.to2Decimal(it.value) }.orEmpty()
-    val peakLabels = remember(recentIobPeak, recentBasalPeak, iobPeakText, basalPeakText, minTimestamp, smbText, seriesColors.iob, basalColor) {
-        listOfNotNull(
-            recentIobPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), it.value, iobPeakText, seriesColors.iob, smbText) },
-            recentBasalPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), -it.value, basalPeakText, basalColor, smbText, endAxis = true, pinToTop = true) }
+    val peakLabels = remember(iobPeaks, basalPeaks, minTimestamp, smbText, seriesColors.iob, basalColor) {
+        listOf(
+            RecentPeakLabels(
+                iobPeaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), it.value, smbDoseFormatter.to2Decimal(it.value)) },
+                seriesColors.iob, smbText
+            ),
+            RecentPeakLabels(
+                basalPeaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), -it.value, smbDoseFormatter.to2Decimal(it.value)) },
+                basalColor, smbText, endAxis = true, pinToTop = true
+            )
         )
     }
     val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels) {

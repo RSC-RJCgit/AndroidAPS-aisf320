@@ -56,4 +56,31 @@ class RecentGraphPeakTest {
             GraphDataPoint(now - 20 * 60_000L, 1.0),
         ), now)?.value)
     }
+
+    @Test
+    fun oneLabelPerHourCountedBackFromNowNewestFirst() {
+        assertEquals(listOf(
+            GraphDataPoint(now - 20 * 60_000L, 2.0),
+            GraphDataPoint(now - 70 * 60_000L, 3.0),
+            GraphDataPoint(now - 150 * 60_000L, 1.5),
+        ), hourlyPeaks(listOf(
+            GraphDataPoint(now - 150 * 60_000L, 1.5),
+            GraphDataPoint(now - 100 * 60_000L, 0.5),
+            GraphDataPoint(now - 70 * 60_000L, 3.0),
+            GraphDataPoint(now - 50 * 60_000L, 1.0),
+            GraphDataPoint(now - 20 * 60_000L, 2.0),
+        ), now))
+    }
+
+    @Test
+    fun stepLabelStaysInsideItsOwnHour() {
+        // A 2.0 rate runs from 90 min ago to now. Its older hour label sits halfway between 90 and 60 min ago.
+        assertEquals(listOf(
+            GraphDataPoint(now - 30 * 60_000L, 2.0),
+            GraphDataPoint(now - 75 * 60_000L, 2.0),
+        ), hourlyPeaks(listOf(
+            GraphDataPoint(now - 90 * 60_000L, 2.0),
+            GraphDataPoint(now, 2.0),
+        ), now, stepped = true))
+    }
 }

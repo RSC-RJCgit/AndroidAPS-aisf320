@@ -990,12 +990,16 @@ fun BgGraphCompose(
     val tapReporter = remember(tapReadings, bgReadings, treatments, minTimestamp) {
         GraphPointTapReporter(tapTargets, tapReadings, bgReadings, treatments.boluses.filter { it.bolusType == BolusType.NORMAL }, minTimestamp)
     }
-    val recentBasalPeak = remember(basalData, nowTimestamp) {
-        if (showBasalOnBgGraph) lastHourPeak(basalData.actualBasal, nowTimestamp, stepped = true) else null
+    val basalPeaks = remember(basalData, nowTimestamp) {
+        if (showBasalOnBgGraph) hourlyPeaks(basalData.actualBasal, nowTimestamp, stepped = true) else emptyList()
     }
-    val basalPeakText = recentBasalPeak?.let { decimalFormatter.to2Decimal(it.value) }.orEmpty()
-    val basalPeakLabel = remember(recentBasalPeak, basalPeakText, minTimestamp, smbText, basalColor) {
-        recentBasalPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), it.value, basalPeakText, basalColor, smbText, endAxis = true) }
+    val basalPeakLabel = remember(basalPeaks, minTimestamp, smbText, basalColor) {
+        basalPeaks.takeIf { it.isNotEmpty() }?.let { peaks ->
+            RecentPeakLabels(
+                peaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), it.value, decimalFormatter.to2Decimal(it.value)) },
+                basalColor, smbText, endAxis = true
+            )
+        }
     }
     val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter, basalPeakLabel) {
         listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel)
