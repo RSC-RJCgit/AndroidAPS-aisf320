@@ -98,6 +98,8 @@ import io.reactivex.rxjava3.kotlin.plusAssign
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import app.aaps.core.interfaces.protection.SecureEncrypt
+import app.aaps.core.keys.interfaces.StringPreferenceKey
 import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
@@ -133,7 +135,8 @@ class ImportExportPrefsImpl @Inject constructor(
     private val exportOptionsDialog: ExportOptionsDialog,
     private val importSourceDialog: ImportSourceDialog,
     private val maintenancePlugin: MaintenancePlugin,
-    private val userEntryPresentationHelper: UserEntryPresentationHelper
+    private val userEntryPresentationHelper: UserEntryPresentationHelper,
+    private val secureEncrypt: SecureEncrypt
 ) : ImportExportPrefs {
 
     override fun sendLogs(trigger: String, alsoExportAiv: Boolean) = maintenancePlugin.sendLogs(alsoExportAiv, trigger)
@@ -907,7 +910,25 @@ class ImportExportPrefsImpl @Inject constructor(
                 // import is OK when we do not have errors (warnings are allowed)
                 val importOkAttempted = checkIfImportIsOk(prefsAttempted)
 
-                promptForDecryptionPasswordIfNeeded(activity, prefsAttempted, importOkAttempted, format, importFile) { prefs, importOk ->
+                promptForDecryptionPasswordIfNeeded(activity, prefsAttempted, importOkAttempted, format, importFile) baselineCheck@{ importedPrefs, importOk ->
+                    val prefs = try {
+                        if (importFile.name.endsWith("_restore_baseline.json")) {
+                            if (!importOk || importedPrefs.values.isEmpty()) {
+                                ToastUtils.errorToast(activity, rh.gs(R.string.preferences_import_impossible))
+                                return@baselineCheck
+                            }
+                            saveRestoreBaseline(importedPrefs.values)
+                            OKDialog.show(activity, rh.gs(R.string.setting_imported), rh.gs(R.string.restore_baseline_saved))
+                            return@baselineCheck
+                        }
+                        val values = if (importedPrefs.values.isEmpty()) importedPrefs.values
+                            else completeFromRestoreBaseline(importedPrefs.values)
+                        Prefs(values, importedPrefs.metadata)
+                    } catch (error: Exception) {
+                        aapsLogger.error(LTag.CORE, "Restore baseline could not be saved or opened", error)
+                        ToastUtils.errorToast(activity, rh.gs(R.string.preferences_import_impossible))
+                        return@baselineCheck
+                    }
 
                     // if at end we allow to import preferences
                     val importPossible = (importOk || config.isEngineeringMode()) && (prefs.values.isNotEmpty())
@@ -1058,6 +1079,40 @@ class ImportExportPrefsImpl @Inject constructor(
     private class KeyDomainMatcher(private val exactKeys: Set<String>, private val prefixes: Set<String>) {
 
         fun matches(key: String): Boolean = key in exactKeys || prefixes.any { key.startsWith(it) }
+    }
+
+    private fun baselineKeyAllowed(key: String): Boolean {
+        val lower = key.lowercase()
+        val bg = pluginDomainKeyMatcher(PluginType.BGSOURCE)
+        return preferences.isExportableKey(key) &&
+            key != StringKey.GeneralPatientName.key &&
+            (preferences.getIfExists(key) as? StringPreferenceKey)?.isPassword != true &&
+            !bg.matches(key) && key !in coreKeysByNamePrefix("BgSource") &&
+            !listOf("Objectives_", "ExamTask_", "UITask_", "DisabledTo_").any { key.startsWith(it) } &&
+            !lower.contains("password") &&
+            !(lower.startsWith("nsclient") && listOf("url", "token", "secret").any { lower.contains(it) })
+    }
+
+    private fun saveRestoreBaseline(values: Map<String, String>) {
+        val selected = values.filterKeys { baselineKeyAllowed(it) }
+        require(selected.isNotEmpty()) { "No settings are available for the restore baseline" }
+        val encrypted = secureEncrypt.encrypt(JSONObject(selected).toString(), "import_restore_baseline")
+        check(encrypted.isNotEmpty()) { "Could not encrypt restore baseline" }
+        check(context.getSharedPreferences("import_restore_baseline", Context.MODE_PRIVATE)
+            .edit().putString("values", encrypted).commit()) { "Could not save restore baseline" }
+    }
+
+    private fun completeFromRestoreBaseline(values: Map<String, String>): Map<String, String> {
+        val encrypted = context.getSharedPreferences("import_restore_baseline", Context.MODE_PRIVATE)
+            .getString("values", "") ?: ""
+        if (encrypted.isEmpty()) return values
+        val saved = secureEncrypt.decrypt(encrypted)
+        check(saved.isNotEmpty()) { "Could not open restore baseline; load it again" }
+        val json = JSONObject(saved)
+        val baseline = json.keys().asSequence().filter { baselineKeyAllowed(it) }.associateWith { json.getString(it) }
+        val restored = baseline.keys.count { it !in values }
+        aapsLogger.info(LTag.CORE, "Import: filled $restored missing settings from restore baseline")
+        return baseline + values
     }
 
     private fun pluginDomainKeyMatcher(type: PluginType): KeyDomainMatcher {

@@ -298,4 +298,5 @@
     <string name="keep_current_patient_name">Keep current patient name</string>
     <string name="keep_current_bg_source">Keep current BG source configuration (plugin selection and settings)</string>
     <string name="keep_current_sync_config">Keep current Synchronization configuration (NSClient etc., plugin selection and settings)</string>
+    <string name="restore_baseline_saved">Restore baseline saved. Missing settings in future imports will be filled from it. Current settings were not changed.</string>
 </resources>
