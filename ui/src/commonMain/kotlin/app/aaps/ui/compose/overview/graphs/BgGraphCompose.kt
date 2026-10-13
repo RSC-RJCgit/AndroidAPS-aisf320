@@ -187,6 +187,7 @@ fun BgGraphCompose(
     visibleTimeRange: Pair<Long, Long>? = null,
     /** Graph 5 only: draw SMB delivery, acce weight, pp weight and profile basal in the top band of the BG axis. */
     topBandLines: Boolean = false,
+    automaticCleanGraph: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -225,7 +226,10 @@ fun BgGraphCompose(
     }
     // Collect flows independently - each triggers recomposition only when it changes
     val bgReadings by viewModel.bgReadingsFlow.collectAsStateWithLifecycle()
-    val graphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
+    val savedGraphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
+    val graphDisplay = if (automaticCleanGraph) savedGraphDisplay.copy(
+        showSmbLabels = false, basalToggleIndex = 2, showTextLines = false
+    ) else savedGraphDisplay
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
     val showRaw = SeriesType.RAW_BG in bgOverlays
@@ -865,10 +869,11 @@ fun BgGraphCompose(
     // In-range belt — translucent band between lowMark and highMark on the BG axis
     val lowMark = chartConfig.lowMark
     val highMark = chartConfig.highMark
-    val inRangeBox = remember(lowMark, highMark, inRangeColor) {
+    val targetRangeArea = AapsTheme.generalColors.bgTargetRangeArea
+    val inRangeBox = remember(lowMark, highMark, targetRangeArea) {
         HorizontalBox(
             y = { lowMark..highMark },
-            box = ShapeComponent(fill = Fill(inRangeColor.copy(alpha = 0.2f))),
+            box = ShapeComponent(fill = Fill(targetRangeArea)),
             verticalAxisPosition = Axis.Position.Vertical.Start
         )
     }

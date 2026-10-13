@@ -29,6 +29,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,6 +87,8 @@ import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 import kotlin.math.abs
@@ -220,6 +223,9 @@ fun GraphsSection(
     // decoration on BG's own chart, since that was tried and found to break BG's pinch-zoom
     // gesture handling.
     var iobVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val automaticCleanGraph = iobVisibleRange?.let { (start, end) ->
+        end - start > maxOf(180.0, DEFAULT_GRAPH_ZOOM_MINUTES) + 0.01
+    } ?: false
 
     // Settle further before feeding into BG specifically: unlike the secondary graphs (which are
     // non-interactive and unaffected by frequent updates), BG has live pinch-zoom. Updating its
@@ -676,41 +682,30 @@ fun GraphsSection(
     }
 
 
-    // Mouse and keyboard control of the time axis. The zoom sets the main graph's zoom, and the effect that already
-    // copies the main zoom to every other graph does the rest, as it does for a pinch. The zoom itself is about the
-    // middle of the chart, so the current time is put back at the same place on the screen afterwards: nowBias is the
-    // fraction of the chart width it sits at (1 is the right edge, where the graph starts), kept up to date by the
-    // sideways moves below.
+    // Wheel zoom keeps the time already at the right edge, including a historical time.
     val zoomScope = rememberCoroutineScope()
-    val nowBias = remember { floatArrayOf(1f) }
+    val wheelZoomMutex = remember(bgZoomState) { Mutex() }
     val chartWidthPx = remember { floatArrayOf(0f) }
     val zoomStep: (Int) -> Unit = { direction ->
         zoomScope.launch {
-            val current = bgZoomState.value
-            if (current.isFinite() && current > 0f) {
-                if (followNow) nowBias[0] = 1f
-                bgZoomState.copyFactorIfDifferent(if (direction > 0) current * ZOOM_STEP else current / ZOOM_STEP)
-                val range = latestTimeRange.value
-                val bias = nowBias[0]
-                if (range != null && bias in 0f..1f) {
-                    // The zoom applies its own scroll at the next layout; this one has to come after it.
-                    delay(150)
-                    val nowX = timestampToX(dateUtil.now(), range.first)
-                    if (nowX.isFinite()) {
-                        skipInteractionUntilMs[0] = dateUtil.now() + 1000L
-                        bgScrollState.scroll(Scroll.Absolute.x(nowX, bias = bias))
-                    }
+            wheelZoomMutex.withLock {
+                val current = bgZoomState.value
+                if (current.isFinite() && current > 0f) {
+                    val factor = if (direction > 0) current * ZOOM_STEP else current / ZOOM_STEP
+                    skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                    bgZoomState.animateZoom(Zoom.fixed(factor), animationSpec = tween(0), bias = 1f)
                 }
             }
         }
     }
     val panStep: (Float) -> Unit = { px ->
+        followNow = false
         zoomScope.launch {
             val target = (bgScrollState.value + px).coerceIn(0f, bgScrollState.maxValue)
-            if (chartWidthPx[0] > 0f) nowBias[0] -= (target - bgScrollState.value) / chartWidthPx[0]
             bgScrollState.scroll(Scroll.Absolute.pixels(target))
         }
     }
+
     val showZoomButtons = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
 
     Column(
@@ -776,6 +771,7 @@ fun GraphsSection(
         Box {
             BgGraphCompose(
                 viewModel = graphViewModel,
+                automaticCleanGraph = automaticCleanGraph,
                 bgOverlays = graphConfig.bgOverlays,
                 scrollState = bgScrollState,
                 zoomState = bgZoomState,
@@ -937,6 +933,7 @@ fun GraphsSection(
             Box {
                 BgGraphCompose(
                     viewModel = graphViewModel,
+                    automaticCleanGraph = automaticCleanGraph,
                     bgOverlays = graphConfig.bgOverlays,
                     scrollState = g5ScrollState,
                     zoomState = g5ZoomState,
@@ -1245,7 +1242,7 @@ private suspend fun VicoZoomState.copyFactorIfDifferent(factor: Float) {
 private const val SAFE_ZOOM_SLOT = "finite-zoom"
 
 /** One wheel notch, key press or button tap changes the time span by this factor. */
-private const val ZOOM_STEP = 1.25f
+private const val ZOOM_STEP = 1.08f
 private const val SAFE_SCROLL_SLOT = "finite-scroll"
 private const val VICO_MAX_ZOOM = 10f
 private const val MIN_USABLE_ZOOM = 0.0001f

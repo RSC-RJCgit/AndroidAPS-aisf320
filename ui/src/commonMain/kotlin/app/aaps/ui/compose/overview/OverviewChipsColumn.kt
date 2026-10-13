@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -17,6 +19,8 @@ import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
+import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.ui.UiStrings
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.compose.main.TempTargetChipState
@@ -225,6 +229,19 @@ private fun NarrowChips(
                 enabled = commandsAllowed
             )
         }
+        val config = LocalConfig.current
+        val appName = when {
+            config.AAPSCLIENT3 -> stringResource(UiStrings.overview_app_client3)
+            config.AAPSCLIENT2 -> stringResource(UiStrings.overview_app_client2)
+            config.AAPSCLIENT1 -> stringResource(UiStrings.overview_app_client)
+            config.PUMPCONTROL -> stringResource(UiStrings.overview_app_pump_control)
+            else -> stringResource(UiStrings.overview_app_master)
+        }
+        Text(
+            text = stringResource(UiStrings.overview_app_version, appName, config.VERSION_NAME.substringBefore('.')),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         TbrChip(
             state = tbrState,
             onClick = onTbrChipClick,
