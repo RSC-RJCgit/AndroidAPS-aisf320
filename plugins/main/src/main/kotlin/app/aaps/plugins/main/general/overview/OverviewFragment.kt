@@ -22,6 +22,7 @@ import android.text.style.StyleSpan
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View.OnLongClickListener
 import android.view.ViewGroup
@@ -3190,7 +3191,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun enableGraphWheelZoom(graph: GraphView) {
         graph.setOnGenericMotionListener { _, event ->
-            if (event.action != MotionEvent.ACTION_SCROLL || !event.isCtrlPressed) return@setOnGenericMotionListener false
+            if (event.action != MotionEvent.ACTION_SCROLL || (event.metaState and KeyEvent.META_CTRL_ON) == 0) return@setOnGenericMotionListener false
             val delta = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
             if (delta == 0f) return@setOnGenericMotionListener false
             val end = graph.viewport.getMaxX(false)
@@ -3248,7 +3249,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val graphEndTime = graphZoomEndTime?.toLong() ?: overviewData.endTime
         val graphFromTime = graphZoomWidth?.let { graphEndTime - it.toLong() } ?: overviewData.fromTime
         PointsWithLabelGraphSeries.automaticCleanGraph = graphZoomWidth?.let {
-            it > TimeUnit.HOURS.toMillis(max(3, overviewData.rangeToDisplay)).toDouble()
+            it > TimeUnit.HOURS.toMillis(max(3, overviewData.rangeToDisplay).toLong()).toDouble()
         } ?: false
         graphData.addInRangeArea(
             graphFromTime, graphEndTime,
