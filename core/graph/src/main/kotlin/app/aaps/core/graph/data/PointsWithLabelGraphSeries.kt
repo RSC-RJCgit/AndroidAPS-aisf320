@@ -7,6 +7,7 @@ import android.graphics.Path
 import android.graphics.Point
 import android.graphics.PorterDuff
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.core.content.ContextCompat
 import app.aaps.core.interfaces.graph.SeriesData
@@ -251,6 +252,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val iobPeakMainBottomPy = graphTop + graphHeight - scaledTextSize * 0.35f
         // Exactly-12 insulin-delivered totals: top quarter of this panel (IOB graph). White.
         val insulinIntervalPy = graphTop + graphHeight * 0.22f
+        // Hourly peak labels (Shape.HOUR_PEAK) are collected here and drawn after the loop, newest first, so a
+        // label that would overlap a newer one is left out instead of covering it.
+        val hourPeakLabels = mutableListOf<HourPeakText>()
 
         for (value in values) {
             mPaint.color = value.color(graphView.context)
@@ -465,16 +469,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     canvas.drawCircle(endX, endY, scaledPxSize, mPaint)
                     if (value.label.isNotEmpty()) drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
                 } else if (value.shape == Shape.HOUR_PEAK) {
-                    mPaint.color = value.color(graphView.context)
-                    mPaint.style = Paint.Style.FILL
-                    mPaint.strokeWidth = 0f
                     mPaint.textSize = (scaledTextSize * 0.65f).toFloat()
                     mPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                    mPaint.textAlign = Paint.Align.LEFT
                     val width = mPaint.measureText(value.label)
                     val labelX = (endX - width / 2f).coerceIn(graphLeft.toFloat(), maxOf(graphLeft.toFloat(), (graphLeft + graphWidth).toFloat() - width))
                     val labelY = (endY - 5f).coerceIn(graphTop.toFloat() + mPaint.textSize, (graphTop + graphHeight).toFloat())
-                    canvas.drawText(value.label, labelX, labelY, mPaint)
+                    hourPeakLabels += HourPeakText(value.label, value.color(graphView.context), RectF(labelX, labelY - mPaint.textSize, labelX + width, labelY))
                 } else if (value.shape == Shape.ACTIVITY_PEAK || value.shape == Shape.IOB_PEAK) {
                     // Same style as GENERAL's drawLabel45Right, but below the peak point instead of above.
                     // Shared rendering for both peak-label shapes -- they differ only in which graph they're
@@ -828,7 +828,25 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 }
             }
         }
+
+        if (hourPeakLabels.isNotEmpty()) {
+            mPaint.style = Paint.Style.FILL
+            mPaint.strokeWidth = 0f
+            mPaint.textSize = (scaledTextSize * 0.65f).toFloat()
+            mPaint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            mPaint.textAlign = Paint.Align.LEFT
+            val drawn = mutableListOf<RectF>()
+            for (text in hourPeakLabels.asReversed()) {
+                if (drawn.any { RectF.intersects(it, text.bounds) }) continue
+                mPaint.color = text.color
+                canvas.drawText(text.label, text.bounds.left, text.bounds.bottom, mPaint)
+                drawn += text.bounds
+            }
+        }
     }
+
+    /** One hourly peak label, measured in the draw loop and drawn after it. */
+    private class HourPeakText(val label: String, val color: Int, val bounds: RectF)
 
     private fun calculateSmbStackIndices(values: List<E>, shape: Shape, windowMs: Long = 10 * 60_000L): IdentityHashMap<E, Int> {
         // BaseSeries iteration order can be newest-first. Stack windows must be built in timestamp

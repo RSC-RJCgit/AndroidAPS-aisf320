@@ -123,33 +123,48 @@ class GraphData @Inject constructor(
             rh.gac(graph.context, CoreUiR.attr.tempBasalColor), stepped = true)
     }
 
-    /** Select using raw values; only the label position follows the graph scale. The label is the bare number. */
+    /**
+     * One label per hour, counted back from now: the highest value in now-1h..now, in now-2h..now-1h, and so on,
+     * back to the first data point. Select using raw values; only the label position follows the graph scale.
+     * The label is the bare number. Overlapping labels are thinned out when drawn, newest kept.
+     */
     private fun addHourPeak(source: Series<ScaledDataPoint>, scale: Scale, colorValue: Int, stepped: Boolean = false) {
         val now = dateUtil.now().toDouble()
-        val start = now - 60 * 60_000L
+        val hour = 60 * 60_000.0
         val samples = source.getValues(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY).asSequence()
             .filter { it.x <= now && it.rawValue.isFinite() }
             .toList().groupBy { it.x }.values.map { it.last() }.sortedBy { it.x }
         val values = if (stepped) samples.filterIndexed { index, point ->
             index == 0 || point.rawValue != samples[index - 1].rawValue
         } else samples
-        val candidates = values.filter { it.x >= start }.toMutableList()
-        if (stepped) values.lastOrNull { it.x < start }?.let {
-            candidates.add(ScaledDataPoint(start, it.rawValue, scale))
+        val first = values.firstOrNull()?.x ?: return
+        val points = mutableListOf<DataPointWithLabelInterface>()
+        var end = now
+        while (end > first) {
+            val start = end - hour
+            val candidates = values.filter { it.x >= start && it.x <= end }.toMutableList()
+            if (stepped) values.lastOrNull { it.x < start }?.let {
+                candidates.add(ScaledDataPoint(start, it.rawValue, scale))
+            }
+            candidates.maxWithOrNull(compareBy<ScaledDataPoint> { it.rawValue }.thenBy { it.x })?.let { peak ->
+                // A step label sits within its column, and within its own hour.
+                val next = minOf(values.firstOrNull { it.x > peak.x }?.x ?: now, end)
+                val labelTime = if (stepped) peak.x + (next - peak.x) / 2 else peak.x
+                points += object : ScaledDataPoint(labelTime, peak.rawValue, scale), DataPointWithLabelInterface {
+                    override fun setY(y: Double) {}
+                    override val label = decimalFormatter.to2Decimal(peak.rawValue)
+                    override val duration = 0L
+                    override val shape = Shape.HOUR_PEAK
+                    override val size = 0f
+                    override val paintStyle = Paint.Style.FILL
+                    override fun color(context: Context?): Int = colorValue
+                }
+            }
+            end = start
         }
-        val peak = candidates.maxWithOrNull(compareBy<ScaledDataPoint> { it.rawValue }.thenBy { it.x }) ?: return
-        val next = values.firstOrNull { it.x > peak.x }?.x ?: now
-        val labelTime = if (stepped) peak.x + (next - peak.x) / 2 else peak.x
-        val point = object : ScaledDataPoint(labelTime, peak.rawValue, scale), DataPointWithLabelInterface {
-            override fun setY(y: Double) {}
-            override val label = decimalFormatter.to2Decimal(peak.rawValue)
-            override val duration = 0L
-            override val shape = Shape.HOUR_PEAK
-            override val size = 0f
-            override val paintStyle = Paint.Style.FILL
-            override fun color(context: Context?): Int = colorValue
-        }
-        addSeries(PointsWithLabelGraphSeries<DataPointWithLabelInterface>(arrayOf(point)))
+        if (points.isEmpty()) return
+        // The series wants its points oldest first.
+        addSeries(PointsWithLabelGraphSeries(points.sortedBy { it.x }.toTypedArray()))
     }
 
     fun addTargetLine() {
