@@ -848,12 +848,12 @@ fun SecondaryGraphCompose(
     val recentBasalPeak = remember(basalData, nowTimestamp, hasBasalLayer) {
         if (hasBasalLayer) lastHourPeak(basalData?.actualBasal.orEmpty(), nowTimestamp, stepped = true) else null
     }
-    val iobPeakText = recentIobPeak?.let { stringResource(UiStrings.graph_iob_hour_peak, smbDoseFormatter.to2Decimal(it.value)) }.orEmpty()
-    val basalPeakText = recentBasalPeak?.let { stringResource(UiStrings.graph_basal_hour_peak, smbDoseFormatter.to2Decimal(it.value)) }.orEmpty()
+    val iobPeakText = recentIobPeak?.let { smbDoseFormatter.to2Decimal(it.value) }.orEmpty()
+    val basalPeakText = recentBasalPeak?.let { smbDoseFormatter.to2Decimal(it.value) }.orEmpty()
     val peakLabels = remember(recentIobPeak, recentBasalPeak, iobPeakText, basalPeakText, minTimestamp, smbText, seriesColors.iob, basalColor) {
         listOfNotNull(
             recentIobPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), it.value, iobPeakText, seriesColors.iob, smbText) },
-            recentBasalPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), -it.value, basalPeakText, basalColor, smbText, endAxis = true) }
+            recentBasalPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), -it.value, basalPeakText, basalColor, smbText, endAxis = true, pinToTop = true) }
         )
     }
     val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels) {

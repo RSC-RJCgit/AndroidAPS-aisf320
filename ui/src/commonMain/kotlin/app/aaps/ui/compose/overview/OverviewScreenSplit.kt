@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -183,9 +184,11 @@ fun OverviewScreenSplit(
                     onExpandedChange = { statusExpanded = it }
                 )
 
-                if (config.AAPSCLIENT) {
+                // Shown on a master too: the cache fills it from the phone's own data there.
+                run {
                     val nsClientStatus by graphViewModel.nsClientStatusFlow.collectAsStateWithLifecycle()
                     val flavorTint = when {
+                        !config.AAPSCLIENT -> MaterialTheme.colorScheme.surfaceContainerLow
                         config.AAPSCLIENT3 -> AapsTheme.generalColors.flavorClient3Tint
                         config.AAPSCLIENT2 -> AapsTheme.generalColors.flavorClient2Tint
                         else               -> AapsTheme.generalColors.flavorClient1Tint

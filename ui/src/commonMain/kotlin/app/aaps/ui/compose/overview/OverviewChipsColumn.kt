@@ -238,7 +238,8 @@ private fun NarrowChips(
             else -> stringResource(UiStrings.overview_app_master)
         }
         Text(
-            text = stringResource(UiStrings.overview_app_version, appName, config.VERSION_NAME.substringBefore('.')),
+            // Only the major version, so "4.0.0-beta1" shows as v4.
+            text = stringResource(UiStrings.overview_app_version, appName, config.VERSION_NAME.firstOrNull { it.isDigit() }?.toString().orEmpty()),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

@@ -14,6 +14,8 @@ import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.PumpStatusProvider
+import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
@@ -82,6 +84,8 @@ internal class OverviewDataCacheRunningModeTest {
             decimalFormatter = mock<DecimalFormatter>(),
             translator = mock<Translator>(),
             rh = mock<TextResolver>(),
+            pumpStatusProvider = mock<PumpStatusProvider>(),
+            receiverStatusStore = mock<ReceiverStatusStore>(),
             signals = signals,
             // No database observers: the refresh below is the only reader under test.
             observeDatabase = false

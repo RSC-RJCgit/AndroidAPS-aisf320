@@ -74,6 +74,8 @@ import app.aaps.core.interfaces.overview.graph.VarSensGraphData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.pump.PumpStatusProvider
+import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventBucketedDataCreated
@@ -187,6 +189,8 @@ class OverviewDataCacheImpl(
     private val decimalFormatter: DecimalFormatter,
     private val translator: Translator,
     private val rh: TextResolver,
+    private val pumpStatusProvider: PumpStatusProvider,
+    private val receiverStatusStore: ReceiverStatusStore,
     @Assisted val signals: CalculationSignals,
     @Assisted val observeDatabase: Boolean
 ) : OverviewDataCache {
@@ -562,6 +566,27 @@ class OverviewDataCacheImpl(
                             while (true) {
                                 delay(60_000)
                                 rebuildNsClientStatus()
+                            }
+                        }
+                }
+            } else {
+                // A master sends its device status and never reads it back, so the same card is
+                // filled from this phone's own pump, loop, AutoISF and battery data.
+                scope.launch {
+                    _nsClientStatusFlow.subscriptionCount
+                        .map { it > 0 }
+                        .distinctUntilChanged()
+                        .collectLatest { hasSubscribers ->
+                            if (!hasSubscribers) return@collectLatest
+                            rebuildMasterStatus()
+                            launch {
+                                rxBus.toFlow(EventLoopUpdateGui::class)
+                                    .debounce(300)
+                                    .collect { rebuildMasterStatus() }
+                            }
+                            while (true) {
+                                delay(60_000)
+                                rebuildMasterStatus()
                             }
                         }
                 }
@@ -1248,8 +1273,106 @@ class OverviewDataCacheImpl(
             )
         } else null
 
-        // AutoISF run of the master, read from the same mirrored values the graph's top strip uses.
-        val autoIsfItem = _autoIsfGraphFlow.value.let { isf ->
+        val autoIsfItem = autoIsfStatusItem(now, processedDeviceStatusData.getAPSResult()?.scriptDebug)
+
+        val uploaderItem = if (processedDeviceStatusData.uploaderMap.isNotEmpty()) {
+            var minBattery = 100
+            var isCharging = false
+            for ((_, uploader) in processedDeviceStatusData.uploaderMap) {
+                if (uploader.battery <= minBattery) {
+                    minBattery = uploader.battery
+                    isCharging = uploader.isCharging == true
+                }
+            }
+            // Match original format: "ᴪ 93%" or "93%"
+            val value = buildString {
+                if (isCharging) append("⚡")
+                append("$minBattery%")
+            }
+            val dialogText = buildString {
+                for ((device, uploader) in processedDeviceStatusData.uploaderMap) {
+                    append("$device: ${uploader.battery}%")
+                    if (uploader.isCharging == true) append(" ⚡")
+                    append("\n")
+                }
+            }.trimEnd()
+            AapsClientStatusItem(
+                label = rh.gs(CoreUiStrings.uploader_short),
+                value = value,
+                level = AapsClientLevel.INFO,
+                dialogTitle = rh.gs(CoreUiStrings.uploader),
+                dialogText = dialogText
+            )
+        } else null
+
+        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem)
+    }
+
+    /**
+     * The client card's four items for a master, from this phone's own data rather than from
+     * [processedDeviceStatusData], which a master never fills.
+     */
+    private suspend fun rebuildMasterStatus() {
+        val now = dateUtil.now()
+        val pump = activePlugin.activePump
+        val pumpClock = pump.lastDataTime.value
+        val pumpItem = AapsClientStatusItem(
+            label = rh.gs(CoreUiStrings.pump),
+            value = dateUtil.minAgo(rh, pumpClock),
+            level = when {
+                pumpClock + URGENT_CLOCK_MINUTES * 60 * 1000L < now -> AapsClientLevel.URGENT
+                pumpClock + WARN_CLOCK_MINUTES * 60 * 1000L < now   -> AapsClientLevel.WARN
+                else                                                -> AapsClientLevel.INFO
+            },
+            dialogTitle = rh.gs(CoreUiStrings.pump),
+            dialogText = pumpStatusProvider.shortStatus(false)
+        )
+
+        val openApsItem = loop.lastRun?.let { run ->
+            val level = when {
+                run.lastAPSRun + T.mins(preferences.get(IntKey.NsClientUrgentAlarmStaleData).toLong()).msecs() < now -> AapsClientLevel.URGENT
+                run.lastAPSRun + T.mins(preferences.get(IntKey.NsClientAlarmStaleData).toLong()).msecs() < now       -> AapsClientLevel.WARN
+                else                                                                                                 -> AapsClientLevel.INFO
+            }
+            val dialogText = buildString {
+                val enacted = listOfNotNull(run.tbrSetByPump, run.smbSetByPump).filter { it.success && it.enacted }
+                if (enacted.isNotEmpty()) {
+                    append("Enacted: ${dateUtil.minAgo(rh, maxOf(run.lastTBREnact, run.lastSMBEnact))} ")
+                    append(enacted.joinToString(" ") { it.comment })
+                }
+                run.request?.let {
+                    if (isNotEmpty()) append("\n\n")
+                    append("Suggested: ${dateUtil.minAgo(rh, run.lastAPSRun)} ${it.reason}")
+                }
+            }
+            AapsClientStatusItem(
+                label = rh.gs(CoreUiStrings.openaps_short),
+                value = dateUtil.minAgo(rh, run.lastAPSRun),
+                level = level,
+                dialogTitle = rh.gs(CoreUiStrings.openaps),
+                dialogText = dialogText
+            )
+        }
+
+        val autoIsfItem = autoIsfStatusItem(now, activePlugin.activeAPS.lastAPSResult?.scriptDebug)
+
+        val uploaderItem = AapsClientStatusItem(
+            label = rh.gs(CoreUiStrings.uploader_short),
+            value = buildString {
+                if (receiverStatusStore.isCharging) append("⚡")
+                append("${receiverStatusStore.batteryLevel}%")
+            },
+            level = AapsClientLevel.INFO,
+            dialogTitle = rh.gs(CoreUiStrings.uploader),
+            dialogText = "${receiverStatusStore.batteryLevel}%"
+        )
+
+        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem)
+    }
+
+    /** AutoISF run of the master, read from the same values the graph's top strip uses. */
+    private fun autoIsfStatusItem(now: Long, scriptDebug: List<String>?): AapsClientStatusItem? =
+        _autoIsfGraphFlow.value.let { isf ->
             val last = isf.finalIsf.lastOrNull() ?: return@let null
             val age = now - last.timestamp
             val level = when {
@@ -1268,7 +1391,7 @@ class OverviewDataCacheImpl(
                 dialogText = buildString {
                     append((listOf(dateUtil.minAgo(rh, last.timestamp)) + details).joinToString("\n"))
                     // The master's script debug, which the 3426 client shows in its own dialog.
-                    val debug = processedDeviceStatusData.getAPSResult()?.scriptDebug
+                    val debug = scriptDebug
                     if (!debug.isNullOrEmpty()) {
                         append("\n\n")
                         append(debug.joinToString("\n"))
@@ -1276,39 +1399,6 @@ class OverviewDataCacheImpl(
                 }
             )
         }
-
-        val uploaderItem = if (processedDeviceStatusData.uploaderMap.isNotEmpty()) {
-            var minBattery = 100
-            var isCharging = false
-            for ((_, uploader) in processedDeviceStatusData.uploaderMap) {
-                if (uploader.battery <= minBattery) {
-                    minBattery = uploader.battery
-                    isCharging = uploader.isCharging == true
-                }
-            }
-            // Match original format: "ᴪ 93%" or "93%"
-            val value = buildString {
-                if (isCharging) append("\u26A1")
-                append("$minBattery%")
-            }
-            val dialogText = buildString {
-                for ((device, uploader) in processedDeviceStatusData.uploaderMap) {
-                    append("$device: ${uploader.battery}%")
-                    if (uploader.isCharging == true) append(" \u26A1")
-                    append("\n")
-                }
-            }.trimEnd()
-            AapsClientStatusItem(
-                label = rh.gs(CoreUiStrings.uploader_short),
-                value = value,
-                level = AapsClientLevel.INFO,
-                dialogTitle = rh.gs(CoreUiStrings.uploader),
-                dialogText = dialogText
-            )
-        } else null
-
-        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem)
-    }
 
     private suspend fun rebuildHeartRateGraph() {
         val (fromTime, toTime) = graphTimeRange() ?: return

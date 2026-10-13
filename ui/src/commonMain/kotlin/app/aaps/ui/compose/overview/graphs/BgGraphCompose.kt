@@ -993,7 +993,7 @@ fun BgGraphCompose(
     val recentBasalPeak = remember(basalData, nowTimestamp) {
         if (showBasalOnBgGraph) lastHourPeak(basalData.actualBasal, nowTimestamp, stepped = true) else null
     }
-    val basalPeakText = recentBasalPeak?.let { stringResource(UiStrings.graph_basal_hour_peak, decimalFormatter.to2Decimal(it.value)) }.orEmpty()
+    val basalPeakText = recentBasalPeak?.let { decimalFormatter.to2Decimal(it.value) }.orEmpty()
     val basalPeakLabel = remember(recentBasalPeak, basalPeakText, minTimestamp, smbText, basalColor) {
         recentBasalPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), it.value, basalPeakText, basalColor, smbText, endAxis = true) }
     }

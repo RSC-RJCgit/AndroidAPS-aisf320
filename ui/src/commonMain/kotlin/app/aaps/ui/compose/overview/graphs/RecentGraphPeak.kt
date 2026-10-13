@@ -31,7 +31,11 @@ internal fun lastHourPeak(points: List<GraphDataPoint>, now: Long, stepped: Bool
     return peak.copy(timestamp = peak.timestamp + (end - peak.timestamp) / 2)
 }
 
-/** A small label at the real point, using the same axis as its line or basal column. */
+/**
+ * A small label at the real point, using the same axis as its line or basal column.
+ * With [pinToTop] the label sits at the top edge of the graph, in line with the IOB/COB title, and has
+ * no dot. The flipped basal column hangs from the top, so this is the top of the column.
+ */
 internal class RecentPeakLabel(
     private val x: Double,
     private val y: Double,
@@ -39,6 +43,7 @@ internal class RecentPeakLabel(
     private val color: Color,
     private val textMeasurer: TextMeasurer,
     private val endAxis: Boolean = false,
+    private val pinToTop: Boolean = false,
 ) : Decoration {
     override fun drawOverLayers(context: CartesianDrawingContext) {
         with(context) {
@@ -51,9 +56,10 @@ internal class RecentPeakLabel(
             val py = layerBounds.bottom - layerBounds.height * ((y - range.minY) / range.length).toFloat()
             val layout = textMeasurer.measure(label, TextStyle(color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold))
             val left = (px - layout.size.width / 2f).coerceIn(layerBounds.left, maxOf(layerBounds.left, layerBounds.right - layout.size.width))
-            val top = (py - layout.size.height - 3f).coerceIn(layerBounds.top, maxOf(layerBounds.top, layerBounds.bottom - layout.size.height))
+            val top = if (pinToTop) layerBounds.top
+            else (py - layout.size.height - 3f).coerceIn(layerBounds.top, maxOf(layerBounds.top, layerBounds.bottom - layout.size.height))
             with(mutableDrawScope) {
-                drawCircle(color, radius = 2f, center = Offset(px, py))
+                if (!pinToTop) drawCircle(color, radius = 2f, center = Offset(px, py))
                 drawText(layout, topLeft = Offset(left, top))
             }
         }
