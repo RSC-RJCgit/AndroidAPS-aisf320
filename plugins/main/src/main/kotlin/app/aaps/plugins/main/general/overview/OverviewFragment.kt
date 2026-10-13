@@ -22,6 +22,7 @@ import android.text.style.StyleSpan
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
+import android.view.MotionEvent
 import android.view.View.OnLongClickListener
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
@@ -206,6 +207,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private var smallWidth = false
     private var smallHeight = false
     private var axisWidth: Int = 0
+    private var graphZoomWidth: Double? = null
+    private var graphZoomEndTime: Double? = null
+    private var graphZoomDefaultHours: Int? = null
     private lateinit var refreshLoop: Runnable
     private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
@@ -504,6 +508,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     @Synchronized
     override fun onDestroyView() {
+        PointsWithLabelGraphSeries.automaticCleanGraph = false
         // A configuration change/back navigation must never leave the one-attempt Quick Wizard
         // MaxBolus override in Preferences after its dialog disappears.
         quickWizardMaxBolusDialog?.dismiss()
@@ -3183,6 +3188,23 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         overviewData.endTime = if (latest > overviewData.toTime) min(latest, maxEnd) else maxEnd
     }
 
+    private fun enableGraphWheelZoom(graph: GraphView) {
+        graph.setOnGenericMotionListener { _, event ->
+            if (event.action != MotionEvent.ACTION_SCROLL || !event.isCtrlPressed) return@setOnGenericMotionListener false
+            val delta = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
+            if (delta == 0f) return@setOnGenericMotionListener false
+            val end = graph.viewport.getMaxX(false)
+            val width = end - graph.viewport.getMinX(false)
+            if (!width.isFinite() || width <= 0.0) return@setOnGenericMotionListener false
+            graphZoomWidth = (if (delta > 0f) width / 1.08 else width * 1.08)
+                .coerceIn(TimeUnit.MINUTES.toMillis(30).toDouble(), TimeUnit.HOURS.toMillis(24).toDouble())
+            // A live right edge continues to move with time; a selected historical edge stays fixed.
+            graphZoomEndTime = if (abs(end - overviewData.endTime) < 1000.0) null else end
+            updateGraph()
+            true
+        }
+    }
+
     private fun updateGraph() {
         _binding ?: return
         // Refresh the rolling time window on every actual redraw, not just at plugin startup or when
@@ -3218,8 +3240,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val menuChartSettings = overviewMenus.setting
         if (menuChartSettings.isEmpty()) return
         extendEndTimeForPredictions()
+        if (graphZoomDefaultHours != overviewData.rangeToDisplay) {
+            graphZoomWidth = null
+            graphZoomEndTime = null
+            graphZoomDefaultHours = overviewData.rangeToDisplay
+        }
+        val graphEndTime = graphZoomEndTime?.toLong() ?: overviewData.endTime
+        val graphFromTime = graphZoomWidth?.let { graphEndTime - it.toLong() } ?: overviewData.fromTime
+        PointsWithLabelGraphSeries.automaticCleanGraph = graphZoomWidth?.let {
+            it > TimeUnit.HOURS.toMillis(max(3, overviewData.rangeToDisplay)).toDouble()
+        } ?: false
         graphData.addInRangeArea(
-            overviewData.fromTime, overviewData.endTime,
+            graphFromTime, graphEndTime,
             preferences.get(UnitDoubleKey.OverviewLowMark),
             preferences.get(UnitDoubleKey.OverviewHighMark)
         )
@@ -3271,7 +3303,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()
-        graphData.formatAxis(overviewData.fromTime, overviewData.endTime)
+        graphData.formatAxis(graphFromTime, graphEndTime)
+        enableGraphWheelZoom(binding.graphsLayout.bgGraph)
         graphData.applyFontScale(skinProvider.activeSkin().graphFontScale)
 
         graphData.performUpdate()
@@ -3355,7 +3388,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graph5Data.addRunningModes()
             graph5Data.addNowLine(dateUtil.now())
             graph5Data.setNumVerticalLabels()
-            graph5Data.formatAxis(overviewData.fromTime, overviewData.endTime)
+            graph5Data.formatAxis(graphFromTime, graphEndTime)
+            enableGraphWheelZoom(binding.graphsLayout.graph5)
             graph5Data.applyFontScale(skinProvider.activeSkin().graphFontScale)
             graph5Data.performUpdate()
         } else {
@@ -3512,7 +3546,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             //if (menuChartSettings[g + 1][OverviewMenus.CharType.STEPS.ordinal]) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
 
             // set manual x bounds to have nice steps
-            secondGraphData.formatAxis(overviewData.fromTime, overviewData.endTime)
+            secondGraphData.formatAxis(graphFromTime, graphEndTime)
+            enableGraphWheelZoom(secondaryGraphs[g])
             secondGraphData.addNowLine(now)
             secondaryGraphsData.add(secondGraphData)
         }

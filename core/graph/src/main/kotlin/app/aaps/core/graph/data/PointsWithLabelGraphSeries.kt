@@ -30,11 +30,15 @@ import java.util.Locale
 open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSeries<E>, SeriesData {
 
     companion object {
+        // Wide Overview windows hide clutter without changing the manual display settings.
+        var automaticCleanGraph: Boolean = false
         var showSmbLabels: Boolean = true
+            get() = field && !automaticCleanGraph
 
         // 2026-10-10, per explicit request: false hides the text rows (steps, DR/AW/LS, ISF indices, target offset, pp/acce row).
         // The hypoprediction row (Shape.HP_ROW_BOTTOM) always shows. Set from BooleanKey.ApsAutoIsfShowGraphText by OverviewFragment.
         var showTextRows: Boolean = true
+            get() = field && !automaticCleanGraph
 
         // Basal long-press cycles through 3 display presets (0→1→2→0...). IOB long-press always resets
         // this back to 0 in addition to its own showSmbLabels toggle, regardless of which direction that
@@ -43,6 +47,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         //   1: near-BGL arrowheads off, normal per-point ISF colors
         //   2: near-BGL arrowheads off, uniform transparent green BG dots
         var basalToggleIndex: Int = 0
+            get() = if (automaticCleanGraph) 2 else field
             set(value) { field = ((value % 3) + 3) % 3 }
 
         // Line1 (Carbs Absorption) quick show/hide, driven by direct long-press ACTIONS, not by passively
