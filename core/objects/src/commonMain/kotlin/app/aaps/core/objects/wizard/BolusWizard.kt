@@ -379,7 +379,7 @@ class BolusWizard(
         }
         if (preClamp >= 0.0) preClamp = calculatedTotalInsulin
 
-        // Amount-aware (Insight) + concentration-adjusted deliverable step, so the rounded value matches the pump grid.
+        // The step of the pump, converted by the concentration, so the rounded value matches the pump grid.
         val bolusStep = ch.bolusStep(calculatedTotalInsulin)
         calculatedTotalInsulin = Round.roundTo(calculatedTotalInsulin, bolusStep)
         unclampedCalculatedInsulin = Round.roundTo(preClamp, bolusStep)

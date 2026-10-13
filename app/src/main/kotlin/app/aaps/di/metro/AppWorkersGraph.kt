@@ -14,8 +14,6 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadFoodsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadDeviceStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadBgWorker
 import app.aaps.plugins.sync.nsclientV3.workers.DataSyncWorker
-import app.aaps.workflow.PrepareGraphDataWorker
-import app.aaps.workflow.PostCalculationWorker
 import app.aaps.core.objects.workflow.WorkerKey
 import app.aaps.implementation.maintenance.ImportExportPrefsImpl
 import app.aaps.implementation.receivers.KeepAliveWorker
@@ -124,16 +122,6 @@ interface AppWorkersGraph {
     @IntoMap
     @WorkerKey(XdripDataSyncWorker::class)
     fun bindXdripDataSyncWorker(f: XdripDataSyncWorker.Factory): MetroWorkerCreator = f
-
-    @Provides
-    @IntoMap
-    @WorkerKey(PostCalculationWorker::class)
-    fun bindPostCalculationWorker(f: PostCalculationWorker.Factory): MetroWorkerCreator = f
-
-    @Provides
-    @IntoMap
-    @WorkerKey(PrepareGraphDataWorker::class)
-    fun bindPrepareGraphDataWorker(f: PrepareGraphDataWorker.Factory): MetroWorkerCreator = f
 
     @Provides
     @IntoMap
