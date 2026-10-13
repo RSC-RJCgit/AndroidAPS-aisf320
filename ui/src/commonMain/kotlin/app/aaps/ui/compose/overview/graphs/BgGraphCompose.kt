@@ -985,8 +985,15 @@ fun BgGraphCompose(
     val tapReporter = remember(tapReadings, bgReadings, treatments, minTimestamp) {
         GraphPointTapReporter(tapTargets, tapReadings, bgReadings, treatments.boluses.filter { it.bolusType == BolusType.NORMAL }, minTimestamp)
     }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter)
+    val recentBasalPeak = remember(basalData, nowTimestamp) {
+        if (showBasalOnBgGraph) lastHourPeak(basalData.actualBasal, nowTimestamp, stepped = true) else null
+    }
+    val basalPeakText = recentBasalPeak?.let { stringResource(UiStrings.graph_basal_hour_peak, decimalFormatter.to2Decimal(it.value)) }.orEmpty()
+    val basalPeakLabel = remember(recentBasalPeak, basalPeakText, minTimestamp, smbText, basalColor) {
+        recentBasalPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), it.value, basalPeakText, basalColor, smbText, endAxis = true) }
+    }
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter, basalPeakLabel) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel)
     }
 
     // =========================================================================

@@ -37,6 +37,7 @@ import app.aaps.core.interfaces.overview.graph.DeviationType
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TreatmentGraphData
+import app.aaps.ui.UiStrings
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -854,8 +855,22 @@ fun SecondaryGraphCompose(
             SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 0.5f),
         )
     }
-    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks) {
-        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks
+    val recentIobPeak = remember(iobData, nowTimestamp) {
+        lastHourPeak(iobData?.iob.orEmpty(), nowTimestamp)
+    }
+    val recentBasalPeak = remember(basalData, nowTimestamp, hasBasalLayer) {
+        if (hasBasalLayer) lastHourPeak(basalData?.actualBasal.orEmpty(), nowTimestamp, stepped = true) else null
+    }
+    val iobPeakText = recentIobPeak?.let { stringResource(UiStrings.graph_iob_hour_peak, smbDoseFormatter.to2Decimal(it.value)) }.orEmpty()
+    val basalPeakText = recentBasalPeak?.let { stringResource(UiStrings.graph_basal_hour_peak, smbDoseFormatter.to2Decimal(it.value)) }.orEmpty()
+    val peakLabels = remember(recentIobPeak, recentBasalPeak, iobPeakText, basalPeakText, minTimestamp, smbText, seriesColors.iob, basalColor) {
+        listOfNotNull(
+            recentIobPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), it.value, iobPeakText, seriesColors.iob, smbText) },
+            recentBasalPeak?.let { RecentPeakLabel(timestampToX(it.timestamp, minTimestamp), -it.value, basalPeakText, basalColor, smbText, endAxis = true) }
+        )
+    }
+    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels) {
+        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels
     }
 
     // Union of Y values across all primary-layer series (IOB, COB, simple series, DevSlope-min,

@@ -674,6 +674,8 @@ class MainViewModel(
 
     fun buildAboutDialogData(appName: String): AboutDialogData {
         var message = "Build: ${config.BUILD_VERSION}\n"
+        if (config.platform == AppPlatform.Ios && config.HEAD != "unknown")
+            message += rh.gs(UiStrings.about_source_commit, config.HEAD) + "\n"
         message += "Flavor: ${config.FLAVOR}${config.BUILD_TYPE}\n"
         // Only where the build declares one. All three shells do - Android's `ConfigImpl` says
         // "Android" - so in practice the line is always there; the guard is for a Config that

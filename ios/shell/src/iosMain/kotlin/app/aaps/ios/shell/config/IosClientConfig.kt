@@ -85,9 +85,8 @@ class IosClientConfig(
     /** Anything that is not a release build is treated as a debug one, which is the safe way round. */
     override val DEBUG: Boolean = BUILD_TYPE != "release"
 
-    // Filled by the build on Android. iOS has no equivalent wired up yet, and saying so plainly is
-    // better than inventing a commit hash.
-    override val HEAD: String = "unknown"
+    // Generated from the checkout that built the Kotlin framework.
+    override val HEAD: String = GeneratedBuildInfo.HEAD
     override val COMMITTED: Boolean = true
     override val REMOTE: String = "unknown"
 

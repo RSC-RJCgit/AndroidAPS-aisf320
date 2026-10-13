@@ -435,4 +435,7 @@
     <string name="client_settings2_chip">Set2</string>
     <string name="client_settings3_chip">Set3</string>
     <string name="direct_list_setting_value">%1$s: %2$s</string>
+    <string name="about_source_commit">Commit: %1$s</string>
+    <string name="graph_iob_hour_peak">IOB %1$s U</string>
+    <string name="graph_basal_hour_peak">Basal %1$s U/h</string>
 </resources>

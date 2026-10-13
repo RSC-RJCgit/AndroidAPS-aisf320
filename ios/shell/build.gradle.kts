@@ -133,10 +133,22 @@ fun buildStamp(): String {
     }
     return "$commit-" + SimpleDateFormat("yyyy.MM.dd").format(Date())
 }
+/** Resolve from this checkout, even when Gradle is launched from the iOS app folder. */
+fun sourceCommit(): String = try {
+    val process = ProcessBuilder("git", "rev-parse", "HEAD")
+        .directory(rootProject.projectDir).start()
+    val hash = process.inputStream.bufferedReader().readText().trim()
+    check(process.waitFor() == 0 && hash.matches(Regex("[0-9a-f]{40}")))
+    hash
+} catch (_: Exception) {
+    "unknown"
+}
+
 /** The version this build reports, from the same constant the Android app uses. */
 val generateIosBuildInfo = tasks.register<GenerateBuildInfoTask>("generateIosBuildInfo") {
     version.set(Versions.appVersion)
     buildStamp.set(buildStamp())
+    head.set(sourceCommit())
     platform.set("iOS")
     packageName.set("app.aaps.ios.shell.config")
     outputDir.set(layout.buildDirectory.dir("generated/buildInfo"))
