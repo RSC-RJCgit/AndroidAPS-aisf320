@@ -31,7 +31,6 @@ import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
-import app.aaps.core.ui.R as CoreUiR
 import androidx.core.text.toSpanned
 import androidx.recyclerview.widget.LinearLayoutManager
 import app.aaps.core.data.configuration.Constants
@@ -1348,7 +1347,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (config.AAPSCLIENT) showClientStatusDetails()
                 else activity?.let {
                     OKDialog.show(it, rh.gs(R.string.openaps),
-                        activePlugin.activeAPS.lastAPSResult?.resultAsSpanned() ?: rh.gs(CoreUiR.string.not_available_full))
+                        activePlugin.activeAPS.lastAPSResult?.resultAsSpanned() ?: rh.gs(R.string.not_available_full).toSpanned())
                 }
             }
             binding.uploader.text = rh.gs(R.string.client_settings2_chip)
