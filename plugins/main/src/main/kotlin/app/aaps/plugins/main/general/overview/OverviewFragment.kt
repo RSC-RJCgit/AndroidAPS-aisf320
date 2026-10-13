@@ -251,6 +251,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.nsclientCard.setBackgroundColor(Color.argb(80, 0x8B, 0x60, 0xC8))
 
         overview.setVersionView(binding.infoLayout.version)
+        val appName = rh.gs(when {
+            config.AAPSCLIENT2 -> R.string.overview_app_client2
+            config.AAPSCLIENT1 -> R.string.overview_app_client
+            config.PUMPCONTROL -> R.string.overview_app_pump_control
+            else -> R.string.overview_app_master
+        })
+        binding.infoLayout.appVersionLabel.text = rh.gs(
+            R.string.overview_app_version, appName, config.VERSION_NAME.substringBefore('.')
+        )
 
         skinProvider.activeSkin().preProcessLandscapeOverviewLayout(binding, landscape, rh.gb(app.aaps.core.ui.R.bool.isTablet), smallHeight)
         binding.nsclientCard.visibility = (config.AAPSCLIENT || config.APS).toVisibility()

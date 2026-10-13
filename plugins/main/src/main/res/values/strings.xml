@@ -411,4 +411,10 @@
     <string name="client_status_details">Client status</string>
     <string name="graph_iob_hour_peak">IOB %1$s U</string>
     <string name="graph_basal_hour_peak">Basal %1$s U/h</string>
+    <string name="overview_app_master" translatable="false">Master</string>
+    <string name="overview_app_client" translatable="false">Client</string>
+    <string name="overview_app_client2" translatable="false">Client2</string>
+    <string name="overview_app_client3" translatable="false">Client3</string>
+    <string name="overview_app_pump_control" translatable="false">PumpControl</string>
+    <string name="overview_app_version" translatable="false">%1$s-v%2$s</string>
 </resources>
