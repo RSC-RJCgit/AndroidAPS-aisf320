@@ -1354,7 +1354,7 @@ class OverviewDataCacheImpl(
             )
         }
 
-        val autoIsfItem = autoIsfStatusItem(now, activePlugin.activeAPS.lastAPSResult?.scriptDebug)
+        val autoIsfItem = autoIsfStatusItem(now, activePlugin.activeAPS?.lastAPSResult?.scriptDebug)
 
         val uploaderItem = AapsClientStatusItem(
             label = rh.gs(CoreUiStrings.uploader_short),
