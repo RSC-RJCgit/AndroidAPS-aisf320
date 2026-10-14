@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
 import androidx.fragment.app.FragmentManager
-import app.aaps.core.data.model.BCR
 import app.aaps.core.interfaces.nsclient.NSAlarm
 
 /**
@@ -54,8 +53,11 @@ interface UiInteraction {
 
     fun runWizardDialog(fragmentManager: FragmentManager, carbs: Int? = null, name: String? = null)
 
-    /** Shows a saved bolus calculation, the same dialog the Treatments tab opens. */
-    fun runWizardInfoDialog(fragmentManager: FragmentManager, bolusCalculatorResult: BCR)
+    /**
+     * Bolus tapped on a graph: shows the calculation that produced it (the dialog the Treatments tab opens), or
+     * [fallbackText] in a toast when none is found. See the implementation for how the calculation is matched.
+     */
+    fun runBolusCalculationDialog(fragmentManager: FragmentManager, bolusTimestamp: Long, bolusAmount: Double, fallbackText: String)
     fun runLoopDialog(fragmentManager: FragmentManager, showOkCancel: Int)
     fun runProfileSwitchDialog(fragmentManager: FragmentManager, profileName: String? = null)
     fun runTempBasalDialog(fragmentManager: FragmentManager)

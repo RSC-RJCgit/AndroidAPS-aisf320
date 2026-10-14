@@ -11,7 +11,12 @@ import app.aaps.activities.HistoryBrowseActivity
 import app.aaps.activities.MyPreferenceFragment
 import app.aaps.activities.PreferencesActivity
 import app.aaps.core.data.model.BCR
+import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.Notification
+import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.nsclient.NSAlarm
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventDismissNotification
@@ -46,6 +51,7 @@ import app.aaps.ui.services.AlarmSoundService
 import app.aaps.ui.services.AlarmSoundServiceHelper
 import app.aaps.ui.widget.Widget
 import dagger.Reusable
+import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -54,7 +60,10 @@ class UiInteractionImpl @Inject constructor(
     private val context: Context,
     private val rxBus: RxBus,
     private val alarmSoundServiceHelper: AlarmSoundServiceHelper,
-    private val notificationWithActionProvider: Provider<NotificationWithAction>
+    private val notificationWithActionProvider: Provider<NotificationWithAction>,
+    private val persistenceLayerProvider: Provider<PersistenceLayer>,
+    private val aapsSchedulers: AapsSchedulers,
+    private val aapsLogger: AAPSLogger
 ) : UiInteraction {
 
     override val mainActivity: Class<*> = MainActivity::class.java
@@ -83,8 +92,23 @@ class UiInteractionImpl @Inject constructor(
         Widget.updateWidget(context, from)
     }
 
-    override fun runWizardInfoDialog(fragmentManager: FragmentManager, bolusCalculatorResult: BCR) {
-        WizardInfoDialog.newInstance(bolusCalculatorResult).show(fragmentManager, "WizardInfoDialog")
+    // Calculation and bolus share no ID. The calculation is saved on OK and the bolus when the pump confirms it
+    // (later still for a client, a split dose or a past time), so take the calculations from 10 min before to 1 min
+    // after the bolus: an exact time first, else the closest insulin, then the closest time. Same rule as the KMP graph.
+    override fun runBolusCalculationDialog(fragmentManager: FragmentManager, bolusTimestamp: Long, bolusAmount: Double, fallbackText: String) {
+        val from = bolusTimestamp - T.mins(10).msecs()
+        val to = bolusTimestamp + T.mins(1).msecs()
+        persistenceLayerProvider.get().getBolusCalculatorResultsFromTime(from, true)
+            .subscribeOn(aapsSchedulers.io)
+            .observeOn(aapsSchedulers.main)
+            .subscribe({ list ->
+                val candidates = list.filter { it.isValid && it.timestamp in from..to }
+                val match = candidates.firstOrNull { it.timestamp == bolusTimestamp }
+                    ?: candidates.minWithOrNull(compareBy<BCR>({ abs(it.totalInsulin - bolusAmount) }, { abs(it.timestamp - bolusTimestamp) }))
+                if (fragmentManager.isStateSaved || fragmentManager.isDestroyed) return@subscribe
+                if (match != null) WizardInfoDialog.newInstance(match).show(fragmentManager, "WizardInfoDialog")
+                else ToastUtils.infoToast(context, fallbackText)
+            }, { aapsLogger.error(LTag.UI, "Could not read the bolus calculation", it) })
     }
 
     override fun runWizardDialog(fragmentManager: FragmentManager, carbs: Int?, name: String?) {

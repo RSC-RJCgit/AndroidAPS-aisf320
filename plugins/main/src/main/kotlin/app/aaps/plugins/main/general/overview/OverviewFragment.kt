@@ -36,17 +36,14 @@ import android.widget.TextView
 import androidx.core.text.toSpanned
 import androidx.recyclerview.widget.LinearLayoutManager
 import app.aaps.core.data.configuration.Constants
-import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.pump.defs.PumpType
-import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
-import app.aaps.core.graph.data.BolusDataPoint
 import app.aaps.core.graph.data.GraphViewWithCleanup
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.aps.IobTotal
@@ -1375,27 +1372,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.aisfdebug.text = rh.gs(R.string.client_settings3_chip)
             binding.aisfdebug.setOnClickListener { showList3Dialog() }
         }
-    }
-
-    /**
-     * Bolus triangle tapped: open the calculation that produced it, the same dialog the Treatments tab opens.
-     * Calculation and bolus share no ID, and the calculation is saved on OK while the bolus is saved when the
-     * pump confirms it (later still for a client, a split dose or a past time). So take the calculations from
-     * 10 min before to 1 min after the bolus: an exact time first, else the closest insulin, then the closest time.
-     * Same rule as the KMP graph. No calculation found: show the bolus label as before.
-     */
-    private fun showBolusCalculation(bolus: BolusDataPoint) {
-        val time = bolus.data.timestamp
-        disposable += persistenceLayer.getBolusCalculatorResultsFromTime(time - T.mins(10).msecs(), true)
-            .subscribeOn(aapsSchedulers.io)
-            .observeOn(aapsSchedulers.main)
-            .subscribe({ list ->
-                val candidates = list.filter { it.isValid && it.timestamp in (time - T.mins(10).msecs())..(time + T.mins(1).msecs()) }
-                val match = candidates.firstOrNull { it.timestamp == time }
-                    ?: candidates.minWithOrNull(compareBy<BCR>({ abs(it.totalInsulin - bolus.data.amount) }, { abs(it.timestamp - time) }))
-                if (match != null && isAdded) uiInteraction.runWizardInfoDialog(childFragmentManager, match)
-                else ToastUtils.infoToast(context, bolus.label)
-            }, { aapsLogger.error(LTag.UI, "Could not read the bolus calculation", it) })
     }
 
     private fun showClientStatusDetails() {
@@ -3325,7 +3301,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         )
         graphData.addBgReadings(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], context)
         graphData.addBucketedData()
-        graphData.addTreatments(context) { bolus -> showBolusCalculation(bolus) }
+        graphData.addTreatments(context) { bolus ->
+            uiInteraction.runBolusCalculationDialog(childFragmentManager, bolus.data.timestamp, bolus.data.amount, bolus.label)
+        }
         graphData.addEps(context, 0.95)
         if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
             graphData.addTherapyEvents()

@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.rx.events.EventIobCalculationProgress
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventScale
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewGraph
+import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
@@ -61,6 +62,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var graphDataProvider: Provider<GraphData>
     @Inject lateinit var skinProvider: SkinProvider
+    @Inject lateinit var uiInteraction: UiInteraction
 
     private val disposable = CompositeDisposable()
 
@@ -377,7 +379,9 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         )
         graphData.addBgReadings(false, this)        //menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal], this)
         graphData.addBucketedData()
-        graphData.addTreatments(this)
+        graphData.addTreatments(this) { bolus ->
+            uiInteraction.runBolusCalculationDialog(supportFragmentManager, bolus.data.timestamp, bolus.data.amount, bolus.label)
+        }
         graphData.addEps(this, 0.95)
         if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
             graphData.addTherapyEvents()
