@@ -1286,8 +1286,11 @@ class BolusWizard @Inject constructor(
                     else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
                     // When the NEXT part is due: a failed check on this part is re-checked every 10 min until 10 min before it.
                     val nextDueAt = if (i < plan.numDoses) scheduledAt + T.mins(plan.durationMinutes.toLong() * (i + 1) / plan.numDoses).msecs() else null
+                    // 2026-10-14, per explicit request: the label is only shown text (notes, Treatments row, calculation
+                    // record, log), so it says which part this is and marks the last one, e.g. "fpu2 of 4", "fpu4 (last of 4)".
+                    val partLabel = if (i == plan.numDoses) "fpu$i (last of ${plan.numDoses})" else "fpu$i of ${plan.numDoses}"
                     scheduleSingleDelayedDose(
-                        plan.perDoseInsulin, delayMins, "fpu$i", schedulingPct, iobBaselineForDelayedDoses, myScheduleToken,
+                        plan.perDoseInsulin, delayMins, partLabel, schedulingPct, iobBaselineForDelayedDoses, myScheduleToken,
                         deliverAt = scheduledAt + T.mins(delayMins.toLong()).msecs(), isLast = i == plan.numDoses, nextDueAt = nextDueAt,
                         retryLater = delayFpuInsteadOfCancel
                     )
