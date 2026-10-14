@@ -297,7 +297,7 @@ fun ProfileManagementScreen(
                                 // edits to) and the view model refuses the switch, so it gets no action
                                 // here at all.
                                 if (uiState.commandsAllowed) {
-                                    IconButton(onClick = onRequestEditMode) {
+                                    if (uiState.profileEditAllowed) IconButton(onClick = onRequestEditMode) {
                                         Icon(
                                             imageVector = Icons.Filled.Edit,
                                             contentDescription = stringResource(CoreUiStrings.switch_to_edit)

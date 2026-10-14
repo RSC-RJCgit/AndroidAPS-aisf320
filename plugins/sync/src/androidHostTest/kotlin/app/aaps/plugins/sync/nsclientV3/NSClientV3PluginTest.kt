@@ -201,6 +201,9 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
         // Master's allow-client-control switch, synced master→client — the 5th masterReachable term. Default ON.
         val controlFlow = MutableStateFlow(true)
         whenever(preferences.observe(BooleanKey.NsClientAllowClientControl)).thenReturn(controlFlow)
+        // The client's own "read-only client" setting. Default OFF.
+        val readOnlyFlow = MutableStateFlow(false)
+        whenever(preferences.observe(BooleanKey.NsClientReadOnlyClient)).thenReturn(readOnlyFlow)
 
         val client = buildPlugin(orphanDetector)
         // Heartbeat stays 0L until the first batch — the gate FAILS CLOSED at boot (no optimistic enable).
@@ -224,6 +227,10 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
                 controlFlow.value = false
                 awaitValue(client.masterReachable, false)                         // master switched OFF client control → gated
                 controlFlow.value = true
+                awaitValue(client.masterReachable, true)
+                readOnlyFlow.value = true
+                awaitValue(client.masterReachable, false)                         // read-only client, old pairing kept → gated
+                readOnlyFlow.value = false
                 awaitValue(client.masterReachable, true)
             } finally {
                 collector.cancel()

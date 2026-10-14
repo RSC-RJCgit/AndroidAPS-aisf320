@@ -45,6 +45,7 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.tempTargets.ttTargetMgdl
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.toPureProfile
@@ -163,6 +164,13 @@ class ProfileManagementViewModel(
             !config.AAPSCLIENT || (paired && reachable)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), !config.AAPSCLIENT)
 
+    /**
+     * A read-only client cannot edit profiles (the master owns them), but it can still activate one and set roles:
+     * the switch and the role note are saved here and go to the master through Nightscout (see `RoleBranch`).
+     */
+    private val readOnlyClient: Boolean
+        get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
+
     fun setScreenMode(mode: ScreenMode) {
         _screenMode.value = mode
     }
@@ -233,7 +241,8 @@ class ProfileManagementViewModel(
             ProfileManagementUiState(
                 isLoading = false,
                 screenMode = if (editingAllowed) inputs.screenMode else ScreenMode.PLAY,
-                commandsAllowed = editingAllowed
+                commandsAllowed = editingAllowed || readOnlyClient,
+                profileEditAllowed = editingAllowed
             )
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileManagementUiState())
@@ -306,7 +315,8 @@ class ProfileManagementViewModel(
             compareData = compareData,
             // An unpaired client cannot leave PLAY, whatever mode was requested.
             screenMode = if (editingAllowed) screenMode else ScreenMode.PLAY,
-            commandsAllowed = editingAllowed,
+            commandsAllowed = editingAllowed || readOnlyClient,
+            profileEditAllowed = editingAllowed,
             isLoading = false
         )
     }
@@ -988,5 +998,7 @@ data class ProfileManagementUiState(
      * away. Same axis as `commandsAllowed` on the overview chips.
      */
     val commandsAllowed: Boolean = true,
+    /** False when profiles cannot be edited here, also on a read-only client that can still activate one. */
+    val profileEditAllowed: Boolean = true,
     val isLoading: Boolean = true
 )

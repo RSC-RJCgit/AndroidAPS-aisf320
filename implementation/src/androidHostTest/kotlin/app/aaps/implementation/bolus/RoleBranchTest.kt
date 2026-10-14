@@ -1,5 +1,8 @@
 package app.aaps.implementation.bolus
 
+import app.aaps.core.data.model.TE
+import app.aaps.core.data.ue.Sources
+import app.aaps.core.interfaces.bolus.BatchAction
 import app.aaps.core.interfaces.bolus.WizardBolusExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
@@ -7,12 +10,17 @@ import app.aaps.core.interfaces.clientcontrol.FailureReason
 import app.aaps.core.interfaces.clientcontrol.isNotDeliveryError
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.shared.tests.TestBase
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
+import org.mockito.kotlin.any
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
 /** Covers [RoleBranch] prepare/commit routing: client round-trip gating + master local-execution result mapping. */
@@ -21,13 +29,18 @@ class RoleBranchTest : TestBase() {
     @Mock lateinit var dispatcher: ClientControlActionDispatcher
     @Mock lateinit var nsClient: NsClient
     @Mock lateinit var config: Config
+    @Mock lateinit var preferences: Preferences
 
     private val command: ClientControlActionDispatcher.Command = ClientControlActionDispatcher.Command.BolusCommit(bolusId = 1L)
 
-    private fun roleBranch(client: Boolean): RoleBranch {
+    private fun roleBranch(client: Boolean, readOnly: Boolean = false): RoleBranch {
         whenever(config.AAPSCLIENT).thenReturn(client)
-        return RoleBranch(dispatcher, nsClient, config)
+        if (client) whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(readOnly)
+        return RoleBranch(dispatcher, nsClient, config, preferences)
     }
+
+    private val profileSwitch = BatchAction.ProfileSwitch(percentage = 90, timeShiftHours = 0, durationMinutes = 10, profileName = "Standard100")
+    private val note = BatchAction.TherapyEvent(teType = TE.Type.NOTE, timestamp = 1L, note = "n", source = Sources.Note)
 
     // ---- master (prepare) ----
 
@@ -74,6 +87,39 @@ class RoleBranchTest : TestBase() {
         whenever(nsClient.masterControlAllowed).thenReturn(MutableStateFlow(true))
         val result = roleBranch(client = true).prepare("l", command) { error("must not run") }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.NotReachable)
+    }
+
+    // ---- read-only client ----
+
+    @Test fun prepare_readOnlyClient_profileSwitchAndNote_runLocally() = runTest {
+        val command = ClientControlActionDispatcher.Command.BatchPrepare(listOf(profileSwitch, note))
+        val result = roleBranch(client = true, readOnly = true).prepare("l", command) {
+            WizardBolusExecutor.PrepareResult.Preview(insulin = 0.0, carbs = 0, bolusId = 7L)
+        }
+        assertThat((result as ActionProgress.Prepared).id).isEqualTo(7L)
+        verify(dispatcher, never()).run(any(), any())
+    }
+
+    @Test fun prepare_readOnlyClient_bolusInBatch_rejectedReadOnly() = runTest {
+        val bolus = BatchAction.Bolus(
+            insulin = 1.0, carbs = 0, carbsTimeOffsetMinutes = 0, carbsDurationHours = 0, recordOnly = false, notes = "", timestamp = 0L, iCfg = null
+        )
+        val command = ClientControlActionDispatcher.Command.BatchPrepare(listOf(profileSwitch, bolus))
+        val result = roleBranch(client = true, readOnly = true).prepare("l", command) { error("must not run") }
+        assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyClient)
+        assertThat(result.reason.isNotDeliveryError()).isTrue()
+        verify(dispatcher, never()).run(any(), any())
+    }
+
+    @Test fun prepare_readOnlyClient_nonBatchCommand_rejectedReadOnly() = runTest {
+        val result = roleBranch(client = true, readOnly = true).prepare("l", command) { error("must not run") }
+        assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyClient)
+    }
+
+    @Test fun commit_readOnlyClient_runsLocally() = runTest {
+        val result = roleBranch(client = true, readOnly = true).commit("l", command) { WizardBolusExecutor.ConfirmResult.Delivered }
+        assertThat(result).isEqualTo(ActionProgress.Applied)
+        verify(dispatcher, never()).run(any(), any())
     }
 
     // ---- master (commit) ----

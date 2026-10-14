@@ -227,7 +227,7 @@
     <string name="pref_title_ns_use_ws">Use websockets</string>
     <string name="pref_summary_ns_use_ws">Use websockets for real-time communication with Nightscout.</string>
     <string name="pref_title_ns_read_only_client">Read-only client</string>
-    <string name="pref_summary_ns_read_only_client">Turn on when the master does not accept remote control, for example a 3.4 master. Shows a plain note instead of the "master unreachable" warning, and does not try to reach the master.</string>
+    <string name="pref_summary_ns_read_only_client">Turn on when the master does not accept remote control, for example a 3.4 master. A profile switch, a temp target or a note is then saved here and sent through Nightscout, like a 3.4 client does. The master must have the matching Nightscout \"receive\" settings on. Other changes are refused here.</string>
     <string name="pref_title_ns_allow_client_control">Allow client control</string>
     <string name="pref_summary_ns_allow_client_control">Let paired client devices send signed commands (e.g. start/stop scenes) over Nightscout.</string>
 

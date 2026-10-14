@@ -20,6 +20,8 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.scenes.ClientControlSendResult
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.nssdk.localmodel.clientcontrol.AckEnvelope
 import app.aaps.core.nssdk.localmodel.clientcontrol.AckPhase
@@ -91,6 +93,7 @@ class ClientControlRoundTrip(
     private val rh: TextResolver,
     private val bolusProgressData: BolusProgressData,
     private val aapsLogger: AAPSLogger,
+    private val preferences: Preferences,
     // Plain CoroutineScope, not @ApplicationScope: that qualifier is javax and cannot appear in
     // commonMain. AppCoroutineBindings.unqualifiedAppScope provides the same scope unqualified.
     private val appScope: CoroutineScope
@@ -338,6 +341,11 @@ class ClientControlRoundTrip(
     }
 
     override fun dispatch(command: ClientControlActionDispatcher.Command): Flow<ActionProgress> = channelFlow {
+        // A read-only client sends no remote command at all (its master takes none). Say so at once, no spinner.
+        if (config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)) {
+            send(ActionProgress.Rejected(FailureReason.ReadOnlyClient))
+            return@channelFlow
+        }
         if (!inFlight.compareAndSet(false, true)) {
             send(ActionProgress.Rejected(FailureReason.Busy))
             return@channelFlow

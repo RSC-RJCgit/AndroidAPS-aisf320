@@ -61,6 +61,7 @@ enum class FailureReason {
     Expired,         // master dropped it as too old to apply safely
     Busy,            // another client-control action is already in progress
     SendFailed,      // upload to Nightscout failed (detail = transport error)
+    ReadOnlyClient,  // this client is set to read-only: it sends no remote commands (only a profile switch, temp target or note goes, through Nightscout)
 
     // --- master-side execution ---
     NoActiveProfile, // insulin: master has no active profile to re-apply onto
@@ -88,4 +89,5 @@ enum class FailureReason {
  * shows its own "nothing to do" message for it, so it is answered before this check.
  */
 fun FailureReason.isNotDeliveryError(): Boolean =
-    this == FailureReason.NotReachable || this == FailureReason.ControlDisabled || this == FailureReason.Cancelled
+    this == FailureReason.NotReachable || this == FailureReason.ControlDisabled || this == FailureReason.Cancelled ||
+        this == FailureReason.ReadOnlyClient

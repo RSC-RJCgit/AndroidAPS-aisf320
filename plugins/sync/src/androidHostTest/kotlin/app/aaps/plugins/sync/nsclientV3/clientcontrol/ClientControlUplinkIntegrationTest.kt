@@ -203,6 +203,7 @@ class ClientControlUplinkIntegrationTest {
                 rh,
                 bolusProgressData,
                 aapsLogger,
+                clientPrefs,
                 clientScope
             )
         preferencesClientPublisher = PreferencesClientPublisher(clientPrefs, clientControlRoundTrip, clientConfig, rh, aapsLogger)

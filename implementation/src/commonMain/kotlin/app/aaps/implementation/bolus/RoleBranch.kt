@@ -1,11 +1,14 @@
 package app.aaps.implementation.bolus
 
+import app.aaps.core.interfaces.bolus.BatchAction
 import app.aaps.core.interfaces.bolus.WizardBolusExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.clientcontrol.FailureReason
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -17,14 +20,23 @@ import dev.zacsweers.metro.SingleIn
  * runs against the local executor. The only per-path difference is the client [ClientControlActionDispatcher.Command]
  * to dispatch and the master executor call to make — both supplied by the caller — so the gate, the round-trip,
  * and the `PrepareResult`/`ConfirmResult` → [ActionProgress] mapping live exactly once here.
+ *
+ * A client set to read-only ([BooleanKey.NsClientReadOnlyClient], for a master that takes no remote control, such as
+ * 3.4) sends no command. A batch made only of a profile switch, a temp target or a note runs on the LOCAL executor:
+ * the record is saved here and the normal Nightscout upload carries it to the master, as a 3.4 client does. Anything
+ * else (insulin, carbs, pump commands, running mode) is refused at once with [FailureReason.ReadOnlyClient].
  */
 @SingleIn(AppScope::class)
 @Inject
 class RoleBranch(
     private val dispatcher: ClientControlActionDispatcher,
     private val nsClient: NsClient,
-    private val config: Config
+    private val config: Config,
+    private val preferences: Preferences
 ) {
+
+    private val readOnlyClient: Boolean
+        get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
 
     /**
      * Run a PREPARE: client → [clientCommand] over the round-trip (offline → [FailureReason.NotReachable]);
@@ -36,11 +48,13 @@ class RoleBranch(
         clientCommand: ClientControlActionDispatcher.Command,
         masterPrepare: suspend () -> WizardBolusExecutor.PrepareResult
     ): ActionProgress {
-        if (config.AAPSCLIENT) {
+        if (readOnlyClient) {
+            if (!isNightscoutRecordOnly(clientCommand)) return ActionProgress.Rejected(FailureReason.ReadOnlyClient)
+        } else if (config.AAPSCLIENT) {
             if (!nsClient.masterReachable.value) return ActionProgress.Rejected(clientBlockReason())
             return dispatcher.run(clientCommand, label)
         }
-        // Master: prepare locally — NO app-level modal (the caller renders the returned lines as the confirmation).
+        // Master, or a read-only client with a record-only batch: prepare locally — NO app-level modal (the caller renders the returned lines as the confirmation).
         return when (val r = masterPrepare()) {
             is WizardBolusExecutor.PrepareResult.Preview -> ActionProgress.Prepared(r.bolusId, r.lines, r.advisorApplies, r.advisorLines, r.wizardDetail)
             is WizardBolusExecutor.PrepareResult.Error   -> ActionProgress.Rejected(FailureReason.ExecutionFailed, r.message)
@@ -65,11 +79,13 @@ class RoleBranch(
         clientCommand: ClientControlActionDispatcher.Command,
         masterConfirm: suspend ((WizardBolusExecutor.Failure) -> Unit) -> WizardBolusExecutor.ConfirmResult
     ): ActionProgress {
-        if (config.AAPSCLIENT) {
+        // A read-only client commits locally. Only a batch that passed [isNightscoutRecordOnly] in prepare was parked
+        // here, so any other id finds nothing and comes back as NoPendingBolus.
+        if (config.AAPSCLIENT && !readOnlyClient) {
             if (!nsClient.masterReachable.value) return ActionProgress.Rejected(clientBlockReason())
             return dispatcher.run(clientCommand, label)
         }
-        // Master: deliver the parked dose/bundle locally.
+        // Master, or a read-only client: deliver the parked dose/bundle locally.
         var failure: WizardBolusExecutor.Failure? = null
         val result = masterConfirm { failure = it }
         val err = failure?.comment
@@ -87,6 +103,18 @@ class RoleBranch(
      * turned OFF ([FailureReason.ControlDisabled]) vs. simply unreachable/unpaired ([FailureReason.NotReachable]).
      * The caller maps the reason to the correct user-facing message (offline vs. control disabled).
      */
+    /**
+     * True for a batch that a read-only client may save itself and send through Nightscout: only a profile switch,
+     * a temp target and therapy events (notes, sensor change, ...). No insulin, no carbs, nothing for the pump.
+     */
+    private fun isNightscoutRecordOnly(command: ClientControlActionDispatcher.Command): Boolean =
+        command is ClientControlActionDispatcher.Command.BatchPrepare &&
+            command.actions.isNotEmpty() &&
+            command.actions.all {
+                it is BatchAction.ProfileSwitch || it is BatchAction.TempTarget ||
+                    it is BatchAction.TherapyEvent || it is BatchAction.TherapyEventEdit
+            }
+
     private fun clientBlockReason(): FailureReason =
         if (!nsClient.masterControlAllowed.value) FailureReason.ControlDisabled else FailureReason.NotReachable
 }

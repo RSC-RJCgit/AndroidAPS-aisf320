@@ -17,6 +17,8 @@ import app.aaps.core.interfaces.pump.PumpInsulin
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.scenes.ClientControlSendResult
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.clientcontrol.AckEnvelope
@@ -74,6 +76,7 @@ internal class ClientControlRoundTripTest {
     @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var bolusProgressData: BolusProgressData
     @Mock private lateinit var aapsLogger: AAPSLogger
+    @Mock private lateinit var preferences: Preferences
 
     private val now = 1_700_000_000_000L
     private val counter = 5L
@@ -110,7 +113,7 @@ internal class ClientControlRoundTripTest {
         whenever(notificationManager.notifications).thenReturn(notifications)
         whenever(bolusProgressData.state).thenReturn(MutableStateFlow(null))
         appScope = CoroutineScope(Dispatchers.Unconfined)
-        sut = ClientControlRoundTrip(publisher, pairingRepository, { nsClientV3Plugin }, nsClientRepository, config, dateUtil, notificationManager, rh, bolusProgressData, aapsLogger, appScope)
+        sut = ClientControlRoundTrip(publisher, pairingRepository, { nsClientV3Plugin }, nsClientRepository, config, dateUtil, notificationManager, rh, bolusProgressData, aapsLogger, preferences, appScope)
     }
 
     @Test
@@ -235,6 +238,14 @@ internal class ClientControlRoundTripTest {
         runCurrent()
         job.join()
         assertThat(out.last()).isInstanceOf(ActionProgress.Rejected::class.java)
+    }
+
+    @Test
+    fun readOnlyClientIsRejectedAtOnceWithoutSending() = runTest {
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        val out = sut.dispatch(cmd).let { flow -> mutableListOf<ActionProgress>().also { l -> launch { flow.collect { l += it } }.join() } }
+        assertThat(out).containsExactly(ActionProgress.Rejected(FailureReason.ReadOnlyClient))
+        verify(publisher, never()).publishTracked(any(), any(), any())
     }
 
     @Test

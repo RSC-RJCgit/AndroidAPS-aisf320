@@ -575,10 +575,12 @@ class NSClientV3Plugin(
             orphanDetector.authorized,
             // Master's "allow client control" switch, synced master→client (effective value — see
             // RunningConfigurationImpl). Off ⇒ master silently drops commands, so block fast here instead.
-            preferences.observe(BooleanKey.NsClientAllowClientControl)
-        ) { paired, authorized, controlAllowed ->
-            val reachable = paired && authorized && controlAllowed
-            aapsLogger.debug(LTag.NSCLIENT) { "masterReachable=$reachable (paired=$paired authorized=$authorized controlAllowed=$controlAllowed)" }
+            preferences.observe(BooleanKey.NsClientAllowClientControl),
+            // A read-only client never controls its master, even when an old pairing is still stored.
+            preferences.observe(BooleanKey.NsClientReadOnlyClient)
+        ) { paired, authorized, controlAllowed, readOnly ->
+            val reachable = paired && authorized && controlAllowed && !readOnly
+            aapsLogger.debug(LTag.NSCLIENT) { "masterReachable=$reachable (paired=$paired authorized=$authorized controlAllowed=$controlAllowed readOnly=$readOnly)" }
             reachable
         }
             // Seed FALSE (fail-closed): before the combine first computes — and on a cold start / WS
