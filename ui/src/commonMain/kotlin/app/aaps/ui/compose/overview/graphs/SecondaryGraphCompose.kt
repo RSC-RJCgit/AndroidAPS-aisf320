@@ -1095,8 +1095,10 @@ fun SecondaryGraphCompose(
         val windowedAbsMax = (literalWindowed + hiddenValues).map { -it }.maxOrNull()
         (windowedAbsMax?.takeIf { it > 0.0 } ?: hiddenValues.maxOfOrNull { -it } ?: basalData.maxBasal) / BASAL_HEIGHT_FRACTION
     }
+    // Empty strip above 0 (2026-10-14): the columns start one text line down, so the hourly basal peak numbers
+    // (pinned to the top edge) sit above the columns instead of on them.
     val basalRangeProvider = remember(maxX, basalMaxY) {
-        CartesianLayerRangeProvider.fixed(minX = 0.0, maxX = maxX, minY = -basalMaxY, maxY = 0.0)
+        CartesianLayerRangeProvider.fixed(minX = 0.0, maxX = maxX, minY = -basalMaxY, maxY = BASAL_LABEL_STRIP * basalMaxY)
     }
 
     // Secondary axis line style (colored by series type)

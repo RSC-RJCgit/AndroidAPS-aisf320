@@ -5,14 +5,26 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class GraphTapTargetsTest {
+    private val bolus = 1_000_000L
+
     @Test fun sameTimestampIsPreferredOverNearbyCalculation() {
-        assertEquals(100_000L, matchingCalculationTimestamp(100_000L, listOf(99_500L, 100_000L)))
+        assertEquals(bolus, matchingCalculationTimestamp(bolus, 1.0, listOf(bolus - 500L to 1.0, bolus to 3.0)))
     }
 
-    @Test fun ambiguousOrUnrelatedRecordsDoNotOpenTheWrongCalculation() {
-        assertNull(matchingCalculationTimestamp(100_000L, listOf(99_500L, 100_500L)))
-        assertNull(matchingCalculationTimestamp(100_000L, listOf(100_000L, 100_000L)))
-        assertNull(matchingCalculationTimestamp(100_000L, listOf(101_001L)))
-        assertEquals(100_500L, matchingCalculationTimestamp(100_000L, listOf(100_500L)))
+    @Test fun calculationSavedBeforeThePumpConfirmedIsFound() {
+        // OK pressed 40 s before the pump confirmed the bolus.
+        assertEquals(bolus - 40_000L, matchingCalculationTimestamp(bolus, 1.2, listOf(bolus - 40_000L to 1.2)))
+    }
+
+    @Test fun closestInsulinWinsThenClosestTime() {
+        val calculations = listOf(bolus - 120_000L to 2.0, bolus - 60_000L to 0.8, bolus - 30_000L to 0.85)
+        assertEquals(bolus - 30_000L, matchingCalculationTimestamp(bolus, 0.85, calculations))
+        assertEquals(bolus - 120_000L, matchingCalculationTimestamp(bolus, 2.0, calculations))
+    }
+
+    @Test fun calculationsOutsideTheWindowAreIgnored() {
+        assertNull(matchingCalculationTimestamp(bolus, 1.0, listOf(bolus - CALCULATION_BEFORE_BOLUS_MS - 1L to 1.0)))
+        assertNull(matchingCalculationTimestamp(bolus, 1.0, listOf(bolus + CALCULATION_AFTER_BOLUS_MS + 1L to 1.0)))
+        assertNull(matchingCalculationTimestamp(bolus, 1.0, emptyList()))
     }
 }

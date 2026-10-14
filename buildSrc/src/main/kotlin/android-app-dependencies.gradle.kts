@@ -21,9 +21,12 @@ android {
             isMinifyEnabled = false
             setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"))
         }
+        // Coverage off for debug in this fork (2026-10-14). With it on, JaCoCo instruments every module's classes,
+        // and OpenAPSAutoISFPlugin's invoke() body then grows past the JVM 64 KB method limit
+        // (MethodTooLargeException in :app:mergeLibDexFullDebug). Release builds never instrument.
         named("debug") {
-            enableUnitTestCoverage = true
-            enableAndroidTestCoverage = true
+            enableUnitTestCoverage = false
+            enableAndroidTestCoverage = false
         }
     }
 

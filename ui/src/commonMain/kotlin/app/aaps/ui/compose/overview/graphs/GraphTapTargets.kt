@@ -11,11 +11,22 @@ import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
 import kotlin.concurrent.Volatile
 import kotlin.math.abs
 
-/** Calculations and treatments have no shared ID. Accept only an unambiguous creation timestamp. */
-internal fun matchingCalculationTimestamp(bolus: Long, calculations: List<Long>): Long? {
-    val exact = calculations.filter { it == bolus }
-    if (exact.isNotEmpty()) return exact.singleOrNull()
-    return calculations.filter { abs(it - bolus) <= 1_000L }.singleOrNull()
+/** How far before a bolus its calculation may lie: the calculation is saved on OK, the bolus when the pump confirms it. */
+internal const val CALCULATION_BEFORE_BOLUS_MS = 10 * 60_000L
+
+/** How far after a bolus its calculation may lie (clock rounding, records that came in from Nightscout). */
+internal const val CALCULATION_AFTER_BOLUS_MS = 60_000L
+
+/**
+ * Calculations and treatments have no shared ID. The calculation is saved when OK is pressed and the bolus when the
+ * pump confirms it, seconds later (more for a client, a split dose or a past time), so the two times rarely match.
+ * Pick from the calculations made 10 min before to 1 min after the bolus: an exact time first, otherwise the one
+ * whose insulin is closest to the bolus, then the closest in time. [calculations] are (timestamp, total insulin).
+ */
+internal fun matchingCalculationTimestamp(bolus: Long, bolusAmount: Double, calculations: List<Pair<Long, Double>>): Long? {
+    val inWindow = calculations.filter { it.first in (bolus - CALCULATION_BEFORE_BOLUS_MS)..(bolus + CALCULATION_AFTER_BOLUS_MS) }
+    inWindow.firstOrNull { it.first == bolus }?.let { return it.first }
+    return inWindow.minWithOrNull(compareBy<Pair<Long, Double>>({ abs(it.second - bolusAmount) }, { abs(it.first - bolus) }))?.first
 }
 
 internal data class GraphTapHit(val bounds: Rect, val bg: BgDataPoint? = null, val bolus: BolusGraphPoint? = null)

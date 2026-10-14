@@ -200,7 +200,7 @@ fun BgGraphCompose(
     var calculationLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(selectedBolus) {
         calculationLoaded = false
-        selectedCalculation = selectedBolus?.let { viewModel.calculationForBolus(it.timestamp) }
+        selectedCalculation = selectedBolus?.let { viewModel.calculationForBolus(it.timestamp, it.amount) }
         calculationLoaded = true
     }
     if (selectedBolus != null && calculationLoaded) {

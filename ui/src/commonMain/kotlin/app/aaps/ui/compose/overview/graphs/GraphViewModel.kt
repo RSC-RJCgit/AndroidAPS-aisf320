@@ -90,9 +90,9 @@ class GraphViewModel(
     }
 
     private val _graphDisplay = MutableStateFlow(GraphDisplay())
-    suspend fun calculationForBolus(timestamp: Long): BCR? = try {
-        val records = persistenceLayer.getBolusCalculatorResultsFromTime(timestamp - 1_000L, false).filter { it.isValid }
-        val stamp = matchingCalculationTimestamp(timestamp, records.map { it.timestamp })
+    suspend fun calculationForBolus(timestamp: Long, amount: Double): BCR? = try {
+        val records = persistenceLayer.getBolusCalculatorResultsFromTime(timestamp - CALCULATION_BEFORE_BOLUS_MS, false).filter { it.isValid }
+        val stamp = matchingCalculationTimestamp(timestamp, amount, records.map { it.timestamp to it.totalInsulin })
         records.singleOrNull { it.timestamp == stamp }
     } catch (cancelled: CancellationException) {
         throw cancelled

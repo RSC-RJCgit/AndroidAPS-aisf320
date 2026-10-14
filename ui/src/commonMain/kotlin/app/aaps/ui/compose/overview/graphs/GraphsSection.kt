@@ -937,26 +937,8 @@ fun GraphsSection(
                     .fillMaxWidth()
                     .height(graphConfig.iobHeight.dp)
             )
-            Text(
-                text = buildString {
-                    append(stringResource(CoreUiStrings.iob))
-                    append(" / ")
-                    append(stringResource(CoreUiStrings.basal_shortname))
-                    if (SeriesType.ACTIVITY in graphConfig.iobOverlays) {
-                        append(" / ")
-                        append(stringResource(CoreUiStrings.activity_shortname))
-                    }
-                    if (SeriesType.COB in graphConfig.iobOverlays) {
-                        append(" / ")
-                        append(stringResource(CoreUiStrings.cob))
-                    }
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 36.dp, top = 2.dp)
-            )
+            // No "IOB / Basal ..." title here since 2026-10-14: graph 1 is always IOB + basal, and the hourly basal
+            // peak numbers now use the top line of the graph instead.
             if (!isSimpleMode) {
                 GraphEditButton(
                     onClick = { editingIobOverlays = true },

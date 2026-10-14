@@ -268,6 +268,9 @@ fun Modifier.onScrollOrZoomGesture(onGesture: () -> Unit): Modifier = pointerInp
  */
 const val BASAL_HEIGHT_FRACTION = 0.5
 
+/** Empty space above the flipped basal columns on graph 1, as a share of the basal scale (about 13% of the graph), for the hourly basal peak numbers. */
+const val BASAL_LABEL_STRIP = 0.15
+
 /**
  * Filters data points to only include those within the valid x-axis range.
  *
