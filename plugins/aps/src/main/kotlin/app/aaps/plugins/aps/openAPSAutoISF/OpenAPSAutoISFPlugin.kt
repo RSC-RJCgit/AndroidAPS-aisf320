@@ -948,6 +948,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         addCarePortalNote("STCOn") // 5 chars -- no Graph4NoteLabel truncation collision, see that file
     }
 
+    // 2026-10-14, per explicit request: HighDaytimeBrake firing a second time within an hour (the first fire did not settle
+    // the plateau) moves both roles from Tier A to Tier B. Standing change with the usual tier nudge; MorningRoleSwap,
+    // AlarmHypoRoleRevert and LowBgTierAReset step it back as for any other escalation. Only from Tier A, 07:00-22:00,
+    // at most once a day, no BG under 4.5 mmol in the last hour, and not while a ProfileBatch hold or the hypo-alarm
+    // revert condition is in force.
+    private fun escalateHiBrkToTierB() {
+        if (sharedRoleLadderIndex() != 0) return
+        if (!isTimeBetween(7, 0, 22, 0) || !readyToRun("HiBrkTierB", 20 * 60)) return
+        if (preferences.get(BooleanKey.ApsAutoIsfStuckHighTierCActive)) return
+        if (preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled) || preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)) return
+        if (hypoRoleRevertConditionActive()) return
+        if (!allRecentBgInRange(1, minMgdl = 81.1 /* 4.5 mmol */, maxMgdl = null)) return
+        if (applySharedRoleRung(1, "HiBrkTierB")) {
+            addCarePortalNote("HiBrkB")
+            markRun("HiBrkTierB")
+        }
+    }
+
     // Added 2026-08-30: resolves a fine-grained tier (e.g. Standard110, Low80) down to a real profile
     // name, falling back to its base role (baseRoleKey -- ApsAutoIsfStandardProfileName or
     // ApsAutoIsfLowProfileName) whenever the tier itself hasn't been explicitly re-picked yet (blank by
@@ -3666,7 +3684,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val recentPpBoostFire = !readyToRun("BolusGiven", 15) || !readyToRun("BolusGivenMild", 15) ||
                 !readyToRun("High6PP", 15) || !readyToRun("HighOldPod", 15) ||
                 !readyToRun("PodChangeHighPP130", 15) || !readyToRun("OldPod2", 15) || !readyToRun("RecentPod", 15) ||
-                !readyToRun("HighDaytimeBrake", 15) || !readyToRun("HighEveNightBrake", 15)
+                // HighDaytimeBrake left out since 2026-10-14: it no longer raises the pp weight.
+                !readyToRun("HighEveNightBrake", 15)
             val ppNeedsRevert = !fuzzyEquals(currentPp, baselinePp) && trigger && !recentPpBoostFire
             val acceNeedsRevert = currentAcce > baselineAcce && trigger && !recentPpBoostFire
             if (ppNeedsRevert || acceNeedsRevert) {
@@ -8145,7 +8164,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // requires recentLibreOver12(48): this boost increases insulin delivery in response to a
         // perceived high, so it's gated on genuine confirmation (raw Libre >12.0mmol) within the last
         // 48h -- without that, a borderline/moderate reading isn't enough on its own to warrant it.
-        if (readyToRun("High6PP", 30) && profile_percentage == 100 && isTimeBetween(9, 0, 21, 0) && recentLibreOver12(48)) {
+        // 2026-10-14: wait 10 min after a HighDaytimeBrake fire. Its 4.0 TT (<= 4.2) would otherwise also open h6b2 and
+        // stack a 120% profile on the same plateau.
+        if (readyToRun("High6PP", 30) && readyToRun("HighDaytimeBrake", 10) && profile_percentage == 100 && isTimeBetween(9, 0, 21, 0) && recentLibreOver12(48)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val sd = glucoseStatus.shortAvgDelta
@@ -8742,26 +8763,49 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // 2026-09-19: floor raised 6.5 -> 7.5 mmol at explicit request (real data: 14 of 31 mid fires at
                 // 6.5-7.0 and 9 of 35 at 7.0-7.5 ended below 5.0mmol, vs 1 of 33 above 7.5), and a 9.0 cap added
                 // so this band never overlaps HighEveNightBrake's >=9.0 after 22:00 (the night brake owns >=9.0
-                // from 22:00; the day high band owns it before that). The 6.5-7.0 "x1.5" branch below is now
-                // unreachable but left in place.
+                // from 22:00; the day high band owns it before that).
+                // 2026-10-14, per explicit request: floor back down to 7.0 mmol. A recheck of every HiBrk fire 9 Sep-14 Oct
+                // found the "ended below 5.0" cases were mostly 4.8-5.0 (in range), and they came in clusters of 5-9 fires
+                // 6-15 min apart -- the old 2-5 min re-arm stacking insulin. The flat 30-min wait (2026-09-19) now stops
+                // that, and the new IOB ceiling below covers the real lows, which all started at high IOB.
                 val midBand = !highBand && (isTimeBetween(7, 0, 1, 30) || daytimeGateBypassOk(glucoseStatus.glucose))
-                    && glucoseStatus.glucose > 135.1 /* 7.5 mmol */ && glucoseStatus.glucose < 162.2 /* 9.0 mmol */
+                    && glucoseStatus.glucose > 126.1 /* 7.0 mmol */ && glucoseStatus.glucose < 162.2 /* 9.0 mmol */
                     && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("MJ", "MJ3"))
                     && !checkAutomationState("LowBG", "50recent")
                 if (highBand || midBand) {
                     val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
-                    if (iobChange5 < 0.5) {
-                        // 2026-09-19, explicit request: TT + pp-weight raise only. The SMB-delivery-ratio boost (BMild +0.15,
-                        // halved to +0.075 by the caution factors; the x1.5 branch below 7.0, unreachable since the 7.5
-                        // floor) is removed; the pp weight is still raised to its "high" value, as applyBMildOutcomeFactors()
-                        // always did. The 4.0 mmol TT is 2 min; HiBrkDayCut can still cancel it.
-                        preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
-                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 2)
-                        sendSms("HighDaytimeBrake [${if (highBand) "9.0" else "7.5"}]: TT 4.0mmol@2min + ppWeight high, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    // 2026-10-14: IOB ceiling 2.5 U, same as BMild. The three real lows after a fire (9 Sep 3.9, 19 Sep 3.6 x2)
+                    // and the clusters that ended at 4.8 all started at high IOB.
+                    if (iobChange5 < 0.5 && iobData.iob < 2.5) {
+                        // 2026-10-14, per explicit request: back to the strength before 2026-09-19 -- TT 4.0 for 5 min (was 2)
+                        // plus the SMB-delivery-ratio boost, which is what makes a fire actually deliver (14 Oct 16:39 fired
+                        // with only the TT: Req 0.97 but 0.05 U SMBs). +0.15, halved to +0.075 by any caution factor, as on
+                        // 2026-09-18. The boost lasts while the TT runs: DelOff resets the ratio once no TT is active.
+                        // No pp-weight raise any more: the gate needs duraISF on top, so a higher pp weight changed nothing,
+                        // and it stayed raised after the fire.
+                        val previousFireWithinHour = !readyToRun("HighDaytimeBrake", 60)
+                        if (previousFireWithinHour) escalateHiBrkToTierB()
+                        val onStandardTierC = profileFunction.getOriginalProfileName() ==
+                            preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
+                        val anyCautionFactor = !checkAutomationState("MJ", "NOMJremains") || onStandardTierC || recentSteps30Minutes > 200
+                        val boostIncrement = if (anyCautionFactor) 0.075 else 0.15
+                        // No second boost from the tier: on Tier B/C the mild ratio carries the +0.25 tier nudge
+                        // (applyRoleTierDeliveryNudge). Take it back off so a fire boosts from the Tier A base.
+                        val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
+                        val tierBand = roleTierBandForIndex(sharedRoleLadderIndex())
+                        val mildTierA = if (tierBand == 1) (mildBase - 0.25).coerceAtLeast(0.1) else mildBase
+                        val preBoostDeliveryRatio = smb_delivery_ratio
+                        setSmbDeliveryRatio(mildTierA + boostIncrement)
+                        smbDeliveryBoostedThisCycle = true
+                        startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 5)
+                        sendSms(
+                            "HighDaytimeBrake [${if (highBand) "9.0" else "7.0"}]: TT 4.0mmol@5min, SMBdel ${round(preBoostDeliveryRatio, 2)}->" +
+                                "${round(smb_delivery_ratio, 2)} (+$boostIncrement), g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}"
+                        )
                         addCarePortalNote(if (highBand) "HiBrkDay" else "HiBrkDayMid")
                         markRun("HighDaytimeBrake")
                     } else {
-                        consoleError.add("HighDaytimeBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U >= 0.5U brake threshold")
+                        consoleError.add("HighDaytimeBrake blocked: 5-min IOB change ${round(iobChange5, 2)}U (limit 0.5) or IOB ${round(iobData.iob, 2)}U (limit 2.5)")
                     }
                 }
             }
