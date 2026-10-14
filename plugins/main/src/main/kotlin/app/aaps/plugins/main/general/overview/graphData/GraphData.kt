@@ -175,11 +175,14 @@ class GraphData @Inject constructor(
         addSeries(overviewData.runningModesSeries as PointsWithLabelGraphSeries<DataPoint>)
     }
 
-    fun addTreatments(context: Context?) {
+    /** [onBolusTap] opens the bolus calculation (overview); without it a tap shows the bolus label as before. */
+    fun addTreatments(context: Context?, onBolusTap: ((BolusDataPoint) -> Unit)? = null) {
         maxY = maxOf(maxY, overviewData.maxTreatmentsValue)
         addSeries(overviewData.treatmentsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
         (overviewData.treatmentsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
-            if (dataPoint is BolusDataPoint) ToastUtils.infoToast(context, dataPoint.label)
+            if (dataPoint is BolusDataPoint) {
+                if (onBolusTap != null) onBolusTap(dataPoint) else ToastUtils.infoToast(context, dataPoint.label)
+            }
         }
     }
 

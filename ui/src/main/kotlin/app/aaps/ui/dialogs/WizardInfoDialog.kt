@@ -25,6 +25,14 @@ import kotlin.math.abs
 
 class WizardInfoDialog : DaggerDialogFragment() {
 
+    companion object {
+
+        /** The dialog for one saved calculation, packed the way onCreateView reads it back. */
+        fun newInstance(bolusCalculatorResult: BCR): WizardInfoDialog = WizardInfoDialog().also { dialog ->
+            dialog.arguments = Bundle().also { it.putString("data", Gson().toJson(bolusCalculatorResult).toString()) }
+        }
+    }
+
     @Inject lateinit var rh: ResourceHelper
     @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var profileUtil: ProfileUtil

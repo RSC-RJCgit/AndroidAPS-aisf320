@@ -10,6 +10,7 @@ import app.aaps.MainActivity
 import app.aaps.activities.HistoryBrowseActivity
 import app.aaps.activities.MyPreferenceFragment
 import app.aaps.activities.PreferencesActivity
+import app.aaps.core.data.model.BCR
 import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.nsclient.NSAlarm
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -40,6 +41,7 @@ import app.aaps.ui.dialogs.TempBasalDialog
 import app.aaps.ui.dialogs.TempTargetDialog
 import app.aaps.ui.dialogs.TreatmentDialog
 import app.aaps.ui.dialogs.WizardDialog
+import app.aaps.ui.dialogs.WizardInfoDialog
 import app.aaps.ui.services.AlarmSoundService
 import app.aaps.ui.services.AlarmSoundServiceHelper
 import app.aaps.ui.widget.Widget
@@ -79,6 +81,10 @@ class UiInteractionImpl @Inject constructor(
 
     override fun updateWidget(context: Context, from: String) {
         Widget.updateWidget(context, from)
+    }
+
+    override fun runWizardInfoDialog(fragmentManager: FragmentManager, bolusCalculatorResult: BCR) {
+        WizardInfoDialog.newInstance(bolusCalculatorResult).show(fragmentManager, "WizardInfoDialog")
     }
 
     override fun runWizardDialog(fragmentManager: FragmentManager, carbs: Int?, name: String?) {

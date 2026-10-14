@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.annotation.RawRes
 import androidx.annotation.StringRes
 import androidx.fragment.app.FragmentManager
+import app.aaps.core.data.model.BCR
 import app.aaps.core.interfaces.nsclient.NSAlarm
 
 /**
@@ -52,6 +53,9 @@ interface UiInteraction {
     fun updateWidget(context: Context, from: String)
 
     fun runWizardDialog(fragmentManager: FragmentManager, carbs: Int? = null, name: String? = null)
+
+    /** Shows a saved bolus calculation, the same dialog the Treatments tab opens. */
+    fun runWizardInfoDialog(fragmentManager: FragmentManager, bolusCalculatorResult: BCR)
     fun runLoopDialog(fragmentManager: FragmentManager, showOkCancel: Int)
     fun runProfileSwitchDialog(fragmentManager: FragmentManager, profileName: String? = null)
     fun runTempBasalDialog(fragmentManager: FragmentManager)
