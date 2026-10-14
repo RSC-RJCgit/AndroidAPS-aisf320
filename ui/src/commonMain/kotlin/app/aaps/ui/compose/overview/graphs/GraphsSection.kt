@@ -818,6 +818,7 @@ fun GraphsSection(
         // would be unusable. Reported as the biggest excursion from the current glucose rather than
         // the final point, because a curve that dips to 3.2 before settling at 6.0 matters for the
         // dip, and that is the reading of "heading up to" or "down to" a user means.
+        val predictions by graphViewModel.predictionsFlow.collectAsStateWithLifecycle()
         val currentValue = remember(bgReadings) { newestReadings(bgReadings, 1).firstOrNull()?.value }
         val unitLabel = if (profileUtil.units == GlucoseUnit.MMOL) stringResource(CoreUiStrings.mmol) else stringResource(CoreUiStrings.mgdl)
         // Nothing is said about curves the user has switched off the graph.
