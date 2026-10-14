@@ -178,10 +178,11 @@ class RunningConfigurationImpl(
             return
         }
 
+        // A different master version is only logged, not notified: this client also follows a 3.4-based UKF
+        // master, whose version never matches, and the notification came back on every settings doc.
         configuration.version?.let {
-            nsClientRepository.addLog("◄ VERSION", "Received AAPS version $it")
-            if (config.VERSION_NAME.startsWith(it).not())
-                notificationManager.post(NotificationId.NSCLIENT_VERSION_DOES_NOT_MATCH, ConfigurationStrings.nsclient_version_does_not_match)
+            val matches = config.VERSION_NAME.startsWith(it)
+            nsClientRepository.addLog("◄ VERSION", "Received AAPS version $it" + if (matches) "" else " (differs from this client)")
         }
         // APS/Sensitivity/Smoothing/Calibration selection is adopted via the synced ActivePlugin* keys
         // (applied below in syncedPrefs → ConfigBuilder's key observer performs the switch).

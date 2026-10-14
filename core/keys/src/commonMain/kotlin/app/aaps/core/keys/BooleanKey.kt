@@ -422,6 +422,13 @@ enum class BooleanKey(
     NsClientCreateAnnouncementsFromCarbsReq("ns_create_announcements_from_carbs_req", false, KeysStrings.pref_title_ns_create_announcements_from_carbs_req, calculatedDefaultValue = true, showInNsClientMode = false),
     NsClientSlowSync("ns_sync_slow", false, KeysStrings.pref_title_ns_slow_sync),
     NsClient3UseWs("ns_use_ws", true, KeysStrings.pref_title_ns_use_ws, KeysStrings.pref_summary_ns_use_ws),
+    // Client only. For a master with no remote control (a 3.4-based one): no "master unreachable" warning and
+    // no reachability probes. Editing stays off, as on any unpaired client.
+    NsClientReadOnlyClient(
+        "ns_read_only_client", false,
+        KeysStrings.pref_title_ns_read_only_client, KeysStrings.pref_summary_ns_read_only_client,
+        showInApsMode = false, showInPumpControlMode = false
+    ),
     NsClientAllowClientControl(
         "ns_allow_client_control", false,
         KeysStrings.pref_title_ns_allow_client_control, KeysStrings.pref_summary_ns_allow_client_control,

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,6 +28,8 @@ import app.aaps.core.ui.CoreUiStrings
  * `LocalConfig` isn't provided.
  *
  * @param editingEnabled when true the banner is hidden; pass the screen's `rememberMasterEditingEnabled()`.
+ * On a read-only client ([LocalReadOnlyClient]) it is a plain note with its own wording instead.
+ *
  * @param text override message (defaults to the generic editing-disabled wording; scenes passes its own).
  */
 @Composable
@@ -37,8 +40,11 @@ fun MasterOfflineBanner(
     else stringResource(CoreUiStrings.master_offline_banner)
 ) {
     if (editingEnabled) return
+    // A read-only client is not in error: its master takes no remote control at all. A plain note, not a red banner.
+    val readOnly = LocalReadOnlyClient.current
+    val contentColor = if (readOnly) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onErrorContainer
     Surface(
-        color = MaterialTheme.colorScheme.errorContainer,
+        color = if (readOnly) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.errorContainer,
         modifier = modifier.fillMaxWidth()
     ) {
         Row(
@@ -47,15 +53,15 @@ fun MasterOfflineBanner(
             horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)
         ) {
             Icon(
-                imageVector = Icons.Default.CloudOff,
+                imageVector = if (readOnly) Icons.Default.Info else Icons.Default.CloudOff,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onErrorContainer,
+                tint = contentColor,
                 modifier = Modifier.size(20.dp)
             )
             Text(
-                text = text,
+                text = if (readOnly) stringResource(CoreUiStrings.read_only_client_banner) else text,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer
+                color = contentColor
             )
         }
     }

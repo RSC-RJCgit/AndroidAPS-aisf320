@@ -454,6 +454,8 @@ class NSClientV3Plugin(
     // service restarts.
     override fun requestMasterProbe() {
         if (!config.AAPSCLIENT || !nsConnection.connected.value) return
+        // A read-only client's master takes no remote control, so there is nothing to probe.
+        if (preferences.get(BooleanKey.NsClientReadOnlyClient)) return
         val now = dateUtil.now()
         if (now - lastProbeAt < PROBE_MIN_INTERVAL_MS) return
         lastProbeAt = now
@@ -1210,6 +1212,7 @@ class NSClientV3Plugin(
             StringKey.NsClientUrl,
             StringKey.NsClientAccessToken,
             BooleanKey.NsClient3UseWs,
+            BooleanKey.NsClientReadOnlyClient,
             libreSpecialSettings("ns_libre_special_settings"),
             PreferenceSubScreenDef(
                 key = "ns_client_synchronization",

@@ -47,6 +47,7 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.ui.SnackbarHostPresence
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.ui.CoreUiStrings
@@ -56,6 +57,7 @@ import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalMasterControlAllowed
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.LocalClientPaired
 import app.aaps.core.ui.compose.LocalMasterReachable
 import app.aaps.core.ui.compose.LocalPreferences
@@ -127,6 +129,7 @@ fun AapsAppRoot(
     val masterReachable by nsClient.masterReachable.collectAsStateWithLifecycle()
     val clientPaired by nsClient.masterOrPairedClientFlow.collectAsStateWithLifecycle()
     val masterControlAllowed by nsClient.masterControlAllowed.collectAsStateWithLifecycle()
+    val readOnlyClientSetting by preferences.observe(BooleanKey.NsClientReadOnlyClient).collectAsStateWithLifecycle()
     val bolusState by bolusProgressData.state.collectAsStateWithLifecycle()
     val pumpStatusBanner by pumpCommunicationStatus.statusBannerFlow.collectAsStateWithLifecycle()
     val pumpQueueStatus by pumpCommunicationStatus.queueStatusFlow.collectAsStateWithLifecycle()
@@ -156,6 +159,7 @@ fun AapsAppRoot(
         LocalMasterReachable provides masterReachable,
         LocalClientPaired provides clientPaired,
         LocalMasterControlAllowed provides masterControlAllowed,
+        LocalReadOnlyClient provides (config.AAPSCLIENT && readOnlyClientSetting),
         LocalProfileUtil provides profileUtil,
         LocalCheckPassword provides passwordHasher::checkPassword,
         LocalHashPassword provides passwordHasher::hashPassword,

@@ -107,6 +107,13 @@ val LocalClientPaired = compositionLocalOf { true }
 val LocalMasterControlAllowed = compositionLocalOf { true }
 
 /**
+ * `true` on a client set to read-only (`BooleanKey.NsClientReadOnlyClient`): its master takes no remote
+ * control, for example a 3.4-based master. Editing stays off; the banner only changes from an error to a
+ * plain note. Defaults to `false` (master, previews).
+ */
+val LocalReadOnlyClient = compositionLocalOf { false }
+
+/**
  * Whether the user may make changes that need the master *right now*. On a master always `true` (no
  * gating). On a client, `true` only while [LocalMasterReachable] is `true` — i.e. the master is
  * reachable for the signed Client-Control channel that carries both config edits and remote actions.
