@@ -83,8 +83,11 @@ class GraphConfigRepositoryImplTest {
 
         assertThat(restored.bgHeight).isEqualTo(GraphConfig.DEFAULT_GRAPH_HEIGHT_DP)
         assertThat(restored.iobHeight).isEqualTo(GraphConfig.MAX_GRAPH_HEIGHT_DP)
-        val tallBg = GraphConfigRepositoryImpl.fromJson("""{"bgHeight":500}""")
-        assertThat(tallBg.bgHeight).isEqualTo(GraphConfig.MAX_BG_GRAPH_HEIGHT_DP)
+        // The main graph may be taller (up to 600 dp since 2026-10-16), and is clamped there too.
+        val tallBg = GraphConfigRepositoryImpl.fromJson("""{"bgHeight":600}""")
+        assertThat(tallBg.bgHeight).isEqualTo(600)
+        val tooTallBg = GraphConfigRepositoryImpl.fromJson("""{"bgHeight":5000}""")
+        assertThat(tooTallBg.bgHeight).isEqualTo(GraphConfig.MAX_BG_GRAPH_HEIGHT_DP)
     }
 
     @Test

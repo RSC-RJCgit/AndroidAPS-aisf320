@@ -30,5 +30,11 @@ data class SensitivityUiState(
     val ratio: Double = 1.0,
     val isEnabled: Boolean = true,
     val hasData: Boolean = false,
-    val autoIsfHistory: Boolean = false
+    val autoIsfHistory: Boolean = false,
+    /** First 5 letters of this device's main Nightscout site, shown at the right of the chip (2026-10-16). */
+    val siteTag: String = ""
 )
+
+/** "https://nsnewrsc.my.nightscoutpro.com" -> "nsnew". Empty when no site is set. */
+internal fun nsSiteTag(url: String): String =
+    url.trim().removePrefix("https://").removePrefix("http://").take(5)

@@ -592,4 +592,6 @@
 
     <!--    Appearance preferences-->
 
+    <string name="pref_title_show_high_area">Show the high area above the range</string>
+    <string name="pref_summary_show_high_area">On (default): the main graph grows to the highest glucose. Off: the dark area above the green range stays shorter than the range, and readings above it are cut off. Graph 5 does not change.</string>
 </resources>

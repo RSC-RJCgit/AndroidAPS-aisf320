@@ -152,6 +152,9 @@ private val STATUS_TARGET_COLOR = Color(0xFF66BB6A)
  * the chart itself is never rebuilt mid-gesture. Private to this file: BG is the only graph that
  * needs this (secondary graphs are non-interactive, so `.fixed(...)` churn never affected them).
  */
+/** With "Show the high area" off: the most the area above the high mark may take, as a part of the green range's height. */
+private const val HIGH_AREA_FRACTION_OF_RANGE = 0.5
+
 private class MutableYRangeProvider(
     @Volatile var maxX: Double,
     @Volatile var minY: Double,
@@ -593,7 +596,13 @@ fun BgGraphCompose(
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
         // Activity overlay on: the panel top is the 3426 one (24 h highest or high mark, rounded, plus a margin), and the
         // activity peak sits at 80% of the panel height, so it ends up above the green range as on 3426.
-        val axisDataMax = if (showActivity) maxOf(dataMax, activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)) else dataMax
+        val uncappedAxisMax = if (showActivity) maxOf(dataMax, activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)) else dataMax
+        // 2026-10-16, per explicit request: with "Show the high area" off, the top stops at the high mark plus half the green
+        // range, so the dark area above the range stays shorter than the range even after niceScale rounds up. Readings above it
+        // are cut off. Graph 5 (topBandLines) keeps its own top.
+        val axisDataMax = if (!chartConfig.showHighArea && !topBandLines)
+            minOf(uncappedAxisMax, chartConfig.highMark + HIGH_AREA_FRACTION_OF_RANGE * (chartConfig.highMark - chartConfig.lowMark))
+        else uncappedAxisMax
         // Graph 5: raise the top so the four top band lanes sit above the green range and the curve, not on them.
         val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, axisDataMax, BG_TOP_BAND_FRACTION) else niceScale(dataMin, axisDataMax)
         startAxisRangeProvider.maxX = maxX

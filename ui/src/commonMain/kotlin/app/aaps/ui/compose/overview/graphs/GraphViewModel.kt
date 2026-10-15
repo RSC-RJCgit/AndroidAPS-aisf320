@@ -123,7 +123,8 @@ class GraphViewModel(
     private val _chartConfigFlow = MutableStateFlow(
         ChartConfig(
             highMark = preferences.get(UnitDoubleKey.OverviewHighMark),
-            lowMark = preferences.get(UnitDoubleKey.OverviewLowMark)
+            lowMark = preferences.get(UnitDoubleKey.OverviewLowMark),
+            showHighArea = preferences.get(BooleanKey.OverviewShowHighArea)
         )
     )
     val chartConfigFlow: StateFlow<ChartConfig> = _chartConfigFlow.asStateFlow()
@@ -131,6 +132,10 @@ class GraphViewModel(
     init {
         // Update chart config when high/low mark preferences change
         // drop(1) skips the initial emission (already set in field initializer)
+        preferences.observe(BooleanKey.OverviewShowHighArea)
+            .drop(1)
+            .onEach { show -> _chartConfigFlow.update { it.copy(showHighArea = show) } }
+            .launchIn(viewModelScope)
         preferences.observe(UnitDoubleKey.OverviewHighMark)
             .drop(1)
             .onEach { highMark -> _chartConfigFlow.update { it.copy(highMark = highMark) } }

@@ -200,7 +200,8 @@ class ChipsViewModel(
                 || persistenceLayer.getAutoIsfValuesFromTimeToTime(
                     dateUtil.now() - AUTO_ISF_HISTORY_WINDOW_MS,
                     dateUtil.now()
-                ).isNotEmpty()
+                ).isNotEmpty(),
+            siteTag = nsSiteTag(preferences.get(StringKey.NsClientUrl))
         )
     }
 

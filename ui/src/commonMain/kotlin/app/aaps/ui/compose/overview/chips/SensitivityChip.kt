@@ -111,6 +111,15 @@ internal fun SensitivityChip(
                     color = textColor
                 )
             }
+            // Which Nightscout site this device reads (2026-10-16): the first 5 letters, at the right end of the chip.
+            if (state.siteTag.isNotEmpty()) {
+                Text(
+                    text = state.siteTag,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor,
+                    modifier = Modifier.padding(start = AapsSpacing.medium)
+                )
+            }
         }
     }
 }
