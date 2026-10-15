@@ -414,7 +414,13 @@ sealed class ProfileSealed(
 
     override fun toPureNsJson(dateUtil: DateUtil): JsonObject = buildJsonObject {
         put("units", units.asText)
-        iCfg?.let { put("iCfg", it.toJsonObject()) }
+        iCfg?.let {
+            put("iCfg", it.toJsonObject())
+            // 2026-10-15, per explicit request: also the insulin duration as "dia" (hours), as AAPS 3.x wrote it. A 3.4
+            // master (UKF, plain 3.4.2.6) cannot read a profile without "dia": it dropped every profile switch from a KMP
+            // read-only client without a word. This build reads iCfg and ignores "dia".
+            put("dia", it.insulinEndTime / 3_600_000.0)
+        }
         put("timezone", dateUtil.timeZoneByOffset(utcOffset))
         put("sens", schedule(isfBlocks.map { it.duration }, ::getIsfTimeFromMidnight))
         put("carbratio", schedule(icBlocks.map { it.duration }, ::getIcTimeFromMidnight))

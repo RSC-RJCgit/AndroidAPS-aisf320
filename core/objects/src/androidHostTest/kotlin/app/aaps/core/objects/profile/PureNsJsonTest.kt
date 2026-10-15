@@ -1,6 +1,7 @@
 package app.aaps.core.objects.profile
 
 import android.content.Context
+import app.aaps.core.data.model.ICfg
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.objects.extensions.pureProfileFromJson
@@ -56,6 +57,23 @@ class PureNsJsonTest : TestBase() {
     @Test
     fun `carries the five schedules plus units and timezone`() {
         assertThat(json().keys).containsExactly("units", "timezone", "sens", "carbratio", "basal", "target_low", "target_high")
+    }
+
+    /**
+     * With an insulin set, the insulin duration is written twice: inside iCfg, and as "dia" in hours. AAPS 3.4 needs "dia";
+     * without it a 3.4 master drops the whole profile switch (2026-10-15).
+     */
+    @Test
+    fun `an insulin config also writes dia in hours for a 3_4 master`() {
+        val pure = ProfileSealed.Pure(pureProfileFromJson(JSONObject(sourceProfile), dateUtil)!!, activePlugin)
+        pure.iCfg = ICfg("Lyumjev", 9 * 60 * 60 * 1000L, 45 * 60 * 1000L)
+
+        val o = pure.toPureNsJson(dateUtil)
+
+        assertThat(o.keys).containsAtLeast("iCfg", "dia")
+        assertThat(o["dia"]!!.jsonPrimitive.content.toDouble()).isEqualTo(9.0)
+        // This build still reads its own output.
+        assertThat(pureProfileFromJson(JSONObject(o.toString()), dateUtil)).isNotNull()
     }
 
     @Test
