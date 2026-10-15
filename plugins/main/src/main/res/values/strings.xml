@@ -414,5 +414,5 @@
     <string name="overview_app_client2" translatable="false">Client2</string>
     <string name="overview_app_client3" translatable="false">Client3</string>
     <string name="overview_app_pump_control" translatable="false">PumpControl</string>
-    <string name="overview_app_version" translatable="false">UKF-%1$s-v%2$s</string>
+    <string name="overview_app_version" translatable="false">UKF-%1$s-v%2$s %3$s</string>
 </resources>
