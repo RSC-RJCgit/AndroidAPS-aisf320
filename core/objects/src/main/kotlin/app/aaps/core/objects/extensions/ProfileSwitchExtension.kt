@@ -32,7 +32,12 @@ fun pureProfileFromJson(jsonObject: JSONObject, dateUtil: DateUtil, defaultUnits
     try {
         val txtUnits = JsonHelper.safeGetStringAllowNull(jsonObject, "units", defaultUnits) ?: return null
         val units = GlucoseUnit.fromText(txtUnits)
-        val dia = JsonHelper.safeGetDoubleAllowNull(jsonObject, "dia") ?: return null
+        // 2026-10-15, per explicit request: AAPS 4 (KMP) keeps the insulin duration in iCfg.insulinEndTime (milliseconds) and
+        // older KMP builds write no "dia". Without this fallback every profile switch from a KMP client was dropped here.
+        val dia = JsonHelper.safeGetDoubleAllowNull(jsonObject, "dia")
+            ?: jsonObject.optJSONObject("iCfg")?.let { JsonHelper.safeGetLongAllowNull(it, "insulinEndTime", null) }
+                ?.takeIf { it > 0L }?.let { it / 3_600_000.0 }
+            ?: return null
         val timezone = TimeZone.getTimeZone(JsonHelper.safeGetString(jsonObject, "timezone", "UTC"))
 
         val isfBlocks = blockFromJsonArray(jsonObject.getJSONArray("sens"), dateUtil) ?: return null

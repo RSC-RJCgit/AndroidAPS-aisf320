@@ -285,6 +285,10 @@ class NsIncomingDataProcessor @Inject constructor(
                         if (preferences.get(BooleanKey.NsClientAcceptProfileSwitch) || config.AAPSCLIENT || doFullSync) {
                             treatment.toProfileSwitch(activePlugin, dateUtil)?.let { profileSwitch ->
                                 storeDataForDb.addToProfileSwitches(profileSwitch)
+                            } ?: run {
+                                // 2026-10-15, per explicit request: say so. A switch that could not be read used to vanish without a word.
+                                aapsLogger.error(LTag.NSCLIENT, "Profile switch from NS not taken, its profile could not be read: ${treatment.identifier} ${treatment.profile}")
+                                rxBus.send(EventNSClientNewLog("◄ ERROR", "Profile switch ${treatment.profile} not taken: profile could not be read"))
                             }
                         }
 
