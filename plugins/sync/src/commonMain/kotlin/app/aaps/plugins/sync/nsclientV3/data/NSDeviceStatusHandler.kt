@@ -2,6 +2,8 @@ package app.aaps.plugins.sync.nsclientV3.data
 
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.SC
+import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
@@ -19,6 +21,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.utils.safeGetString
@@ -30,6 +33,8 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /*
 {
@@ -126,10 +131,31 @@ class NSDeviceStatusHandler(
                 .mapNotNull { ds -> ds.createdAt?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() } ?: ds.date }
                 .maxOrNull() ?: 0L
             if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
+            mirrorMasterAps(deviceStatuses)
             // Rebuild predictions once for the newest data in this batch.
             appScope.launch { calculationWorkflow.runOnReceivedPredictions(overviewData) }
             rxBus.send(EventNsClientStatusUpdated())
         }
+    }
+
+    /**
+     * 2026-10-16, per explicit request: a read-only client follows the APS choice (AMA, SMB or AutoISF) of its master, an AAPS
+     * 3.x master that sends it as `configuration.aps` in its device status. A KMP master sends no such field; its choice comes
+     * with the synced settings instead. Written as a remote value, so it is not sent back; ConfigBuilder's key observer does the
+     * switch, the same way as for a choice pushed by a KMP master.
+     */
+    private fun mirrorMasterAps(deviceStatuses: Array<NSDeviceStatus>) {
+        if (!preferences.get(BooleanKey.NsClientReadOnlyClient)) return
+        val aps = (deviceStatuses.filter { it.configuration != null }.maxByOrNull { it.date ?: 0L }
+            ?.configuration?.get("aps") as? JsonPrimitive)?.contentOrNull ?: return
+        val plugin = activePlugin.getSpecificPluginsList(PluginType.APS).firstOrNull { (it as? APS)?.algorithm?.name == aps }
+        if (plugin == null) {
+            aapsLogger.debug(LTag.NSCLIENT, "Read-only client: the master runs $aps, which this build does not have")
+            return
+        }
+        if (preferences.get(StringNonKey.ActivePluginAps) == plugin.pluginId) return
+        preferences.putRemote(StringNonKey.ActivePluginAps, plugin.pluginId, 0L)
+        aapsLogger.info(LTag.NSCLIENT, "Read-only client: APS set to ${plugin.pluginId}, as on the master ($aps)")
     }
 
     private fun updateDeviceData(deviceStatus: NSDeviceStatus) {

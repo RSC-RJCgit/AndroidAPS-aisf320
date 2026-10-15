@@ -23,7 +23,8 @@ internal fun RemoteDeviceStatus.toNSDeviceStatus(): NSDeviceStatus =
         device = device,
         uploader = NSDeviceStatus.Uploader(uploader?.battery),
         pump = pump?.toNSDeviceStatusPump(),
-        openaps = openaps?.toNSDeviceStatusOpenAps()
+        openaps = openaps?.toNSDeviceStatusOpenAps(),
+        configuration = configuration
     )
 
 internal fun NSDeviceStatus.toRemoteDeviceStatus(): RemoteDeviceStatus =
@@ -39,7 +40,8 @@ internal fun NSDeviceStatus.toRemoteDeviceStatus(): RemoteDeviceStatus =
         device = device,
         uploader = RemoteDeviceStatus.Uploader(uploader?.battery),
         pump = pump?.toRemoteDeviceStatusPump(),
-        openaps = openaps?.toRemoteDeviceStatusOpenAps()
+        openaps = openaps?.toRemoteDeviceStatusOpenAps(),
+        configuration = configuration
     )
 
 // The schema-less subtrees (pump.extended, openaps.suggested / enacted / iob) are kotlinx trees on

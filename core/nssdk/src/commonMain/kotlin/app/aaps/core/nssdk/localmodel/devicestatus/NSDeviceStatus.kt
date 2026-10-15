@@ -23,7 +23,9 @@ data class NSDeviceStatus(
 
     val uploader: Uploader? = null,
     val pump: Pump? = null,
-    val openaps: OpenAps? = null
+    val openaps: OpenAps? = null,
+    /** The `configuration` object an AAPS 3.x master sends (for example `aps` = "AUTO_ISF"); null from a KMP master. */
+    val configuration: JsonObject? = null
 ) {
 
     @Serializable data class Pump(

@@ -34,6 +34,7 @@ import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalClientPaired
 import app.aaps.core.ui.compose.LocalMasterReachable
 import app.aaps.core.ui.compose.LocalPreferences
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.LocalProfileUtil
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.drop
@@ -191,8 +192,9 @@ fun calculatePreferenceVisibility(
 
     // A paired client sends a bidirectional edit to the master. Lock the row while that master
     // cannot be reached, so the edit is not queued and then dropped. An unpaired client keeps the
-    // edit on this phone, so the row stays open.
-    val pairedClient = config.AAPSCLIENT && LocalClientPaired.current
+    // edit on this phone, so the row stays open. A read-only client also keeps its edits on this phone (its
+    // master takes no settings from it), so it is treated like an unpaired one (2026-10-16).
+    val pairedClient = config.AAPSCLIENT && LocalClientPaired.current && !LocalReadOnlyClient.current
     if (pairedClient && preferenceKey.sync?.direction == SyncDirection.Bidirectional && !LocalMasterReachable.current)
         enabled = false
 

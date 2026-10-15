@@ -73,6 +73,20 @@ class DeviceStatusMapperTest {
 
     // ------------------------------------------------------------------ parsing
 
+    /** A 3.x master sends what it runs in "configuration"; a read-only client reads "aps" from it (2026-10-16). */
+    @Test
+    fun `keeps the configuration of a 3_x master`() {
+        val json = """{"app":"AAPS","date":1,"configuration":{"aps":"AUTO_ISF","insulin":5,"pump":"Omnipod Dash"}}"""
+        val status = json.toNSDeviceStatus()
+        assertThat(status.configuration?.get("aps")?.jsonPrimitive?.content).isEqualTo("AUTO_ISF")
+        assertThat(status.convertToRemoteAndBack().configuration).isEqualTo(status.configuration)
+    }
+
+    @Test
+    fun `a status without configuration has none`() {
+        assertThat(deviceStatusJson.toNSDeviceStatus().configuration).isNull()
+    }
+
     @Test
     fun `parses the flat fields`() {
         val status = deviceStatusJson.toNSDeviceStatus()

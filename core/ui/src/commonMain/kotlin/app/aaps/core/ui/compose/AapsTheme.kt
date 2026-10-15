@@ -129,11 +129,13 @@ fun masterEditingEnabled(): Boolean =
 /**
  * Whether preference rows may be changed. A client that is not paired yet can still edit them: the
  * value stays on this phone. A paired client still waits until the master can be reached, because
- * that edit is sent to the master.
+ * that edit is sent to the master. A read-only client keeps its edits on this phone too, so it can
+ * always edit (2026-10-16).
  */
 @Composable
 fun settingsEditingEnabled(): Boolean =
-    LocalInspectionMode.current || !LocalConfig.current.AAPSCLIENT || !LocalClientPaired.current || LocalMasterReachable.current
+    LocalInspectionMode.current || !LocalConfig.current.AAPSCLIENT || !LocalClientPaired.current || LocalMasterReachable.current ||
+        LocalReadOnlyClient.current
 
 /**
  * CompositionLocal providing access to ProfileUtil for glucose unit conversions.

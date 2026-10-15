@@ -26,7 +26,10 @@ internal data class RemoteDeviceStatus(
 
     @SerialName("uploader") val uploader: Uploader? = null,
     @SerialName("pump") val pump: Pump? = null,
-    @SerialName("openaps") val openaps: OpenAps? = null
+    @SerialName("openaps") val openaps: OpenAps? = null,
+    // What an AAPS 3.x master runs ("aps", "insulin", "sensitivity", "pump", ...). Kept so a read-only client can mirror the
+    // master's APS choice (2026-10-16). Schema-less, like pump.extended.
+    @SerialName("configuration") val configuration: JsonObject? = null
 ) {
 
     @Serializable

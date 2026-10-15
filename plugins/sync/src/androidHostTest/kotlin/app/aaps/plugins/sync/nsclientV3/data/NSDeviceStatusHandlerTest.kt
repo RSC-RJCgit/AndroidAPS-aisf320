@@ -1,9 +1,12 @@
 package app.aaps.plugins.sync.nsclientV3.data
 
+import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
@@ -11,7 +14,10 @@ import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.interfaces.StringNonPreferenceKey
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import kotlinx.coroutines.CoroutineScope
@@ -154,6 +160,54 @@ internal class NSDeviceStatusHandlerTest {
             put("runningDynamicIsf", false)
         })
     )
+
+    // ---- read-only client follows the 3.x master's APS choice (2026-10-16) ----
+
+    private fun apsPlugin(id: String, algorithm: APSResult.Algorithm): PluginBase =
+        mock<PluginBase>(extraInterfaces = arrayOf(APS::class)).also {
+            whenever(it.pluginId).thenReturn(id)
+            whenever((it as APS).algorithm).thenReturn(algorithm)
+        }
+
+    private fun statusFromMaster(aps: String) =
+        NSDeviceStatus(createdAt = "new", date = 5_000L, configuration = buildJsonObject { put("aps", aps); put("insulin", 5) })
+
+    private fun readOnlyClientWithPlugins() {
+        whenever(dateUtil.fromISODateString("new")).thenReturn(5_000L)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(StringNonKey.ActivePluginAps)).thenReturn("OpenAPSSMBPlugin")
+        // Made before the stubbing below: Mockito does not allow stubbing inside another thenReturn.
+        val plugins = arrayListOf(apsPlugin("OpenAPSSMBPlugin", APSResult.Algorithm.SMB), apsPlugin("OpenAPSAutoISFPlugin", APSResult.Algorithm.AUTO_ISF))
+        whenever(activePlugin.getSpecificPluginsList(PluginType.APS)).thenReturn(plugins)
+    }
+
+    @Test
+    fun readOnlyClientTakesTheApsOfItsMaster() {
+        readOnlyClientWithPlugins()
+
+        sut.handleNewData(arrayOf(statusFromMaster("AUTO_ISF")))
+
+        verify(preferences).putRemote(StringNonKey.ActivePluginAps, "OpenAPSAutoISFPlugin", 0L)
+    }
+
+    @Test
+    fun readOnlyClientAlreadyOnTheSameApsWritesNothing() {
+        readOnlyClientWithPlugins()
+
+        sut.handleNewData(arrayOf(statusFromMaster("SMB")))
+
+        verify(preferences, never()).putRemote(any<StringNonPreferenceKey>(), any(), any())
+    }
+
+    @Test
+    fun aClientThatIsNotReadOnlyKeepsItsOwnAps() {
+        readOnlyClientWithPlugins()
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(false)
+
+        sut.handleNewData(arrayOf(statusFromMaster("AUTO_ISF")))
+
+        verify(preferences, never()).putRemote(any<StringNonPreferenceKey>(), any(), any())
+    }
 
     private companion object {
 

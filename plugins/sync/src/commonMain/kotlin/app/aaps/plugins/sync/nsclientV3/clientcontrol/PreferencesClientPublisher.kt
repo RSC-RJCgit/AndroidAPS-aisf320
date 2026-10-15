@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.TextResolver
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
@@ -89,7 +90,8 @@ class PreferencesClientPublisher(
                 .collect {
                     // No master yet. The value is already stored on this phone. A round-trip would
                     // only show a not-paired error.
-                    if (preferences.get(StringNonKey.NsClientControlClientId).isEmpty()) {
+                    // A read-only client is the same (2026-10-16): its master takes no settings, so the edit only applies here.
+                    if (preferences.get(StringNonKey.NsClientControlClientId).isEmpty() || preferences.get(BooleanKey.NsClientReadOnlyClient)) {
                         pendingMutex.withLock { pending.clear() }
                         return@collect
                     }
