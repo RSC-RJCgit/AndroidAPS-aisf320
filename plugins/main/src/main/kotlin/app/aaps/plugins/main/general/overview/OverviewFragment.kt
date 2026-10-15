@@ -2777,6 +2777,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     companion object {
         private val pendingRelayTts = ArrayDeque<PendingRelayTt>()
+
+        // A graph that shows more hours than this is drawn clean (no text rows), see updateGraph().
+        private const val CLEAN_GRAPH_ABOVE_HOURS = 6L
     }
 
     private val relayTtRetryRunnable = Runnable { tryFlushPendingRelayTts() }
@@ -3291,9 +3294,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
         val graphEndTime = graphZoomEndTime?.toLong() ?: overviewData.endTime
         val graphFromTime = graphZoomWidth?.let { graphEndTime - it.toLong() } ?: overviewData.fromTime
-        PointsWithLabelGraphSeries.automaticCleanGraph = graphZoomWidth?.let {
-            it > TimeUnit.HOURS.toMillis(max(3, overviewData.rangeToDisplay).toLong()).toDouble()
-        } ?: false
+        // 2026-10-15, per explicit request: a clean graph whenever more than 6 hours are shown. Before, only a Ctrl + mouse
+        // wheel zoom past the chosen range switched it on, so on a phone (no mouse wheel) a 12 or 24 h graph was never clean.
+        // The chosen range counts, not the drawn width, which also holds up to 1 h of predictions.
+        val shownMs = graphZoomWidth ?: TimeUnit.HOURS.toMillis(overviewData.rangeToDisplay.toLong()).toDouble()
+        PointsWithLabelGraphSeries.automaticCleanGraph = shownMs > TimeUnit.HOURS.toMillis(CLEAN_GRAPH_ABOVE_HOURS).toDouble()
         graphData.addInRangeArea(
             graphFromTime, graphEndTime,
             preferences.get(UnitDoubleKey.OverviewLowMark),

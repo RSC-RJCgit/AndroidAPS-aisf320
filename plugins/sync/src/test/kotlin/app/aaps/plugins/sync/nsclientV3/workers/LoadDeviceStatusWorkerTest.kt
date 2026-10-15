@@ -24,11 +24,15 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.anyBoolean
 import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mock
+import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.test.assertIs
 import kotlin.time.Duration.Companion.seconds
@@ -111,7 +115,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        org.mockito.kotlin.verify(nsDeviceStatusHandler).handleNewData(org.mockito.kotlin.any())
+        verify(nsDeviceStatusHandler).handleNewData(any(), anyBoolean())
     }
 
     @Test
@@ -126,7 +130,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        org.mockito.kotlin.verify(nsDeviceStatusHandler, org.mockito.kotlin.never()).handleNewData(org.mockito.kotlin.any())
+        verify(nsDeviceStatusHandler, never()).handleNewData(any(), anyBoolean())
     }
 
     @Test
@@ -227,7 +231,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        org.mockito.kotlin.verify(nsDeviceStatusHandler).handleNewData(argThat { size == 2 })
+        verify(nsDeviceStatusHandler).handleNewData(argThat { size == 2 }, anyBoolean())
     }
 
     @Test

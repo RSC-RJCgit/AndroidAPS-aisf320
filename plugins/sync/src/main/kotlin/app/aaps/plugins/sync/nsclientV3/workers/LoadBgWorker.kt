@@ -33,10 +33,26 @@ class LoadBgWorker(
     @Inject lateinit var nsClientSource: NSClientSource
     @Inject lateinit var nsIncomingDataProcessor: NsIncomingDataProcessor
     @Inject lateinit var storeDataForDb: StoreDataForDb
+    @Inject lateinit var secondaryFullSyncGlucose: SecondaryFullSyncGlucose
 
     override suspend fun doWorkAndLog(): Result {
         if (!nsClientSource.isEnabled() && !preferences.get(BooleanKey.NsClientAcceptCgmData) && !nsClientV3Plugin.doingFullSync)
             return Result.success(workDataOf("Result" to "Load not enabled"))
+
+        // 2026-10-15, per explicit request: on a follower phone a full sync takes the BG history from the second site (Live's
+        // site, the most complete) whatever the switch says. Only when that site gives nothing does it fall back to this site,
+        // as before. One source per full sync. See SecondaryFullSyncGlucose.
+        if (nsClientV3Plugin.doingFullSync && secondaryFullSyncGlucose.applies()) {
+            val received = secondaryFullSyncGlucose.download(dateUtil.now() - nsClientV3Plugin.maxAge)
+            if (received != null && received > 0) {
+                // This site's BG is skipped for this sync. Normal syncs go on from now, not from 100 days back.
+                nsClientV3Plugin.lastLoadedSrvModified.collections.entries = dateUtil.now()
+                nsClientV3Plugin.storeLastLoadedSrvModified()
+                rxBus.send(EventNSClientNewLog("◄ RCV BG END", "Full sync took BG from the secondary NS"))
+                return Result.success()
+            }
+            rxBus.send(EventNSClientNewLog("◄ RCV BG", "Secondary NS gave no BG, full sync takes BG from this site"))
+        }
 
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return Result.failure(workDataOf("Error" to "AndroidClient is null"))
         var continueLoading = true
