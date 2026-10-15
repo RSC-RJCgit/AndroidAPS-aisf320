@@ -44,6 +44,8 @@ import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mock
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.reflect.KClass
 import kotlin.test.assertIs
@@ -64,6 +66,7 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
     @Mock lateinit var nsClientRepository: NSClientRepository
     @Mock lateinit var uiInteraction: UiInteraction
     @Mock lateinit var uel: UserEntryLogger
+    @Mock lateinit var loadSecondaryTreatmentsRunner: LoadSecondaryTreatmentsRunner
 
     private lateinit var nsClientV3Plugin: NSClientV3Plugin
     private lateinit var receiverDelegate: ReceiverDelegate
@@ -76,7 +79,7 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
                     LoadBgWorker(
                         appContext, workerParameters, aapsLogger, fabricPrivacy,
                         LoadBgRunner(aapsLogger, preferences, dateUtil,
-                        nsClientV3Plugin, nsClientSource, nsIncomingDataProcessor, storeDataForDb, nsClientRepository)
+                        nsClientV3Plugin, nsClientSource, nsIncomingDataProcessor, storeDataForDb, nsClientRepository, loadSecondaryTreatmentsRunner)
                     )
             })
             .build()
@@ -304,6 +307,54 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
         assertIs<ListenableWorker.Result.Success>(result)
         // Should not return early with "Load not enabled"
         assertThat(result.outputData.getString("Result")).isNull()
+    }
+
+    // ---- full sync with a second site (2026-10-15) ----
+
+    private fun fullSyncClientWithSecondSite() {
+        sut = buildSut()
+        nsClientV3Plugin.nsAndroidClient = nsAndroidClient
+        nsClientV3Plugin.lastLoadedSrvModified.collections.entries = 0L
+        nsClientV3Plugin.doingFullSync = true
+        whenever(preferences.get(BooleanKey.NsClientSecondaryEnabled)).thenReturn(true)
+    }
+
+    @Test
+    fun fullSyncTakesBgFromSecondSiteAndSkipsThisSite() = runTest(timeout = 30.seconds) {
+        fullSyncClientWithSecondSite()
+        whenever(loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(anyLong())).thenReturn(120)
+
+        val result = sut.doWorkAndLog()
+
+        assertIs<ListenableWorker.Result.Success>(result)
+        verify(nsAndroidClient, never()).getSgvsNewerThan(anyLong(), anyInt())
+        // Normal syncs go on from now, not from the start of the 100 days.
+        assertThat(nsClientV3Plugin.lastLoadedSrvModified.collections.entries).isEqualTo(dateUtil.now())
+    }
+
+    @Test
+    fun fullSyncFallsBackToThisSiteWhenSecondSiteHasNoBg() = runTest(timeout = 30.seconds) {
+        fullSyncClientWithSecondSite()
+        whenever(loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(anyLong())).thenReturn(0)
+        nsClientV3Plugin.newestDataOnServer?.collections?.entries = now // the main site has data, so it is asked
+        whenever(nsAndroidClient.getSgvsNewerThan(anyLong(), anyInt())).thenReturn(NSAndroidClient.ReadResponse(200, 0, emptyList()))
+
+        val result = sut.doWorkAndLog()
+
+        assertIs<ListenableWorker.Result.Success>(result)
+        verify(nsAndroidClient).getSgvsNewerThan(anyLong(), anyInt())
+    }
+
+    @Test
+    fun fullSyncOnMasterWithOwnCgmNeverReadsSecondSiteBg() = runTest(timeout = 30.seconds) {
+        fullSyncClientWithSecondSite()
+        whenever(nsClientSource.isEnabled()).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientAcceptCgmData)).thenReturn(false)
+        whenever(nsAndroidClient.getSgvsNewerThan(anyLong(), anyInt())).thenReturn(NSAndroidClient.ReadResponse(200, 0, emptyList()))
+
+        sut.doWorkAndLog()
+
+        verify(loadSecondaryTreatmentsRunner, never()).downloadGlucoseForFullSync(anyLong())
     }
 
     @Test

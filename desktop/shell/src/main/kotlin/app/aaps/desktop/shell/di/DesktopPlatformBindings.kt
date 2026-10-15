@@ -46,7 +46,8 @@ object DesktopPlatformBindings {
     /** A properties file next to the database, which `PreferencesImpl` sits on unchanged. */
     @Provides
     @SingleIn(AppScope::class)
-    fun keyValueStore(): KeyValueStore = DesktopSp()
+    // The logger is passed as a function for the same reason as `L` above: it reads Preferences.
+    fun keyValueStore(logger: () -> AAPSLogger): KeyValueStore = DesktopSp(logger = logger)
 
     @Provides
     @SingleIn(AppScope::class)

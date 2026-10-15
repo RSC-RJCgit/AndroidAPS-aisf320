@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.io.FileInputStream
+import kotlin.concurrent.thread
 
 /**
  * The part worth pinning is that a write never leaves the file damaged.
@@ -27,7 +29,7 @@ class DesktopSpTest {
 
     @Test fun `a write that fails leaves the previous content untouched`(@TempDir dir: File) {
         val file = File(dir, "preferences.properties")
-        val sp = DesktopSp(file)
+        val sp = DesktopSp(file, retryDelaysMs = listOf(1L))
         sp.putString("units", "mmol")
         val afterGoodWrite = file.readBytes()
 
@@ -41,6 +43,40 @@ class DesktopSpTest {
 
         assertArrayEqualsMessage(afterGoodWrite, file.readBytes())
         assertEquals("mmol", DesktopSp(file).getString("units", "x"))
+    }
+
+    /**
+     * A failed save must not reach the caller. It used to, and on Windows one setting write that met a
+     * file held open by the virus scanner stopped a whole Nightscout sync run.
+     */
+    @Test fun `a write that keeps failing does not throw and the value is saved by the next write`(@TempDir dir: File) {
+        val file = File(dir, "preferences.properties")
+        val sp = DesktopSp(file, retryDelaysMs = listOf(1L, 1L))
+        val blocker = File(dir, "preferences.properties.new").apply { mkdirs() }
+
+        sp.putString("units", "mmol") // must not throw
+        assertEquals("mmol", sp.getString("units", "x")) // kept in memory
+
+        blocker.delete()
+        sp.putInt("dia", 5)
+        val reloaded = DesktopSp(file)
+        assertEquals("mmol", reloaded.getString("units", "x"))
+        assertEquals(5, reloaded.getInt("dia", 0))
+    }
+
+    /** The real file held open for a moment (as Windows Defender does) is waited for, not given up on. */
+    @Test fun `a file that is in use for a moment is still saved`(@TempDir dir: File) {
+        val file = File(dir, "preferences.properties")
+        val sp = DesktopSp(file, retryDelaysMs = listOf(50L, 100L, 200L, 400L))
+        sp.putString("units", "mgdl")
+
+        val reader = FileInputStream(file)
+        val release = thread { Thread.sleep(120L); reader.close() }
+        sp.putString("units", "mmol")
+        release.join()
+
+        assertEquals("mmol", DesktopSp(file).getString("units", "x"))
+        assertFalse(File(dir, "preferences.properties.new").exists())
     }
 
     @Test fun `no temporary file is left behind after a successful write`(@TempDir dir: File) {

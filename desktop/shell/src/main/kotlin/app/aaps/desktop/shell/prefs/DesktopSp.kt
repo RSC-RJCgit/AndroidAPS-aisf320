@@ -1,9 +1,12 @@
 package app.aaps.desktop.shell.prefs
 
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.sharedPreferences.KeyValueStore
 import app.aaps.implementation.maintenance.DesktopFolders
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -35,7 +38,11 @@ import java.util.Properties
  * `SharedPreferences` makes for its own file.
  */
 class DesktopSp(
-    private val file: File = File(DesktopFolders.data, "preferences.properties")
+    private val file: File = File(DesktopFolders.data, "preferences.properties"),
+    // A function, not the logger itself: the desktop logger reads Preferences, which sits on this store.
+    private val logger: () -> AAPSLogger? = { null },
+    // Waits between tries when the file is in use. A parameter so a test does not have to sleep.
+    private val retryDelaysMs: List<Long> = listOf(50L, 100L, 200L, 400L, 800L)
 ) : KeyValueStore {
 
     private val properties = Properties().also { loaded ->
@@ -56,25 +63,47 @@ class DesktopSp(
      * a reader sees the old file or the new file and never a half-written one. Where it is not
      * supported (some network shares) the plain replacing move is the fallback - still better than
      * writing in place, because the content is already complete before the move starts.
+     *
+     * On Windows the move fails while any other program has the real file open, even for a moment:
+     * the virus scanner checking the new content, the search indexer, an Explorer preview. That error
+     * used to reach the caller, so one setting write failed and took a whole Nightscout sync run down
+     * with it (2026-10-15, "Load step DATA_SYNC failed: preferences.properties.new -> ..."). Now the
+     * write is tried again a few times. If it still fails, it is logged and the value stays in memory:
+     * the app keeps using it, and the next setting change writes the whole file again.
      */
     private fun persist() {
-        file.parentFile?.mkdirs()
         // Written whole each time. The file is a few hundred short lines, so the simplicity is worth
         // more than an incremental write would save.
         synchronized(properties) {
-            val temp = File(file.parentFile, "${file.name}.new")
-            FileOutputStream(temp).use { out ->
-                properties.store(out, "AAPS desktop preferences")
-                out.flush()
-                // The bytes must be on the disk before the move publishes them, or a power cut can
-                // leave the real name pointing at an empty file - the thing this is here to prevent.
-                out.fd.sync()
+            var lastError: IOException? = null
+            for (attempt in 0..retryDelaysMs.size) {
+                if (attempt > 0) Thread.sleep(retryDelaysMs[attempt - 1])
+                try {
+                    writeFile()
+                    if (attempt > 0) logger()?.warn(LTag.CORE, "Preferences saved after $attempt retries (file was in use)")
+                    return
+                } catch (e: IOException) {
+                    lastError = e
+                }
             }
-            try {
-                Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            } catch (_: AtomicMoveNotSupportedException) {
-                Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            }
+            logger()?.error(LTag.CORE, "Preferences not saved to ${file.name}, kept in memory until the next change: $lastError")
+        }
+    }
+
+    private fun writeFile() {
+        file.parentFile?.mkdirs()
+        val temp = File(file.parentFile, "${file.name}.new")
+        FileOutputStream(temp).use { out ->
+            properties.store(out, "AAPS desktop preferences")
+            out.flush()
+            // The bytes must be on the disk before the move publishes them, or a power cut can
+            // leave the real name pointing at an empty file - the thing this is here to prevent.
+            out.fd.sync()
+        }
+        try {
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
 

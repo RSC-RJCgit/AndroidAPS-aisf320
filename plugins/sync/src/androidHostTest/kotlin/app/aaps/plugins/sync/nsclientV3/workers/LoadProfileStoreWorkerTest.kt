@@ -38,7 +38,10 @@ import org.mockito.ArgumentMatchers.anyBoolean
 import org.mockito.ArgumentMatchers.anyLong
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.Mock
+import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -257,7 +260,7 @@ internal class LoadProfileStoreWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        verifyBlocking(nsIncomingDataProcessor, never()) { processProfile(org.mockito.kotlin.any(), anyBoolean()) }
+        verifyBlocking(nsIncomingDataProcessor, never()) { processProfile(any(), anyBoolean(), anyBoolean()) }
     }
 
     @Test
@@ -287,7 +290,8 @@ internal class LoadProfileStoreWorkerTest : TestBaseWithProfile() {
         assertIs<ListenableWorker.Result.Success>(result)
         verifyBlocking(nsIncomingDataProcessor) {
             processProfile(
-                org.mockito.kotlin.argThat { this["defaultProfile"]?.jsonPrimitive?.content == "Profile2" },
+                argThat { this["defaultProfile"]?.jsonPrimitive?.content == "Profile2" },
+                anyBoolean(),
                 anyBoolean()
             )
         }
@@ -331,6 +335,6 @@ internal class LoadProfileStoreWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        verifyBlocking(nsIncomingDataProcessor) { processProfile(org.mockito.kotlin.any(), org.mockito.kotlin.eq(true)) }
+        verifyBlocking(nsIncomingDataProcessor) { processProfile(any(), eq(true), anyBoolean()) }
     }
 }

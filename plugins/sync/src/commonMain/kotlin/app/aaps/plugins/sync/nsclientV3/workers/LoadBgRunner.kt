@@ -32,7 +32,8 @@ class LoadBgRunner(
     private val nsClientSource: NSClientSource,
     private val nsIncomingDataProcessor: NsIncomingDataProcessor,
     private val storeDataForDb: StoreDataForDb,
-    private val nsClientRepository: NSClientRepository
+    private val nsClientRepository: NSClientRepository,
+    private val loadSecondaryTreatmentsRunner: LoadSecondaryTreatmentsRunner
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -46,6 +47,22 @@ class LoadBgRunner(
             )
         )
             return WorkOutcome.Skipped("secondary")
+
+        // 2026-10-15, per explicit request: a full sync on a phone that takes its BG from Nightscout reads the BG history
+        // from the second site (Live's site, the most complete) whatever the switch says. Only when that site gives nothing
+        // (not set up, read failed, no readings) does it fall back to this site, as before. One source per full sync.
+        val takesBgFromNightscout = nsClientSource.isEnabled() || preferences.get(BooleanKey.NsClientAcceptCgmData)
+        if (nsClientV3Plugin.doingFullSync && takesBgFromNightscout && preferences.get(BooleanKey.NsClientSecondaryEnabled)) {
+            val received = loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(dateUtil.now() - nsClientV3Plugin.maxAge)
+            if (received != null && received > 0) {
+                // This site's BG is skipped for this sync. Normal syncs go on from now, not from 100 days back.
+                nsClientV3Plugin.lastLoadedSrvModified.collections.entries = dateUtil.now()
+                nsClientV3Plugin.storeLastLoadedSrvModified()
+                nsClientRepository.addLog("◄ RCV BG END", "Full sync took BG from the secondary NS")
+                return WorkOutcome.Success
+            }
+            nsClientRepository.addLog("◄ RCV BG", "Secondary NS gave no BG, full sync takes BG from this site")
+        }
 
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return WorkOutcome.Failure("AndroidClient is null")
         var continueLoading = true

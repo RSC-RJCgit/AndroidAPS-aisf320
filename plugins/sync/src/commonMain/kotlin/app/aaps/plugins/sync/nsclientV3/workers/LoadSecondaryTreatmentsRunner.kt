@@ -3,6 +3,7 @@ package app.aaps.plugins.sync.nsclientV3.workers
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -55,6 +56,7 @@ class LoadSecondaryTreatmentsRunner(
     private val nsIncomingDataProcessor: NsIncomingDataProcessor,
     private val nsDeviceStatusHandler: NSDeviceStatusHandler,
     private val activePlugin: ActivePlugin,
+    private val persistenceLayer: PersistenceLayer,
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -319,6 +321,59 @@ class LoadSecondaryTreatmentsRunner(
         }
     }
 
+    /**
+     * BG history for a full sync (2026-10-15, per explicit request). Live's site has the most complete glucose, so a full
+     * sync takes the BG history from here whatever "Get BG from this connection" says; `LoadBgRunner` then skips the main
+     * site's BG for that sync. Reads from [from] to now, oldest first.
+     *
+     * A reading is not stored when this phone already has one within [NEAR_DUPLICATE_MS]. The two sites normally carry the
+     * same readings with the same times, which the database stores once anyway; the margin is for a site that ever holds
+     * its own copy a few seconds apart, which would otherwise show two dots a minute.
+     *
+     * @return how many readings the site sent (stored or not), or null when no site is set up or the read failed. The
+     * caller falls back to the main site on null or 0.
+     */
+    suspend fun downloadGlucoseForFullSync(from: Long): Int? {
+        if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return null
+        val url = preferences.get(StringKey.NsClientSecondaryUrl).trim()
+        if (url.isEmpty()) return null
+        val client = NSAndroidClientImpl(
+            baseUrl = url.lowercase().replace("https://", "").replace(Regex("/$"), ""),
+            accessToken = preferences.get(StringKey.NsClientSecondaryAccessToken).trim(),
+            logging = false,
+            logger = { msg -> aapsLogger.debug(LTag.HTTP, "SecondaryNS: $msg") }
+        )
+        return try {
+            val now = dateUtil.now()
+            val existing = persistenceLayer.getBgReadingsDataFromTimeToTime(from - NEAR_DUPLICATE_MS, now + NEAR_DUPLICATE_MS, true)
+                .map { it.timestamp }.sorted().toLongArray()
+            var pageFrom = from
+            var page = 0
+            var received = 0
+            var stored = 0
+            while (page < MAX_FULL_SYNC_PAGES) {
+                val sgvs = client.getSgvsNewerThan(pageFrom, PAGE_SIZE).values
+                val missing = sgvs.filter { sgv -> sgv.date?.let { !hasReadingNear(existing, it, NEAR_DUPLICATE_MS) } == true }
+                if (missing.isNotEmpty())
+                    nsIncomingDataProcessor.processSgvs(missing.sortedBy { it.date ?: 0L }, doFullSync = true, fromLiveSite = true)
+                received += sgvs.size
+                stored += missing.size
+                page++
+                val newestDate = sgvs.maxOfOrNull { it.date ?: 0L } ?: 0L
+                pageFrom = nextGlucoseFrom(firstCatchUp = true, pageFrom, sgvs.size, PAGE_SIZE, newestDate, 0L) ?: break
+            }
+            storeDataForDb.storeGlucoseValuesToDb()
+            nsClientRepository.addLog("◄ SEC-NS", "Full sync: $received glucose values from secondary NS, $stored new")
+            received
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS full sync glucose failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Glucose error")
+            null
+        } finally {
+            client.close()
+        }
+    }
+
     private fun fallbackInsulin(): ICfg =
         profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.iCfg
 
@@ -330,7 +385,26 @@ class LoadSecondaryTreatmentsRunner(
         const val RECOVERY_LOOKBACK_MS = 16L * 24 * 60 * 60 * 1000
         const val GLUCOSE_LOOKBACK_MS = 24L * 60 * 60 * 1000
         const val GLUCOSE_OVERLAP_MS = 10L * 60 * 1000
+        // 100 days of 1-minute readings is about 290 pages of 500.
+        const val MAX_FULL_SYNC_PAGES = 400
+        const val NEAR_DUPLICATE_MS = 30L * 1000
     }
+}
+
+// True when [sorted] (ascending times) has a time within [toleranceMs] of [time].
+internal fun hasReadingNear(sorted: LongArray, time: Long, toleranceMs: Long): Boolean {
+    var low = 0
+    var high = sorted.size - 1
+    while (low <= high) {
+        val mid = (low + high) ushr 1
+        val value = sorted[mid]
+        when {
+            value < time - toleranceMs -> low = mid + 1
+            value > time + toleranceMs -> high = mid - 1
+            else                       -> return true
+        }
+    }
+    return false
 }
 
 // A full page is only the oldest slice. The next read starts after the newest time on that page.
