@@ -862,6 +862,9 @@ class PrepareGraphDataRunner(
         val autoIsfRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
         val latestAutoIsf = autoIsfRows.maxByOrNull { it.timestamp }
         val hypoPrediction = latestAutoIsf?.let { row -> hypoPredictionMmol(row, autoIsfRows, data) }
+        // The text lines describe the loop now, so an old row is not shown. The graph lines above keep every row.
+        val statusTime = min(endTime, dateUtil.now())
+        val currentAutoIsf = currentStatusRow(autoIsfRows, statusTime)
         data.cache.updateAutoIsfGraph(
             AutoIsfGraphData(
                 acce = autoIsfRows.map { GraphDataPoint(it.timestamp, it.acceIsf) },
@@ -874,10 +877,10 @@ class PrepareGraphDataRunner(
                 acceWeight = autoIsfRows.map { GraphDataPoint(it.timestamp, it.acceIsfWeight) },
                 ppWeight = autoIsfRows.map { GraphDataPoint(it.timestamp, it.ppIsfWeight) },
                 hypoPrediction = hypoPrediction,
-                statusTarget = latestAutoIsf?.let { statusTargetLine(it) },
-                statusIsf = latestAutoIsf?.let { statusIsfLine(it) },
-                statusRatio = latestAutoIsf?.let { statusRatioLine(it, autoIsfRows) },
-                statusSteps = latestAutoIsf?.let { statusStepsLine(it.timestamp, hypoPrediction) },
+                statusTarget = currentAutoIsf?.let { statusTargetLine(it) },
+                statusIsf = currentAutoIsf?.let { statusIsfLine(it) },
+                statusRatio = currentAutoIsf?.let { statusRatioLine(it, autoIsfRows) },
+                statusSteps = statusStepsLine(currentAutoIsf?.timestamp ?: statusTime, hypoPrediction.takeIf { currentAutoIsf != null }, onlyWithSteps = currentAutoIsf == null),
             )
         )
 
@@ -922,8 +925,18 @@ class PrepareGraphDataRunner(
         return "DR=${twoDecimals(row.smbDeliveryRatio)} AW=${twoDecimals(row.acceIsfWeight)} LS=$slope acce=${twoDecimals(row.bgAcceleration)} IOd5=$iod"
     }
 
-    private suspend fun statusStepsLine(at: Long, hypo: Double?): String {
+    /**
+     * The newest AutoISF row, but only while it is current: at most [STATUS_MAX_AGE_MS] before [at].
+     * A master that does not run AutoISF (for example vanilla 3.4.2.6 with SMB) never sends these rows, so a client
+     * following it must not keep showing an old row left in its database (2026-10-16).
+     */
+    internal fun currentStatusRow(rows: List<AIV>, at: Long): AIV? =
+        rows.filter { it.timestamp <= at + 60_000L }.maxByOrNull { it.timestamp }?.takeIf { at - it.timestamp <= STATUS_MAX_AGE_MS }
+
+    // onlyWithSteps: with no current AutoISF row, the line is shown only when there are step counts.
+    private suspend fun statusStepsLine(at: Long, hypo: Double?, onlyWithSteps: Boolean): String? {
         val steps = persistenceLayer.getLastStepsCountFromTimeToTime(at - 20 * 60_000L, at + 60_000L)
+        if (steps == null && onlyWithSteps) return null
         val s5 = steps?.steps5min ?: 0
         val s15 = steps?.steps15min ?: 0
         val s30 = steps?.steps30min ?: 0
@@ -1027,4 +1040,9 @@ class PrepareGraphDataRunner(
         }
     }
 
+    companion object {
+
+        /** How old the newest AutoISF row may be before the text lines above the graph are hidden. */
+        const val STATUS_MAX_AGE_MS = 15 * 60_000L
+    }
 }

@@ -1,5 +1,6 @@
 package app.aaps.workflow
 
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
@@ -135,6 +136,31 @@ class PrepareGraphDataRunnerTest : TestBaseWithProfile() {
             val inCurrent = runner().carbsForBucket(carb, bgTime).size
             assertThat(inPrevious + inCurrent).isEqualTo(1)
         }
+    }
+
+    private fun autoIsfAt(timestamp: Long) = AIV(
+        timestamp = timestamp, acceIsf = 1.0, bgIsf = 1.0, ppIsf = 1.0, duraIsf = 1.0, finalIsf = 1.88,
+        glucose = 120.0, delta = 0.0, shortAvgDelta = 0.0, longAvgDelta = 0.0, bgAcceleration = 0.0, iob = 0.0, smbDelivered = 0.0
+    )
+
+    // The AutoISF text lines above the graph: a master that does not run AutoISF never sends a row, so an old one
+    // left in the database must not be shown as if it were current (seen on a client following vanilla 3.4.2.6).
+    @Test
+    fun `an AutoISF row older than 15 minutes is not shown`() {
+        val now = T.hours(10).msecs()
+        assertThat(runner().currentStatusRow(listOf(autoIsfAt(now - T.mins(16).msecs())), now)).isNull()
+    }
+
+    @Test
+    fun `the newest recent AutoISF row is shown`() {
+        val now = T.hours(10).msecs()
+        val rows = listOf(autoIsfAt(now - T.mins(9).msecs()), autoIsfAt(now - T.mins(4).msecs()))
+        assertThat(runner().currentStatusRow(rows, now)?.timestamp).isEqualTo(now - T.mins(4).msecs())
+    }
+
+    @Test
+    fun `no AutoISF rows means no text lines`() {
+        assertThat(runner().currentStatusRow(emptyList(), T.hours(10).msecs())).isNull()
     }
 
     @Test
