@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.quickLaunch
 
+import app.aaps.core.keys.StringNonKey
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
@@ -58,6 +59,12 @@ class QuickLaunchSerializerTest {
 
         assertThat(restored.last()).isEqualTo(QuickLaunchAction.QuickLaunchConfig)
         assertThat(restored.count { it == QuickLaunchAction.QuickLaunchConfig }).isEqualTo(1)
+    }
+
+    // The stored default and the code default must be the same toolbar: wizard, NSClient BG page, setup button.
+    @Test
+    fun storedDefaultIsTheCodeDefault() {
+        assertThat(QuickLaunchSerializer.fromJson(StringNonKey.QuickLaunchActions.defaultValue)).isEqualTo(QuickLaunchAction.default)
     }
 
     @Test

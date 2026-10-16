@@ -76,7 +76,7 @@ enum class StringNonKey(
     // Saved review of native automations whose names are close to a coded AutoISF name.
     // The value is a JSON object of title to allowed (true or false). A missing title is not reviewed yet.
     CodedAutomationDecisions(key = "automation_coded_decisions", defaultValue = ""),
-    QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"wizard\"},{\"type\":\"quick_launch_config\"}]"),
+    QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"bolus_wizard\"},{\"type\":\"plugin\",\"id\":\"NSClientSourcePlugin\"},{\"type\":\"quick_launch_config\"}]"),
     InsulinConfiguration("insulin_configuration", "{}", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     ComposeGraphConfig("compose_graphconfig", ""),
 

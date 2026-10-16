@@ -104,8 +104,14 @@ sealed class QuickLaunchAction {
             SensorInsert, BatteryChange, CannulaChange, Fill, SiteRotation
         )
 
-        /** Default toolbar configuration */
-        val default: List<QuickLaunchAction> = listOf(Wizard, QuickLaunchConfig)
+        /**
+         * The NSClient BG page, with the list of BG readings (2026-10-16). It is shown only while NSClient BG is the BG source,
+         * which is always the case on a client. A master with another BG source does not see it.
+         */
+        val BgSourceNs = PluginAction("NSClientSourcePlugin")
+
+        /** Default toolbar configuration. Keep StringNonKey.QuickLaunchActions the same. */
+        val default: List<QuickLaunchAction> = listOf(Wizard, BgSourceNs, QuickLaunchConfig)
 
         /** Lookup static action by typeId */
         fun fromTypeId(typeId: String): QuickLaunchAction? = staticActions.find { it.typeId == typeId }
