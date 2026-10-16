@@ -25,6 +25,10 @@ import dev.zacsweers.metro.SingleIn
  * 3.4) sends no command. A batch made only of a profile switch, a temp target or a note runs on the LOCAL executor:
  * the record is saved here and the normal Nightscout upload carries it to the master, as a 3.4 client does. Anything
  * else (insulin, carbs, pump commands, running mode) is refused at once with [FailureReason.ReadOnlyClient].
+ *
+ * The bolus calculator is the one exception on the prepare side (2026-10-16): a read-only client calculates it
+ * locally as an example, so the confirmation lines can be shown. Its commit is always refused (`WizardExecutorImpl`),
+ * so that example is never given.
  */
 @SingleIn(AppScope::class)
 @Inject
@@ -35,7 +39,7 @@ class RoleBranch(
     private val preferences: Preferences
 ) {
 
-    private val readOnlyClient: Boolean
+    val readOnlyClient: Boolean
         get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
 
     /**
@@ -49,7 +53,8 @@ class RoleBranch(
         masterPrepare: suspend () -> WizardBolusExecutor.PrepareResult
     ): ActionProgress {
         if (readOnlyClient) {
-            if (!isNightscoutRecordOnly(clientCommand)) return ActionProgress.Rejected(FailureReason.ReadOnlyClient)
+            if (!isNightscoutRecordOnly(clientCommand) && clientCommand !is ClientControlActionDispatcher.Command.WizardPrepare)
+                return ActionProgress.Rejected(FailureReason.ReadOnlyClient)
         } else if (config.AAPSCLIENT) {
             if (!nsClient.masterReachable.value) return ActionProgress.Rejected(clientBlockReason())
             return dispatcher.run(clientCommand, label)

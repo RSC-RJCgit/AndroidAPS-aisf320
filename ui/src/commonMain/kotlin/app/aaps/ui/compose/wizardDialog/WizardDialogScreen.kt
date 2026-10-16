@@ -83,7 +83,6 @@ import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
-import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.AapsTopAppBar
 import app.aaps.core.ui.compose.CarbTimeRow
 import app.aaps.core.ui.compose.ExpandableRowHeader
@@ -300,50 +299,38 @@ internal fun WizardDialogContent(
             // amounts here would have them announced twice. This also sidesteps the insulin/carbs
             // branching, which no single template could join without leaving a gap.
             val confirmDescription = stringResource(CoreUiStrings.confirm)
-            // A read-only client shows the calculation as an example only: its master takes no bolus from it.
-            val readOnlyExample = LocalReadOnlyClient.current
-            Column {
-                if (readOnlyExample) {
+            Button(
+                onClick = {
+                    focusManager.clearFocus()
+                    onConfirmClick()
+                },
+                enabled = uiState.okVisible,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bottomBarSafeArea()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .semantics { contentDescription = confirmDescription }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                if (uiState.totalInsulin > 0.0) {
+                    Text(stringResource(InterfacesStrings.format_insulin_units, uiState.totalInsulin))
+                }
+                if (uiState.totalInsulin > 0.0 && (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0)) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                if (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0) {
                     Text(
-                        text = stringResource(CoreUiStrings.wizard_read_only_example),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
+                        if (uiState.eCarbs > 0) stringResource(CoreUiStrings.format_carbs_split, uiState.effectiveCarbs, uiState.eCarbs)
+                        else stringResource(InterfacesStrings.format_carbs, uiState.effectiveCarbs)
                     )
                 }
-                Button(
-                    onClick = {
-                        focusManager.clearFocus()
-                        onConfirmClick()
-                    },
-                    enabled = uiState.okVisible && !readOnlyExample,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .bottomBarSafeArea()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .semantics { contentDescription = confirmDescription }
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    if (uiState.totalInsulin > 0.0) {
-                        Text(stringResource(InterfacesStrings.format_insulin_units, uiState.totalInsulin))
-                    }
-                    if (uiState.totalInsulin > 0.0 && (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0)) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-                    if (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0) {
-                        Text(
-                            if (uiState.eCarbs > 0) stringResource(CoreUiStrings.format_carbs_split, uiState.effectiveCarbs, uiState.eCarbs)
-                            else stringResource(InterfacesStrings.format_carbs, uiState.effectiveCarbs)
-                        )
-                    }
-                    if (!uiState.okVisible) {
-                        Text(stringResource(CoreUiStrings.ok))
-                    }
+                if (!uiState.okVisible) {
+                    Text(stringResource(CoreUiStrings.ok))
                 }
             }
         }

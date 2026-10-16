@@ -749,6 +749,10 @@ class WizardDialogViewModel(
      * path; a master that can't deliver records locally via [recordOnly] (master-only — a client always delivers).
      * appScope, not viewModelScope: the screen pops right after this call.
      */
+    /** A client set to read-only: the wizard works as an example only (2026-10-16). */
+    private val readOnlyClient: Boolean
+        get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
+
     fun deliverManualWizard() {
         val state = uiState.value
         val effectiveCarbs = state.carbs * state.carbsType.carbsPercent / 100
@@ -768,6 +772,11 @@ class WizardDialogViewModel(
             when (val prepared = wizardExecutor.prepare(WizardExecutor.WizardSource.Manual(inputs), label)) {
                 is ActionProgress.Prepared ->
                     showWizardBolusConfirmation(rxBus, rh, rh.gs(CoreUiStrings.boluswizard), IcCalculator, prepared.advisorApplies, prepared.lines, prepared.advisorLines) { asAdvisor ->
+                        // A read-only client: the lines were an example. Say so and keep the wizard open, give nothing.
+                        if (readOnlyClient) {
+                            rxBus.send(EventShowDialog.Ok(title = rh.gs(CoreUiStrings.boluswizard), message = rh.gs(CoreUiStrings.wizard_read_only_example)))
+                            return@showWizardBolusConfirmation
+                        }
                         // Confirmed → close the wizard (Cancel leaves it open with inputs intact, like the insulin dialog).
                         _sideEffect.tryEmit(SideEffect.NavigateBack)
                         appScope.launch {

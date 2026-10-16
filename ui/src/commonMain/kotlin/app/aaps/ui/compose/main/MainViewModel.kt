@@ -55,6 +55,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.Preferences
@@ -710,9 +711,24 @@ class MainViewModel(
     // ── Toolbar ──
 
     private fun observeQuickLaunch() {
+        addReadOnlyQuickLaunchDefaults()
         preferences.observe(StringNonKey.QuickLaunchActions)
             .onEach { refreshQuickLaunch(it) }
             .launchIn(viewModelScope)
+    }
+
+    /**
+     * Once, on a read-only client (2026-10-16): put the bolus calculator (an example only there) and the NSClient BG
+     * page on the toolbar. They are the default of a new toolbar, but a toolbar saved earlier would not get them.
+     * The rest of a saved toolbar stays as it is, and a button removed later stays removed.
+     */
+    private fun addReadOnlyQuickLaunchDefaults() {
+        if (!config.AAPSCLIENT || !preferences.get(BooleanKey.NsClientReadOnlyClient)) return
+        if (preferences.get(BooleanNonKey.QuickLaunchReadOnlyDefaultsAdded)) return
+        val actions = QuickLaunchSerializer.fromJson(preferences.get(StringNonKey.QuickLaunchActions))
+        val missing = listOf(QuickLaunchAction.Wizard, QuickLaunchAction.BgSourceNs).filter { it !in actions }
+        if (missing.isNotEmpty()) preferences.put(StringNonKey.QuickLaunchActions, QuickLaunchSerializer.toJson(missing + actions))
+        preferences.put(BooleanNonKey.QuickLaunchReadOnlyDefaultsAdded, true)
     }
 
     /**

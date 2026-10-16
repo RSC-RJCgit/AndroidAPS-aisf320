@@ -25,6 +25,9 @@ enum class BooleanNonKey(
     WizardIncludeCob("wizard_include_cob", false),
     WizardIncludeTrend("wizard_include_trend_bg", false),
 
+    // Set once the read-only client defaults (bolus calculator, NSClient BG) were added to the toolbar (2026-10-16)
+    QuickLaunchReadOnlyDefaultsAdded("quick_launch_read_only_defaults_added", false),
+
     // Export destination settings (managed by ExportOptionsDialog, no preferences UI)
     ExportAllCloudEnabled("export_all_cloud_enabled", false),
     ExportLogEmailEnabled("export_log_email_enabled", true),

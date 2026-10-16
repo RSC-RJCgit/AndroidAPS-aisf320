@@ -5,6 +5,7 @@ import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.bolus.WizardExecutor
 import app.aaps.core.interfaces.configuration.Config
@@ -86,6 +87,10 @@ internal class WizardDialogViewModelTest {
         // Stubbed before construction: init { } queues initialize() on the shared scheduler, so it runs
         // before any test body. With no profile store it returns straight away, which is all these tests need.
         whenever(profileRepository.profile).thenReturn(MutableStateFlow(null))
+        // The max bolus suggestion reads the last glucose from the autosens store when the dialog has none. In the app
+        // that store always exists; here an empty one stands in, so "no glucose" is the case these tests run.
+        val ads = mock<AutosensDataStore>()
+        whenever(iobCobCalculator.ads).thenReturn(ads)
         Dispatchers.setMain(mainDispatcher)
         sut = WizardDialogViewModel(
             SavedStateHandle(), bolusWizardProvider, constraintChecker, profileFunction, profileUtil,

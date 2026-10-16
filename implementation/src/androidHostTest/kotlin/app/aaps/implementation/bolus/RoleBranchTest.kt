@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -112,6 +113,22 @@ class RoleBranchTest : TestBase() {
     }
 
     @Test fun prepare_readOnlyClient_nonBatchCommand_rejectedReadOnly() = runTest {
+        val result = roleBranch(client = true, readOnly = true).prepare("l", command) { error("must not run") }
+        assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyClient)
+    }
+
+    // The bolus calculator on a read-only client: calculated here as an example, never sent (2026-10-16).
+    @Test fun prepare_readOnlyClient_wizard_runsLocallyAsExample() = runTest {
+        val command = ClientControlActionDispatcher.Command.WizardPrepare(mock<WizardBolusExecutor.WizardInputs>())
+        val result = roleBranch(client = true, readOnly = true).prepare("l", command) {
+            WizardBolusExecutor.PrepareResult.Preview(insulin = 2.0, carbs = 20, bolusId = 9L)
+        }
+        assertThat((result as ActionProgress.Prepared).id).isEqualTo(9L)
+        verify(dispatcher, never()).run(any(), any())
+    }
+
+    @Test fun prepare_readOnlyClient_quickWizard_stillRejected() = runTest {
+        val command = ClientControlActionDispatcher.Command.BolusPrepare("guid")
         val result = roleBranch(client = true, readOnly = true).prepare("l", command) { error("must not run") }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyClient)
     }
