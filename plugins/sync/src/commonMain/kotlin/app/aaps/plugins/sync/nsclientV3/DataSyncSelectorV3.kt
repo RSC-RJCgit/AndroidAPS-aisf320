@@ -96,6 +96,16 @@ class DataSyncSelectorV3(
         return !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
     }
 
+    /**
+     * True when a client would send a change to a record that already has a Nightscout id.
+     * A client must not change data that belongs to the master: temp basals, extended boluses,
+     * effective profile switches, running modes, bolus wizard results, BG and calibrations.
+     * Its copy can be different from the site, for example after the Nightscout site was changed.
+     * The update would then overwrite the master's record, or fail with 404 again and again.
+     * New records made on the client (no Nightscout id yet) are still sent.
+     */
+    internal fun clientMustNotUpdate(nightscoutId: String?): Boolean = config.AAPSCLIENT && nightscoutId != null
+
     override suspend fun doUpload() {
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
         val uploadOn = (config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused
@@ -329,6 +339,11 @@ class DataSyncSelectorV3(
                         ) == true
                         if (cont) added++
                     }
+                    // a client does not change master data
+                    clientMustNotUpdate(bolusCalculatorResult.first.ids.nightscoutId) -> {
+                        aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring BolusCalculatorResult. Client does not update master data: ${bolusCalculatorResult.second.id}")
+                        ignored++
+                    }
                     // with nsId = update if it's modified record
                     bolusCalculatorResult.first.ids.nightscoutId != null && bolusCalculatorResult.first.id != bolusCalculatorResult.second.id -> {
                         cont = nsClientV3Plugin().nsUpdate(
@@ -497,6 +512,12 @@ class DataSyncSelectorV3(
                             if (cont) added++
                         }
 
+                        // a client does not change master data
+                        clientMustNotUpdate(gv.first.ids.nightscoutId) -> {
+                            aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring GlucoseValue. Client does not update master data: ${gv.second.id}")
+                            ignored++
+                        }
+
                         else                                                             -> {  //  gv.first.interfaceIDs.nightscoutId != null
                             cont = nsClientV3Plugin().nsUpdate("entries", DataSyncSelector.PairGlucoseValue(gv.first, gv.second.id), "$startId/$lastDbId") == true
                             if (cont) updated++
@@ -554,6 +575,12 @@ class DataSyncSelectorV3(
                     cal.first.ids.nightscoutId == null                                  -> {
                         cont = nsClientV3Plugin().nsAdd("entries", DataSyncSelector.PairCalibrationEntry(cal.first, cal.second.id), "$startId/$lastDbId") == true
                         if (cont) added++
+                    }
+
+                    // a client does not change master data
+                    clientMustNotUpdate(cal.first.ids.nightscoutId) -> {
+                        aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring CalibrationEntry. Client does not update master data: ${cal.second.id}")
+                        ignored++
                     }
 
                     else                                                                -> {  //  cal.first.ids.nightscoutId != null
@@ -713,6 +740,11 @@ class DataSyncSelectorV3(
                         cont = nsClientV3Plugin().nsAdd("treatments", DataSyncSelector.PairTemporaryBasal(tb.first, tb.second.id), "$startId/$lastDbId", profile) == true
                         if (cont) added++
                     }
+                    // a client does not change master data
+                    clientMustNotUpdate(tb.first.ids.nightscoutId) -> {
+                        aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring TemporaryBasal. Client does not update master data: ${tb.second.id}")
+                        ignored++
+                    }
                     // with nsId = update
                     tb.first.ids.nightscoutId != null                                -> {
                         cont = nsClientV3Plugin().nsUpdate("treatments", DataSyncSelector.PairTemporaryBasal(tb.first, tb.second.id), "$startId/$lastDbId", profile) == true
@@ -773,6 +805,11 @@ class DataSyncSelectorV3(
                         eb.first.ids.nightscoutId == null                                -> {
                             cont = nsClientV3Plugin().nsAdd("treatments", DataSyncSelector.PairExtendedBolus(eb.first, eb.second.id), "$startId/$lastDbId", profile) == true
                             if (cont) added++
+                        }
+                        // a client does not change master data
+                        clientMustNotUpdate(eb.first.ids.nightscoutId) -> {
+                            aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring ExtendedBolus. Client does not update master data: ${eb.second.id}")
+                            ignored++
                         }
                         // with nsId = update
                         eb.first.ids.nightscoutId != null                                -> {
@@ -896,6 +933,11 @@ class DataSyncSelectorV3(
                         cont = nsClientV3Plugin().nsAdd("treatments", DataSyncSelector.PairEffectiveProfileSwitch(ps.first, ps.second.id), "$startId/$lastDbId") == true
                         if (cont) added++
                     }
+                    // a client does not change master data
+                    clientMustNotUpdate(ps.first.ids.nightscoutId) -> {
+                        aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring EffectiveProfileSwitch. Client does not update master data: ${ps.second.id}")
+                        ignored++
+                    }
                     // with nsId = update
                     ps.first.ids.nightscoutId != null                                -> {
                         cont = nsClientV3Plugin().nsUpdate("treatments", DataSyncSelector.PairEffectiveProfileSwitch(ps.first, ps.second.id), "$startId/$lastDbId") == true
@@ -954,6 +996,11 @@ class DataSyncSelectorV3(
                     rm.first.ids.nightscoutId == null                                -> {
                         cont = nsClientV3Plugin().nsAdd("treatments", DataSyncSelector.PairRunningMode(rm.first, rm.second.id), "$startId/$lastDbId") == true
                         if (cont) added++
+                    }
+                    // a client does not change master data
+                    clientMustNotUpdate(rm.first.ids.nightscoutId) -> {
+                        aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring RunningMode. Client does not update master data: ${rm.second.id}")
+                        ignored++
                     }
                     // existing with nsId = update
                     rm.first.ids.nightscoutId != null                                -> {

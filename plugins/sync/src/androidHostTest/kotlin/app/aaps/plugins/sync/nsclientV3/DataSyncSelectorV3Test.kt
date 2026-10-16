@@ -3,6 +3,7 @@ package app.aaps.plugins.sync.nsclientV3
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.IDs
+import app.aaps.core.data.model.TB
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
@@ -669,6 +670,57 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
 
         verify(preferences, Times(1)).put(NsclientLongKey.TemporaryBasalLastSyncedId, 0)
         verify(nsClientV3Plugin, Times(0)).nsAdd(any(), any(), any(), anyOrNull())
+    }
+
+    // A client must not send changes to master data. Seen on 2026-10-16: a read-only client sent
+    // hundreds of temp basal updates to the master's site after its Nightscout site was changed.
+    private fun changedTemporaryBasal(nightscoutId: String?): Pair<TB, TB> {
+        val now = 1_000_000L
+        val current = TB(id = 5, ids = IDs(nightscoutId = nightscoutId), timestamp = now, type = TB.Type.NORMAL, isAbsolute = true, rate = 2.0, duration = 1_800_000)
+        val changed = TB(id = 6, ids = IDs(nightscoutId = nightscoutId), timestamp = now, type = TB.Type.NORMAL, isAbsolute = true, rate = 1.0, duration = 1_800_000)
+        return Pair(current, changed)
+    }
+
+    private suspend fun givenOneChangedTemporaryBasal(nightscoutId: String?) {
+        whenever(persistenceLayer.getLastTemporaryBasalId()).thenReturn(6L)
+        // reads: start of the run, first loop, the cursor check when the record is confirmed, second loop
+        whenever(preferences.get(NsclientLongKey.TemporaryBasalLastSyncedId)).thenReturn(0L, 0L, 0L, 6L)
+        whenever(persistenceLayer.getNextSyncElementTemporaryBasal(0)).thenReturn(changedTemporaryBasal(nightscoutId))
+    }
+
+    @Test
+    fun clientDoesNotUpdateTemporaryBasalOfMasterTest() = runTest {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        givenOneChangedTemporaryBasal("ns-id")
+
+        sut.processChangedTemporaryBasals()
+
+        verify(nsClientV3Plugin, Times(0)).nsUpdate(any(), any(), any(), anyOrNull())
+        verify(nsClientV3Plugin, Times(0)).nsAdd(any(), any(), any(), anyOrNull())
+        verify(preferences, Times(1)).put(NsclientLongKey.TemporaryBasalLastSyncedId, 6L)
+    }
+
+    @Test
+    fun masterStillUpdatesChangedTemporaryBasalTest() = runTest {
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        givenOneChangedTemporaryBasal("ns-id")
+        whenever(nsClientV3Plugin.nsUpdate(any(), any(), any(), anyOrNull())).thenReturn(true)
+
+        sut.processChangedTemporaryBasals()
+
+        verify(nsClientV3Plugin, Times(1)).nsUpdate(eq("treatments"), any<DataSyncSelector.PairTemporaryBasal>(), any(), anyOrNull())
+    }
+
+    @Test
+    fun clientStillAddsNewTemporaryBasalTest() = runTest {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        givenOneChangedTemporaryBasal(null)
+        whenever(nsClientV3Plugin.nsAdd(any(), any(), any(), anyOrNull())).thenReturn(true)
+
+        sut.processChangedTemporaryBasals()
+
+        verify(nsClientV3Plugin, Times(1)).nsAdd(eq("treatments"), any<DataSyncSelector.PairTemporaryBasal>(), any(), anyOrNull())
+        verify(nsClientV3Plugin, Times(0)).nsUpdate(any(), any(), any(), anyOrNull())
     }
 
     // Tests for processChangedExtendedBoluses
