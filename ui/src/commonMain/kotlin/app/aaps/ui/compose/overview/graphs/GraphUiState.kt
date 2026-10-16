@@ -13,9 +13,7 @@ import app.aaps.core.interfaces.overview.graph.BgInfoData
  */
 data class ChartConfig(
     val highMark: Double,
-    val lowMark: Double,
-    /** False: cap the main graph so the area above [highMark] stays shorter than the green range (Graph 5 not affected). */
-    val showHighArea: Boolean = true
+    val lowMark: Double
 )
 
 /** What the BG info section shows. */

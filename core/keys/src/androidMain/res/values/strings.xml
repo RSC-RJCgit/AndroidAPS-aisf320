@@ -89,7 +89,7 @@
     <string name="pref_title_aps_show_carb_model_curve">Carb model curve</string>
     <string name="pref_summary_aps_show_carb_model_curve">Dashed curve of expected carb absorption on the main graph. Peak is 90 minutes. Off hides the curve.</string>
     <string name="pref_title_aps_show_graph5">Graph 5</string>
-    <string name="pref_summary_aps_show_graph5">A second copy of the main glucose graph. Off hides it.</string>
+    <string name="pref_summary_aps_show_graph5">A second copy of the main glucose graph, with a range that follows the glucose. Off hides it.</string>
     <string name="pref_title_aps_use_ukf1_for_dosing">AutoISF calcs UKF1</string>
     <string name="pref_summary_aps_use_ukf1_for_dosing">Off by default. On a virtual pump, the loop uses UKF1 deltas instead of the live glucose deltas. A real pump ignores this.</string>
     <string name="pref_title_aps_ukf1_delta_compensation_slope">UKF1 delta slope</string>
@@ -592,6 +592,4 @@
 
     <!--    Appearance preferences-->
 
-    <string name="pref_title_show_high_area">Show the high area above the range</string>
-    <string name="pref_summary_show_high_area">On (default): the main graph grows to the highest glucose. Off: the dark area above the green range stays shorter than the range, and readings above it are cut off. Graph 5 does not change.</string>
 </resources>

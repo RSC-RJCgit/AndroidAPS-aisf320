@@ -60,7 +60,6 @@ enum class BooleanKey(
     ),
     OverviewShowNotesInDialogs(key = "show_notes_entry_dialogs", defaultValue = false, title = KeysStrings.pref_title_show_notes_in_dialogs, defaultedBySM = true),
     // 2026-10-16, per explicit request: off = the main graph's dark area above the green range stays shorter than the range itself.
-    OverviewShowHighArea("overview_show_high_area", true, KeysStrings.pref_title_show_high_area, KeysStrings.pref_summary_show_high_area),
     OverviewUseBolusAdvisor("use_bolus_advisor", true, KeysStrings.pref_title_use_bolus_advisor, KeysStrings.pref_summary_use_bolus_advisor, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     OverviewUseBolusReminder("use_bolus_reminder", true, KeysStrings.pref_title_use_bolus_reminder, KeysStrings.pref_summary_use_bolus_reminder, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 
@@ -246,7 +245,7 @@ enum class BooleanKey(
     ),
     ApsAutoIsfShowGraph5(
         "show_graph5",
-        false,
+        true,
         KeysStrings.pref_title_aps_show_graph5,
         KeysStrings.pref_summary_aps_show_graph5,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)

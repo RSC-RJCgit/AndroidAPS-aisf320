@@ -153,7 +153,16 @@ private val STATUS_TARGET_COLOR = Color(0xFF66BB6A)
  * needs this (secondary graphs are non-interactive, so `.fixed(...)` churn never affected them).
  */
 /** With "Show the high area" off: the most the area above the high mark may take, as a part of the green range's height. */
-private const val HIGH_AREA_FRACTION_OF_RANGE = 0.5
+/** Fixed glucose range of the main graph, in mmol/L (2026-10-16). Graph 5 does not use it. */
+private const val MAIN_GRAPH_MIN_MMOL = 2.0
+private const val MAIN_GRAPH_MAX_MMOL = 13.0
+private const val MAIN_GRAPH_STEP_MMOL = 2.0
+
+/** The main graph's fixed axis, 2.0 to 13.0 mmol/L, in the units the graph is drawn in. */
+internal fun mainGraphScale(mgdl: Boolean): NiceScale {
+    val factor = if (mgdl) Constants.MMOLL_TO_MGDL else 1.0
+    return NiceScale(MAIN_GRAPH_MIN_MMOL * factor, MAIN_GRAPH_MAX_MMOL * factor, MAIN_GRAPH_STEP_MMOL * factor)
+}
 
 private class MutableYRangeProvider(
     @Volatile var maxX: Double,
@@ -596,15 +605,11 @@ fun BgGraphCompose(
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
         // Activity overlay on: the panel top is the 3426 one (24 h highest or high mark, rounded, plus a margin), and the
         // activity peak sits at 80% of the panel height, so it ends up above the green range as on 3426.
-        val uncappedAxisMax = if (showActivity) maxOf(dataMax, activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)) else dataMax
-        // 2026-10-16, per explicit request: with "Show the high area" off, the top stops at the high mark plus half the green
-        // range, so the dark area above the range stays shorter than the range even after niceScale rounds up. Readings above it
-        // are cut off. Graph 5 (topBandLines) keeps its own top.
-        val axisDataMax = if (!chartConfig.showHighArea && !topBandLines)
-            minOf(uncappedAxisMax, chartConfig.highMark + HIGH_AREA_FRACTION_OF_RANGE * (chartConfig.highMark - chartConfig.lowMark))
-        else uncappedAxisMax
+        val axisDataMax = if (showActivity) maxOf(dataMax, activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)) else dataMax
         // Graph 5: raise the top so the four top band lanes sit above the green range and the curve, not on them.
-        val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, axisDataMax, BG_TOP_BAND_FRACTION) else niceScale(dataMin, axisDataMax)
+        // Main graph (2026-10-16, per explicit request): always 2.0 to 13.0 mmol/L, readings outside are cut off.
+        // Graph 5 keeps the range that follows the data.
+        val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, axisDataMax, BG_TOP_BAND_FRACTION) else mainGraphScale(chartConfig.lowMark > 30.0)
         startAxisRangeProvider.maxX = maxX
         startAxisRangeProvider.minY = niceBgScale.min
         startAxisRangeProvider.maxY = niceBgScale.max
@@ -620,7 +625,7 @@ fun BgGraphCompose(
             nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
         }
         // Activity scales to the axis as it is without the Graph 5 top band, so its peak never reaches the band lanes.
-        val activityAxisMax = if (showActivity) niceScale(dataMin, axisDataMax).max else maxBgY
+        val activityAxisMax = if (!showActivity) maxBgY else if (topBandLines) niceScale(dataMin, axisDataMax).max else niceBgScale.max
         rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max)
     }
 
