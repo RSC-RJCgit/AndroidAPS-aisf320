@@ -79,7 +79,7 @@ class AutoIsfAapsLogsExporter(
     suspend fun write(trigger: String, now: Long = dateUtil.now()) {
         try {
             val root = fileListProvider.ensureAapsLogsDirExists()
-            val patientName = exportScopeName(preferences.get(StringKey.GeneralPatientName), Build.MODEL)
+            val patientName = exportScopeName(preferences.get(StringKey.GeneralInstanceName), Build.MODEL)
             val dir = if (patientName.isNotEmpty()) File(root, patientName).also { it.mkdirs() } else root
             if (!dir.isDirectory) {
                 aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AAPSLOGS result=FAILURE reason=no directory")

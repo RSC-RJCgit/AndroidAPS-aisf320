@@ -59,7 +59,7 @@ class HistoryFilesWriter(
             }
         val entries = persistenceLayer.getUserEntryFilteredDataFromTime(now - USER_ENTRIES_EXPORT_WINDOW_MS)
         val stamp = LocalDateTime.now().format(STAMP)
-        val scope = exportScopeName(preferences.get(StringKey.GeneralPatientName), Build.MODEL)
+        val scope = exportScopeName(preferences.get(StringKey.GeneralInstanceName), Build.MODEL)
         val dir = File(loggerUtils.logDirectory)
         if (!dir.exists() && !dir.mkdirs()) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE reason=no log directory")
@@ -87,7 +87,7 @@ class HistoryFilesWriter(
     private suspend fun upload(trigger: String, files: List<File>) {
         if (files.isEmpty() || !cloudStorageManager.isCloudStorageActive()) return
         val provider = cloudStorageManager.getActiveProvider() ?: return
-        val scope = exportScopeName(preferences.get(StringKey.GeneralPatientName), Build.MODEL)
+        val scope = exportScopeName(preferences.get(StringKey.GeneralInstanceName), Build.MODEL)
         val path = if (scope.isEmpty()) CloudConstants.CLOUD_PATH_AIV else "${CloudConstants.CLOUD_PATH_AIV}_$scope"
         var uploaded = 0
         for (file in files) {

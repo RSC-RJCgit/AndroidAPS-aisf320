@@ -81,7 +81,7 @@ class DesktopHistoryExport(
             }
         val entries = persistenceLayer.getUserEntryFilteredDataFromTime(now - USER_ENTRIES_EXPORT_WINDOW_MS)
         val stamp = LocalDateTime.now().format(STAMP)
-        val scope = exportScopeName(preferences.get(StringKey.GeneralPatientName), "Desktop")
+        val scope = exportScopeName(preferences.get(StringKey.GeneralInstanceName), "Desktop")
         val dir = File(DesktopFolders.root, "logs")
         if (!dir.exists() && !dir.mkdirs()) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE reason=no log directory")

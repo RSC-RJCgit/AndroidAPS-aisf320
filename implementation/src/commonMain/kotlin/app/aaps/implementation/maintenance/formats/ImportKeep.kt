@@ -44,7 +44,7 @@ internal fun preserveKeys(activePlugin: ActivePlugin, choices: ImportKeepChoices
     val pump = domainFor(activePlugin, PluginType.PUMP)
     val bg = domainFor(activePlugin, PluginType.BGSOURCE) + coreKeysByEnumNamePrefix("BgSource")
     val sync = domainFor(activePlugin, PluginType.SYNC) + coreKeysByEnumNamePrefix("NsClient", "Tidepool", "OpenHumans", "Xdrip")
-    val patient = StringKey.GeneralPatientName.key
+    val patient = StringKey.GeneralInstanceName.key
     return { key ->
         (choices.keepPump && pump.matches(key)) ||
             (choices.keepPatientName && key == patient) ||
@@ -73,7 +73,7 @@ internal fun restoreBaselineAllowed(activePlugin: ActivePlugin): (String) -> Boo
     val passwords = StringKey.entries.filter { it.isPassword }.map { it.key }.toSet()
     return { name ->
         val lower = name.lowercase()
-        name != StringKey.GeneralPatientName.key && name !in passwords && !bg.matches(name) &&
+        name != StringKey.GeneralInstanceName.key && name !in passwords && !bg.matches(name) &&
             name != StringNonKey.ImportRestoreBaseline.key &&
             !listOf("Objectives_", "ExamTask_", "UITask_", "DisabledTo_").any { name.startsWith(it) } &&
             !lower.contains("password") &&

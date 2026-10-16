@@ -52,7 +52,7 @@ class ImportKeepTest {
     fun bgSourcePrefixFindsTheUploadSwitchAndNotThePatientName() {
         val keys = coreKeysByEnumNamePrefix("BgSource")
         assertTrue(BooleanKey.BgSourceUploadToNs.key in keys)
-        assertFalse(StringKey.GeneralPatientName.key in keys)
-        assertEquals("patient_name", StringKey.GeneralPatientName.key)
+        assertFalse(StringKey.GeneralInstanceName.key in keys)
+        assertEquals("patient_name", StringKey.GeneralInstanceName.key)
     }
 }

@@ -92,7 +92,7 @@ class IosHistoryExportImpl(
         val formatter = NSDateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
         val stamp = formatter.stringFromDate(NSDate())
-        val scope = exportScopeName(preferences.get(StringKey.GeneralPatientName), "iPhone")
+        val scope = exportScopeName(preferences.get(StringKey.GeneralInstanceName), "iPhone")
         val documents = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, true).firstOrNull() as? String
         if (documents == null) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE reason=no documents directory")
