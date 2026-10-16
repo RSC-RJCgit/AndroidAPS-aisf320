@@ -147,8 +147,6 @@ class BolusWizard(
     private var hpSafetyOriginal: Double = 0.0
     private var hpSafetyAdjusted: Double = 0.0
     private var hpSafetyCobRemoved: Double = 0.0
-    private var riseBoostApplied: Boolean = false
-    private var riseBoostOriginal: Double = 0.0
     var walkingSoonHeldUnits: Double = 0.0
         private set
     var rapidFallForSplit: Boolean = false
@@ -349,11 +347,9 @@ class BolusWizard(
         val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else 0.0
         val deltaMgdl = glucoseStatus?.delta ?: 0.0
         val shortMgdl = glucoseStatus?.shortAvgDelta ?: 0.0
-        val longMgdl = glucoseStatus?.longAvgDelta ?: 0.0
         val bgMmol = bgMgdl * Constants.MGDL_TO_MMOLL
         val deltaMmol = deltaMgdl * Constants.MGDL_TO_MMOLL
         val shortMmol = shortMgdl * Constants.MGDL_TO_MMOLL
-        val longMmol = longMgdl * Constants.MGDL_TO_MMOLL
         val hp = wizardHpCut(
             dose = calculatedTotalInsulin,
             insulinFromCob = insulinFromCOB,
@@ -371,12 +367,7 @@ class BolusWizard(
             calculatedTotalInsulin = hp.dose
             hpSafetyAdjusted = calculatedTotalInsulin
         }
-        val boosted = wizardRiseBoost(calculatedTotalInsulin, walkingSoonCut = walkingSoonCutApplied, bgMmol, deltaMmol, shortMmol, longMmol)
-        riseBoostApplied = boosted != null
-        if (boosted != null) {
-            riseBoostOriginal = calculatedTotalInsulin
-            calculatedTotalInsulin = boosted
-        }
+        // The Wz133 rise boost (x1.33 when BG > 8 and rising) was removed on 2026-10-16, per explicit request.
         if (preClamp >= 0.0) preClamp = calculatedTotalInsulin
 
         // The step of the pump, converted by the concentration, so the rounded value matches the pump grid.
@@ -431,7 +422,6 @@ class BolusWizard(
         if (carbTime != 0) extras.add(rh.gs(InterfacesStrings.wizard_carbs_time, carbTime))
         if (carbsHalvedByRecent50) extras.add(rh.gs(InterfacesStrings.wizard_carbs_halved))
         if (hpSafetyApplied) extras.add(rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved))
-        if (riseBoostApplied) extras.add(rh.gs(InterfacesStrings.wizard_rise_boost, riseBoostOriginal, calculatedTotalInsulin))
         warsawPlan?.let { plan ->
             extras.add(rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60))
         }
@@ -1003,9 +993,6 @@ class BolusWizard(
                     ConfirmationRole.INFO,
                     rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved)
                 )
-            }
-            if (riseBoostApplied) {
-                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_rise_boost, riseBoostOriginal, calculatedTotalInsulin))
             }
             warsawPlan?.let { plan ->
                 line(

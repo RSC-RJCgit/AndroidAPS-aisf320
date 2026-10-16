@@ -6,15 +6,15 @@ import kotlin.math.round
 /** Fixed carb label on the Tier 3 calc row. It is not a meal and it does not change the dose. */
 internal const val UAM_TIER3_PLACEHOLDER_CARBS_G = 10.0
 
-/** Same 1.0 and 1.5 ratios the wizard uses for 10 g. Text only. */
+/** Same 1.0 and 1.5 ratios the wizard uses for 10 g. Scheduled as a Warsaw FPU series (Virtual pump only, since 2026-10-16). */
 internal const val UAM_TIER3_PLACEHOLDER_FAT_G = 10
 internal const val UAM_TIER3_PLACEHOLDER_PROTEIN_G = 15
 
 /**
  * A calc row for a Tier 3 SMB that is already requested.
  *
- * Returns null below 1.0 U. The row does not insert a bolus or carbs.
- * 10 g, 10 g fat and 15 g protein are a fixed note. They are not used in the insulin sum.
+ * Returns null below 1.0 U. The row does not insert a bolus or carbs. The 10 g carbs are a fixed label. The 10 g fat and
+ * 15 g protein are scheduled separately by the plugin as a Warsaw FPU series (full AAPS on the Virtual pump only).
  */
 internal fun uamTier3PseudoWizardEntry(
     timestamp: Long,
@@ -61,7 +61,7 @@ internal fun uamTier3PseudoWizardEntry(
         percentageCorrection = 100,
         profileName = profileName,
         note = "UAM Tier 3 pseudo-wizard: placeholder ${carbs.toInt()}g carbs, " +
-            "FPU fat=${fat}g protein=${protein}g. Not entered. Loop SMB ${twoDecimals(smbDelivered)}U."
+            "FPU fat=${fat}g protein=${protein}g scheduled as a Warsaw series. Carbs not entered. Loop SMB ${twoDecimals(smbDelivered)}U."
     )
 }
 

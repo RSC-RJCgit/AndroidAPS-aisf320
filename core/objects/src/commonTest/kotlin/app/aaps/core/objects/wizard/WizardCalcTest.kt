@@ -116,14 +116,6 @@ class WizardCalcTest {
     }
 
     @Test
-    fun aClearRiseAbove8MultipliesTheDose() {
-        assertEquals(1.33, wizardRiseBoost(1.0, false, 8.1, 0.3, 0.3, 0.3)!!, 0.0001)
-        assertNull(wizardRiseBoost(1.0, true, 8.1, 0.3, 0.3, 0.3))
-        assertNull(wizardRiseBoost(1.0, false, 8.0, 0.3, 0.3, 0.3))
-        assertNull(wizardRiseBoost(1.0, false, 8.1, 0.2, 0.3, 0.3))
-    }
-
-    @Test
     fun walkingSoonCutsThePercentTo70AndStartsTickedOnlyWhenMovingAndLow() {
         assertEquals(100.0, walkingSoonImmediatePercent(false, 100.0), 0.0001)
         assertEquals(70.0, walkingSoonImmediatePercent(true, 100.0), 0.0001)

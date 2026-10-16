@@ -123,19 +123,3 @@ fun walkingSoonDefault(steps5: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: D
     return moving && low && notRisingFast
 }
 
-/**
- * Multiply the dose by 1.33 when wizard glucose is above 8 mmol/L and all three deltas are above 0.2 mmol/L.
- * Returns null when the boost does not apply. A walking-soon cut blocks it.
- */
-internal fun wizardRiseBoost(
-    dose: Double,
-    walkingSoonCut: Boolean,
-    bgMmol: Double,
-    deltaMmol: Double,
-    shortDeltaMmol: Double,
-    longDeltaMmol: Double,
-): Double? {
-    if (dose <= 0.0 || walkingSoonCut) return null
-    if (bgMmol > 8.0 && deltaMmol > 0.2 && shortDeltaMmol > 0.2 && longDeltaMmol > 0.2) return dose * 1.33
-    return null
-}

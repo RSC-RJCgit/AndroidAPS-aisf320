@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.objects.wizard.warsawFpuPlan
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -23,7 +24,8 @@ class UamTier3PseudoWizardTest {
         assertTrue(row.note.contains("10g carbs"))
         assertTrue(row.note.contains("fat=10g"))
         assertTrue(row.note.contains("protein=15g"))
-        assertTrue(row.note.contains("Not entered"))
+        assertTrue(row.note.contains("Carbs not entered"))
+        assertTrue(row.note.contains("scheduled as a Warsaw series"))
         assertTrue(row.note.contains("1.00U"))
     }
 
@@ -45,4 +47,12 @@ class UamTier3PseudoWizardTest {
         ic = 8.0,
         profileName = "Profile150",
     )
+
+    /** The fixed 10 g fat and 15 g protein make the series the plugin schedules (2026-10-16): FPU 1.5, so 4 hourly doses. */
+    @Test
+    fun theFixedFatAndProteinMakeAFourHourSeries() {
+        val plan = warsawFpuPlan(UAM_TIER3_PLACEHOLDER_PROTEIN_G, UAM_TIER3_PLACEHOLDER_FAT_G, ic = 3.33)!!
+        assertEquals(4, plan.numDoses)
+        assertEquals(15.0 / 3.33, plan.totalInsulin, 0.001)
+    }
 }

@@ -93,6 +93,7 @@ import app.aaps.core.objects.extensions.plannedRemainingMinutes
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.warsawFpuPlan
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.icons.IcPluginOpenAPS
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
@@ -1011,7 +1012,8 @@ open class OpenAPSAutoISFPlugin(
             lastCycleSmb = determineBasalResult.smb
             lastCycleSmbAt = now
             lastCycleInsulinReq = it.insulinReq
-            if (determineBasalAutoISF.uamBoostFiredThisCycle) {
+            // 2026-10-16, per explicit request: full AAPS on the Virtual pump only. On 16 Oct the 3426 one ran on Live (a real pump).
+            if (determineBasalAutoISF.uamBoostFiredThisCycle && activePlugin.activePump is VirtualPump && !config.AAPSCLIENT) {
                 val calc = uamTier3PseudoWizardEntry(
                     timestamp = now,
                     smbDelivered = determineBasalResult.smb,
@@ -1027,6 +1029,12 @@ open class OpenAPSAutoISFPlugin(
                         persistenceLayer.insertOrUpdateBolusCalculatorResult(calc)
                     } catch (error: Exception) {
                         aapsLogger.error(LTag.APS, "Failed to save UAM Tier 3 pseudo-wizard calc", error)
+                    }
+                    // 2026-10-16, per explicit request: its fat and protein are really scheduled as a Warsaw FPU series, through
+                    // the same scheduler as a confirmed wizard: it cancels a series still waiting from an earlier wizard, and a
+                    // later wizard cancels it. Each dose keeps its BG and IOB-rise checks. The 10 g carbs stay calc-only.
+                    warsawFpuPlan(UAM_TIER3_PLACEHOLDER_PROTEIN_G, UAM_TIER3_PLACEHOLDER_FAT_G, profile.getIc())?.let { plan ->
+                        bolusWizard().scheduleWarsawDoses(plan, iobBaseline = iobArray[0].iob, source = Sources.Automation)
                     }
                 }
             }
