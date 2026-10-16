@@ -8652,9 +8652,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
                 && ukfRawDeltasPositive()
                 // 2026-09-19, explicit request: no fire when live HP1 (same formula as the AIV "HP" column) is
-                // under 6.5 mmol. Missing HP (no raw delta window) also blocks -- same "don't fire blind" as UKF.
+                // under the bar. Missing HP (no raw delta window) also blocks -- same "don't fire blind" as UKF.
                 // Real data: 22 of 29 post-fire lows had HP under 6.0.
-                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.5
+                // 2026-10-16, per explicit request: bar 6.5 -> 6.2, as the twilight brake since 24 Sep. 16 Oct 21:42-21:47:
+                // BG 7.4 with IOB about 1.0 kept HP at 6.40-6.45, the only gate that failed. Still above the 6.0 of those lows.
+                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.2
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
             ) {
                 val iobChange5 = totalIobAt(now) - totalIobAt(now - 5 * 60_000L)
@@ -8741,9 +8743,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
                 && ukfRawDeltasPositive()
-                // 2026-09-19, explicit request: no fire when live HP1 is under 6.5 mmol (same gate as
-                // HighEveNightBrake; missing HP also blocks).
-                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.5
+                // 2026-09-19, explicit request: no fire when live HP1 is under the bar (same gate as
+                // HighEveNightBrake; missing HP also blocks). 2026-10-16: bar 6.5 -> 6.2, see HighEveNightBrake.
+                && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.2
             ) {
                 // Two entry BGL bands, both with every gate above (flat-BG bands, duraISF-dominant,
                 // Steroids Off, iobChange5 < 0.5):
@@ -8832,7 +8834,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // HiBrkTwilight: a TT-only dawn variant. Keep HP >=6.5 and the existing HiBrk
+        // HiBrkTwilight: a TT-only dawn variant. Keep the HP gate (6.2) and the existing HiBrk
         // plateau/raw/IOB guards; no SMB-ratio, pp-weight or profile action.
         // 2026-09-21: uncommented. 04:00-07:00, BG 6.5-9.0, TT 4.4@2min only. Night/day
         // HiBrk still own >=9.0 (22:00-06:00 / 06:00-22:00). Day mid starts 07:00.
@@ -8870,8 +8872,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && autoIsfValues.duraIsf >= autoIsfValues.bgIsf
                 && autoIsfValues.duraIsf >= autoIsfValues.ppIsf
                 && ukfRawDeltasPositive()
-                // 2026-09-24, per explicit request: HP1 gate lowered 6.5 -> 6.2 (twilight block only; the night and
-                // day brakes keep 6.5). 24 Sep 04:00-06:47: BG plateaued 6.4-6.6 with IOB ~0.3 so HP1 (BG - IOB + ...)
+                // 2026-09-24, per explicit request: HP1 gate lowered 6.5 -> 6.2 (twilight block first; the night and
+                // day brakes followed on 2026-10-16). 24 Sep 04:00-06:47: BG plateaued 6.4-6.6 with IOB ~0.3 so HP1 (BG - IOB + ...)
                 // sat at 6.2-6.3 and never reached 6.5 -- the only gate failing on the minutes with BG > 6.5.
                 && (hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB) ?: 0.0) >= 6.2
             ) {
