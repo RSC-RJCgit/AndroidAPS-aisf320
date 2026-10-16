@@ -52,8 +52,10 @@ conflict was solved.
 
 6. **Solve the rest.** Keep both sides: our features (AutoISF, graphs, read-only client, sync fixes, desktop
    fixes, ...) and upstream's changes. Read both sides before choosing; never take one side whole without reading it.
-   - `buildSrc/src/main/kotlin/Versions.kt`: keep `appVersion = "4.0.0-beta1"` unless the user says otherwise.
-     Upstream changes it every time.
+   - `buildSrc/src/main/kotlin/Versions.kt`: keep the fork's current `appVersion` (`4.0.0-rc1` since 2026-10-16).
+     Upstream's `dev` always carries a `-dev-x` name, never use that. When upstream publishes a new tag (rc2, the
+     release), ask the user whether the fork follows the tag name. If it does, also add the name to the `tagName`
+     choices in `.github/workflows/aaps-ci.yml`. CI derives the APK names and Drive folders from `appVersion`.
    - After solving a file, `git add` it, so rerere records the answer.
    - `git diff --name-only --diff-filter=U` must end empty.
 
