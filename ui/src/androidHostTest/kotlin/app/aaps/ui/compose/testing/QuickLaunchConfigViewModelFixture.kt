@@ -6,6 +6,7 @@ import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.scenes.SceneStore
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.objects.wizard.QuickWizard
@@ -87,6 +88,9 @@ class QuickLaunchConfigViewModelFixture(private val screen: AapsScreenFixture) {
     fun asUnpairedClient() {
         whenever(visibilityContext.isClient).thenReturn(true)
         whenever(visibilityContext.masterOrPairedClient).thenReturn(false)
+        // Not read-only either, so the bolus calculator (also shown on a read-only client) is filtered out too.
+        whenever(visibilityContext.preferences).thenReturn(screen.preferences)
+        whenever(screen.preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(false)
     }
 
     /** Puts [selected] into the stored preference, through the real serializer the screen also uses. */
