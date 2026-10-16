@@ -86,6 +86,9 @@ class DesktopSp(
                     lastError = e
                 }
             }
+            // Fork (kept in the 2026-10-16 upstream merge): upstream throws here after its retries. A setting that
+            // arrives from the master would then still fail the whole sync step. Logged instead; the value stays in
+            // memory and the next change writes the whole file again.
             logger()?.error(LTag.CORE, "Preferences not saved to ${file.name}, kept in memory until the next change: $lastError")
         }
     }
@@ -100,9 +103,21 @@ class DesktopSp(
             // leave the real name pointing at an empty file - the thing this is here to prevent.
             out.fd.sync()
         }
+        replace(temp)
+    }
+
+    /**
+     * One attempt, atomic where the filesystem allows it.
+     *
+     * On Windows a replacing move fails with [java.nio.file.AccessDeniedException] whenever anything else holds the
+     * target open: the virus scanner or the search indexer opens a file that was just written. It is not a permission
+     * problem and it does not stay, so [persist] tries the whole write again a few times.
+     */
+    private fun replace(temp: File) {
         try {
             Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } catch (_: AtomicMoveNotSupportedException) {
+            // Some network shares: the plain replacing move is the fallback.
             Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
@@ -157,4 +172,5 @@ class DesktopSp(
 
     override fun incInt(key: String) = putInt(key, getInt(key, 0) + 1)
     override fun incLong(key: String) = putLong(key, getLong(key, 0L) + 1L)
+
 }

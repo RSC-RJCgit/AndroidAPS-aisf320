@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -51,8 +52,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -119,6 +122,51 @@ private val SIMPLE_MODE_CONFIG = GraphConfig(
  * turning the description into a list nobody will sit through.
  */
 private const val RECENT_VALUES_SPOKEN = 5
+
+/** Moves the pill up over the treatment belt (48 dp, of which 16 dp overlap the BG graph). */
+private val INSPECT_PILL_OFFSET = (-32).dp
+
+/**
+ * The space the time labels took under each graph below BG, before they were removed (measured: the plot
+ * grew by 27 px at 420 dpi). These graphs are drawn this much shorter than their height setting, so the
+ * plot keeps its size and the whole section gets shorter.
+ */
+private val REMOVED_TIME_LABELS_HEIGHT = 10.dp
+
+/** Size of the edit button (pencil) on a graph. The icon in it is 16 dp. */
+private val GRAPH_EDIT_BUTTON_SIZE = 28.dp
+
+/**
+ * Puts the name and the pencil of a graph below BG just above the bottom line of its plot, in the bottom right
+ * corner. The line is about 12 dp above the bottom of the graph (room for half of the lowest Y-axis label). The
+ * row is 28 dp tall and the text and icon are 16 dp in its middle, so they end 8 + 6 = 14 dp above the bottom.
+ */
+private val GRAPH_NAME_BOTTOM_PADDING = 8.dp
+
+/**
+ * How far the IOB graph is pulled up towards BG. The BG graph is drawn 16 dp higher than its place (over the
+ * treatment belt), so the same 16 dp puts the IOB graph right below it, without an empty band in between.
+ */
+private val IOB_GRAPH_PULL_UP = 16.dp
+
+/**
+ * How much each further graph overlaps the one above it. Vico keeps half a label height free above and below
+ * each plot, for labels on its top and bottom lines. 5 dp of these two free bands can overlap, and two such
+ * labels still do not touch.
+ */
+private val GRAPH_OVERLAP = 5.dp
+
+/**
+ * Draws the content [amount] higher and makes it take [amount] less height, so everything below it moves up
+ * too. Modifier.offset only moves the drawing and leaves the space empty.
+ */
+private fun Modifier.pullUp(amount: Dp): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val pull = amount.roundToPx()
+    layout(placeable.width, (placeable.height - pull).coerceAtLeast(0)) {
+        placeable.place(0, -pull)
+    }
+}
 
 /** Which way a predicted curve is travelling, which decides the sentence spoken for it. */
 internal enum class PredictionDirection { UP, DOWN, FLAT }
@@ -752,6 +800,8 @@ fun GraphsSection(
     }
 
     val showZoomButtons = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
+    // Set by the BG graph, read by every graph
+    val inspect = remember { GraphInspectState() }
 
     Column(
         modifier = modifier
@@ -849,7 +899,9 @@ fun GraphsSection(
             if (predictionSentences.isEmpty()) null
             else stringResource(UiStrings.a11y_predictions, predictionSentences.joinToString(" "))
 
-        Box {
+        // Upstream's touch-to-inspect (2026-10-16 merge), without its 16 dp shift up: that shift sat the graph under the
+        // treatment belt strip, which this fork removed on 2026-09-26.
+        Box(modifier = Modifier.graphInspectTouch(inspect)) {
             BgGraphCompose(
                 viewModel = graphViewModel,
                 automaticCleanGraph = automaticCleanGraph,
@@ -859,6 +911,7 @@ fun GraphsSection(
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 visibleTimeRange = bgVisibleTimeRange,
+                inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(graphConfig.bgHeight.dp)
@@ -889,6 +942,17 @@ fun GraphsSection(
                         .padding(end = 4.dp, top = 2.dp)
                 )
             }
+            // Own composable, so a finger move does not recompose this section
+            GraphInspectOverlay(
+                inspect = inspect,
+                graphViewModel = graphViewModel,
+                bgReadings = bgReadings,
+                minTimestamp = derivedTimeRange?.first,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = INSPECT_PILL_OFFSET)
+                    .padding(top = 2.dp, start = 36.dp, end = 36.dp)
+            )
         }
         // A node of its own rather than more text on the graph above, so a listener reaches the
         // readings first and swipes once to decide whether she wants the forecast, instead of having
@@ -922,7 +986,7 @@ fun GraphsSection(
         }
         // Fixed IOB graph (Graph 1) with optional Activity overlay
         var editingIobOverlays by remember { mutableStateOf(false) }
-        Box(modifier = Modifier.offset(y = (-8).dp)) {
+        Box(modifier = Modifier.pullUp(IOB_GRAPH_PULL_UP)) {
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
                 seriesTypes = listOf(SeriesType.IOB),
@@ -933,9 +997,10 @@ fun GraphsSection(
                 nowTimestamp = nowTimestamp,
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
                 onVisibleRangeChanged = { iobVisibleRange = it },
+                inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(graphConfig.iobHeight.dp)
+                    .height(graphConfig.iobHeight.dp - REMOVED_TIME_LABELS_HEIGHT)
             )
             // No "IOB / Basal ..." title here since 2026-10-14: graph 1 is always IOB + basal, and the hourly basal
             // peak numbers now use the top line of the graph instead.
@@ -971,9 +1036,10 @@ fun GraphsSection(
         var editingGraphIndex by remember { mutableIntStateOf(-1) }
         for (i in 0 until activeCount) {
             val secondary = graphConfig.secondaryGraphs[i]
-            Box(modifier = Modifier.offset(y = (-8).dp)) {
+            Box(modifier = Modifier.pullUp(GRAPH_OVERLAP)) {
                 SecondaryGraphCompose(
                     viewModel = graphViewModel,
+                    inspect = inspect,
                     seriesTypes = secondary.series,
                     showSmbDoseLabels = i == 0,
                     secondaryMarks = when (i) {
@@ -987,25 +1053,16 @@ fun GraphsSection(
                     nowTimestamp = nowTimestamp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(secondary.height.dp)
+                        .height(secondary.height.dp - REMOVED_TIME_LABELS_HEIGHT)
                 )
-                Text(
-                    text = seriesListLabel(secondary.series),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                GraphNameRow(
+                    name = seriesListLabel(secondary.series),
+                    editName = seriesListLabel(secondary.series),
+                    onEdit = if (isSimpleMode) null else ({ editingGraphIndex = i }),
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 36.dp, top = 2.dp)
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 4.dp, bottom = GRAPH_NAME_BOTTOM_PADDING)
                 )
-                if (!isSimpleMode) {
-                    GraphEditButton(
-                        onClick = { editingGraphIndex = i },
-                        graphName = seriesListLabel(secondary.series),
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = 4.dp, top = 2.dp)
-                    )
-                }
             }
         }
         // Graph 5 (second copy of the glucose graph with the SMB / acce weight / pp weight / profile basal lines in its
@@ -1209,6 +1266,31 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
 // Graph edit button + series picker bottom sheet
 // =========================================================================
 
+/**
+ * Name of a graph below BG, with its edit button (pencil) to the right of it. [onEdit] is null in simple mode,
+ * where graphs cannot be edited. The row is at least as tall as the edit button, also without it, so the name
+ * stays at the same height in both modes.
+ */
+@Composable
+private fun GraphNameRow(
+    name: String,
+    editName: String,
+    onEdit: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.heightIn(min = GRAPH_EDIT_BUTTON_SIZE)
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+        )
+        if (onEdit != null) GraphEditButton(onClick = onEdit, graphName = editName)
+    }
+}
+
 /** Small pencil icon button overlaid on a graph */
 @Composable
 private fun GraphEditButton(
@@ -1218,7 +1300,7 @@ private fun GraphEditButton(
 ) {
     IconButton(
         onClick = onClick,
-        modifier = modifier.size(28.dp),
+        modifier = modifier.size(GRAPH_EDIT_BUTTON_SIZE),
         colors = IconButtonDefaults.iconButtonColors(
             contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
         )

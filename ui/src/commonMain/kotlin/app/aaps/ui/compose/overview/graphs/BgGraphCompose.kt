@@ -85,6 +85,7 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProdu
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
 import com.patrykandpatrick.vico.compose.cartesian.decoration.HorizontalBox
+import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
 import com.patrykandpatrick.vico.compose.common.Position
@@ -184,6 +185,9 @@ private class MutableYRangeProvider(
  *
  * Basal Y-axis is scaled so maxBasal occupies [BASAL_HEIGHT_FRACTION] of the chart height (maxY = maxBasal / BASAL_HEIGHT_FRACTION).
  *
+ * The insulin activity overlay has no axis of its own: it starts at the bottom of the panel and peaks at 80% of its
+ * height, as on 3426 (fork, kept over upstream's low-mark scaling in the 2026-10-16 merge), and never changes the BG scale.
+ *
  * Scroll/Zoom:
  * - Accepts external scroll/zoom states for synchronization with secondary graphs
  * - This is the primary interactive graph - user controls scroll/zoom here
@@ -200,6 +204,8 @@ fun BgGraphCompose(
     /** Graph 5 only: draw SMB delivery, acce weight, pp weight and profile basal in the top band of the BG axis. */
     topBandLines: Boolean = false,
     automaticCleanGraph: Boolean = false,
+    /** Press and hold to see the values at a reading. Null turns it off. */
+    inspect: GraphInspectState? = null,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -568,8 +574,8 @@ fun BgGraphCompose(
             seriesRegistry[key] = points
         }
         // maxBgY/minBgY clamped against highMark/lowMark (same as legacy GraphData.maxY logic) —
-        // used only for EPS baseline / Activity overlay proportional scaling, NOT the axis range
-        // itself (see below for that — windowed, unlike these full-range values).
+        // used only for the EPS baseline, NOT the axis range itself (see below for that — windowed,
+        // unlike these full-range values).
         val allBgValues = (bgReadings + bucketedData).map { it.value }
         val maxBgY = if (allBgValues.isNotEmpty()) maxOf(allBgValues.max(), chartConfig.highMark) else chartConfig.highMark
         val minBgY = if (allBgValues.isNotEmpty()) minOf(allBgValues.min(), chartConfig.lowMark) else chartConfig.lowMark
@@ -892,6 +898,11 @@ fun BgGraphCompose(
         )
     }
 
+    // Upstream's press-and-hold inspect (2026-10-16 merge): its marker, and its line on top of our own decorations.
+    val inspectMarker = remember(inspect) { inspect?.let { GraphInspectMarker(it) } }
+    // Always called, so the composable calls do not depend on inspect
+    val defaultMarkerController = CartesianMarkerController.rememberShowOnPress()
+    val inspectLine = rememberInspectLine(inspect)
     fun isfColor(kind: DominantIsf?): Color = when (kind) {
         DominantIsf.ACCE -> acceColor
         DominantIsf.BG   -> bgIsfColor
@@ -1015,8 +1026,8 @@ fun BgGraphCompose(
             )
         }
     }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter, basalPeakLabel) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
     }
 
     // =========================================================================
@@ -1129,7 +1140,10 @@ fun BgGraphCompose(
                 guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
             ),
             decorations = decorations,
-            getXStep = { _, _, _ -> 1.0 }
+            getXStep = { _, _, _ -> 1.0 },
+            marker = inspectMarker,
+            markerVisibilityListener = inspect?.visibilityListener,
+            markerController = inspect?.controller ?: defaultMarkerController
         ),
         modelProducer = modelProducer,
         modifier = Modifier.fillMaxSize().pointerInput(tapTargets) {

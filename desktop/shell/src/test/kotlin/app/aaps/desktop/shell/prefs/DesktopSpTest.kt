@@ -87,6 +87,31 @@ class DesktopSpTest {
         assertFalse(File(dir, "preferences.properties.new").exists())
     }
 
+    /**
+     * On Windows the replacing move fails with `AccessDeniedException` whenever something else holds
+     * the target open - the virus scanner or the search indexer, right after the file was written.
+     * It passes a few milliseconds later. Only `AtomicMoveNotSupportedException` used to be caught,
+     * so that failure escaped and took the whole incoming settings sync step down with it.
+     */
+    @Test fun `a move that fails is tried again before it gives up`(@TempDir dir: File) {
+        val file = File(dir, "preferences.properties")
+        // A non-empty directory where the real file belongs. A file cannot be moved over one on any
+        // OS, so every attempt fails with an IOException - the same shape as the locked file on
+        // Windows, without needing Windows to run the test.
+        file.mkdirs()
+        File(file, "occupied").writeText("x")
+
+        val startedAt = System.nanoTime()
+        val thrown = runCatching { DesktopSp(file, retryDelaysMs = listOf(20L, 40L)).putString("units", "mmol") }.exceptionOrNull()
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+
+        // Fork: a write that cannot succeed is logged, not thrown (see `DesktopSp.persist`), so it cannot fail a sync step.
+        assertTrue(thrown == null, "a failed write must not throw, was $thrown")
+        // 20 ms then 40 ms between the three attempts. Only a version that gives up after the first
+        // one can be quicker, so this is a lower bound and a slow machine cannot make it flaky.
+        assertTrue(elapsedMs >= 50, "expected the retries to take at least 50 ms, took $elapsedMs ms")
+    }
+
     @Test fun `edit writes once and keeps every key`(@TempDir dir: File) {
         val file = File(dir, "preferences.properties")
         DesktopSp(file).edit {

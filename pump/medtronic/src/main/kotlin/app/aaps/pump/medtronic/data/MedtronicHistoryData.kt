@@ -742,7 +742,7 @@ class MedtronicHistoryData(
         val tbr = entryList[0].getDecodedDataEntry("Object") as TempBasalPair
 //        var readOldItem = false
 
-        val oneMoreEntryFromHistory = getOneMoreEntryFromHistory(PumpHistoryEntryType.TempBasalCombined)
+        val oneMoreEntryFromHistory = getOneMoreEntryFromHistory(PumpHistoryEntryType.TempBasalCombined, before = entryList[0].atechDateTime)
         // A TBR from an earlier read, added again only to be limited by what follows it. It was synced then.
         var alreadySynced: PumpHistoryEntry? = null
 
@@ -828,6 +828,24 @@ class MedtronicHistoryData(
                             }
 
                             aapsLogger.debug(LTag.PUMP, "syncTemporaryBasalWithTempId - Result: $result")
+                            if (!result) {
+                                // The entry with the temporary id is not there, or it is from before the pump was
+                                // registered again: AAPS used another pump meanwhile, and that ended it. A temp basal
+                                // that still runs on the pump is then recorded from the registration, by pump id.
+                                val fallback = runBlocking {
+                                    pumpSync.syncTemporaryBasalWithPumpId(
+                                        tryToGetByLocalTime(tempBasalProcessDTO.atechDateTime),
+                                        PumpRate(tbrEntry.insulinRate),
+                                        tempBasalProcessDTO.durationAsSeconds * 1000L,
+                                        !tbrEntry.isPercent,
+                                        PumpSync.TemporaryBasalType.NORMAL,
+                                        tempBasalProcessDTO.pumpId,
+                                        medtronicPumpStatus.pumpType,
+                                        medtronicPumpStatus.serialNumber
+                                    )
+                                }
+                                aapsLogger.debug(LTag.PUMP, "syncTemporaryBasalWithPumpId (no entry with the temporary id) - Result: $fallback")
+                            }
                         }
 
                         pumpSyncStorage.removeTemporaryBasalWithTemporaryId(entryWithTempId.temporaryId)
@@ -1191,7 +1209,8 @@ class MedtronicHistoryData(
             } else if (filteredItems.size % 2 == 0 && filteredItems[0].entryType === PumpHistoryEntryType.SuspendPump) {
                 // not full suspends, need to retrieve one more record and discard first one (R S R S) -> ([S] R S R [xS])
                 filteredItems.removeAt(0)
-                val oneMoreEntryFromHistory = getOneMoreEntryFromHistory(PumpHistoryEntryType.SuspendPump)
+                // Newest first, so the last one is the oldest new entry
+                val oneMoreEntryFromHistory = getOneMoreEntryFromHistory(PumpHistoryEntryType.SuspendPump, before = filteredItems.last().atechDateTime)
                 if (oneMoreEntryFromHistory != null) {
                     filteredItems.add(oneMoreEntryFromHistory)
                 } else {
@@ -1201,7 +1220,7 @@ class MedtronicHistoryData(
             } else {
                 if (filteredItems[0].entryType === PumpHistoryEntryType.ResumePump) {
                     // get one more from history (R S R) -> ([S] R S R)
-                    val oneMoreEntryFromHistory = getOneMoreEntryFromHistory(PumpHistoryEntryType.SuspendPump)
+                    val oneMoreEntryFromHistory = getOneMoreEntryFromHistory(PumpHistoryEntryType.SuspendPump, before = filteredItems.last().atechDateTime)
                     if (oneMoreEntryFromHistory != null) {
                         filteredItems.add(oneMoreEntryFromHistory)
                     } else {
@@ -1340,10 +1359,15 @@ class MedtronicHistoryData(
         return outList
     }
 
-    private fun getOneMoreEntryFromHistory(entryType: PumpHistoryEntryType): PumpHistoryEntry? {
-        val filteredItems: List<PumpHistoryEntry?> = getFilteredItems(allHistory, entryType)
-        return if (filteredItems.isEmpty()) null else filteredItems[0]
-    }
+    /**
+     * The newest entry of [entryType] from earlier reads that is older than [before], the oldest new entry: the one that
+     * new entry ends. The newest of all is not always it, because a read can bring entries that are older than ones an
+     * earlier read already processed. A temp basal was then ended by a cancel from before its start, which gave a
+     * negative length and the "Invalid pump history data" notice, again and again on a 712 (#3755). A suspend was paired
+     * with the wrong resume, and AAPS recorded the pump as stopped while it was running.
+     */
+    private fun getOneMoreEntryFromHistory(entryType: PumpHistoryEntryType, before: Long): PumpHistoryEntry? =
+        getFilteredItems(allHistory, entryType).filter { it.atechDateTime < before }.maxByOrNull { it.atechDateTime }
 
     private fun filterTDDs(tdds: MutableList<PumpHistoryEntry>): MutableList<PumpHistoryEntry> {
         val tddsOut: MutableList<PumpHistoryEntry> = mutableListOf()

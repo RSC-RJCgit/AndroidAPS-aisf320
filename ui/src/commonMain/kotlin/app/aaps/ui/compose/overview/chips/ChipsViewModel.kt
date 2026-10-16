@@ -191,6 +191,7 @@ class ChipsViewModel(
             asText = data.asText,
             isfFrom = data.isfFrom,
             isfTo = data.isfTo,
+            isfStep = data.isfStep,
             dialogText = data.lines.joinToString("\n"),
             ratio = data.ratio,
             isEnabled = data.isEnabled,

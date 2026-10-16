@@ -353,14 +353,25 @@ class WizardBolusExecutorImpl(
         // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
         // Commit applies the same cap again, so the pump never sees the uncapped amount.
         val insulinAfterConstraints = wizard.insulinAfterConstraints
-        // Nothing to deliver (e.g. BG below target + high IOB, no carbs, or the whole dose was capped to 0):
-        // reject so the caller shows "no insulin required" instead of an empty confirmation.
-        if (insulinAfterConstraints <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
+        // Above a limit (max bolus) the dose is capped, not refused, as the phone wizard did in v3: the confirmation
+        // shows the capped dose and a "constraint applied" warning. A QuickWizard preset is still refused, see
+        // prepareQuickWizard. The capped dose is also the base the watch adds its +/- steps to, so the total the
+        // watch shows is the dose that is given.
+        val capped = Round.isMoreThanRounding(wizard.calculatedTotalInsulin, insulinAfterConstraints, pump.bolusStepSize(insulinAfterConstraints))
+        val baseInsulin = if (capped) insulinAfterConstraints else wizard.unclampedCalculatedInsulin
+        // Nothing to deliver (e.g. BG below target + high IOB, no carbs): reject so the caller shows the standard
+        // "no insulin required" instead of an empty confirmation. The guard lives here so every surface that recomputes
+        // through this path - phone wizard dialog, client relay, watch - gets it (it was previously only in the wear handler).
+        // Fork: a Warsaw fat/protein plan alone is still something to give (kept in the 2026-10-16 upstream merge).
+        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_no_insulin_required))
+        // A limit that leaves no insulin at all, and there are no carbs either: nothing would be given.
+        if (capped && insulinAfterConstraints <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
+            return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_constraint_bolus_size, wizard.calculatedTotalInsulin))
         evictStalePending()
         pending.park(wizard.timeStamp,
             PendingBolus(
-                wizard.unclampedCalculatedInsulin,
+                baseInsulin,
                 wizard.carbs,
                 wizard.createBolusCalculatorResult(
                     eCarbsGrams = inputs.eCarbsGrams,
@@ -400,6 +411,7 @@ class WizardBolusExecutorImpl(
             advisorApplies = advisorApplies,
             advisorLines = if (advisorApplies) wizard.buildConfirmationLines(advisor = true) else emptyList(),
             wizardDetail = wizard.buildWizardDetail().copy(
+                unclampedInsulin = baseInsulin,
                 eCarbsGrams = inputs.eCarbsGrams,
                 eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
                 eCarbsDurationHours = inputs.eCarbsDurationHours,
