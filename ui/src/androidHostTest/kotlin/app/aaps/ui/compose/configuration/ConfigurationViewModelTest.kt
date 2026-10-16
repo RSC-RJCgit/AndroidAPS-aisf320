@@ -117,6 +117,33 @@ internal class ConfigurationViewModelTest {
         verify(configBuilder, never()).requestPluginSwitch(any(), any(), any())
     }
 
+    private fun bgSource(name: String, enabled: Boolean): PluginBase = mock<PluginBase>().also {
+        whenever(it.pluginDescription).thenReturn(PluginDescription())
+        whenever(it.name).thenReturn(name)
+        whenever(it.isEnabled(PluginType.BGSOURCE)).thenReturn(enabled)
+    }
+
+    private fun bgSourceNamesShown(client: Boolean): List<String> {
+        whenever(config.AAPSCLIENT).thenReturn(client)
+        // Made before the stubbing below: Mockito does not allow stubbing inside another thenReturn.
+        val sources = arrayListOf(bgSource("NSClient BG", enabled = true), bgSource("Dexcom", enabled = false))
+        whenever(activePlugin.getSpecificPluginsVisibleInList(any())).thenReturn(ArrayList<PluginBase>())
+        whenever(activePlugin.getSpecificPluginsVisibleInList(PluginType.BGSOURCE)).thenReturn(sources)
+        sut.dismissHardwarePumpDialog()
+        return sut.uiState.value.categories.firstOrNull { it.type == PluginType.BGSOURCE }?.plugins?.map { it.name }.orEmpty()
+    }
+
+    /** A client shows its BG source (so the list of readings can be opened), but offers no other source to pick. */
+    @Test
+    fun clientShowsOnlyTheActiveBgSource() {
+        assertThat(bgSourceNamesShown(client = true)).containsExactly("NSClient BG")
+    }
+
+    @Test
+    fun masterShowsEveryBgSource() {
+        assertThat(bgSourceNamesShown(client = false)).containsExactly("NSClient BG", "Dexcom")
+    }
+
     @Test
     fun togglingAMultiSelectPluginDoesNotOpenTheSwapConfirmation() {
         val target = mock<PluginBase>()

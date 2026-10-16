@@ -354,8 +354,12 @@ class LoadSecondaryTreatmentsRunner(
             while (page < MAX_FULL_SYNC_PAGES) {
                 val sgvs = client.getSgvsNewerThan(pageFrom, PAGE_SIZE).values
                 val missing = sgvs.filter { sgv -> sgv.date?.let { !hasReadingNear(existing, it, NEAR_DUPLICATE_MS) } == true }
-                if (missing.isNotEmpty())
+                if (missing.isNotEmpty()) {
                     nsIncomingDataProcessor.processSgvs(missing.sortedBy { it.date ?: 0L }, doFullSync = true, fromLiveSite = true)
+                    // Save each page now. 100 days of one-minute BG is about 144,000 readings; held until the end they
+                    // filled the memory and the app crashed again and again (2026-10-16).
+                    storeDataForDb.storeGlucoseValuesToDb()
+                }
                 received += sgvs.size
                 stored += missing.size
                 page++

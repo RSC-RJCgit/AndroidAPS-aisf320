@@ -136,8 +136,9 @@ class ConfigurationViewModel(
         val lookup = mutableMapOf<String, PluginBase>()
         val categories = mutableListOf<ConfigCategoryUiModel>()
 
-        fun addCategory(type: PluginType) {
-            val plugins = activePlugin.getSpecificPluginsVisibleInList(type)
+        // onlyEnabled: list only the plugins that are switched on, so nothing else can be picked there.
+        fun addCategory(type: PluginType, onlyEnabled: Boolean = false) {
+            val plugins = activePlugin.getSpecificPluginsVisibleInList(type).filter { !onlyEnabled || it.isEnabled(type) }
             if (plugins.isEmpty()) return
             val titleRes = pluginCategoryTitle(type)
             val isMultiSelect = isMultiSelect(type)
@@ -188,7 +189,9 @@ class ConfigurationViewModel(
 
         // A category is also shown on a client when its selection syncs (clientSynced, SSOT-derived) — folded
         // into each existing gate (rather than appended) so client and master keep the same category order.
-        if (!config.AAPSCLIENT) addCategory(PluginType.BGSOURCE)
+        // A client has no choice of BG source (NSClient BG is forced on), but the category is still shown, with only the
+        // active source, so its page with the list of BG readings can be opened (2026-10-16, per explicit request).
+        addCategory(PluginType.BGSOURCE, onlyEnabled = config.AAPSCLIENT)
         if (!config.AAPSCLIENT || clientSynced(PluginType.SMOOTHING)) addCategory(PluginType.SMOOTHING)
         if (!config.AAPSCLIENT || clientSynced(PluginType.CALIBRATION)) addCategory(PluginType.CALIBRATION)
         if (!config.AAPSCLIENT) addCategory(PluginType.PUMP)
