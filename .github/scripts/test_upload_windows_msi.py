@@ -88,5 +88,23 @@ class UploadWindowsMsiTest(unittest.TestCase):
                 self.assertEqual(send.call_count, 1)
 
 
+    def test_finds_the_one_installer_of_each_type(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "AAPSClient2-4.0.0-arm64.dmg").write_bytes(b"mac")
+            (Path(directory) / "AAPSClient2-4.0.0.msi").write_bytes(b"win")
+            self.assertEqual(uploader.find_installer(directory, ".dmg").name, "AAPSClient2-4.0.0-arm64.dmg")
+            self.assertEqual(uploader.find_installer(directory, ".msi").name, "AAPSClient2-4.0.0.msi")
+
+    def test_missing_empty_or_unknown_installer_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                uploader.find_installer(directory, ".dmg")
+            (Path(directory) / "empty.dmg").write_bytes(b"")
+            with self.assertRaises(ValueError):
+                uploader.find_installer(directory, ".dmg")
+            with self.assertRaises(ValueError):
+                uploader.find_installer(directory, ".exe")
+
+
 if __name__ == "__main__":
     unittest.main()

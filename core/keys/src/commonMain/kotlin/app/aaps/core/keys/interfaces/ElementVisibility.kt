@@ -1,5 +1,7 @@
 package app.aaps.core.keys.interfaces
 
+import app.aaps.core.keys.BooleanKey
+
 /**
  * Functional interface for determining preference visibility at runtime.
  *
@@ -41,6 +43,14 @@ fun interface ElementVisibility {
          * pairing escape hatch must NOT use this. (`!isClient` short-circuits to always-visible on a master.)
          */
         val MASTER_OR_PAIRED_CLIENT = ElementVisibility { !it.isClient || it.masterOrPairedClient }
+
+        /**
+         * As [MASTER_OR_PAIRED_CLIENT], and also on a read-only client (2026-10-16). Used by the bolus calculator, which a
+         * read-only client opens as an example only: it shows the calculation but gives no bolus.
+         */
+        val MASTER_PAIRED_OR_READ_ONLY_CLIENT = ElementVisibility {
+            !it.isClient || it.masterOrPairedClient || it.preferences.get(BooleanKey.NsClientReadOnlyClient)
+        }
 
         /**
          * Visible only for non-patch pumps (e.g., insulin age preferences)

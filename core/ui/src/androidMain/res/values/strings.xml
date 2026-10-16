@@ -419,6 +419,7 @@
     <string name="scene_lock_banner_control_disabled">Master has disabled remote control. Scene controls will resume when it is re-enabled on the master.</string>
     <string name="master_offline_banner">Master device unreachable. Editing is disabled until the connection is restored.</string>
     <string name="master_control_disabled_banner">Master has disabled remote control. Editing is disabled until it is re-enabled on the master.</string>
+    <string name="wizard_read_only_example">Example only. A read-only client does not give the bolus. Give it on the master.</string>
     <string name="read_only_client_banner">Read-only client. The master does not accept remote control. A profile switch, a temp target or a note is sent to the master through Nightscout. Make other changes on the master.</string>
     <string name="scene_lock_reason_master_offline">Master disconnected</string>
     <string name="scene_lock_reason_control_disabled">Remote control disabled</string>

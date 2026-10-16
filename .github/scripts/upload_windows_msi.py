@@ -1,4 +1,4 @@
-"""Upload the Windows installer using the same Drive secret and folder as Branch CI."""
+"""Upload a desktop installer (Windows .msi or macOS .dmg) using the same Drive secret and folder as Branch CI."""
 
 import base64
 import json
@@ -12,6 +12,8 @@ import urllib.request
 
 DRIVE = "https://www.googleapis.com/drive/v3/files"
 CHUNK_SIZE = 8 * 1024 * 1024
+# The installer types, and the words used for them in the job summary.
+INSTALLER_LABELS = {".msi": "Windows installer", ".dmg": "macOS installer"}
 
 
 def credentials(encoded):
@@ -104,10 +106,21 @@ def upload(token, file, parent):
     raise ValueError("Installer is empty or its upload did not finish")
 
 
-def main():
-    files = list(Path("msi-artifacts").glob("*.msi"))
+def find_installer(directory, extension):
+    """The one installer of this type in the folder. Anything else is an error."""
+    if extension not in INSTALLER_LABELS:
+        raise ValueError("INSTALLER_EXTENSION must be .msi or .dmg")
+    files = list(Path(directory).glob("*" + extension))
     if len(files) != 1 or files[0].stat().st_size == 0:
-        raise ValueError("Expected one nonempty MSI in msi-artifacts")
+        raise ValueError(f"Expected one nonempty {extension} file in {directory}")
+    return files[0]
+
+
+def main():
+    # The Windows job sets neither, so it keeps the old behaviour: one .msi in msi-artifacts.
+    extension = os.environ.get("INSTALLER_EXTENSION", ".msi")
+    files = [find_installer(os.environ.get("INSTALLER_DIR", "msi-artifacts"), extension)]
+    label = INSTALLER_LABELS[extension]
     folder_name = os.environ["MSI_DRIVE_FOLDER"]
     form = credentials(os.environ["GDRIVE_OAUTH2"])
     for value in form.values():
@@ -125,11 +138,11 @@ def main():
     file_id = upload(token, files[0], parent)
     link = f"https://drive.google.com/file/d/{file_id}/view"
     print(f"Uploaded {files[0].name} to AAPS/{folder_name}")
-    print(f"Download Windows installer: {link}")
+    print(f"Download {label}: {link}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as stream:
-            stream.write(f"\n[Download Windows installer from Google Drive]({link})\n")
+            stream.write(f"\n[Download {label} {files[0].name} from Google Drive]({link})\n")
 
 
 if __name__ == "__main__":
@@ -140,5 +153,5 @@ if __name__ == "__main__":
         sys.exit(1)
     except (ValueError, KeyError, OSError) as error:
         # Do not print decoded secrets or OAuth response bodies.
-        print(f"Windows MSI upload failed ({type(error).__name__}); check the MSI and Drive configuration", file=sys.stderr)
+        print(f"Installer upload failed ({type(error).__name__}); check the installer and Drive configuration", file=sys.stderr)
         sys.exit(1)

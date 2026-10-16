@@ -153,12 +153,12 @@ private val STATUS_TARGET_COLOR = Color(0xFF66BB6A)
  * needs this (secondary graphs are non-interactive, so `.fixed(...)` churn never affected them).
  */
 /** With "Show the high area" off: the most the area above the high mark may take, as a part of the green range's height. */
-/** Fixed glucose range of the main graph, in mmol/L (2026-10-16). Graph 5 does not use it. */
+/** Fixed glucose range of the main graph, in mmol/L (2026-10-16): 2 to 12, a whole number of steps so the axis cannot grow past the top. Graph 5 does not use it. */
 private const val MAIN_GRAPH_MIN_MMOL = 2.0
-private const val MAIN_GRAPH_MAX_MMOL = 13.0
+private const val MAIN_GRAPH_MAX_MMOL = 12.0
 private const val MAIN_GRAPH_STEP_MMOL = 2.0
 
-/** The main graph's fixed axis, 2.0 to 13.0 mmol/L, in the units the graph is drawn in. */
+/** The main graph's fixed axis, 2.0 to 12.0 mmol/L, in the units the graph is drawn in. */
 internal fun mainGraphScale(mgdl: Boolean): NiceScale {
     val factor = if (mgdl) Constants.MMOLL_TO_MGDL else 1.0
     return NiceScale(MAIN_GRAPH_MIN_MMOL * factor, MAIN_GRAPH_MAX_MMOL * factor, MAIN_GRAPH_STEP_MMOL * factor)
@@ -607,7 +607,7 @@ fun BgGraphCompose(
         // activity peak sits at 80% of the panel height, so it ends up above the green range as on 3426.
         val axisDataMax = if (showActivity) maxOf(dataMax, activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)) else dataMax
         // Graph 5: raise the top so the four top band lanes sit above the green range and the curve, not on them.
-        // Main graph (2026-10-16, per explicit request): always 2.0 to 13.0 mmol/L, readings outside are cut off.
+        // Main graph (2026-10-16, per explicit request): always 2.0 to 12.0 mmol/L, readings outside are cut off.
         // Graph 5 keeps the range that follows the data.
         val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, axisDataMax, BG_TOP_BAND_FRACTION) else mainGraphScale(chartConfig.lowMark > 30.0)
         startAxisRangeProvider.maxX = maxX

@@ -1,5 +1,5 @@
-name: Windows MSI
-run-name: Windows MSI · ${{ github.event.head_commit.message || github.ref_name }}
+name: Desktop installers
+run-name: Desktop installers · ${{ github.event.head_commit.message || github.ref_name }}
 
 on:
   push:
@@ -114,4 +114,98 @@ jobs:
               Start-Sleep -Seconds (15 * $attempt)
             }
           }
+          exit 1
+
+  # macOS installers (2026-10-16): a DMG can only be made on a Mac, so each one is built on a Mac runner. Apple Silicon
+  # (arm64) and Intel (x64) each get their own DMG; the architecture is added to the file name so both fit in one Drive
+  # folder. The DMGs are not signed: the first time, macOS asks to allow the app in System Settings > Privacy & Security.
+  # After the Windows job, and one at a time, so two jobs never create the same Drive folder at once.
+  mac:
+    name: Build and upload macOS installer (Client${{ matrix.client }}, ${{ matrix.arch }})
+    needs: package
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        client: ${{ fromJSON(github.event_name == 'push' && '["2","1"]' || inputs.client == 'both' && '["2","1"]' || format('["{0}"]', inputs.client || '2')) }}
+        arch: [arm64, x64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'macos-latest' || 'macos-15-intel' }}
+    timeout-minutes: 120
+    env:
+      DESKTOP_CLIENT: ${{ matrix.client }}
+      GDRIVE_AAPS_FOLDER_ID: ${{ vars.GDRIVE_AAPS_FOLDER_ID || '1l7LZElkOLI1DVwd3o9rbtwqwtAjRloRz' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Read Java version and build folder
+        # The same folder name as the Windows job: <version>[_kmpNNN]_<yyyymmdd>_<hhmm>_<hash>, commit time in Adelaide.
+        shell: python
+        run: |
+          import json, os, re, subprocess
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          def git(*args): return subprocess.check_output(["git", *args], text=True).strip()
+          jdk = json.load(open(".github/jdk-map.json"))["default"]
+          version = re.search(r'val appVersion\s*=\s*"([^"]+)"', open("buildSrc/src/main/kotlin/Versions.kt").read()).group(1)
+          kmp = re.match(r"kmp[0-9]{3}", git("log", "-1", "--format=%s"))
+          stamp = datetime.fromisoformat(git("log", "-1", "--format=%cI")).astimezone(ZoneInfo("Australia/Adelaide")).strftime("%Y%m%d_%H%M")
+          folder = f"{version}{'_' + kmp.group(0) if kmp else ''}_{stamp}_{git('rev-parse', '--short=7', 'HEAD')}"
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              print(f"JAVA_VERSION={jdk}", file=env)
+              print(f"MSI_DRIVE_FOLDER={folder}", file=env)
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Test Drive uploader
+        run: python .github/scripts/test_upload_windows_msi.py
+
+      - name: Build DMG
+        run: >-
+          ./gradlew :desktop:shell:packageDmg "-Pclient=$DESKTOP_CLIENT" --no-daemon --console=plain
+          '-Dorg.gradle.jvmargs=-Xmx5g -XX:+UseParallelGC -Xss4m'
+          '-Dkotlin.compiler.execution.strategy=in-process' --max-workers=2
+
+      - name: Collect macOS installer
+        run: |
+          shopt -s nullglob
+          installers=(desktop/shell/build/compose/binaries/main/dmg/*.dmg)
+          if [ "${#installers[@]}" -ne 1 ]; then echo "Expected one DMG, found ${#installers[@]}"; exit 1; fi
+          mkdir -p dmg-artifacts
+          name="$(basename "${installers[0]}" .dmg)-${{ matrix.arch }}.dmg"
+          cp "${installers[0]}" "dmg-artifacts/$name"
+          echo "Installer: $name" >> "$GITHUB_STEP_SUMMARY"
+          echo "Drive folder: AAPS/$MSI_DRIVE_FOLDER" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload macOS installer to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-client${{ env.DESKTOP_CLIENT }}-${{ matrix.arch }}-${{ github.sha }}
+          path: dmg-artifacts/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload macOS installer to Google Drive
+        env:
+          GDRIVE_OAUTH2: ${{ secrets.GDRIVE_OAUTH2 }}
+          INSTALLER_DIR: dmg-artifacts
+          INSTALLER_EXTENSION: .dmg
+        run: |
+          for attempt in 1 2 3 4; do
+            if python .github/scripts/upload_windows_msi.py; then exit 0; fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "Drive upload attempt $attempt failed; retrying. Installer is already available in GitHub Actions."
+              sleep $((15 * attempt))
+            fi
+          done
           exit 1

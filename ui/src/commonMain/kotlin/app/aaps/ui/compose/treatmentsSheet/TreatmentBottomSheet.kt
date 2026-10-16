@@ -37,6 +37,7 @@ import app.aaps.core.ui.compose.TonalIcon
 import app.aaps.core.ui.compose.consumeOverscroll
 import app.aaps.core.ui.compose.icons.IcBolus
 import app.aaps.core.ui.compose.icons.IcCarbs
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.masterEditingEnabled
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.navigation.color
@@ -325,8 +326,11 @@ private fun TreatmentItem(
     val desc = elementType.description()
     // A relayed action (visible only to master/paired-client) is also DISABLED when the master is unreachable or
     // has remote control off. Local items (CGM, Calibration) use the default ALWAYS visibility → stay enabled.
-    val effectiveEnabled = enabled &&
-        (masterEditingEnabled() || elementType.visibility != ElementVisibility.MASTER_OR_PAIRED_CLIENT)
+    // The bolus calculator also opens on a read-only client, as an example only (it gives no bolus there).
+    val readOnlyExample = elementType.visibility == ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT && LocalReadOnlyClient.current
+    val relayed = elementType.visibility == ElementVisibility.MASTER_OR_PAIRED_CLIENT ||
+        elementType.visibility == ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT
+    val effectiveEnabled = enabled && (readOnlyExample || masterEditingEnabled() || !relayed)
     ListItem(
         headlineContent = {
             Text(
