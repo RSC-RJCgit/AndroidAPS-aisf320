@@ -3078,9 +3078,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // "10g carbs" is a FIXED placeholder every time, regardless of the real SMB size -- per explicit
     // instruction, not a reverse-calculated equivalent. Same 1.0x/1.5x fat/protein ratios
     // WizardDialog.autoFillProteinFatFromCarbs() uses for its own non-"unreliable" default path.
-    // BCR has no separate fat/protein columns (the real wizard's own FPU plan is text-only in its BCR
-    // note too -- see splitProjectionNote()'s "Protein+Fat ...U over ...min" line), so the FPU
-    // equivalent here is likewise note-text only, never fed into any carbsInsulin/dosing field.
+    // 2026-10-16, per explicit request: full AAPS on the Virtual pump only (the call site checks it), and the fat/protein are
+    // now really scheduled as a Warsaw FPU series (BolusWizard.scheduleFpuSeriesOnly), like a confirmed wizard: it cancels
+    // doses still pending from an earlier wizard and a later wizard cancels it. The 10g carbs stay calculation-only.
     private fun insertUamTier3PseudoWizardEntry(smbDelivered: Double) {
         val profile = profileFunction.getProfile() ?: return
         val ic = profile.getIc()
@@ -3117,13 +3117,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             totalInsulin = smbDelivered,
             percentageCorrection = 100,
             profileName = profileFunction.getProfileName(),
-            note = "UAM Tier3 pseudo-wizard: equiv ${pseudoCarbs.toInt()}g carbs, FPU fat=${pseudoFatG}g/protein=${pseudoProteinG}g " +
-                "(not actually entered/dosed) -- real Tier3 SMB ${round(smbDelivered, 2)}U delivered via loop"
+            note = "UAM Tier3 pseudo-wizard: equiv ${pseudoCarbs.toInt()}g carbs (not entered), FPU fat=${pseudoFatG}g/protein=${pseudoProteinG}g " +
+                "scheduled as a Warsaw series -- real Tier3 SMB ${round(smbDelivered, 2)}U delivered via loop"
         )
         disposable += persistenceLayer.insertOrUpdateBolusCalculatorResult(bcr).subscribe(
             { },
             { error -> aapsLogger.error(LTag.APS, "Failed to save UamTier3 pseudo-wizard BCR", error) }
         )
+        // The FPU series only: carbs 0, no BG, IOB, trend or COB, so there is no immediate dose.
+        bolusWizardProvider.get().doCalc(
+            profile = profile,
+            profileName = profileFunction.getProfileName(),
+            tempTarget = null,
+            carbs = 0,
+            cob = 0.0,
+            bg = glucoseStatusProvider.glucoseStatusData?.glucose ?: 0.0,
+            correction = 0.0,
+            useBg = false,
+            useCob = false,
+            includeBolusIOB = false,
+            includeBasalIOB = false,
+            useSuperBolus = false,
+            useTT = false,
+            useTrend = false,
+            useAlarm = false,
+            notes = "UAM Tier3 pseudo-wizard FPU",
+            protein = pseudoProteinG,
+            fat = pseudoFatG
+        ).scheduleFpuSeriesOnly()
     }
 
     private fun todOffsetCarePortalNote(value: Double): String {
@@ -10087,7 +10108,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // with the same kind of carb+FPU annotation a real wizard entry would carry. BCR-only --
             // see insertUamTier3PseudoWizardEntry()'s own doc comment for why no Bolus/Carbs record
             // is inserted alongside it.
-            (lastAPSResult?.smb ?: 0.0).let { smbDelivered -> if (smbDelivered >= 1.0) insertUamTier3PseudoWizardEntry(smbDelivered) }
+            // 2026-10-16, per explicit request: full AAPS on the Virtual pump only. On 16 Oct it ran on Live (a real pump).
+            (lastAPSResult?.smb ?: 0.0).let { smbDelivered ->
+                if (smbDelivered >= 1.0 && activePlugin.activePump is VirtualPump && !config.AAPSCLIENT) insertUamTier3PseudoWizardEntry(smbDelivered)
+            }
         }
         // T3AcceISF CarePortal note removed 2026-08-27 (block itself removed in DetermineBasalAutoISF.kt,
         // per explicit instruction -- no longer wanted).
