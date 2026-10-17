@@ -653,10 +653,12 @@ internal fun smbColumnTimes(timestamps: List<Long>, windowMs: Long = 35 * 60_000
     return result.toList()
 }
 
-/** Arrow at an SMB time. The tip points up. [pinToBottom] sits it on the bottom edge of the graph. */
+/** Arrow at an SMB (or zero bolus) time. The tip points up. [pinToBottom] sits it on the bottom edge of the graph. */
 class SmbArrows(
     private val items: List<SmbStackItem>,
     private val pinToBottom: Boolean = false,
+    /** Size of the BGL arrow, 1 = an SMB arrow. A zero bolus uses a larger one. */
+    private val scale: Float = 1f,
 ) : Decoration {
 
     override fun drawOverLayers(context: CartesianDrawingContext) {
@@ -702,10 +704,10 @@ class SmbArrows(
                         val anchorY = item.anchorY ?: return@with
                         val dotY = layerBounds.bottom - layerBounds.height * ((anchorY - yRange.minY) / yLength).toFloat()
                         tip = dotY + 4.dp.toPx()
-                        base = tip + 10.8f * d
-                        foot = base + unit
-                        stroke = 2f
-                        half = 1.8f * d
+                        base = tip + 10.8f * d * scale
+                        foot = base + unit * scale
+                        stroke = 2f * scale
+                        half = 1.8f * d * scale
                     }
                     val path = Path().apply {
                         moveTo(canvasX, tip)

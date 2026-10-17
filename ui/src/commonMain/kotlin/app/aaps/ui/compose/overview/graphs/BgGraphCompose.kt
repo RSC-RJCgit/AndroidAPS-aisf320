@@ -112,6 +112,9 @@ private const val SERIES_PRED_ACOB = "pred_acob"
 private const val SERIES_PRED_UAM = "pred_uam"
 private const val SERIES_PRED_ZT = "pred_zt"
 private const val SERIES_BOLUS = "bolus"
+
+/** A zero-bolus arrow is this much larger than an SMB arrow. */
+private const val ZERO_BOLUS_ARROW_SCALE = 1.5f
 private const val SERIES_CARBS = "carbs"
 
 /** All prediction series identifiers */
@@ -624,7 +627,8 @@ fun BgGraphCompose(
         fun nearest(timestamp: Long): Double? =
             bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
         val markDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
-        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL }.mapNotNull { bolus ->
+        // A zero bolus gets a small arrow (zeroBolusArrows), not the big mark
+        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 }.mapNotNull { bolus ->
             nearest(bolus.timestamp)?.let { bolus.timestamp to it }
         }
         val carbPoints = treatments.carbs.mapNotNull { carb ->
@@ -922,7 +926,7 @@ fun BgGraphCompose(
             val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
             SmbStackItem(
                 x = timestampToX(smb.timestamp, minTimestamp),
-                label = smb.label,
+                label = decimalFormatter.to2Decimal(smb.amount),
                 stackIndex = stack[index],
                 anchorY = dot?.value,
                 color = isfColor(dot?.dominantIsf),
@@ -1009,6 +1013,23 @@ fun BgGraphCompose(
     }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
+    // A zero bolus: an SMB-style arrow under the BG dot, a little larger, in the bolus colour. Its 0.00 label stays at
+    // the bottom (bolusStack).
+    val zeroBolusArrowMarks = remember(treatments, bgReadings, minTimestamp) {
+        val zeroBoluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount <= 0.0 }
+        SmbArrows(
+            zeroBoluses.map { bolus ->
+                SmbStackItem(
+                    x = timestampToX(bolus.timestamp, minTimestamp),
+                    label = bolus.label,
+                    stackIndex = 0,
+                    anchorY = bgReadings.minByOrNull { abs(it.timestamp - bolus.timestamp) }?.value,
+                    color = Color(0xFFFF00FF),
+                )
+            },
+            scale = ZERO_BOLUS_ARROW_SCALE
+        )
+    }
     val tapReadings = bgReadings + bucketedData +
         (if (showRaw) seriesRegistry[SERIES_RAW].orEmpty() else emptyList()) +
         (if (showUkf) seriesRegistry[SERIES_UKF].orEmpty() else emptyList())
@@ -1026,8 +1047,8 @@ fun BgGraphCompose(
             )
         }
     }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
     }
 
     // =========================================================================

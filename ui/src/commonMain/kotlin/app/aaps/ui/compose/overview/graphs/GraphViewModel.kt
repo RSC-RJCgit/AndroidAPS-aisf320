@@ -109,13 +109,42 @@ class GraphViewModel(
     /** Max IOB setting. The profile basal line on Graph 5 uses 0 to 30% of it as its scale. */
     val smbMaxIob: Double get() = preferences.get(DoubleKey.ApsSmbMaxIob)
 
+    /**
+     * Desktop only: true after a long press while the automatic clean graph was shown. The graph then shows the
+     * normal display again. The graphs clear it when the zoom changes.
+     */
+    private val _cleanGraphOverride = MutableStateFlow(false)
+    val cleanGraphOverride: StateFlow<Boolean> = _cleanGraphOverride.asStateFlow()
+
+    /** Set by the graphs: true on desktop while the automatic clean graph is shown. */
+    var cleanGraphCanBeOverridden = false
+
+    fun clearCleanGraphOverride() {
+        _cleanGraphOverride.value = false
+    }
+
+    /** A long press during the automatic clean graph only ends the clean graph. Returns true when it did that. */
+    private fun overrideCleanGraph(): Boolean {
+        if (!cleanGraphCanBeOverridden || _cleanGraphOverride.value) return false
+        _cleanGraphOverride.value = true
+        return true
+    }
+
     /** Basal-rate icon: arrows on, arrows off, then plain green dots. */
     fun onBasalIconLongPress() {
+        if (overrideCleanGraph()) {
+            _graphDisplay.update { it.copy(basalToggleIndex = 0) }
+            return
+        }
         _graphDisplay.update { it.copy(basalToggleIndex = (it.basalToggleIndex + 1) % 3) }
     }
 
     /** IOB icon: show or hide the SMB numbers, and go back to coloured dots with arrows. */
     fun onIobIconLongPress() {
+        if (overrideCleanGraph()) {
+            _graphDisplay.update { it.copy(showSmbLabels = true, basalToggleIndex = 0) }
+            return
+        }
         _graphDisplay.update { it.copy(showSmbLabels = !it.showSmbLabels, basalToggleIndex = 0) }
     }
 
