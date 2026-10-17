@@ -40,6 +40,7 @@ import app.aaps.database.AppRepository
 import app.aaps.database.di.IosAppDatabaseBuilder
 import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.implementation.maintenance.cloud.AuthBrowser
+import app.aaps.implementation.notifications.IosBackgroundKeepAlive
 import app.aaps.implementation.notifications.SnackbarNotificationFallback
 import app.aaps.implementation.plugin.PluginStore
 import app.aaps.implementation.receivers.IosReceiverStatusStore
@@ -149,6 +150,8 @@ interface IosAppGraph : MetroViewModelMultibindings {
     val periodicMaintenance: PeriodicMaintenance
     // Turns a snackbar into a notification when no screen is up to show it. Shared with Android.
     val snackbarNotificationFallback: SnackbarNotificationFallback
+    // Silent audio that keeps the app running in the background (setting: Keep running in background).
+    val backgroundKeepAlive: IosBackgroundKeepAlive
     val appScope: CoroutineScope
     val swDefinition: SWDefinition
     val builtInSearchables: BuiltInSearchables

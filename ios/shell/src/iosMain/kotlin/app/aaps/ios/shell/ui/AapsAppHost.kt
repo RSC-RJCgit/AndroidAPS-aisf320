@@ -141,6 +141,9 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
     // gets from `ProcessLifecycleListener.onPause`. Same placement and the same UIKit reason.
     IosProtectionLifecycle(logger, graph.protectionCheck).start()
 
+    // Silent audio so iOS does not suspend the app in the background. Same UIKit reason as above.
+    graph.backgroundKeepAlive.start()
+
     // Read once, outside the composition, for the same reason as the graph: decoding the icon on
     // every recomposition would be work for nothing.
     // From the bundle, like the icon and for the same reason: one framework serves both AAPSClient

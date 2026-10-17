@@ -45,5 +45,15 @@
 	-->
 	<key>AAPSBuildType</key>
 	<string>$(CONFIGURATION)</string>
+	<!--
+	  Lets the app keep running in the background while it plays audio. `IosBackgroundKeepAlive` plays
+	  silent sound for this (the LoopFollow way), so the Nightscout connection is not suspended a few
+	  seconds after the app leaves the screen. The user can turn it off: Alerts > Keep running in
+	  background. Apple does not accept this in the App Store; TestFlight internal testing is fine.
+	-->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>

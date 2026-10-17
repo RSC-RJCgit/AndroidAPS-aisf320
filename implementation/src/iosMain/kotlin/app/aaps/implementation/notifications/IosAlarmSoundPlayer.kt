@@ -58,7 +58,8 @@ import platform.Foundation.NSURL
 @Inject
 class IosAlarmSoundPlayer(
     private val aapsLogger: AAPSLogger,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val backgroundKeepAlive: IosBackgroundKeepAlive
 ) : AlarmSoundPlayer {
 
     private val scope = CoroutineScope(Dispatchers.Main)
@@ -92,6 +93,8 @@ class IosAlarmSoundPlayer(
             aapsLogger.error(LTag.NOTIFICATION, "Alarm sound ${fileName(sound)} is not in the app bundle, cannot alarm")
             return
         }
+        // The keep-alive leaves the session alone until the alarm stops
+        backgroundKeepAlive.alarmPlaying = true
         activateSession()
 
         val created = memScoped {
@@ -134,6 +137,11 @@ class IosAlarmSoundPlayer(
         currentOwner = null
         // The session is left active on purpose: deactivating it on every alarm would interrupt
         // whatever else the phone is playing twice per alarm instead of once.
+        // The keep-alive takes the session back after an alarm (an alarm may have set SoloAmbient).
+        if (backgroundKeepAlive.alarmPlaying) {
+            backgroundKeepAlive.alarmPlaying = false
+            backgroundKeepAlive.resume()
+        }
     }
 
     private suspend fun runRamp(target: AVAudioPlayer) {
