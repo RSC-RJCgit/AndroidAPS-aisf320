@@ -207,6 +207,13 @@ interface OverviewData {
     var heartRateGraphSeries: SeriesData
     var stepsForScale: Scale
     var stepsCountGraphSeries: SeriesData
+    // S5, S15, S30 and S60 as lines (CharType.STEPS_LINES, 2026-10-18), scaled by stepsLinesScale.
+    var stepsLinesScale: Scale
+    var maxStepsLinesValue: Double
+    var stepsLine5Series: SeriesData
+    var stepsLine15Series: SeriesData
+    var stepsLine30Series: SeriesData
+    var stepsLine60Series: SeriesData
 
     // AutoISF interim results
     var maxIobThValueFound: Double

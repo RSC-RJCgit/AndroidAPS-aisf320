@@ -49,6 +49,8 @@ interface OverviewMenus {
         ACCE_WT,
         PP_WT,
         PROFILE_BASAL,
+        // S5, S15, S30 and S60 as four lines (2026-10-18). Appended last for ordinal stability, like the ones above.
+        STEPS_LINES,
     }
 
     val setting: List<Array<Boolean>>

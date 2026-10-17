@@ -386,6 +386,8 @@
     <string name="old_data">OLD DATA</string>
     <string name="overview_show_steps">Steps</string>
     <string name="steps_shortname">STEPS</string>
+    <string name="overview_show_steps_lines">Steps 5/15/30/60</string>
+    <string name="steps_lines_shortname" comment="Short graph label for the four step count lines (5, 15, 30 and 60 minutes)">STP4</string>
     <string name="overview_show_raw_bg">Raw BG (unsmoothed)</string>
     <string name="raw_bg_shortname">RAW</string>
     <string name="overview_show_raw_bg_smoothed">Raw BG (UKF smoothed)</string>

@@ -137,6 +137,11 @@ class OverviewDataImpl @Inject constructor(
         isfIndicesSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         heartRateGraphSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         stepsCountGraphSeries = PointsWithLabelGraphSeries<StepsDataPoint>()
+        maxStepsLinesValue = 0.0
+        stepsLine5Series = LineGraphSeries<ScaledDataPoint>()
+        stepsLine15Series = LineGraphSeries<ScaledDataPoint>()
+        stepsLine30Series = LineGraphSeries<ScaledDataPoint>()
+        stepsLine60Series = LineGraphSeries<ScaledDataPoint>()
         maxVarSensValueFound = 200.0
         minVarSensValueFound = 50.0
         varSensSeries = LineGraphSeries<ScaledDataPoint>()
@@ -393,6 +398,12 @@ class OverviewDataImpl @Inject constructor(
     override var heartRateGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var stepsForScale = Scale()
     override var stepsCountGraphSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override var stepsLinesScale = Scale()
+    override var maxStepsLinesValue = 0.0
+    override var stepsLine5Series: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var stepsLine15Series: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var stepsLine30Series: SeriesData = LineGraphSeries<ScaledDataPoint>()
+    override var stepsLine60Series: SeriesData = LineGraphSeries<ScaledDataPoint>()
 
 
     override var maxAcceIsfValueFound = 1.5

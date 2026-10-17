@@ -82,6 +82,10 @@ class LiveStepsMirror @Inject constructor(private val preferences: Preferences) 
         it.timestamp <= timestamp && timestamp - it.timestamp <= MAX_AGE_MS
     }
 
+    /** Every saved sample from [from] to [to], oldest first. For the steps graph (2026-10-18). */
+    @Synchronized
+    fun between(from: Long, to: Long): List<Sample> = samples().filter { it.timestamp in from..to }.sortedBy { it.timestamp }
+
     /** Require known steps throughout a historical BG episode, not merely absence of high SC rows. */
     @Synchronized
     fun noHighStepsDuring(timestamps: List<Long>, maxSteps60: Int): Boolean =

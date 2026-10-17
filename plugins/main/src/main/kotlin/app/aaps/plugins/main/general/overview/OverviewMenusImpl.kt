@@ -98,6 +98,8 @@ class OverviewMenusImpl @Inject constructor(
         ACCE_WT(R.string.overview_show_acce_wt, app.aaps.core.ui.R.attr.acceIsfColor, app.aaps.core.ui.R.attr.menuTextColorInverse, primary = false, secondary = true, shortnameId = R.string.acce_wt_shortname),
         PP_WT(R.string.overview_show_pp_wt, app.aaps.core.ui.R.attr.ppIsfColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.pp_wt_shortname),
         PROFILE_BASAL(R.string.overview_show_profile_basal, app.aaps.core.ui.R.attr.profileBasalColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.profile_basal_shortname),
+        // S5, S15, S30 and S60 as four lines (2026-10-18). See GraphData.addStepsLines(). Appended last, same order as OverviewMenus.CharType.
+        STEPS_LINES(R.string.overview_show_steps_lines, app.aaps.core.ui.R.attr.stepsColor, app.aaps.core.ui.R.attr.menuTextColor, primary = false, secondary = true, shortnameId = R.string.steps_lines_shortname),
     }
 
     private val runningAutoIsf: Boolean

@@ -646,6 +646,21 @@ class GraphData @Inject constructor(
         overviewData.stepsForScale.multiplier = maxY * scale / maxSteps
     }
 
+    // S5, S15, S30 and S60 as four lines (CharType.STEPS_LINES, 2026-10-18). On its own the axis runs 0 to the highest S60;
+    // next to other series the lines are scaled to [scale] of the graph height.
+    fun addStepsLines(useForScale: Boolean, scale: Double) {
+        val maxSteps = overviewData.maxStepsLinesValue
+        if (useForScale) {
+            minY = 0.0
+            maxY = maxSteps
+        }
+        addSeries(overviewData.stepsLine60Series as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.stepsLine30Series as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.stepsLine15Series as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.stepsLine5Series as LineGraphSeries<ScaledDataPoint>)
+        overviewData.stepsLinesScale.multiplier = maxY * scale / maxSteps
+    }
+
     // AutoISF interim data
     fun addAcceIsf(useForScale: Boolean, scale: Double, useCommonFactor: Boolean,  maxCommonFactor: Double) {
         if (useCommonFactor) {
