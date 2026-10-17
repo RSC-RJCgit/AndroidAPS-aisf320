@@ -21,6 +21,9 @@ import java.util.Date
 import java.util.IdentityHashMap
 import java.util.Locale
 
+/** A 0.00 bolus arrow is this much larger than the SMB arrow at the BG dot. */
+private const val ZERO_BOLUS_ARROW_SCALE = 1.5f
+
 /**
  * Series that plots the data as points.
  * The points can be different shapes or a
@@ -804,19 +807,36 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
                 val bolusSize = value.size * scaledPxSize * 1.2f
-                // Offset down from the BG line so this doesn't sit exactly on top of a carb marker,
-                // which is also placed at the nearest-BG-line position.
-                val bEndY = (endY + bolusSize * 2f).coerceIn(graphTop + bolusSize, graphTop + graphHeight - bolusSize)
-                val bTriBase = bEndY + bolusSize * 0.67f
-                drawArrows(arrayOf(
-                    Point(endX.toInt(), (bEndY - bolusSize).toInt()),
-                    Point((endX + bolusSize).toInt(), bTriBase.toInt()),
-                    Point((endX - bolusSize).toInt(), bTriBase.toInt())
-                ), canvas, mPaint)
-                // shaft below the arrowhead, matching the SMB arrow's shaft style
-                mPaint.strokeWidth = 2f
-                mPaint.style = Paint.Style.STROKE
-                canvas.drawLine(endX, bTriBase, endX, bTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
+                if ((value as? BolusDataPoint)?.data?.amount == 0.0) {
+                    // A 0.00 bolus (real, or a "Wizard: 0U calculated" point): the slim SMB arrow under the BG
+                    // dot, ZERO_BOLUS_ARROW_SCALE times larger, not the big triangle a real bolus gets.
+                    val k = ZERO_BOLUS_ARROW_SCALE
+                    val triTop = endY + bolusSize
+                    val triBase = triTop + bolusSize * 1.5f * k
+                    val halfWidth = bolusSize * 0.25f * k
+                    drawArrows(arrayOf(
+                        Point(endX.toInt(), triTop.toInt()),
+                        Point((endX + halfWidth).toInt(), triBase.toInt()),
+                        Point((endX - halfWidth).toInt(), triBase.toInt())
+                    ), canvas, mPaint)
+                    mPaint.strokeWidth = 2f * k
+                    mPaint.style = Paint.Style.STROKE
+                    canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f * k, mPaint)
+                } else {
+                    // Offset down from the BG line so this doesn't sit exactly on top of a carb marker,
+                    // which is also placed at the nearest-BG-line position.
+                    val bEndY = (endY + bolusSize * 2f).coerceIn(graphTop + bolusSize, graphTop + graphHeight - bolusSize)
+                    val bTriBase = bEndY + bolusSize * 0.67f
+                    drawArrows(arrayOf(
+                        Point(endX.toInt(), (bEndY - bolusSize).toInt()),
+                        Point((endX + bolusSize).toInt(), bTriBase.toInt()),
+                        Point((endX - bolusSize).toInt(), bTriBase.toInt())
+                    ), canvas, mPaint)
+                    // shaft below the arrowhead, matching the SMB arrow's shaft style
+                    mPaint.strokeWidth = 2f
+                    mPaint.style = Paint.Style.STROKE
+                    canvas.drawLine(endX, bTriBase, endX, bTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
+                }
                 if (value.label.isNotEmpty()) {
                     val labelRatY = (value.labelY - minY) / diffY
                     val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
