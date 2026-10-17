@@ -123,6 +123,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.round
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 @SingleIn(AppScope::class)
@@ -804,6 +805,9 @@ open class OpenAPSAutoISFPlugin(
             maxIob = oapsProfile.max_iob,
             targetBg = targetBg,
             statesOn = statesOn,
+            steps5 = steps5(now),
+            steps30 = steps30(now),
+            steps60 = steps60(now),
         )
         applyProfileBatch(now = now, bg = glucoseStatus.glucose)
         applyTtExits(
@@ -872,6 +876,14 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote("UamBlk")
             runMarks.mark(RunMark.UAM_BOOST_HI_BRK_BLOCK, now)
             aapsLogger.debug(LTag.APS, "UAM boost suppressed under a quiet high brake")
+        }
+        // 2026-10-18: the activity factor for the Tier 3 UAM boost (scale) and its pseudo-wizard FPU. 0 turns the boost off.
+        val tier3Activity = activityFactor(iobArray[0].iob, oapsProfile.max_iob, steps5(now), steps30(now), steps60(now))
+        if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && runMarks.ready(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, 15, now)) {
+            activityFactorNote(tier3Activity)?.let {
+                carePortalNote(it)
+                runMarks.mark(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, now)
+            }
         }
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
@@ -953,11 +965,11 @@ open class OpenAPSAutoISFPlugin(
             hiBrkQuietUamBlock = hiBrkQuiet,
             riseHold = riseHoldThisCycle,
             mildFailsafeThisCycle = mildFailsafeThisCycle,
-            uamBoostEnabled = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled),
+            uamBoostEnabled = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && tier3Activity > 0.0,
             uamBoostUnrestricted = preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled),
             uamBoostMaxBolus = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus),
             uamBoostMaxIobPercent = preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toDouble(),
-            uamBoostScale = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale),
+            uamBoostScale = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) * tier3Activity,
             daytimeGateBypass = newPodHighBypass(now, glucoseStatus.glucose) || runMarks.recent(RunMark.USUAL2, 90, now),
             recentLowBg = recentLowBgMgdl(now),
         ).also {
@@ -1033,7 +1045,10 @@ open class OpenAPSAutoISFPlugin(
                     // 2026-10-16, per explicit request: its fat and protein are really scheduled as a Warsaw FPU series, through
                     // the same scheduler as a confirmed wizard: it cancels a series still waiting from an earlier wizard, and a
                     // later wizard cancels it. Each dose keeps its BG and IOB-rise checks. The 10 g carbs stay calc-only.
-                    warsawFpuPlan(UAM_TIER3_PLACEHOLDER_PROTEIN_G, UAM_TIER3_PLACEHOLDER_FAT_G, profile.getIc())?.let { plan ->
+                    // 2026-10-18: scaled by the activity factor (0.5 while walking). At 0 the boost was off, so this is not reached.
+                    val fpuProtein = (UAM_TIER3_PLACEHOLDER_PROTEIN_G * tier3Activity).roundToInt()
+                    val fpuFat = (UAM_TIER3_PLACEHOLDER_FAT_G * tier3Activity).roundToInt()
+                    warsawFpuPlan(fpuProtein, fpuFat, profile.getIc())?.let { plan ->
                         bolusWizard().scheduleWarsawDoses(plan, iobBaseline = iobArray[0].iob, source = Sources.Automation)
                     }
                 }
@@ -2034,6 +2049,8 @@ open class OpenAPSAutoISFPlugin(
             (standard110.isNotEmpty() && profileName == standard110) ||
             steps30 > 200
         val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
+        // 2026-10-18: the activity factor for BMild and its failsafe. 0 (IOB high) skips the ratio raise, 0.5 (walking) halves it.
+        val activity = activityFactor(iob, constraintsChecker.getMaxIOBAllowed().value(), steps5, steps30, steps60(now))
         if (bg3 && !blocked) {
             runMarks.mark(RunMark.BOLUS_GIVEN, now)
             runMarks.mark(RunMark.BOLUS_GIVEN_BG3, now)
@@ -2047,9 +2064,12 @@ open class OpenAPSAutoISFPlugin(
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD, now)
             mildThisCycle = true
             if (bg < 106.2) preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
-            applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = caution))
+            if (activity > 0.0) {
+                applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = caution, activity = activity))
+            }
+            activityFactorNote(activity)?.let { carePortalNote(it) }
             startMildHoldTarget()
-            val mildStep = if (caution) 0.075 else 0.15
+            val mildStep = (if (caution) 0.075 else 0.15) * activity
             sendAutoSms("BolusGivenMild: g=${decimals(bg / 18.016, 1)} (+$mildStep)")
             carePortalNote("BMild")
             aapsLogger.debug(LTag.APS, "BolusGivenMild marked")
@@ -2075,7 +2095,10 @@ open class OpenAPSAutoISFPlugin(
             runMarks.mark(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, now)
             mildFailsafeThisCycle = true
             if (bg < 106.2) preferences.put(BooleanNonKey.ApsAutoIsfMildOffsetZeroActive, true)
-            applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = false))
+            if (activity > 0.0) {
+                applyBoostRaise(boostRaises(strong = false, caution = false), boostedDeliveryRatio(mildBase, strong = false, caution = false, activity = activity))
+            }
+            activityFactorNote(activity)?.let { carePortalNote(it) }
             startMildHoldTarget()
             sendAutoSms("BolusGivenMildFailsafe: g=${decimals(bg / 18.016, 1)} IOB=${decimals(iob, 2)} (no SMB in 20min despite confirmed rise)")
             carePortalNote("BMildFS")
@@ -2567,19 +2590,63 @@ open class OpenAPSAutoISFPlugin(
         maxIob: Double,
         targetBg: Double,
         statesOn: Boolean,
+        steps5: Int,
+        steps30: Int,
+        steps60: Int,
     ) {
         val store = states()
         val ukf = ukfRawNow(now)
         val hp = ukf.delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        val stuckHighReady = runMarks.ready(RunMark.STUCK_HIGH, 30, now)
         val branch = stuckHighBranch(
-            ready = runMarks.ready(RunMark.STUCK_HIGH, 30, now),
+            ready = stuckHighReady,
             bg = bg,
             iob = iob,
             maxIob = maxIob,
             hp = hp,
             targetMmol = targetBg / 18.0182,
             nightRising = minuteInWindow(minuteOfDay, 20 * 60, 6 * 60) && shortDelta > 0.0 && longDelta > 0.0,
+            delta = delta,
+            shortDelta = shortDelta,
+            steps5 = steps5,
+            steps30 = steps30,
+            steps60 = steps60,
         )
+        val blockReason = stuckHighBlockReason(iob, maxIob, delta, shortDelta, steps5, steps30, steps60)
+        if (stuckHighReady && hp != null && bg >= 153.1 && blockReason != null && runMarks.ready(RunMark.STUCK_HIGH_BLOCK_NOTE, 30, now)) {
+            aapsLogger.debug(LTag.APS, "Stuck high blocked ($blockReason): g=${decimals(bg / 18.0182, 1)} iob=${decimals(iob, 2)} S30=$steps30 S60=$steps60")
+            carePortalNote("SHBlk")
+            runMarks.mark(RunMark.STUCK_HIGH_BLOCK_NOTE, now)
+        }
+        val activeTt = persistenceLayer.getTemporaryTargetActiveAt(now)
+        if (runMarks.ready(RunMark.FALL_RESCUE, 30, now) &&
+            fallRescueDue(activeTt?.lowTarget, activeTt?.duration ?: 0L, iob, delta, steps30)
+        ) {
+            // Replaces the low TT in one step: startBrakeTarget does nothing while a TT is active.
+            persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+                temporaryTarget = TT(
+                    timestamp = now,
+                    duration = T.mins(60).msecs(),
+                    reason = TT.Reason.AUTOMATION,
+                    lowTarget = 117.1 /* 6.5 mmol */,
+                    highTarget = 117.1
+                ),
+                action = Action.TT,
+                source = Sources.Automation,
+                note = "AutoISF: fall rescue",
+                listValues = listOf(
+                    ValueWithUnit.TETTReason(TT.Reason.AUTOMATION),
+                    ValueWithUnit.Mgdl(117.1),
+                    ValueWithUnit.Minute(60)
+                )
+            )
+            runMarks.mark(RunMark.FALL_RESCUE, now)
+            carePortalNote("FalRs")
+            val text = "FallRescue: BG ${decimals(bg / 18.0182, 1)} falling ${decimals(delta / 18.0182, 2)}/5min, " +
+                "IOB ${decimals(iob, 2)}, S30 $steps30 -> TT 6.5 60min. Eat carbs?"
+            sendAutoSms(text)
+            phoneAlert(text)
+        }
         if (branch == StuckHighBranch.RATIO) {
             val boosted = stuckHighRatio(smb_delivery_ratio, smb_delivery_ratio_max)
             if (!deliveryNear(smb_delivery_ratio, boosted)) {

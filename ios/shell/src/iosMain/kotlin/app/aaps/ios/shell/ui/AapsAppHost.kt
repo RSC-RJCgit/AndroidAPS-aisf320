@@ -143,6 +143,9 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
 
     // Silent audio so iOS does not suspend the app in the background. Same UIKit reason as above.
     graph.backgroundKeepAlive.start()
+    // Both need the app running, which in the background the keep-alive above provides.
+    graph.batteryFallAlarm.start()
+    graph.noBgReload.start()
 
     // Read once, outside the composition, for the same reason as the graph: decoding the icon on
     // every recomposition would be work for nothing.

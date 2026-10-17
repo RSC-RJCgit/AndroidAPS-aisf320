@@ -323,8 +323,11 @@ fun SecondaryGraphCompose(
             hrData?.heartRates?.takeIf { it.isNotEmpty() }?.let {
                 add(SeriesType.HEART_RATE to processPoints(it, minTimestamp, minX, maxX))
             }
-            stepsData?.steps?.takeIf { it.isNotEmpty() }?.let {
-                add(SeriesType.STEPS to processPoints(it, minTimestamp, minX, maxX))
+            // S5, S15, S30, S60 in this order; the slots below give each its own colour by this order (2026-10-18)
+            stepsData?.let { data ->
+                listOf(data.steps, data.steps15, data.steps30, data.steps60).forEach { points ->
+                    add(SeriesType.STEPS to processPoints(points, minTimestamp, minX, maxX))
+                }
             }
             if (primaryType == SeriesType.ACTIVITY) {
                 activityData?.let {
@@ -609,9 +612,11 @@ fun SecondaryGraphCompose(
             if (failoverFiltered.isNotEmpty())
                 add(PrimarySeriesSpec(failoverFiltered.map { it.first }, failoverFiltered.map { it.second }, SeriesSlot.FailoverDots))
             // Simple line series
+            var stepsIndex = 0
             processedSimpleSeries.forEach { (type, pts) ->
+                val slot = if (type == SeriesType.STEPS) SeriesSlot.StepsLine(stepsIndex++) else SeriesSlot.SimpleLine(type)
                 if (pts.isNotEmpty())
-                    add(PrimarySeriesSpec(pts.map { it.first }, pts.map { it.second }, SeriesSlot.SimpleLine(type)))
+                    add(PrimarySeriesSpec(pts.map { it.first }, pts.map { it.second }, slot))
             }
             // DevSlope min (separate slot for magenta color)
             if (processedDevSlopeMin.isNotEmpty())
@@ -682,6 +687,7 @@ fun SecondaryGraphCompose(
                         SeriesSlot.AcceWeight       -> bottomHalfLine(seriesColors.acceIsf)
                         SeriesSlot.PpWeight         -> bottomHalfLine(seriesColors.ppIsf)
                         is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
+                        is SeriesSlot.StepsLine     -> createStepsLine(slot.index, seriesColors)
                     }
                 )
             }
@@ -1352,6 +1358,8 @@ private sealed class SeriesSlot {
     data object CarbsMarker : SeriesSlot()
     data object SmbDoseLabel : SeriesSlot()
     data class SimpleLine(val type: SeriesType) : SeriesSlot()
+    /** One of the step count lines: 0 = S5 (dots, as before), 1 = S15, 2 = S30, 3 = S60. */
+    data class StepsLine(val index: Int) : SeriesSlot()
     data object DevSlopeMin : SeriesSlot()
     data object ActivityOverlay : SeriesSlot()
     data object SmbDelivery : SeriesSlot()
@@ -1660,6 +1668,24 @@ fun rememberSeriesColors(): SeriesColors {
             iobTh = Color(0xFF00FFFF)
         )
     }
+}
+
+/**
+ * Step count lines (2026-10-18): S5 keeps the steps colour and its dots; S15, S30 and S60 are thin lines in
+ * lighter and lighter shades of the same colour, so the longer windows read as smoother background lines.
+ */
+private fun createStepsLine(index: Int, colors: SeriesColors): LineCartesianLayer.Line {
+    if (index == 0) return createSeriesLine(SeriesType.STEPS, colors)
+    val alpha = when (index) {
+        1    -> 0.85f
+        2    -> 0.6f
+        else -> 0.4f
+    }
+    return LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(colors.colorFor(SeriesType.STEPS).copy(alpha = alpha))),
+        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+        areaFill = null
+    )
 }
 
 /** DevSlope min line — magenta, no fill (matches @color/devSlopeNeg #FF00FF) */

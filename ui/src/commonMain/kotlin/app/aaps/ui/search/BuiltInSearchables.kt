@@ -194,7 +194,8 @@ class BuiltInSearchables(
             BooleanKey.AlertUrgentAsAndroidNotification,
             BooleanKey.AlertIncreaseVolume,
             BooleanKey.AlertOverrideDoNotDisturb,
-            BooleanKey.IosKeepRunningInBackground
+            BooleanKey.IosKeepRunningInBackground,
+            BooleanKey.IosReloadWhenNoBg
         ),
         icon = Icons.Default.Notifications
     )

@@ -247,10 +247,14 @@ data class HeartRateGraphData(
 )
 
 /**
- * Steps count graph data: 5-minute step counts from smartwatch or similar device.
+ * Steps count graph data: 5-minute step counts from smartwatch or similar device, plus the 15, 30 and 60 minute counts
+ * (2026-10-18) drawn as more lines in the same graph.
  */
 data class StepsGraphData(
-    val steps: List<GraphDataPoint>
+    val steps: List<GraphDataPoint>,
+    val steps15: List<GraphDataPoint> = emptyList(),
+    val steps30: List<GraphDataPoint> = emptyList(),
+    val steps60: List<GraphDataPoint> = emptyList()
 )
 
 /**

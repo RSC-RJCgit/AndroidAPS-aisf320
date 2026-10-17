@@ -1,8 +1,9 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
-// Glucose is at least 8.5 mmol and IOB is under 40% of max. HP2 over 6.5 raises the SMB ratio.
+// Glucose is at least 8.5 mmol and IOB is under 40% of max (and under 3.0 U). HP2 over 6.5 raises the SMB ratio.
 // HP2 within 1.0 mmol of target lowers the target instead. A missing prediction stays closed.
 // [nightRising] is still passed but no longer lowers the bar (night 7.5 mmol bar withdrawn 2026-10-08).
+// Never while BG is falling or while walking (2026-10-18), see [stuckHighBlockReason].
 internal enum class StuckHighBranch { RATIO, TARGET }
 
 internal fun stuckHighBranch(
@@ -13,16 +14,53 @@ internal fun stuckHighBranch(
     hp: Double?,
     targetMmol: Double,
     nightRising: Boolean = false,
+    delta: Double = 1.0,
+    shortDelta: Double = 0.0,
+    steps5: Int = 0,
+    steps30: Int = 0,
+    steps60: Int = 0,
 ): StuckHighBranch? {
     // 2026-10-08: the night 7.5 mmol bar is withdrawn. A large SMB at BG 7.7 at 02:29 led to a hypo.
     val bar = 153.1
-    if (!ready || hp == null || bg < bar || iob >= 0.40 * maxIob) return null
+    if (!ready || hp == null || bg < bar) return null
+    if (stuckHighBlockReason(iob, maxIob, delta, shortDelta, steps5, steps30, steps60) != null) return null
     return when {
         hp > 6.5 -> StuckHighBranch.RATIO
         hp <= targetMmol + 1.0 -> StuckHighBranch.TARGET
         else -> null
     }
 }
+
+/**
+ * Why StuckHighRescue must not fire, or null when it may. 2026-10-18: 17 Oct Live it fired at 17:05 (IOB 3.13, S60 443) and
+ * again at 17:38 (BG falling 0.58 mmol / 5 min, IOB 3.75, S60 581); IOB reached 4.8 and BG fell to 3.6 at 18:54 while walking.
+ * - "iob": IOB at or above the smaller of 40% of max IOB and 3.0 U
+ * - "fall": BG falling (delta not above 0, or short average delta below 0)
+ * - "steps": walking, the same movement test as the PP weight revert (S5 > 20, S30 > 100 or S60 > 300)
+ */
+internal fun stuckHighBlockReason(
+    iob: Double,
+    maxIob: Double,
+    delta: Double,
+    shortDelta: Double,
+    steps5: Int,
+    steps30: Int,
+    steps60: Int,
+): String? = when {
+    iob >= minOf(0.40 * maxIob, 3.0) -> "iob"
+    delta <= 0.0 || shortDelta < 0.0 -> "fall"
+    steps5 > 20 || steps30 > 100 || steps60 > 300 -> "steps"
+    else -> null
+}
+
+/**
+ * FallRescue (2026-10-18): a low TT (below 5.0 mmol, longer than 10 min, so not a short command TT) is still running while
+ * BG falls at least 0.3 mmol / 5 min, IOB is 2.5 U or more and S30 is 150 or more. The caller replaces the TT with 6.5 mmol
+ * for 60 min and alerts. 17 Oct Live this would have fired at about 17:30 (BG 9.4, IOB 4.2, S30 484), 85 min before the low.
+ */
+internal fun fallRescueDue(ttLowMgdl: Double?, ttDurationMs: Long, iob: Double, delta: Double, steps30: Int): Boolean =
+    ttLowMgdl != null && ttLowMgdl < 90.0 /* 5.0 mmol */ && ttDurationMs > 10 * 60_000L &&
+        iob >= 2.5 && delta <= -5.4 /* 0.3 mmol */ && steps30 >= 150
 
 internal fun stuckHighRatio(current: Double, maxRatio: Double): Double = (current + 0.20).coerceAtMost(maxRatio)
 

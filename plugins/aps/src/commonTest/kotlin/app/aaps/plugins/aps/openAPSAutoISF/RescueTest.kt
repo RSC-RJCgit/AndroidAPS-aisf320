@@ -97,4 +97,34 @@ class RescueTest {
         assertTrue(met(5.5))
         assertFalse(met(5.51))
     }
+
+    // 17 Oct Live 17:05: rising, IOB 3.13, S30 116, S60 443. 17:38: falling 0.58 mmol / 5 min, IOB 3.75, S60 581.
+    @Test
+    fun stuckHighIsBlockedByIobFallAndSteps() {
+        assertEquals("iob", stuckHighBlockReason(iob = 3.13, maxIob = 9.5, delta = 10.0, shortDelta = 9.0, steps5 = 0, steps30 = 116, steps60 = 443))
+        assertEquals("fall", stuckHighBlockReason(iob = 2.0, maxIob = 9.5, delta = -10.4, shortDelta = -9.0, steps5 = 0, steps30 = 0, steps60 = 0))
+        assertEquals("steps", stuckHighBlockReason(iob = 2.0, maxIob = 9.5, delta = 5.0, shortDelta = 4.0, steps5 = 0, steps30 = 0, steps60 = 581))
+        assertNull(stuckHighBlockReason(iob = 2.0, maxIob = 9.5, delta = 5.0, shortDelta = 4.0, steps5 = 10, steps30 = 100, steps60 = 300))
+        // A lower max IOB still gives the lower 40% ceiling
+        assertEquals("iob", stuckHighBlockReason(iob = 2.5, maxIob = 6.0, delta = 5.0, shortDelta = 4.0, steps5 = 0, steps30 = 0, steps60 = 0))
+        assertNull(
+            stuckHighBranch(
+                ready = true, bg = 160.0, iob = 2.0, maxIob = 9.5, hp = 5.5, targetMmol = 4.0,
+                delta = -10.4, shortDelta = -9.0
+            )
+        )
+    }
+
+    @Test
+    fun fallRescueNeedsALowLongTtFastFallHighIobAndWalking() {
+        val thirty = 30 * 60_000L
+        // 17 Oct Live about 17:30: TT 4.0, falling 0.43 mmol / 5 min, IOB 4.2, S30 484
+        assertTrue(fallRescueDue(ttLowMgdl = 72.1, ttDurationMs = thirty, iob = 4.2, delta = -7.7, steps30 = 484))
+        assertFalse(fallRescueDue(ttLowMgdl = null, ttDurationMs = 0L, iob = 4.2, delta = -7.7, steps30 = 484))
+        assertFalse(fallRescueDue(ttLowMgdl = 90.0, ttDurationMs = thirty, iob = 4.2, delta = -7.7, steps30 = 484))
+        assertFalse(fallRescueDue(ttLowMgdl = 75.6, ttDurationMs = 5 * 60_000L, iob = 4.2, delta = -7.7, steps30 = 484))
+        assertFalse(fallRescueDue(ttLowMgdl = 72.1, ttDurationMs = thirty, iob = 2.4, delta = -7.7, steps30 = 484))
+        assertFalse(fallRescueDue(ttLowMgdl = 72.1, ttDurationMs = thirty, iob = 4.2, delta = -5.0, steps30 = 484))
+        assertFalse(fallRescueDue(ttLowMgdl = 72.1, ttDurationMs = thirty, iob = 4.2, delta = -7.7, steps30 = 149))
+    }
 }

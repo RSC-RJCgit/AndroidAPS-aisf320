@@ -41,11 +41,13 @@ import app.aaps.database.di.IosAppDatabaseBuilder
 import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.implementation.maintenance.cloud.AuthBrowser
 import app.aaps.implementation.notifications.IosBackgroundKeepAlive
+import app.aaps.implementation.notifications.IosBatteryFallAlarm
 import app.aaps.implementation.notifications.SnackbarNotificationFallback
 import app.aaps.implementation.plugin.PluginStore
 import app.aaps.implementation.receivers.IosReceiverStatusStore
 import app.aaps.plugins.automation.AutomationRuntime
 import app.aaps.plugins.configuration.setupwizard.SWDefinition
+import app.aaps.plugins.sync.nsclientV3.IosNoBgReload
 import app.aaps.plugins.sync.nsclientV3.ws.NsSocketFactory
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
@@ -152,6 +154,10 @@ interface IosAppGraph : MetroViewModelMultibindings {
     val snackbarNotificationFallback: SnackbarNotificationFallback
     // Silent audio that keeps the app running in the background (setting: Keep running in background).
     val backgroundKeepAlive: IosBackgroundKeepAlive
+    // Phone battery under 50% and falling fast (2026-10-18).
+    val batteryFallAlarm: IosBatteryFallAlarm
+    // Reload from Nightscout when no BG has come for 2 minutes (2026-10-18).
+    val noBgReload: IosNoBgReload
     val appScope: CoroutineScope
     val swDefinition: SWDefinition
     val builtInSearchables: BuiltInSearchables

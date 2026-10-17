@@ -58,6 +58,7 @@ import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.navigation.color
 import app.aaps.core.ui.compose.navigation.icon
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.overview.chips.toIcon
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
@@ -301,7 +302,9 @@ data class InspectData(
     val basal: Double?,
     val tbrState: TbrState,
     val boluses: List<BolusGraphPoint>,
-    val carbs: List<CarbsGraphPoint>
+    val carbs: List<CarbsGraphPoint>,
+    /** Short average change of UKF raw glucose per 5 min at this reading, in the user's units. Null without UKF raw. */
+    val ukfShortDelta: Double? = null
 )
 
 /** The nearest reading to [timestamp], with the values and treatments at its time. */
@@ -327,8 +330,22 @@ fun inspectDataAt(
         basal = basal,
         tbrState = tbrState(basal, profileBasal.lastOrNull { it.timestamp <= time }?.value),
         boluses = boluses.filter { it.isValid && abs(it.timestamp - time) <= INSPECT_TREATMENT_MS },
-        carbs = carbs.filter { it.isValid && abs(it.timestamp - time) <= INSPECT_TREATMENT_MS }
+        carbs = carbs.filter { it.isValid && abs(it.timestamp - time) <= INSPECT_TREATMENT_MS },
+        ukfShortDelta = bg?.let { ukfShortDelta(bgReadings, it) }
     )
+}
+
+/**
+ * Short average change of UKF raw glucose per 5 min at [at], the way AAPS works out its short average delta: the mean of
+ * (now - then) / minutes * 5 over the readings 2.5 to 17.5 min earlier. Null when [at] or every earlier reading has no UKF raw.
+ */
+internal fun ukfShortDelta(readings: List<BgDataPoint>, at: BgDataPoint): Double? {
+    if (at.ukfValue <= 0.0) return null
+    val changes = readings.mapNotNull { point ->
+        val minutes = (at.timestamp - point.timestamp) / 60_000.0
+        if (point.ukfValue <= 0.0 || minutes < 2.5 || minutes > 17.5) null else (at.ukfValue - point.ukfValue) / minutes * 5.0
+    }
+    return if (changes.isEmpty()) null else changes.average()
 }
 
 /** Same rule as the TBR chip in the overview. */
@@ -381,6 +398,13 @@ fun GraphInspectPill(
                 data.bg?.let { bg ->
                     val text = if (profileUtil.units == GlucoseUnit.MGDL) decimalFormatter.to0Decimal(bg.value) else decimalFormatter.to1Decimal(bg.value)
                     PillText(text, bg.range.inspectColor())
+                    // UKF raw glucose and its short delta (2026-10-18)
+                    data.ukfShortDelta?.let { change ->
+                        val mgdl = profileUtil.units == GlucoseUnit.MGDL
+                        val value = if (mgdl) decimalFormatter.to0Decimal(bg.ukfValue) else decimalFormatter.to1Decimal(bg.ukfValue)
+                        val delta = if (mgdl) decimalFormatter.to1Decimal(change) else decimalFormatter.to2Decimal(change)
+                        PillText(stringResource(UiStrings.inspect_ukf_raw, value, delta), MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 data.iob?.let {
                     PillItem(ElementType.INSULIN.icon(), stringResource(InterfacesStrings.format_insulin_units, it), ElementType.INSULIN.color())

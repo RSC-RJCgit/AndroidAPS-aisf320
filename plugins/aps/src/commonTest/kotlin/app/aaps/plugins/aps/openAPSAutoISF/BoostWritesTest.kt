@@ -47,4 +47,16 @@ class BoostWritesTest {
         assertEquals(0.35, boostedDeliveryRatio(0.20, strong = false, caution = false), 0.0001)
         assertEquals(0.275, boostedDeliveryRatio(0.20, strong = false, caution = true), 0.0001)
     }
+
+    @Test
+    fun theActivityFactorIsZeroAtHighIobAndHalfWhileWalking() {
+        assertEquals(0.0, activityFactor(iob = 3.8, maxIob = 9.5, steps5 = 0, steps30 = 0, steps60 = 0))
+        assertEquals(0.5, activityFactor(iob = 2.0, maxIob = 9.5, steps5 = 0, steps30 = 0, steps60 = 301))
+        assertEquals(0.5, activityFactor(iob = 2.0, maxIob = 9.5, steps5 = 21, steps30 = 0, steps60 = 0))
+        assertEquals(1.0, activityFactor(iob = 2.0, maxIob = 9.5, steps5 = 20, steps30 = 100, steps60 = 300))
+        assertEquals(0.275, boostedDeliveryRatio(0.20, strong = false, caution = false, activity = 0.5), 0.0001)
+        assertNull(activityFactorNote(1.0))
+        assertEquals("ActF.5", activityFactorNote(0.5))
+        assertEquals("ActF0", activityFactorNote(0.0))
+    }
 }

@@ -85,6 +85,8 @@ enum class BooleanKey(
     AlertOverrideDoNotDisturb("alert_override_dnd", true, KeysStrings.pref_title_alert_override_dnd, KeysStrings.pref_summary_alert_override_dnd, defaultedBySM = true),
     /** iOS only: plays silent audio so iOS does not suspend the app in the background. */
     IosKeepRunningInBackground("ios_keep_running_in_background", true, KeysStrings.pref_title_ios_keep_running_in_background, KeysStrings.pref_summary_ios_keep_running_in_background, platforms = setOf(AppPlatform.Ios)),
+    /** iOS only: load from Nightscout again when no new BG has come for 2 minutes. */
+    IosReloadWhenNoBg("ios_reload_when_no_bg", true, KeysStrings.pref_title_ios_reload_when_no_bg, KeysStrings.pref_summary_ios_reload_when_no_bg, platforms = setOf(AppPlatform.Ios)),
 
     BgSourceUploadToNs("dexcomg5_nsupload", true, KeysStrings.pref_title_bg_source_upload_to_ns, defaultedBySM = true, hideParentScreenIfHidden = true),
     BgSourceCreateSensorChange("dexcom_lognssensorchange", true, KeysStrings.pref_title_bg_source_create_sensor_change, KeysStrings.pref_summary_bg_source_create_sensor_change, defaultedBySM = true),

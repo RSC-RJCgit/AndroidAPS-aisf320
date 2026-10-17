@@ -2,8 +2,10 @@ package app.aaps.implementation.notifications
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.implementation.ImplementationStrings
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -18,6 +20,9 @@ import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import platform.AVFAudio.AVAudioPlayer
 import platform.AVFAudio.AVAudioSession
@@ -35,6 +40,12 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.create
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
+import platform.UserNotifications.UNMutableNotificationContent
+import platform.UserNotifications.UNNotificationInterruptionLevel.UNNotificationInterruptionLevelTimeSensitive
+import platform.UserNotifications.UNNotificationRequest
+import platform.UserNotifications.UNNotificationSound
+import platform.UserNotifications.UNTimeIntervalNotificationTrigger
+import platform.UserNotifications.UNUserNotificationCenter
 
 /**
  * Keeps the app running in the background on iOS by playing silent sound, the way LoopFollow does.
@@ -51,6 +62,10 @@ import platform.UIKit.UIApplicationDidBecomeActiveNotification
  * The alarm player changes the same audio session. It sets [alarmPlaying] while an alarm sounds, so
  * this class leaves the session alone, and calls [resume] after the alarm.
  *
+ * "Stopped" notice (2026-10-18, per explicit request): while the silent sound plays, a notification is moved
+ * [STOPPED_NOTICE_SECONDS] into the future every [STOPPED_NOTICE_MOVE_MS]. If iOS stops the app, or the sound stops
+ * for longer than that, nothing moves it any more and iOS shows it. A stopped app cannot send an alert itself.
+ *
  * Everything runs on the main thread.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
@@ -58,12 +73,17 @@ import platform.UIKit.UIApplicationDidBecomeActiveNotification
 @Inject
 class IosBackgroundKeepAlive(
     private val aapsLogger: AAPSLogger,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val rh: TextResolver
 ) {
 
     private val scope = CoroutineScope(Dispatchers.Main)
     private var player: AVAudioPlayer? = null
     private var started = false
+    private var stoppedNoticeJob: Job? = null
+
+    // Lazy: `currentNotificationCenter()` needs an app bundle (see IosReminderScheduler).
+    private val notificationCenter by lazy { UNUserNotificationCenter.currentNotificationCenter() }
 
     /** Set by the alarm player while an alarm sounds. */
     var alarmPlaying = false
@@ -86,8 +106,43 @@ class IosBackgroundKeepAlive(
             player = null
             resume()
         }
-        // Backstop for anything missed above.
-        center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ -> resume() }
+        // Backstop for anything missed above. A "stopped" notice already shown is out of date once the app is open.
+        center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
+            notificationCenter.removeDeliveredNotificationsWithIdentifiers(listOf(STOPPED_NOTICE_ID))
+            resume()
+        }
+    }
+
+    // Keeps the "stopped" notice in the future while the silent sound plays. When the sound is not playing, the notice
+    // is left to fire, so a sound stopped for more than STOPPED_NOTICE_SECONDS is reported too.
+    private fun startStoppedNotice() {
+        if (stoppedNoticeJob?.isActive == true) return
+        stoppedNoticeJob = scope.launch {
+            while (isActive) {
+                if (player?.playing == true) scheduleStoppedNotice()
+                delay(STOPPED_NOTICE_MOVE_MS)
+            }
+        }
+    }
+
+    private fun stopStoppedNotice() {
+        stoppedNoticeJob?.cancel()
+        stoppedNoticeJob = null
+        notificationCenter.removePendingNotificationRequestsWithIdentifiers(listOf(STOPPED_NOTICE_ID))
+    }
+
+    private fun scheduleStoppedNotice() {
+        val content = UNMutableNotificationContent().apply {
+            setBody(rh.gs(ImplementationStrings.ios_background_stopped))
+            setSound(UNNotificationSound.defaultSound())
+            setInterruptionLevel(UNNotificationInterruptionLevelTimeSensitive)
+        }
+        val trigger = UNTimeIntervalNotificationTrigger.triggerWithTimeInterval(timeInterval = STOPPED_NOTICE_SECONDS, repeats = false)
+        // The same identifier replaces the waiting request, so this moves it rather than adding another one.
+        val request = UNNotificationRequest.requestWithIdentifier(STOPPED_NOTICE_ID, content, trigger)
+        notificationCenter.addNotificationRequest(request) { error ->
+            if (error != null) aapsLogger.error(LTag.CORE, "Keep alive: cannot schedule the stopped notice: $error")
+        }
     }
 
     /** Sets the session to "playback, mix with others" and makes sure the silent loop plays. */
@@ -109,9 +164,11 @@ class IosBackgroundKeepAlive(
             if (current.play()) aapsLogger.debug(LTag.CORE, "Keep alive: silent audio playing")
             else aapsLogger.error(LTag.CORE, "Keep alive: silent audio did not start")
         }
+        startStoppedNotice()
     }
 
     private fun stopPlaying() {
+        stopStoppedNotice()
         player?.stop()
         player = null
         aapsLogger.debug(LTag.CORE, "Keep alive: off")
@@ -131,6 +188,14 @@ class IosBackgroundKeepAlive(
         created
     }
 }
+
+/** The "stopped" notice shows this many seconds after the silent sound was last seen playing. */
+private const val STOPPED_NOTICE_SECONDS = 60.0
+
+/** How often the notice is moved into the future while the sound plays. */
+private const val STOPPED_NOTICE_MOVE_MS = 20_000L
+
+private const val STOPPED_NOTICE_ID = "aaps.keepalive.stopped"
 
 /** One second of silence as a WAV file: 8000 Hz, mono, 16 bit. Made in code, so no sound file is needed. */
 internal fun silentWav(): ByteArray {

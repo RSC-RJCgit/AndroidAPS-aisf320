@@ -1411,10 +1411,13 @@ class OverviewDataCacheImpl(
 
     private suspend fun rebuildStepsGraph() {
         val (fromTime, toTime) = graphTimeRange() ?: return
-        val steps = persistenceLayer.getStepsCountFromTimeToTime(fromTime, toTime)
-            .filter { it.isValid }
-            .map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps5min.toDouble()) }
-        _stepsGraphFlow.value = StepsGraphData(steps)
+        val counts = persistenceLayer.getStepsCountFromTimeToTime(fromTime, toTime).filter { it.isValid }
+        _stepsGraphFlow.value = StepsGraphData(
+            steps = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps5min.toDouble()) },
+            steps15 = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps15min.toDouble()) },
+            steps30 = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps30min.toDouble()) },
+            steps60 = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps60min.toDouble()) }
+        )
     }
 
     override fun reset() {
