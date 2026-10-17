@@ -805,9 +805,6 @@ open class OpenAPSAutoISFPlugin(
             maxIob = oapsProfile.max_iob,
             targetBg = targetBg,
             statesOn = statesOn,
-            steps5 = steps5(now),
-            steps30 = steps30(now),
-            steps60 = steps60(now),
         )
         applyProfileBatch(now = now, bg = glucoseStatus.glucose)
         applyTtExits(
@@ -878,13 +875,7 @@ open class OpenAPSAutoISFPlugin(
             aapsLogger.debug(LTag.APS, "UAM boost suppressed under a quiet high brake")
         }
         // 2026-10-18: the activity factor for the Tier 3 UAM boost (scale) and its pseudo-wizard FPU. 0 turns the boost off.
-        val tier3Activity = activityFactor(iobArray[0].iob, oapsProfile.max_iob, steps5(now), steps30(now), steps60(now))
-        if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && runMarks.ready(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, 15, now)) {
-            activityFactorNote(tier3Activity)?.let {
-                carePortalNote(it)
-                runMarks.mark(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, now)
-            }
-        }
+        val tier3Activity = tier3ActivityFactor(now, iobArray[0].iob, oapsProfile.max_iob)
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1046,11 +1037,7 @@ open class OpenAPSAutoISFPlugin(
                     // the same scheduler as a confirmed wizard: it cancels a series still waiting from an earlier wizard, and a
                     // later wizard cancels it. Each dose keeps its BG and IOB-rise checks. The 10 g carbs stay calc-only.
                     // 2026-10-18: scaled by the activity factor (0.5 while walking). At 0 the boost was off, so this is not reached.
-                    val fpuProtein = (UAM_TIER3_PLACEHOLDER_PROTEIN_G * tier3Activity).roundToInt()
-                    val fpuFat = (UAM_TIER3_PLACEHOLDER_FAT_G * tier3Activity).roundToInt()
-                    warsawFpuPlan(fpuProtein, fpuFat, profile.getIc())?.let { plan ->
-                        bolusWizard().scheduleWarsawDoses(plan, iobBaseline = iobArray[0].iob, source = Sources.Automation)
-                    }
+                    scheduleTier3Fpu(tier3Activity, profile.getIc(), iobArray[0].iob)
                 }
             }
             if (autoIsfFactors.recorded) {
@@ -2590,10 +2577,10 @@ open class OpenAPSAutoISFPlugin(
         maxIob: Double,
         targetBg: Double,
         statesOn: Boolean,
-        steps5: Int,
-        steps30: Int,
-        steps60: Int,
     ) {
+        val steps5 = steps5(now)
+        val steps30 = steps30(now)
+        val steps60 = steps60(now)
         val store = states()
         val ukf = ukfRawNow(now)
         val hp = ukf.delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
@@ -4592,6 +4579,27 @@ open class OpenAPSAutoISFPlugin(
             note = note,
             listValues = listOf(),
         )
+    }
+
+    // Kept out of invoke(): its coroutine body is close to the JVM's 64 KB method limit (2026-10-18 build failure).
+    private suspend fun tier3ActivityFactor(now: Long, iob: Double, maxIob: Double): Double {
+        val factor = activityFactor(iob, maxIob, steps5(now), steps30(now), steps60(now))
+        if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && runMarks.ready(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, 15, now)) {
+            activityFactorNote(factor)?.let {
+                carePortalNote(it)
+                runMarks.mark(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, now)
+            }
+        }
+        return factor
+    }
+
+    // The Tier 3 pseudo-wizard FPU, scaled by the activity factor. Out of invoke() for the same size reason.
+    private suspend fun scheduleTier3Fpu(activity: Double, ic: Double, iob: Double) {
+        val protein = (UAM_TIER3_PLACEHOLDER_PROTEIN_G * activity).roundToInt()
+        val fat = (UAM_TIER3_PLACEHOLDER_FAT_G * activity).roundToInt()
+        warsawFpuPlan(protein, fat, ic)?.let { plan ->
+            bolusWizard().scheduleWarsawDoses(plan, iobBaseline = iob, source = Sources.Automation)
+        }
     }
 
     private suspend fun carePortalNote(text: String) {
