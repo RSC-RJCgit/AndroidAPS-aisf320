@@ -1358,7 +1358,7 @@ private sealed class SeriesSlot {
     data object CarbsMarker : SeriesSlot()
     data object SmbDoseLabel : SeriesSlot()
     data class SimpleLine(val type: SeriesType) : SeriesSlot()
-    /** One of the step count lines: 0 = S5 (dots, as before), 1 = S15, 2 = S30, 3 = S60. */
+    /** One of the step count lines: 0 = S5, 1 = S15, 2 = S30, 3 = S60. */
     data class StepsLine(val index: Int) : SeriesSlot()
     data object DevSlopeMin : SeriesSlot()
     data object ActivityOverlay : SeriesSlot()
@@ -1671,19 +1671,19 @@ fun rememberSeriesColors(): SeriesColors {
 }
 
 /**
- * Step count lines (2026-10-18): S5 keeps the steps colour and its dots; S15, S30 and S60 are thin lines in
- * lighter and lighter shades of the same colour, so the longer windows read as smoother background lines.
+ * Step count lines (2026-10-18): S5 in the full steps colour and a little thicker, then S15, S30 and S60 in lighter
+ * and lighter shades of the same colour, so the longer windows read as smoother background lines.
  */
 private fun createStepsLine(index: Int, colors: SeriesColors): LineCartesianLayer.Line {
-    if (index == 0) return createSeriesLine(SeriesType.STEPS, colors)
     val alpha = when (index) {
-        1    -> 0.85f
+        0    -> 1.0f
+        1    -> 0.8f
         2    -> 0.6f
         else -> 0.4f
     }
     return LineCartesianLayer.Line(
         fill = LineCartesianLayer.LineFill.single(Fill(colors.colorFor(SeriesType.STEPS).copy(alpha = alpha))),
-        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
+        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = if (index == 0) 2.dp else 1.5.dp),
         areaFill = null
     )
 }
