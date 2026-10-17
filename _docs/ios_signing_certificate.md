@@ -11,6 +11,11 @@ After enough runs the Apple account reached its certificate limit, and every arc
 "Your account has reached the maximum number of certificates". With one stored certificate, Xcode only
 fetches provisioning profiles, which have no limit.
 
+How it signs (since 2026-10-17): the archive step builds **without** signing (`CODE_SIGNING_ALLOWED=NO`), so
+no development certificate is needed or made. The export step signs once, with this distribution
+certificate (`signingCertificate = Apple Distribution` in the export options). Forcing "Apple Distribution"
+in the archive step instead does not work: the project uses automatic signing, and Xcode refuses the mix.
+
 ## 1. Clean up the old certificates
 
 developer.apple.com → Certificates, Identifiers & Profiles → **Certificates**. Revoke the Apple Development
