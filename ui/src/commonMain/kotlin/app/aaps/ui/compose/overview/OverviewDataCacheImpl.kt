@@ -7,6 +7,7 @@ import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.EB
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.RM
@@ -1411,12 +1412,23 @@ class OverviewDataCacheImpl(
 
     private suspend fun rebuildStepsGraph() {
         val (fromTime, toTime) = graphTimeRange() ?: return
-        val counts = persistenceLayer.getStepsCountFromTimeToTime(fromTime, toTime).filter { it.isValid }
+        val records = persistenceLayer.getStepsCountFromTimeToTime(fromTime, toTime)
+            .filter { it.isValid }
+            .map { sc -> StepsRow(sc.timestamp, sc.steps5min, sc.steps15min, sc.steps30min, sc.steps60min) }
+        // A client saves no step records. It has the master's loop results, and each reason carries the step line
+        // (2026-10-18), so the graph is built from those instead.
+        val rows = records.ifEmpty {
+            persistenceLayer.getApsResults(fromTime, toTime).mapNotNull { result ->
+                val buckets = LiveSteps.buckets(result.reason)
+                if (!LiveSteps.hasDosingBuckets(buckets)) null
+                else StepsRow(result.date, buckets.getValue(5), buckets.getValue(15), buckets.getValue(30), buckets.getValue(60))
+            }.sortedBy { it.timestamp }
+        }
         _stepsGraphFlow.value = StepsGraphData(
-            steps = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps5min.toDouble()) },
-            steps15 = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps15min.toDouble()) },
-            steps30 = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps30min.toDouble()) },
-            steps60 = counts.map { sc -> GraphDataPoint(timestamp = sc.timestamp, value = sc.steps60min.toDouble()) }
+            steps = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps5.toDouble()) },
+            steps15 = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps15.toDouble()) },
+            steps30 = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps30.toDouble()) },
+            steps60 = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps60.toDouble()) }
         )
     }
 
@@ -1526,3 +1538,6 @@ internal fun mergeRunningModeSegments(samples: List<Pair<Long, RM.Mode>>, endTim
     }
     return segments
 }
+
+/** One step sample for the Steps graph: S5, S15, S30 and S60 at [timestamp]. */
+private data class StepsRow(val timestamp: Long, val steps5: Int, val steps15: Int, val steps30: Int, val steps60: Int)
