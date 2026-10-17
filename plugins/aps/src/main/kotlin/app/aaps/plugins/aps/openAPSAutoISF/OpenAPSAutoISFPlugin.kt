@@ -2764,6 +2764,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         return iobCobCalculator.calculateFromTreatmentsAndTemps(time, profile).iob
     }
 
+    // Activity factor, added 2026-10-18 per explicit request: 0 when IOB is at or above 40% of max IOB, 0.5 while walking
+    // (the same movement test as the PP weight revert and StuckHighRescue: S5 > 20, S30 > 100 or S60 > 300), 1 otherwise.
+    // It scales the Tier 3 UAM boost scale, the UAM Tier3 pseudo-wizard FPU and BMild's ratio boost. 17 Oct Live: about 3 U
+    // went in between 17:00 and 17:15 while walking (S60 to 949 later), and BG fell from 9.9 to 3.6.
+    private fun activityFactor(iob: Double = totalIobAt(dateUtil.now())): Double = when {
+        iob >= 0.40 * constraintsChecker.getMaxIOBAllowed().value() -> 0.0
+        recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300 -> 0.5
+        else -> 1.0
+    }
+
+    // Careportal note for a factor below 1, at most once in 15 min per caller key.
+    private fun noteActivityFactor(factor: Double, key: String) {
+        if (factor >= 1.0 || !readyToRun(key, 15)) return
+        addCarePortalNote(if (factor <= 0.0) "ActF0" else "ActF.5")
+        // Not markRun(): that would also use up a pending direct TT command.
+        lastRunTimestamps[key] = dateUtil.now()
+    }
+
     // Bolus and SMB part of the total IOB at a timestamp: the total minus the temp-basal contribution (IobTotal.combine adds the
     // temp basals' basaliob into iob). Added 2026-10-08 for BMild's "IOB rising" test.
     private fun bolusIobAt(time: Long): Double {
@@ -2804,8 +2822,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // MJ3. Default 0.15 preserves every other caller (BMild's own entry, HighEveNightBrake)
     // unchanged; only HighDaytimeBrake's own call site passes a smaller value for MJ3.
     private fun applyBMildOutcomeFactors(gMgdl: Double, setTt: Boolean = true, deliveryBoostIncrement: Double = 0.15) {
+        // 2026-10-18: the activity factor. 0 (IOB high) skips the boost entirely; 0.5 (walking) halves the increment.
+        val activity = activityFactor()
+        noteActivityFactor(activity, "ActivityFactorBMildNote")
+        if (activity <= 0.0) return
         val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
-        setSmbDeliveryRatio(mildBase + deliveryBoostIncrement)
+        setSmbDeliveryRatio(mildBase + deliveryBoostIncrement * activity)
         smbDeliveryBoostedThisCycle = true
         // Stash the exact creation timestamp of the TT just started (if it actually was -- this no-ops
         // like any other startTempTargetIfNeeded call if a TT was already active) so
@@ -2977,6 +2999,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ).subscribe()
     }
 
+    // Replaces the running TT with a new one in one step. startTempTargetIfNeeded() does nothing while a TT is active, and
+    // cancelCurrentTempTarget() runs in the background, so the two cannot be chained in the same cycle.
+    private fun replaceTempTarget(targetMgdl: Double, durationInMinutes: Int) {
+        if (directTtCodeMatchActive) return
+        val tt = TT(
+            timestamp = dateUtil.now(),
+            duration = TimeUnit.MINUTES.toMillis(durationInMinutes.toLong()),
+            reason = TT.Reason.AUTOMATION,
+            lowTarget = targetMgdl,
+            highTarget = targetMgdl
+        )
+        disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+            temporaryTarget = tt,
+            action = Action.TT,
+            source = Sources.Automation,
+            note = "AutoISF code-based temp target",
+            listValues = listOf(
+                ValueWithUnit.TETTReason(TT.Reason.AUTOMATION),
+                ValueWithUnit.Mgdl(targetMgdl),
+                ValueWithUnit.Minute(durationInMinutes)
+            )
+        ).subscribe()
+    }
+
     // Mirrors ActionStartTempTarget, including its own built-in guard: no-ops if a temp target is
     // already active rather than stacking/replacing it. Returns the exact timestamp (ms) used for the
     // new TT's own TT.timestamp field on success, null on no-op -- lets a caller that needs to prove
@@ -3085,8 +3131,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val profile = profileFunction.getProfile() ?: return
         val ic = profile.getIc()
         val pseudoCarbs = 10.0
-        val pseudoFatG = 10
-        val pseudoProteinG = 15
+        // 2026-10-18: the activity factor scales the FPU (0.5 while walking). With IOB high (0) no FPU series is scheduled.
+        val activity = activityFactor()
+        noteActivityFactor(activity, "ActivityFactorFpuNote")
+        val pseudoFatG = (10 * activity).roundToInt()
+        val pseudoProteinG = (15 * activity).roundToInt()
         val bcr = BCR(
             timestamp = dateUtil.now(),
             targetBGLow = profile.getTargetLowMgdl(),
@@ -3124,6 +3173,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             { },
             { error -> aapsLogger.error(LTag.APS, "Failed to save UamTier3 pseudo-wizard BCR", error) }
         )
+        if (pseudoFatG == 0 && pseudoProteinG == 0) return
         // The FPU series only: carbs 0, no BG, IOB, trend or COB, so there is no immediate dose.
         bolusWizardProvider.get().doCalc(
             profile = profile,
@@ -4910,6 +4960,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val tier3CautionFactor = !checkAutomationState("MJ", "NOMJremains") ||
             profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfStandard110ProfileName) ||
             recentSteps30Minutes > 200
+        // 2026-10-18: the activity factor. The smaller of the two wins, so walking does not halve twice; 0 turns the boost off.
+        val tier3Activity = activityFactor(iobData.iob)
+        noteActivityFactor(tier3Activity, "ActivityFactorTier3Note")
+        val tier3Factor = minOf(if (tier3CautionFactor) 0.5 else 1.0, tier3Activity)
         val oapsProfile = OapsProfileAutoIsf(
             dia = 0.0, // not used
             min_5m_carbimpact = 0.0, // not used
@@ -4982,10 +5036,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             iob_threshold_percent = iobThresholdPercent,
             profile_percentage = profile_percentage,
             hypo_prediction_2 = liveHp2,
-            boostActive = uamBoostActive,
+            boostActive = uamBoostActive && tier3Factor > 0.0,
             boost_max = uamBoostMaxBolus,
             boostMaxIOBPercent = uamBoostMaxIobPercent,
-            boost_scale = if (tier3CautionFactor) uamBoostScale / 2.0 else uamBoostScale,
+            boost_scale = uamBoostScale * tier3Factor,
             Boost_InsulinReq = uamBoostInsulinReqPct
         )
         var sensitivityRatio = 1.0
@@ -6548,8 +6602,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // keeps 0.30). 26 Sep Live: BG >= 8.5 from 13:34 and plateaued 10.0-10.1 from 13:55, but total IOB sat at 3.3-3.9
             // (about 1.8 of it basal IOB from 5 U/h temp basals) against the old 2.85 ceiling, so this only fired at 14:19 when
             // IOB fell to 2.81. At 9.5 max_iob the new ceiling is 3.8.
-            val iobRoomLeft = iob < 0.40 * maxIob
-            val eligible = highEnough && iobRoomLeft && hp != null
+            // 2026-10-18, per explicit request: also capped at 3.0 U, whichever is lower. 17 Oct Live: it fired at 17:05 with
+            // IOB 3.13 (ceiling 3.8 at max_iob 9.5), IOB then reached 4.8 and BG fell to 3.6 at 18:54 while walking.
+            val iobRoomLeft = iob < minOf(0.40 * maxIob, 3.0)
+            // 2026-10-18, per explicit request: never while BG is falling, or while walking (the same movement test as the PP
+            // weight revert). 17 Oct Live 17:38: the target branch fired again (TT 4.0) at BG 8.5 falling 0.58 mmol / 5 min,
+            // IOB 3.75, S60 581 -- a low HP2 there is the fall itself, not a "falsely reassured" model.
+            val notFalling = glucoseStatus.delta > 0.0 && glucoseStatus.shortAvgDelta >= 0.0
+            val walking = recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300
+            val eligible = highEnough && iobRoomLeft && hp != null && notFalling && !walking
+            if (highEnough && hp != null && !eligible && readyToRun("StuckHighRescueBlockNote", 30)) {
+                val why = when {
+                    !iobRoomLeft -> "iob"
+                    !notFalling  -> "fall"
+                    else         -> "steps"
+                }
+                aapsLogger.debug(LTag.APS, "StuckHighRescue blocked ($why): g=${round(g / 18.0182, 1)} iob=${round(iob, 2)} d=${round(glucoseStatus.delta / 18.0182, 2)} S30=$recentSteps30Minutes S60=$recentSteps60Minutes")
+                addCarePortalNote("SHBlk")
+                // Not markRun(): that would also use up a pending direct TT command.
+                lastRunTimestamps["StuckHighRescueBlockNote"] = dateUtil.now()
+            }
 
             if (eligible && hp != null) {
                 if (hp > 6.5) {
@@ -6584,6 +6656,30 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     addCarePortalNote("SHTgt")
                     markRun("StuckHighRescue")
                 }
+            }
+        }
+
+        // --- FallRescue: added 2026-10-18, per explicit request. A low TT (below 5.0 mmol, longer than 10 min, so not one
+        // of the short command TTs) is still running while BG falls fast, IOB is high and the user is walking: replace it
+        // with TT 6.5 for 60 min and send an SMS to eat carbs. 17 Oct Live: StuckHighRescue's TT 4.0 ran until 18:08 while
+        // BG fell from 9.9 (17:21) with IOB 4.2-4.8 and S30 300-480; the protective TT 5.7 only came at 18:12 (BG 5.0) and
+        // BG reached 3.6 at 18:54. This would have fired at about 17:30 (BG 9.4, -0.43/5 min, IOB 4.2, S30 484).
+        // The SMB ratio boost that StuckHighRescue made goes back to normal by itself once no low TT is active.
+        run {
+            if (!readyToRun("FallRescue", 30)) return@run
+            val tt = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) ?: return@run
+            if (tt.lowTarget >= mmolToMgdl(5.0) || tt.duration <= T.mins(10).msecs()) return@run
+            val iob = iobData.iob
+            val falling = glucoseStatus.delta <= -mmolToMgdl(0.3)
+            if (iob >= 2.5 && falling && recentSteps30Minutes >= 150) {
+                replaceTempTarget(mmolToMgdl(6.5), 60)
+                sendSms(
+                    "FallRescue: BG ${round(glucoseStatus.glucose / 18.0182, 1)} falling ${round(glucoseStatus.delta / 18.0182, 2)}/5min, " +
+                        "IOB ${round(iob, 2)}, S30 $recentSteps30Minutes -> TT 6.5 60min. Eat carbs?"
+                )
+                addCarePortalNote("FalRs")
+                // Not markRun(): that would also use up a pending direct TT command.
+                lastRunTimestamps["FallRescue"] = dateUtil.now()
             }
         }
 

@@ -34,6 +34,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.R as CoreUiR
 import app.aaps.core.ui.toast.ToastUtils
+import app.aaps.plugins.main.R
 import com.jjoe64.graphview.GraphView
 import com.jjoe64.graphview.series.DataPoint
 import com.jjoe64.graphview.series.Series
@@ -43,6 +44,18 @@ import kotlin.math.max
 
 // Share of graph5's height, from the top, used by the SMB / acce weight / pp weight / profile basal lines. See addTopBandLines().
 private const val TOP_BAND_FRACTION = 0.28
+
+/**
+ * Short average change per 5 min at [at], the way AAPS works out its short average delta: the mean of (now - then) / minutes * 5
+ * over the points 2.5 to 17.5 min earlier. Null when there are none. Times are in ms, as on the graph x axis.
+ */
+internal fun ukfShortDelta(at: DataPoint, earlier: List<DataPoint>): Double? {
+    val changes = earlier.mapNotNull { point ->
+        val minutes = (at.x - point.x) / 60_000.0
+        if (point.y <= 0.0 || minutes < 2.5 || minutes > 17.5) null else (at.y - point.y) / minutes * 5.0
+    }
+    return if (changes.isEmpty()) null else changes.average()
+}
 
 @Suppress("UNCHECKED_CAST")
 class GraphData @Inject constructor(
@@ -328,6 +341,16 @@ class GraphData @Inject constructor(
             maxY = overviewData.maxBgValue
         }
         addSeries(overviewData.rawBgSmoothedSeries as LineGraphSeries<*>)
+        // 2026-10-18, per explicit request: a tap on the UKF raw line shows its value and short delta.
+        val ukfSeries = overviewData.rawBgSmoothedSeries as LineGraphSeries<DataPoint>
+        ukfSeries.setOnDataPointTapListener { _, dataPoint ->
+            val earlier = ukfSeries.getValues(dataPoint.x - 17.5 * 60_000, dataPoint.x).asSequence().toList()
+            val change = ukfShortDelta(dataPoint, earlier) ?: return@setOnDataPointTapListener
+            val mgdl = units == GlucoseUnit.MGDL
+            val value = if (mgdl) decimalFormatter.to0Decimal(dataPoint.y) else decimalFormatter.to1Decimal(dataPoint.y)
+            val delta = if (mgdl) decimalFormatter.to1Decimal(change) else decimalFormatter.to2Decimal(change)
+            ToastUtils.infoToast(graph.context, rh.gs(R.string.ukf_raw_tap, dateUtil.timeString(dataPoint.x.toLong()), value, delta))
+        }
         // With UKF2 this is the original LibreSpecial EMA immediately before UKF; otherwise empty.
         // It shares this graph selection so no saved chart-menu ordinals/configurations are disturbed.
         addSeries(overviewData.libreSpecialPreUkfSeries as LineGraphSeries<*>)
