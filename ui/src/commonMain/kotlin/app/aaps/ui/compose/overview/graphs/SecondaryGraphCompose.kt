@@ -734,6 +734,7 @@ fun SecondaryGraphCompose(
     // Chart rendering
     // =========================================================================
 
+    val timeFormatter = rememberTimeFormatter(minTimestamp)
     val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp)
     val nowLineColor = MaterialTheme.colorScheme.onSurface
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
@@ -750,7 +751,7 @@ fun SecondaryGraphCompose(
             val kind = dots.minByOrNull { abs(it.timestamp - smb.timestamp) }?.dominantIsf
             SmbStackItem(
                 x = timestampToX(smb.timestamp, minTimestamp),
-                label = smb.label.ifBlank { smb.amount.toString() },
+                label = smbDoseFormatter.to2Decimal(smb.amount),
                 stackIndex = stack[index],
                 color = when (kind) {
                     DominantIsf.ACCE -> acceColor
@@ -1196,12 +1197,13 @@ fun SecondaryGraphCompose(
         ),
         guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
     )
-    // No time labels: the BG graph above shows them, and the hour lines stay aligned with it.
-    // This keeps the graphs below BG compact.
+    // Fork (restored after the 2026-10-16 merge, per explicit request): every graph below BG shows its own time labels.
     val bottomAxis = HorizontalAxis.rememberBottom(
+        valueFormatter = timeFormatter,
         itemPlacer = bottomAxisItemPlacer,
-        label = null,
-        tick = null,
+        label = rememberTextComponent(
+            style = TextStyle(color = MaterialTheme.colorScheme.onSurface)
+        ),
         guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
     )
 

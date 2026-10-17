@@ -32,8 +32,16 @@ class SWPairingStatus(
     private val nsClient: NsClient
 ) : SWItem(aapsLogger, rh, rxBus, preferences, passwordCheck) {
 
+    private var visibilityValidator: (() -> Boolean)? = null
+
+    fun visibility(visibilityValidator: () -> Boolean): SWPairingStatus {
+        this.visibilityValidator = visibilityValidator
+        return this
+    }
+
     @Composable
     override fun Compose() {
+        if (visibilityValidator?.invoke() == false) return
         if (config.AAPSCLIENT) {
             val paired by nsClient.masterOrPairedClientFlow.collectAsState()
             Text(

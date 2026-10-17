@@ -47,6 +47,7 @@ import app.aaps.plugins.configuration.setupwizard.elements.SWPairingStatus
 import app.aaps.plugins.configuration.setupwizard.elements.SWPermissions
 import app.aaps.plugins.configuration.setupwizard.elements.SWPlugin
 import app.aaps.plugins.configuration.setupwizard.elements.SWRadioButton
+import app.aaps.plugins.configuration.setupwizard.elements.SWSwitch
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -86,7 +87,8 @@ class SWDefinition(
     private val swPairingStatusProvider: () -> SWPairingStatus,
     private val swPermissionsProvider: () -> SWPermissions,
     private val swPluginProvider: () -> SWPlugin,
-    private val swRadioButtonProvider: () -> SWRadioButton
+    private val swRadioButtonProvider: () -> SWRadioButton,
+    private val swSwitchProvider: () -> SWSwitch
 ) {
 
     var onImportSettings: (() -> Unit)? = null
@@ -243,20 +245,26 @@ class SWDefinition(
             )
 
     // Client side: explain pairing with a master and open the "Pair with master" (PIN entry) screen.
+    // 2026-10-16, per explicit request: a "Read-only client" switch first. A master that takes no remote control
+    // (for example 3.4) cannot be paired, so with the switch on the pairing parts are hidden and Next goes on.
+    private val readOnlyClient: Boolean get() = preferences.get(BooleanKey.NsClientReadOnlyClient)
     private val screenPairWithMaster
         get() = swScreenProvider().with(CoreUiStrings.pair_with_master_manage_label)
             .skippable(true)
-            .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_pair_with_master_info))
+            .add(swSwitchProvider().preference(BooleanKey.NsClientReadOnlyClient))
+            .add(swInfoTextProvider().label(CoreUiStrings.read_only_client_banner).visibility { readOnlyClient })
             .add(swBreakProvider())
+            .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_pair_with_master_info).visibility { !readOnlyClient })
+            .add(swBreakProvider().visibility { !readOnlyClient })
             .add(
                 swButtonProvider()
                     .text(CoreUiStrings.pair_with_master_manage_label)
-                    .visibility { preferences.get(BooleanKey.NsClient3UseWs) }
+                    .visibility { preferences.get(BooleanKey.NsClient3UseWs) && !readOnlyClient }
                     .action { onPairWithMaster?.invoke() }
             )
-            .add(swBreakProvider())
-            .add(swPairingStatusProvider())
-            .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_pairing_ws_warning).visibility { !preferences.get(BooleanKey.NsClient3UseWs) })
+            .add(swBreakProvider().visibility { !readOnlyClient })
+            .add(swPairingStatusProvider().visibility { !readOnlyClient })
+            .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_pairing_ws_warning).visibility { !preferences.get(BooleanKey.NsClient3UseWs) && !readOnlyClient })
 
     // Asks as a question rather than with the preference title ("Instance name"), which reads badly as
     // a wizard heading. The setting is device-local, so every role asks it.
