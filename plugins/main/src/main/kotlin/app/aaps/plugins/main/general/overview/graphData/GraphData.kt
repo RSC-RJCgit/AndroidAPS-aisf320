@@ -37,6 +37,7 @@ import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.plugins.main.R
 import com.jjoe64.graphview.GraphView
 import com.jjoe64.graphview.series.DataPoint
+import com.jjoe64.graphview.series.DataPointInterface
 import com.jjoe64.graphview.series.Series
 import javax.inject.Inject
 import kotlin.math.abs
@@ -49,7 +50,7 @@ private const val TOP_BAND_FRACTION = 0.28
  * Short average change per 5 min at [at], the way AAPS works out its short average delta: the mean of (now - then) / minutes * 5
  * over the points 2.5 to 17.5 min earlier. Null when there are none. Times are in ms, as on the graph x axis.
  */
-internal fun ukfShortDelta(at: DataPoint, earlier: List<DataPoint>): Double? {
+internal fun ukfShortDelta(at: DataPointInterface, earlier: List<DataPointInterface>): Double? {
     val changes = earlier.mapNotNull { point ->
         val minutes = (at.x - point.x) / 60_000.0
         if (point.y <= 0.0 || minutes < 2.5 || minutes > 17.5) null else (at.y - point.y) / minutes * 5.0
