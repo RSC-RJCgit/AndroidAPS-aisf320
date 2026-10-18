@@ -150,6 +150,8 @@ fun SecondaryGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     activityOverlay: Boolean = false,
+    /** AutoISF 3.2.1: draw the effective IOB threshold as a dashed line (IOB graph only). */
+    iobThOverlay: Boolean = false,
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
@@ -243,6 +245,7 @@ fun SecondaryGraphCompose(
         SeriesType.STEPS           -> viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value.steps
         SeriesType.ACTIVITY        -> viewModel.activityGraphFlow.collectAsStateWithLifecycle().value.activity
         SeriesType.PREDICTIONS     -> emptyList() // UI-only overlay flag, not a secondary series
+        SeriesType.IOB_TH          -> emptyList() // IOB graph overlay flag, not a secondary series
     }
 
     // Cache last non-empty treatment data to survive reset() cycles
@@ -331,6 +334,12 @@ fun SecondaryGraphCompose(
     val processedIob = remember(iobData, stableTimeRange) {
         if (!hasRealTimeRange || iobData == null) return@remember emptyList()
         processPoints(iobData.iob, minTimestamp, minX, maxX)
+    }
+
+    // AutoISF 3.2.1 IOB threshold, in IOB units on the IOB axis
+    val processedIobTh = remember(iobData, iobThOverlay, stableTimeRange) {
+        if (!hasRealTimeRange || !iobThOverlay || iobData == null) return@remember emptyList()
+        processPoints(iobData.iobTh, minTimestamp, minX, maxX)
     }
 
     // IOB treatment overlays processing
@@ -424,10 +433,12 @@ fun SecondaryGraphCompose(
     // 0..44 that a COB curve reaching 148 was drawn straight through.
     // Deliberately does NOT include the activity overlay: that one is mapped into this axis' units
     // (see processedActivityOverlay below), so feeding it back in here would be circular.
+    // The IOB threshold is in IOB units, so it is part of the IOB axis (as in 3.2.1, where the IOB scale grows to fit it).
     val primaryYValues = remember(
-        processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, visibleMinX, visibleMaxX
+        processedIob, processedIobTh, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, visibleMinX, visibleMaxX
     ) {
-        windowedPrimaryY(visibleMinX, visibleMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
+        windowedPrimaryY(visibleMinX, visibleMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines) +
+            (if (processedIobTh.isEmpty()) emptyList() else windowedY(processedIobTh, visibleMinX, visibleMaxX))
     }
 
     // Zero-floor nice range of the primary layer, windowed — 0 if the visible window has no
@@ -500,7 +511,7 @@ fun SecondaryGraphCompose(
     // frame. Otherwise the range provider races the model and the graph briefly renders against a
     // stale 0..1 axis until the next recomposition ("renders wrong, then fixes itself").
     val primarySeries = remember(
-        processedDeviationLines, processedIob, processedIobTreatments, processedCob,
+        processedDeviationLines, processedIob, processedIobTh, processedIobTreatments, processedCob,
         processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedActivityOverlay
     ) {
         buildList {
@@ -545,6 +556,9 @@ fun SecondaryGraphCompose(
                 add(PrimarySeriesSpec(actHist.map { it.first }, actHist.map { it.second }, SeriesSlot.ActivityOverlay))
             if (actPred.isNotEmpty())
                 add(PrimarySeriesSpec(actPred.map { it.first }, actPred.map { it.second }, SeriesSlot.ActivityOverlay))
+            // AutoISF 3.2.1 IOB threshold overlay (dashed)
+            if (processedIobTh.isNotEmpty())
+                add(PrimarySeriesSpec(processedIobTh.map { it.first }, processedIobTh.map { it.second }, SeriesSlot.IobThOverlay))
         }
     }
     val hasPrimaryData = primarySeries.isNotEmpty()
@@ -575,6 +589,7 @@ fun SecondaryGraphCompose(
                         SeriesSlot.CarbsMarker      -> cobLineStyle.carbsLine
                         SeriesSlot.DevSlopeMin      -> createDevSlopeMinLine()
                         SeriesSlot.ActivityOverlay  -> createSeriesLine(SeriesType.ACTIVITY, seriesColors)
+                        SeriesSlot.IobThOverlay     -> createIobThLine(seriesColors.iobTh)
                         is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
                     }
                 )
@@ -970,6 +985,7 @@ private sealed class SeriesSlot {
     data class SimpleLine(val type: SeriesType) : SeriesSlot()
     data object DevSlopeMin : SeriesSlot()
     data object ActivityOverlay : SeriesSlot()
+    data object IobThOverlay : SeriesSlot()
 }
 
 // =========================================================================
@@ -1170,7 +1186,8 @@ data class SeriesColors(
     val devSlope: Color,
     val heartRate: Color,
     val steps: Color,
-    val activity: Color
+    val activity: Color,
+    val iobTh: Color
 ) {
 
     fun colorFor(type: SeriesType): Color = when (type) {
@@ -1186,6 +1203,7 @@ data class SeriesColors(
         SeriesType.STEPS           -> steps
         SeriesType.ACTIVITY        -> activity
         SeriesType.PREDICTIONS     -> activity // unused — PREDICTIONS is a BG overlay flag, not a secondary series
+        SeriesType.IOB_TH          -> iobTh
     }
 }
 
@@ -1206,10 +1224,24 @@ fun rememberSeriesColors(): SeriesColors {
             devSlope = Color(0xFFFFFF00),            // yellow (matches @color/devSlopePos)
             heartRate = Color(0xFFFFFF66),           // pale yellow (matches @color/heartRate #FFFFFF66)
             steps = Color(0xFF66FFB8),              // mint green (matches @color/steps)
-            activity = Color(0xFFD3F166)            // lime green (matches @color/activity)
+            activity = Color(0xFFD3F166),           // lime green (matches @color/activity)
+            iobTh = Color(0xFF00FFFF)               // cyan (matches AutoISF 3.2.1 @color/iobThColor)
         )
     }
 }
+
+/** AutoISF 3.2.1 IOB threshold line — dashed, no fill, as in 3.2.1 (stroke 3 px, dash 2/2) */
+private fun createIobThLine(color: Color): LineCartesianLayer.Line =
+    LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(color)),
+        stroke = LineCartesianLayer.LineStroke.Dashed(
+            thickness = 1.5.dp,
+            cap = StrokeCap.Round,
+            dashLength = 2.dp,
+            gapLength = 2.dp
+        ),
+        areaFill = null
+    )
 
 /** DevSlope min line — magenta, no fill (matches @color/devSlopeNeg #FF00FF) */
 private fun createDevSlopeMinLine(): LineCartesianLayer.Line {

@@ -121,11 +121,13 @@ data class CobFailOverPoint(
 // ============================================================================
 
 /**
- * IOB graph data: regular IOB line + prediction points
+ * IOB graph data: regular IOB line + prediction points, and the AutoISF 3.2.1 effective IOB threshold
+ * (one point per stored AutoISF loop, in units)
  */
 data class IobGraphData(
     val iob: List<GraphDataPoint>,
-    val predictions: List<GraphDataPoint>
+    val predictions: List<GraphDataPoint>,
+    val iobTh: List<GraphDataPoint> = emptyList()
 )
 
 /**

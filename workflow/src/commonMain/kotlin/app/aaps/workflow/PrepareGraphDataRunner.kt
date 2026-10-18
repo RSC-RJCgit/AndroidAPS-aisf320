@@ -805,7 +805,11 @@ class PrepareGraphDataRunner(
         val varSensListCompose = persistenceLayer.getVariableSensitivities(fromTime, endTime)
             .map { GraphDataPoint(it.timestamp, profileUtil.fromMgdlToUnits(it.valueMgdl)) }
 
-        data.cache.updateIobGraph(IobGraphData(iob = iobListCompose, predictions = iobPredictionsListCompose))
+        // AutoISF 3.2.1: the effective IOB threshold of each stored AutoISF loop
+        val iobThListCompose = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+            .map { GraphDataPoint(it.timestamp, it.iobThEffective) }
+
+        data.cache.updateIobGraph(IobGraphData(iob = iobListCompose, predictions = iobPredictionsListCompose, iobTh = iobThListCompose))
         data.cache.updateAbsIobGraph(AbsIobGraphData(absIob = absIobListCompose))
         data.cache.updateCobGraph(CobGraphData(cob = cobListCompose, failOverPoints = cobFailOverListCompose))
         data.cache.updateActivityGraph(

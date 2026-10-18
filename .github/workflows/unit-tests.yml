@@ -23,6 +23,8 @@ on:
     branches:
       - dev
       - master
+      # AutoISF 3.2.1 port branch
+      - autoisf321
   pull_request:
     branches:
       - dev

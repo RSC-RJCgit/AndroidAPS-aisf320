@@ -25,7 +25,10 @@ enum class SeriesType {
     HEART_RATE,
     STEPS,
     ACTIVITY,
-    PREDICTIONS
+    PREDICTIONS,
+
+    /** AutoISF 3.2.1: the effective IOB threshold, a dashed overlay on the IOB graph only. */
+    IOB_TH
 }
 
 /**
@@ -46,7 +49,7 @@ data class SecondaryGraph(
  *   overlay (toggled via [iobOverlays]).
  *
  * @param bgOverlays       Overlay toggles for the BG graph (currently only [SeriesType.ACTIVITY]).
- * @param iobOverlays      Overlay toggles for the fixed IOB graph (currently only [SeriesType.ACTIVITY]).
+ * @param iobOverlays      Overlay toggles for the fixed IOB graph ([SeriesType.ACTIVITY] and [SeriesType.IOB_TH]).
  * @param secondaryGraphs  Ordered list of user-configurable secondary graph configurations.
  *   IOB cannot appear here (it has a dedicated fixed slot). Each graph is a List (not Set) to
  *   preserve selection order:
