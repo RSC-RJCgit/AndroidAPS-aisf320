@@ -105,6 +105,7 @@ import app.aaps.core.objects.extensions.put
 import app.aaps.core.objects.extensions.store
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.objects.wizard.followUpRequirementMilliU
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.core.utils.MidnightUtils
@@ -10169,7 +10170,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             lastAPSResult = determineBasalResult
             val followUpReq = it.insulinReq
             if (followUpReq != null && followUpReq.isFinite()) {
-                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU, (followUpReq * 1000).toLong())
+                // 2026-10-18: less the SMB of this same cycle, see followUpRequirementMilliU
+                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU, followUpRequirementMilliU(followUpReq, determineBasalResult.smb))
                 preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, now)
             }
             stepsCalculationSummary = buildString {

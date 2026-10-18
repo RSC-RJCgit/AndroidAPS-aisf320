@@ -897,7 +897,7 @@ class WizardDialog : DaggerDialogFragment() {
                 // is still just what the input above is currently set to, and changing it recalculates.
                 binding.proteinFatDelayInfo.text =
                     "Protein+Fat ${decimalFormatter.to2Decimal(fpuPlan.totalInsulin)}U over ${decimalFormatter.to2Decimal(hours)}h " +
-                        "unless setting changed above (${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)})$cappedNote, less IOB rise"
+                        "unless setting changed above (${fpuPlan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(fpuPlan.fpu)})$cappedNote, capped by insulinReq"
                 binding.proteinFatDelayInfo.visibility = android.view.View.VISIBLE
             } else {
                 binding.proteinFatDelayInfo.visibility = android.view.View.GONE

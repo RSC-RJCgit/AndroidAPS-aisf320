@@ -5,15 +5,16 @@ import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
 
-data class SplitBolusBudget(val remaining: Double, val dose: Double, val creditedIob: Double)
+data class SplitBolusBudget(val remaining: Double, val dose: Double)
 
-/** IOB credited against a pending split is removed from its budget, not delayed for later delivery. */
-fun splitBolusBudget(remaining: Double, previousPart: Double, baselineIob: Double, liveIob: Double, step: Double): SplitBolusBudget {
-    val rise = max(0.0, liveIob - baselineIob)
-    val credit = min(remaining, rise)
-    val reducedRemaining = Round.roundTo(max(0.0, remaining - credit), 0.001)
-    val pumpCap = Round.roundTo(floor((reducedRemaining + 1e-9) / step) * step, step)
-    val dose = Round.roundTo(max(0.0, min(previousPart - rise, reducedRemaining)), step)
-        .coerceAtMost(pumpCap)
-    return SplitBolusBudget(reducedRemaining, dose, credit)
+/**
+ * The next carb split part: the size of the part before it, never more than what is left, rounded down to the pump step.
+ * Since 2026-10-18 (per explicit request) no IOB rise is taken off: the part is capped by the loop's insulinReq (less the
+ * same-cycle SMB), which already counts all insulin on board, so taking an IOB rise off as well counted it twice.
+ */
+fun splitBolusBudget(remaining: Double, previousPart: Double, step: Double): SplitBolusBudget {
+    val left = Round.roundTo(max(0.0, remaining), 0.001)
+    val pumpCap = Round.roundTo(floor((left + 1e-9) / step) * step, step)
+    val dose = Round.roundTo(max(0.0, min(previousPart, left)), step).coerceAtMost(pumpCap)
+    return SplitBolusBudget(left, dose)
 }

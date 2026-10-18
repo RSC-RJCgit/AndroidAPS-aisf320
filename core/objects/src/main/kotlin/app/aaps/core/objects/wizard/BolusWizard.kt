@@ -528,7 +528,7 @@ class BolusWizard @Inject constructor(
             )
         }
         if (parts.isEmpty()) return ""
-        return parts.joinToString(" and ") + " split, less IOB rise"
+        return parts.joinToString(" and ") + " split, capped by insulinReq"
     }
 
     // Added 2026-08-29, per explicit request: an UNCONDITIONAL calc-info line, appended to every note
@@ -1503,7 +1503,7 @@ class BolusWizard @Inject constructor(
                 "rise ${decimalFormatter.to2Decimal(iobIncrease)}U; " +
                 "calculated ${decimalFormatter.to2Decimal(dose)}U after residual cap/pump-step rounding. " +
                 "IOB row represents the rise in total IOB. BG is a safety gate, not a correction. " +
-                "Gate BG=${gs?.glucose}, delta=${gs?.delta}, short delta=${gs?.shortAvgDelta} mg/dL. " + detail
+                "Gate ${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())}. " + detail
         )
     }
 
@@ -1665,7 +1665,7 @@ class BolusWizard @Inject constructor(
             if (bgUnsafe) {
                 aapsLogger.info(
                     LTag.CORE,
-                    "ReducedSplitBolus: BG unsafe (g=${gs.glucose} d=${gs.delta} sd=${gs.shortAvgDelta}) — retrying in ${intervalMins}min, remaining ${remainingResidual}U"
+                    "ReducedSplitBolus: BG unsafe (${gateGlucoseText(gs.glucose, gs.delta, gs.shortAvgDelta, profileFunction.getUnits())}) — retrying in ${intervalMins}min, remaining ${remainingResidual}U"
                 )
                 scheduleReducedPartsSplitBolus(
                     remainingResidual,
@@ -1682,29 +1682,27 @@ class BolusWizard @Inject constructor(
             }
             val liveIob = currentTotalIob()
             val iobIncrease = max(0.0, liveIob - iobBaselineForNextGap)
-            val budget = splitBolusBudget(remainingResidual, previousPartDose, iobBaselineForNextGap, liveIob, pumpStepForResidual)
+            // 2026-10-18, per explicit request: no IOB credit (see splitBolusBudget). The insulinReq cap already counts all
+            // insulin on board, less the same-cycle SMB. The IOB values stay in the notes only.
+            val budget = splitBolusBudget(remainingResidual, previousPartDose, pumpStepForResidual)
             val reducedResidual = budget.remaining
             val cappedDose = cappedFollowUpDose(budget.dose, pumpStepForResidual)
             val thisDose = cappedDose ?: 0.0
             setSplitPendingRemaining(reducedResidual)
-            if (budget.creditedIob > 0.0) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: removed ${budget.creditedIob}U from pending budget for IOB rise; ${reducedResidual}U remains")
-            }
             if (reducedResidual < pumpStepForResidual / 2.0) {
                 writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "IOB rise covers remaining split", "Carb split", iobBaselineForNextGap)
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (thisDose <= 0) {
-                val reason = if (cappedDose == null) "insulinReq missing or stale" else if (budget.dose > 0.0) "insulinReq cap is below one pump step" else "IOB rise covers next part"
+                val reason = if (cappedDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                 val retryMins = if (budget.dose > 0.0) 2 else intervalMins
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: $reason — retrying in ${retryMins}min, remaining ${reducedResidual}U")
                 // Deferred (2026-09-20): nothing is written for a skip now; the latest one is remembered and written once,
                 // only if the split ends without delivering (see writeLastSkippedZero / terminal paths above).
                 val skippedCalc = followUpCalculation(
                     dateUtil.now(), "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, 0.0,
-                    "No insulin delivered: $reason. IOB credit ${decimalFormatter.to2Decimal(budget.creditedIob)}U; remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; retry in ${retryMins}min."
+                    "No insulin delivered: $reason. Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; retry in ${retryMins}min."
                 )
                 scheduleReducedPartsSplitBolus(
                     reducedResidual, previousPartDose, max(iobBaselineForNextGap, liveIob), intervalMins, schedulingPct, myScheduleToken,
@@ -1719,7 +1717,7 @@ class BolusWizard @Inject constructor(
                 notes = "Reduced split bolus part"
                 val calculation = followUpCalculation(
                     timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
-                    "Remaining before IOB credit ${decimalFormatter.to2Decimal(remainingResidual)}U; credit ${decimalFormatter.to2Decimal(budget.creditedIob)}U; remaining before request ${decimalFormatter.to2Decimal(reducedResidual)}U; dose after insulinReq cap ${decimalFormatter.to2Decimal(thisDose)}U."
+                    "Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; dose after insulinReq cap ${decimalFormatter.to2Decimal(thisDose)}U."
                 )
                 uel.log(
                     action = Action.BOLUS,
@@ -1845,29 +1843,18 @@ class BolusWizard @Inject constructor(
                 return@postDelayed
             }
             val gs = glucoseStatusProvider.glucoseStatusData
-            val bgOk = gs != null && gs.glucose >= 126.1 /* 7.0 mmol */ && gs.delta > -0.90 /* -0.05 mmol */ && gs.shortAvgDelta > -0.90 /* -0.05 mmol */
+            // 2026-10-18, per explicit request: the same rule as v4 - BG above 5.5 mmol and both deltas at least +0.05 mmol
+            // (was BG >= 7.0 and not falling, which cancelled most doses on 17 Oct Live while BG was 5.5-7.0).
+            val bgOk = gs != null && gs.glucose > 99.1 /* 5.5 mmol */ && gs.delta >= 0.90 /* 0.05 mmol */ && gs.shortAvgDelta >= 0.90 /* 0.05 mmol */
             if (!bgOk) {
-                deferOrCancel("BG safety check failed (g=${gs?.glucose} d=${gs?.delta} sd=${gs?.shortAvgDelta})", "$label dose: BG safety check failed")
+                deferOrCancel("BG safety check failed (${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())})", "$label dose: BG safety check failed")
                 return@postDelayed
             }
             val liveIob = currentTotalIob()
-            val iobIncrease = max(0.0, liveIob - iobBaseline)
             val pumpStep = activePlugin.activePump.pumpDescription.bolusStep
-            val iobAdjustedDose = Round.roundTo(dose - iobIncrease, pumpStep)
-            if (iobAdjustedDose <= 0) {
-                deferOrCancel(
-                    "IOB rose ${iobIncrease}U since the immediate bolus (baseline ${iobBaseline}U, now ${liveIob}U) — dose would be <=0",
-                    "$label dose: IOB rose ${decimalFormatter.to2Decimal(iobIncrease)}U",
-                    withLabel = false
-                ) {
-                    if (isLast) {
-                        insertZeroDoseTreatment("Delayed $label dose", iobIncrease, followUpCalculation(
-                            dateUtil.now(), "Delayed $label dose", dose, iobBaseline, liveIob, 0.0, "No insulin delivered; dose cancelled."
-                        ))
-                    }
-                }
-                return@postDelayed
-            }
+            // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
+            // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice.
+            val iobAdjustedDose = Round.roundTo(dose, pumpStep)
             val thisDose = cappedFollowUpDose(iobAdjustedDose, pumpStep)
             if (thisDose == null || thisDose <= 0.0) {
                 val reason = if (thisDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"

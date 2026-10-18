@@ -11,3 +11,12 @@ fun followUpInsulinCap(candidate: Double, requirementMilliU: Long, calculatedAt:
     val cap = min(max(0.0, candidate), max(0.0, requirementMilliU / 1000.0))
     return Round.roundTo(floor((cap + 1e-9) / step) * step, step)
 }
+
+/**
+ * The requirement the delayed doses are capped by, in milli-units (2026-10-18): the loop's insulinReq less the SMB the
+ * loop gives in the same cycle, so the dose and that SMB together never go above insulinReq. insulinReq already counts
+ * all insulin on board (SMBs, temp basals, the bolus) and COB, which is why the delayed doses no longer subtract an
+ * IOB rise of their own.
+ */
+fun followUpRequirementMilliU(insulinReq: Double, smbThisCycle: Double): Long =
+    (max(0.0, insulinReq - max(0.0, smbThisCycle)) * 1000).toLong()
