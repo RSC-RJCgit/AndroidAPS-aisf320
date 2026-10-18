@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.22.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.23.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -48,16 +48,39 @@ FULL_COPY = [
     # files are surgical, not FULL_COPY, since OpenAPSAutoISFPlugin.kt carries many unrelated automations
     # this patch must not bundle in).
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCaution.kt",
+    # Added in patch .23: brand-new files (not in BASE). The step levels for the walking cut on delayed doses, and the
+    # BG/delta text in the user's units for the calculation notes.
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedDoseSteps.kt",
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/GateGlucoseText.kt",
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .22, 2026-10-12)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .23, 2026-10-19)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.22.patch
-  git apply bolus-calculator-on-3426-aisf321.22.patch
+  git apply --check bolus-calculator-on-3426-aisf321.23.patch
+  git apply bolus-calculator-on-3426-aisf321.23.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .23 (2026-10-19):
+- Protein/fat (FPU) doses: the BG check is now BG above 5.5 mmol/L (99 mg/dL) and both deltas at least
+  +0.05 mmol/L (0.9 mg/dL). It was BG 7.0 or more and not falling, which cancelled most doses while BG was 5.5-7.0.
+- No IOB-rise cut on FPU doses and no IOB credit on carb-split parts any more. The insulinReq cap already counts
+  all insulin on board, so the IOB cut counted it twice and cut too often. A split part is the size of the
+  previous part while enough is left.
+- The insulinReq used for the cap is now less the SMB of the same loop cycle (followUpRequirementMilliU), so an
+  SMB and a follow-up dose do not both cover the same need.
+- Delayed doses (FPU and carb-split parts) are cut while walking, from the step records, with any one limit enough:
+    heavy activity (S5/S10/S15 > 300, S30 > 1500, S60 > 2500): x0.25
+    activity       (S5/S10/S15 > 200, S30 > 500,  S60 > 800):  x0.5
+    walking        (S5 > 10, S15 > 30, S30 > 100, S60 > 300):  x0.75
+  S10 and S15 are the 5-minute bins. The part that is cut is dropped, not given later. No step record in the
+  last 20 minutes means no cut. Insulin held back by "Walking soon" goes through the delayed bolus and is not cut.
+- Calculation notes show BG and deltas in the user's units: mmol/L BG with 1 decimal and deltas with 2;
+  mg/dL BG as a whole number and deltas with 1 decimal.
+- The calculator's max bolus box always starts at the max bolus setting (the low-BG rule is removed).
+- Retains all patch .22 changes below.
 
 Changes in patch .22 (2026-10-12):
 - Carb-split and Warsaw FPU follow-ups also require a loop insulinReq result no older than 5 minutes.
@@ -391,6 +414,35 @@ def revert_steps_source(staging: Path) -> None:
     )
     write(staging, p, t)
 
+    # Patch .23: the walking cut on delayed doses reads StepCountSource in the fork. Read the step records instead.
+    p = "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt"
+    t = read(staging, p)
+    t = must_replace(t, "import app.aaps.core.objects.utils.StepCountSource\n", "", "BW import")
+    t = must_replace(
+        t,
+        "    private val processedDeviceStatusData: ProcessedDeviceStatusData,\n    private val stepCountSource: StepCountSource\n",
+        "    private val processedDeviceStatusData: ProcessedDeviceStatusData\n",
+        "BW constructor",
+    )
+    t = must_replace(
+        t,
+        "     * [StepCountSource] gives cumulative counts, so the bins are S10 - S5 and S15 - S10.\n",
+        "     * The step records hold S10/S15 as totals, so the bins are S10 - S5 and S15 - S10.\n",
+        "BW doc",
+    )
+    t = must_replace(
+        t,
+        "        val steps = stepCountSource.latest(dateUtil.now(), T.mins(20).msecs()) ?: return 1.0\n",
+        "        val now = dateUtil.now()\n"
+        "        val sc = persistenceLayer.getStepsCountFromTimeToTime(now - T.mins(20).msecs(), now)\n"
+        "            .filter { it.isValid && it.timestamp <= now }.maxByOrNull { it.timestamp } ?: return 1.0\n"
+        "        val steps = mapOf(5 to sc.steps5min, 10 to sc.steps10min, 15 to sc.steps15min, 30 to sc.steps30min, 60 to sc.steps60min)\n",
+        "BW steps",
+    )
+    if "StepCountSource" in t or "stepCountSource" in t:
+        raise SystemExit("BolusWizard still uses StepCountSource")
+    write(staging, p, t)
+
 
 def apply_surgical(staging: Path) -> None:
     # TreatmentMapper: keep a 0 U Meal Bolus with no carbs (the wizard's zero markers) when downloaded from Nightscout.
@@ -700,7 +752,7 @@ def apply_surgical(staging: Path) -> None:
     t = must_replace(t, "            lastAPSResult = determineBasalResult\n", '''            lastAPSResult = determineBasalResult
             val followUpReq = it.insulinReq
             if (followUpReq != null && followUpReq.isFinite()) {
-                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU, (followUpReq * 1000).toLong())
+                preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU, followUpRequirementMilliU(followUpReq, determineBasalResult.smb))
                 preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, now)
             }
 ''', "follow-up requirement mirror")
@@ -723,6 +775,12 @@ def apply_surgical(staging: Path) -> None:
         }
 '''
     t = must_replace(t, "        val iobData = iobArray[0]\n", "        val iobData = iobArray[0]\n" + hp_cache, "HP1 producer")
+    t = must_replace(
+        t,
+        "import app.aaps.core.objects.constraints.ConstraintObject\n",
+        "import app.aaps.core.objects.constraints.ConstraintObject\nimport app.aaps.core.objects.wizard.followUpRequirementMilliU\n",
+        "followUpRequirementMilliU import",
+    )
     if "import kotlin.math.abs\n" not in t:
         t = must_replace(t, "import kotlin.math.", "import kotlin.math.abs\nimport kotlin.math.", "HP1 abs import")
     write(staging, p, t)
