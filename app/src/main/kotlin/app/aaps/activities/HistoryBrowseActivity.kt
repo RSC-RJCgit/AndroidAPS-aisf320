@@ -35,6 +35,7 @@ import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.extensions.toVisibilityKeepSpace
 import app.aaps.databinding.ActivityHistorybrowseBinding
 import app.aaps.plugins.main.general.overview.graphData.GraphData
+import app.aaps.plugins.main.general.overview.graphData.stepsLinesLabel
 import app.aaps.plugins.main.skins.SkinProvider
 import com.google.android.material.datepicker.MaterialDatePicker
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -627,7 +628,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             secondaryGraphsData.add(secondGraphData)
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size + 1)) {
-            secondaryGraphsLabel[g].text = overviewMenus.enabledTypes(g + 1)
+            secondaryGraphsLabel[g].text = stepsLinesLabel(overviewMenus.enabledTypes(g + 1), rh, this)
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal) ||

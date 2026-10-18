@@ -143,6 +143,7 @@ import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.plugins.main.databinding.DialogQuickWizardMaxBolusBinding
 import app.aaps.plugins.main.databinding.OverviewFragmentBinding
 import app.aaps.plugins.main.general.overview.graphData.GraphData
+import app.aaps.plugins.main.general.overview.graphData.stepsLinesLabel
 import app.aaps.plugins.main.general.overview.keys.OverviewStringKey
 import app.aaps.plugins.main.general.overview.notifications.events.EventUpdateOverviewNotification
 import app.aaps.plugins.main.general.overview.notifications.NotificationStore
@@ -3608,7 +3609,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             secondaryGraphsData.add(secondGraphData)
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
-            secondaryGraphsLabel[g].text = overviewMenus.enabledTypes(g + 1)
+            secondaryGraphsLabel[g].text = stepsLinesLabel(overviewMenus.enabledTypes(g + 1), rh, context)
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal) ||

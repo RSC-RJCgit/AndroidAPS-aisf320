@@ -500,22 +500,22 @@ class PrepareTreatmentsDataWorker(
                 .toTypedArray()).apply { color = rh.gac(null, app.aaps.core.ui.R.attr.stepsColor) }
 
         // Steps 5/15/30/60 as lines (CharType.STEPS_LINES, 2026-10-18). Full history from StepCountSource: Live's mirrored
-        // samples on Virtual, local SC rows, or on a client the master's loop results. S5 in the full steps colour, the
-        // longer windows lighter.
+        // samples on Virtual, local SC rows, or on a client the master's loop results. Each line in its own colour
+        // (2026-10-19, was lighter shades of one colour): S5 the steps colour, S15 yellow, S30 orange, S60 pink.
         val stepsHistory = stepCountSource.history(fromTime, endTime)
         val stepsLinesScale = data.overviewData.stepsLinesScale
         data.overviewData.maxStepsLinesValue = (stepsHistory.maxOfOrNull { it.second[60] ?: 0 } ?: 0).toDouble().coerceAtLeast(1.0)
         val stepsColor = rh.gac(null, app.aaps.core.ui.R.attr.stepsColor)
-        fun stepsLine(minutes: Int, alpha: Int) = LineGraphSeries(
+        fun stepsLine(minutes: Int, color: Int) = LineGraphSeries(
             stepsHistory.map { (time, buckets) -> ScaledDataPoint(time, (buckets[minutes] ?: 0).toDouble(), stepsLinesScale) }.toTypedArray()
         ).also {
-            it.color = (alpha shl 24) or (stepsColor and 0x00FFFFFF)
+            it.color = color
             it.thickness = if (minutes == 5) 4 else 3
         }
-        data.overviewData.stepsLine5Series = stepsLine(5, 0xFF)
-        data.overviewData.stepsLine15Series = stepsLine(15, 0xCC)
-        data.overviewData.stepsLine30Series = stepsLine(30, 0x99)
-        data.overviewData.stepsLine60Series = stepsLine(60, 0x66)
+        data.overviewData.stepsLine5Series = stepsLine(5, stepsColor)
+        data.overviewData.stepsLine15Series = stepsLine(15, rh.gc(app.aaps.core.ui.R.color.steps_line_15))
+        data.overviewData.stepsLine30Series = stepsLine(30, rh.gc(app.aaps.core.ui.R.color.steps_line_30))
+        data.overviewData.stepsLine60Series = stepsLine(60, rh.gc(app.aaps.core.ui.R.color.steps_line_60))
 
 
         rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_TREATMENTS_DATA, 100, null))

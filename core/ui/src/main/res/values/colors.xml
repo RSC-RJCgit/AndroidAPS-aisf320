@@ -176,6 +176,10 @@
     <color name="rawBg">#FF8C00</color>
     <color name="heartRate">#FFFFFF66</color>
     <color name="steps">#66FFB8</color>
+    <!-- Step count lines S15, S30, S60 (S5 uses steps), 2026-10-19 -->
+    <color name="steps_line_15">#FFD600</color>
+    <color name="steps_line_30">#FF6D00</color>
+    <color name="steps_line_60">#FF4081</color>
     <color name="actionsConfirm">#F6CE22</color>
     <color name="deviations">#FF0000</color>
     <color name="cobAlert">#7484E2</color>

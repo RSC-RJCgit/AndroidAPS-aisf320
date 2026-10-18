@@ -144,7 +144,9 @@ class OverviewMenusImpl @Inject constructor(
 
     companion object {
 
-        const val MAX_GRAPHS = 5 // including main
+        // 6 including main, so 5 secondary graphs (2026-10-19, per explicit request: was 5, which gave no free graph for
+        // "Steps 5/15/30/60")
+        const val MAX_GRAPHS = 6 // including main
     }
 
     override fun enabledTypes(graph: Int): String {
