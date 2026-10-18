@@ -1,6 +1,7 @@
 package app.aaps.ui.compose.overview
 
 import app.aaps.core.data.model.RM
+import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -86,6 +87,7 @@ internal class OverviewDataCacheRunningModeTest {
             rh = mock<TextResolver>(),
             pumpStatusProvider = mock<PumpStatusProvider>(),
             receiverStatusStore = mock<ReceiverStatusStore>(),
+            backgroundWorkPause = mock<BackgroundWorkPause>(),
             signals = signals,
             // No database observers: the refresh below is the only reader under test.
             observeDatabase = false

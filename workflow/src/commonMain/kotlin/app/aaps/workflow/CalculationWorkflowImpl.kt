@@ -1,5 +1,6 @@
 package app.aaps.workflow
 
+import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -15,6 +16,10 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration
@@ -36,8 +41,21 @@ class CalculationWorkflowImpl(
     private val mainSignals: CalculationSignalsEmitter,
     // A plain factory, not a Provider: breaks the cycle OverviewDataCache → Loop → IobCobCalculator → CalculationWorkflow → OverviewDataCache.
     // Side methods that use mainCache run at runtime, never during construction.
-    private val mainCacheProvider: () -> OverviewDataCache
+    private val mainCacheProvider: () -> OverviewDataCache,
+    private val backgroundWorkPause: BackgroundWorkPause
 ) : CalculationWorkflow {
+
+    // iOS background (2026-10-18, see BackgroundWorkPause): the main calculation waits while paused. Only the newest
+    // request is kept, and it runs once, as a full reload, when the app comes back. History runs are never paused.
+    private class PendingMain(
+        val iobCobCalculator: IobCobCalculator,
+        val overviewData: OverviewData,
+        val cache: OverviewDataCache,
+        val signals: CalculationSignalsEmitter
+    )
+
+    private var pendingMain: PendingMain? = null
+    private val resumeScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val mainCache: OverviewDataCache get() = mainCacheProvider()
 
@@ -55,6 +73,18 @@ class CalculationWorkflowImpl(
         var sumPercent = 0
         for (pass in CalculationWorkflow.ProgressData.entries) sumPercent += pass.percentOfTotal
         require(sumPercent == 100)
+        resumeScope.launch {
+            backgroundWorkPause.paused.collect { paused ->
+                val pending = pendingMain
+                if (!paused && pending != null) {
+                    pendingMain = null
+                    runCalculation(
+                        MAIN_CALCULATION, pending.iobCobCalculator, pending.overviewData, pending.cache, pending.signals,
+                        "back from background", dateUtil.now(), bgDataReload = true, triggeredByNewBG = false
+                    )
+                }
+            }
+        }
     }
 
     override suspend fun stopCalculation(job: String, from: String) = executor.stop(job, from)
@@ -76,6 +106,11 @@ class CalculationWorkflowImpl(
         bgDataReload: Boolean,
         triggeredByNewBG: Boolean
     ) {
+        if (job == MAIN_CALCULATION && backgroundWorkPause.paused.value) {
+            pendingMain = PendingMain(iobCobCalculator, overviewData, cache, signals)
+            aapsLogger.debug(LTag.WORKER, "Calculation waits, app in background: $reason")
+            return
+        }
         aapsLogger.debug(LTag.WORKER, "Starting calculation worker: $reason to ${dateUtil.dateAndTimeAndSecondsString(end)}")
 
         val isMain = job == MAIN_CALCULATION

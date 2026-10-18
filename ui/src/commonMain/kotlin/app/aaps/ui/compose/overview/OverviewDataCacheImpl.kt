@@ -18,6 +18,7 @@ import app.aaps.core.data.model.TT
 import app.aaps.core.data.model.endOf
 import app.aaps.core.data.model.latestRunningAt
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
@@ -193,6 +194,7 @@ class OverviewDataCacheImpl(
     private val rh: TextResolver,
     private val pumpStatusProvider: PumpStatusProvider,
     private val receiverStatusStore: ReceiverStatusStore,
+    private val backgroundWorkPause: BackgroundWorkPause,
     @Assisted val signals: CalculationSignals,
     @Assisted val observeDatabase: Boolean
 ) : OverviewDataCache {
@@ -423,6 +425,23 @@ class OverviewDataCacheImpl(
             }
 
             // =========================================================================
+            // iOS background (2026-10-18): the graph rebuilds that waited run once when the app comes back.
+            scope.launch {
+                backgroundWorkPause.paused.collect { paused ->
+                    if (!paused && rebuildsPending) {
+                        rebuildsPending = false
+                        aapsLogger.debug(LTag.UI, "OverviewDataCache: back from background, rebuilding graphs")
+                        rebuildTreatmentGraph()
+                        rebuildEpsGraph()
+                        rebuildRunningModeGraph()
+                        rebuildTargetLine()
+                        rebuildBasalGraph()
+                        rebuildHeartRateGraph()
+                        rebuildStepsGraph()
+                    }
+                }
+            }
+
             // Category B reactive graph observers (treatments, RM, TT, basal)
             // =========================================================================
 
@@ -434,7 +453,7 @@ class OverviewDataCacheImpl(
                     persistenceLayer.observeChanges(type)
                         .compensateForClockSkew(config, dateUtil)
                         .debounce(300)
-                        .collect { rebuildTreatmentGraph() }
+                        .collect { rebuildUnlessPaused { rebuildTreatmentGraph() } }
                 }
             }
             // Observe HR changes for treatment graph + heart rate graph
@@ -443,8 +462,8 @@ class OverviewDataCacheImpl(
                     .compensateForClockSkew(config, dateUtil)
                     .debounce(300)
                     .collect {
-                        rebuildTreatmentGraph()
-                        rebuildHeartRateGraph()
+                        rebuildUnlessPaused { rebuildTreatmentGraph() }
+                        rebuildUnlessPaused { rebuildHeartRateGraph() }
                     }
             }
             // Observe SC changes for treatment graph + steps graph
@@ -453,8 +472,8 @@ class OverviewDataCacheImpl(
                     .compensateForClockSkew(config, dateUtil)
                     .debounce(300)
                     .collect {
-                        rebuildTreatmentGraph()
-                        rebuildStepsGraph()
+                        rebuildUnlessPaused { rebuildTreatmentGraph() }
+                        rebuildUnlessPaused { rebuildStepsGraph() }
                     }
             }
             // Observe running mode changes for graph + chip
@@ -464,7 +483,7 @@ class OverviewDataCacheImpl(
                     .debounce(300)
                     .collect {
                         updateRunningModeFromDatabase()
-                        rebuildRunningModeGraph()
+                        rebuildUnlessPaused { rebuildRunningModeGraph() }
                     }
             }
 
@@ -475,7 +494,7 @@ class OverviewDataCacheImpl(
                     .debounce(300)
                     .collect {
                         updateTempTargetFromDatabase()
-                        rebuildTargetLine()
+                        rebuildUnlessPaused { rebuildTargetLine() }
                     }
             }
             // Refresh TT chip after APS loop runs so the APS-adjusted target (read from
@@ -505,12 +524,12 @@ class OverviewDataCacheImpl(
                     .compensateForClockSkew(config, dateUtil)
                     .debounce(300)
                     .collect {
-                        rebuildEpsGraph()
+                        rebuildUnlessPaused { rebuildEpsGraph() }
                         delay(500) // Allow ProfileFunctionImpl cache invalidation
                         updateProfileFromDatabase()
                         updateTempTargetFromDatabase()
-                        rebuildTargetLine()
-                        rebuildBasalGraph()
+                        rebuildUnlessPaused { rebuildTargetLine() }
+                        rebuildUnlessPaused { rebuildBasalGraph() }
                     }
             }
 
@@ -520,7 +539,7 @@ class OverviewDataCacheImpl(
                     .compensateForClockSkew(config, dateUtil)
                     .debounce(300)
                     .collect {
-                        rebuildBasalGraph()
+                        rebuildUnlessPaused { rebuildBasalGraph() }
                         updateTbrFromDatabase()
                     }
             }
@@ -528,7 +547,7 @@ class OverviewDataCacheImpl(
                 persistenceLayer.observeChanges(EB::class)
                     .compensateForClockSkew(config, dateUtil)
                     .debounce(300)
-                    .collect { rebuildBasalGraph() }
+                    .collect { rebuildUnlessPaused { rebuildBasalGraph() } }
             }
 
             // observeChanges() does not fire when the DB is wiped via clearAllTables().
@@ -903,6 +922,18 @@ class OverviewDataCacheImpl(
         !observeDatabase -> toTime
         showPredictions  -> graphEndTime(loop.lastRun?.constraintsProcessed?.latestPredictionsTime, toTime)
         else             -> timeRangeFlow.value?.toTime ?: toTime
+    }
+
+    // iOS background (2026-10-18, see BackgroundWorkPause): a graph rebuild waits until the app comes back. The chips
+    // (TT, profile, running mode, TBR) still update, they are cheap.
+    private var rebuildsPending = false
+
+    private suspend fun rebuildUnlessPaused(rebuild: suspend () -> Unit) {
+        if (backgroundWorkPause.paused.value) {
+            rebuildsPending = true
+            return
+        }
+        rebuild()
     }
 
     private suspend fun rebuildTreatmentGraph() {

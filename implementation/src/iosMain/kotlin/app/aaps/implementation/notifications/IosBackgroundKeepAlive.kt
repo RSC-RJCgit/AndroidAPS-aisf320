@@ -1,5 +1,6 @@
 package app.aaps.implementation.notifications
 
+import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.TextResolver
@@ -40,6 +41,7 @@ import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.create
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UserNotifications.UNMutableNotificationContent
 import platform.UserNotifications.UNNotificationInterruptionLevel.UNNotificationInterruptionLevelTimeSensitive
 import platform.UserNotifications.UNNotificationRequest
@@ -74,7 +76,8 @@ import platform.UserNotifications.UNUserNotificationCenter
 class IosBackgroundKeepAlive(
     private val aapsLogger: AAPSLogger,
     private val preferences: Preferences,
-    private val rh: TextResolver
+    private val rh: TextResolver,
+    private val backgroundWorkPause: BackgroundWorkPause
 ) {
 
     private val scope = CoroutineScope(Dispatchers.Main)
@@ -108,8 +111,14 @@ class IosBackgroundKeepAlive(
         }
         // Backstop for anything missed above. A "stopped" notice already shown is out of date once the app is open.
         center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
+            backgroundWorkPause.setPaused(false)
             notificationCenter.removeDeliveredNotificationsWithIdentifiers(listOf(STOPPED_NOTICE_ID))
             resume()
+        }
+        // Battery (2026-10-18): in the background the per-reading calculation and the graph rebuilds wait (see
+        // BackgroundWorkPause). Nightscout sync and the alarms keep running. They run once when the app is active again.
+        center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) { _ ->
+            backgroundWorkPause.setPaused(true)
         }
     }
 
