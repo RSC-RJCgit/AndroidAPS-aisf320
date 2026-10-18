@@ -47,6 +47,34 @@ internal fun stepsFromPrimarySite(secondaryEnabled: Boolean): Boolean = !seconda
 internal fun glucoseFromSecondarySite(secondaryEnabled: Boolean, bgFromThisConnection: Boolean): Boolean =
     secondaryEnabled && bgFromThisConnection
 
+/**
+ * Whether BG may be uploaded to the main site (2026-10-18).
+ *
+ * Normally not with the NSClient BG source: that BG came from the main site, so it is already there. The exception is
+ * a full phone that takes BG from the second (Live) site: those readings are stored without a Nightscout id, so they are
+ * new to the main site, and without this the main site (aapsfour) never got any BG. Never on a client, and never when
+ * both addresses are the same site, which would send each reading back to where it came from.
+ * Readings that came from the main site keep their Nightscout id and are skipped by the uploader anyway.
+ */
+internal fun bgUploadAllowed(
+    uploadOn: Boolean,
+    nsClientBgSource: Boolean,
+    bgFromLiveSite: Boolean,
+    isClient: Boolean,
+    primaryUrl: String,
+    secondaryUrl: String
+): Boolean = when {
+    !uploadOn         -> false
+    !nsClientBgSource -> true
+    else              -> bgFromLiveSite && !isClient && !sameNsSite(primaryUrl, secondaryUrl)
+}
+
+/** Same Nightscout site, ignoring http/https, letter case and a trailing slash. */
+internal fun sameNsSite(a: String, b: String): Boolean {
+    fun plain(url: String) = url.trim().lowercase().removePrefix("https://").removePrefix("http://").trimEnd('/')
+    return plain(a).isNotEmpty() && plain(a) == plain(b)
+}
+
 private val secondaryDeviceEventTypes = setOf(
     TE.Type.SENSOR_CHANGE,
     TE.Type.SENSOR_STARTED,

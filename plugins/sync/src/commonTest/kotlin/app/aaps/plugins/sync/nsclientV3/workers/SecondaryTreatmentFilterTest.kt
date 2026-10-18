@@ -54,4 +54,24 @@ class SecondaryTreatmentFilterTest {
         assertFalse(glucoseFromSecondarySite(secondaryEnabled = true, bgFromThisConnection = false))
         assertFalse(glucoseFromSecondarySite(secondaryEnabled = false, bgFromThisConnection = true))
     }
+
+    // 2026-10-18: the Flip3 full app took BG from nsnewrsc with the NSClient BG source, and aapsfour never got any.
+    @Test
+    fun bgFromTheLiveSiteIsUploadedToTheMainSiteByAFullApp() {
+        val four = "https://aapsfour.ns.example"
+        val live = "https://nsnewrsc.ns.example"
+        assertTrue(bgUploadAllowed(uploadOn = true, nsClientBgSource = false, bgFromLiveSite = false, isClient = false, primaryUrl = four, secondaryUrl = live))
+        assertFalse(bgUploadAllowed(uploadOn = false, nsClientBgSource = false, bgFromLiveSite = false, isClient = false, primaryUrl = four, secondaryUrl = live))
+        assertFalse(bgUploadAllowed(uploadOn = true, nsClientBgSource = true, bgFromLiveSite = false, isClient = false, primaryUrl = four, secondaryUrl = live))
+        assertTrue(bgUploadAllowed(uploadOn = true, nsClientBgSource = true, bgFromLiveSite = true, isClient = false, primaryUrl = four, secondaryUrl = live))
+        assertFalse(bgUploadAllowed(uploadOn = true, nsClientBgSource = true, bgFromLiveSite = true, isClient = true, primaryUrl = four, secondaryUrl = live))
+        assertFalse(bgUploadAllowed(uploadOn = true, nsClientBgSource = true, bgFromLiveSite = true, isClient = false, primaryUrl = four, secondaryUrl = "http://AAPSFOUR.ns.example/"))
+    }
+
+    @Test
+    fun sameSiteIgnoresSchemeCaseAndTrailingSlash() {
+        assertTrue(sameNsSite("https://a.example/", "http://A.example"))
+        assertFalse(sameNsSite("https://a.example", "https://b.example"))
+        assertFalse(sameNsSite("", ""))
+    }
 }

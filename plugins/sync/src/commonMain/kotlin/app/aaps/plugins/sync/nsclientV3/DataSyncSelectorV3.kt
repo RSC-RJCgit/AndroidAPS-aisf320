@@ -15,10 +15,13 @@ import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.sync.nsclientV3.extensions.onlyNsIdAdded
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
+import app.aaps.plugins.sync.nsclientV3.workers.bgUploadAllowed
+import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -81,7 +84,24 @@ class DataSyncSelectorV3(
 
     override fun queueSize(): Long = queueCounter.size()
 
-    val bgUploadEnabled @OpenForTesting get() = preferences.get(BooleanKey.BgSourceUploadToNs) && activePlugin.activeBgSource !is NSClientSource
+    // 2026-10-18: also with the NSClient BG source when BG comes from the second (Live) site, see bgUploadAllowed().
+    // The addresses are read only when they decide the answer.
+    val bgUploadEnabled: Boolean
+        @OpenForTesting get() {
+            val uploadOn = preferences.get(BooleanKey.BgSourceUploadToNs)
+            val nsClientBgSource = activePlugin.activeBgSource is NSClientSource
+            if (!uploadOn || !nsClientBgSource) return uploadOn
+            val bgFromLiveSite = glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite))
+            if (!bgFromLiveSite || config.AAPSCLIENT) return false
+            return bgUploadAllowed(
+                uploadOn = true,
+                nsClientBgSource = true,
+                bgFromLiveSite = true,
+                isClient = false,
+                primaryUrl = preferences.get(StringKey.NsClientUrl),
+                secondaryUrl = preferences.get(StringKey.NsClientSecondaryUrl)
+            )
+        }
 
     /**
      * True on a full phone whose pump is the virtual pump.

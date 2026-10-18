@@ -1192,8 +1192,9 @@ open class OpenAPSAutoISFPlugin(
             phoneMoved = PhoneMotion.movedRecently(nowMs),
             stepsKnown = stepSample != null,
             steps5 = stepSample?.steps5min ?: 0,
-            steps10 = stepSample?.steps10min ?: 0,
-            steps15 = stepSample?.steps15min ?: 0,
+            // Bins from either source (StepBins.kt)
+            steps10 = stepSample?.let { steps10Bin(it) } ?: 0,
+            steps15 = stepSample?.let { steps15Bin(it) } ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
             steps60 = stepSample?.steps60min ?: 0,
             hour = Instant.fromEpochMilliseconds(nowMs).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
@@ -1731,11 +1732,12 @@ open class OpenAPSAutoISFPlugin(
 
     private suspend fun steps30(now: Long): Int = liveOrLocal(now, 30 * 60 * 1000L) { it.steps30min }
 
-    private suspend fun steps10(now: Long): Int = liveOrLocal(now, 10 * 60 * 1000L) { it.steps10min }
+    // S10 and S15 are read as bins from either source (StepBins.kt, 2026-10-18).
+    private suspend fun steps10(now: Long): Int = liveOrLocal(now, 10 * 60 * 1000L) { steps10Bin(it) }
 
     private suspend fun steps5(now: Long): Int = liveOrLocal(now, 5 * 60 * 1000L) { it.steps5min }
 
-    private suspend fun steps15(now: Long): Int = liveOrLocal(now, 15 * 60 * 1000L) { it.steps15min }
+    private suspend fun steps15(now: Long): Int = liveOrLocal(now, 15 * 60 * 1000L) { steps15Bin(it) }
 
     // The 3-hour count is stored on the sample, so the lookback is the sample age, not a second sum.
     private suspend fun steps180(now: Long): Int = liveOrLocal(now, 180 * 60 * 1000L) { it.steps180min }
