@@ -39,11 +39,14 @@ import app.aaps.plugins.automation.AutomationStrings
 /**
  * AutoISF 3.2.1 automation states: each state with its values. Tap a value to make it the current one. Tap the
  * state name to change its values or delete it. [addRequested] opens the "add state" dialog (the toolbar "+").
+ * [storedStates] is the stored JSON of the current values: when an automation sets a state, it changes and the list
+ * is drawn again, so the selected chip follows at once.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AutomationStatesScreen(
     automationState: AutomationStateInterface,
+    storedStates: String,
     addRequested: Boolean,
     onAddHandled: () -> Unit,
     modifier: Modifier = Modifier
@@ -52,6 +55,7 @@ fun AutomationStatesScreen(
     var tick by remember { mutableStateOf(0) }
     var editing by remember { mutableStateOf<String?>(null) }
     @Suppress("UNUSED_EXPRESSION") tick
+    @Suppress("UNUSED_EXPRESSION") storedStates
     val states = automationState.getAllStates()
 
     if (states.isEmpty()) {

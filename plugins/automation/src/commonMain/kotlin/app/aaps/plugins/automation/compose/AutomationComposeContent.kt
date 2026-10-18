@@ -37,6 +37,7 @@ import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.scenes.SceneAutomationApi
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.objects.extensions.profileNames
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.ComposablePluginContent
@@ -311,6 +312,8 @@ class AutomationComposeContent(
         val addDesc = stringResource(AutomationStrings.add_automation_state)
         val title = stringResource(AutomationStrings.automation_states)
         var addRequested by remember { mutableStateOf(false) }
+        // Changes made by automations, not only on this screen (v3 fix G11)
+        val storedStates by triggerFactory.deps.preferences.observe(StringNonKey.AutomationCurrentStates).collectAsStateWithLifecycle()
 
         NavigationBackHandler(
             state = rememberNavigationEventState(NavigationEventInfo.None),
@@ -338,6 +341,7 @@ class AutomationComposeContent(
 
         AutomationStatesScreen(
             automationState = triggerFactory.automationState,
+            storedStates = storedStates,
             addRequested = addRequested,
             onAddHandled = { addRequested = false }
         )
