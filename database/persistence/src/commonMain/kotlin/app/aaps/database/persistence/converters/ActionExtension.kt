@@ -108,6 +108,10 @@ fun UserEntry.Action.fromDb(): Action =
         UserEntry.Action.SCENE_ACTIVATED                 -> Action.SCENE_ACTIVATED
         UserEntry.Action.SCENE_DEACTIVATED               -> Action.SCENE_DEACTIVATED
         UserEntry.Action.REMOTE_CONFIG_CHANGED           -> Action.REMOTE_CONFIG_CHANGED
+        UserEntry.Action.AUTOISF_ENABLED                 -> Action.AUTOISF_ENABLED
+        UserEntry.Action.AUTOISF_DISABLED                -> Action.AUTOISF_DISABLED
+        UserEntry.Action.IOB_TH_SET                      -> Action.IOB_TH_SET
+        UserEntry.Action.ACCE_WEIGHT_SET                 -> Action.ACCE_WEIGHT_SET
     }
 
 fun Action.toDb(): UserEntry.Action =
@@ -215,5 +219,9 @@ fun Action.toDb(): UserEntry.Action =
         Action.SCENE_ACTIVATED                 -> UserEntry.Action.SCENE_ACTIVATED
         Action.SCENE_DEACTIVATED               -> UserEntry.Action.SCENE_DEACTIVATED
         Action.REMOTE_CONFIG_CHANGED           -> UserEntry.Action.REMOTE_CONFIG_CHANGED
+        Action.AUTOISF_ENABLED                 -> UserEntry.Action.AUTOISF_ENABLED
+        Action.AUTOISF_DISABLED                -> UserEntry.Action.AUTOISF_DISABLED
+        Action.IOB_TH_SET                      -> UserEntry.Action.IOB_TH_SET
+        Action.ACCE_WEIGHT_SET                 -> UserEntry.Action.ACCE_WEIGHT_SET
     }
 

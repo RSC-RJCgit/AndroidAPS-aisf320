@@ -3,10 +3,12 @@ package app.aaps.plugins.automation.actions
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.alerts.ReminderScheduler
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.autotune.Autotune
 import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.resources.TextResolver
@@ -62,7 +64,7 @@ ActionsTestBase : TestBaseWithProfile() {
             triggerDeps, aapsLogger, text, { pumpEnactResultProvider() }, rxBus, dateUtil, mock<ReminderScheduler>(),
             config, persistenceLayer, profileFunction, profileRepository, profileUtil, glucoseStatusProvider,
             notificationManager, activePlugin, preferences, sceneApi, sceneIconResolver, smsCommunicator,
-            autotunePlugin, importExportPrefs, exportPasswordDataStore, configBuilder
+            autotunePlugin, importExportPrefs, exportPasswordDataStore, configBuilder, mock<UserEntryLogger>(), mock<AutomationStateInterface>()
         )
     }
 

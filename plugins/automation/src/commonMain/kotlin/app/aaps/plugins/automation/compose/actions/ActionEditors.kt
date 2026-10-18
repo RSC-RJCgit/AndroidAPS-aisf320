@@ -27,6 +27,9 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAcceWeight
+import app.aaps.plugins.automation.actions.ActionSetAutomationState
+import app.aaps.plugins.automation.actions.ActionSetIobTH
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionSmoothingChange
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
@@ -76,6 +79,9 @@ fun ActionEditor(
             is ActionRunScene             -> ActionRunSceneEditor(action, sceneOptions, tick, onChange)
             is ActionEnableScene          -> ActionEnableSceneEditor(action, sceneOptions, tick, onChange)
             is ActionDisableScene         -> ActionDisableSceneEditor(action, sceneOptions, tick, onChange)
+            is ActionSetAcceWeight        -> ActionSetAcceWeightEditor(action, tick, onChange)
+            is ActionSetIobTH             -> ActionSetIobTHEditor(action, tick, onChange)
+            is ActionSetAutomationState   -> ActionSetAutomationStateEditor(action, tick, onChange)
             else                          -> Text(action::class.simpleName.orEmpty())
         }
     }
@@ -85,6 +91,65 @@ fun ActionEditor(
 private fun staticDescription(action: Action): String = action.shortDescription().ifEmpty { action::class.simpleName.orEmpty() }
 
 // ---------- Individual editors ----------
+
+@Composable
+fun ActionSetAcceWeightEditor(a: ActionSetAcceWeight, tick: Int = 0, onChange: () -> Unit) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    NumberInputRow(
+        labelRef = AutomationStrings.autoisf_acce_weight,
+        value = a.newWeight,
+        onValueChange = { a.newWeight = it; onChange() },
+        valueRange = ActionSetAcceWeight.MIN..ActionSetAcceWeight.MAX,
+        step = ActionSetAcceWeight.STEP,
+        decimalPlaces = 2
+    )
+}
+
+@Composable
+fun ActionSetIobTHEditor(a: ActionSetIobTH, tick: Int = 0, onChange: () -> Unit) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    NumberInputRow(
+        labelRef = AutomationStrings.autoisf_iobTH_percent,
+        value = a.newIobTh.toDouble(),
+        onValueChange = { a.newIobTh = it.toInt(); onChange() },
+        valueRange = ActionSetIobTH.MIN.toDouble()..ActionSetIobTH.MAX.toDouble(),
+        step = ActionSetIobTH.STEP.toDouble(),
+        unitLabel = CoreUiStrings.units_percent,
+        formatAsInt = true
+    )
+}
+
+@Composable
+fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, tick: Int = 0, onChange: () -> Unit) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    val names = a.stateNames()
+    if (names.isEmpty()) {
+        Text(
+            text = stringResource(AutomationStrings.no_automation_states),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    AutomationDropdown(
+        value = if (a.stateName in names) a.stateName else "",
+        options = names,
+        onValueChange = {
+            if (it != a.stateName) a.stateValue = ""
+            a.stateName = it
+            onChange()
+        },
+        label = stringResource(AutomationStrings.state_name_label)
+    )
+    val values = a.stateValues(a.stateName)
+    AutomationDropdown(
+        value = if (a.stateValue in values) a.stateValue else "",
+        options = values,
+        onValueChange = { a.stateValue = it; onChange() },
+        label = stringResource(AutomationStrings.state_value_label),
+        enabled = values.isNotEmpty()
+    )
+}
 
 @Composable
 fun ActionAlarmEditor(a: ActionAlarm, onChange: () -> Unit) {

@@ -144,6 +144,11 @@ class AutomationStateHolder(
         _route.value = AutomationRoute.List
     }
 
+    /** Opens the automation states screen. [closeEdit] goes back to the list. */
+    fun openStates() {
+        _route.value = AutomationRoute.States
+    }
+
     private var triggerSnapshotJson: String? = null
     private val _triggerDirty = MutableStateFlow(false)
     val triggerDirty: StateFlow<Boolean> = _triggerDirty.asStateFlow()

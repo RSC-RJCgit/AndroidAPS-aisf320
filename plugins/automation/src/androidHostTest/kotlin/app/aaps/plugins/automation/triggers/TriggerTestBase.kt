@@ -16,6 +16,7 @@ import app.aaps.shared.tests.generatedTextResolver
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.jupiter.api.BeforeEach
 import org.mockito.Mock
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 open class TriggerTestBase : TestBaseWithProfile() {
@@ -59,7 +60,7 @@ open class TriggerTestBase : TestBaseWithProfile() {
     }
 
     val triggerFactory: TriggerFactory by lazy {
-        TriggerFactory(triggerDeps, { btConnectionSource }, sceneApi, receiverStatusStore)
+        TriggerFactory(triggerDeps, { btConnectionSource }, sceneApi, receiverStatusStore, mock())
     }
 
 }

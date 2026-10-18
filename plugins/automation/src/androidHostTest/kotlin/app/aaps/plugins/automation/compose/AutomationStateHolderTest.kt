@@ -36,9 +36,9 @@ class AutomationStateHolderTest : TestBase() {
         val actionFactory = ActionFactory(
             triggerDeps, aapsLogger, rh, pumpEnactResultProvider, mock(), dateUtil, mock(), mock(), mock(),
             profileFunction, mock(), mock(), mock(), mock(), mock(), preferences, mock(), mock(), mock(), mock(),
-            mock(), mock(), mock()
+            mock(), mock(), mock(), mock(), mock()
         )
-        AutomationEventFactory(aapsLogger, dateUtil, actionFactory, TriggerFactory(triggerDeps, mock(), mock(), mock()), triggerDeps)
+        AutomationEventFactory(aapsLogger, dateUtil, actionFactory, TriggerFactory(triggerDeps, mock(), mock(), mock(), mock()), triggerDeps)
     }
 
     /** An action editor changes a field in place. The action's card used to keep its old title and icon. */

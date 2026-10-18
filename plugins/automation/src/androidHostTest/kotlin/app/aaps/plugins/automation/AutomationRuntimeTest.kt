@@ -40,7 +40,7 @@ class AutomationRuntimeTest : TestBaseWithProfile() {
 @Mock lateinit var actionFactory: app.aaps.plugins.automation.actions.ActionFactory
     private val triggerFactory: TriggerFactory by lazy {
         // A real provider, not a mock: a mocked Provider hands null to TriggerBTDevice.
-        TriggerFactory(triggerDeps, { mock<BtConnectionSource>() }, sceneApi, receiverStatusStore)
+        TriggerFactory(triggerDeps, { mock<BtConnectionSource>() }, sceneApi, receiverStatusStore, mock())
     }
     // Real, not mocked: the runtime rebuilds triggers from JSON, and a mocked bundle would hand
     // nulls to element constructors that require them.

@@ -51,6 +51,7 @@ import app.aaps.plugins.automation.events.EventLocationChange
 import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBg
+import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
@@ -61,6 +62,7 @@ import app.aaps.plugins.automation.triggers.TriggerFactory
 import app.aaps.plugins.automation.triggers.TriggerHeartRate
 import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
+import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
@@ -81,6 +83,13 @@ import dev.zacsweers.metro.ContributesIntoSet
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metro.binding
+import kotlin.concurrent.Volatile
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.atomics.incrementAndFetch
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -105,13 +114,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
-import kotlin.concurrent.Volatile
-import kotlin.concurrent.atomics.AtomicInt
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
-import kotlin.concurrent.atomics.incrementAndFetch
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * Standalone automation runtime — no longer a [PluginBase].
@@ -726,11 +728,19 @@ class AutomationRuntime(
             actionFactory.actionSmoothingChange(),
             actionFactory.actionRunScene(),
             actionFactory.actionEnableScene(),
-            actionFactory.actionDisableScene()
+            actionFactory.actionDisableScene(),
+            actionFactory.actionSetAutomationState()
         )
         // Autotune is only offered in engineering builds, as before.
         if (config.isEngineeringMode() && config.isDev())
             actions.add(actionFactory.actionRunAutotune())
+        // AutoISF 3.2.1 actions: engineering mode only (always on in this build, see ConfigImpl)
+        if (config.isEngineeringMode()) {
+            actions.add(actionFactory.actionAutoisfEnable())
+            actions.add(actionFactory.actionAutoisfDisable())
+            actions.add(actionFactory.actionSetAcceWeight())
+            actions.add(actionFactory.actionSetIobTH())
+        }
 
         return actions.toList()
     }
@@ -758,8 +768,14 @@ class AutomationRuntime(
             TriggerSensorAge(triggerDeps),
             TriggerCannulaAge(triggerDeps),
             TriggerReservoirLevel(triggerDeps),
-            TriggerStepsCount(triggerDeps)
+            TriggerStepsCount(triggerDeps),
+            triggerFactory.triggerAutomationState()
         )
+        // AutoISF 3.2.1 triggers: engineering mode only (always on in this build, see ConfigImpl)
+        if (config.isEngineeringMode()) {
+            triggers.add(TriggerBgAcceWeight(triggerDeps))
+            triggers.add(TriggerIobTH(triggerDeps))
+        }
 
         val pump = activePlugin.activePump
 

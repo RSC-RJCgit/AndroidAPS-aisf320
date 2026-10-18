@@ -9,6 +9,9 @@ sealed interface AutomationRoute {
     data class Edit(val position: Int) : AutomationRoute
     data object EditTrigger : AutomationRoute
     data class MapPicker(val initialLat: Double?, val initialLon: Double?) : AutomationRoute
+
+    /** AutoISF 3.2.1 automation states screen */
+    data object States : AutomationRoute
 }
 
 data class AutomationIcon(

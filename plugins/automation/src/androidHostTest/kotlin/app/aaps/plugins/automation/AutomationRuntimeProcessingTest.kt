@@ -86,7 +86,7 @@ class AutomationRuntimeProcessingTest : TestBaseWithProfile() {
             activePlugin, iobCobCalculator, smbGlucoseStatusProvider, dateUtil
         )
     }
-    private val triggerFactory: TriggerFactory by lazy { TriggerFactory(triggerDeps, { runtime }, sceneApi, receiverStatusStore) }
+    private val triggerFactory: TriggerFactory by lazy { TriggerFactory(triggerDeps, { runtime }, sceneApi, receiverStatusStore, mock()) }
     private val eventFactory by lazy { AutomationEventFactory(aapsLogger, dateUtil, actionFactory, triggerFactory, triggerDeps) }
     private lateinit var runtime: AutomationRuntime
 

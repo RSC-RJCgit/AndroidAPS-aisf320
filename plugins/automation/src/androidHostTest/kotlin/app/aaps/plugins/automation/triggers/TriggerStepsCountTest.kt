@@ -54,9 +54,9 @@ class TriggerStepsCountTest : TriggerTestBase() {
             measurementDuration.value = "5"
             comparator.value = Comparator.Compare.IS_GREATER
         }
-        whenever(persistenceLayer.getStepsCountFromTime(now - 300000L)).thenReturn(emptyList())
+        whenever(persistenceLayer.getStepsCountFromTime(now - 60000L)).thenReturn(emptyList())
         assertThat(t.shouldRun()).isFalse()
-        verify(persistenceLayer).getStepsCountFromTime(now - 300000L)
+        verify(persistenceLayer).getStepsCountFromTime(now - 60000L)
         verifyNoMoreInteractions(persistenceLayer)
     }
 
@@ -69,9 +69,9 @@ class TriggerStepsCountTest : TriggerTestBase() {
         }
         val scs = listOf(SC(duration = 300_000, timestamp = now, steps5min = 80, steps10min = 110, steps15min = 0, steps30min = 0, steps60min = 0, steps180min = 0, device = "test"))
 
-        whenever(persistenceLayer.getStepsCountFromTime(now - 300000L)).thenReturn(scs)
+        whenever(persistenceLayer.getStepsCountFromTime(now - 60000L)).thenReturn(scs)
         assertThat(t.shouldRun()).isFalse()
-        verify(persistenceLayer).getStepsCountFromTime(now - 300000L)
+        verify(persistenceLayer).getStepsCountFromTime(now - 60000L)
         verifyNoMoreInteractions(persistenceLayer)
     }
 
@@ -84,9 +84,9 @@ class TriggerStepsCountTest : TriggerTestBase() {
         }
         val scs = listOf(SC(duration = 300_000, timestamp = now, steps5min = 112, steps10min = 110, steps15min = 0, steps30min = 0, steps60min = 0, steps180min = 0, device = "test"))
 
-        whenever(persistenceLayer.getStepsCountFromTime(now - 300000L)).thenReturn(scs)
+        whenever(persistenceLayer.getStepsCountFromTime(now - 60000L)).thenReturn(scs)
         assertThat(t.shouldRun()).isTrue()
-        verify(persistenceLayer).getStepsCountFromTime(now - 300000L)
+        verify(persistenceLayer).getStepsCountFromTime(now - 60000L)
         verifyNoMoreInteractions(persistenceLayer)
     }
 

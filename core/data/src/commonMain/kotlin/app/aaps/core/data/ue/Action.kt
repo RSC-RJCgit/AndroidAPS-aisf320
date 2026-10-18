@@ -103,6 +103,11 @@ enum class Action(val colorGroup: ColorGroup) {
     SCENE_ACTIVATED(ColorGroup.Aaps),
     SCENE_DEACTIVATED(ColorGroup.Aaps),
     REMOTE_CONFIG_CHANGED(ColorGroup.Aaps),
+    // AutoISF 3.2.1 automation actions
+    AUTOISF_ENABLED(ColorGroup.Aaps),
+    AUTOISF_DISABLED(ColorGroup.Aaps),
+    IOB_TH_SET(ColorGroup.Aaps),
+    ACCE_WEIGHT_SET(ColorGroup.Aaps),
     UNKNOWN(ColorGroup.Aaps)
     ;
 

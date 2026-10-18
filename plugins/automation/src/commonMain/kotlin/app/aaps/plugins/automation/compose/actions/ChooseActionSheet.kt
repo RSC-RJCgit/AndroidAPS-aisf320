@@ -28,6 +28,8 @@ import app.aaps.core.ui.compose.stringResource
 import app.aaps.plugins.automation.AutomationStrings
 import app.aaps.plugins.automation.actions.Action
 import app.aaps.plugins.automation.actions.ActionAlarm
+import app.aaps.plugins.automation.actions.ActionAutoisfDisable
+import app.aaps.plugins.automation.actions.ActionAutoisfEnable
 import app.aaps.plugins.automation.actions.ActionCarePortalEvent
 import app.aaps.plugins.automation.actions.ActionDisableScene
 import app.aaps.plugins.automation.actions.ActionEnableScene
@@ -38,6 +40,8 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
 import app.aaps.plugins.automation.actions.ActionSendSMS
+import app.aaps.plugins.automation.actions.ActionSetAcceWeight
+import app.aaps.plugins.automation.actions.ActionSetIobTH
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionSmoothingChange
 import app.aaps.plugins.automation.actions.ActionStartTempTarget
@@ -66,7 +70,11 @@ private fun actionCategoryOf(cls: KClass<*>): ActionCategory = when (cls) {
     ActionSMBChange::class,
     ActionSmoothingChange::class,
     ActionStopProcessing::class,
-    ActionRunAutotune::class -> ActionCategory.Loop
+    ActionRunAutotune::class,
+    ActionAutoisfEnable::class,
+    ActionAutoisfDisable::class,
+    ActionSetAcceWeight::class,
+    ActionSetIobTH::class -> ActionCategory.Loop
 
     ActionRunScene::class,
     ActionEnableScene::class,

@@ -3,6 +3,7 @@ package app.aaps.plugins.automation.compose
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Save
@@ -113,6 +114,11 @@ class AutomationComposeContent(
                 setToolbarConfig = setToolbarConfig,
                 route = route as AutomationRoute.MapPicker
             )
+
+            is AutomationRoute.States -> StatesRoute(
+                holder = holder,
+                setToolbarConfig = setToolbarConfig
+            )
         }
     }
 
@@ -143,7 +149,8 @@ class AutomationComposeContent(
                     // the client too: its sole pref (location-provider mode) is now a Bidirectional synced
                     // setting the client can change, and the screen resolves on a client (see BuiltInSearchables).
                     onSettings = onSettings,
-                    showRun = plugin.executionEnabled
+                    showRun = plugin.executionEnabled,
+                    onStates = holder::openStates
                 )
             )
         }
@@ -293,6 +300,47 @@ class AutomationComposeContent(
                 onPickLocationFromMap = { triggerLoc -> holder.openMapPicker(triggerLoc) }
             )
         }
+    }
+
+    @Composable
+    private fun StatesRoute(
+        holder: AutomationStateHolder,
+        setToolbarConfig: (ToolbarConfig) -> Unit
+    ) {
+        val backDesc = stringResource(CoreUiStrings.back)
+        val addDesc = stringResource(AutomationStrings.add_automation_state)
+        val title = stringResource(AutomationStrings.automation_states)
+        var addRequested by remember { mutableStateOf(false) }
+
+        NavigationBackHandler(
+            state = rememberNavigationEventState(NavigationEventInfo.None),
+            isBackEnabled = true,
+            onBackCompleted = { holder.closeEdit() }
+        )
+
+        LaunchedEffect(Unit) {
+            setToolbarConfig(
+                ToolbarConfig(
+                    title = title,
+                    navigationIcon = {
+                        IconButton(onClick = { holder.closeEdit() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = backDesc)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { addRequested = true }) {
+                            Icon(Icons.Default.Add, contentDescription = addDesc)
+                        }
+                    }
+                )
+            )
+        }
+
+        AutomationStatesScreen(
+            automationState = triggerFactory.automationState,
+            addRequested = addRequested,
+            onAddHandled = { addRequested = false }
+        )
     }
 
     @Composable
@@ -483,7 +531,8 @@ private fun buildListToolbar(
     onBack: () -> Unit,
     onRun: () -> Unit,
     onSettings: (() -> Unit)?,
-    showRun: Boolean
+    showRun: Boolean,
+    onStates: () -> Unit
 ): ToolbarConfig = ToolbarConfig(
     title = title,
     navigationIcon = {
@@ -497,21 +546,26 @@ private fun buildListToolbar(
                 Icon(Icons.Default.Settings, contentDescription = settingsDesc)
             }
         }
-        // "Run now" is master-only — automation does not execute on a client.
-        if (showRun) AutomationOverflow(onRun)
+        // "Run now" is master-only — automation does not execute on a client. The states screen is on both.
+        AutomationOverflow(onRun, showRun, onStates)
     }
 )
 
 @Composable
-private fun AutomationOverflow(onRun: () -> Unit) {
+private fun AutomationOverflow(onRun: () -> Unit, showRun: Boolean, onStates: () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     IconButton(onClick = { expanded = true }) {
         Icon(Icons.Default.MoreVert, contentDescription = stringResource(CoreUiStrings.more_options))
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        if (showRun)
+            DropdownMenuItem(
+                text = { Text(stringResource(AutomationStrings.run_automations)) },
+                onClick = { expanded = false; onRun() }
+            )
         DropdownMenuItem(
-            text = { Text(stringResource(AutomationStrings.run_automations)) },
-            onClick = { expanded = false; onRun() }
+            text = { Text(stringResource(AutomationStrings.automation_states)) },
+            onClick = { expanded = false; onStates() }
         )
     }
 }

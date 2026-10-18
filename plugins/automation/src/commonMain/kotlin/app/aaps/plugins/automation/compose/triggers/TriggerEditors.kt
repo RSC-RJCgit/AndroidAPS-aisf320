@@ -3,6 +3,7 @@ package app.aaps.plugins.automation.compose.triggers
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,9 +32,11 @@ import app.aaps.plugins.automation.elements.InputBg
 import app.aaps.plugins.automation.elements.InputDelta.DeltaType
 import app.aaps.plugins.automation.elements.InputPercent
 import app.aaps.plugins.automation.triggers.Trigger
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
+import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
@@ -42,6 +45,7 @@ import app.aaps.plugins.automation.triggers.TriggerDelta
 import app.aaps.plugins.automation.triggers.TriggerHeartRate
 import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
+import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
@@ -95,6 +99,9 @@ fun TriggerEditor(
             is TriggerTempTarget         -> TriggerTempTargetEditor(trigger, onChange)
             is TriggerTempTargetValue    -> TriggerTempTargetValueEditor(trigger, onChange, tick)
             is TriggerStepsCount         -> TriggerStepsCountEditor(trigger, onChange, tick)
+            is TriggerIobTH              -> TriggerIobTHEditor(trigger, onChange, tick)
+            is TriggerBgAcceWeight       -> TriggerBgAcceWeightEditor(trigger, onChange, tick)
+            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange, tick)
             is TriggerTime               -> TriggerTimeEditor(trigger, onChange)
             is TriggerRecurringTime      -> TriggerRecurringTimeEditor(trigger, onChange)
             is TriggerTimeRange          -> TriggerTimeRangeEditor(trigger, onChange)
@@ -184,6 +191,79 @@ fun TriggerCOBEditor(t: TriggerCOB, onChange: () -> Unit, tick: Int = 0) {
             compact = true
         )
     }
+}
+
+@Composable
+fun TriggerIobTHEditor(t: TriggerIobTH, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    CompareRow(
+        comparator = t.comparator.value,
+        onComparatorChange = { t.comparator.value = it; onChange() },
+        label = ""
+    ) {
+        NumberInputRow(
+            labelRef = null,
+            value = t.iobThPercent.toDouble(),
+            onValueChange = { t.iobThPercent = it.toInt(); onChange() },
+            valueRange = 10.0..100.0,
+            step = 5.0,
+            unitLabel = CoreUiStrings.units_percent,
+            formatAsInt = true,
+            compact = true
+        )
+    }
+}
+
+@Composable
+fun TriggerBgAcceWeightEditor(t: TriggerBgAcceWeight, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    CompareRow(
+        comparator = t.comparator.value,
+        onComparatorChange = { t.comparator.value = it; onChange() },
+        label = ""
+    ) {
+        NumberInputRow(
+            labelRef = null,
+            value = t.acceWeight,
+            onValueChange = { t.acceWeight = it; onChange() },
+            valueRange = 0.0..1.0,
+            step = 0.05,
+            decimalPlaces = 2,
+            compact = true
+        )
+    }
+}
+
+@Composable
+fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    val names = t.stateNames()
+    if (names.isEmpty()) {
+        Text(
+            text = stringResource(AutomationStrings.no_automation_states),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+    AutomationDropdown(
+        value = if (t.stateName in names) t.stateName else "",
+        options = names,
+        onValueChange = {
+            if (it != t.stateName) t.stateValue = ""
+            t.stateName = it
+            onChange()
+        },
+        label = stringResource(AutomationStrings.state_name_label)
+    )
+    val values = t.stateValues(t.stateName)
+    AutomationDropdown(
+        value = if (t.stateValue in values) t.stateValue else "",
+        options = values,
+        onValueChange = { t.stateValue = it; onChange() },
+        label = stringResource(AutomationStrings.state_value_label),
+        enabled = values.isNotEmpty()
+    )
 }
 
 @Composable

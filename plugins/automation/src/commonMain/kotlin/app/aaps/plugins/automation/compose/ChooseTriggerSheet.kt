@@ -30,6 +30,7 @@ import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
+import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
@@ -37,6 +38,7 @@ import app.aaps.plugins.automation.triggers.TriggerDelta
 import app.aaps.plugins.automation.triggers.TriggerHeartRate
 import app.aaps.plugins.automation.triggers.TriggerInsulinAge
 import app.aaps.plugins.automation.triggers.TriggerIob
+import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
@@ -75,7 +77,9 @@ fun triggerCategoryOf(triggerClass: KClass<*>): TriggerCategory = when (triggerC
     TriggerProfilePercent::class,
     TriggerTempTarget::class,
     TriggerTempTargetValue::class,
-    TriggerBolusAgo::class -> TriggerCategory.Glucose
+    TriggerBolusAgo::class,
+    TriggerIobTH::class,
+    TriggerBgAcceWeight::class -> TriggerCategory.Glucose
 
     TriggerCannulaAge::class,
     TriggerInsulinAge::class,

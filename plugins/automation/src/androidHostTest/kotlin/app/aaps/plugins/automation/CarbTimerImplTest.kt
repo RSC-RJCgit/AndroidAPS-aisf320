@@ -38,7 +38,7 @@ class CarbTimerImplTest : TestBase() {
 
 @Mock lateinit var actionFactory: app.aaps.plugins.automation.actions.ActionFactory
     private val triggerFactory: TriggerFactory by lazy {
-        TriggerFactory(triggerDeps, mock(), sceneApi, receiverStatusStore)
+        TriggerFactory(triggerDeps, mock(), sceneApi, receiverStatusStore, mock())
     }
     // Real, not mocked: the runtime rebuilds triggers from JSON, and a mocked bundle would hand
     // nulls to element constructors that require them.
