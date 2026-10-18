@@ -37,14 +37,15 @@ class StepCountSource @Inject constructor(
 
     /**
      * Step history for the steps graph (2026-10-18), oldest first, with cumulative counts (S15 = the last 15 minutes):
-     * - Virtual with mirroring: Live's samples kept by [LiveStepsMirror] (36 h)
+     * - Virtual with mirroring: Live's samples kept by [LiveStepsMirror] (36 h), never this phone's own counter
      * - otherwise the local SC rows
-     * - a client has no SC rows; it reads the step lines from the master's loop results, which use five-minute bins
+     * - without SC rows, the step lines in the loop results (five-minute bins): a client reads the master's, and Live
+     *   its own (Live keeps no SC rows unless "steps from smartphone" is on)
      */
     fun history(from: Long, to: Long): List<Pair<Long, Map<Int, Int>>> {
         if (isMirroring()) return mirror.between(from, to).map { it.timestamp to it.cumulativeBuckets() }
         val local = persistenceLayer.getStepsCountFromTimeToTime(from, to).filter { it.isValid }.sortedBy { it.timestamp }
-        if (local.isNotEmpty() || !config.AAPSCLIENT) return local.map { it.timestamp to localBuckets(it) }
+        if (local.isNotEmpty()) return local.map { it.timestamp to localBuckets(it) }
         return persistenceLayer.getApsResults(from, to).mapNotNull { result ->
             val buckets = LiveStepsMirror.parse(result.reason)
             if (buckets.isEmpty()) null

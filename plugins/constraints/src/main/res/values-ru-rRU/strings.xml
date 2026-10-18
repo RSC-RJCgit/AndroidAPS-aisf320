@@ -10,7 +10,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Истек срок действия приложения</string>
     <string name="running_invalid_version">Мы обнаружили, что вы используете недопустимую версию. Цикл отключен!</string>
-    <string name="versionavailable">Доступна версия %1$s</string>
     <string name="version_expire">Версия %1$s истекает %2$s и переходит в режим приостановки на низких</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->

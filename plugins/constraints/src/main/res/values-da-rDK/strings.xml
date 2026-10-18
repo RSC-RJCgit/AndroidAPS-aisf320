@@ -9,7 +9,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Applikationen er udløbet</string>
     <string name="running_invalid_version">Vi har opdaget, at du kører en ugyldig version. Loop deaktiveret!</string>
-    <string name="versionavailable">Version %1$s tilgængelig</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">Genberegnede data anvendt</string>

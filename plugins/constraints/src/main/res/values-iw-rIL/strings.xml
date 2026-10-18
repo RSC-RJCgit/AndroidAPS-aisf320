@@ -10,7 +10,6 @@
     <!-- Version Checker -->
     <string name="application_expired">תוקף האפליקציה פג</string>
     <string name="running_invalid_version">זיהינו שאתם משתמשים בגרסה שאינה בתוקף. הלולאה מושבתת!</string>
-    <string name="versionavailable">גרסה %1$s זמינה</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">משתמש בנתונים מחושבים מחדש</string>

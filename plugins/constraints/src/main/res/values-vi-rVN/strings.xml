@@ -10,7 +10,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Ứng dụng hết hạn</string>
     <string name="running_invalid_version">Chúng tôi phát hiện bạn đang chạy phiên bản không hợp lệ. Vòng lặp đã bị vô hiệu hóa!</string>
-    <string name="versionavailable">Phiên bản %1$s khả dụng</string>
     <string name="version_expire">Phiên bản %1$s sẽ hết hạn vào %2$s và sẽ chuyển sang chế độ LGS</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->

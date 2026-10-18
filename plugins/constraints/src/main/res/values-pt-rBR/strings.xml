@@ -9,7 +9,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Aplicativo expirado</string>
     <string name="running_invalid_version">Detectamos que você está executando uma versão inválida. \"Loop\" desativado!</string>
-    <string name="versionavailable">Versão %1$s disponível</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">Dados recalculados foram utilizados</string>

@@ -1,7 +1,5 @@
 package app.aaps.core.objects.wizard
 
-import kotlin.math.floor
-import kotlin.math.min
 
 /**
  * Downtrend caution rule for the Bolus Wizard dialog (added 2026-09-30, per explicit request, after a
@@ -82,14 +80,6 @@ object WizardDropTrendCaution {
         // same low-BG territory path 1 already lives in, per explicit request.
         val path2 = bgMgdl < PATH2_BGL_CEILING_MGDL && iobDisproportionateToRise(iobUnits, bgRiseMgdl)
         return path1 || path2
-    }
-
-    /** [base] x0.5, rounded DOWN to the pump step (never below one step, never above [base]) -- same shape as WizardRecentEntry.scaledMaxBolus(). */
-    fun scaledMaxBolus(base: Double, bolusStep: Double): Double {
-        val step = if (bolusStep > 0.0) bolusStep else 0.05
-        val scaled = floor(base * SCALE / step + 1e-6) * step
-        val rounded = Math.round(scaled * 1000.0) / 1000.0
-        return min(base, rounded.coerceAtLeast(min(base, step)))
     }
 
     /** Wiz% scaled to 50%, rounded to the nearest whole percent, floor 1. */

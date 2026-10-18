@@ -10093,7 +10093,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             steps180M = recentSteps180Minutes.also { steps180ForDisplay = it },
             steps15M = recentSteps15Minutes.also { steps15ForDisplay = it },
             steps5M = recentSteps5Minutes.also { steps5ForDisplay = it },
-            suppressStepsReasonText = useLiveStepsOnVirtual(),
+            // 2026-10-18: a Virtual master writes the step lines from a fresh, complete Live sample too, so its clients get
+            // steps for their graph and text rows. Still left out when the sample is missing, older than 20 min or partial,
+            // so a stale mirror is never reported as a real count (the reason this switch exists).
+            suppressStepsReasonText = useLiveStepsOnVirtual() && liveStepsForCycle?.hasDosingBuckets() != true,
             smbInt5Sec = replaySmbInt5Sec,  // rapid-stacking guard: <=70s trims the SMB to 90% (before fast-rise caps)
             // Bypass the fast-rise SMB caps when a delivery boost (BolusGiven bg1/2/3, BMild, or
             // Tier 3) fired within the last 30 min, or while meal COB is still >= 9 g.

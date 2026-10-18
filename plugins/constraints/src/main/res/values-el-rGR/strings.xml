@@ -9,7 +9,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Η εφαρμογή έχει λήξει</string>
     <string name="running_invalid_version">Διαπιστώσαμε ότι εκτελείτε μη έγκυρη έκδοση. Κύκλωμα απενεργοποιήθηκε!</string>
-    <string name="versionavailable">Έκδοση %1$s διαθέσιμη</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">Χρησιμοποιούνται επανυπολογισμένα δεδομένα</string>

@@ -3629,7 +3629,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal) ||
-                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal) ||
+                    // 2026-10-18: without this a graph with only "Steps 5/15/30/60" was hidden and only its label showed
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS_LINES.ordinal)
                     //menuChartSettings[g + 1][OverviewMenus.CharType.ABS.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.IOB.ordinal] ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.COB.ordinal] ||

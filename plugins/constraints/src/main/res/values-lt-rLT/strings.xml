@@ -10,7 +10,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Programa nebenaudojama</string>
     <string name="running_invalid_version">Nustatyta, kad naudojate nebegaliojančią versiją. Ciklas išjungtas!</string>
-    <string name="versionavailable">Versiją %1$s jau galima naudoti</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">Naudojami perskaičiuoti duomenys</string>

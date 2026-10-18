@@ -9,7 +9,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Приложението е твърде старо!</string>
     <string name="running_invalid_version">Използвате грешна версия. APS е изключен!</string>
-    <string name="versionavailable">Има налично обновяване до версия %1$s </string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">Рекалкулирани използвани данни</string>

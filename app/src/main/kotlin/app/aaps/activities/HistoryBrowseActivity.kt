@@ -497,6 +497,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             var useBGIForScale = false
             var useHRForScale = false
             var useSTEPSForScale = false
+            var useStepsLinesForScale = false
             var useFINAL_ISFForScale = false
             var useACCE_ISFForScale = false
             var useBG_ISFForScale = false
@@ -517,6 +518,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DEVSLOPE.ordinal) -> useDSForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.HR.ordinal)       -> useHRForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)    -> useSTEPSForScale = true
+                overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS_LINES.ordinal) -> useStepsLinesForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.FIN_ISF.ordinal)  -> useFINAL_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ACC_ISF.ordinal)  -> useACCE_ISFForScale = true
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.BG_ISF.ordinal)   -> useBG_ISFForScale = true
@@ -585,6 +587,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DEVSLOPE.ordinal)) secondGraphData.addDeviationSlope(useDSForScale,if (useDSForScale) 1.0 else 0.8,useRatioForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.HR.ordinal)) secondGraphData.addHeartRate(useHRForScale, if (useHRForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS.ordinal)) secondGraphData.addSteps(useSTEPSForScale, if (useSTEPSForScale) 1.0 else 0.8)
+            if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS_LINES.ordinal)) secondGraphData.addStepsLines(useStepsLinesForScale, if (useStepsLinesForScale) 1.0 else 0.8)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal)) secondGraphData.addRawBg(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal)) secondGraphData.addRawBgSmoothed(useRAWBGForScale)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal)) secondGraphData.addUamCarbImpact(if (useUAMForScale) 1.0 else 0.8)
@@ -645,7 +648,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal) ||
-                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal)
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COMBINED_CARBS.ordinal) ||
+                    overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.STEPS_LINES.ordinal)
                 ).toVisibility()
             secondaryGraphsData[g].applyFontScale(skinProvider.activeSkin().graphFontScale)
             secondaryGraphsData[g].performUpdate()
