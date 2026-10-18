@@ -532,6 +532,21 @@ class BolusWizard(
         }
     }
 
+    /**
+     * 2026-10-19, per explicit request: the factor a delayed dose (FPU or carb split part) is multiplied by while walking,
+     * see [delayedDoseWalkingFactor]. The cut part is dropped. No step row in the last 20 minutes gives 1 (not walking).
+     * Watch rows hold S10/S15 as totals, so the bins are S10 - S5 and S15 - S10. Rows from Live's loop result
+     * ("openaps://") already hold the bins.
+     */
+    private suspend fun walkingFactorNow(): Double {
+        val now = dateUtil.now()
+        val sc = persistenceLayer.getLastStepsCountFromTimeToTime(now - 20 * 60_000L, now) ?: return 1.0
+        val liveRow = sc.device.startsWith("openaps://")
+        val s10Bin = if (liveRow) sc.steps10min else max(0, sc.steps10min - sc.steps5min)
+        val s15Bin = if (liveRow) sc.steps15min else max(0, sc.steps15min - sc.steps10min)
+        return delayedDoseWalkingFactor(sc.steps5min, s10Bin, s15Bin, sc.steps30min, sc.steps60min)
+    }
+
     /** Null when the dose was handed to the pump. Otherwise the reason it was not given now. */
     private suspend fun tryDeliverWarsawDose(planned: Double, iobBaseline: Double, source: Sources, onCappedRemainder: (Double, Double) -> Unit): String? {
         if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return "superbolus active"
@@ -543,9 +558,14 @@ class BolusWizard(
         val step = ch.bolusStep(planned)
         // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
         // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice. iobBaseline stays for the notes.
-        val dose = cappedFollowUpDose(planned, step) ?: return "insulinReq missing or stale"
+        // 2026-10-19, per explicit request: cut while walking. The cut part is dropped: capRemaining below uses the cut dose.
+        val walkFactor = walkingFactorNow()
+        val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(planned * walkFactor, step) else planned
+        val dose = cappedFollowUpDose(walkingPlanned, step) ?: return "insulinReq missing or stale"
         if (dose <= 0.0) return "insulinReq cap is below one pump step"
-        val capRemaining = Round.roundTo(max(0.0, planned - dose), 0.001)
+        val capRemaining = Round.roundTo(max(0.0, walkingPlanned - dose), 0.001)
+        if (walkFactor < 1.0)
+            aapsLogger.info(LTag.CORE, "Warsaw dose: ${delayedDoseWalkingLevel(walkFactor)} (steps), dose x$walkFactor, ${Round.roundTo(planned - walkingPlanned, 0.001)} U dropped")
         wizardBolusExecutor.deliverInsulin(
             insulin = dose,
             note = null,
@@ -711,6 +731,8 @@ class BolusWizard(
                 unsafeCount = 0,
                 intervalMinutes = SPLIT_LEFTOVER_INTERVAL_MINUTES,
                 unsafeLimit = SPLIT_UNSAFE_CANCEL_COUNT,
+                // 2026-10-19, per explicit request: insulin walking soon held back is not cut again for walking.
+                walkingCutAllowed = walkLeft <= 0.0,
             )
         }
         if (rapidLeft >= step / 2.0) {
@@ -726,6 +748,7 @@ class BolusWizard(
                 unsafeCount = 0,
                 intervalMinutes = SPLIT_RAPID_FALL_INTERVAL_MINUTES,
                 unsafeLimit = SPLIT_RAPID_FALL_UNSAFE_CANCEL_COUNT,
+                walkingCutAllowed = true,
             )
         }
     }
@@ -747,6 +770,7 @@ class BolusWizard(
         unsafeCount: Int,
         intervalMinutes: Int,
         unsafeLimit: Int,
+        walkingCutAllowed: Boolean,
     ) {
         val step = ch.bolusStep(previousPart)
         if (remaining < step / 2.0) return
@@ -771,7 +795,7 @@ class BolusWizard(
             }
             val now = dateUtil.now()
             if (now < deliverAt) {
-                launchSplitPart(remaining, previousPart, iobBaseline, token, source, deliverAt, deadline, unsafeCount, intervalMinutes, unsafeLimit)
+                launchSplitPart(remaining, previousPart, iobBaseline, token, source, deliverAt, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed)
                 return@launch
             }
             if (now > deadline) {
@@ -790,7 +814,7 @@ class BolusWizard(
                 }
                 SplitHpCheck.Wait -> {
                     aapsLogger.info(LTag.CORE, "Split leftover waiting: HP1 missing or stale, ${remaining} U left")
-                    launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit)
+                    launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed)
                     return@launch
                 }
                 SplitHpCheck.Allow -> Unit
@@ -799,7 +823,7 @@ class BolusWizard(
             when (splitBgCheck(status?.glucose, status?.delta, status?.shortAvgDelta)) {
                 SplitBgCheck.Missing -> {
                     aapsLogger.info(LTag.CORE, "Split leftover waiting: no fresh glucose, ${remaining} U left")
-                    launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit)
+                    launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed)
                 }
                 SplitBgCheck.Unsafe  -> {
                     val count = unsafeCount + 1
@@ -811,6 +835,7 @@ class BolusWizard(
                         launchSplitPart(
                             remaining, previousPart, iobBaseline, token, source,
                             now + intervalMinutes * 60_000L, deadline, count, intervalMinutes, unsafeLimit,
+                            walkingCutAllowed,
                         )
                     }
                 }
@@ -819,7 +844,12 @@ class BolusWizard(
                     // 2026-10-18: no IOB credit, see splitBolusBudget. The insulinReq cap counts insulin on board.
                     val budget = splitBolusBudget(remaining, previousPart, step)
                     val reducedRemaining = budget.remaining
-                    val cappedDose = cappedFollowUpDose(budget.dose, step)
+                    // 2026-10-19, per explicit request: cut while walking. The cut part is dropped from the total. Not for a
+                    // series that holds insulin walking soon kept back: walking soon already cut the first bolus.
+                    val walkFactor = if (walkingCutAllowed) walkingFactorNow() else 1.0
+                    val partDose = if (walkFactor < 1.0) Round.roundTo(budget.dose * walkFactor, step) else budget.dose
+                    val walkingCut = Round.roundTo(max(0.0, budget.dose - partDose), 0.001)
+                    val cappedDose = cappedFollowUpDose(partDose, step)
                     val dose = cappedDose ?: 0.0
                     if (reducedRemaining < step / 2.0) return@launch
                     if (dose <= 0.0) {
@@ -828,22 +858,27 @@ class BolusWizard(
                         launchSplitPart(
                             reducedRemaining, previousPart, max(iobBaseline, liveIob), token, source,
                             now + (if (budget.dose > 0.0) 120_000L else intervalMinutes * 60_000L), deadline, 0, intervalMinutes, unsafeLimit,
+                            walkingCutAllowed,
                         )
                         return@launch
                     }
+                    if (walkFactor < 1.0)
+                        aapsLogger.info(LTag.CORE, "Split leftover part: ${delayedDoseWalkingLevel(walkFactor)} (steps), part x$walkFactor, $walkingCut U dropped")
+                    val leftAfterPart = Round.roundTo(max(0.0, reducedRemaining - dose - walkingCut), 0.001)
                     wizardBolusExecutor.deliverInsulin(
                         insulin = dose,
                         note = null,
                         source = source,
                         onError = { failure -> aapsLogger.info(LTag.CORE, "Split leftover part not delivered: ${failure.comment}") },
-                        treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, reducedRemaining - dose, intervalMinutes),
+                        treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, leftAfterPart, intervalMinutes),
                         onSuccess = {
                             preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
-                            val left = Round.roundTo(reducedRemaining - dose, 0.001)
+                            val left = leftAfterPart
                             if (left >= step / 2.0) {
                                 launchSplitPart(
                                     remaining = left,
-                                    previousPart = dose,
+                                    // The next part keeps the size it had before the walking cut.
+                                    previousPart = dose + walkingCut,
                                     iobBaseline = liveIob + dose,
                                     token = token,
                                     source = source,
@@ -852,6 +887,7 @@ class BolusWizard(
                                     unsafeCount = 0,
                                     intervalMinutes = intervalMinutes,
                                     unsafeLimit = unsafeLimit,
+                                    walkingCutAllowed = walkingCutAllowed,
                                 )
                             }
                         },
