@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import app.aaps.core.interfaces.alerts.LocalAlertUtils
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.aps.PhoneSteps
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.autotune.Autotune
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
@@ -245,6 +246,7 @@ class MetroGraphs(
     val nsIncomingDataProcessor: NsIncomingDataProcessor get() = root.nsIncomingDataProcessor
     val automation: Automation get() = root.automation
     val automationRuntime: AutomationRuntime get() = root.automationRuntime
+    val phoneSteps: PhoneSteps get() = root.phoneSteps
 
     /** Same plugin as [objectives], by class. The instrumented tests ask for the concrete type. */
     val objectivesPlugin: ObjectivesPlugin get() = root.objectivesPlugin

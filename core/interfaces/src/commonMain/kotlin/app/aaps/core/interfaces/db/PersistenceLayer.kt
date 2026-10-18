@@ -1,5 +1,6 @@
 package app.aaps.core.interfaces.db
 
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
@@ -1617,6 +1618,12 @@ interface PersistenceLayer {
      * @return step count record
      */
     suspend fun getLastStepsCountFromTimeToTime(startTime: Long, endTime: Long): SC?
+
+    /** Stores the AutoISF values of one loop. */
+    suspend fun insertAutoIsfValue(value: AIV)
+
+    /** AutoISF values whose time is inside the interval, oldest first. */
+    suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV>
 
     /**
      * Insert or update multiple records in a single DB transaction. Emits one change event

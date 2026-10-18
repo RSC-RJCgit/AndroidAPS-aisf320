@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.alerts.LocalAlertUtils
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.aps.PhoneSteps
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.autotune.Autotune
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
@@ -459,6 +460,7 @@ interface AppRootGraph : MetroViewModelMultibindings {
 
     /** Same object as [automation], by class: ComposeMainActivity and AppNavGraph inject the concrete type. */
     val automationRuntime: AutomationRuntime
+    val phoneSteps: PhoneSteps
     val permissionProviders: Set<PermissionProvider>
 
     /** The live loop's calculator. A history window has its own, at `HistoryWindowScope`. */

@@ -4,6 +4,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import app.aaps.database.entities.TABLE_APS_RESULTS
+import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
 import app.aaps.database.entities.TABLE_BOLUSES
 import app.aaps.database.entities.TABLE_CALIBRATION_ENTRIES
 import app.aaps.database.entities.TABLE_EFFECTIVE_PROFILE_SWITCHES
@@ -338,6 +339,26 @@ private val migration35to36 = object : Migration(35, 36) {
     }
 }
 
+/** Adds the AutoISF 3.2.1 values table. Existing rows are not changed. */
+private val migration36to37 = object : Migration(36, 37) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            "CREATE TABLE IF NOT EXISTS `$TABLE_AUTO_ISF_VALUES` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`timestamp` INTEGER NOT NULL, " +
+                "`acceIsf` REAL NOT NULL, " +
+                "`bgIsf` REAL NOT NULL, " +
+                "`ppIsf` REAL NOT NULL, " +
+                "`driftIsf` REAL NOT NULL, " +
+                "`duraIsf` REAL NOT NULL, " +
+                "`finalIsf` REAL NOT NULL, " +
+                "`iobThEffective` REAL NOT NULL)"
+        )
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_autoIsfValues_timestamp` ON `$TABLE_AUTO_ISF_VALUES` (`timestamp`)")
+        dropCustomIndexes(connection)
+    }
+}
+
 /** Every migration, in order. Passed to the Room builder by each platform. */
 internal val databaseMigrations: Array<Migration> = arrayOf(
     migration22to23,
@@ -354,4 +375,5 @@ internal val databaseMigrations: Array<Migration> = arrayOf(
     migration33to34,
     migration34to35,
     migration35to36,
+    migration36to37,
 )

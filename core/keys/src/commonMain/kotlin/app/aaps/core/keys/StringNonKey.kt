@@ -13,6 +13,10 @@ enum class StringNonKey(
 ) : StringNonPreferenceKey {
 
     QuickWizard(key = "QuickWizard", defaultValue = "[]", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    /** AutoISF 3.2.1 automation states: the current value of each state, as JSON. */
+    AutomationCurrentStates(key = "automation_state_service", defaultValue = "{}"),
+    /** AutoISF 3.2.1 automation states: the allowed values of each state, as JSON. */
+    AutomationStateValues(key = "automation_state_values", defaultValue = "{}"),
     WearCwfWatchfaceName(key = "wear_cwf_watchface_name", defaultValue = ""),
     WearCwfAuthorVersion(key = "wear_cwf_author_version", defaultValue = ""),
     WearCwfFileName(key = "wear_cwf_filename", defaultValue = ""),

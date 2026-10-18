@@ -27,6 +27,8 @@ enum class LongNonKey(
      * history at once (#5210).
      */
     LastCleanupCutoff("last_cleanup_cutoff", 0L),
+    /** When the app last started. The AutoISF activity monitor waits 60 minutes before it detects inactivity. */
+    AppStart("app_start_time", 0L, exportable = false),
 
     // NSCv3 client-control pairing (excluded from export — replay protection regresses if restored)
     NsClientControlCounterSent("nsclient_control_counter_sent", 0L, exportable = false),

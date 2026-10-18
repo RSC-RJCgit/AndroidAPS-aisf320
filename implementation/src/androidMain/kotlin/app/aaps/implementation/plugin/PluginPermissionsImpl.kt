@@ -116,6 +116,16 @@ class PluginPermissionsImpl(
         // EOPatch plugin was enabled. isPermissionMissing checks canScheduleExactAlarms(), which is true
         // with either the permission or the exemption, so a user who excluded AAPS from battery
         // optimization is never asked.
+        // AutoISF 3.2.1 activity monitor reads the phone step counter. A runtime permission since Android 10.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            add(
+                PermissionGroup(
+                    permissions = listOf(Manifest.permission.ACTIVITY_RECOGNITION),
+                    rationaleTitle = TextRef.AndroidRes(R.string.permission_activity_title),
+                    rationaleDescription = TextRef.AndroidRes(R.string.permission_activity_description),
+                )
+            )
+        }
         add(
             PermissionGroup(
                 permissions = listOf(Manifest.permission.SCHEDULE_EXACT_ALARM),

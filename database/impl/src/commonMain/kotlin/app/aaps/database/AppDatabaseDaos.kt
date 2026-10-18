@@ -1,6 +1,7 @@
 package app.aaps.database
 
 import app.aaps.database.daos.APSResultDao
+import app.aaps.database.daos.AutoIsfValuesDao
 import app.aaps.database.daos.BolusCalculatorResultDao
 import app.aaps.database.daos.BolusDao
 import app.aaps.database.daos.CalibrationEntryDao
@@ -51,5 +52,6 @@ internal interface AppDatabaseDaos {
     val runningModeDao: RunningModeDao
     val heartRateDao: HeartRateDao
     val stepsCountDao: StepsCountDao
+    val autoIsfValuesDao: AutoIsfValuesDao
     val calibrationEntryDao: CalibrationEntryDao
 }

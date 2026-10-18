@@ -156,6 +156,7 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
     private val runningModeExpiryScheduler get() = metroGraphs.runningModeExpiryScheduler
     private val profileSwitchScheduler get() = metroGraphs.profileSwitchScheduler
     private val automationRuntime get() = metroGraphs.automationRuntime
+    private val phoneSteps get() = metroGraphs.phoneSteps
     private val snackbarNotificationFallback get() = metroGraphs.snackbarNotificationFallback
     private val appScope get() = metroGraphs.applicationScope
 
@@ -259,6 +260,10 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
                 // Standalone automation runtime (no longer a plugin). Loads definitions on all
                 // flavors; the processing loop + location service are master-only (gated internally).
                 automationRuntime.start()
+
+                // AutoISF 3.2.1 activity monitor: remember the start time and listen to the phone step counter
+                preferences.put(LongNonKey.AppStart, dateUtil.now())
+                phoneSteps.start()
 
                 // Data migrations (DB I/O)
                 dataMigrations()
