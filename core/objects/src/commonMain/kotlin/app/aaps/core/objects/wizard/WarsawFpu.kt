@@ -2,12 +2,10 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.profile.Profile
-import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.objects.profile.ProfileSealed
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.math.floor
-import kotlin.math.max
 
 /**
  * Protein and fat insulin, spread as one dose per hour.
@@ -110,16 +108,18 @@ fun warsawNoteAmount(units: Double): String {
 fun profileSwitchPercent(profile: Profile): Int =
     if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
 
-/** Glucose must be above 5.5 mmol, and both delta and short delta must be above 0.2 mmol. */
+/**
+ * Glucose must be above 5.5 mmol, and both delta and short delta at least 0.05 mmol (2026-10-18, per explicit request; was
+ * above 0.2 mmol, which cancelled most doses on 17 Oct Live while BG was only slowly rising).
+ */
 fun warsawDoseBgAllows(glucoseMgdl: Double?, delta: Double?, shortDelta: Double?): Boolean {
     if (glucoseMgdl == null || delta == null || shortDelta == null) return false
     val toMmol = Constants.MGDL_TO_MMOLL
-    return glucoseMgdl * toMmol > 5.5 && delta * toMmol > 0.2 && shortDelta * toMmol > 0.2
+    return glucoseMgdl * toMmol > 5.5 && delta * toMmol >= WARSAW_MIN_DELTA_MMOL && shortDelta * toMmol >= WARSAW_MIN_DELTA_MMOL
 }
 
-/** Subtract any insulin-on-board rise since the immediate bolus. A result of 0 or less is not delivered. */
-fun warsawDoseAfterIobRise(planned: Double, iobBaseline: Double, liveIob: Double, bolusStep: Double): Double =
-    Round.roundTo(planned - max(0.0, liveIob - iobBaseline), bolusStep)
+/** Smallest rise per 5 min, in mmol, that still lets a delayed protein/fat dose go. */
+const val WARSAW_MIN_DELTA_MMOL = 0.05
 
 /**
  * A new wizard confirm replaces an older protein/fat series. The doses live only in this process.

@@ -76,11 +76,10 @@ class WarsawFpuTest {
         val mmol = Constants.MMOLL_TO_MGDL
         assertTrue(warsawDoseBgAllows(5.6 * mmol, 0.3 * mmol, 0.3 * mmol))
         assertFalse(warsawDoseBgAllows(5.5 * mmol, 0.3 * mmol, 0.3 * mmol))
-        assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.2 * mmol, 0.3 * mmol))
-        assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.3 * mmol, 0.2 * mmol))
+        // 2026-10-18: at least 0.05 mmol on both deltas (was above 0.2)
+        assertTrue(warsawDoseBgAllows(6.0 * mmol, 0.06 * mmol, 0.06 * mmol))
+        assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.04 * mmol, 0.3 * mmol))
+        assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.3 * mmol, 0.04 * mmol))
         assertFalse(warsawDoseBgAllows(null, 0.3 * mmol, 0.3 * mmol))
-        assertEquals(0.2, warsawDoseAfterIobRise(0.5, 2.0, 2.3, 0.1), 0.0001)
-        assertTrue(warsawDoseAfterIobRise(0.5, 2.0, 2.6, 0.1) <= 0.0)
-        assertEquals(0.5, warsawDoseAfterIobRise(0.5, 2.0, 1.5, 0.1), 0.0001)
     }
 }

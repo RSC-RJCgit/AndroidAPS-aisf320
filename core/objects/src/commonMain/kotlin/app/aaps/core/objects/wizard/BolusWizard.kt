@@ -541,11 +541,11 @@ class BolusWizard(
         if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) return "glucose check failed"
         val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
         val step = ch.bolusStep(planned)
-        val iobAdjustedDose = warsawDoseAfterIobRise(planned, iobBaseline, liveIob, step)
-        if (iobAdjustedDose <= 0.0) return "insulin on board already covers it"
-        val dose = cappedFollowUpDose(iobAdjustedDose, step) ?: return "insulinReq missing or stale"
+        // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
+        // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice. iobBaseline stays for the notes.
+        val dose = cappedFollowUpDose(planned, step) ?: return "insulinReq missing or stale"
         if (dose <= 0.0) return "insulinReq cap is below one pump step"
-        val capRemaining = Round.roundTo(max(0.0, iobAdjustedDose - dose), 0.001)
+        val capRemaining = Round.roundTo(max(0.0, planned - dose), 0.001)
         wizardBolusExecutor.deliverInsulin(
             insulin = dose,
             note = null,
@@ -639,7 +639,7 @@ class BolusWizard(
                 "rise ${warsawNoteAmount(iobIncrease)}U; " +
                 "calculated 0.00U after residual cap/pump-step rounding. " +
                 "IOB row represents the rise in total IOB. BG is a safety gate, not a correction. " +
-                "Gate BG=${gs?.glucose}, delta=${gs?.delta}, short delta=${gs?.shortAvgDelta} mg/dL. " + detail
+                "Gate ${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())}. " + detail
         )
     }
 
@@ -816,18 +816,14 @@ class BolusWizard(
                 }
                 SplitBgCheck.Allowed -> {
                     val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(now, profile).iob
-                    val budget = splitBolusBudget(remaining, previousPart, iobBaseline, liveIob, step)
+                    // 2026-10-18: no IOB credit, see splitBolusBudget. The insulinReq cap counts insulin on board.
+                    val budget = splitBolusBudget(remaining, previousPart, step)
                     val reducedRemaining = budget.remaining
                     val cappedDose = cappedFollowUpDose(budget.dose, step)
                     val dose = cappedDose ?: 0.0
-                    if (budget.creditedIob > 0.0)
-                        aapsLogger.info(LTag.CORE, "Split leftover removed ${budget.creditedIob} U for IOB rise; ${reducedRemaining} U remains")
-                    if (reducedRemaining < step / 2.0) {
-                        cancelSplitPart(remaining, "IOB rise covers remaining split", iobBaseline, source)
-                        return@launch
-                    }
+                    if (reducedRemaining < step / 2.0) return@launch
                     if (dose <= 0.0) {
-                        val reason = if (cappedDose == null) "insulinReq missing or stale" else if (budget.dose > 0.0) "insulinReq cap is below one pump step" else "IOB rise covers next part"
+                        val reason = if (cappedDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                         aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${reducedRemaining} U left")
                         launchSplitPart(
                             reducedRemaining, previousPart, max(iobBaseline, liveIob), token, source,

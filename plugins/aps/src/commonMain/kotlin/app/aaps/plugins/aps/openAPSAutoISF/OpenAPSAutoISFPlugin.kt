@@ -93,6 +93,7 @@ import app.aaps.core.objects.extensions.plannedRemainingMinutes
 import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.followUpRequirementMilliU
 import app.aaps.core.objects.wizard.warsawFpuPlan
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.icons.IcPluginOpenAPS
@@ -1004,7 +1005,7 @@ open class OpenAPSAutoISFPlugin(
             lastAPSResult = determineBasalResult
             val followUpReq = it.insulinReq
             if (followUpReq != null && followUpReq.isFinite()) {
-                preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqMilliU, (followUpReq * 1000).toLong())
+                preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqMilliU, followUpRequirementMilliU(followUpReq, determineBasalResult.smb))
                 preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt, now)
             }
             lastAPSRun = now
