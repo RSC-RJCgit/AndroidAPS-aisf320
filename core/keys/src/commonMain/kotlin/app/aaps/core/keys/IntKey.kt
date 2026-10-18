@@ -348,6 +348,29 @@ enum class IntKey(
         unitType = UnitType.GRAMS,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // AutoISF 3.2.1 activity monitor: the sleeping hours in which inactivity is not detected
+    ActivityMonitorIdleStart(
+        key = "inactivity_idle_start",
+        defaultValue = 22,
+        min = 0,
+        max = 23,
+        title = KeysStrings.pref_title_inactivity_idle_start,
+        summary = KeysStrings.pref_summary_inactivity_idle_start,
+        defaultedBySM = true,
+        dependency = BooleanKey.ActivityMonitorOvernight,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ActivityMonitorIdleEnd(
+        key = "inactivity_idle_end",
+        defaultValue = 6,
+        min = 0,
+        max = 23,
+        title = KeysStrings.pref_title_inactivity_idle_end,
+        summary = KeysStrings.pref_summary_inactivity_idle_end,
+        defaultedBySM = true,
+        dependency = BooleanKey.ActivityMonitorOvernight,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfHalfBasalExerciseTarget(
         key = "half_basal_exercise_target",
         defaultValue = 160,

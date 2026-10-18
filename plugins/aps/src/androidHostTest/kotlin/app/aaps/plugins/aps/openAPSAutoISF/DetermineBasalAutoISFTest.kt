@@ -26,7 +26,7 @@ class DetermineBasalAutoISFTest : TestBaseWithProfile() {
 
     @BeforeEach
     fun setup() {
-        sut = DetermineBasalAutoISF(profileUtil)
+        sut = DetermineBasalAutoISF(profileUtil, preferences)
     }
 
     private fun glucoseStatus() = GlucoseStatusSMB(
@@ -128,6 +128,7 @@ class DetermineBasalAutoISFTest : TestBaseWithProfile() {
             smb_ratio = 0.5,
             smb_max_range_extension = 1.0,
             iob_threshold_percent = 100,
+            activity_consoleLog = "",
             auto_isf_consoleError = mutableListOf(),
             auto_isf_consoleLog = mutableListOf()
         )
@@ -256,6 +257,7 @@ class DetermineBasalAutoISFTest : TestBaseWithProfile() {
             smb_ratio = 0.5,
             smb_max_range_extension = 1.0,
             iob_threshold_percent = 100,
+            activity_consoleLog = "",
             auto_isf_consoleError = mutableListOf(),
             auto_isf_consoleLog = mutableListOf()
         )

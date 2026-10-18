@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfile
@@ -224,12 +225,23 @@ class OpenAPSViewModel(
 
     // --- Mapping functions ---
 
-    private fun GlucoseStatus.toRows(): List<KeyValueRow> = listOf(
-        KeyValueRow("glucose", glucose.toString()),
-        KeyValueRow("delta", delta.toString()),
-        KeyValueRow("shortAvgDelta", shortAvgDelta.toString()),
-        KeyValueRow("longAvgDelta", longAvgDelta.toString())
-    )
+    private fun GlucoseStatus.toRows(): List<KeyValueRow> = buildList {
+        add(KeyValueRow("glucose", glucose.toString()))
+        add(KeyValueRow("delta", delta.toString()))
+        add(KeyValueRow("shortAvgDelta", shortAvgDelta.toString()))
+        add(KeyValueRow("longAvgDelta", longAvgDelta.toString()))
+        // AutoISF 3.2.1 also shows the plateau and the parabola fit
+        if (this@toRows is GlucoseStatusAutoIsf) {
+            add(KeyValueRow("duraISFaverage", duraISFaverage.toString()))
+            add(KeyValueRow("duraISFminutes", duraISFminutes.toString()))
+            add(KeyValueRow("parabolaMinutes", parabolaMinutes.toString()))
+            add(KeyValueRow("corrSqu", corrSqu.toString()))
+            add(KeyValueRow("a0", a0.toString()))
+            add(KeyValueRow("a1", a1.toString()))
+            add(KeyValueRow("a2", a2.toString()))
+            add(KeyValueRow("bgAcceleration", bgAcceleration.toString()))
+        }
+    }
 
     private fun CurrentTemp.toRows(): List<KeyValueRow> = buildList {
         add(KeyValueRow("duration", duration.toString()))

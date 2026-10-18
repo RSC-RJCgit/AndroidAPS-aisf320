@@ -37,7 +37,7 @@ class XdripSourceWorkerTest : TestBaseWithProfile() {
     @BeforeEach
     fun setupMock() {
         whenever(workerParameters.inputData).thenReturn(workDataOf())
-        worker = XdripSourcePlugin.XdripSourceWorker(context, workerParameters, aapsLogger, fabricPrivacy, xdripSourcePlugin, persistenceLayer, preferences, dateUtil, dataInbox)
+        worker = XdripSourcePlugin.XdripSourceWorker(context, workerParameters, aapsLogger, fabricPrivacy, xdripSourcePlugin, persistenceLayer, preferences, dateUtil, dataInbox, profileUtil)
     }
 
     @Test
@@ -90,11 +90,12 @@ class XdripSourceWorkerTest : TestBaseWithProfile() {
             val result = worker.doWork()
 
             Assertions.assertEquals(ListenableWorker.Result.success(), result)
+            // AutoISF 3.2.1: raw holds the (calibrated) estimate and noise the original raw value
             val expectedGv = GV(
                 timestamp = timestamp,
                 value = 150.0,
                 raw = 150.0,
-                noise = null,
+                noise = 150.0,
                 trendArrow = TrendArrow.FORTY_FIVE_DOWN,
                 sourceSensor = SourceSensor.DEXCOM_G6
             )

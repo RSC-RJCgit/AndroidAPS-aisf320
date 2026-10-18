@@ -191,6 +191,29 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // AutoISF 3.2.1 activity monitor
+    ActivityMonitorDetection("activity_detection", false, KeysStrings.pref_title_activity_monitor, KeysStrings.pref_summary_activity_monitor, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    ActivityMonitorOvernight(
+        "ignore_inactivity_overnight",
+        true,
+        KeysStrings.pref_title_ignore_inactivity_overnight,
+        KeysStrings.pref_summary_ignore_inactivity_overnight,
+        defaultedBySM = true,
+        dependency = ActivityMonitorDetection,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ActivityMonitorShowStepsFromSmartphone(
+        "steps_graph_from_smartphone",
+        true,
+        KeysStrings.pref_title_steps_graph_from_smartphone,
+        KeysStrings.pref_summary_steps_graph_from_smartphone,
+        defaultedBySM = true,
+        dependency = ActivityMonitorDetection,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    // AutoISF 3.2.1 Libre calibration: a fresh calibration stops SMBs and the AutoISF weights for 20 minutes
+    FslCalibrationTrigger("calibration_stops_SMB", false, KeysStrings.pref_title_calibration_stops_smb, KeysStrings.pref_summary_calibration_stops_smb, defaultedBySM = true),
+    FslCalibrationEnd("calibration_end", false, KeysStrings.pref_title_calibration_enable_smb, KeysStrings.pref_summary_calibration_enable_smb, defaultedBySM = true),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, KeysStrings.pref_title_aps_use_autoisf_weights, KeysStrings.pref_summary_aps_use_autoisf_weights, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     ApsAutoIsfSmbOnEvenTarget(
         "Enable alternative activation of SMB always",

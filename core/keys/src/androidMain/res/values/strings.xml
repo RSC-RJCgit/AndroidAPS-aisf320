@@ -224,6 +224,32 @@
     <string name="pref_title_carbs_request_threshold">Carbs required threshold</string>
     <string name="carbs_req_threshold_summary">Minimum grams of carbs to display a carbs suggestion alert. Carbs suggestions below this number will not trigger a notification.</string>
     <string name="pref_title_half_basal_exercise_target">Half basal exercise target</string>
+    <!-- AutoISF 3.2.1 activity monitor -->
+    <string name="pref_title_activity_monitor">Activity modifies sensitivity</string>
+    <string name="pref_summary_activity_monitor">Activity is found from the steps that the phone counts. It does not replace a sport adjustment; it is a smaller extra. A temp target turns it off.</string>
+    <string name="pref_title_activity_scale_factor">Scale factor for activity</string>
+    <string name="pref_summary_activity_scale_factor">Default: 1.0. When activity is found, its usual effect of 15%% or 30%% is scaled up or down by this value. 0.0 turns the activity effect off.</string>
+    <string name="pref_title_inactivity_scale_factor">Scale factor for inactivity</string>
+    <string name="pref_summary_inactivity_scale_factor">Default: 1.0. When inactivity is found, its usual effect of 10%% or 20%% is scaled up or down by this value. 0.0 turns the inactivity effect off.</string>
+    <string name="pref_title_ignore_inactivity_overnight">No inactivity detection during sleep</string>
+    <string name="pref_summary_ignore_inactivity_overnight">Default: on. Inactivity is not detected in the sleeping hours below. If off, leave the phone beside the bed during short breaks.</string>
+    <string name="pref_title_inactivity_idle_start">Sleep starts at hour</string>
+    <string name="pref_summary_inactivity_idle_start">Hour (0-23) when inactivity detection stops for sleep. Default: 22</string>
+    <string name="pref_title_inactivity_idle_end">Sleep ends at hour</string>
+    <string name="pref_summary_inactivity_idle_end">Hour (0-23) when inactivity detection starts again. Default: 6</string>
+    <string name="pref_title_steps_graph_from_smartphone">Save steps from this phone</string>
+    <string name="pref_summary_steps_graph_from_smartphone">Default: on. Each loop saves the phone step count, so the steps graph shows it. Off: the steps graph shows the watch steps.</string>
+    <!-- AutoISF 3.2.1 Libre calibration and smoothing -->
+    <string name="pref_title_calibration_stops_smb">Stop SMB and AutoISF weights for 20 min after a fresh calibration</string>
+    <string name="pref_summary_calibration_stops_smb">Turn this on once before you change the calibration settings</string>
+    <string name="pref_title_calibration_enable_smb">Allow SMB and AutoISF weights again now</string>
+    <string name="pref_summary_calibration_enable_smb">Turn this on when the stop is not needed any more, because the calibration change was smooth</string>
+    <string name="pref_title_fsl_cal_offset">Libre calibration offset</string>
+    <string name="pref_summary_fsl_cal_offset" comment="The formula stays as it is. OFFSET and slope are the two settings.">OFFSET in the formula, as in xDrip: Libre calibrated = OFFSET + slope × Libre raw</string>
+    <string name="pref_title_fsl_cal_slope">Libre calibration slope</string>
+    <string name="pref_summary_fsl_cal_slope" comment="The formula stays as it is. offset and SLOPE are the two settings.">SLOPE in the formula, as in xDrip: Libre calibrated = offset + SLOPE × Libre raw</string>
+    <string name="pref_title_fsl_smooth_alpha">Libre smoothing factor</string>
+    <string name="pref_summary_fsl_smooth_alpha">Used without the xDrip 1 minute smoothing. 0.1: most smoothing. 1.0: no smoothing.</string>
     <string name="half_basal_exercise_target_summary">Set to a number, e.g. 160, which means when temp target is 160 mg/dL and High temptarget raises sensitivity=true, run 50%% basal at this level (120 = 75%%; 140 = 60%%).</string>
     <string name="pref_title_iob_threshold_percent">IOB threshold percent</string>
     <string name="openapsama_iob_threshold_percent_summary" formatted="false">Percentage of maxIOB above which SMBs are disabled.\nDefault value: 100%\nWith 100% this feature is effectively disabled.</string>

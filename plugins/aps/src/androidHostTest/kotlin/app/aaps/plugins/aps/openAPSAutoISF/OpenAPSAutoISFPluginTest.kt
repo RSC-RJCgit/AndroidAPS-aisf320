@@ -1,9 +1,10 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
 import app.aaps.core.data.aps.SMBDefaults
-import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
+import app.aaps.core.interfaces.aps.PhoneSteps
+import app.aaps.core.interfaces.automation.AutomationStateInterface
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -29,6 +30,8 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     @Mock lateinit var determineBasalSMB: DetermineBasalAutoISF
     @Mock lateinit var bgQualityCheck: BgQualityCheck
     @Mock lateinit var profiler: Profiler
+    @Mock lateinit var automationStateService: AutomationStateInterface
+    @Mock lateinit var phoneSteps: PhoneSteps
     private lateinit var openAPSAutoISFPlugin: OpenAPSAutoISFPlugin
 
     @BeforeEach fun prepare() {
@@ -36,7 +39,7 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
             aapsLogger, rxBus, constraintChecker, rh, profileFunction, profileUtil, config, activePlugin,
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             bgQualityCheck, notificationManager, determineBasalSMB, profiler,
-            GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator), { apsResultProvider() }, ch
+            GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, deltaCalculator, preferences), { apsResultProvider() }, ch, automationStateService, phoneSteps
         )
     }
 
@@ -44,6 +47,13 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     fun `an engineering dev build leaves the choice to the user`() {
         whenever(config.isEngineeringMode()).thenReturn(true)
         whenever(config.isDev()).thenReturn(true)
+        assertThat(openAPSAutoISFPlugin.enforcedState()).isNull()
+    }
+
+    @Test
+    fun `a client can always select it`() {
+        whenever(config.isEngineeringMode()).thenReturn(false)
+        whenever(config.AAPSCLIENT).thenReturn(true)
         assertThat(openAPSAutoISFPlugin.enforcedState()).isNull()
     }
 
@@ -59,20 +69,21 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
         val autoIsfMin = 0.7
         val autoIsfMax = 1.2
         var sens = 1.1  // from Autosens
-        val originSens = ""
-        var ttSet = false
-        var exerciseMode = false
-        val targetBg = 120.0
-        val normalTarget = Constants.NORMAL_TARGET_MGDL
-        assertThat(openAPSAutoISFPlugin.withinISFlimits(1.7, autoIsfMin, autoIsfMax, sens, originSens, ttSet, exerciseMode, targetBg, normalTarget)).isEqualTo(1.2) // upper limit
-        assertThat(openAPSAutoISFPlugin.withinISFlimits(0.5, autoIsfMin, autoIsfMax, sens, originSens, ttSet, exerciseMode, targetBg, normalTarget)).isEqualTo(0.7) // lower limit
+        var exerciseModeActive = false
+        val resistanceModeActive = false
+        var stepActivityDetected = false
+        val stepInactivityDetected = false
+
+        assertThat(openAPSAutoISFPlugin.withinISFlimits(1.7, autoIsfMin, autoIsfMax, sens, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)).isEqualTo(1.2) // upper limit
+        assertThat(openAPSAutoISFPlugin.withinISFlimits(0.5, autoIsfMin, autoIsfMax, sens, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)).isEqualTo(0.7) // lower limit
         sens = 1.5  // from Autosens
-        assertThat(openAPSAutoISFPlugin.withinISFlimits(1.7, autoIsfMin, autoIsfMax, sens, originSens, ttSet, exerciseMode, targetBg, normalTarget)).isEqualTo(1.5) // autosens 1.5 wins
+        assertThat(openAPSAutoISFPlugin.withinISFlimits(1.7, autoIsfMin, autoIsfMax, sens, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)).isEqualTo(1.5) // autosens 1.5 wins
         sens = 0.5  // from Autosens
-        assertThat(openAPSAutoISFPlugin.withinISFlimits(0.5, autoIsfMin, autoIsfMax, sens, originSens, ttSet, exerciseMode, targetBg, normalTarget)).isEqualTo(0.5) // autosens 0.5 wins
-        exerciseMode = true
-        ttSet = true
-        assertThat(openAPSAutoISFPlugin.withinISFlimits(0.5, autoIsfMin, autoIsfMax, sens, originSens, ttSet, exerciseMode, targetBg, normalTarget)).isEqualTo(0.35) // exercise mode
+        assertThat(openAPSAutoISFPlugin.withinISFlimits(0.5, autoIsfMin, autoIsfMax, sens, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)).isEqualTo(0.5) // autosens 0.5 wins
+        exerciseModeActive = true
+        assertThat(openAPSAutoISFPlugin.withinISFlimits(0.5, autoIsfMin, autoIsfMax, sens, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)).isEqualTo(0.35) // exercise mode
+        stepActivityDetected = true
+        assertThat(openAPSAutoISFPlugin.withinISFlimits(0.5, autoIsfMin, autoIsfMax, sens, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)).isEqualTo(0.35) // activity mode
     }
 
     @Test

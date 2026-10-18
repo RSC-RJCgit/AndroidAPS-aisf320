@@ -5,13 +5,13 @@ package app.aaps.core.data.model
  * [iobThEffective] is the IOB threshold in units in force for this loop, drawn as the IOB_TH line on the IOB graph.
  */
 data class AIV(
-    val timestamp: Long,
-    val acceIsf: Double,
-    val bgIsf: Double,
-    val ppIsf: Double,
+    var timestamp: Long,
+    var acceIsf: Double,
+    var bgIsf: Double,
+    var ppIsf: Double,
     /** Place holder, as in AutoISF 3.2.1. */
-    val driftIsf: Double,
-    val duraIsf: Double,
-    val finalIsf: Double,
-    val iobThEffective: Double,
+    var driftIsf: Double,
+    var duraIsf: Double,
+    var finalIsf: Double,
+    var iobThEffective: Double,
 )

@@ -4,6 +4,7 @@ import app.aaps.core.data.model.RM
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.pump.defs.PumpDescription
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.aps.PhoneSteps
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.Objectives
@@ -142,7 +143,7 @@ class ConstraintsCheckerImplTest : TestBaseWithProfile() {
                 aapsLogger, rxBus, constraintChecker, text, profileFunction, profileUtil, config, activePlugin, iobCobCalculator,
                 hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, smbGlucoseStatusProvider, tddCalculator, bgQualityCheck,
                 notificationManager, determineBasalSMB, profiler, GlucoseStatusCalculatorSMB(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator), { apsResultProvider() }, ch,
-                fabricPrivacy
+                fabricPrivacy, mock<PhoneSteps>()
             )
         openAPSAMAPlugin =
             OpenAPSAMAPlugin(

@@ -24,6 +24,18 @@ data class OapsProfileAutoIsf(
     var adv_target_adjustments: Boolean,
     var exercise_mode: Boolean,
     var half_basal_exercise_target: Int,
+    // AutoISF 3.2.1 activity monitor: the phone steps and state the determine-basal step reads
+    val activity_detection: Boolean? = false,
+    val recent_steps_5_minutes: Int? = 0,
+    val recent_steps_10_minutes: Int? = 0,
+    val recent_steps_15_minutes: Int? = 0,
+    val recent_steps_30_minutes: Int? = 0,
+    val recent_steps_60_minutes: Int? = 0,
+    val phone_moved: Boolean? = false,
+    /** Minutes since the app started. */
+    val time_since_start: Long? = 0,
+    /** Hour of the day, 0-23. */
+    val now: Int? = 0,
     var maxCOB: Int,
     var skip_neutral_temps: Boolean,
     var remainingCarbsCap: Int,

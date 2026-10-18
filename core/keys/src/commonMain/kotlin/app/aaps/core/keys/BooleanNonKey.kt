@@ -46,4 +46,8 @@ enum class BooleanNonKey(
     // set on the next launch, the previous VACUUM died below the JVM (native abort / OOM) — used to
     // break the boot-crash loop. Transient device state, not a user setting → not exportable.
     VacuumInProgress("vacuum_in_progress", false, exportable = false),
+
+    // AutoISF 3.2.1 activity monitor: what the last loop found, for the AutoISF and the determine-basal step
+    ActivityMonitorStepsActive("steps_activity_detected", false, exportable = false),
+    ActivityMonitorStepsInactive("steps_inactivity_detected", false, exportable = false),
 }

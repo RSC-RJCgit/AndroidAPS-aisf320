@@ -14,6 +14,7 @@ import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
 import app.aaps.core.interfaces.aps.OapsProfile
+import app.aaps.core.interfaces.aps.PhoneSteps
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.concurrent.AapsLock
 import app.aaps.core.interfaces.concurrent.withLock
@@ -50,6 +51,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
@@ -102,7 +104,8 @@ open class OpenAPSSMBPlugin(
     private val glucoseStatusCalculatorSMB: GlucoseStatusCalculatorSMB,
     private val apsResultProvider: () -> APSResult,
     private val ch: ConcentrationHelper,
-    private val fabricPrivacy: FabricPrivacy
+    private val fabricPrivacy: FabricPrivacy,
+    private val phoneSteps: PhoneSteps
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -399,8 +402,13 @@ open class OpenAPSSMBPlugin(
             } else autosensResult.sensResult = "autosens disabled"
         }
 
-        val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, SMBDefaults.exercise_mode, SMBDefaults.half_basal_exercise_target, isTempTarget)
+        // AutoISF 3.2.1: exercise mode and the half basal target come from the settings, and the phone steps feed the
+        // activity detection in DetermineBasalSMB
+        val iobArray = iobCobCalculator.calculateIobArrayForSMB(
+            autosensResult, preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens), preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget
+        )
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
+        val elapsedTimeSinceLastStart = (dateUtil.now() - preferences.get(LongNonKey.AppStart)) / 60000
 
         val oapsProfile = OapsProfile(
             dia = 0.0, // not used
@@ -417,13 +425,22 @@ open class OpenAPSSMBPlugin(
             max_daily_safety_multiplier = preferences.get(DoubleKey.ApsMaxDailyMultiplier),
             current_basal_safety_multiplier = preferences.get(DoubleKey.ApsMaxCurrentBasalMultiplier),
             lgsThreshold = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.ApsLgsThreshold)).toInt(),
-            high_temptarget_raises_sensitivity = false,
+            high_temptarget_raises_sensitivity = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens),
             low_temptarget_lowers_sensitivity = false,
             sensitivity_raises_target = preferences.get(BooleanKey.ApsSensitivityRaisesTarget),
             resistance_lowers_target = preferences.get(BooleanKey.ApsResistanceLowersTarget),
             adv_target_adjustments = SMBDefaults.adv_target_adjustments,
-            exercise_mode = SMBDefaults.exercise_mode,
-            half_basal_exercise_target = SMBDefaults.half_basal_exercise_target,
+            exercise_mode = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens),
+            half_basal_exercise_target = preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget),
+            activity_detection = preferences.get(BooleanKey.ActivityMonitorDetection),
+            recent_steps_5_minutes = phoneSteps.steps5Min(),
+            recent_steps_10_minutes = phoneSteps.steps10Min(),
+            recent_steps_15_minutes = phoneSteps.steps15Min(),
+            recent_steps_30_minutes = phoneSteps.steps30Min(),
+            recent_steps_60_minutes = phoneSteps.steps60Min(),
+            phone_moved = phoneSteps.phoneMoved(),
+            time_since_start = elapsedTimeSinceLastStart,
+            now = MidnightUtils.secondsFromMidnight() / 3600,
             maxCOB = SMBDefaults.maxCOB,
             skip_neutral_temps = pump.setNeutralTempAtFullHour(),
             remainingCarbsCap = SMBDefaults.remainingCarbsCap,
@@ -594,6 +611,16 @@ open class OpenAPSSMBPlugin(
             BooleanKey.ApsDynIsfAdjustSensitivity,
             BooleanKey.ApsSensitivityRaisesTarget,
             BooleanKey.ApsResistanceLowersTarget,
+            BooleanKey.ApsAutoIsfHighTtRaisesSens,
+            BooleanKey.ApsAutoIsfLowTtLowersSens,
+            IntKey.ApsAutoIsfHalfBasalExerciseTarget,
+            PreferenceSubScreenDef(
+                key = "activity_modifies_sensitivity",
+                title = ApsStrings.activity_monitor_title,
+                items = listOf(
+                    BooleanKey.ActivityMonitorDetection
+                )
+            ),
             BooleanKey.ApsUseSmb,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,

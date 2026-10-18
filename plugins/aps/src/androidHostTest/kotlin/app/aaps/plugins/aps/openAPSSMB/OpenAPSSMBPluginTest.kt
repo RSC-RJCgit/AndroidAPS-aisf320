@@ -1,6 +1,7 @@
 package app.aaps.plugins.aps.openAPSSMB
 
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.aps.PhoneSteps
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -12,6 +13,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
+import org.mockito.kotlin.mock
 
 class OpenAPSSMBPluginTest : TestBaseWithProfile() {
 
@@ -29,7 +31,7 @@ class OpenAPSSMBPluginTest : TestBaseWithProfile() {
             aapsLogger, rxBus, constraintChecker, rh, profileFunction, profileUtil, config, activePlugin,
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             tddCalculator, bgQualityCheck, notificationManager, determineBasalSMB, profiler, GlucoseStatusCalculatorSMB(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator), { apsResultProvider() }, ch,
-            fabricPrivacy
+            fabricPrivacy, mock<PhoneSteps>()
         )
     }
 

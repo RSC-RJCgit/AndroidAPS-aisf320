@@ -307,9 +307,65 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // AutoISF 3.2.1 activity monitor
+    ActivityScaleFactor(
+        key = "activity_scale_factor",
+        defaultValue = 1.0,
+        min = 0.0,
+        max = 1.5,
+        title = KeysStrings.pref_title_activity_scale_factor,
+        summary = KeysStrings.pref_summary_activity_scale_factor,
+        defaultedBySM = true,
+        dependency = BooleanKey.ActivityMonitorDetection,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    InactivityScaleFactor(
+        key = "inactivity_scale_factor",
+        defaultValue = 1.0,
+        min = 0.0,
+        max = 1.5,
+        title = KeysStrings.pref_title_inactivity_scale_factor,
+        summary = KeysStrings.pref_summary_inactivity_scale_factor,
+        defaultedBySM = true,
+        dependency = BooleanKey.ActivityMonitorDetection,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    // AutoISF 3.2.1 Libre calibration and smoothing (xDrip source)
+    FslCalOffset(
+        key = "fslCal_Offset",
+        defaultValue = 0.0,
+        min = -50.0,
+        max = 50.0,
+        title = KeysStrings.pref_title_fsl_cal_offset,
+        summary = KeysStrings.pref_summary_fsl_cal_offset,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE
+    ),
+    FslCalSlope(
+        key = "fslCal_Slope",
+        defaultValue = 1.0,
+        min = 0.5,
+        max = 1.5,
+        title = KeysStrings.pref_title_fsl_cal_slope,
+        summary = KeysStrings.pref_summary_fsl_cal_slope,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_3
+    ),
+    FslSmoothAlpha(
+        key = "fsl_exp1_factor",
+        defaultValue = 1.0,
+        min = 0.1,
+        max = 1.0,
+        title = KeysStrings.pref_title_fsl_smooth_alpha,
+        summary = KeysStrings.pref_summary_fsl_smooth_alpha,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2
+    ),
     ApsAutoIsfSmbDeliveryRatio(
         key = "openapsama_smb_delivery_ratio",
-        defaultValue = 0.5,
+        defaultValue = 0.2,
         min = 0.1,
         max = 1.0,
         title = KeysStrings.pref_title_smb_delivery_ratio,

@@ -279,6 +279,66 @@ class DetermineBasalSMB(
         var min_bg = profile.min_bg
         var max_bg = profile.max_bg
 
+        // Activity detection (steps), AutoISF 3.2.1
+        consoleError.add("----------------------------------")
+        consoleError.add("Activity detection: ")
+        consoleError.add("----------------------------------")
+
+        val activityDetection = profile.activity_detection ?: false
+        var stepActivityDetected = false
+        var stepInactivityDetected = false
+        var activityRatio = 1.0
+        val recentSteps5Minutes = profile.recent_steps_5_minutes ?: 0
+        val recentSteps10Minutes = profile.recent_steps_10_minutes ?: 0
+        val recentSteps15Minutes = profile.recent_steps_15_minutes ?: 0
+        val recentSteps30Minutes = profile.recent_steps_30_minutes ?: 0
+        val recentSteps60Minutes = profile.recent_steps_60_minutes ?: 0
+        val phoneMoved = profile.phone_moved ?: false
+        val now = profile.now ?: 0
+        val timeSinceStart = profile.time_since_start ?: 0
+
+        if (!activityDetection) {
+            consoleError.add("Activity detection disabled in the settings. ")
+        } else if (profile.temptargetSet) {
+            consoleError.add("Activity detection disabled: tempTarget. ")
+        } else if (!phoneMoved) {
+            consoleError.add("Activity detection disabled: Phone seems not to be carried for the last 15 m. ")
+        } else {
+            consoleError.add("0-5 m ago: $recentSteps5Minutes steps; ")
+            consoleError.add("5-10 m ago: $recentSteps10Minutes steps; ")
+            consoleError.add("10-15 m ago: $recentSteps15Minutes steps; ")
+            consoleError.add("Last 30 m: $recentSteps30Minutes steps; ")
+            consoleError.add("Last 60 m: $recentSteps60Minutes steps; ")
+            if (timeSinceStart < 60 && recentSteps60Minutes <= 200) {
+                consoleError.add("Activity monitor initialising for ${(60 - timeSinceStart)} more minutes: inactivity detection disabled")
+            } else if ((now !in 8..<22) && recentSteps60Minutes <= 200) {
+                consoleError.add("Activity monitor disabled inactivity detection: sleeping hours")
+            } else if (recentSteps5Minutes > 300 || recentSteps10Minutes > 300 || recentSteps15Minutes > 300 || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500) {
+                stepActivityDetected = true
+                activityRatio = 0.7
+                consoleError.add("-> Activity monitor detected activity, sensitivity ratio: $activityRatio")
+            } else if (recentSteps5Minutes > 200 || recentSteps10Minutes > 200 || recentSteps15Minutes > 200
+                || recentSteps30Minutes > 500 || recentSteps60Minutes > 800
+            ) {
+                stepActivityDetected = true
+                activityRatio = 0.85
+                consoleError.add("-> Activity monitor detected partial activity, sensitivity ratio: $activityRatio")
+            } else if (bg < target_bg && recentSteps60Minutes <= 200) {
+                consoleError.add("Activity monitor disabled inactivity detection: : bg < target")
+            } else if (recentSteps60Minutes < 50) {
+                stepInactivityDetected = true
+                activityRatio = 1.2
+                consoleError.add("-> Activity monitor detected inactivity, sensitivity ratio: $activityRatio")
+            } else if (recentSteps60Minutes <= 200) {
+                stepInactivityDetected = true
+                activityRatio = 1.1
+                consoleError.add("-> Activity monitor detected partial inactivity, sensitivity ratio: $activityRatio")
+            } else {
+                consoleError.add("-> Activity monitor detected neutral state, sensitivity ratio unchanged: $activityRatio")
+            }
+        }
+        consoleError.add("----------------------------------")
+
         var sensitivityRatio: Double
         val high_temptarget_raises_sensitivity = profile.exercise_mode || profile.high_temptarget_raises_sensitivity
         val normalTarget = Constants.NORMAL_TARGET_MGDL // evaluate high/low temptarget against normal target, not scheduled target (which might change)
@@ -304,8 +364,11 @@ class DetermineBasalSMB(
             sensitivityRatio = round(sensitivityRatio, 2)
             consoleLog.add("Sensitivity ratio set to $sensitivityRatio based on temp target of $target_bg; ")
         } else {
-            sensitivityRatio = autosens_data.ratio
+            sensitivityRatio = autosens_data.ratio * activityRatio
             consoleLog.add("Autosens ratio: $sensitivityRatio; ")
+            if (stepActivityDetected || stepInactivityDetected) {
+                consoleLog.add("Autosens ratio adjusted for activity/inactivity: ${autosens_data.ratio} * $activityRatio")
+            }
         }
         basal = profile.current_basal * sensitivityRatio
         basal = round_basal(basal)
@@ -954,6 +1017,14 @@ class DetermineBasalSMB(
             rT.reason.append("maxDelta " + convert_bg(maxDelta) + " > 20% of BG " + convert_bg(bg) + ": SMB disabled; ")
             enableSMB = false
         }
+
+        // AutoISF 3.2.1 mod: no SMB if bg < 100
+        if (enableSMB && bg < 100) {
+            consoleError.add("BG < 100 - disabling SMB")
+            rT.reason.append("BG < 100 - disabling SMB")
+            enableSMB = false
+        }
+        // end mod
 
         consoleError.add("BG projected to remain above ${convert_bg(min_bg)} for $minutesAboveMinBG minutes")
         if (minutesAboveThreshold < 240 || minutesAboveMinBG < 60) {
