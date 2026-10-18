@@ -176,6 +176,7 @@ class GraphScopeStabilityTest {
             "pairingOfferPublisher",
             "passwordCheck",
             "persistenceLayer",
+            "phoneSteps",
             "pluginPermissions",
             "pluginStore",
             "preferences",
