@@ -54,6 +54,7 @@ import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.profile.ProfileSealed
+import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.objects.extensions.formatColor
 import app.aaps.core.objects.extensions.highValueToUnitsToString
 import app.aaps.core.objects.extensions.lowValueToUnitsToString
@@ -94,7 +95,8 @@ class BolusWizard @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val persistenceLayer: PersistenceLayer,
     private val decimalFormatter: DecimalFormatter,
-    private val processedDeviceStatusData: ProcessedDeviceStatusData
+    private val processedDeviceStatusData: ProcessedDeviceStatusData,
+    private val stepCountSource: StepCountSource
 ) {
 
     var timeStamp = dateUtil.now()
@@ -1332,6 +1334,20 @@ class BolusWizard @Inject constructor(
     // Live total active insulin (bolus + basal IOB), matching the same calculation doCalc() itself uses
     // for insulinFromBolusIOB/insulinFromBasalIOB, but re-fetched fresh at scheduling-check time rather
     // than the wizard's own calc-time snapshot — needed for the IOB-delta split-sizing check below.
+    /**
+     * 2026-10-19, per explicit request: the factor a delayed dose (FPU or carb split part) is multiplied by while walking,
+     * see delayedDoseWalkingFactor. The cut part is dropped. No step data in the last 20 minutes gives 1 (not walking).
+     * [StepCountSource] gives cumulative counts, so the bins are S10 - S5 and S15 - S10.
+     * Insulin that walking soon held back goes through DelayedBolusWorker, so it is never cut here.
+     */
+    private fun walkingFactorNow(): Double {
+        val steps = stepCountSource.latest(dateUtil.now(), T.mins(20).msecs()) ?: return 1.0
+        val s5 = steps[5] ?: 0
+        val s10Bin = max(0, (steps[10] ?: 0) - s5)
+        val s15Bin = max(0, (steps[15] ?: 0) - (steps[10] ?: 0))
+        return delayedDoseWalkingFactor(s5, s10Bin, s15Bin, steps[30] ?: 0, steps[60] ?: 0)
+    }
+
     private fun currentTotalIob(): Double {
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
         val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
@@ -1686,7 +1702,12 @@ class BolusWizard @Inject constructor(
             // insulin on board, less the same-cycle SMB. The IOB values stay in the notes only.
             val budget = splitBolusBudget(remainingResidual, previousPartDose, pumpStepForResidual)
             val reducedResidual = budget.remaining
-            val cappedDose = cappedFollowUpDose(budget.dose, pumpStepForResidual)
+            val walkFactor = walkingFactorNow()
+            val partDose = if (walkFactor < 1.0) Round.roundTo(budget.dose * walkFactor, pumpStepForResidual) else budget.dose
+            // Dropped, not given later (2026-10-18, per explicit request).
+            val walkingCut = Round.roundTo(max(0.0, budget.dose - partDose), 0.001)
+            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): part x$walkFactor, ${decimalFormatter.to2Decimal(walkingCut)}U dropped." else ""
+            val cappedDose = cappedFollowUpDose(partDose, pumpStepForResidual)
             val thisDose = cappedDose ?: 0.0
             setSplitPendingRemaining(reducedResidual)
             if (reducedResidual < pumpStepForResidual / 2.0) {
@@ -1717,7 +1738,7 @@ class BolusWizard @Inject constructor(
                 notes = "Reduced split bolus part"
                 val calculation = followUpCalculation(
                     timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
-                    "Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; dose after insulinReq cap ${decimalFormatter.to2Decimal(thisDose)}U."
+                    "Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; dose after insulinReq cap ${decimalFormatter.to2Decimal(thisDose)}U.$walkingNote"
                 )
                 uel.log(
                     action = Action.BOLUS,
@@ -1734,9 +1755,10 @@ class BolusWizard @Inject constructor(
                         else {
                             // Rounded to 0.001 so floating-point dust (5.2 - 5.0 - 0.2 = 1.7e-16) is not mistaken for a remainder;
                             // the guard at the top of this function then finishes anything under half a pump step.
-                            val newResidual = Round.roundTo(reducedResidual - thisDose, 0.001)
+                            // The walking cut is dropped from the total. The next part keeps the size it had before the cut.
+                            val newResidual = Round.roundTo(reducedResidual - thisDose - walkingCut, 0.001)
                             if (newResidual > 0.0)
-                                scheduleReducedPartsSplitBolus(newResidual, thisDose, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
+                                scheduleReducedPartsSplitBolus(newResidual, thisDose + walkingCut, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
                             else
                                 setSplitPendingRemaining(0.0)
                         }
@@ -1854,7 +1876,10 @@ class BolusWizard @Inject constructor(
             val pumpStep = activePlugin.activePump.pumpDescription.bolusStep
             // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
             // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice.
-            val iobAdjustedDose = Round.roundTo(dose, pumpStep)
+            // 2026-10-19, per explicit request: cut while walking; the cut part is dropped (capResidual below uses the cut dose).
+            val walkFactor = walkingFactorNow()
+            val iobAdjustedDose = Round.roundTo(dose * walkFactor, pumpStep)
+            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): dose x$walkFactor, ${decimalFormatter.to2Decimal(max(0.0, dose - iobAdjustedDose))}U dropped." else ""
             val thisDose = cappedFollowUpDose(iobAdjustedDose, pumpStep)
             if (thisDose == null || thisDose <= 0.0) {
                 val reason = if (thisDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
@@ -1867,7 +1892,7 @@ class BolusWizard @Inject constructor(
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Delayed $label dose"
-                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "Dose after insulinReq cap; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.")
+                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "Dose after insulinReq cap; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote")
                 uel.log(
                     action = Action.BOLUS,
                     source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,

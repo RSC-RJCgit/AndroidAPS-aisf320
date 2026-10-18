@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.plugins.aps.openAPSSMB.OpenAPSSMBPlugin
 import app.aaps.shared.tests.TestBaseWithProfile
@@ -45,6 +46,7 @@ class BolusWizardTest : TestBaseWithProfile() {
     @Mock lateinit var glucoseStatusProvider: GlucoseStatusProvider
     @Mock lateinit var uiInteraction: UiInteraction
     @Mock lateinit var persistenceLayer: PersistenceLayer
+    @Mock lateinit var stepCountSource: StepCountSource
 
     @BeforeEach
     fun prepare() {
@@ -80,7 +82,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, automationStateService, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, stepCountSource
             ).doCalc(
                 profile,
                 "",
@@ -104,7 +106,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, automationStateService, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, stepCountSource
             ).doCalc(
                 profile,
                 "",
@@ -134,7 +136,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, automationStateService, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, stepCountSource
             ).doCalc(
                 profile,
                 "",
@@ -158,7 +160,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, automationStateService, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, stepCountSource
             ).doCalc(
                 profile,
                 "",
@@ -188,7 +190,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, automationStateService, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, stepCountSource
             ).doCalc(
                 profile,
                 "",
@@ -212,7 +214,7 @@ class BolusWizardTest : TestBaseWithProfile() {
             BolusWizard(
                 aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, activePlugin,
                 commandQueue, loop, iobCobCalculator, dateUtil, config, uel, automation, automationStateService, glucoseStatusProvider, uiInteraction,
-                persistenceLayer, decimalFormatter, processedDeviceStatusData
+                persistenceLayer, decimalFormatter, processedDeviceStatusData, stepCountSource
             ).doCalc(
                 profile,
                 "",
