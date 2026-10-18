@@ -732,8 +732,36 @@ class TempTargetManagementViewModel(
         val durationMinutes = (currentState.editorDuration / 60000L).toInt()
         val reason = currentState.selectedPreset?.reason ?: TT.Reason.CUSTOM
         val notes = currentState.notes.takeIf { it.isNotBlank() }
-        val label = rh.gs(CoreUiStrings.clientcontrol_action_set_temp_target)
         val startOffsetMinutes = ((timestamp - dateUtil.now()) / 60000L).toInt()
+        activate(reason, targetMgdl, durationMinutes, startOffsetMinutes, notes, onSuccess)
+    }
+
+    /**
+     * Target (user units) and duration (minutes) a quick button starts with: the values of the fixed preset for
+     * [reason] (Eating soon, Activity, Hypo). Null when there is no such preset.
+     */
+    fun quickDefaults(reason: TT.Reason): Pair<Double, Int>? {
+        val preset = uiState.value.presets.firstOrNull { !it.isDeletable && it.reason == reason } ?: return null
+        return roundForDisplay(profileUtil.fromMgdlToUnits(preset.targetValue, units), units) to (preset.duration / 60000L).toInt()
+    }
+
+    /**
+     * Quick buttons (2026-10-18), like the v3 dialog: start a TT now with the values from the +/- popup. Same confirm
+     * and set flow as the editor, so it also works on a client.
+     */
+    fun activateQuick(reason: TT.Reason, targetUserUnits: Double, durationMinutes: Int, onSuccess: () -> Unit) {
+        activate(reason, profileUtil.convertToMgdl(targetUserUnits, units), durationMinutes, 0, null, onSuccess)
+    }
+
+    private fun activate(
+        reason: TT.Reason,
+        targetMgdl: Double,
+        durationMinutes: Int,
+        startOffsetMinutes: Int,
+        notes: String?,
+        onSuccess: () -> Unit
+    ) {
+        val label = rh.gs(CoreUiStrings.clientcontrol_action_set_temp_target)
         val actions = listOf(BatchAction.TempTarget(reason.text, targetMgdl, targetMgdl, durationMinutes, startOffsetMinutes, notes))
         viewModelScope.launch {
             when (val prepared = batchExecutor.prepare(actions, Sources.TTDialog, label)) {

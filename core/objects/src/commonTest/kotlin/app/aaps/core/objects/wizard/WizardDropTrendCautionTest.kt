@@ -92,8 +92,7 @@ class WizardDropTrendCautionTest {
     }
 
     @Test
-    fun halfTheMaxBolusAndHalfThePercent() {
-        assertEquals(1.0, WizardDropTrendCaution.scaledMaxBolus(2.0, 0.05))
+    fun halfThePercent() {
         assertEquals(50, WizardDropTrendCaution.scaledWizPercent(100))
         assertEquals(45, WizardDropTrendCaution.scaledWizPercent(90))
     }

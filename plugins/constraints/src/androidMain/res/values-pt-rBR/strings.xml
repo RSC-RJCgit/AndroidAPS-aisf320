@@ -8,7 +8,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Aplicativo expirado</string>
     <string name="running_invalid_version">Detectamos que você está executando uma versão inválida. \"Loop\" desativado!</string>
-    <string name="versionavailable">Versão %1$s disponível</string>
     <string name="version_expire">A versão %1$s expirará em %2$s e passará para o modo LGS</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->

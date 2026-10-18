@@ -9,6 +9,7 @@ import app.aaps.core.data.model.ActiveSceneState
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.SceneLifecycle
 import app.aaps.core.data.model.TT
+import app.aaps.core.data.model.TTPreset
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -767,14 +768,26 @@ class MainViewModel(
     fun requestTempTargetPresetConfirmation(presetId: String) {
         val presets = preferences.get(StringNonKey.TempTargetPresets).toTTPresetsWithDisplayName(rh)
         val preset = presets.find { it.id == presetId } ?: return
-        val icon = when (preset.reason) {
+        requestTempTarget(preset.reason, preset.targetValue, (preset.duration / 60000L).toInt())
+    }
+
+    /** The fixed preset (Eating soon, Activity, Hypo) for the quick TT popup on the overview (2026-10-18). */
+    fun quickTempTargetPreset(reason: TT.Reason): TTPreset? =
+        preferences.get(StringNonKey.TempTargetPresets).toTTPresetsWithDisplayName(rh).firstOrNull { !it.isDeletable && it.reason == reason }
+
+    /** Quick TT popup: stop the running temp target, through the same confirm-and-commit flow. */
+    fun requestStopTempTarget() = requestTempTarget(TT.Reason.CUSTOM, 0.0, 0)
+
+    /** Contact the master, render the master's confirmation, commit on OK (role-transparent). Duration 0 stops the TT. */
+    fun requestTempTarget(reason: TT.Reason, targetMgdl: Double, durationMinutes: Int) {
+        val icon = when (reason) {
             TT.Reason.ACTIVITY     -> IcTtActivity
             TT.Reason.EATING_SOON  -> IcTtEatingSoon
             TT.Reason.HYPOGLYCEMIA -> IcTtHypo
             else                   -> IcTtManual
         }
-        val label = rh.gs(CoreUiStrings.clientcontrol_action_set_temp_target)
-        val actions = listOf(BatchAction.TempTarget(preset.reason.text, preset.targetValue, preset.targetValue, (preset.duration / 60000L).toInt(), 0))
+        val label = rh.gs(if (durationMinutes == 0) CoreUiStrings.clientcontrol_action_cancel_temp_target else CoreUiStrings.clientcontrol_action_set_temp_target)
+        val actions = listOf(BatchAction.TempTarget(reason.text, targetMgdl, targetMgdl, durationMinutes, 0))
         viewModelScope.launch {
             when (val prepared = batchExecutor.prepare(actions, Sources.TTDialog, label)) {
                 is ActionProgress.Prepared ->

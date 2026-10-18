@@ -8,7 +8,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Anwendung abgelaufen</string>
     <string name="running_invalid_version">Wir haben festgestellt, dass Du eine ungültige Version verwendest. Loop deaktiviert!</string>
-    <string name="versionavailable">Version %1$s ist verfügbar.</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->
     <string name="recalculated_data_used">Verwendete Daten neu berechnet</string>

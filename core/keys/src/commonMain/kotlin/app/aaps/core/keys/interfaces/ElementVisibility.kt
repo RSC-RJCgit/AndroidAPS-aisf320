@@ -46,7 +46,9 @@ fun interface ElementVisibility {
 
         /**
          * As [MASTER_OR_PAIRED_CLIENT], and also on a read-only client (2026-10-16). Used by the bolus calculator, which a
-         * read-only client opens as an example only: it shows the calculation but gives no bolus.
+         * read-only client opens as an example only: it shows the calculation but gives no bolus. Since 2026-10-18 also by
+         * the other action dialogs (insulin, carbs, TT, temp basal, careportal events...): their final OK goes through
+         * RoleBranch, which saves a Nightscout-only record (TT, note) or refuses with "read-only client".
          */
         val MASTER_PAIRED_OR_READ_ONLY_CLIENT = ElementVisibility {
             !it.isClient || it.masterOrPairedClient || it.preferences.get(BooleanKey.NsClientReadOnlyClient)

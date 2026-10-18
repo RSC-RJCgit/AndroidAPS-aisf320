@@ -760,8 +760,12 @@ fun GraphsSection(
                 val current = bgZoomState.value
                 if (current.isFinite() && current > 0f) {
                     val factor = if (direction > 0) current * ZOOM_STEP else current / ZOOM_STEP
+                    // 2026-10-18: a zoom that starts with "now" at the right edge ends there too. On Windows the window
+                    // used to move left after a zoom step, so the current time went off the right edge.
+                    val atNow = bgScrollState.value >= bgScrollState.maxValue - 2f
                     skipInteractionUntilMs[0] = dateUtil.now() + 1000L
                     bgZoomState.animateZoom(Zoom.fixed(factor), animationSpec = tween(0), bias = 1f)
+                    if (atNow) bgScrollState.scroll(Scroll.Absolute.End)
                 }
             }
         }
@@ -774,7 +778,8 @@ fun GraphsSection(
         }
     }
 
-    val showZoomButtons = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
+    // 2026-10-18, per explicit request: on phones and tablets too (was desktop only), next to pinch zoom.
+    val showZoomButtons = !LocalInspectionMode.current
     // Set by the BG graph, read by every graph
     val inspect = remember { GraphInspectState() }
 

@@ -48,6 +48,7 @@ import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.actions.CustomAction
 import app.aaps.core.keys.interfaces.ElementVisibility
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.MasterOfflineBanner
 import app.aaps.core.ui.compose.consumeOverscroll
@@ -565,8 +566,12 @@ private fun ManageGridItem(
     // A relayed action (visible only to master/paired-client) is also DISABLED when the master is unreachable or
     // has remote control turned off — not just hidden when unpaired. Non-relayed entries (Pump, Pair-with-master)
     // use their own visibility lambda, so they stay enabled (the only thing you can still do is re-pair).
-    val effectiveEnabled = enabled &&
-        (masterEditingEnabled() || elementType.visibility != ElementVisibility.MASTER_OR_PAIRED_CLIENT)
+    // A read-only client also opens the action dialogs (2026-10-18), like the bolus calculator: it can go through the
+    // steps, and the final OK either saves a Nightscout-only record (TT, note) or says a read-only client cannot send it.
+    val readOnlyTry = elementType.visibility == ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT && LocalReadOnlyClient.current
+    val relayed = elementType.visibility == ElementVisibility.MASTER_OR_PAIRED_CLIENT ||
+        elementType.visibility == ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT
+    val effectiveEnabled = enabled && (readOnlyTry || masterEditingEnabled() || !relayed)
     ManageGridItem(
         text = label,
         icon = elementType.icon(),

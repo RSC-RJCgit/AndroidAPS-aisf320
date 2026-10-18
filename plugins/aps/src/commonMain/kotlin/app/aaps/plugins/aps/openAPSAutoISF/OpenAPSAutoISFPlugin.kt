@@ -964,11 +964,7 @@ open class OpenAPSAutoISFPlugin(
             daytimeGateBypass = newPodHighBypass(now, glucoseStatus.glucose) || runMarks.recent(RunMark.USUAL2, 90, now),
             recentLowBg = recentLowBgMgdl(now),
         ).also {
-            if (!usesLiveSteps()) {
-                it.reason.append(
-                    LiveSteps.reasonText(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now), steps180(now))
-                )
-            }
+            appendStepLines(it.reason, now)
             val iobThEffective = if (autoIsfFactors.recorded && use_iobTH) iobTHvirtual / iobTHtolerance * 100.0
             else if (autoIsfFactors.recorded) oapsProfile.max_iob
             else 0.0
@@ -4581,6 +4577,14 @@ open class OpenAPSAutoISFPlugin(
             note = note,
             listValues = listOf(),
         )
+    }
+
+    // The step lines in the loop result. Clients read them for their Steps graph, and a client saves no step records.
+    // 2026-10-18: also with Live steps (they were left out, so the clients of a virtual master had no steps), but only
+    // from a fresh Live sample, so a missing sample is never written as 0 steps. Out of invoke() for the method size.
+    private suspend fun appendStepLines(reason: StringBuilder, now: Long) {
+        if (usesLiveSteps() && freshLiveSteps(now) == null) return
+        reason.append(LiveSteps.reasonText(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now), steps180(now)))
     }
 
     // Kept out of invoke(): its coroutine body is close to the JVM's 64 KB method limit (2026-10-18 build failure).

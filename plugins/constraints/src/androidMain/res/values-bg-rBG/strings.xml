@@ -8,7 +8,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Приложението е твърде старо!</string>
     <string name="running_invalid_version">Използвате грешна версия. APS е изключен!</string>
-    <string name="versionavailable">Има налично обновяване до версия %1$s </string>
     <string name="version_expire">Версия %1$s изтича на %2$s и ще превключи на LGS режим</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->

@@ -47,10 +47,8 @@ import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.WizardDropTrendCaution
-import app.aaps.core.objects.wizard.WizardRecentEntry
 import app.aaps.core.objects.wizard.mealExtra
 import app.aaps.core.objects.wizard.walkingSoonDefault
-import app.aaps.core.objects.wizard.wizardMaxBolusDefault
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.icons.IcCalculator
@@ -74,6 +72,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+/** BG rise window for the drop-trend caution: the lowest BG in the last hour. */
+private const val BG_RISE_WINDOW_MINUTES = 60L
 
 @Stable
 @AssistedInject
@@ -202,7 +203,7 @@ class WizardDialogViewModel(
         val hasBgData = actualBg != null
         val currentBg = actualBg?.valueToUnits(units) ?: 0.0
         val bgAgeMinutes = if (actualBg != null) ((dateUtil.now() - actualBg.timestamp) / 60000).toInt() else 0
-        val startingMaxBolus = suggestedMaxBolus(currentBg, units, bolusStep)
+        val startingMaxBolus = suggestedMaxBolus()
         applyWizardMaxBolus(startingMaxBolus)
 
         // IOB for display
@@ -362,16 +363,10 @@ class WizardDialogViewModel(
         recalculate()
     }
 
-    private suspend fun suggestedMaxBolus(bg: Double, units: GlucoseUnit, bolusStep: Double, keepSavedMax: Boolean = false): Double {
-        val saved = savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
-        val bgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, units)
-        else iobCobCalculator.ads.actualBg()?.value ?: 999.0
-        val lowBgMax = if (bgMgdl < WizardRecentEntry.LOW_BG_MGDL) min(saved, 2.0) else saved
-        val recent = WizardRecentEntry.lowBgRecentEntry(persistenceLayer, dateUtil.now(), bgMgdl)
-        var want = if (keepSavedMax) saved else wizardMaxBolusDefault(saved, bgMgdl, recent, bolusStep)
-        if (dropTrendCautionApplies(bgMgdl)) want = min(want, WizardDropTrendCaution.scaledMaxBolus(lowBgMax, bolusStep))
-        return want
-    }
+    // 2026-10-18, per explicit request: the max bolus field always starts at the SafetyMaxBolus setting. The low-BG
+    // default (BG < 6.0 mmol -> 2.0 U, x0.8 after a recent entry, x0.5 on a drop trend) is removed.
+    private fun suggestedMaxBolus(): Double =
+        savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
 
     private suspend fun dropTrendCautionApplies(bgMgdl: Double): Boolean {
         val glucose = glucoseStatusProvider.getGlucoseStatusData() ?: return false
@@ -391,7 +386,7 @@ class WizardDialogViewModel(
     }
 
     private suspend fun recentBgRiseMgdl(currentBgMgdl: Double): Double {
-        val from = dateUtil.now() - T.mins(WizardRecentEntry.WINDOW_MINUTES).msecs()
+        val from = dateUtil.now() - T.mins(BG_RISE_WINDOW_MINUTES).msecs()
         val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true)
             .minOfOrNull { it.value } ?: return 0.0
         return currentBgMgdl - recentMin
@@ -544,7 +539,7 @@ class WizardDialogViewModel(
     private suspend fun recalculateSuspend() {
         var state = uiState.value
         if (!maxBolusTouched) {
-            val suggested = suggestedMaxBolus(state.bg, state.units, state.bolusStep, keepSavedMax = state.unreliableSmb)
+            val suggested = suggestedMaxBolus()
             if (abs(state.maxBolus - suggested) >= 0.001) {
                 applyWizardMaxBolus(suggested)
                 _uiState.update { it.copy(maxBolus = suggested) }

@@ -237,6 +237,7 @@
     <string name="autoisf_history_all" comment="Button. Shows every AutoISF row, not only SMB rows.">All</string>
     <string name="autoisf_history_time">Time</string>
     <string name="inspect_ukf_raw" comment="Graph hold-to-inspect pill. %1$s=UKF-smoothed raw glucose, %2$s=its short average change per 5 minutes, both in the user glucose units. Example: ukf 7.4 Δ-0.12">ukf %1$s Δ%2$s</string>
+    <string name="quick_tt_more" comment="Button in the quick temp target popup that opens the full temp target screen with all presets">More presets</string>
     <string name="autoisf_history_bgl">BGL</string>
     <string name="autoisf_history_ukf">UKF</string>
     <string name="autoisf_history_ukf_delta_5" comment="Change in the UKF glucose over about 5 minutes.">UKF d5</string>

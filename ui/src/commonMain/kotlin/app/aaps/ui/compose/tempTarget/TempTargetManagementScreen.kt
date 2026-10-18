@@ -68,6 +68,7 @@ import app.aaps.core.ui.compose.dialogs.DatePickerModal
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.dialogs.TimePickerModal
 import app.aaps.core.ui.compose.masterEditingEnabled
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.navigation.label
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
@@ -101,7 +102,8 @@ fun TempTargetManagementScreen(
     // while they couldn't sync. DERIVED from current state (no setScreenMode side-effect) → deterministic at
     // startup and flips the instant reachability changes. Master is never gated. Both preset edits AND the
     // master-bound action FABs (Activate / Cancel) are gated by this on a client.
-    val editingEnabled = masterEditingEnabled()
+    // A read-only client may set a TT too: it is saved here and Nightscout carries it to the master (RoleBranch).
+    val editingEnabled = masterEditingEnabled() || LocalReadOnlyClient.current
     val isPlayMode = uiState.screenMode == ScreenMode.PLAY || !editingEnabled
 
     // Set initial screen mode
@@ -381,6 +383,17 @@ fun TempTargetManagementScreen(
                         Column(
                             modifier = Modifier.fillMaxSize()
                         ) {
+                            // Quick buttons like the v3 dialog (2026-10-18). Same gate as the set and stop buttons below.
+                            if (editingEnabled && !isReorderMode) {
+                                TempTargetQuickButtons(
+                                    units = viewModel.units,
+                                    showStop = uiState.activeTT != null,
+                                    quickDefaults = viewModel::quickDefaults,
+                                    onSet = { reason, target, duration -> viewModel.activateQuick(reason, target, duration, onSuccess = onNavigateBack) },
+                                    onStop = { viewModel.cancelActive(onSuccess = onNavigateBack) },
+                                    modifier = Modifier.padding(horizontal = AapsTheme.spacing.medium, vertical = AapsTheme.spacing.small)
+                                )
+                            }
                             // TT Preset Carousel
                             //
                             // Carousel pages are not preset indices: page 0 is the standalone

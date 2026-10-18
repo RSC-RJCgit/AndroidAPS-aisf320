@@ -63,6 +63,7 @@ import app.aaps.core.ui.compose.LocalSnackbarHostState
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.dialogs.ThreeButtonDialog
 import app.aaps.core.ui.compose.navigation.NavigationRequest
+import app.aaps.ui.compose.tempTarget.QuickTempTargetDialog
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -280,6 +281,32 @@ fun MainScreen(
                 // (Probe-while-offline is now global — see ComposeMainActivity. This screen still reads
                 // masterReachable for its own gating.)
                 Box(modifier = Modifier.fillMaxSize()) {
+                    // 2026-10-18: one tap on the TT chip opens the quick TT popup, like the v3 dialog. "More presets" in
+                    // it opens the full TT screen.
+                    var showQuickTempTarget by remember { mutableStateOf(false) }
+                    val overviewNavigate: (NavigationRequest) -> Unit = { request ->
+                        if (request is NavigationRequest.Element && request.type == ElementType.TEMP_TARGET_MANAGEMENT) showQuickTempTarget = true
+                        else onNavigate(request)
+                    }
+                    if (showQuickTempTarget) {
+                        QuickTempTargetDialog(
+                            presetFor = mainViewModel::quickTempTargetPreset,
+                            showStop = uiState.tempTargetText.isNotEmpty() && uiState.tempTargetRecordId > 0,
+                            onSet = { reason, targetMgdl, minutes ->
+                                showQuickTempTarget = false
+                                mainViewModel.requestTempTarget(reason, targetMgdl, minutes)
+                            },
+                            onStop = {
+                                showQuickTempTarget = false
+                                mainViewModel.requestStopTempTarget()
+                            },
+                            onMore = {
+                                showQuickTempTarget = false
+                                onNavigate(NavigationRequest.Element(ElementType.TEMP_TARGET_MANAGEMENT))
+                            },
+                            onDismiss = { showQuickTempTarget = false }
+                        )
+                    }
                     // Main content
                     OverviewScreen(
                         profileName = uiState.profileName,
@@ -305,7 +332,7 @@ fun MainScreen(
                         manageViewModel = manageViewModel,
                         statusViewModel = statusViewModel,
                         statusLightsDef = statusLightsDef,
-                        onNavigate = onNavigate,
+                        onNavigate = overviewNavigate,
                         onTbrChipClick = mainViewModel::showTbrInfo,
                         onIobChipClick = chipsViewModel::showIobInfo,
                         notifications = notifications,

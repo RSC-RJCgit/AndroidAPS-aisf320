@@ -8,7 +8,6 @@
     <!-- Version Checker -->
     <string name="application_expired">Aplicația a expirat</string>
     <string name="running_invalid_version">S-a detectat rularea unei versiuni invalide. Buclă dezactivată!</string>
-    <string name="versionavailable">Versiunea %1$s este disponibilă</string>
     <string name="version_expire">Versiunea %1$s expiră la %2$s și se va trece în modul suspendare la hipoglicemie</string>
     <!-- Signature verifier -->
     <!-- BG Quality -->

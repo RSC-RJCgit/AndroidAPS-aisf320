@@ -13,7 +13,6 @@
     <string name="version_checker" translatable="false">Version Checker</string>
     <string name="application_expired">Application expired</string>
     <string name="running_invalid_version">We have detected that you are running an invalid version. Loop disabled!</string>
-    <string name="versionavailable">Version %1$s available</string>
     <string name="version_expire">Version %1$s expire on %2$s and will turn into LGS mode</string>
 
     <!-- Signature verifier -->

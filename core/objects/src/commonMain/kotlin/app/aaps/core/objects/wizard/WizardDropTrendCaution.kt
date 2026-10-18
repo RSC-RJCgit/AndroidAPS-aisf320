@@ -1,8 +1,5 @@
 package app.aaps.core.objects.wizard
 
-import kotlin.math.floor
-import kotlin.math.min
-import kotlin.math.round
 
 /**
  * Extra caution for one wizard calculation. Either path is enough, and only while glucose is under 5.5 mmol.
@@ -48,14 +45,6 @@ object WizardDropTrendCaution {
             longAvgDelta <= LDELTA_THRESHOLD_MGDL
         val lowOrPredictedLow = bgMgdl < BGL_THRESHOLD_MGDL || (hp1Mmol != null && hp1Mmol < HP1_THRESHOLD_MMOL)
         return (establishedFall && lowOrPredictedLow) || iobDisproportionateToRise(iobUnits, bgRiseMgdl)
-    }
-
-    /** [base] times 0.5, rounded down to the pump step. Never above [base], and never below one step unless [base] is smaller. */
-    fun scaledMaxBolus(base: Double, bolusStep: Double): Double {
-        val step = if (bolusStep > 0.0) bolusStep else 0.05
-        val scaled = floor(base * SCALE / step + 1e-6) * step
-        val rounded = round(scaled * 1000.0) / 1000.0
-        return min(base, rounded.coerceAtLeast(min(base, step)))
     }
 
     /** Half of [basePercent], at least 1. */
