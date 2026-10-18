@@ -1191,6 +1191,10 @@
     <string name="iob_threshold_shortname" comment="Short label for the IOB threshold graph line">iobTH</string>
     <string name="graph_smb_delivery_scale" comment="Short label for the SMB delivery line in the bottom half of the IOB threshold graph. The scale is 0 to 1.">SMB 0–1</string>
     <string name="graph_acce_weight_scale" comment="Short label for the acceleration ISF weight setting line. The scale is 0 to 100 percent.">AW 0–100%</string>
+    <string name="graph_steps_s5" comment="Legend of the steps graph: steps in the last 5 minutes">S5</string>
+    <string name="graph_steps_s15" comment="Legend of the steps graph: steps in the last 15 minutes">S15</string>
+    <string name="graph_steps_s30" comment="Legend of the steps graph: steps in the last 30 minutes">S30</string>
+    <string name="graph_steps_s60" comment="Legend of the steps graph: steps in the last 60 minutes">S60</string>
     <string name="graph_pp_weight_scale" comment="Short label for the post-meal ISF weight setting line. The scale is 0 to 0.15.">PP 0–0.15</string>
     <string name="basal_shortname" comment="Short label for Basal, used in graph labels">BAS</string>
     <!-- Graph series short names (used as graph labels, keep very short) -->

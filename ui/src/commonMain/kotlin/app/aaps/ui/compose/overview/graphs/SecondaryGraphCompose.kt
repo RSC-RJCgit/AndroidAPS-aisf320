@@ -687,7 +687,7 @@ fun SecondaryGraphCompose(
                         SeriesSlot.AcceWeight       -> bottomHalfLine(seriesColors.acceIsf)
                         SeriesSlot.PpWeight         -> bottomHalfLine(seriesColors.ppIsf)
                         is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
-                        is SeriesSlot.StepsLine     -> createStepsLine(slot.index, seriesColors)
+                        is SeriesSlot.StepsLine     -> createStepsLine(slot.index)
                     }
                 )
             }
@@ -1222,6 +1222,23 @@ fun SecondaryGraphCompose(
         insulinLabelsFor(samples, start, end)
     }
     Column(modifier = modifier.fillMaxWidth()) {
+        // Legend of the step count lines (2026-10-19), each name in its line's colour
+        if (primaryType == SeriesType.STEPS && stepsData != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                listOf(CoreUiStrings.graph_steps_s5, CoreUiStrings.graph_steps_s15, CoreUiStrings.graph_steps_s30, CoreUiStrings.graph_steps_s60)
+                    .forEachIndexed { i, label ->
+                        Text(
+                            text = stringResource(label),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = STEPS_LINE_COLORS[i],
+                            maxLines = 1
+                        )
+                    }
+            }
+        }
         // The scales belong to the three lines in the bottom half of this graph. Since 2026-10-04 those lines are drawn on
         // Graph 5 instead (SHOW_BOTTOM_HALF_LINES_ON_IOB_TH_GRAPH is off), so the legend row stayed behind describing
         // lines that are not here. It is shown only when the lines are, and then packed to the left instead of
@@ -1671,18 +1688,20 @@ fun rememberSeriesColors(): SeriesColors {
 }
 
 /**
- * Step count lines (2026-10-18): S5 in the full steps colour and a little thicker, then S15, S30 and S60 in lighter
- * and lighter shades of the same colour, so the longer windows read as smoother background lines.
+ * Step count line colours, S5, S15, S30, S60 (2026-10-19): four clearly different colours, so the lines can be told
+ * apart. S5 keeps the usual steps colour. The legend above the graph uses the same list.
  */
-private fun createStepsLine(index: Int, colors: SeriesColors): LineCartesianLayer.Line {
-    val alpha = when (index) {
-        0    -> 1.0f
-        1    -> 0.8f
-        2    -> 0.6f
-        else -> 0.4f
-    }
+private val STEPS_LINE_COLORS = listOf(
+    Color(0xFF66FFB8),   // S5  mint green (matches @color/steps)
+    Color(0xFFFFD600),   // S15 yellow
+    Color(0xFFFF6D00),   // S30 deep orange
+    Color(0xFFFF4081)    // S60 pink
+)
+
+/** Step count lines: S5 a little thicker, each line in its own colour from [STEPS_LINE_COLORS]. */
+private fun createStepsLine(index: Int): LineCartesianLayer.Line {
     return LineCartesianLayer.Line(
-        fill = LineCartesianLayer.LineFill.single(Fill(colors.colorFor(SeriesType.STEPS).copy(alpha = alpha))),
+        fill = LineCartesianLayer.LineFill.single(Fill(STEPS_LINE_COLORS[index.coerceIn(0, STEPS_LINE_COLORS.lastIndex)])),
         stroke = LineCartesianLayer.LineStroke.Continuous(thickness = if (index == 0) 2.dp else 1.5.dp),
         areaFill = null
     )
