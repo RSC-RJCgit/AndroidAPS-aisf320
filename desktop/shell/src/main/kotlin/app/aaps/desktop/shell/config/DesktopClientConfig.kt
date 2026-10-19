@@ -67,7 +67,8 @@ class DesktopClientConfig(
 
     // Filled by the build on Android. Desktop has no equivalent wired up yet, and saying so plainly
     // is better than inventing a commit hash.
-    override val HEAD: String = "unknown"
+    // The source commit, from the build (git rev-parse HEAD), as on iOS. "unknown" when git was not available there.
+    override val HEAD: String = GeneratedBuildInfo.HEAD
     override val COMMITTED: Boolean = true
     override val REMOTE: String = "unknown"
 

@@ -45,6 +45,10 @@ abstract class GenerateBuildInfoTask : DefaultTask() {
     @get:Input
     abstract val platform: Property<String>
 
+    /** Exact source commit, when supplied by the shell build. */
+    @get:Input
+    abstract val head: Property<String>
+
     /** Package for the generated object. Usually the shell's own config package. */
     @get:Input
     abstract val packageName: Property<String>
@@ -69,6 +73,7 @@ abstract class GenerateBuildInfoTask : DefaultTask() {
     init {
         // So the iOS shell, and any build that does not care, needs to say nothing.
         client.convention(1)
+        head.convention("unknown")
     }
 
     @TaskAction
@@ -96,6 +101,9 @@ abstract class GenerateBuildInfoTask : DefaultTask() {
             |
             |    /** Short commit and date, the same shape Android reports as "Build:". */
             |    const val BUILD: String = "${buildStamp.get()}"
+            |
+            |    /** Exact source commit used to build this shell. */
+            |    const val HEAD: String = "${head.get()}"
             |
             |    /** "Desktop" or "iOS". Android does not set one, and shows no platform line. */
             |    const val PLATFORM: String = "${platform.get()}"
