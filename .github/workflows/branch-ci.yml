@@ -254,28 +254,17 @@ jobs:
           set -e
           echo "🔐 Start uploading APKs to Google Drive..."
 
-          echo "📁 Checking or creating AAPS folder"
-          AAPS_FOLDER_ID=$(curl -s -X GET \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='AAPS'+and+mimeType='application/vnd.google-apps.folder'+and+trashed=false" \
-            | jq -r '.files[0].id')
-
-          if [ "$AAPS_FOLDER_ID" == "null" ] || [ -z "$AAPS_FOLDER_ID" ]; then
-            AAPS_FOLDER_ID=$(curl -s -X POST \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -H "Content-Type: application/json" \
-              -d '{"name": "AAPS", "mimeType": "application/vnd.google-apps.folder"}' \
-              "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
-            echo "📂 Created AAPS folder: $AAPS_FOLDER_ID"
-          else
-            echo "📂 Found AAPS folder: $AAPS_FOLDER_ID"
-          fi
+          # The same fixed AAPS folder as the desktop installers (windows-msi.yml). The Drive holds two folders named
+          # "AAPS", and a search by name took whichever one Drive listed first: on 2026-10-19 the APKs went to the other
+          # one ("AAPS (2)" on the PC), where the install script does not look.
+          AAPS_FOLDER_ID="${{ vars.GDRIVE_AAPS_FOLDER_ID || '1l7LZElkOLI1DVwd3o9rbtwqwtAjRloRz' }}"
+          echo "📂 Using AAPS folder: $AAPS_FOLDER_ID"
 
           echo "📁 Checking or creating build folder: $DRIVE_FOLDER"
           # Drive allows two folders with one name. The desktop installer jobs start at the same time as this one and
-          # use the same folder name, so two jobs could each create their own folder, and the PC then showed only one
-          # of them (2026-10-20: the 5094c20 APKs were hidden that way). Every job therefore uses the OLDEST folder
-          # with this name, and a job that created one looks again after a short wait, in case another job was first.
+          # use the same folder name, so two jobs could each create their own folder and split the files between them.
+          # Every job therefore uses the OLDEST folder with this name, and a job that created one looks again after a
+          # short wait, in case another job was first.
           oldest_build_folder() {
             curl -s -X GET \
               -H "Authorization: Bearer $ACCESS_TOKEN" \
