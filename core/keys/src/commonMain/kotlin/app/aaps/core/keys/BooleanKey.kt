@@ -247,12 +247,13 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_show_carb_model_curve,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // Local to each device (2026-10-19, per explicit request): a display choice per screen. While it was synced, the master's
+    // value came back with its next settings publish and turned a client's Graph 5 off again (always on a read-only client).
     ApsAutoIsfShowGraph5(
         "show_graph5",
         true,
         KeysStrings.pref_title_aps_show_graph5,
-        KeysStrings.pref_summary_aps_show_graph5,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+        KeysStrings.pref_summary_aps_show_graph5
     ),
     ApsAutoIsfUseUkf1ForDosing(
         "autoisf_use_ukf1_for_dosing",

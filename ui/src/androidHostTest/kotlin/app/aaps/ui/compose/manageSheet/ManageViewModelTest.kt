@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.rx.events.EventCustomActionsChanged
 import app.aaps.core.interfaces.rx.events.EventInitializationChanged
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
 import com.google.common.truth.Truth.assertThat
@@ -79,6 +80,8 @@ internal class ManageViewModelTest {
         whenever(rxBus.toFlow(EventInitializationChanged::class)).thenReturn(emptyFlow())
         whenever(rxBus.toFlow(EventCustomActionsChanged::class)).thenReturn(emptyFlow())
         whenever(nsClient.masterOrPairedClientFlow).thenReturn(MutableStateFlow(false))
+        whenever(preferences.observe(BooleanKey.NsClient3UseWs)).thenReturn(MutableStateFlow(true))
+        whenever(preferences.observe(BooleanKey.NsClientReadOnlyClient)).thenReturn(MutableStateFlow(false))
         // Field init casts activePumpInternal (a Pump) to PluginBase — the fake satisfies both.
         pumpPlugin = mock()
         whenever(activePlugin.activePumpInternal).thenReturn(pumpPlugin)

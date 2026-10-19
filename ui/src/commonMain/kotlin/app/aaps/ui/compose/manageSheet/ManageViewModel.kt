@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
@@ -112,6 +113,12 @@ class ManageViewModel(
             .onEach { refreshState() }.launchIn(viewModelScope)
         // Re-evaluate showMutatingActions when the client pairs/unpairs (stable signal, flips rarely).
         nsClient.masterOrPairedClientFlow
+            .onEach { refreshState() }.launchIn(viewModelScope)
+        // "Pair with master" follows "Use websockets", and the client-only items follow "Read-only client" (2026-10-19). The
+        // menu used to keep the old answer until something else refreshed it, so a changed setting showed no effect.
+        preferences.observe(BooleanKey.NsClient3UseWs).drop(1)
+            .onEach { refreshState() }.launchIn(viewModelScope)
+        preferences.observe(BooleanKey.NsClientReadOnlyClient).drop(1)
             .onEach { refreshState() }.launchIn(viewModelScope)
     }
 

@@ -35,6 +35,27 @@ class UploadWindowsMsiTest(unittest.TestCase):
                 uploader.credentials(value)
             self.assertNotIn("secret-value", str(error.exception))
 
+    def test_existing_folder_is_used(self):
+        with patch.object(uploader, "find_file", return_value="oldest") as find, patch.object(
+            uploader, "json_request"
+        ) as request:
+            self.assertEqual(uploader.get_folder("token", "build", "root", wait_seconds=0), "oldest")
+            request.assert_not_called()
+            self.assertTrue(find.call_args.kwargs["folder"])
+
+    def test_folder_created_at_the_same_time_by_another_job_wins(self):
+        # Two jobs created a folder each: the oldest one is used, so the files are not split between them
+        with patch.object(uploader, "find_file", side_effect=[None, "other-job-folder"]), patch.object(
+            uploader, "json_request", return_value={"id": "my-folder"}
+        ):
+            self.assertEqual(uploader.get_folder("token", "build", "root", wait_seconds=0), "other-job-folder")
+
+    def test_new_folder_is_used_when_no_other_appears(self):
+        with patch.object(uploader, "find_file", side_effect=[None, None]), patch.object(
+            uploader, "json_request", return_value={"id": "my-folder"}
+        ):
+            self.assertEqual(uploader.get_folder("token", "build", "root", wait_seconds=0), "my-folder")
+
     def test_drive_query_escapes_names(self):
         self.assertEqual(uploader.quote_query("a'b\\c"), "a\\'b\\\\c")
 

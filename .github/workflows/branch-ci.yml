@@ -272,10 +272,17 @@ jobs:
           fi
 
           echo "📁 Checking or creating build folder: $DRIVE_FOLDER"
-          VERSION_FOLDER_ID=$(curl -s -X GET \
-            -H "Authorization: Bearer $ACCESS_TOKEN" \
-            "https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FOLDER}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false" \
-            | jq -r '.files[0].id')
+          # Drive allows two folders with one name. The desktop installer jobs start at the same time as this one and
+          # use the same folder name, so two jobs could each create their own folder, and the PC then showed only one
+          # of them (2026-10-20: the 5094c20 APKs were hidden that way). Every job therefore uses the OLDEST folder
+          # with this name, and a job that created one looks again after a short wait, in case another job was first.
+          oldest_build_folder() {
+            curl -s -X GET \
+              -H "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FOLDER}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false&orderBy=createdTime&fields=files(id)" \
+              | jq -r '.files[0].id'
+          }
+          VERSION_FOLDER_ID=$(oldest_build_folder)
 
           if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then
             VERSION_FOLDER_ID=$(curl -s -X POST \
@@ -284,6 +291,12 @@ jobs:
               -d "{\"name\": \"${DRIVE_FOLDER}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
               "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
             echo "📂 Created version folder: $VERSION_FOLDER_ID"
+            sleep 5
+            OLDEST_FOLDER_ID=$(oldest_build_folder)
+            if [ "$OLDEST_FOLDER_ID" != "null" ] && [ -n "$OLDEST_FOLDER_ID" ] && [ "$OLDEST_FOLDER_ID" != "$VERSION_FOLDER_ID" ]; then
+              echo "📂 Another job created this folder first, using it: $OLDEST_FOLDER_ID"
+              VERSION_FOLDER_ID=$OLDEST_FOLDER_ID
+            fi
           else
             echo "📂 Found version folder: $VERSION_FOLDER_ID"
           fi
