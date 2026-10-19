@@ -755,15 +755,15 @@ open class OpenAPSAutoISFPlugin(
             } else autosensResult.sensResult = "autosens disabled"
             sensitivityRatio = autosensResult.ratio
         }
-        var skipWeights = false
-        if (calibrationStopsSmb()) {
-            consoleError.add("AutoISF weights disabled while calibrating")
-            skipWeights = true
-        } else if (!autoIsfWeights || glucose_status == null) {
-            consoleError.add("AutoISF weights disabled in Preferences")
-            skipWeights = true
+        // Extras branch (M13, from the v3 TDD patch): with the weights off, or while a calibration pauses SMBs, the factors
+        // are still worked out, logged and saved for the graphs, but the ISF returned is the plain autosens one, exactly as
+        // when they were skipped. See weightedIsf.
+        val applyWeights = when {
+            calibrationStopsSmb() -> false.also { consoleError.add("AutoISF weights calculated for display but not applied: calibrating") }
+            !autoIsfWeights       -> false.also { consoleError.add("AutoISF weights DISPLAY only: AutoISF weights disabled in Preferences") }
+            else                  -> true.also { consoleError.add("AutoISF weights ACTIVE: AutoISF weights enabled in Preferences") }
         }
-        if (skipWeights || glucose_status == null) {
+        if (glucose_status == null) {
             consoleError.add("----------------------------------")
             consoleError.add("end AutoISF")
             consoleError.add("----------------------------------")
@@ -849,7 +849,7 @@ open class OpenAPSAutoISFPlugin(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
+            return weightedIsf(sens, final_ISF, sensitivityRatio, applyWeights, maxIsf = 720.0)         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
             sens_modified = true
         }
@@ -905,12 +905,24 @@ open class OpenAPSAutoISFPlugin(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, exerciseModeActive, resistanceModeActive, stepActivityDetected, stepInactivityDetected)
-            return round(sens / final_ISF, 1)
+            return weightedIsf(sens, final_ISF, sensitivityRatio, applyWeights)
         }
         consoleError.add("----------------------------------")
         consoleError.add("end AutoISF")
         consoleError.add("----------------------------------")
         return round(sens / sensitivityRatio, 1)     // nothing changed
+    }
+
+    /**
+     * The ISF the loop uses once the AutoISF factors are known (extras branch, M13). With [applyWeights] the AutoISF one,
+     * profile ISF [sens] / [finalIsf], at most [maxIsf]. Without (the weights switched off, or a calibration running) the
+     * plain autosens one, [sens] / [sensitivityRatio]: the same value the loop used before when it skipped the weights,
+     * so dosing does not change; only the factors are now logged and saved for the graphs.
+     */
+    internal fun weightedIsf(sens: Double, finalIsf: Double, sensitivityRatio: Double, applyWeights: Boolean, maxIsf: Double = Double.MAX_VALUE): Double {
+        if (applyWeights) return min(maxIsf, round(sens / finalIsf, 1))
+        consoleError.add("AutoISF weights not applied: ISF ${round(sens / sensitivityRatio, 1)} from autosens only, AutoISF would give ${round(sens / finalIsf, 1)}")
+        return round(sens / sensitivityRatio, 1)
     }
 
     fun interpolate(xdata: Double): Double {   // interpolate ISF behaviour based on polygons defining nonlinear functions defined by value pairs for ...

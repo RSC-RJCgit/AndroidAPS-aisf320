@@ -199,6 +199,17 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
     }
 
     @Test
+    fun `weights off keep the autosens ISF`() {
+        // Extras branch (M13): the factors are worked out for the log and the graphs, but dosing uses profile ISF / autosens
+        assertThat(openAPSAutoISFPlugin.weightedIsf(100.0, finalIsf = 1.25, sensitivityRatio = 0.8, applyWeights = false)).isEqualTo(125.0)
+        // Weights on: profile ISF / final_ISF, as before
+        assertThat(openAPSAutoISFPlugin.weightedIsf(100.0, finalIsf = 1.25, sensitivityRatio = 0.8, applyWeights = true)).isEqualTo(80.0)
+        assertThat(openAPSAutoISFPlugin.weightedIsf(1000.0, finalIsf = 1.0, sensitivityRatio = 1.0, applyWeights = true, maxIsf = 720.0)).isEqualTo(720.0)
+        // The ceiling is only for the AutoISF value; the autosens one is returned as it is, as before
+        assertThat(openAPSAutoISFPlugin.weightedIsf(1000.0, finalIsf = 1.0, sensitivityRatio = 1.0, applyWeights = false, maxIsf = 720.0)).isEqualTo(1000.0)
+    }
+
+    @Test
     fun autoISFTest() = kotlinx.coroutines.runBlocking {
         // TODO get profile
         val profile = profileFunction.getProfile(now) ?: return@runBlocking
