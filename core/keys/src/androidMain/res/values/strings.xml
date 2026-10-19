@@ -97,6 +97,8 @@
     <string name="pref_title_sms_allow_remote_commands">Allow remote commands via SMS</string>
     <string name="pref_title_sms_report_pump_unreachable">Report pump unreachable via SMS</string>
     <string name="pref_summary_sms_report_pump_unreachable">Send SMS notification when pump becomes unreachable.</string>
+    <string name="pref_title_sms_report_missed_bg_readings">Report missed BG readings via SMS</string>
+    <string name="pref_summary_sms_report_missed_bg_readings">Send SMS notification when the missed BG readings alarm goes off.</string>
 
     <!-- Virtual pump preferences -->
     <string name="pref_title_virtual_pump_status_upload">Upload pump status to NS</string>

@@ -139,6 +139,8 @@ class LocalAlertUtilsImpl(
         ) {
             preferences.put(LocalAlertLongKey.NextMissedReadingsAlarm, dateUtil.now() + missedReadingsThreshold())
             notificationManager.post(NotificationId.BG_READINGS_MISSED, CoreUiStrings.missed_bg_readings, sound = AlarmSound.ALARM)
+            if (preferences.get(BooleanKey.SmsReportMissedBgReadings))
+                smsCommunicator.sendNotificationToAllNumbers(rh.gs(CoreUiStrings.missed_bg_readings))
             if (preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS) {
                 appScope.launch {
                     persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(

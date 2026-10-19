@@ -1079,7 +1079,8 @@ class SmsCommunicatorPlugin(
                     )
                 }
             ),
-            BooleanKey.SmsReportPumpUnreachable
+            BooleanKey.SmsReportPumpUnreachable,
+            BooleanKey.SmsReportMissedBgReadings
 
         ),
         icon = pluginDescription.icon

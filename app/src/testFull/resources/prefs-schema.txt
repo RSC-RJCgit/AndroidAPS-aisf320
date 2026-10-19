@@ -456,6 +456,7 @@ smscommunicator_otp_secret|StringNonKey|true
 smscommunicator_otp_setup|SmsIntentKey|false
 smscommunicator_remotebolusmindistance|IntKey|true
 smscommunicator_remotecommandsallowed|BooleanKey|true
+smscommunicator_report_missed_bg_readings|BooleanKey|true
 smscommunicator_report_pump_unreachable|BooleanKey|true
 sn_input|MedtrumStringNonKey|true
 snooze_dst_in24h|DstHelperLongKey|true
