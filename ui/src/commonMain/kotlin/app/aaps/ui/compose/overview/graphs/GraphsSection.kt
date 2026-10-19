@@ -64,6 +64,7 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgType
+import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.SecondaryGraph
 import app.aaps.core.interfaces.overview.graph.SeriesType
@@ -279,10 +280,20 @@ fun GraphsSection(
     var iobVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     val visibleMinutes = iobVisibleRange?.let { (start, end) -> end - start }
     val isDesktop = LocalConfig.current.platform == AppPlatform.Desktop
-    val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value.toDouble() }
+    val windowSize = LocalWindowInfo.current.containerSize
+    val windowWidthDp = with(LocalDensity.current) { windowSize.width.toDp().value.toDouble() }
+    // Phones: the SMBs in the visible window count too (see useCleanGraphForPhone)
+    val treatments by graphViewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
+    val smbsInView = if (isDesktop) 0 else derivedTimeRange?.first?.let { minTs ->
+        iobVisibleRange?.let { (startX, endX) ->
+            val from = minTs + (startX * 60_000).toLong()
+            val to = minTs + (endX * 60_000).toLong()
+            treatments.boluses.count { it.bolusType == BolusType.SMB && it.isValid && it.timestamp in from..to }
+        }
+    } ?: 0
     val cleanGraphForWindow =
         if (isDesktop) useCleanGraphForDesktopWindow(visibleMinutes, DEFAULT_GRAPH_ZOOM_MINUTES, windowWidthDp)
-        else useCleanGraphForWindow(visibleMinutes, DEFAULT_GRAPH_ZOOM_MINUTES)
+        else useCleanGraphForPhone(visibleMinutes, smbsInView, landscape = windowSize.width > windowSize.height)
     // Desktop: a long press on the IOB or basal icon ends the clean graph until the zoom changes.
     val cleanGraphOverride by graphViewModel.cleanGraphOverride.collectAsStateWithLifecycle()
     SideEffect { graphViewModel.cleanGraphCanBeOverridden = isDesktop && cleanGraphForWindow }

@@ -58,7 +58,7 @@ import platform.UserNotifications.UNUserNotificationCenter
  *
  * The session is "playback, mix with others", so music and other apps keep playing normally.
  *
- * Turned on and off by [BooleanKey.IosKeepRunningInBackground] (on by default). It does not help after
+ * Turned on and off by [BooleanKey.IosKeepRunningInBackground] (off by default since 2026-10-19, for the battery). It does not help after
  * the user swipes the app away, and iOS can still end it when memory is very low.
  *
  * The alarm player changes the same audio session. It sets [alarmPlaying] while an alarm sounds, so
@@ -198,11 +198,11 @@ class IosBackgroundKeepAlive(
     }
 }
 
-/** The "stopped" notice shows this many seconds after the silent sound was last seen playing. */
-private const val STOPPED_NOTICE_SECONDS = 60.0
+/** The "stopped" notice shows this many seconds after the silent sound was last seen playing (2026-10-19: was 60). */
+private const val STOPPED_NOTICE_SECONDS = 180.0
 
-/** How often the notice is moved into the future while the sound plays. */
-private const val STOPPED_NOTICE_MOVE_MS = 20_000L
+/** How often the notice is moved into the future while the sound plays (2026-10-19: was every 20 s, for the battery). */
+private const val STOPPED_NOTICE_MOVE_MS = 60_000L
 
 private const val STOPPED_NOTICE_ID = "aaps.keepalive.stopped"
 

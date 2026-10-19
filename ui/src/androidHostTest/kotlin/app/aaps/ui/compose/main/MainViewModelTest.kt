@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.FailureReason
+import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.InitProgress
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -155,6 +156,10 @@ internal class MainViewModelTest {
         automation, persistenceLayer, aapsLogger, quickLaunchResolver, wizardExecutor,
         batchExecutor, uel, loop, protectionCheck, sceneActions, sceneChainTargetResolver,
         sceneStore, activeSceneManager, rxBus, nsClient, visibilityContext,
+        object : BackgroundWorkPause {
+            override val paused = MutableStateFlow(false)
+            override fun setPaused(paused: Boolean) {}
+        },
         CoroutineScope(UnconfinedTestDispatcher())
     )
 

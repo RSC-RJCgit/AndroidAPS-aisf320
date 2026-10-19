@@ -228,15 +228,29 @@ open class OpenAPSAutoISFPlugin(
     private var processStartedAtMs: Long = 0L
     private var automationStates: AutomationStateStore? = null
 
+    // The two stored texts the copy above was built from (2026-10-19). A change made elsewhere (the States dialog, a
+    // settings import) makes them differ, and the copy is built again. Before, the copy was read once and kept until the
+    // app restarted, so such a change had no effect on the loop, and the loop's next write could put the old values back.
+    private var statesLoadedFrom: Pair<String, String>? = null
+
     private fun states(): AutomationStateStore {
-        automationStates?.let { return it }
+        val currentJson = preferences.get(StringNonKey.AutomationCurrentStates)
+        val valuesJson = preferences.get(StringNonKey.AutomationStateValues)
+        automationStates?.takeIf { statesLoadedFrom == (currentJson to valuesJson) }?.let { return it }
         val store = AutomationStateStore(
-            currentJson = preferences.get(StringNonKey.AutomationCurrentStates),
-            valuesJson = preferences.get(StringNonKey.AutomationStateValues),
-            saveCurrent = { preferences.put(StringNonKey.AutomationCurrentStates, it) },
-            saveValues = { preferences.put(StringNonKey.AutomationStateValues, it) },
+            currentJson = currentJson,
+            valuesJson = valuesJson,
+            saveCurrent = { json ->
+                preferences.put(StringNonKey.AutomationCurrentStates, json)
+                statesLoadedFrom = statesLoadedFrom?.copy(first = json)
+            },
+            saveValues = { json ->
+                preferences.put(StringNonKey.AutomationStateValues, json)
+                statesLoadedFrom = statesLoadedFrom?.copy(second = json)
+            },
         )
         automationStates = store
+        statesLoadedFrom = currentJson to valuesJson
         return store
     }
 
@@ -1228,8 +1242,8 @@ open class OpenAPSAutoISFPlugin(
             shortDelta = glucose_status.shortAvgDelta,
             minutesSinceStart = (nowMs - startedAt) / 60_000L,
             sleeping = preferences.get(BooleanKey.AutomationStatesEnabled) &&
-                automationStates?.inState("Sleeping", "True") == true,
-            sleepStateExists = automationStates?.hasStateValues("Sleeping") == true,
+                states().inState("Sleeping", "True"),
+            sleepStateExists = states().hasStateValues("Sleeping"),
             ignoreInactivityOvernight = preferences.get(BooleanKey.ApsIgnoreInactivityOvernight),
             idleStartHour = preferences.get(IntKey.ApsActivityIdleStart),
             idleEndHour = preferences.get(IntKey.ApsActivityIdleEnd),

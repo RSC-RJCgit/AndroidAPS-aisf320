@@ -1,7 +1,9 @@
 package app.aaps.plugins.sync.nsclientV3.ws
 
+import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.objects.workflow.WorkOutcome
 import app.aaps.plugins.sync.nsclientV3.workers.DataSyncRunner
 import app.aaps.plugins.sync.nsclientV3.workers.LoadBgRunner
@@ -58,7 +60,9 @@ class CoroutineNsLoadExecutor(
     private val loadSettings: () -> LoadSettingsRunner,
     private val loadDeviceStatus: () -> LoadDeviceStatusRunner,
     private val dataSync: () -> DataSyncRunner,
-    private val loadSecondary: () -> LoadSecondaryTreatmentsRunner
+    private val loadSecondary: () -> LoadSecondaryTreatmentsRunner,
+    private val backgroundWorkPause: BackgroundWorkPause,
+    private val dateUtil: DateUtil
 ) : NsLoadExecutor {
 
     /** The one round. Replaced by each new one, which is what "under a shared name" means here. */
@@ -66,6 +70,9 @@ class CoroutineNsLoadExecutor(
 
     /** The secondary download. Left alone while a round is replaced. */
     private var secondary: Job? = null
+
+    /** When the last secondary download started. */
+    private var lastSecondaryAt = 0L
 
     private val _idle = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
@@ -101,7 +108,13 @@ class CoroutineNsLoadExecutor(
 
     override fun enqueueSecondaryTreatments(force: Boolean) {
         if (!force && secondary?.isActive == true) return
+        // Battery (2026-10-19): in the background the full secondary download (profile, 2 hours of treatments, device
+        // status, glucose) ran every minute, because the tick and the no-BG reload both ask for it. In the background it
+        // now runs at most every SECONDARY_BACKGROUND_GAP_MS. A forced run (full sync) and the foreground are not limited.
+        val now = dateUtil.now()
+        if (!force && backgroundWorkPause.paused.value && now - lastSecondaryAt < SECONDARY_BACKGROUND_GAP_MS) return
         if (force) secondary?.cancel()
+        lastSecondaryAt = now
         secondary = scope.launch { loadSecondary().run() }
     }
 
@@ -137,3 +150,6 @@ class CoroutineNsLoadExecutor(
         return outcome
     }
 }
+
+/** In the background, the secondary download runs at most this often. */
+private const val SECONDARY_BACKGROUND_GAP_MS = 5 * 60_000L

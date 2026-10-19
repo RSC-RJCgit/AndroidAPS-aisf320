@@ -27,6 +27,27 @@ class GraphZoomPolicyTest {
     }
 
     @Test
+    fun phonePortraitCleanAboveSixHoursOrFortySmbs() {
+        assertFalse(useCleanGraphForPhone(360.0, 40, landscape = false))
+        assertTrue(useCleanGraphForPhone(361.0, 0, landscape = false))
+        assertTrue(useCleanGraphForPhone(180.0, 41, landscape = false))
+    }
+
+    @Test
+    fun phoneLandscapeCleanAboveTwelveHoursOrEightySmbs() {
+        assertFalse(useCleanGraphForPhone(720.0, 80, landscape = true))
+        assertFalse(useCleanGraphForPhone(361.0, 41, landscape = true))
+        assertTrue(useCleanGraphForPhone(721.0, 0, landscape = true))
+        assertTrue(useCleanGraphForPhone(180.0, 81, landscape = true))
+    }
+
+    @Test
+    fun phoneWithoutAWindowStaysNormal() {
+        assertFalse(useCleanGraphForPhone(null, 100, landscape = false))
+        assertFalse(useCleanGraphForPhone(Double.NaN, 100, landscape = false))
+    }
+
+    @Test
     fun wideDesktopWindowStaysNormalLonger() {
         // 1600 dp: clean only above 800 minutes
         assertFalse(useCleanGraphForDesktopWindow(360.0, 180.0, 1600.0))

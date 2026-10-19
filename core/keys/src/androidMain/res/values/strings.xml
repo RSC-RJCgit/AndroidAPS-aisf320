@@ -36,9 +36,9 @@
     <string name="pref_title_alert_increase_volume">Gradually increase notification volume</string>
     <string name="pref_title_alert_override_dnd">Override Do Not Disturb mode</string>
     <string name="pref_title_ios_keep_running_in_background">Keep running in background</string>
-    <string name="pref_summary_ios_keep_running_in_background">Plays silent sound so iOS does not stop the app in the background. Uses a little more battery.</string>
+    <string name="pref_summary_ios_keep_running_in_background">Plays silent sound so iOS does not stop the app in the background. Uses more battery. When off, iOS stops the app soon after you leave it: no updates and no alarms until you open it again.</string>
     <string name="pref_title_ios_reload_when_no_bg">Reload from Nightscout when no BG</string>
-    <string name="pref_summary_ios_reload_when_no_bg">When no new BG has come for 2 minutes, load from Nightscout again.</string>
+    <string name="pref_summary_ios_reload_when_no_bg">When no new BG has come for 2 minutes, load from Nightscout again. If that brings no new BG, the next load waits longer each time, up to 15 minutes.</string>
     <string name="pref_summary_alert_override_dnd">When enabled, AAPS alarms sound even if the phone is silenced or in Do Not Disturb. When disabled, alarms stay quiet in those modes.</string>
 
     <!-- BG Source preferences -->

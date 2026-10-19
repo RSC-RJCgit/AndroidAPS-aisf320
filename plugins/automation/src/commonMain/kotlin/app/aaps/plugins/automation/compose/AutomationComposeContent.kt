@@ -44,6 +44,7 @@ import app.aaps.core.ui.compose.masterEditingEnabled
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.plugins.automation.AutomationEventFactory
 import app.aaps.plugins.automation.AutomationRuntime
+import app.aaps.plugins.automation.AutomationStateEntry
 import app.aaps.plugins.automation.AutomationStrings
 import app.aaps.plugins.automation.PairedBtDevices
 import app.aaps.plugins.automation.actions.ActionFactory
@@ -127,7 +128,7 @@ class AutomationComposeContent(
         val state by holder.state.collectAsStateWithLifecycle()
         var deleteTarget by remember { mutableStateOf<Int?>(null) }
         var showStates by remember { mutableStateOf(false) }
-        var stateRows by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+        var stateRows by remember { mutableStateOf<List<AutomationStateEntry>>(emptyList()) }
 
         val title = stringResource(AutomationStrings.automation)
         val backDesc = stringResource(CoreUiStrings.back)
@@ -142,7 +143,7 @@ class AutomationComposeContent(
                     onBack = onNavigateBack,
                     onRun = onRun,
                     onStates = {
-                        stateRows = plugin.currentAutomationStates()
+                        stateRows = plugin.automationStates()
                         showStates = true
                     },
                     // Run stays master-only (automation executes only on the master). Settings is shown on
@@ -171,8 +172,15 @@ class AutomationComposeContent(
         )
 
         if (showStates) {
+            // Editable on the loop phone only: the states live there, and a client's copy changes nothing on it
+            val editor = if (plugin.executionEnabled) AutomationStatesEditor(
+                setCurrent = { name, value -> plugin.setAutomationStateCurrent(name, value); stateRows = plugin.automationStates() },
+                setValues = { name, values -> plugin.setAutomationStateValues(name, values); stateRows = plugin.automationStates() },
+                delete = { name -> plugin.deleteAutomationState(name); stateRows = plugin.automationStates() }
+            ) else null
             AutomationStatesDialog(
                 rows = stateRows,
+                editor = editor,
                 onClose = { showStates = false }
             )
         }

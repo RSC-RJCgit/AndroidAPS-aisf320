@@ -21,6 +21,7 @@ import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.isNotDeliveryError
+import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.appInitializedFlow
 import app.aaps.core.interfaces.configuration.ExternalOptions
@@ -93,6 +94,7 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,6 +102,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
@@ -143,6 +147,7 @@ class MainViewModel(
     private val rxBus: RxBus,
     private val nsClient: NsClient,
     private val visibilityContext: VisibilityContext,
+    private val backgroundWorkPause: BackgroundWorkPause,
     // Unqualified: @ApplicationScope is a javax qualifier and cannot appear in commonMain. The graph
     // binds the same instance under both names.
     private val appScope: CoroutineScope
@@ -217,7 +222,15 @@ class MainViewModel(
     val calcProgressFlow: StateFlow<Int> = overviewDataCache.calcProgressFlow
 
     // Flow-derived chip state: ticker + cache flows + expiry detection. Cold.
-    private val chipStateFlow: Flow<ChipState> = combine(
+    // iOS background (2026-10-19, battery): the screen stays subscribed while iOS runs the app on the keep-alive, so this
+    // rebuilt the chips and worked out every QuickWizard button every 30 seconds and on every TBR all night. While the app
+    // is in the background (BackgroundWorkPause) nothing is built; it is built once when the app comes back.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val chipStateFlow: Flow<ChipState> = backgroundWorkPause.paused.flatMapLatest { paused ->
+        if (paused) emptyFlow() else chipStateWhileActive()
+    }
+
+    private fun chipStateWhileActive(): Flow<ChipState> = combine(
         overviewDataCache.tempTargetFlow,
         overviewDataCache.profileFlow,
         overviewDataCache.runningModeFlow,

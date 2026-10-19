@@ -18,7 +18,8 @@ import kotlinx.coroutines.launch
 /**
  * iOS (2026-10-18, per explicit request): when no new BG has come for 2 minutes, load from Nightscout again. The readings
  * normally come every minute, so 2 minutes is one missed reading. With the websocket on, a missed message is otherwise
- * not loaded until the socket reconnects. Setting: [BooleanKey.IosReloadWhenNoBg] (on by default). Works only while
+ * not loaded until the socket reconnects. When a reload brings no new BG, the next one waits longer (see
+ * [NoBgReloadRule]). Setting: [BooleanKey.IosReloadWhenNoBg] (on by default). Works only while
  * the app runs; in the background that needs the keep-alive.
  */
 @SingleIn(AppScope::class)
@@ -32,7 +33,7 @@ class IosNoBgReload(
 ) {
 
     private val scope = CoroutineScope(Dispatchers.Main)
-    private var lastReloadAt = 0L
+    private val rule = NoBgReloadRule()
     private var started = false
 
     fun start() {
@@ -44,9 +45,8 @@ class IosNoBgReload(
                 if (!preferences.get(BooleanKey.IosReloadWhenNoBg) || !nsClient.isEnabled()) continue
                 val now = dateUtil.now()
                 val lastBgAt = persistenceLayer.getLastGlucoseValue()?.timestamp
-                if (noBgReloadDue(lastBgAt, lastReloadAt, now)) {
-                    lastReloadAt = now
-                    aapsLogger.debug(LTag.NSCLIENT, "No BG for ${(now - (lastBgAt ?: now)) / 1000} s, reloading from Nightscout")
+                if (rule.reloadDue(lastBgAt, now)) {
+                    aapsLogger.debug(LTag.NSCLIENT, "No new BG has arrived, reloading from Nightscout (newest BG ${(now - (lastBgAt ?: now)) / 1000} s old)")
                     nsClient.executeLoop("NO_BG_2MIN")
                 }
             }

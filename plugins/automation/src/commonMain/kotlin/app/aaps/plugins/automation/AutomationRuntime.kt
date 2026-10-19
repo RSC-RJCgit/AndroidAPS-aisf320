@@ -178,11 +178,37 @@ class AutomationRuntime(
             pairedBtDevices = pairedBtDevices
         )
 
-    /** Declared automation states and the value each one holds now. Read only. */
-    fun currentAutomationStates(): List<Pair<String, String>> = automationStateRows(
+    /** Declared automation states, with the value each one holds now and the values it may hold. */
+    fun automationStates(): List<AutomationStateEntry> = automationStateEntries(
         currentJson = preferences.get(StringNonKey.AutomationCurrentStates),
         valuesJson = preferences.get(StringNonKey.AutomationStateValues)
     )
+
+    // Editing from the States dialog (2026-10-19, per explicit request), on the loop phone only. The AutoISF loop reads the
+    // stored states again when they change, so an edit counts from its next run.
+
+    /** Makes [value] the current value of [name]. Does nothing when the value is not declared for that state. */
+    fun setAutomationStateCurrent(name: String, value: String) {
+        setAutomationStateCurrent(storedCurrentStates(), storedStateValues(), name, value)?.let { saveAutomationStates(it) }
+    }
+
+    /** Declares [name] with [values], or changes its values. */
+    fun setAutomationStateValues(name: String, values: List<String>) {
+        saveAutomationStates(setAutomationStateValues(storedCurrentStates(), storedStateValues(), name, values))
+    }
+
+    /** Removes [name] and its current value. */
+    fun deleteAutomationState(name: String) {
+        saveAutomationStates(deleteAutomationState(storedCurrentStates(), storedStateValues(), name))
+    }
+
+    private fun storedCurrentStates() = preferences.get(StringNonKey.AutomationCurrentStates)
+    private fun storedStateValues() = preferences.get(StringNonKey.AutomationStateValues)
+
+    private fun saveAutomationStates(texts: AutomationStateTexts) {
+        preferences.put(StringNonKey.AutomationCurrentStates, texts.currentJson)
+        preferences.put(StringNonKey.AutomationStateValues, texts.valuesJson)
+    }
 
     private var scope: CoroutineScope? = null
 
