@@ -44,6 +44,7 @@ import app.aaps.core.ui.compose.metroViewModel
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.implementation.lifecycle.IosProtectionLifecycle
 import app.aaps.ios.shell.IosAppStartup
+import app.aaps.ios.shell.IosCrashLog
 import app.aaps.ios.shell.PluginStoreRegistry
 import app.aaps.ios.shell.di.IosAppGraph
 import app.aaps.ios.shell.platform.IosLanguage
@@ -113,6 +114,8 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
     val graph = createGraphFactory<IosAppGraph.Factory>().create(CoreObjectsGraph, ClientGraphBindings, nsSocketFactory)
     val viewModelFactory = ClientViewModelFactory(graph)
     val logger = graph.logger
+    // First, so that a crash anywhere after this point leaves its error and stack trace in the app log
+    IosCrashLog.install(logger)
 
     // Before the composition, not beside it: the first view model built reads the active pump, and
     // an empty plugin list there throws from a coroutine and takes the process with it.

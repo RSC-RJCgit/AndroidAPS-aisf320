@@ -147,7 +147,7 @@ class MainViewModel(
     private val rxBus: RxBus,
     private val nsClient: NsClient,
     private val visibilityContext: VisibilityContext,
-    private val backgroundWorkPause: BackgroundWorkPause,
+    backgroundWorkPause: BackgroundWorkPause,
     // Unqualified: @ApplicationScope is a javax qualifier and cannot appear in commonMain. The graph
     // binds the same instance under both names.
     private val appScope: CoroutineScope
