@@ -88,8 +88,6 @@ class PrepareGraphDataRunnerTest : TestBaseWithProfile() {
         whenever(dataAds.bucketedData).thenReturn(null)
         whenever(cache.timeRangeFlow).thenReturn(MutableStateFlow(null))
         whenever(activePlugin.activeSensitivity).thenReturn(sensitivity)
-        // The AutoISF BG parabola reads the last loop result; a loop with no result draws none
-        whenever(activePlugin.activeAPS).thenReturn(mock())
         whenever(sensitivity.isOref1).thenReturn(false)
     }
 

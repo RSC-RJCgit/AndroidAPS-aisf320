@@ -102,7 +102,7 @@ class PrepareGraphDataRunner(
      * 3.2.1 drew it from the time the graph was drawn; here it starts at the time of the last BG, where the fit is.
      */
     private fun bgParabola(): Pair<List<GraphDataPoint>, List<GraphDataPoint>> {
-        val status = activePlugin.activeAPS.lastAPSResult?.glucoseStatus as? GlucoseStatusAutoIsf
+        val status = activePlugin.activeAPS?.lastAPSResult?.glucoseStatus as? GlucoseStatusAutoIsf
         if (status == null || status.corrSqu <= 0.0) return emptyList<GraphDataPoint>() to emptyList()
         fun point(minutes: Int): GraphDataPoint {
             val t = minutes / 5.0
