@@ -193,7 +193,10 @@ class ManageViewModel(
                     showFill = pumpDescription.isRefillingCapable && isInitialized,
                     showAuthorizedClients = preferences.get(BooleanKey.NsClient3UseWs) && !config.AAPSCLIENT,
                     showPairWithMaster = config.AAPSCLIENT && preferences.get(BooleanKey.NsClient3UseWs),
-                    showMutatingActions = !config.AAPSCLIENT || nsClient.masterOrPairedClientFlow.value,
+                    // A read-only client shows them too (2026-10-19): practice mode. Every item opens and can be used, and the
+                    // final save ends with the read-only message (a TT, a profile switch and notes are saved and uploaded).
+                    showMutatingActions = !config.AAPSCLIENT || nsClient.masterOrPairedClientFlow.value ||
+                        preferences.get(BooleanKey.NsClientReadOnlyClient),
                     // General gate: PUMP declares its own visibility (!isClient → full + pumpcontrol, not aapsclient).
                     showPump = ElementType.PUMP.visibility.isVisible(visibilityContext),
                     cancelTempBasalText = cancelTempBasalText,

@@ -124,7 +124,9 @@ val LocalReadOnlyClient = compositionLocalOf { false }
  */
 @Composable
 fun masterEditingEnabled(): Boolean =
-    LocalInspectionMode.current || !(LocalConfig.current.AAPSCLIENT && !LocalMasterReachable.current)
+    LocalInspectionMode.current || !(LocalConfig.current.AAPSCLIENT && !LocalMasterReachable.current) ||
+        // Practice mode (2026-10-19): a read-only client can go through every editor; its saves end with the read-only message
+        LocalReadOnlyClient.current
 
 /**
  * Whether preference rows may be changed. A client that is not paired yet can still edit them: the

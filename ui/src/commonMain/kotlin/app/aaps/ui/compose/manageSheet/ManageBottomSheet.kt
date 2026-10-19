@@ -568,9 +568,10 @@ private fun ManageGridItem(
     // use their own visibility lambda, so they stay enabled (the only thing you can still do is re-pair).
     // A read-only client also opens the action dialogs (2026-10-18), like the bolus calculator: it can go through the
     // steps, and the final OK either saves a Nightscout-only record (TT, note) or says a read-only client cannot send it.
-    val readOnlyTry = elementType.visibility == ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT && LocalReadOnlyClient.current
+    // Practice mode (2026-10-19): on a read-only client every relayed item opens, not only the record-only ones.
     val relayed = elementType.visibility == ElementVisibility.MASTER_OR_PAIRED_CLIENT ||
         elementType.visibility == ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT
+    val readOnlyTry = relayed && LocalReadOnlyClient.current
     val effectiveEnabled = enabled && (readOnlyTry || masterEditingEnabled() || !relayed)
     ManageGridItem(
         text = label,
