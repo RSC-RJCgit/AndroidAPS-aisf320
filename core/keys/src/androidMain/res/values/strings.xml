@@ -235,6 +235,8 @@
     <string name="pref_summary_ignore_inactivity_overnight">Default: on. Inactivity is not detected in the sleeping hours below. If off, leave the phone beside the bed during short breaks.</string>
     <string name="pref_title_inactivity_idle_start">Sleep starts at hour</string>
     <string name="pref_summary_inactivity_idle_start">Hour (0-23) when inactivity detection stops for sleep. Default: 22</string>
+    <string name="pref_title_automation_states_enabled">Automation states</string>
+    <string name="pref_summary_automation_states_enabled">Off: automations do not set or test automation states. Importing settings turns this off, unless you tick the box on the import screen.</string>
     <string name="pref_title_maintenance_cleanup_days">How many days to keep on DB cleanup</string>
     <string name="pref_summary_maintenance_cleanup_days">The DB cleanup in Maintenance keeps this many days. With 1 minute Libre data, a shorter time such as 15 days or less makes AAPS faster. The AAPS standard is 93 days.</string>
     <string name="pref_title_inactivity_idle_end">Sleep ends at hour</string>

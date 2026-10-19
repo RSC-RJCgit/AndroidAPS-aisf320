@@ -32,6 +32,10 @@ class TriggerAutomationState(
     fun stateValues(name: String): List<String> = if (name.isEmpty()) emptyList() else automationState.getStateValues(name)
 
     override suspend fun shouldRun(): Boolean {
+        if (!automationState.enabled) {
+            aapsLogger.debug(LTag.AUTOMATION, "Automation states are off, NOT ready for execution: " + friendlyDescription())
+            return false
+        }
         if (automationState.inState(stateName, stateValue)) {
             aapsLogger.debug(LTag.AUTOMATION, "Ready for execution: " + friendlyDescription())
             return true

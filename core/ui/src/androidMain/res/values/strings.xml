@@ -1150,6 +1150,9 @@
     <string name="import_applying">Applying settings…</string>
     <string name="import_replace_pump_settings">Also replace pump settings</string>
     <string name="import_replace_pump_settings_summary">Leave this off to keep the pump this phone is paired with. Turn it on when restoring onto a new phone with the same pump.</string>
+    <string name="import_enable_automation_states">Turn automation states on</string>
+    <string name="import_automation_states_present">This file has automation states. They stay off after the import unless you tick this.</string>
+    <string name="import_automation_states_absent">This file has no automation states. Ticking this only turns the switch on.</string>
     <string name="import_apply_waiting">Waiting for pump…</string>
     <string name="import_apply_pump_busy">The pump is still busy, so the settings were not applied.</string>
     <string name="import_apply_retry_question">Try again now?</string>

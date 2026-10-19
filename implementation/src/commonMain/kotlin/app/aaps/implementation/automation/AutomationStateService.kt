@@ -1,6 +1,7 @@
 package app.aaps.implementation.automation
 
 import app.aaps.core.interfaces.automation.AutomationStateInterface
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
@@ -15,8 +16,11 @@ import dev.zacsweers.metro.SingleIn
 @ContributesBinding(AppScope::class)
 @Inject
 class AutomationStateService(
-    preferences: Preferences,
+    private val preferences: Preferences,
 ) : AutomationStateInterface by AutomationStateStore(
     read = { key -> preferences.get(key) },
     save = { key, value -> preferences.put(key, value) },
-)
+) {
+
+    override val enabled: Boolean get() = preferences.get(BooleanKey.AutomationStatesEnabled)
+}

@@ -53,6 +53,7 @@ import app.aaps.core.interfaces.maintenance.ImportDecryptResult
 import app.aaps.core.interfaces.maintenance.PrefsFile
 import app.aaps.core.interfaces.maintenance.PrefsFileInfo
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.AapsTopAppBar
@@ -120,6 +121,7 @@ fun ImportSettingsScreen(
                 onDecrypt = { viewModel.decrypt() },
                 onImport = { viewModel.confirmImport() },
                 onReplacePumpSettingsChanged = { viewModel.onReplacePumpSettingsChanged(it) },
+                onEnableAutomationStatesChanged = { viewModel.onEnableAutomationStatesChanged(it) },
                 onBack = { viewModel.goBackToFilePicker() }
             )
         }
@@ -475,6 +477,7 @@ internal fun ImportReviewContent(
     onDecrypt: () -> Unit,
     onImport: () -> Unit,
     onReplacePumpSettingsChanged: (Boolean) -> Unit,
+    onEnableAutomationStatesChanged: (Boolean) -> Unit,
     onBack: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -660,6 +663,38 @@ internal fun ImportReviewContent(
                 }
             }
 
+            // Extras branch: automation states stay off after an import unless this is ticked
+            AnimatedVisibility(
+                visible = canImport,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !state.isProcessing) { onEnableAutomationStatesChanged(!state.enableAutomationStates) }
+                ) {
+                    Checkbox(
+                        checked = state.enableAutomationStates,
+                        onCheckedChange = { onEnableAutomationStatesChanged(it) },
+                        enabled = !state.isProcessing
+                    )
+                    Column {
+                        Text(stringResource(CoreUiStrings.import_enable_automation_states))
+                        Text(
+                            text = stringResource(
+                                if (successResult != null && importedFileHasAutomationStates(successResult.prefs.values))
+                                    CoreUiStrings.import_automation_states_present
+                                else CoreUiStrings.import_automation_states_absent
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             // Summary section (shown after successful decrypt)
             AnimatedVisibility(
                 visible = successResult != null,
@@ -761,3 +796,10 @@ private fun FileDetailsCard(
         }
     }
 }
+
+/** True when the settings file has automation states (a stored list that is not empty). */
+internal fun importedFileHasAutomationStates(values: Map<String, String>): Boolean =
+    listOf(StringNonKey.AutomationCurrentStates.key, StringNonKey.AutomationStateValues.key).any { key ->
+        val raw = values[key]?.trim().orEmpty()
+        raw.isNotEmpty() && raw != "{}"
+    }

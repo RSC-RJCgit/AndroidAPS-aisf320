@@ -37,6 +37,7 @@ class ActionSetAutomationState(
     override fun isValid(): Boolean = stateName.isNotEmpty() && stateValue.isNotEmpty()
 
     override suspend fun doAction(): PumpEnactResult {
+        if (!automationState.enabled) return pumpEnactResultProvider().success(false).comment(AutomationStrings.automation_states_off)
         // 3.2.1 threw when the state or value no longer existed. Report it as a failed action instead.
         return try {
             automationState.setState(stateName, stateValue)

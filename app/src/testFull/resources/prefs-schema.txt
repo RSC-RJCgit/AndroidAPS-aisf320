@@ -95,6 +95,7 @@ autoISF_max|DoubleKey|true
 autoISF_min|DoubleKey|true
 automation_state_service|StringNonKey|true
 automation_state_values|StringNonKey|true
+automation_states_enabled|BooleanKey|true
 autosens_adjust_targets|BooleanKey|true
 autosens_max|DoubleKey|true
 autosens_min|DoubleKey|true

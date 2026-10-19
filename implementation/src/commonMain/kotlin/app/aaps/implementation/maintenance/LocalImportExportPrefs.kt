@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.sharedPreferences.KeyValueStore
 import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -274,9 +275,11 @@ class LocalImportExportPrefs(
         transfer.importResult(file.content, password, config.isEngineeringMode())
             .also { if (it is ImportDecryptResult.Error) aapsLogger.error(LTag.CORE, "Reading ${file.name} failed: ${it.message}") }
 
-    override suspend fun executeImport(prefs: Prefs, keepPumpSettings: Boolean): ImportExportPrefs.ImportOutcome {
+    override suspend fun executeImport(prefs: Prefs, keepPumpSettings: Boolean, enableAutomationStates: Boolean): ImportExportPrefs.ImportOutcome {
         activePlugin.beforeImport()
         val outcome = applier.apply(prefs, keepPumpSettings)
+        // After the file, so its own value cannot win: states stay off unless the import screen asked for them
+        preferences.put(BooleanKey.AutomationStatesEnabled, enableAutomationStates)
         activePlugin.afterImport()
         aapsLogger.info(
             LTag.CORE,

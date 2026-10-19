@@ -76,7 +76,9 @@ sealed interface ImportStep {
          * Phrased as the destructive action for the same reason - a checkbox meaning "do NOT do
          * something" is hard to read in a hurry.
          */
-        val replacePumpSettings: Boolean = false
+        val replacePumpSettings: Boolean = false,
+        /** The "Turn automation states on" box. Off by default: states from a file stay off until asked for. */
+        val enableAutomationStates: Boolean = false
     ) : ImportStep {
 
         /** What the applier takes. The screen asks the question the other way round. */
@@ -98,7 +100,8 @@ sealed interface ImportStep {
     data class ApplyConfirm(
         val prefs: Prefs,
         val keepPumpSettings: Boolean,
-        val preview: ImportExportPrefs.ImportOutcome
+        val preview: ImportExportPrefs.ImportOutcome,
+        val enableAutomationStates: Boolean = false
     ) : ImportStep
 
     /**
@@ -443,6 +446,12 @@ class ImportViewModel(
         if (current is ImportStep.Review) _importStep.value = current.copy(replacePumpSettings = replace)
     }
 
+    /** The "Turn automation states on" box. Read once, in [confirmImport], like the pump question. */
+    fun onEnableAutomationStatesChanged(enable: Boolean) {
+        val current = importStep.value
+        if (current is ImportStep.Review) _importStep.value = current.copy(enableAutomationStates = enable)
+    }
+
     fun confirmImport() {
         val current = importStep.value
         if (current !is ImportStep.Review) return
@@ -474,7 +483,8 @@ class ImportViewModel(
             val confirm = ImportStep.ApplyConfirm(
                 prefs = result.prefs,
                 keepPumpSettings = current.keepPumpSettings,
-                preview = preview
+                preview = preview,
+                enableAutomationStates = current.enableAutomationStates
             )
             pending = confirm
             _importStep.value = confirm
@@ -526,7 +536,7 @@ class ImportViewModel(
                         // Which pump was in charge BEFORE, so the fallback below can be spotted.
                         val pumpBefore = activePlugin.activePumpInternal
                         config.whileReconfiguring {
-                            importExportPrefs.executeImport(confirmed.prefs, confirmed.keepPumpSettings)
+                            importExportPrefs.executeImport(confirmed.prefs, confirmed.keepPumpSettings, confirmed.enableAutomationStates)
                             importExportPrefs.prepareImportedSettings()
                         }
                         applySettings()

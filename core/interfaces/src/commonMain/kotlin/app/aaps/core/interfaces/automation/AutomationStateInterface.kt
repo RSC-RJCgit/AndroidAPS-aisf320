@@ -6,6 +6,12 @@ package app.aaps.core.interfaces.automation
  */
 interface AutomationStateInterface {
 
+    /**
+     * False when automation states are switched off ("Automation states" setting, extras branch). Then the automations
+     * neither set nor test states. A settings import switches them off unless the import screen asks otherwise.
+     */
+    val enabled: Boolean get() = true
+
     /** True when the state [stateName] has the value [state]. */
     fun inState(stateName: String, state: String): Boolean
 

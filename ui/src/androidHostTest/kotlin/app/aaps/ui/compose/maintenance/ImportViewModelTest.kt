@@ -290,7 +290,7 @@ internal class ImportViewModelTest {
         advanceUntilIdle()
 
         verify(importExportPrefs).previewImport(any(), any())
-        verify(importExportPrefs, never()).executeImport(any(), any())
+        verify(importExportPrefs, never()).executeImport(any(), any(), any())
         assertThat(sut.importStep.value).isInstanceOf(ImportStep.ApplyConfirm::class.java)
     }
 
@@ -308,7 +308,7 @@ internal class ImportViewModelTest {
 
         inOrder(config, importExportPrefs) {
             verify(config).beginReconfiguring()
-            verify(importExportPrefs).executeImport(any(), any())
+            verify(importExportPrefs).executeImport(any(), any(), any())
             verify(importExportPrefs).prepareImportedSettings()
             verify(config).endReconfiguring()
         }

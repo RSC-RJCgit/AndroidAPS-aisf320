@@ -335,7 +335,8 @@ class BuiltInSearchables(
         key = "automation_settings",
         title = CoreUiStrings.automation,
         items = listOf(
-            StringKey.AutomationLocation
+            StringKey.AutomationLocation,
+            BooleanKey.AutomationStatesEnabled
         ),
         icon = IcPluginAutomation
     )

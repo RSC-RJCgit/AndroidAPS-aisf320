@@ -193,6 +193,16 @@ enum class BooleanKey(
     ),
     // AutoISF 3.2.1 activity monitor
     ActivityMonitorDetection("activity_detection", false, KeysStrings.pref_title_activity_monitor, KeysStrings.pref_summary_activity_monitor, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // Extras branch (test3 patch 0002): automation states on or off. A settings import turns it off unless the import
+    // screen's box is ticked, so states from another phone do not act here by surprise.
+    AutomationStatesEnabled(
+        "automation_states_enabled",
+        true,
+        KeysStrings.pref_title_automation_states_enabled,
+        KeysStrings.pref_summary_automation_states_enabled,
+        defaultedBySM = true,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ActivityMonitorOvernight(
         "ignore_inactivity_overnight",
         true,

@@ -112,9 +112,12 @@ interface ImportExportPrefs {
      *        driver and the pump's own `ConfigBuilder_Enabled_*` entry are skipped, so the pump this
      *        phone is paired with keeps working. When false the file replaces them, which is what a
      *        restore onto a new phone with the same pump wants.
+     * @param enableAutomationStates the import screen's "Turn automation states on" box (extras branch). The
+     *        "Automation states" switch is written with this value after the import, so states that came with the
+     *        file only act on this phone when the user asked for it.
      * @return what changed, for the log and for what the user is told afterwards
      */
-    suspend fun executeImport(prefs: Prefs, keepPumpSettings: Boolean): ImportOutcome
+    suspend fun executeImport(prefs: Prefs, keepPumpSettings: Boolean, enableAutomationStates: Boolean): ImportOutcome
 
     /** What [executeImport] did, or what [previewImport] says it would do. */
     data class ImportOutcome(
