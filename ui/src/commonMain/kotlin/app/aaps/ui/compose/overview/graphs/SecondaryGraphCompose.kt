@@ -897,6 +897,7 @@ fun SecondaryGraphCompose(
         processedBasalActual,
         processedSecondary,
         processedActivityOverlay,
+        primarySeries,
         maxX,
         axisScale
     ) {

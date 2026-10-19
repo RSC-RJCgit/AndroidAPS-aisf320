@@ -658,6 +658,10 @@ fun GraphsSection(
                     .fillMaxWidth()
                     .height(graphConfig.iobHeight.dp - REMOVED_TIME_LABELS_HEIGHT)
             )
+            AutoIsfLegend(
+                types = graphConfig.iobOverlays.filter { it in AUTO_ISF_SERIES },
+                modifier = Modifier.align(Alignment.TopStart).padding(start = AUTO_ISF_LEGEND_START_PADDING)
+            )
             GraphNameRow(
                 name = stringResource(CoreUiStrings.iob) + " / " + stringResource(CoreUiStrings.basal_shortname),
                 editName = stringResource(CoreUiStrings.iob),
@@ -701,6 +705,10 @@ fun GraphsSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(secondary.height.dp - REMOVED_TIME_LABELS_HEIGHT)
+                )
+                AutoIsfLegend(
+                    types = secondary.series.filter { it in AUTO_ISF_SERIES },
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = AUTO_ISF_LEGEND_START_PADDING)
                 )
                 GraphNameRow(
                     name = seriesListLabel(secondary.series),
@@ -833,6 +841,29 @@ internal fun withSecondaryGraphHeight(config: GraphConfig, index: Int, expectedS
 // =========================================================================
 // Graph label generation
 // =========================================================================
+
+/** Room for the left axis labels, so the AutoISF legend starts inside the graph */
+private val AUTO_ISF_LEGEND_START_PADDING = 36.dp
+
+/**
+ * Legend of the AutoISF factor lines in a graph: each name in the colour of its line (like the step count legend).
+ * Shows nothing when the graph has no AutoISF factor.
+ */
+@Composable
+private fun AutoIsfLegend(types: List<SeriesType>, modifier: Modifier = Modifier) {
+    if (types.isEmpty()) return
+    val colors = rememberSeriesColors()
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        types.forEach { type ->
+            Text(
+                text = stringResource(seriesShortNameId(type)),
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.colorFor(type),
+                maxLines = 1
+            )
+        }
+    }
+}
 
 /** Generate a short label from the series types in a graph (e.g., "IOB", "COB", "BGI / DEV") */
 @Composable
