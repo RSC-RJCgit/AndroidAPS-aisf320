@@ -173,8 +173,11 @@ class ExportPasswordDataStoreImpl(
          */
         const val KEYSTORE_ALIAS = "UnattendedExportAliasV2"
 
-        /** Five weeks, the grace period included. */
-        private const val DEFAULT_VALIDITY_WINDOW = 35 * 24 * 3600 * 1000L
+        /**
+         * Ten years, the grace period included: the password is entered once per install (extras branch, test3 patch
+         * 0007; was five weeks). It is still dropped at once when the master password changes - see the class notes.
+         */
+        private const val DEFAULT_VALIDITY_WINDOW = 3650L * 24 * 3600 * 1000L
 
         /** The last week of the window, where the user is told it is about to expire. */
         private const val DEFAULT_GRACE_PERIOD = 7 * 24 * 3600 * 1000L

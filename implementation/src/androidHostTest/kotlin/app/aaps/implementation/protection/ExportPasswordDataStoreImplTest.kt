@@ -48,7 +48,8 @@ class ExportPasswordDataStoreImplTest {
     /** A secret that carries the current alias, so it is not treated as a legacy one. */
     private val currentSecret = "hash:${ExportPasswordDataStoreImpl.KEYSTORE_ALIAS}:iv:cipher"
     private val now = 1_000_000_000_000L
-    private val fiveWeeks = 35 * 24 * 3600 * 1000L
+    private val day = 24 * 3600 * 1000L
+    private val validityWindow = 3650 * day
 
     /** In memory storage. The real ones write to DataStore or to a file; the rules do not care. */
     private class FakePlatform : ExportPasswordPlatform {
@@ -117,11 +118,21 @@ class ExportPasswordDataStoreImplTest {
     }
 
     @Test
+    fun `a password from five weeks ago is still valid`() {
+        // Extras branch: entered once per install, no longer every five weeks
+        enable()
+        masterPasswordMatches(true)
+        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - 35 * day - 1)
+
+        assertEquals(Triple(currentSecret, false, false), sut.getPasswordFromDataStore())
+    }
+
+    @Test
     fun `warns that a password is about to expire inside the grace period`() {
         enable()
         masterPasswordMatches(true)
-        // Written 30 days ago: past the point where the last week starts, but not yet expired.
-        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - 30 * 24 * 3600 * 1000L)
+        // Written 6 days before the end: inside the last week, but not yet expired.
+        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - validityWindow + 6 * day)
 
         val (password, expired, aboutToExpire) = sut.getPasswordFromDataStore()
         assertEquals(currentSecret, password)
@@ -132,7 +143,7 @@ class ExportPasswordDataStoreImplTest {
     @Test
     fun `drops a password once the validity window has passed`() {
         enable()
-        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - fiveWeeks - 1)
+        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - validityWindow - 1)
 
         assertEquals(Triple("", true, true), sut.getPasswordFromDataStore())
         assertNull(platform.stored)
