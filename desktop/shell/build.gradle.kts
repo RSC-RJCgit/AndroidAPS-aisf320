@@ -40,6 +40,20 @@ fun buildStamp(): String {
     }
     return "$commit-" + SimpleDateFormat("yyyy.MM.dd").format(Date())
 }
+
+/**
+ * The exact source commit, as `:ios:shell` reads it (2026-10-19). The overview's top-left corner shows its first four
+ * characters, as on Android and iOS; desktop showed "unkn" because it had none.
+ */
+fun sourceCommit(): String = try {
+    val process = ProcessBuilder("git", "rev-parse", "HEAD")
+        .directory(rootProject.projectDir).start()
+    val hash = process.inputStream.bufferedReader().readText().trim()
+    check(process.waitFor() == 0 && hash.matches(Regex("[0-9a-f]{40}")))
+    hash
+} catch (_: Exception) {
+    "unknown"
+}
 /**
  * The version this build reports, from the same constant the Android app uses.
  *
@@ -143,6 +157,7 @@ val makeIcns = tasks.register<Exec>("makeDesktopIcns") {
 val generateBuildInfo = tasks.register<GenerateBuildInfoTask>("generateDesktopBuildInfo") {
     version.set(Versions.appVersion)
     buildStamp.set(buildStamp())
+    head.set(sourceCommit())
     platform.set("Desktop")
     packageName.set("app.aaps.desktop.shell.config")
     client.set(desktopClient)

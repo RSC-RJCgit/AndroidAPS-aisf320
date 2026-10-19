@@ -1,0 +1,213 @@
+name: Desktop installers
+run-name: Desktop installers · ${{ github.event.head_commit.message || github.ref_name }}
+
+on:
+  push:
+    # The AutoISF 3.2.1 port and its extras branch (2026-10-19). The Drive folder is named after Versions.appVersion,
+    # so the installers land as 4.0.0-rc1Aisf_... and 4.0.0-rc1AisfX_..., next to the APKs.
+    branches: [autoisf321, autoisf321-extras]
+  workflow_dispatch:
+    inputs:
+      client:
+        description: Desktop client to package
+        type: choice
+        default: '2'
+        options: ['1', '2', '3', 'both']
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and upload Windows installer (Client${{ matrix.client }})
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        client: ${{ fromJSON(github.event_name == 'push' && '["2","1"]' || inputs.client == 'both' && '["2","1"]' || format('["{0}"]', inputs.client || '2')) }}
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DESKTOP_CLIENT: ${{ matrix.client }}
+      # Same AAPS folder reported by the APK uploader; a repository variable can override it.
+      GDRIVE_AAPS_FOLDER_ID: ${{ vars.GDRIVE_AAPS_FOLDER_ID || '1l7LZElkOLI1DVwd3o9rbtwqwtAjRloRz' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Read Java version and build folder
+        run: |
+          $jdk = (Get-Content .github/jdk-map.json -Raw | ConvertFrom-Json).default
+          "JAVA_VERSION=$jdk" >> $env:GITHUB_ENV
+          $versions = Get-Content buildSrc/src/main/kotlin/Versions.kt -Raw
+          $match = [regex]::Match($versions, 'val appVersion\s*=\s*"([^"]+)"')
+          if (!$match.Success) { throw 'Could not read Versions.appVersion' }
+          $version = $match.Groups[1].Value
+          $subject = git log -1 --format=%s
+          $kmp = [regex]::Match($subject, '^kmp[0-9]{3}').Value
+          $commitDate = [DateTimeOffset]::Parse((git log -1 --format=%cI))
+          $adelaide = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId($commitDate, 'Cen. Australia Standard Time')
+          $stamp = $adelaide.ToString('yyyyMMdd_HHmm')
+          $hash = git rev-parse --short=7 HEAD
+          $kmpSuffix = if ($kmp) { "_$kmp" } else { '' }
+          "MSI_DRIVE_FOLDER=${version}${kmpSuffix}_${stamp}_${hash}" >> $env:GITHUB_ENV
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test Drive uploader
+        run: python .github/scripts/test_upload_windows_msi.py
+
+      - name: Make WiX available to jpackage
+        run: |
+          $roots = @()
+          if ($env:WIX) { $roots += $env:WIX }
+          $roots += Get-ChildItem -LiteralPath 'C:\Program Files (x86)' -Directory -Filter 'WiX Toolset*' | Select-Object -ExpandProperty FullName
+          $wixBin = $roots | ForEach-Object { Join-Path $_ 'bin' } | Where-Object {
+            (Test-Path (Join-Path $_ 'candle.exe')) -and (Test-Path (Join-Path $_ 'light.exe'))
+          } | Select-Object -First 1
+          if (!$wixBin) { throw 'WiX 3 candle.exe and light.exe are missing from the Windows runner' }
+          $wixBin >> $env:GITHUB_PATH
+
+      - name: Build MSI
+        run: |
+          .\gradlew.bat :desktop:shell:packageMsi "-Pclient=$env:DESKTOP_CLIENT" --no-daemon --console=plain `
+            '-Dorg.gradle.jvmargs=-Xmx6g -XX:+UseParallelGC -Xss4m' `
+            '-Dkotlin.compiler.execution.strategy=in-process' --max-workers=2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Collect installer
+        run: |
+          $installers = @(Get-ChildItem -LiteralPath 'desktop/shell/build/compose/binaries/main/msi' -Filter '*.msi' -File)
+          if ($installers.Count -ne 1) { throw "Expected one MSI, found $($installers.Count)" }
+          New-Item -ItemType Directory -Path 'msi-artifacts' -Force | Out-Null
+          Copy-Item -LiteralPath $installers[0].FullName -Destination 'msi-artifacts'
+          "Installer: $($installers[0].Name)" >> $env:GITHUB_STEP_SUMMARY
+          "Drive folder: AAPS/$env:MSI_DRIVE_FOLDER" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload installer to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msi-client${{ env.DESKTOP_CLIENT }}-${{ github.sha }}
+          path: msi-artifacts/*.msi
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload installer to Google Drive
+        env:
+          GDRIVE_OAUTH2: ${{ secrets.GDRIVE_OAUTH2 }}
+        run: |
+          for ($attempt = 1; $attempt -le 4; $attempt++) {
+            python .github/scripts/upload_windows_msi.py
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -lt 4) {
+              Write-Host "Drive upload attempt $attempt failed; retrying. Installer is already available in GitHub Actions."
+              Start-Sleep -Seconds (15 * $attempt)
+            }
+          }
+          exit 1
+
+  # macOS installers (2026-10-16): a DMG can only be made on a Mac, so each one is built on a Mac runner. Apple Silicon
+  # (arm64) and Intel (x64) each get their own DMG; the architecture is added to the file name so both fit in one Drive
+  # folder. The DMGs are not signed: the first time, macOS asks to allow the app in System Settings > Privacy & Security.
+  # After the Windows job, and one at a time, so two jobs never create the same Drive folder at once.
+  mac:
+    name: Build and upload macOS installer (Client${{ matrix.client }}, ${{ matrix.arch }})
+    needs: package
+    if: ${{ !cancelled() }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        client: ${{ fromJSON(github.event_name == 'push' && '["2","1"]' || inputs.client == 'both' && '["2","1"]' || format('["{0}"]', inputs.client || '2')) }}
+        arch: [arm64, x64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'macos-latest' || 'macos-15-intel' }}
+    timeout-minutes: 120
+    env:
+      DESKTOP_CLIENT: ${{ matrix.client }}
+      GDRIVE_AAPS_FOLDER_ID: ${{ vars.GDRIVE_AAPS_FOLDER_ID || '1l7LZElkOLI1DVwd3o9rbtwqwtAjRloRz' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Read Java version and build folder
+        # The same folder name as the Windows job: <version>[_kmpNNN]_<yyyymmdd>_<hhmm>_<hash>, commit time in Adelaide.
+        shell: python
+        run: |
+          import json, os, re, subprocess
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          def git(*args): return subprocess.check_output(["git", *args], text=True).strip()
+          jdk = json.load(open(".github/jdk-map.json"))["default"]
+          version = re.search(r'val appVersion\s*=\s*"([^"]+)"', open("buildSrc/src/main/kotlin/Versions.kt").read()).group(1)
+          kmp = re.match(r"kmp[0-9]{3}", git("log", "-1", "--format=%s"))
+          stamp = datetime.fromisoformat(git("log", "-1", "--format=%cI")).astimezone(ZoneInfo("Australia/Adelaide")).strftime("%Y%m%d_%H%M")
+          folder = f"{version}{'_' + kmp.group(0) if kmp else ''}_{stamp}_{git('rev-parse', '--short=7', 'HEAD')}"
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              print(f"JAVA_VERSION={jdk}", file=env)
+              print(f"MSI_DRIVE_FOLDER={folder}", file=env)
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: gradle
+
+      - name: Test Drive uploader
+        run: python .github/scripts/test_upload_windows_msi.py
+
+      - name: Build DMG
+        run: >-
+          ./gradlew :desktop:shell:packageDmg "-Pclient=$DESKTOP_CLIENT" --no-daemon --console=plain
+          '-Dorg.gradle.jvmargs=-Xmx5g -XX:+UseParallelGC -Xss4m'
+          '-Dkotlin.compiler.execution.strategy=in-process' --max-workers=2
+
+      - name: Collect macOS installer
+        run: |
+          shopt -s nullglob
+          installers=(desktop/shell/build/compose/binaries/main/dmg/*.dmg)
+          if [ "${#installers[@]}" -ne 1 ]; then echo "Expected one DMG, found ${#installers[@]}"; exit 1; fi
+          mkdir -p dmg-artifacts
+          name="$(basename "${installers[0]}" .dmg)-${{ matrix.arch }}.dmg"
+          cp "${installers[0]}" "dmg-artifacts/$name"
+          echo "Installer: $name" >> "$GITHUB_STEP_SUMMARY"
+          echo "Drive folder: AAPS/$MSI_DRIVE_FOLDER" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload macOS installer to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg-client${{ env.DESKTOP_CLIENT }}-${{ matrix.arch }}-${{ github.sha }}
+          path: dmg-artifacts/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload macOS installer to Google Drive
+        env:
+          GDRIVE_OAUTH2: ${{ secrets.GDRIVE_OAUTH2 }}
+          INSTALLER_DIR: dmg-artifacts
+          INSTALLER_EXTENSION: .dmg
+        run: |
+          for attempt in 1 2 3 4; do
+            if python .github/scripts/upload_windows_msi.py; then exit 0; fi
+            if [ "$attempt" -lt 4 ]; then
+              echo "Drive upload attempt $attempt failed; retrying. Installer is already available in GitHub Actions."
+              sleep $((15 * attempt))
+            fi
+          done
+          exit 1
