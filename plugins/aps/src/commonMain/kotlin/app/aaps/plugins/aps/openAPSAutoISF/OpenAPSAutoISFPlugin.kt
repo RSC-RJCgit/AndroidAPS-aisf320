@@ -353,7 +353,10 @@ open class OpenAPSAutoISFPlugin(
         lastAPSResult = null
         preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt, 0L)
         val fetchedGlucose = glucoseStatusProvider.glucoseStatusData
-        val glucoseStatus = (fetchedGlucose as? GlucoseStatusAutoIsf)?.let { applyUkf1DosingOverride(it) } ?: fetchedGlucose
+        // Coded automations off (master switch): no UKF1 dosing override either
+        val glucoseStatus = (fetchedGlucose as? GlucoseStatusAutoIsf)
+            ?.let { if (preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)) applyUkf1DosingOverride(it) else it }
+            ?: fetchedGlucose
         val profile = profileFunction.getProfile()
         val pump = activePlugin.activePump
         if (profile == null) {
@@ -582,7 +585,11 @@ open class OpenAPSAutoISFPlugin(
         val stepSample = if (usesLiveSteps()) freshLiveSteps(now)
         else persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)
         val statesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
-        if (nightFrSkipShouldFire(
+        // Master switch for the coded automations (2026-10-19, per explicit request). Off: every coded automation below is
+        // skipped and the dosing extras passed to determine_basal are neutral. Kept: remote toggles, relay notes, SetRole,
+        // the live MJ note, the APK install, and the alerts (hypo alarms without their state writes, UKF avg low, compression).
+        val codedOn = preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)
+        if (codedOn && nightFrSkipShouldFire(
                 ready = runMarks.ready(RunMark.NIGHT_FR_SKIP, 60, now),
                 profilePercent = profile_percentage,
                 tempTargetSet = isTempTarget,
@@ -605,7 +612,7 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote("NtFRSk")
             aapsLogger.debug(LTag.APS, "NightFrSkip marked")
         }
-        applyDeliveryRestore(
+        if (codedOn) applyDeliveryRestore(
             now = now,
             tempTargetSet = isTempTarget,
             mealCob = mealData.mealCOB,
@@ -614,7 +621,7 @@ open class OpenAPSAutoISFPlugin(
             shortDelta = glucoseStatus.shortAvgDelta,
             glucoseMgdl = glucoseStatus.glucose,
         )
-        applyOldPodBoost(
+        if (codedOn) applyOldPodBoost(
             now = now,
             bg = glucoseStatus.glucose,
             delta = glucoseStatus.delta,
@@ -623,7 +630,7 @@ open class OpenAPSAutoISFPlugin(
         )
         if (applyRemoteToggles(now)) isTempTarget = false
         maybeAutoInstallApk(now, isTempTarget)
-        applyVirtualPseudoWizard(
+        if (codedOn) applyVirtualPseudoWizard(
             now = now,
             bg = glucoseStatus.glucose,
             shortDelta = glucoseStatus.shortAvgDelta,
@@ -640,7 +647,26 @@ open class OpenAPSAutoISFPlugin(
         applySetRoleDuration(now)
         applySetRoleNotes(now)
         smbBoostedThisCycle = false
-        markBolusBoosts(
+        if (!codedOn) {
+            mildThisCycle = false
+            bg3ThisCycle = false
+            mildFailsafeThisCycle = false
+            riseHoldThisCycle = false
+            // The hypo alerts still go out, but they write no AlarmRecent or LowBG state
+            checkHypoAlarms(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                rawDelta5 = ukf.delta5 ?: -9999.0,
+                iob = iobData.iob,
+                cob = mealData.mealCOB,
+                steps30 = stepSample?.steps30min ?: 0,
+                lastBolusMin = minutesSinceLastMealEvent(now),
+                markState = false,
+            )
+        } else markBolusBoosts(
             now = now,
             profilePercent = profile_percentage,
             tempTargetSet = isTempTarget,
@@ -659,208 +685,210 @@ open class OpenAPSAutoISFPlugin(
         )
         ukfAvg60LowAlarm(now, minuteOfDay, glucoseStatus.glucose, iobData.iob, ukf.glucose)
         compressionNotes(now, iobData.activity * variableSensitivity * 5.0)
-        applyDeferredAlarmHypoState(now)
-        oneMinuteLoopTierAReset(now)
-        applyOvernightDuraRescue(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            factors = autoIsfFactors,
-            smbSum30 = smbSum(now, 30 * 60 * 1000L),
-            statesOn = statesOn,
-        )
-        applyHighNight(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            tempTargetSet = isTempTarget,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            statesOn = statesOn,
-        )
-        applyBasalUp(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            profilePercent = profile_percentage,
-            statesOn = statesOn,
-        )
-        applyPersistentRise(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            delta = glucoseStatus.delta,
-            bg = glucoseStatus.glucose,
-            tempTargetSet = isTempTarget,
-            statesOn = statesOn,
-            steps5 = stepSample?.steps5min ?: 0,
-            steps30 = stepSample?.steps30min ?: 0,
-        )
-        applyHighBrakes(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            ukfDelta5 = ukf.delta5,
-            ukfDelta15 = ukf.delta15,
-            factors = autoIsfFactors,
-            iob = iobData.iob,
-            cob = mealData.mealCOB,
-            rawDelta5 = raw5,
-            statesOn = statesOn,
-        )
-        applyHigh6(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            profilePercent = profile_percentage,
-            cob = mealData.mealCOB,
-            statesOn = statesOn,
-        )
-        applyPodBoosts(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            profilePercent = profile_percentage,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            statesOn = statesOn,
-            livePump = activePlugin.activePump !is VirtualPump,
-        )
-        exportSettingsAfterNewPod(now, statesOn)
-        revertRaisedWeights(
-            now = now,
-            bg = glucoseStatus.glucose,
-            steps5 = stepSample?.steps5min ?: 0,
-            steps30 = stepSample?.steps30min ?: 0,
-        )
-        revertRaisedDose(
-            now = now,
-            bg = glucoseStatus.glucose,
-            profilePercent = profile_percentage,
-            steps5 = stepSample?.steps5min ?: 0,
-            steps30 = stepSample?.steps30min ?: 0,
-        )
-        applyActivityProf50(
-            now = now,
-            profilePercent = profile_percentage,
-            profileIsBolus = statesOn && states().inState("Profile", "Bolus"),
-            lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-        )
-        applyActivityOff(
-            now = now,
-            profilePercent = profile_percentage,
-            lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-        )
-        applyHypo50(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            profilePercent = profile_percentage,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            statesOn = statesOn,
-            steps30 = stepSample?.steps30min ?: 0,
-            steps60 = stepSample?.steps60min ?: 0,
-            livePump = activePlugin.activePump !is VirtualPump,
-        )
-        applyMjCycle(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            profilePercent = profile_percentage,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            statesOn = statesOn,
-            steps60 = stepSample?.steps60min ?: 0,
-            steps180 = stepSample?.steps180min ?: 0,
-        )
-        applyRescue(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            profilePercent = profile_percentage,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            maxIob = oapsProfile.max_iob,
-            targetBg = targetBg,
-            statesOn = statesOn,
-        )
-        applyProfileBatch(now = now, bg = glucoseStatus.glucose)
-        applyTtExits(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            profilePercent = profile_percentage,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            statesOn = statesOn,
-        )
-        applyEvening(
-            now = now,
-            minuteOfDay = minuteOfDay,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            longDelta = glucoseStatus.longAvgDelta,
-            profilePercent = profile_percentage,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            maxIob = oapsProfile.max_iob,
-            iobReduction = profile_percentage / 100.0 * exerciseRatio,
-            statesOn = statesOn,
-            steps60 = stepSample?.steps60min ?: 0,
-            steps180 = stepSample?.steps180min ?: 0,
-        )
-        applyTodOffsetsZero(
-            now = now,
-            bg = glucoseStatus.glucose,
-            shortDelta = glucoseStatus.shortAvgDelta,
-            rawDelta5 = ukf.delta5,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            statesOn = statesOn,
-            steps60 = stepSample?.steps60min ?: 0,
-        )
-        applySensorNotes(
-            now = now,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            shortDelta = glucoseStatus.shortAvgDelta,
-        )
-        applyStepsSteroidsOff(
-            now = now,
-            bg = glucoseStatus.glucose,
-            delta = glucoseStatus.delta,
-            cob = mealData.mealCOB,
-            iob = iobData.iob,
-            steps60 = stepSample?.steps60min ?: 0,
-            statesOn = statesOn,
-        )
+        if (codedOn) {
+            applyDeferredAlarmHypoState(now)
+            oneMinuteLoopTierAReset(now)
+            applyOvernightDuraRescue(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                factors = autoIsfFactors,
+                smbSum30 = smbSum(now, 30 * 60 * 1000L),
+                statesOn = statesOn,
+            )
+            applyHighNight(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                tempTargetSet = isTempTarget,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                statesOn = statesOn,
+            )
+            applyBasalUp(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                profilePercent = profile_percentage,
+                statesOn = statesOn,
+            )
+            applyPersistentRise(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                delta = glucoseStatus.delta,
+                bg = glucoseStatus.glucose,
+                tempTargetSet = isTempTarget,
+                statesOn = statesOn,
+                steps5 = stepSample?.steps5min ?: 0,
+                steps30 = stepSample?.steps30min ?: 0,
+            )
+            applyHighBrakes(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                ukfDelta5 = ukf.delta5,
+                ukfDelta15 = ukf.delta15,
+                factors = autoIsfFactors,
+                iob = iobData.iob,
+                cob = mealData.mealCOB,
+                rawDelta5 = raw5,
+                statesOn = statesOn,
+            )
+            applyHigh6(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                profilePercent = profile_percentage,
+                cob = mealData.mealCOB,
+                statesOn = statesOn,
+            )
+            applyPodBoosts(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                profilePercent = profile_percentage,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                statesOn = statesOn,
+                livePump = activePlugin.activePump !is VirtualPump,
+            )
+            exportSettingsAfterNewPod(now, statesOn)
+            revertRaisedWeights(
+                now = now,
+                bg = glucoseStatus.glucose,
+                steps5 = stepSample?.steps5min ?: 0,
+                steps30 = stepSample?.steps30min ?: 0,
+            )
+            revertRaisedDose(
+                now = now,
+                bg = glucoseStatus.glucose,
+                profilePercent = profile_percentage,
+                steps5 = stepSample?.steps5min ?: 0,
+                steps30 = stepSample?.steps30min ?: 0,
+            )
+            applyActivityProf50(
+                now = now,
+                profilePercent = profile_percentage,
+                profileIsBolus = statesOn && states().inState("Profile", "Bolus"),
+                lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+            )
+            applyActivityOff(
+                now = now,
+                profilePercent = profile_percentage,
+                lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+            )
+            applyHypo50(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                profilePercent = profile_percentage,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                statesOn = statesOn,
+                steps30 = stepSample?.steps30min ?: 0,
+                steps60 = stepSample?.steps60min ?: 0,
+                livePump = activePlugin.activePump !is VirtualPump,
+            )
+            applyMjCycle(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                profilePercent = profile_percentage,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                statesOn = statesOn,
+                steps60 = stepSample?.steps60min ?: 0,
+                steps180 = stepSample?.steps180min ?: 0,
+            )
+            applyRescue(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                profilePercent = profile_percentage,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                maxIob = oapsProfile.max_iob,
+                targetBg = targetBg,
+                statesOn = statesOn,
+            )
+            applyProfileBatch(now = now, bg = glucoseStatus.glucose)
+            applyTtExits(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                profilePercent = profile_percentage,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                statesOn = statesOn,
+            )
+            applyEvening(
+                now = now,
+                minuteOfDay = minuteOfDay,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                longDelta = glucoseStatus.longAvgDelta,
+                profilePercent = profile_percentage,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                maxIob = oapsProfile.max_iob,
+                iobReduction = profile_percentage / 100.0 * exerciseRatio,
+                statesOn = statesOn,
+                steps60 = stepSample?.steps60min ?: 0,
+                steps180 = stepSample?.steps180min ?: 0,
+            )
+            applyTodOffsetsZero(
+                now = now,
+                bg = glucoseStatus.glucose,
+                shortDelta = glucoseStatus.shortAvgDelta,
+                rawDelta5 = ukf.delta5,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                statesOn = statesOn,
+                steps60 = stepSample?.steps60min ?: 0,
+            )
+            applySensorNotes(
+                now = now,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                shortDelta = glucoseStatus.shortAvgDelta,
+            )
+            applyStepsSteroidsOff(
+                now = now,
+                bg = glucoseStatus.glucose,
+                delta = glucoseStatus.delta,
+                cob = mealData.mealCOB,
+                iob = iobData.iob,
+                steps60 = stepSample?.steps60min ?: 0,
+                statesOn = statesOn,
+            )
+        }
         val activeTt = persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget
         val hiBrkQuiet = hiBrkQuietUamBlock(
             ttMgdl = activeTt,
@@ -895,12 +923,12 @@ open class OpenAPSAutoISFPlugin(
             iob_threshold_percent = iobThresholdPercent,
             auto_isf_consoleError = consoleError,
             auto_isf_consoleLog = consoleLog,
-            fastRiseSettingOn = preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled),
+            fastRiseSettingOn = codedOn && preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled),
             libreActive = libreActive(now),
             rawDelta5Mgdl = ukf.delta5 ?: 0.0,
             aapsDelta1Mgdl = aapsDelta1MinMgdl(now) ?: 0.0,
             hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
-            todOffsetMgdl = todOffsetMmol(
+            todOffsetMgdl = if (!codedOn) 0.0 else todOffsetMmol(
                 hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
                 offset0002 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0002),
                 offset0204 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0204),
@@ -912,7 +940,7 @@ open class OpenAPSAutoISFPlugin(
                 offset2200 = preferences.get(DoubleKey.ApsAutoIsfTodOffset2200),
             ) * 18.0,
             lastAlarmHypoAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt),
-            lowReboundGuardEnabled = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled),
+            lowReboundGuardEnabled = codedOn && preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled),
             steps60 = steps60(now),
             iobThUser = iobThresholdPercent,
             bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration ?: 0.0,
@@ -922,7 +950,7 @@ open class OpenAPSAutoISFPlugin(
             steps180 = steps180(now),
             smbSum10Min = smb10,
             smbSum30Min = smbSum(now, 30 * 60 * 1000L),
-            tddFactor = tddFactorValue(
+            tddFactor = if (!codedOn) 1.0 else tddFactorValue(
                 enabled = preferences.get(BooleanKey.ApsAutoIsfTddFactor),
                 fallback = preferences.get(DoubleKey.ApsAutoIsfTddFactorFallback),
                 tddRatio = tddRatioForFactor(),
@@ -932,7 +960,7 @@ open class OpenAPSAutoISFPlugin(
             hypoPrediction2 = raw5?.let {
                 hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, it, iobData.iob, mealData.mealCOB)
             },
-            smbBoostRecent = smbBoostRecentNow(
+            smbBoostRecent = codedOn && smbBoostRecentNow(
                 bolusGiven = runMarks.recent(RunMark.BOLUS_GIVEN, 30, now),
                 bolusGivenMild = runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 30, now),
                 bolusGivenBg3 = runMarks.recent(RunMark.BOLUS_GIVEN_BG3, 30, now),
@@ -941,28 +969,28 @@ open class OpenAPSAutoISFPlugin(
                 rawDelta5 = ukf.delta5,
                 longAvgDelta = glucoseStatus.longAvgDelta,
             ),
-            nightFrSkipActive = runMarks.recent(RunMark.NIGHT_FR_SKIP, 2, now),
-            uamBoostRecent = uamRecent,
-            uamBstMinutesAgo = runMarks.minutesAgo(RunMark.UAM_BST, now) ?: Int.MAX_VALUE,
-            sub75Cooldown = runMarks.recent(RunMark.SUB75, 10, now),
+            nightFrSkipActive = codedOn && runMarks.recent(RunMark.NIGHT_FR_SKIP, 2, now),
+            uamBoostRecent = codedOn && uamRecent,
+            uamBstMinutesAgo = if (codedOn) runMarks.minutesAgo(RunMark.UAM_BST, now) ?: Int.MAX_VALUE else Int.MAX_VALUE,
+            sub75Cooldown = codedOn && runMarks.recent(RunMark.SUB75, 10, now),
             smbIntervalSec = smbInterval5Sec(now),
-            smbStackStart = preferences.get(LongNonKey.ApsAutoIsfSmbStackStart),
+            smbStackStart = if (codedOn) preferences.get(LongNonKey.ApsAutoIsfSmbStackStart) else 0L,
             // 2026-10-08, per explicit request: MildOffsetZero is switched off. BMild and Tier 3 respect the SMB offset numbers like every
             // other SMB. The flag is still written and cleared by its timer, but no longer read here.
             mildOffsetZero = false,
-            smbOffsetOverrideMmol = if (preferences.get(BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled))
+            smbOffsetOverrideMmol = if (codedOn && preferences.get(BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled))
                 preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) else null,
             mildThisCycle = mildThisCycle,
             bg3ThisCycle = bg3ThisCycle,
-            hiBrkQuietUamBlock = hiBrkQuiet,
+            hiBrkQuietUamBlock = codedOn && hiBrkQuiet,
             riseHold = riseHoldThisCycle,
             mildFailsafeThisCycle = mildFailsafeThisCycle,
-            uamBoostEnabled = preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && tier3Activity > 0.0,
+            uamBoostEnabled = codedOn && preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && tier3Activity > 0.0,
             uamBoostUnrestricted = preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled),
             uamBoostMaxBolus = preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus),
             uamBoostMaxIobPercent = preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toDouble(),
             uamBoostScale = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) * tier3Activity,
-            daytimeGateBypass = newPodHighBypass(now, glucoseStatus.glucose) || runMarks.recent(RunMark.USUAL2, 90, now),
+            daytimeGateBypass = codedOn && (newPodHighBypass(now, glucoseStatus.glucose) || runMarks.recent(RunMark.USUAL2, 90, now)),
             recentLowBg = recentLowBgMgdl(now),
         ).also {
             appendStepLines(it.reason, now)
@@ -1586,6 +1614,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.AutomationStatesEnabled,
             BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
             BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual,
+            BooleanKey.ApsAutoIsfCodedAutomationsEnabled,
             BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
             BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
@@ -2186,6 +2215,38 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote("UsuIP-$usualBlock")
             aapsLogger.debug(LTag.APS, "Usual2 block $usualBlock")
         }
+        checkHypoAlarms(
+            now = now,
+            minuteOfDay = minuteOfDay,
+            bg = bg,
+            delta = delta,
+            shortDelta = shortDelta,
+            rawDelta5 = rawDelta5,
+            iob = iob,
+            cob = cob,
+            steps30 = steps30,
+            lastBolusMin = lastBolusMin,
+            markState = true,
+        )
+    }
+
+    /**
+     * AlarmHypo1 and AlarmHypo2: the SMS, the phone alerts and the graph marks. [markState] false (coded automations off)
+     * still alerts, but writes no AlarmRecent or LowBG state, so nothing that reads the alarm acts on it.
+     */
+    private suspend fun checkHypoAlarms(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        rawDelta5: Double,
+        iob: Double,
+        cob: Double,
+        steps30: Int,
+        lastBolusMin: Int,
+        markState: Boolean,
+    ) {
         // HP2 uses the UKF 5 minute change. HP1 uses the plain Libre 5 minute change, so the
         // two predictions are not the same number. A bolus or carbs in the last 20 minutes
         // closes only this prediction branch. The acceleration weight is not lowered here.
@@ -2221,7 +2282,7 @@ open class OpenAPSAutoISFPlugin(
             // marked at all (no saved time, no AlarmRecent or LowBG state), so nothing that reads the alarm can act on it.
             // The 15 minute run marks are still set, so this is evaluated and logged once per 15 minutes, not every loop.
             val blocked = !virtualAlarmPhone() && hypoTierDropBlocked(minuteOfDay, steps60(now))
-            if (!blocked) markHypoAlarm(now, bg)
+            if (!blocked && markState) markHypoAlarm(now, bg)
             if (hypo1) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo1Numbers)
             if (hypo2) sendAlarmHypoSms(now, minuteOfDay, bg, delta, hp, hp1, iob, cob, StringKey.SmsAlarmHypo2Numbers)
             // 2026-10-09, per explicit request (the same as 3426): the urgent alert and the graph marks. AlarmHypo1 gives H4 and AlarmHypo2
@@ -3558,6 +3619,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.STAGE_APK -> RunMark.STAGE_APK
             RemoteToggleCode.INSTALL_APK -> RunMark.INSTALL_APK
             RemoteToggleCode.ADB_START -> RunMark.ADB_START
+            RemoteToggleCode.CODED_AUTOMATIONS -> RunMark.CODED_AUTOMATIONS_TOGGLE
         }
         val waitMin = when (code) {
             RemoteToggleCode.STAGE_APK, RemoteToggleCode.INSTALL_APK, RemoteToggleCode.ADB_START -> 5
@@ -3640,6 +3702,12 @@ open class OpenAPSAutoISFPlugin(
                 preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled, newState)
                 sendAutoSms("SensorAgeToggle: ${if (newState) "ON" else "OFF"}")
                 carePortalNote("STg${if (newState) "On" else "Off"}")
+            }
+            RemoteToggleCode.CODED_AUTOMATIONS -> {
+                val newState = !preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)
+                preferences.put(BooleanKey.ApsAutoIsfCodedAutomationsEnabled, newState)
+                sendAutoSms("CodedAutomationsToggle: ${if (newState) "ON" else "OFF"}")
+                carePortalNote("CATg${if (newState) "On" else "Off"}")
             }
             RemoteToggleCode.BOOST -> {
                 val newState = !preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)

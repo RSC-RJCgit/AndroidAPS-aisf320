@@ -107,6 +107,7 @@ internal enum class RemoteToggleCode {
     STAGE_APK,
     INSTALL_APK,
     ADB_START,
+    CODED_AUTOMATIONS,
 }
 
 internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
@@ -195,6 +196,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.042, 0.0001) -> RemoteToggleCode.CLEAN_GRAPH
     ttNear(ttMgdl, 5.244, 0.0001) -> RemoteToggleCode.CLEAN_GRAPH_NO_TEXT
     ttNear(ttMgdl, 5.246, 0.0001) -> RemoteToggleCode.GRAPH_RESET
+    ttNear(ttMgdl, 5.248, 0.0001) -> RemoteToggleCode.CODED_AUTOMATIONS
     ttNear(ttMgdl, 5.164, 0.0001) -> RemoteToggleCode.MJ_BUTTONS
     ttNear(ttMgdl, 5.166, 0.0001) -> RemoteToggleCode.STEROID_BUTTON
     ttNear(ttMgdl, 5.196, 0.0001) -> RemoteToggleCode.UKF1_DOSING

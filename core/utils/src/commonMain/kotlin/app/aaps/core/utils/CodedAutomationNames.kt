@@ -14,7 +14,9 @@ import kotlinx.serialization.json.put
  * [MatchType.EXACT] means the names are the same. [MatchType.CLOSE] means one name contains the other.
  * [MatchType.NONE] means there is no match, and that automation is left alone.
  *
- * The list is the 3.2.1 registry. Most of these coded automations do not run in this app yet.
+ * The list is the 3.2.1 registry. Many of these now run as code in OpenAPSAutoISFPlugin, each under its own
+ * switch or none (2026-10-19). Blocking same-named native automations is still off: see
+ * `AutomationRuntime.processActions`.
  */
 object CodedAutomationNames {
 

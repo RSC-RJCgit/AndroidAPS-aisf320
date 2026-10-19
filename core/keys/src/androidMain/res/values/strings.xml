@@ -110,8 +110,10 @@
     <string name="pref_summary_aps_use_live_mj_state">Needs the live Nightscout site. When on, an MJ note from the loop phone (MJ active, NOMJremains, or the manual state notes MJsAc, MJsNO, MJs2, MJs3) is applied once to this phone\'s own MJ state. After that this phone\'s own automations move the state on their own. One-time copy, not a mirror.</string>
     <string name="pref_title_aps_boost_automations">Enable boost automations (BolusGiven + Mild)</string>
     <string name="pref_summary_aps_boost_automations">Master switch for BolusGiven and BolusGivenMild together. Off disables both.</string>
+    <string name="pref_title_aps_coded_automations">Coded AutoISF automations (all)</string>
+    <string name="pref_summary_aps_coded_automations">On (normal): the coded AutoISF automations run, each under its own switch where it has one. Off: all of them stop, and Fast rise, LoReb, TOD offsets, TDD factor, SMB offset override and the Tier 3 UAM boost are not used. Remote toggles from a client, SetRole and the hypo alerts still work. This is not plain AutoISF 3.2.1: other changes in the dosing code of this app stay.</string>
     <string name="pref_title_aps_custom_automations">Custom AutoISF automations</string>
-    <string name="pref_summary_aps_custom_automations">On blocks a native automation when its name matches a coded AutoISF automation, unless you allowed that name on the review list. Off leaves every native automation running. Nothing is blocked yet, because those coded automations are not in this app.</string>
+    <string name="pref_summary_aps_custom_automations">Meant to block a native automation (Automation tab) when its name matches a coded AutoISF automation, unless you allowed that name on the review list, so that the two do not both run. Not active yet: no native automation is blocked, with this on or off. This switch does not turn the coded automations on or off.</string>
     <string name="pref_title_aps_automation_states">Automation states</string>
     <string name="pref_summary_aps_automation_states">Remember named states such as MJ and LowBG. Off makes every state check false.</string>
     <string name="pref_title_aps_activity_detection">Step activity</string>

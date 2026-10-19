@@ -205,6 +205,7 @@ internal object RunMark {
     const val UAM_BOOST_HI_BRK_BLOCK = "UamBoostHiBrkBlockNote"
     const val ACTIVITY_PROF_50 = "ActivityProf50"
     const val ACTIVITY_OFF = "ActivityOff"
+    const val CODED_AUTOMATIONS_TOGGLE = "CodedAutomationsToggleTT"
 }
 
 /**

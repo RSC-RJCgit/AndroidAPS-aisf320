@@ -229,7 +229,7 @@
     <string name="activate_label">Activate</string>
     <string name="activate_profile">Activate profile</string>
     <string name="review_native_automations">Review native automations</string>
-    <string name="review_native_automations_body">These names are close to a coded automation. Check any that should keep running when custom AutoISF automations are on. Unchecked names stay blocked while that switch is on. Nothing is blocked yet, because those coded automations are not in this app.</string>
+    <string name="review_native_automations_body">These names are close to a coded automation. Check any that should keep running when custom AutoISF automations are on. Unchecked names will be blocked while that switch is on. Blocking is not active yet, so nothing is blocked now.</string>
     <string name="autoisf_history_title">AutoISF history</string>
     <string name="autoisf_history_empty">No AutoISF data in the last 6 hours</string>
     <string name="autoisf_history_no_smb">No SMB in the last 6 hours</string>

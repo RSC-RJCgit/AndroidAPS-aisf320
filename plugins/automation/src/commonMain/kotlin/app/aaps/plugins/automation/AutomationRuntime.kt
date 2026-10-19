@@ -612,7 +612,8 @@ class AutomationRuntime(
         // Exact names stay blocked while this switch is on. Close names stay blocked unless the
         // review allowed that exact title. Other names are never touched. The switch does nothing
         // unless AutoISF is the running algorithm, because the coded names belong to that algorithm.
-        // codedAutomationBodiesPresent stays false until the coded automations themselves run here.
+        // codedAutomationBodiesPresent stays false: many coded automations now run in OpenAPSAutoISFPlugin
+        // (2026-10-19), but blocking same-named native ones is not switched on yet.
         // An imported 3.2.1 file can already have this switch on. That must not stop a native
         // automation while nothing in this app replaces it.
         val codedAutomationBodiesPresent = false

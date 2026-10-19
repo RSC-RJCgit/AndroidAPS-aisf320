@@ -317,6 +317,15 @@ enum class BooleanKey(
         dependency = ApsAutoIsfUamBoostEnabled,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // 2026-10-19, per explicit request: master switch for the coded AutoISF automations in OpenAPSAutoISFPlugin. Off stops
+    // them and puts the fork's dosing extras to neutral. Remote toggles, relay notes, SetRole and the hypo alerts stay.
+    ApsAutoIsfCodedAutomationsEnabled(
+        "autoisf_coded_automations_enabled",
+        true,
+        KeysStrings.pref_title_aps_coded_automations,
+        KeysStrings.pref_summary_aps_coded_automations,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfCustomAutomationsEnabled(
         "autoisf_custom_automations_enabled",
         false,

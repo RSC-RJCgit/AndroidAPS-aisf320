@@ -113,6 +113,7 @@ class RemoteTogglesTest {
         assertEquals(RemoteToggleCode.INSTALL_APK, remoteToggleCode(mgdl(5.200)))
         assertEquals(RemoteToggleCode.STAGE_APK, remoteToggleCode(mgdl(5.202)))
         assertEquals(RemoteToggleCode.ADB_START, remoteToggleCode(mgdl(5.208)))
+        assertEquals(RemoteToggleCode.CODED_AUTOMATIONS, remoteToggleCode(mgdl(5.248)))
         assertNull(remoteToggleCode(mgdl(5.154)))
         assertNull(remoteToggleCode(mgdl(5.0)))
         assertNull(remoteToggleCode(mgdl(5.010)))
