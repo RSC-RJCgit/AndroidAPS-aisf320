@@ -1182,6 +1182,12 @@
     <string name="deviation_shortname" comment="Short label for Deviations graph series">DEV</string>
     <string name="activity_shortname" comment="Short label for Activity graph series">ACT</string>
     <string name="iob_threshold_shortname" comment="Short label for the AutoISF IOB threshold graph line">IOB_TH</string>
+    <string name="bg_parabola_shortname" comment="Short label for the AutoISF BG parabola graph line (the fitted BG curve)">BG parabola</string>
+    <string name="final_isf_shortname" comment="Short label for the AutoISF final ISF factor graph line. A technical name, usually not translated">final_ISF</string>
+    <string name="acce_isf_shortname" comment="Short label for the AutoISF acceleration ISF factor graph line. A technical name, usually not translated">acce_ISF</string>
+    <string name="bg_isf_shortname" comment="Short label for the AutoISF BG ISF factor graph line. A technical name, usually not translated">bg_ISF</string>
+    <string name="pp_isf_shortname" comment="Short label for the AutoISF postprandial ISF factor graph line. A technical name, usually not translated">pp_ISF</string>
+    <string name="dura_isf_shortname" comment="Short label for the AutoISF duration ISF factor graph line. A technical name, usually not translated">dura_ISF</string>
     <string name="bgi_shortname" comment="Short label for Blood Glucose Impact graph series">-BGI</string>
     <string name="abs_insulin_shortname" comment="Short label for Absolute Insulin graph series">ABS</string>
     <string name="devslope_shortname" comment="Short label for Deviation Slope graph series">DEVSLOPE</string>

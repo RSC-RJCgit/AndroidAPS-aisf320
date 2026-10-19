@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.ui.compose.AapsTheme
@@ -38,9 +39,9 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProdu
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
 import com.patrykandpatrick.vico.compose.cartesian.decoration.HorizontalBox
-import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.LineComponent
@@ -62,6 +63,12 @@ private const val SERIES_PRED_COB = "pred_cob"
 private const val SERIES_PRED_ACOB = "pred_acob"
 private const val SERIES_PRED_UAM = "pred_uam"
 private const val SERIES_PRED_ZT = "pred_zt"
+
+private const val SERIES_PARABOLA_FIT = "parabola_fit"
+private const val SERIES_PARABOLA_NEXT = "parabola_next"
+
+/** AutoISF 3.2.1 BG parabola colour (@color/bgParabolaColor) */
+private val BG_PARABOLA_COLOR = Color(0xFFFF00FF)
 
 /** All prediction series identifiers */
 private val PREDICTION_SERIES = listOf(SERIES_PRED_IOB, SERIES_PRED_COB, SERIES_PRED_ACOB, SERIES_PRED_UAM, SERIES_PRED_ZT)
@@ -144,6 +151,10 @@ fun BgGraphCompose(
     val showActivity = SeriesType.ACTIVITY in bgOverlays
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
+    // AutoISF 3.2.1 BG parabola (from the IOB graph data, where the calculation puts it)
+    val showParabola = SeriesType.BG_PARAB in bgOverlays
+    val iobGraphData by viewModel.iobGraphFlow.collectAsStateWithLifecycle()
+    val parabola = if (showParabola) iobGraphData.bgParabolaFit to iobGraphData.bgParabolaNext else emptyList<GraphDataPoint>() to emptyList()
 
     // Use derived time range or fall back to default (last GRAPH_TIME_RANGE_HOURS hours)
     val (minTimestamp, maxTimestamp) = derivedTimeRange ?: run {
@@ -203,7 +214,8 @@ fun BgGraphCompose(
         currentActivityScale: ActivityOverlayScale,
         currentMinBgY: Double,
         currentMaxBgY: Double,
-        currentVisibleTimeRange: Pair<Long, Long>?
+        currentVisibleTimeRange: Pair<Long, Long>?,
+        currentParabola: Pair<List<GraphDataPoint>, List<GraphDataPoint>>
     ) {
         val regularPoints = seriesRegistry[SERIES_REGULAR] ?: emptyList()
         val bucketedPoints = seriesRegistry[SERIES_BUCKETED] ?: emptyList()
@@ -242,6 +254,17 @@ fun BgGraphCompose(
                             .sortedBy { it.first }
                         series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
                         activeSeries.add(predSeries)
+                    }
+                }
+
+                // AutoISF 3.2.1 BG parabola: the fitted part and the next 20 minutes
+                for ((key, points) in listOf(SERIES_PARABOLA_FIT to currentParabola.first, SERIES_PARABOLA_NEXT to currentParabola.second)) {
+                    if (points.size >= 2) {
+                        val dataPoints = points
+                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .sortedBy { it.first }
+                        series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
+                        activeSeries.add(key)
                     }
                 }
 
@@ -352,7 +375,7 @@ fun BgGraphCompose(
     }
 
     // Single LaunchedEffect for all data - ensures atomic updates
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange) {
+    LaunchedEffect(bgReadings, bucketedData, predictionsByType, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, parabola) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
         for ((key, points) in predictionsByType) {
@@ -406,7 +429,7 @@ fun BgGraphCompose(
             roomBelow = chartConfig.lowMark - niceBgScale.min
         )
 
-        rebuildChart(basalData, targetData, epsPoints, activityData, activityScale, minBgY, maxBgY, visibleTimeRange)
+        rebuildChart(basalData, targetData, epsPoints, activityData, activityScale, minBgY, maxBgY, visibleTimeRange, parabola)
     }
 
     // Build lookup map for BUCKETED points: x-value -> BgDataPoint (for PointProvider)
@@ -461,8 +484,24 @@ fun BgGraphCompose(
     val uamPredLine = remember(uamPredColor) { createPredictionLine(uamPredColor) }
     val ztPredLine = remember(ztPredColor) { createPredictionLine(ztPredColor) }
 
+    // AutoISF 3.2.1 BG parabola: fitted part solid, next 20 minutes dashed (8 px lines in 3.2.1)
+    val parabolaFitLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(BG_PARABOLA_COLOR)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 3.dp),
+            areaFill = null
+        )
+    }
+    val parabolaNextLine = remember {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(BG_PARABOLA_COLOR)),
+            stroke = LineCartesianLayer.LineStroke.Dashed(thickness = 3.dp, cap = StrokeCap.Round, dashLength = 3.dp, gapLength = 3.dp),
+            areaFill = null
+        )
+    }
+
     val activeSeries by activeSeriesState
-    val bgLines = remember(activeSeries, regularLine, bucketedLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, normalizerLine) {
+    val bgLines = remember(activeSeries, regularLine, bucketedLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, parabolaFitLine, parabolaNextLine, normalizerLine) {
         buildList {
             if (SERIES_REGULAR in activeSeries) add(regularLine)
             if (SERIES_BUCKETED in activeSeries) add(bucketedLine)
@@ -471,6 +510,8 @@ fun BgGraphCompose(
             if (SERIES_PRED_ACOB in activeSeries) add(aCobPredLine)
             if (SERIES_PRED_UAM in activeSeries) add(uamPredLine)
             if (SERIES_PRED_ZT in activeSeries) add(ztPredLine)
+            if (SERIES_PARABOLA_FIT in activeSeries) add(parabolaFitLine)
+            if (SERIES_PARABOLA_NEXT in activeSeries) add(parabolaNextLine)
             add(normalizerLine)
         }
     }

@@ -8,6 +8,7 @@ import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.aps.AutosensResult
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.calibration.CalibrationContext
 import app.aaps.core.interfaces.concurrent.withLock
@@ -50,16 +51,16 @@ import app.aaps.core.objects.extensions.combine
 import app.aaps.core.objects.workflow.WorkOutcome
 import app.aaps.workflow.iob.fromCarbs
 import dev.zacsweers.metro.Inject
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toLocalDateTime
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToLong
 import kotlin.time.Instant
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 /**
  * Merged worker covering: BG load+smooth, bucketed data prep, BG readings prep,
@@ -94,6 +95,24 @@ class PrepareGraphDataRunner(
      * [isStopped] is asked between phases so a replaced chain gives up promptly. It is the executor's
      * flag for this run; the maths does not need to know what stopped it.
      */
+    /**
+     * AutoISF 3.2.1 BG parabola from the glucose fit of the last loop, in the user's units, in 5 minute steps: the
+     * fitted part (from the start of the fit to the last BG) and the next 20 minutes. Both are empty when the last
+     * loop had no AutoISF fit. As in 3.2.1: BG = a0 + a1 * t + a2 * t * t, with t in 5 minute units from the last BG.
+     * 3.2.1 drew it from the time the graph was drawn; here it starts at the time of the last BG, where the fit is.
+     */
+    private fun bgParabola(): Pair<List<GraphDataPoint>, List<GraphDataPoint>> {
+        val status = activePlugin.activeAPS.lastAPSResult?.glucoseStatus as? GlucoseStatusAutoIsf
+        if (status == null || status.corrSqu <= 0.0) return emptyList<GraphDataPoint>() to emptyList()
+        fun point(minutes: Int): GraphDataPoint {
+            val t = minutes / 5.0
+            return GraphDataPoint(status.date + minutes * 60_000L, profileUtil.fromMgdlToUnits(status.a0 + status.a1 * t + status.a2 * t * t))
+        }
+        val fit = (-status.parabolaMinutes.toInt()..0 step 5).map { point(it) }
+        val next = (0..20 step 5).map { point(it) }
+        return fit to next
+    }
+
     override suspend fun run(job: String, generation: Long, isStopped: () -> Boolean): WorkOutcome {
         val data = workflowChainData.prepareFor(job, generation)
             ?: return WorkOutcome.StaleInput
@@ -805,11 +824,24 @@ class PrepareGraphDataRunner(
         val varSensListCompose = persistenceLayer.getVariableSensitivities(fromTime, endTime)
             .map { GraphDataPoint(it.timestamp, profileUtil.fromMgdlToUnits(it.valueMgdl)) }
 
-        // AutoISF 3.2.1: the effective IOB threshold of each stored AutoISF loop
-        val iobThListCompose = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
-            .map { GraphDataPoint(it.timestamp, it.iobThEffective) }
+        // AutoISF 3.2.1: the effective IOB threshold and the ISF factors of each stored AutoISF loop
+        val autoIsfValues = persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime)
+        val (bgParabolaFit, bgParabolaNext) = bgParabola()
 
-        data.cache.updateIobGraph(IobGraphData(iob = iobListCompose, predictions = iobPredictionsListCompose, iobTh = iobThListCompose))
+        data.cache.updateIobGraph(
+            IobGraphData(
+                iob = iobListCompose,
+                predictions = iobPredictionsListCompose,
+                iobTh = autoIsfValues.map { GraphDataPoint(it.timestamp, it.iobThEffective) },
+                finalIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.finalIsf) },
+                acceIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.acceIsf) },
+                bgIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.bgIsf) },
+                ppIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.ppIsf) },
+                duraIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.duraIsf) },
+                bgParabolaFit = bgParabolaFit,
+                bgParabolaNext = bgParabolaNext
+            )
+        )
         data.cache.updateAbsIobGraph(AbsIobGraphData(absIob = absIobListCompose))
         data.cache.updateCobGraph(CobGraphData(cob = cobListCompose, failOverPoints = cobFailOverListCompose))
         data.cache.updateActivityGraph(

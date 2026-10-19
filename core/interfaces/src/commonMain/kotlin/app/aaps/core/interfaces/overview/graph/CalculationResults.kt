@@ -121,14 +121,34 @@ data class CobFailOverPoint(
 // ============================================================================
 
 /**
- * IOB graph data: regular IOB line + prediction points, and the AutoISF 3.2.1 effective IOB threshold
- * (one point per stored AutoISF loop, in units)
+ * IOB graph data: regular IOB line + prediction points, and the AutoISF 3.2.1 values: the effective IOB threshold
+ * (in units) and the ISF factors, one point per stored AutoISF loop, and the BG parabola of the last loop (in the
+ * user's units: the fitted part and the next 20 minutes). They are kept here because they come from the same
+ * calculation step as the IOB.
  */
 data class IobGraphData(
     val iob: List<GraphDataPoint>,
     val predictions: List<GraphDataPoint>,
-    val iobTh: List<GraphDataPoint> = emptyList()
-)
+    val iobTh: List<GraphDataPoint> = emptyList(),
+    val finalIsf: List<GraphDataPoint> = emptyList(),
+    val acceIsf: List<GraphDataPoint> = emptyList(),
+    val bgIsf: List<GraphDataPoint> = emptyList(),
+    val ppIsf: List<GraphDataPoint> = emptyList(),
+    val duraIsf: List<GraphDataPoint> = emptyList(),
+    val bgParabolaFit: List<GraphDataPoint> = emptyList(),
+    val bgParabolaNext: List<GraphDataPoint> = emptyList()
+) {
+
+    /** The points of one AutoISF factor series, empty for any other series type. */
+    fun autoIsfFactor(type: SeriesType): List<GraphDataPoint> = when (type) {
+        SeriesType.FIN_ISF -> finalIsf
+        SeriesType.ACC_ISF -> acceIsf
+        SeriesType.BG_ISF  -> bgIsf
+        SeriesType.PP_ISF  -> ppIsf
+        SeriesType.DUR_ISF -> duraIsf
+        else               -> emptyList()
+    }
+}
 
 /**
  * Absolute IOB graph data: absolute IOB line only

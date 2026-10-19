@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.AdaptiveStep
 import app.aaps.core.graph.vico.Square
+import app.aaps.core.interfaces.overview.graph.AUTO_ISF_SERIES
 import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DeviationType
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
@@ -84,6 +85,9 @@ internal const val IOB_GRAPH_TICK_COUNT = 3
 
 /** Tick count for series that use the graph's full height (COB, BGI/DEV/ACTIVITY/STEPS, VAR_SENS/HEART_RATE, DEV_SLOPE). */
 internal const val SECONDARY_GRAPH_TICK_COUNT = 5
+
+/** Smallest axis range around 1.0 for the AutoISF factors (0.9 – 1.1), so factors that stay at 1.0 do not give a tiny scale. */
+private const val ISF_FACTOR_MIN_DEVIATION = 0.1
 
 /**
  * Tick count for SENSITIVITY's pivot scale specifically — lower than [SECONDARY_GRAPH_TICK_COUNT]
@@ -152,6 +156,8 @@ fun SecondaryGraphCompose(
     activityOverlay: Boolean = false,
     /** AutoISF 3.2.1: draw the effective IOB threshold as a dashed line (IOB graph only). */
     iobThOverlay: Boolean = false,
+    /** AutoISF 3.2.1: ISF factor lines drawn over the IOB graph (IOB graph only). */
+    isfOverlays: List<SeriesType> = emptyList(),
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
@@ -189,16 +195,25 @@ fun SecondaryGraphCompose(
     // Collect data flows — only for selected series types
     // =========================================================================
 
+    // AutoISF 3.2.1 ISF factors: all of them on the left axis, sharing it (centred on 1.0), and at most one
+    // other series on the right axis
+    val isfTypes = orderedTypes.filter { it in AUTO_ISF_SERIES }
+    val otherTypes = orderedTypes.filter { it !in AUTO_ISF_SERIES }
+
     // Primary series = left axis (orderedTypes[0]), secondary series = right axis (orderedTypes[1])
-    val primaryType = orderedTypes[0]
-    val secondaryType = orderedTypes.getOrNull(1)
+    val primaryType = isfTypes.firstOrNull() ?: orderedTypes[0]
+    val secondaryType = if (isfTypes.isEmpty()) orderedTypes.getOrNull(1) else otherTypes.firstOrNull()
 
     // Specific case: BGI and DEVIATIONS share the same mg/dL unit and should share the vertical scale
     val shareAxis = (primaryType == SeriesType.BGI && secondaryType == SeriesType.DEVIATIONS) ||
         (primaryType == SeriesType.DEVIATIONS && secondaryType == SeriesType.BGI)
 
     val isDualAxis = secondaryType != null && !shareAxis
-    val primaryTypes = if (shareAxis) orderedTypes else listOf(primaryType)
+    val primaryTypes = when {
+        isfTypes.isNotEmpty() -> isfTypes
+        shareAxis             -> orderedTypes
+        else                  -> listOf(primaryType)
+    }
 
     val hasIob = primaryType == SeriesType.IOB
     val hasCob = primaryType == SeriesType.COB
@@ -218,6 +233,8 @@ fun SecondaryGraphCompose(
     // Activity data: either as primary series OR as overlay (on IOB graph)
     val needsActivity = primaryType == SeriesType.ACTIVITY || (activityOverlay && hasIob)
     val activityData = if (needsActivity) viewModel.activityGraphFlow.collectAsStateWithLifecycle().value else null
+    // AutoISF 3.2.1 ISF factors: as series of this graph, or as overlays on the IOB graph
+    val autoIsfData = if (isfTypes.isNotEmpty() || (hasIob && isfOverlays.isNotEmpty())) viewModel.iobGraphFlow.collectAsStateWithLifecycle().value else null
     // Basal overlay only when IOB is primary and single-axis (no room for basal with dual-axis)
     val basalData = if (hasIob && !isDualAxis) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
 
@@ -246,6 +263,9 @@ fun SecondaryGraphCompose(
         SeriesType.ACTIVITY        -> viewModel.activityGraphFlow.collectAsStateWithLifecycle().value.activity
         SeriesType.PREDICTIONS     -> emptyList() // UI-only overlay flag, not a secondary series
         SeriesType.IOB_TH          -> emptyList() // IOB graph overlay flag, not a secondary series
+        SeriesType.BG_PARAB        -> emptyList() // BG graph overlay flag, not a secondary series
+        SeriesType.FIN_ISF, SeriesType.ACC_ISF, SeriesType.BG_ISF, SeriesType.PP_ISF, SeriesType.DUR_ISF ->
+            viewModel.iobGraphFlow.collectAsStateWithLifecycle().value.autoIsfFactor(secondaryType)
     }
 
     // Cache last non-empty treatment data to survive reset() cycles
@@ -260,7 +280,7 @@ fun SecondaryGraphCompose(
 
     // Simple line series processing (excludes BASAL — it's a fixed flipped overlay on IOB)
     val processedSimpleSeries = remember(
-        stableTimeRange, absIobData, bgiData, ratioData, varSensData, devSlopeData, hrData, stepsData, activityData
+        stableTimeRange, absIobData, bgiData, ratioData, varSensData, devSlopeData, hrData, stepsData, activityData, autoIsfData
     ) {
         if (!hasRealTimeRange) return@remember emptyList()
         buildList {
@@ -289,6 +309,11 @@ fun SecondaryGraphCompose(
             }
             stepsData?.steps?.takeIf { it.isNotEmpty() }?.let {
                 add(SeriesType.STEPS to processPoints(it, minTimestamp, minX, maxX))
+            }
+            autoIsfData?.let { data ->
+                isfTypes.forEach { type ->
+                    data.autoIsfFactor(type).takeIf { it.isNotEmpty() }?.let { add(type to processPoints(it, minTimestamp, minX, maxX)) }
+                }
             }
             if (primaryType == SeriesType.ACTIVITY) {
                 activityData?.let {
@@ -504,6 +529,20 @@ fun SecondaryGraphCompose(
         hist.map { (x, y) -> x to scale.map(y) } to pred.map { (x, y) -> x to scale.map(y) }
     }
 
+    // AutoISF 3.2.1 ISF factors over the IOB graph, mapped into the IOB axis as in 3.2.1: the highest factor in the
+    // visible window reaches ACTIVITY_HEIGHT_FRACTION of the room above zero. The IOB axis is not changed for them.
+    val processedIsfOverlays = remember(isfOverlays, hasIob, autoIsfData, primaryDataNiceRange, stableTimeRange, visibleMinX, visibleMaxX) {
+        if (!hasRealTimeRange || !hasIob || isfOverlays.isEmpty() || autoIsfData == null) return@remember emptyList()
+        val iobNice = primaryDataNiceRange ?: return@remember emptyList()
+        val factorLines = isfOverlays
+            .map { type -> type to processPoints(autoIsfData.autoIsfFactor(type), minTimestamp, minX, maxX) }
+            .filter { it.second.isNotEmpty() }
+        val maxFactor = factorLines.flatMap { windowedY(it.second, visibleMinX, visibleMaxX) }.maxOrNull() ?: return@remember emptyList()
+        if (maxFactor <= 0.0 || iobNice.max <= 0.0) return@remember emptyList()
+        val scale = iobNice.max * ACTIVITY_HEIGHT_FRACTION / maxFactor
+        factorLines.map { (type, pts) -> type to pts.map { (x, y) -> x to y * scale } }
+    }
+
     // Single source of truth for the primary layer: build the (x, y, slot) specs synchronously,
     // in the exact order they are emitted to the model below. Deriving the line styles,
     // hasPrimaryData and the Y-range from this list (instead of from slot state set asynchronously
@@ -512,7 +551,7 @@ fun SecondaryGraphCompose(
     // stale 0..1 axis until the next recomposition ("renders wrong, then fixes itself").
     val primarySeries = remember(
         processedDeviationLines, processedIob, processedIobTh, processedIobTreatments, processedCob,
-        processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedActivityOverlay
+        processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedActivityOverlay, processedIsfOverlays
     ) {
         buildList {
             // Deviation lines (per-type step lines) — first so other series draw on top
@@ -559,6 +598,10 @@ fun SecondaryGraphCompose(
             // AutoISF 3.2.1 IOB threshold overlay (dashed)
             if (processedIobTh.isNotEmpty())
                 add(PrimarySeriesSpec(processedIobTh.map { it.first }, processedIobTh.map { it.second }, SeriesSlot.IobThOverlay))
+            // AutoISF 3.2.1 ISF factor overlays (scaled)
+            processedIsfOverlays.forEach { (type, pts) ->
+                add(PrimarySeriesSpec(pts.map { it.first }, pts.map { it.second }, SeriesSlot.IsfOverlay(type)))
+            }
         }
     }
     val hasPrimaryData = primarySeries.isNotEmpty()
@@ -590,6 +633,7 @@ fun SecondaryGraphCompose(
                         SeriesSlot.DevSlopeMin      -> createDevSlopeMinLine()
                         SeriesSlot.ActivityOverlay  -> createSeriesLine(SeriesType.ACTIVITY, seriesColors)
                         SeriesSlot.IobThOverlay     -> createIobThLine(seriesColors.iobTh)
+                        is SeriesSlot.IsfOverlay    -> createSeriesLine(slot.type, seriesColors)
                         is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
                     }
                 )
@@ -746,6 +790,8 @@ fun SecondaryGraphCompose(
             SeriesType.VAR_SENSITIVITY, SeriesType.HEART_RATE  -> niceScale(primaryYValues.min(), primaryYValues.max(), SECONDARY_GRAPH_TICK_COUNT)
             SeriesType.SENSITIVITY                             -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 100.0, SENS_PIVOT_TICK_COUNT, SENS_MIN_DEVIATION)
             SeriesType.DEV_SLOPE                               -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 0.0, SECONDARY_GRAPH_TICK_COUNT)
+            // AutoISF factors: 1.0 (no change) in the middle, as in 3.2.1
+            in AUTO_ISF_SERIES                                 -> niceScaleAroundPivot(primaryYValues.min(), primaryYValues.max(), 1.0, SECONDARY_GRAPH_TICK_COUNT, ISF_FACTOR_MIN_DEVIATION)
             else                                               -> null
         }
     }
@@ -986,6 +1032,7 @@ private sealed class SeriesSlot {
     data object DevSlopeMin : SeriesSlot()
     data object ActivityOverlay : SeriesSlot()
     data object IobThOverlay : SeriesSlot()
+    data class IsfOverlay(val type: SeriesType) : SeriesSlot()
 }
 
 // =========================================================================
@@ -1187,7 +1234,12 @@ data class SeriesColors(
     val heartRate: Color,
     val steps: Color,
     val activity: Color,
-    val iobTh: Color
+    val iobTh: Color,
+    val finalIsf: Color,
+    val acceIsf: Color,
+    val bgIsf: Color,
+    val ppIsf: Color,
+    val duraIsf: Color
 ) {
 
     fun colorFor(type: SeriesType): Color = when (type) {
@@ -1204,6 +1256,12 @@ data class SeriesColors(
         SeriesType.ACTIVITY        -> activity
         SeriesType.PREDICTIONS     -> activity // unused — PREDICTIONS is a BG overlay flag, not a secondary series
         SeriesType.IOB_TH          -> iobTh
+        SeriesType.BG_PARAB        -> activity // unused — BG_PARAB is a BG overlay flag, drawn by the BG graph
+        SeriesType.FIN_ISF         -> finalIsf
+        SeriesType.ACC_ISF         -> acceIsf
+        SeriesType.BG_ISF          -> bgIsf
+        SeriesType.PP_ISF          -> ppIsf
+        SeriesType.DUR_ISF         -> duraIsf
     }
 }
 
@@ -1225,7 +1283,13 @@ fun rememberSeriesColors(): SeriesColors {
             heartRate = Color(0xFFFFFF66),           // pale yellow (matches @color/heartRate #FFFFFF66)
             steps = Color(0xFF66FFB8),              // mint green (matches @color/steps)
             activity = Color(0xFFD3F166),           // lime green (matches @color/activity)
-            iobTh = Color(0xFF00FFFF)               // cyan (matches AutoISF 3.2.1 @color/iobThColor)
+            iobTh = Color(0xFF00FFFF),              // cyan (matches AutoISF 3.2.1 @color/iobThColor)
+            // AutoISF 3.2.1 ISF factor colours
+            finalIsf = Color(0xFF00FFFF),           // cyan (@color/finalIsfColor)
+            acceIsf = Color(0xFF0044FF),            // blue (@color/acceIsfColor)
+            bgIsf = Color(0xFFFF0000),              // red (@color/bgIsfColor)
+            ppIsf = Color(0xFF00BB00),              // green (@color/ppIsfColor)
+            duraIsf = Color(0xFFFF8800)             // orange (@color/duraIsfColor)
         )
     }
 }
@@ -1266,6 +1330,12 @@ fun createSeriesLine(type: SeriesType, colors: SeriesColors): LineCartesianLayer
         // Line only, no fill
         SeriesType.DEV_SLOPE, SeriesType.SENSITIVITY, SeriesType.VAR_SENSITIVITY -> LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(color)),
+            areaFill = null
+        )
+        // AutoISF factors: line only, the final factor thicker (as in 3.2.1)
+        SeriesType.FIN_ISF, SeriesType.ACC_ISF, SeriesType.BG_ISF, SeriesType.PP_ISF, SeriesType.DUR_ISF -> LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(color)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = if (type == SeriesType.FIN_ISF) 3.dp else 1.5.dp),
             areaFill = null
         )
         // Points/dots only — no connecting line

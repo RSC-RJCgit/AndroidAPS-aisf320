@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.overview.graph.AUTO_ISF_SERIES
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.GraphConfig
@@ -69,10 +70,10 @@ import com.patrykandpatrick.vico.compose.cartesian.Scroll
 import com.patrykandpatrick.vico.compose.cartesian.Zoom
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
+import kotlin.math.abs
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
-import kotlin.math.abs
 
 /**
  * Overview graphs section using Vico charts.
@@ -193,15 +194,26 @@ private val PREDICTION_SPOKEN_ORDER = listOf(
 )
 
 /** Series types available as BG graph overlays */
-private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS)
+private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.BG_PARAB)
 
 /** Series types available for user-configurable secondary graphs (IOB + UI-only overlays excluded) */
 private val CONFIGURABLE_SERIES = SeriesType.entries.filter {
-    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.IOB_TH
+    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.IOB_TH && it != SeriesType.BG_PARAB
 }
 
 /** Series types available as overlays on the fixed IOB graph */
-private val IOB_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.IOB_TH)
+private val IOB_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.IOB_TH) + AUTO_ISF_SERIES
+
+/**
+ * Keeps a secondary graph within its limit after a series was added: max 2 series, the oldest goes first. The
+ * AutoISF factors do not count, because they share one axis: a graph can hold all of them (as in 3.2.1), and then
+ * 1 other series on the right axis.
+ */
+private fun MutableList<SeriesType>.dropOldestOverLimit() {
+    val others = filter { it !in AUTO_ISF_SERIES }
+    val limit = if (any { it in AUTO_ISF_SERIES }) 1 else 2
+    if (others.size > limit) remove(others.first())
+}
 
 @OptIn(FlowPreview::class)
 @Composable
@@ -639,6 +651,7 @@ fun GraphsSection(
                 nowTimestamp = nowTimestamp,
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
                 iobThOverlay = SeriesType.IOB_TH in graphConfig.iobOverlays,
+                isfOverlays = graphConfig.iobOverlays.filter { it in AUTO_ISF_SERIES },
                 onVisibleRangeChanged = { iobVisibleRange = it },
                 inspect = inspect,
                 modifier = Modifier
@@ -722,7 +735,7 @@ fun GraphsSection(
                         current.remove(type)
                     } else {
                         current.add(type)
-                        if (current.size > 2) current.removeAt(0) // FIFO: drop oldest
+                        current.dropOldestOverLimit()
                     }
                     if (current.isEmpty()) {
                         // Auto-remove graph when all series deselected
@@ -768,7 +781,7 @@ fun GraphsSection(
                             current.remove(type)
                         } else {
                             current.add(type)
-                            if (current.size > 2) current.removeAt(0)
+                            current.dropOldestOverLimit()
                         }
                         newGraphSeries = current
                     },
@@ -843,6 +856,12 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
     SeriesType.ACTIVITY        -> CoreUiStrings.activity_shortname
     SeriesType.PREDICTIONS     -> CoreUiStrings.predictions_shortname
     SeriesType.IOB_TH          -> CoreUiStrings.iob_threshold_shortname
+    SeriesType.BG_PARAB        -> CoreUiStrings.bg_parabola_shortname
+    SeriesType.FIN_ISF         -> CoreUiStrings.final_isf_shortname
+    SeriesType.ACC_ISF         -> CoreUiStrings.acce_isf_shortname
+    SeriesType.BG_ISF          -> CoreUiStrings.bg_isf_shortname
+    SeriesType.PP_ISF          -> CoreUiStrings.pp_isf_shortname
+    SeriesType.DUR_ISF         -> CoreUiStrings.dura_isf_shortname
 }
 
 // =========================================================================
