@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -54,14 +55,23 @@ def find_file(token, name, parent=None, folder=False):
     return files[0]["id"] if files else None
 
 
-def get_folder(token, name, parent=None):
+def get_folder(token, name, parent=None, wait_seconds=5):
+    """The oldest folder with this name, created when there is none.
+
+    Branch CI and the other installer jobs start at the same time and use the same folder name. Drive allows two
+    folders with one name, so each job could create its own and the files were split between them (2026-10-20).
+    find_file() returns the oldest one, and a job that created a folder looks again after a short wait, in case
+    another job created one first. Then every job ends in the same folder.
+    """
     existing = find_file(token, name, parent, folder=True)
     if existing:
         return existing
     metadata = {"name": name, "mimeType": "application/vnd.google-apps.folder"}
     if parent:
         metadata["parents"] = [parent]
-    return json_request(DRIVE, token, metadata, "POST")["id"]
+    created = json_request(DRIVE, token, metadata, "POST")["id"]
+    time.sleep(wait_seconds)
+    return find_file(token, name, parent, folder=True) or created
 
 
 def upload(token, file, parent):
