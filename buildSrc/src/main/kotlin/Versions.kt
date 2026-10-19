@@ -2,7 +2,7 @@ import org.gradle.api.JavaVersion
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 @Suppress("ConstPropertyName")
-object Versions{
+object Versions {
 
     // On change edit aaps-ci.yml
     // AisfX: the extras branch (autoisf321-extras), AutoISF 3.2.1 plus the extra fixes
