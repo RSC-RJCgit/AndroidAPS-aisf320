@@ -1850,6 +1850,8 @@ class DataHandlerMobile(
 
     private suspend fun handleStepsCountBatch(events: List<EventData.ActionStepsRate>) {
         aapsLogger.debug(LTag.WEAR, "Steps count batch received: ${events.size} event(s)")
+        // AutoISF 3.2.1: with "steps from smartphone" on, the phone's own steps are stored and the watch steps are not
+        if (preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) return
         val rows = events.map { e ->
             SC(
                 duration = e.duration,

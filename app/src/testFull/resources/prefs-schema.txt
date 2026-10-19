@@ -296,6 +296,7 @@ loop_openmode_min_change|IntKey|true
 low_mark|UnitDoubleKey|true
 low_temptarget_lowers_sensitivity|BooleanKey|true
 lower_ISFrange_weight|DoubleKey|true
+maintenance_cleanup_days|IntKey|true
 maintenance_logs_amount|IntKey|true
 maintenance_logs_email|StringKey|true
 master_password|StringKey|true

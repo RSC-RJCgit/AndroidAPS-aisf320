@@ -960,7 +960,6 @@
         <item quantity="other">%1$d min</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">Ar tikrai norite išvalyti duombazę?\nIstoriniai duomenys ir pakeitimai, senesni nei 3 mėn., bus ištrinti.</string>
     <string name="cleanup_db_confirm_sync">Ar norite išvalyti duombazę?\nIstoriniai duomenys ir pakeitimai, senesni nei 3 mėn., bus ištrinti.\nSinchronizacija reikšmingai pagreitės.</string>
     <string name="cleared_entries">Ištrinti įrašai</string>
     <string name="reset_db_confirm">Ar tikrai norite iš naujo nustatyti duomenų bazę?</string>

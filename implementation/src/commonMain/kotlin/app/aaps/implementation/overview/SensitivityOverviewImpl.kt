@@ -1,5 +1,6 @@
 package app.aaps.implementation.overview
 
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
@@ -111,6 +112,12 @@ class SensitivityOverviewImpl(
             isfStep = isfStep(isfFrom, isfTo, profileIsfDisplayed, variableIsfDisplayed)
             lines.add(rh.gs(CoreUiStrings.isf_profile, profileIsfDisplayed))
             lines.add(rh.gs(CoreUiStrings.isf_variable, variableIsfDisplayed))
+            // AutoISF 3.2.1 shows the AutoISF effect as one percentage (profile ISF / AutoISF ISF). The chip keeps the two values.
+            val algorithm = if (config.APS) activePlugin.activeAPS?.algorithm
+            else if (config.AAPSCLIENT) processedDeviceStatusData.getAPSResult()?.algorithm
+            else null
+            if (algorithm == APSResult.Algorithm.AUTO_ISF)
+                lines.add(rh.gs(CoreUiStrings.autoisf_long, 100.0 * isfMgdl / variableSens))
             if (namesOwnRatio)
                 lines.add(rh.gs(CoreUiStrings.algorithm_long, ratioUsed * 100))
             val isfForCarbs = profile.getIsfMgdlForCarbs(dateUtil.now(), "Overview", config, processedDeviceStatusData)

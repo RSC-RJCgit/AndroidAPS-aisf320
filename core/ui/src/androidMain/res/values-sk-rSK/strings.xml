@@ -987,7 +987,6 @@
         <item quantity="other">%1$d minút</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">Chcete vyčistiť databázu?\nOdstráni sledované zmeny a historické dáta staršie ako 3 mesiace.</string>
     <string name="cleanup_db_confirm_sync">Chcete vyčistiť databázu?\nOdstráni sledované zmeny a historické dáta staršie ako 3 mesiace.\nVýrazne to urýchli úplnú synchronizáciu.</string>
     <string name="cleared_entries">Vymazané záznamy</string>
     <string name="reset_db_confirm">Naozaj chcete vymazať databázu?</string>

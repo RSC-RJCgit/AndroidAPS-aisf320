@@ -958,7 +958,6 @@
         <item quantity="other">%1$d 分钟</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">是否清理数据库？\n此操作将删除超过 3 个月的追踪变更与历史数据。</string>
     <string name="cleanup_db_confirm_sync">是否清理数据库？\n此操作将删除超过 3 个月的追踪变更与历史数据。\n并可大幅加快完整同步速度。</string>
     <string name="cleared_entries">已清除条目</string>
     <string name="reset_db_confirm">你真的想重置数据库吗？</string>

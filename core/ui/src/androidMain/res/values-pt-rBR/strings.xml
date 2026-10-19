@@ -906,7 +906,6 @@
         <item quantity="other">%1$d minutos</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">Você deseja limpar o banco de dados?\nIrá remover alterações registradas e histórico de dados com mais de 3 meses.</string>
     <string name="cleanup_db_confirm_sync">Você deseja limpar a base de dados?\nIrá remover alterações rastreadas e dados históricos com mais de 3 meses.\nFazer isso irá acelerar a sincronização completa drasticamente.</string>
     <string name="cleared_entries">Entradas apagadas</string>
     <string name="reset_db_confirm">Você realmente quer redefinir os bancos de dados?</string>

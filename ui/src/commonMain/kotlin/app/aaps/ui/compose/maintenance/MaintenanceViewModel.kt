@@ -32,6 +32,8 @@ import app.aaps.core.interfaces.sync.DataSyncSelectorXdrip
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
 import dev.zacsweers.metro.AppScope
@@ -81,8 +83,12 @@ class MaintenanceViewModel(
     private val overviewData: OverviewData,
     private val overviewDataCache: OverviewDataCache,
     private val nsClient: NsClient,
-    private val dateUtil: DateUtil
+    private val dateUtil: DateUtil,
+    private val preferences: Preferences
 ) : ViewModel() {
+
+    /** Days the DB cleanup keeps (AutoISF 3.2.1 setting, 93 by default). */
+    val cleanupKeepDays: Int get() = preferences.get(IntKey.MaintenanceCleanupDays)
 
     private val _events = MutableSharedFlow<MaintenanceEvent>()
     val events: SharedFlow<MaintenanceEvent> = _events
@@ -233,7 +239,7 @@ class MaintenanceViewModel(
     fun cleanupDatabases() {
         maintenanceAction("cleaning up databases") {
             val result = withContext(aapsIoDispatcher) {
-                persistenceLayer.cleanupDatabase(dateUtil.now() - T.days(93).msecs(), deleteTrackedChanges = true)
+                persistenceLayer.cleanupDatabase(dateUtil.now() - T.days(cleanupKeepDays.toLong()).msecs(), deleteTrackedChanges = true)
             }
             if (result.isNotEmpty()) {
                 _events.emit(MaintenanceEvent.CleanupResult(result))

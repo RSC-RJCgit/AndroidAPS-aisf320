@@ -576,7 +576,6 @@
         <item quantity="other">%1$d мин</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">Вы хотите очистить базу данных?\nЭто удалит отслеживаемые изменения и данные старше 3 месяцев.</string>
     <string name="cleanup_db_confirm_sync">Вы хотите очистить базу данных?\nЭто удалит отслеживаемые изменения и данные старше 3 месяцев.\nчто позволит значительно ускорить полную синхронизацию.</string>
     <string name="cleared_entries">Удалённые записи</string>
     <string name="reset_db_confirm">Вы действительно хотите обнулить базы данных?</string>

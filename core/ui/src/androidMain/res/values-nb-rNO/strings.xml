@@ -981,7 +981,6 @@
         <item quantity="other">%1$d minutter</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">Vil du rydde opp i databasen?\nDet vil fjerne sporede endringer og historiske data eldre enn 3 måneder.</string>
     <string name="cleanup_db_confirm_sync">Vil du rydde opp i databasen?\nDet vil fjerne sporede endringer og historiske data eldre enn 3 måneder.\nÅ gjøre dette vil øke hastigheten på synkronisering betydelig.</string>
     <string name="cleared_entries">Fjernet oppføringer</string>
     <string name="reset_db_confirm">Vil du virkelig tilbakestille databasene?</string>

@@ -978,7 +978,6 @@
         <item quantity="other">%1$d phút</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">Bạn có muốn dọn dẹp cơ sở dữ liệu không?\nHành động này sẽ xóa các thay đổi đã theo dõi và dữ liệu lịch sử cũ hơn 3 tháng.</string>
     <string name="cleanup_db_confirm_sync">Bạn có muốn dọn dẹp cơ sở dữ liệu không?\nViệc này sẽ xóa các thay đổi đã theo dõi và dữ liệu lịch sử cũ hơn 3 tháng.\nThao tác này sẽ giúp đồng bộ toàn bộ nhanh hơn đáng kể.</string>
     <string name="cleared_entries">Các mục đã được xóa</string>
     <string name="reset_db_confirm">Bạn có thật sự muốn đặt lại cơ sở dữ liệu không?</string>

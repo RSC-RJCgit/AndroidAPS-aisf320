@@ -761,6 +761,8 @@
     <string name="autosens_long">Autosens Value: %.0f%%</string>
     <string name="autosens_short">%.0f%%</string>
     <string name="algorithm_long">Autosens in algorithm: %.0f%%</string>
+    <string name="script_debug_short" comment="Short label on the client status card for the algorithm the master runs (AUTO_ISF, SMB, AMA, DynISF)">Algorithm</string>
+    <string name="autoisf_long" comment="%.0f = profile ISF divided by AutoISF ISF, in percent. Example: AutoISF: 85%">AutoISF: %.0f%%</string>
 
     <!-- Autotune -->
     <string name="autotune">Autotune</string>
@@ -1042,7 +1044,7 @@
     </plurals>
 
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">Do you want to cleanup the database?\nIt will remove tracked changes and historic data older than 3 months.</string>
+    <string name="cleanup_db_confirm_days" comment="%1$d = number of days kept, for example 93">Do you want to cleanup the database?\nIt will remove tracked changes and historic data older than %1$d days.</string>
     <string name="cleanup_db_confirm_sync">Do you want to cleanup the database?\nIt will remove tracked changes and historic data older than 3 months.\nDoing it will speedup full synchronization dramatically.</string>
     <string name="cleared_entries">Cleared entries</string>
     <string name="reset_db_confirm">Do you really want to reset the databases?</string>

@@ -1202,7 +1202,8 @@ open class OpenAPSAutoISFPlugin(
                             BooleanKey.FslCalibrationEnd,
                             DoubleKey.FslCalOffset,
                             DoubleKey.FslCalSlope,
-                            DoubleKey.FslSmoothAlpha
+                            DoubleKey.FslSmoothAlpha,
+                            IntKey.MaintenanceCleanupDays
                         )
                     ),
                     BooleanKey.ApsUseAutoIsfWeights,

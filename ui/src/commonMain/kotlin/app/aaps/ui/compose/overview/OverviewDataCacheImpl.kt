@@ -18,6 +18,7 @@ import app.aaps.core.data.model.endOf
 import app.aaps.core.data.model.latestRunningAt
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
 import app.aaps.core.interfaces.configuration.Config
@@ -1188,6 +1189,25 @@ class OverviewDataCacheImpl(
             )
         } else null
 
+        // AutoISF 3.2.1: the master's algorithm (DynISF for SMB with dynamic ISF). The dialog shows the script debug lines.
+        val algorithmItem = processedDeviceStatusData.openAPSData.suggested
+            ?.takeIf { processedDeviceStatusData.openAPSData.clockSuggested != 0L && it.algorithm != APSResult.Algorithm.UNKNOWN }
+            ?.let { suggested ->
+                val clockSuggested = processedDeviceStatusData.openAPSData.clockSuggested
+                val level = when {
+                    clockSuggested + T.mins(preferences.get(IntKey.NsClientUrgentAlarmStaleData).toLong()).msecs() < now -> AapsClientLevel.URGENT
+                    clockSuggested + T.mins(preferences.get(IntKey.NsClientAlarmStaleData).toLong()).msecs() < now       -> AapsClientLevel.WARN
+                    else                                                                                                 -> AapsClientLevel.INFO
+                }
+                AapsClientStatusItem(
+                    label = rh.gs(CoreUiStrings.script_debug_short),
+                    value = if (suggested.algorithm == APSResult.Algorithm.SMB && suggested.runningDynamicIsf) "DynISF" else suggested.algorithm.name,
+                    level = level,
+                    dialogTitle = rh.gs(CoreUiStrings.script_debug_short),
+                    dialogText = processedDeviceStatusData.getAPSResult()?.scriptDebug.orEmpty().joinToString("\n")
+                )
+            }
+
         val uploaderItem = if (processedDeviceStatusData.uploaderMap.isNotEmpty()) {
             var minBattery = 100
             var isCharging = false
@@ -1218,7 +1238,7 @@ class OverviewDataCacheImpl(
             )
         } else null
 
-        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, uploader = uploaderItem)
+        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, algorithm = algorithmItem, uploader = uploaderItem)
     }
 
     private suspend fun rebuildHeartRateGraph() {

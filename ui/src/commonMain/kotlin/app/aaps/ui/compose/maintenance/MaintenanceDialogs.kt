@@ -158,7 +158,7 @@ fun MaintenanceDialogs(
     if (showConfirmCleanupDb) {
         OkCancelDialog(
             title = stringResource(CoreUiStrings.confirmation),
-            message = stringResource(CoreUiStrings.cleanup_db_confirm),
+            message = stringResource(CoreUiStrings.cleanup_db_confirm_days, maintenanceViewModel.cleanupKeepDays),
             onConfirm = {
                 showConfirmCleanupDb = false
                 maintenanceViewModel.cleanupDatabases()

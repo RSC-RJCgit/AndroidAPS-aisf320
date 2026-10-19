@@ -981,7 +981,6 @@
         <item quantity="other">%1$d minutos</item>
     </plurals>
     <!--    Maintenance-->
-    <string name="cleanup_db_confirm">¿Deseas limpiar la base de datos?\nSe eliminarán los cambios registrados y los datos históricos de más de 3 meses</string>
     <string name="cleanup_db_confirm_sync">¿Deseas limpiar la base de datos?\nSe eliminarán los cambios registrados y los datos históricos de más de 3 meses.\nAl hacerlo, la sincronización completa se acelerará drásticamente</string>
     <string name="cleared_entries">Entradas eliminadas</string>
     <string name="reset_db_confirm">¿Realmente quieres restablecer las bases de datos?</string>

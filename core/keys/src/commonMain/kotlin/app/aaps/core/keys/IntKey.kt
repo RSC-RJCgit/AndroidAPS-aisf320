@@ -349,6 +349,16 @@ enum class IntKey(
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
     // AutoISF 3.2.1 activity monitor: the sleeping hours in which inactivity is not detected
+    // AutoISF 3.2.1: days the manual DB cleanup keeps (it was a fixed 93). Shorter helps with 1 minute Libre data.
+    MaintenanceCleanupDays(
+        key = "maintenance_cleanup_days",
+        defaultValue = 93,
+        min = 7,
+        max = 93,
+        title = KeysStrings.pref_title_maintenance_cleanup_days,
+        summary = KeysStrings.pref_summary_maintenance_cleanup_days,
+        defaultedBySM = true
+    ),
     ActivityMonitorIdleStart(
         key = "inactivity_idle_start",
         defaultValue = 22,
