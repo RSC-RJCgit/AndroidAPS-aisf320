@@ -73,6 +73,7 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -335,6 +336,27 @@ class ImportExportPrefsImpl(
             )
             if (uploadedFileId == null) {
                 uploadedFileId = provider.uploadFile(exportFileName, bytes, "application/json")
+            }
+            // Extras branch (v3 320TDD049/052): one more try after 3 seconds, as a short network drop is the usual cause.
+            // A note says that the first try failed, so a later success is not mistaken for an easy one.
+            if (uploadedFileId == null) {
+                aapsLogger.warn(LTag.CORE, "${CloudConstants.LOG_PREFIX} EXPORT_UPLOAD_FAIL_RETRYING")
+                val note = rh.gs(R.string.export_to_cloud_retrying)
+                persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                    therapyEvent = TE.asSettingsExport(error = note),
+                    timestamp = dateUtil.now(),
+                    action = Action.EXPORT_SETTINGS,
+                    source = Sources.Automation,
+                    note = note,
+                    listValues = listOf()
+                )
+                delay(3000)
+                uploadedFileId = provider.uploadFileToPath(
+                    exportFileName, bytes, "application/json", CloudConstants.CLOUD_PATH_SETTINGS
+                )
+                if (uploadedFileId == null) {
+                    uploadedFileId = provider.uploadFile(exportFileName, bytes, "application/json")
+                }
             }
             tempDoc.delete()
             return uploadedFileId != null

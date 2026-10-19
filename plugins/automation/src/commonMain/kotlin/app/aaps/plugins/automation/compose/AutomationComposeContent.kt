@@ -293,6 +293,7 @@ class AutomationComposeContent(
             AutomationEditTriggerScreen(
                 root = holder.workingEvent().trigger,
                 bondedDevices = pairedNames.orEmpty(),
+                profileNames = localProfileNames(),
                 onUseCurrentLocation = useCurrentLocation,
                 availableTriggers = plugin.getTriggerDummyObjects(),
                 createTrigger = { cn -> instantiateTrigger(cn) },

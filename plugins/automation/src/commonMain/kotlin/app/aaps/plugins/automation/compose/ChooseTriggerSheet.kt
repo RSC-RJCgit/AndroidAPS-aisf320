@@ -41,6 +41,7 @@ import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
@@ -75,6 +76,7 @@ fun triggerCategoryOf(triggerClass: KClass<*>): TriggerCategory = when (triggerC
     TriggerIob::class,
     TriggerAutosensValue::class,
     TriggerProfilePercent::class,
+    TriggerProfile::class,
     TriggerTempTarget::class,
     TriggerTempTargetValue::class,
     TriggerBolusAgo::class,

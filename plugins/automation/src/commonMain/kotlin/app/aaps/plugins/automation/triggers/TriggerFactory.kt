@@ -78,6 +78,7 @@ class TriggerFactory(
         TriggerIobTH::class.simpleName              -> TriggerIobTH(deps)
         TriggerBgAcceWeight::class.simpleName       -> TriggerBgAcceWeight(deps)
         TriggerAutomationState::class.simpleName    -> triggerAutomationState()
+        TriggerProfile::class.simpleName            -> TriggerProfile(deps)
 
         else                                        -> null
     }

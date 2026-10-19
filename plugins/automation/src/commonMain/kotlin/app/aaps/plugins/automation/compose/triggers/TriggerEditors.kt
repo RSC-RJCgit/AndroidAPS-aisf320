@@ -48,6 +48,7 @@ import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
@@ -69,6 +70,8 @@ fun TriggerEditor(
     onChange: () -> Unit,
     tick: Int = 0,
     bondedDevices: List<String> = emptyList(),
+    /** The profiles to choose from, for the "Profile check" trigger (extras branch). */
+    profileNames: List<String> = emptyList(),
 
     onUseCurrentLocation: ((TriggerLocation) -> Unit)? = null,
     onPickLocationFromMap: (TriggerLocation) -> Unit = {},
@@ -96,6 +99,7 @@ fun TriggerEditor(
             is TriggerPodChange          -> TriggerPodChangeEditor()
             is TriggerPumpLastConnection -> TriggerPumpLastConnectionEditor(trigger, onChange, tick)
             is TriggerProfilePercent     -> TriggerProfilePercentEditor(trigger, onChange, tick)
+            is TriggerProfile            -> TriggerProfileEditor(trigger, profileNames, onChange, tick)
             is TriggerTempTarget         -> TriggerTempTargetEditor(trigger, onChange)
             is TriggerTempTargetValue    -> TriggerTempTargetValueEditor(trigger, onChange, tick)
             is TriggerStepsCount         -> TriggerStepsCountEditor(trigger, onChange, tick)
@@ -514,6 +518,19 @@ fun TriggerProfilePercentEditor(t: TriggerProfilePercent, onChange: () -> Unit, 
             compact = true
         )
     }
+}
+
+/** Extras branch: pick the profile whose running makes the trigger true. */
+@Composable
+fun TriggerProfileEditor(t: TriggerProfile, profileNames: List<String>, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    // As in the profile switch action: a stored name that no longer exists shows empty, so a new one must be picked
+    AutomationDropdown(
+        value = if (t.profileName.value in profileNames) t.profileName.value else "",
+        options = profileNames,
+        onValueChange = { t.profileName.value = it; onChange() },
+        label = stringResource(AutomationStrings.profilename)
+    )
 }
 
 @Composable

@@ -65,6 +65,7 @@ import app.aaps.plugins.automation.triggers.TriggerIob
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerLocation
 import app.aaps.plugins.automation.triggers.TriggerPodChange
+import app.aaps.plugins.automation.triggers.TriggerProfile
 import app.aaps.plugins.automation.triggers.TriggerProfilePercent
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryAge
 import app.aaps.plugins.automation.triggers.TriggerPumpBatteryLevel
@@ -769,7 +770,9 @@ class AutomationRuntime(
             TriggerCannulaAge(triggerDeps),
             TriggerReservoirLevel(triggerDeps),
             TriggerStepsCount(triggerDeps),
-            triggerFactory.triggerAutomationState()
+            triggerFactory.triggerAutomationState(),
+            // Extras branch: the running profile has a chosen name
+            TriggerProfile(triggerDeps)
         )
         // AutoISF 3.2.1 triggers: engineering mode only (always on in this build, see ConfigImpl)
         if (config.isEngineeringMode()) {
