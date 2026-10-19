@@ -49,6 +49,7 @@ fun List1Dialog(viewModel: ChipsViewModel) {
     if (pickProfiles) {
         CodedProfileDialog(viewModel, onDismiss = { pickProfiles = false })
     }
+    ReadOnlyNotice(viewModel)
 }
 
 @Composable
@@ -62,6 +63,7 @@ fun List2Dialog(viewModel: ChipsViewModel) {
         onApply = viewModel::applyList1,
         queuedText = viewModel.queuedRelayText(),
     )
+    ReadOnlyNotice(viewModel)
 }
 
 @Composable
@@ -73,6 +75,20 @@ fun List3Dialog(viewModel: ChipsViewModel) {
         rows = rows,
         onDismiss = viewModel::closeList3,
         onApply = viewModel::applyList3,
+    )
+    ReadOnlyNotice(viewModel)
+}
+
+/** Shown after Apply on a read-only client: practice only, nothing was sent to the master. */
+@Composable
+private fun ReadOnlyNotice(viewModel: ChipsViewModel) {
+    if (!viewModel.readOnlyNotice) return
+    AlertDialog(
+        onDismissRequest = viewModel::closeReadOnlyNotice,
+        text = { Text(stringResource(CoreUiStrings.clientcontrol_fail_read_only_client)) },
+        confirmButton = {
+            TextButton(onClick = viewModel::closeReadOnlyNotice) { Text(stringResource(CoreUiStrings.ok)) }
+        }
     )
 }
 

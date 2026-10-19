@@ -424,7 +424,25 @@ class ChipsViewModel(
         if (queuedRelayCodes.isEmpty()) null
         else "Waiting for the running TT to end (retry every 5 min): " + queuedRelayCodes.joinToString(", ")
 
+    // A read-only client (2026-10-19, per explicit request): the lists stay open for practice, but Apply sends nothing. The coded
+    // TT was a real TT in Nightscout, and a master that takes TTs from Nightscout acted on it (or, on AMA or SMB, dosed for
+    // 5 minutes at the code's odd target).
+    private val readOnlyClient: Boolean
+        get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
+
+    /** True after a read-only client pressed Apply in a list: the list shows the read-only message, nothing was sent. */
+    var readOnlyNotice by mutableStateOf(false)
+        private set
+
+    fun closeReadOnlyNotice() {
+        readOnlyNotice = false
+    }
+
     fun applyList1(mmol: Double) {
+        if (readOnlyClient) {
+            readOnlyNotice = true
+            return
+        }
         if (config.AAPSCLIENT) relayToMaster(mmol) else rxBus.send(EventAutoIsfDirectTtCode(mmol))
         viewModelScope.launch {
             delay(400)
@@ -660,6 +678,11 @@ class ChipsViewModel(
         // "SetRole <key>=<profile>" CarePortal note the 3426 client sends; the master applies it and writes RoleSet. Nothing is
         // written here until Live's value comes back through the settings it publishes.
         if (config.AAPSCLIENT) {
+            // The SetRole note is a command to the master as well: not sent from a read-only client
+            if (readOnlyClient) {
+                readOnlyNotice = true
+                return ""
+            }
             viewModelScope.launch { sendSetRoleNote(role.key, name) }
             return ""
         }
