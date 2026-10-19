@@ -43,6 +43,7 @@ import app.aaps.core.ui.compose.icons.IcAaps
 import app.aaps.core.ui.compose.metroViewModel
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.implementation.lifecycle.IosProtectionLifecycle
+import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.ios.shell.IosAppStartup
 import app.aaps.ios.shell.IosCrashLog
 import app.aaps.ios.shell.PluginStoreRegistry
@@ -116,6 +117,8 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
     val logger = graph.logger
     // First, so that a crash anywhere after this point leaves its error and stack trace in the app log
     IosCrashLog.install(logger)
+    // A brand-new install starts read-only, as on Android (see FreshInstallDefaults). Before anything reads the setting.
+    FreshInstallDefaults.apply(graph.preferences, graph.config)
 
     // Before the composition, not beside it: the first view model built reads the active pump, and
     // an empty plugin list there throws from a coroutine and takes the process with it.

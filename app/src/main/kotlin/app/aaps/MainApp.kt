@@ -49,6 +49,7 @@ import app.aaps.di.metro.MetroGraphs
 import app.aaps.di.metro.MetroWorkerFactory
 import app.aaps.implementation.maintenance.migration.LegacyPreferenceValue
 import app.aaps.implementation.maintenance.migration.PreferenceMigrations
+import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.implementation.receivers.BTReceiver
 import app.aaps.implementation.receivers.ChargingStateReceiver
 import app.aaps.implementation.receivers.KeepAliveWorker
@@ -597,6 +598,9 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         // (modal) at startup. The master seeds and publishes; the client follows.
         if (!config.AAPSCLIENT && preferences.getIfExists(BooleanKey.GeneralSimpleMode) == null)
             preferences.put(BooleanKey.GeneralSimpleMode, !preferences.get(BooleanNonKey.GeneralSetupWizardProcessed))
+        // A brand-new install starts with a few settings that differ from their defaults, for example a client starts
+        // read-only. Only on a fresh install, so an update changes nothing.
+        FreshInstallDefaults.apply(preferences, config)
 
         val keys: Map<String, *> = sp.getAll()
         // Harvest the DIA each old profile was using, for the database migration in dataMigrations().
