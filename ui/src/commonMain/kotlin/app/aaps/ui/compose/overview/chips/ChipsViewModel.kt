@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.overview.SensitivityOverview
+import app.aaps.core.interfaces.overview.graph.autoIsfListsFor
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
@@ -71,6 +72,9 @@ import kotlinx.coroutines.launch
 /** List 3 rows carried out on this phone's own display on a Client, instead of being relayed to the loop phone as a coded TT. */
 const val LOCAL_CLEAN_GRAPH = -42.0
 const val LOCAL_GRAPH_RESET = -43.0
+
+/** List 1 row that opens the coded profile picker. */
+private val CODED_PROFILES_ROW = List1Row("Re-pick coded profiles", "Standard, Low, Steroid", 0.0, null, pickProfiles = true)
 
 data class List1Row(
     val label: String,
@@ -282,8 +286,14 @@ class ChipsViewModel(
         private set
 
     fun openList2() {
+        if (!autoIsfLists()) return
         list2Open = true
     }
+
+    // The AutoISF lists fit the loop: this phone's own loop, or the master's last loop result on a client (2026-10-19,
+    // per explicit request). On AMA or SMB the codes would change AutoISF settings that loop does not use.
+    private fun autoIsfLists(): Boolean =
+        autoIsfListsFor(if (config.AAPSCLIENT) processedDeviceStatusData.getAPSResult()?.algorithm else activePlugin.activeAPS?.algorithm)
 
     fun closeList2() {
         list2Open = false
@@ -295,6 +305,8 @@ class ChipsViewModel(
         private set
 
     fun openList3() {
+        // On a loop phone that runs AMA or SMB nothing is left in List 3
+        if (list3Rows().isEmpty()) return
         list3Open = true
     }
 
@@ -307,16 +319,19 @@ class ChipsViewModel(
     fun list3Rows(): List<List1Row> {
         val clean = "no SMB labels or arrows, plain green line, graph text lines off (hypoprediction stays)"
         val normal = "SMB labels and arrows, line colours and the text lines on again"
+        // The loop phone rows are AutoISF codes: only when the loop runs AutoISF (or is not known). The "this phone" rows
+        // change only this phone's own display and stay.
+        val autoIsf = autoIsfLists()
         return numbered(
-            if (config.AAPSCLIENT) listOf(
+            if (config.AAPSCLIENT) listOfNotNull(
                 List1Row("Clean graph, no text (this phone)", clean, LOCAL_CLEAN_GRAPH, null),
                 List1Row("Graph back to normal (this phone)", normal, LOCAL_GRAPH_RESET, null),
-                List1Row("Clean graph, no text (loop phone)", clean, 5.244, null),
-                List1Row("Graph back to normal (loop phone)", normal, 5.246, null),
-            ) else listOf(
+                List1Row("Clean graph, no text (loop phone)", clean, 5.244, null).takeIf { autoIsf },
+                List1Row("Graph back to normal (loop phone)", normal, 5.246, null).takeIf { autoIsf },
+            ) else if (autoIsf) listOf(
                 List1Row("Clean graph, no text", clean, 5.244, null),
                 List1Row("Graph back to normal", normal, 5.246, null),
-            )
+            ) else emptyList()
         )
     }
 
@@ -475,6 +490,8 @@ class ChipsViewModel(
     }
 
     fun list1Rows(): List<List1Row> {
+        // AMA or SMB loop: only the coded profile picker, because profile roles work with any algorithm (2026-10-19)
+        if (!autoIsfLists()) return numbered(listOf(CODED_PROFILES_ROW))
         val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
         val two: (Double) -> String = { decimalFormatter.to2Decimal(it) }
         val one: (Double) -> String = { decimalFormatter.to1Decimal(it) }
@@ -519,7 +536,7 @@ class ChipsViewModel(
             List1Row("Tier set A", "Standard and Low", 5.216, null),
             List1Row("Tier set B", "Standard and Low", 5.218, null),
             List1Row("Tier set C", "Standard and Low", 5.220, null),
-            List1Row("Re-pick coded profiles", "Standard, Low, Steroid", 0.0, null, pickProfiles = true),
+            CODED_PROFILES_ROW,
             List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
             List1Row("Sensor age code", onOff(preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)), 5.156, null),
             List1Row("Hypo alarm state: set AlarmRecent", "sets the alarm time to now", 5.240, null),

@@ -93,11 +93,13 @@ fun AapsClientStatusCard(
                     statusData.openAps?.let { item ->
                         AapsClientStatusChip(item = item)
                     }
-                    Text(
-                        text = stringResource(UiStrings.client_settings2_chip),
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.clickable(onClick = onOpenList2)
-                    )
+                    // Direct actions are all AutoISF codes: not offered when the master runs AMA or SMB
+                    if (statusData.autoIsfLists)
+                        Text(
+                            text = stringResource(UiStrings.client_settings2_chip),
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.clickable(onClick = onOpenList2)
+                        )
                     Text(
                         text = stringResource(UiStrings.client_settings3_chip),
                         style = MaterialTheme.typography.bodyMedium,

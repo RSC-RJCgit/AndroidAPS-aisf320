@@ -74,6 +74,7 @@ import app.aaps.core.interfaces.overview.graph.TherapyEventType
 import app.aaps.core.interfaces.overview.graph.TimeRange
 import app.aaps.core.interfaces.overview.graph.TreatmentGraphData
 import app.aaps.core.interfaces.overview.graph.VarSensGraphData
+import app.aaps.core.interfaces.overview.graph.autoIsfListsFor
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -1337,7 +1338,10 @@ class OverviewDataCacheImpl(
             )
         } else null
 
-        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem)
+        _nsClientStatusFlow.value = AapsClientStatusData(
+            pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem,
+            autoIsfLists = autoIsfListsFor(processedDeviceStatusData.getAPSResult()?.algorithm)
+        )
     }
 
     /**
@@ -1399,7 +1403,10 @@ class OverviewDataCacheImpl(
             dialogText = "${receiverStatusStore.batteryLevel}%"
         )
 
-        _nsClientStatusFlow.value = AapsClientStatusData(pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem)
+        _nsClientStatusFlow.value = AapsClientStatusData(
+            pump = pumpItem, openAps = openApsItem, autoIsf = autoIsfItem, uploader = uploaderItem,
+            autoIsfLists = autoIsfListsFor(activePlugin.activeAPS?.algorithm)
+        )
     }
 
     /** AutoISF run of the master, read from the same values the graph's top strip uses. */
