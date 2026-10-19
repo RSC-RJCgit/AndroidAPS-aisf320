@@ -169,7 +169,8 @@ fun SecondaryGraphCompose(
     // Ensure DEV_SLOPE is always primary — it needs primary to render both dsMax and dsMin lines
     val orderedTypes = remember(seriesTypes) {
         val mustBePrimary = setOf(SeriesType.DEV_SLOPE, SeriesType.DEVIATIONS)
-        if (seriesTypes.size >= 2 && seriesTypes[0] !in mustBePrimary && seriesTypes[1] in mustBePrimary)
+        // Not on the IOB graph: IOB stays primary there, so that its basal, bolus marks and overlays still work
+        if (seriesTypes.size >= 2 && seriesTypes[0] != SeriesType.IOB && seriesTypes[0] !in mustBePrimary && seriesTypes[1] in mustBePrimary)
             listOf(seriesTypes[1], seriesTypes[0])
         else
             seriesTypes

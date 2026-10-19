@@ -66,7 +66,8 @@ data class SecondaryGraph(
  *   overlay (toggled via [iobOverlays]).
  *
  * @param bgOverlays       Overlay toggles for the BG graph (currently only [SeriesType.ACTIVITY]).
- * @param iobOverlays      Overlay toggles for the fixed IOB graph ([SeriesType.ACTIVITY] and [SeriesType.IOB_TH]).
+ * @param iobOverlays      Overlay toggles for the fixed IOB graph ([SeriesType.ACTIVITY], [SeriesType.IOB_TH] and the
+ *   [AUTO_ISF_SERIES]), plus at most one other series drawn on its right axis (then basal is not drawn).
  * @param secondaryGraphs  Ordered list of user-configurable secondary graph configurations.
  *   IOB cannot appear here (it has a dedicated fixed slot). Each graph is a List (not Set) to
  *   preserve selection order:

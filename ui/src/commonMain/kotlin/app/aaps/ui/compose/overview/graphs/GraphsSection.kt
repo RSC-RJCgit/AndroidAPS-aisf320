@@ -201,8 +201,14 @@ private val CONFIGURABLE_SERIES = SeriesType.entries.filter {
     it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.IOB_TH && it != SeriesType.BG_PARAB
 }
 
-/** Series types available as overlays on the fixed IOB graph */
-private val IOB_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.IOB_TH) + AUTO_ISF_SERIES
+/**
+ * Series that can go on the right axis of the fixed IOB graph, one at a time (as in 3.2.1, where graph 1 could show
+ * any series). Activity and the AutoISF lines are overlays instead and are not in this list.
+ */
+private val IOB_RIGHT_AXIS_SERIES = CONFIGURABLE_SERIES.filter { it != SeriesType.ACTIVITY && it !in AUTO_ISF_SERIES }
+
+/** Series types available on the fixed IOB graph: the overlays, then one series for the right axis */
+private val IOB_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.IOB_TH) + AUTO_ISF_SERIES + IOB_RIGHT_AXIS_SERIES
 
 /**
  * Keeps a secondary graph within its limit after a series was added: max 2 series, the oldest goes first. The
@@ -644,7 +650,8 @@ fun GraphsSection(
         Box(modifier = Modifier.pullUp(IOB_GRAPH_PULL_UP)) {
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
-                seriesTypes = listOf(SeriesType.IOB),
+                // IOB on the left axis, and the chosen right axis series if any (then basal is not drawn)
+                seriesTypes = listOf(SeriesType.IOB) + listOfNotNull(graphConfig.iobOverlays.firstOrNull { it in IOB_RIGHT_AXIS_SERIES }),
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
                 derivedTimeRange = derivedTimeRange,
@@ -662,8 +669,9 @@ fun GraphsSection(
                 types = graphConfig.iobOverlays.filter { it in AUTO_ISF_SERIES },
                 modifier = Modifier.align(Alignment.TopStart).padding(start = AUTO_ISF_LEGEND_START_PADDING)
             )
+            val iobRightSeries = graphConfig.iobOverlays.firstOrNull { it in IOB_RIGHT_AXIS_SERIES }
             GraphNameRow(
-                name = stringResource(CoreUiStrings.iob) + " / " + stringResource(CoreUiStrings.basal_shortname),
+                name = stringResource(CoreUiStrings.iob) + " / " + stringResource(iobRightSeries?.let { seriesShortNameId(it) } ?: CoreUiStrings.basal_shortname),
                 editName = stringResource(CoreUiStrings.iob),
                 onEdit = if (isSimpleMode) null else ({ editingIobOverlays = true }),
                 modifier = Modifier
@@ -682,7 +690,13 @@ fun GraphsSection(
                 },
                 onToggle = { type ->
                     val current = graphConfig.iobOverlays.toMutableList()
-                    if (type in current) current.remove(type) else current.add(type)
+                    if (type in current) {
+                        current.remove(type)
+                    } else {
+                        // Only one series on the right axis: a new one replaces the old one
+                        if (type in IOB_RIGHT_AXIS_SERIES) current.removeAll { it in IOB_RIGHT_AXIS_SERIES }
+                        current.add(type)
+                    }
                     graphViewModel.updateGraphConfig(graphConfig.copy(iobOverlays = current))
                 },
                 onDismiss = { editingIobOverlays = false }
