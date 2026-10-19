@@ -2,11 +2,11 @@ package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.focusable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusTarget
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -111,7 +111,9 @@ fun Modifier.graphZoomControls(onZoom: (Int) -> Unit, onPan: (Float) -> Unit): M
                 else                                             -> false
             }
         }
-        .focusable()
+        // 2026-10-20: focusTarget, not focusable. focusable() also scrolls the page to show the focused item, and the
+        // graph area is taller than the screen, so the first press after opening made the whole screen jump up.
+        .focusTarget()
         .pointerInput(onZoom, onPan) {
             var lastX = 0f
             var downX = 0f
@@ -122,7 +124,8 @@ fun Modifier.graphZoomControls(onZoom: (Int) -> Unit, onPan: (Float) -> Unit): M
                     val change = event.changes.firstOrNull() ?: continue
                     when (event.type) {
                         PointerEventType.Press   -> {
-                            focusRequester.requestFocus()
+                            // Only a mouse click: the keys are for a keyboard, and a finger never needs the focus
+                            if (change.type == PointerType.Mouse) focusRequester.requestFocus()
                             lastX = change.position.x
                             downX = lastX
                             dragging = false
