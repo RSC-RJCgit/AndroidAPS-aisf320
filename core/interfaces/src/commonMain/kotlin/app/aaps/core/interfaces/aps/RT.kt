@@ -57,6 +57,10 @@ data class RT(
     var autoIsfFinal: Double? = null,
     /** AutoISF 3.2.1 effective IOB threshold of this loop, in U. Not sent by the live phone. */
     var autoIsfIobTh: Double? = null,
+    // The loop phone's automation states (2026-10-21, per explicit request), so a client can show them: the current value of
+    // each state and the values each may hold, as the same JSON texts the loop phone stores. Null when states are off.
+    var automationStatesCurrent: String? = null,
+    var automationStatesValues: String? = null,
 
     var consoleLog: MutableList<String>? = null,
     var consoleError: MutableList<String>? = null

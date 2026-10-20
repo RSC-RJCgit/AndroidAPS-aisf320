@@ -53,11 +53,14 @@ fun AutomationStatesScreen(
     storedStates: String,
     addRequested: Boolean,
     onAddHandled: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** A client (2026-10-21, per explicit request): the same coloured values, but a tap only says where to change them. */
+    readOnly: Boolean = false
 ) {
     // The service is not observable, so a counter redraws the list after each change made here
     var tick by remember { mutableStateOf(0) }
     var editing by remember { mutableStateOf<String?>(null) }
+    var showSetOnLoopPhone by remember { mutableStateOf(false) }
     @Suppress("UNUSED_EXPRESSION") tick
     @Suppress("UNUSED_EXPRESSION") storedStates
     val states = automationState.getAllStates()
@@ -74,13 +77,21 @@ fun AutomationStatesScreen(
             modifier = modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (readOnly && showSetOnLoopPhone) item {
+                Text(
+                    text = stringResource(AutomationStrings.automation_states_set_on_loop_phone),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
             items(states, key = { it.first }) { (name, current) ->
                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = name,
                             style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.fillMaxWidth().clickable { editing = name }
+                            modifier = Modifier.fillMaxWidth().clickable { if (readOnly) showSetOnLoopPhone = true else editing = name }
                         )
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             automationState.getStateValues(name).forEach { value ->
@@ -88,8 +99,11 @@ fun AutomationStatesScreen(
                                 FilterChip(
                                     selected = selected,
                                     onClick = {
-                                        automationState.setState(name, value)
-                                        tick++
+                                        if (readOnly) showSetOnLoopPhone = true
+                                        else {
+                                            automationState.setState(name, value)
+                                            tick++
+                                        }
                                     },
                                     label = { Text(value, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
                                     // As in 3.2.1 (2026-10-20, per explicit request): the current value solid green, the others
@@ -111,7 +125,7 @@ fun AutomationStatesScreen(
         }
     }
 
-    if (addRequested) {
+    if (addRequested && !readOnly) {
         AddStateDialog(
             existing = states.map { it.first },
             onDismiss = onAddHandled,

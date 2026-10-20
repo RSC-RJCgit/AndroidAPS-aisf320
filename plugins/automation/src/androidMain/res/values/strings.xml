@@ -178,6 +178,7 @@
     <string name="state_value_label">State value</string>
     <string name="no_automation_states">No automation states yet. Add one on the Automation states screen first.</string>
     <string name="automation_states">Automation states</string>
+    <string name="automation_states_set_on_loop_phone">Only the loop phone can change a state. Change it there.</string>
     <string name="add_automation_state">Add automation state</string>
     <string name="automation_state_values_title" comment="%1$s = state name, for example Sleeping">Values of %1$s</string>
     <string name="enter_state_value">New value</string>

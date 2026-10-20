@@ -333,7 +333,8 @@ class AutomationComposeContent(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { addRequested = true }) {
+                        // Only the loop phone adds states; a client shows the loop phone's copy
+                        if (plugin.executionEnabled) IconButton(onClick = { addRequested = true }) {
                             Icon(Icons.Default.Add, contentDescription = addDesc)
                         }
                     }
@@ -345,7 +346,8 @@ class AutomationComposeContent(
             automationState = triggerFactory.automationState,
             storedStates = storedStates,
             addRequested = addRequested,
-            onAddHandled = { addRequested = false }
+            onAddHandled = { addRequested = false },
+            readOnly = !plugin.executionEnabled
         )
     }
 

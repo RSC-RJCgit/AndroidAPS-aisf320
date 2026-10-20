@@ -56,6 +56,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
@@ -528,6 +529,12 @@ open class OpenAPSAutoISFPlugin(
             it.autoIsfDura = autoIsfValues.duraIsf
             it.autoIsfFinal = autoIsfValues.finalIsf
             it.autoIsfIobTh = autoIsfValues.iobThEffective
+            // The states go out with the result too, so a client shows the real current ones (2026-10-21)
+            val stateValues = preferences.get(StringNonKey.AutomationStateValues)
+            if (stateValues.isNotBlank() && stateValues != "{}") {
+                it.automationStatesCurrent = preferences.get(StringNonKey.AutomationCurrentStates)
+                it.automationStatesValues = stateValues
+            }
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
             determineBasalResult.inputConstraints = inputConstraints

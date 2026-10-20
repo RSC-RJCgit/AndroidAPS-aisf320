@@ -13,6 +13,7 @@ import app.aaps.core.interfaces.rx.events.EventNsClientStatusUpdated
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.utils.safeGetString
@@ -187,6 +188,18 @@ class NSDeviceStatusHandler(
         }
     }
 
+    /**
+     * A client keeps a read-only copy of the loop phone's automation states, from its newest loop result (2026-10-21, per
+     * explicit request). The States screen then shows the loop phone's real values; only the loop phone changes them.
+     */
+    private fun mirrorAutomationStates(rt: RT) {
+        if (!config.AAPSCLIENT) return
+        val values = rt.automationStatesValues ?: return
+        val current = rt.automationStatesCurrent ?: return
+        if (preferences.get(StringNonKey.AutomationStateValues) != values) preferences.put(StringNonKey.AutomationStateValues, values)
+        if (preferences.get(StringNonKey.AutomationCurrentStates) != current) preferences.put(StringNonKey.AutomationCurrentStates, current)
+    }
+
     private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus) {
         nsDeviceStatus.openaps?.suggested?.let {
             it.safeGetString("timestamp")?.let { timestamp ->
@@ -197,6 +210,7 @@ class NSDeviceStatusHandler(
                         val suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
                         processedDeviceStatusData.openAPSData.suggested = suggested
                         storeReceivedAutoIsf(suggested, clock)
+                        mirrorAutomationStates(suggested)
                     } catch (e: Exception) {
                         aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
                     }
