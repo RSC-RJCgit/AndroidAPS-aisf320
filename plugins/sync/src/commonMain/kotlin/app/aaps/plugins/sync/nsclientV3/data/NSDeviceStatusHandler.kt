@@ -265,7 +265,8 @@ class NSDeviceStatusHandler(
             aapsLogger.error(LTag.NSCLIENT, "Live loop result was not stored: ${error.message}")
             return
         }
-        storeReceivedAutoIsf(rt, clock)
+        val enactedRate = deviceStatus.openaps?.enacted?.let { e -> runCatching { RT.deserialize(e.toString()).rate }.getOrNull() }
+        storeReceivedAutoIsf(rt, clock, enactedRate)
         if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled)) &&
             preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
             now - clock <= LiveSteps.MAX_AGE_MS
