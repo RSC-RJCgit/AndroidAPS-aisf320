@@ -1,8 +1,10 @@
 package app.aaps.desktop.shell.platform
 
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
@@ -13,10 +15,10 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.implementation.maintenance.AUTO_ISF_EXPORT_WINDOW_MS
+import app.aaps.core.objects.autoisf.cells
+import app.aaps.core.objects.autoisf.loadAutoIsfHistoryRows
 import app.aaps.implementation.maintenance.DesktopFolders
 import app.aaps.implementation.maintenance.USER_ENTRIES_EXPORT_WINDOW_MS
-import app.aaps.implementation.maintenance.autoIsfExportCells
 import app.aaps.implementation.maintenance.autoIsfExportCsv
 import app.aaps.implementation.maintenance.autoIsfExportText
 import app.aaps.implementation.maintenance.autoIsfSettingsText
@@ -62,23 +64,16 @@ class DesktopHistoryExport(
     private val aapsLogger: AAPSLogger,
     private val cloudStorageManager: CloudStorageManager,
     private val preferences: Preferences,
-    private val userEntryPresentationHelper: UserEntryPresentationHelper
+    private val userEntryPresentationHelper: UserEntryPresentationHelper,
+    private val config: Config,
+    private val activePlugin: ActivePlugin
 ) : HistoryExport {
 
     override suspend fun writeAndUpload(trigger: String) {
         val now = dateUtil.now()
-        val units = profileFunction.getUnits()
-        val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AUTO_ISF_EXPORT_WINDOW_MS, now)
-            .sortedByDescending { it.timestamp }
-            .map { row ->
-                autoIsfExportCells(
-                    row = row,
-                    timeText = { dateUtil.timeString(it) },
-                    glucoseText = { profileUtil.fromMgdlToStringInUnits(it, units) },
-                    deltaText = { profileUtil.fromMgdlToSignedStringInUnits(it, units) },
-                    format2 = { decimalFormatter.to2Decimal(it) }
-                )
-            }
+        // The same rows and columns as the table on screen (2026-10-21, per explicit request)
+        val rows = loadAutoIsfHistoryRows(now, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin)
+            .map { it.cells() }
         val entries = persistenceLayer.getUserEntryFilteredDataFromTime(now - USER_ENTRIES_EXPORT_WINDOW_MS)
         val stamp = LocalDateTime.now().format(STAMP)
         val scope = exportScopeName(preferences.get(StringKey.GeneralInstanceName), "Desktop")

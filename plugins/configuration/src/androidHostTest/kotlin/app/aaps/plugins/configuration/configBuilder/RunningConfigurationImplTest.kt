@@ -13,8 +13,10 @@ import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.scenes.ActiveSceneSnapshot
 import app.aaps.core.interfaces.scenes.ActiveSceneSync
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -23,6 +25,7 @@ import app.aaps.core.keys.interfaces.SyncDirection
 import app.aaps.core.nssdk.localmodel.configuration.NSActiveScene
 import app.aaps.core.nssdk.localmodel.configuration.NSRunningConfiguration
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
@@ -123,6 +126,34 @@ internal class RunningConfigurationImplTest {
      * Representative guard that a plugin-settings key is flagged for the cold path, and that — carried in
      * `syncedPrefs` — it is adopted on the client via `putRemote` (master-wins, version floored).
      */
+    /** 2026-10-21: a key that is local to each device now is not taken from an older master that still publishes it. */
+    @Test
+    fun applyColdIgnoresAKeyThatIsLocalToTheDevice() {
+        assertNull(BooleanKey.ApsAutoIsfShowGraph5.sync)
+        whenever(preferences.get(BooleanKey.ApsAutoIsfShowGraph5.key)).thenReturn(BooleanKey.ApsAutoIsfShowGraph5)
+        sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(BooleanKey.ApsAutoIsfShowGraph5.key to "false")))
+        verify(preferences, never()).putRemote(eq(BooleanKey.ApsAutoIsfShowGraph5), any<Boolean>(), any())
+    }
+
+    /** A read-only client keeps a shared setting it changed itself: the master never got that change. */
+    @Test
+    fun readOnlyClientKeepsASettingItChangedItself() {
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
+        whenever(preferences.get(LongComposedKey.SyncedPrefModified, DoubleKey.AutosensMin.key)).thenReturn(1_000L)
+        sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
+        verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
+    }
+
+    /** A read-only client still follows the master for a shared setting it never changed. */
+    @Test
+    fun readOnlyClientFollowsTheMasterForAnUntouchedSetting() {
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
+        sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
+        verify(preferences).putRemote(DoubleKey.AutosensMin, 0.85, 0L)
+    }
+
     @Test
     fun applyColdSyncedPrefsAdoptsPluginSettingDoubleViaPutRemote() {
         assertEquals(SyncChannel.Cold, DoubleKey.AutosensMin.sync?.channel)

@@ -7,8 +7,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,8 +17,6 @@ import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
-import app.aaps.core.ui.compose.LocalConfig
-import app.aaps.ui.UiStrings
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.compose.main.TempTargetChipState
@@ -229,20 +225,7 @@ private fun NarrowChips(
                 enabled = commandsAllowed
             )
         }
-        val config = LocalConfig.current
-        val appName = when {
-            config.AAPSCLIENT3 -> stringResource(UiStrings.overview_app_client3)
-            config.AAPSCLIENT2 -> stringResource(UiStrings.overview_app_client2)
-            config.AAPSCLIENT1 -> stringResource(UiStrings.overview_app_client)
-            config.PUMPCONTROL -> stringResource(UiStrings.overview_app_pump_control)
-            else -> stringResource(UiStrings.overview_app_master)
-        }
-        Text(
-            // Only the major version, so "4.0.0-beta1" shows as v4.
-            text = stringResource(UiStrings.overview_app_version, appName, config.VERSION_NAME.firstOrNull { it.isDigit() }?.toString().orEmpty()),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        // The "Client2-v4" label moved to the fixed corner line (VersionOverlay) on 2026-10-21, as in 3426.
         TbrChip(
             state = tbrState,
             onClick = onTbrChipClick,

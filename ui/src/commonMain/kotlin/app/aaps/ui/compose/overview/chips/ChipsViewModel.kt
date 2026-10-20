@@ -36,7 +36,6 @@ import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
-import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
@@ -48,14 +47,14 @@ import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.readTier
 import app.aaps.core.keys.tierSummary
+import app.aaps.core.objects.autoisf.AUTO_ISF_HISTORY_WINDOW_MS
+import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
+import app.aaps.core.objects.autoisf.loadAutoIsfHistoryRows
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
 import app.aaps.ui.UiStrings
-import app.aaps.ui.compose.overview.AUTO_ISF_HISTORY_WINDOW_MS
-import app.aaps.ui.compose.overview.AutoIsfHistoryRow
-import app.aaps.ui.compose.overview.autoIsfHistoryRows
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
@@ -230,29 +229,8 @@ class ChipsViewModel(
     }
 
     /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
-    suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> {
-        val now = dateUtil.now()
-        val units = profileFunction.getUnits()
-        val fromLivePhone = config.APS && !config.AAPSCLIENT &&
-            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
-            activePlugin.activePump.selectedActivePump() is VirtualPump
-        val steps = persistenceLayer.getStepsCountFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
-        val aivRows = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AUTO_ISF_HISTORY_WINDOW_MS, now)
-            .sortedByDescending { it.timestamp }
-        // Profile basal at each row's time (not the running/temp rate). Looked up here because the lookup is suspend.
-        val profileBasal = aivRows.associate { it.timestamp to profileFunction.getProfile(it.timestamp)?.getBasal(it.timestamp) }
-        return aivRows
-            .autoIsfHistoryRows(
-                profileBasalAt = { profileBasal[it] },
-                timeText = { dateUtil.timeString(it) },
-                glucoseText = { profileUtil.fromMgdlToStringInUnits(it, units) },
-                deltaText = { profileUtil.fromMgdlToSignedStringInUnits(it, units) },
-                format2 = { decimalFormatter.to2Decimal(it) },
-                steps = steps,
-                fromLivePhone = fromLivePhone,
-                ownDevice = "openaps://${config.deviceModelForUpload}"
-            )
-    }
+    suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> =
+        loadAutoIsfHistoryRows(dateUtil.now(), persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin)
 
     var list1Open by mutableStateOf(false)
         private set

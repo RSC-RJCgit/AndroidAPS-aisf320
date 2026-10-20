@@ -209,7 +209,12 @@ class NSDeviceStatusHandler(
                     try {
                         val suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
                         processedDeviceStatusData.openAPSData.suggested = suggested
-                        storeReceivedAutoIsf(suggested, clock)
+                        val enactedRate = nsDeviceStatus.openaps?.enacted?.let { e -> runCatching { RT.deserialize(e.toString()).rate }.getOrNull() }
+                        storeReceivedAutoIsf(suggested, clock, enactedRate)
+                        mirrorAutomationStates(suggested)
+                        // 2026-10-21, per explicit request: a client keeps the loop phone's step counts too, for the
+                        // S5-S180 columns of the AutoISF table (the virtual phone already did)
+                        if (config.AAPSCLIENT) nsDeviceStatus.device?.let { storeReceivedSteps(it, clock, suggested.reason.toString()) }
                     } catch (e: Exception) {
                         aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
                     }
@@ -357,9 +362,21 @@ class NSDeviceStatusHandler(
         return activePlugin.activePump.selectedActivePump() is VirtualPump
     }
 
-    private fun storeReceivedAutoIsf(rt: RT, clock: Long) {
+    /**
+     * A client keeps a read-only copy of the loop phone's automation states, from its newest loop result (2026-10-21, per
+     * explicit request). The States dialog then shows the loop phone's real values; only the loop phone changes them.
+     */
+    private fun mirrorAutomationStates(rt: RT) {
+        if (!config.AAPSCLIENT) return
+        val values = rt.automationStatesValues ?: return
+        val current = rt.automationStatesCurrent ?: return
+        if (preferences.get(StringNonKey.AutomationStateValues) != values) preferences.put(StringNonKey.AutomationStateValues, values)
+        if (preferences.get(StringNonKey.AutomationCurrentStates) != current) preferences.put(StringNonKey.AutomationCurrentStates, current)
+    }
+
+    private fun storeReceivedAutoIsf(rt: RT, clock: Long, enactedRate: Double?) {
         if (!keepsReceivedAutoIsf()) return
-        val row = receivedAutoIsfRow(clock, rt) { profileUtil.convertToMgdl(it, profileUtil.units) } ?: return
+        val row = receivedAutoIsfRow(clock, rt, enactedRate) { profileUtil.convertToMgdl(it, profileUtil.units) } ?: return
         appScope.launch {
             val already = persistenceLayer.getAutoIsfValuesFromTimeToTime(clock, clock)
             if (already.any { it.timestamp == clock }) return@launch

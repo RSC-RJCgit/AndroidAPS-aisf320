@@ -30,6 +30,9 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.aaps.core.objects.autoisf.AutoIsfFactor
+import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
+import app.aaps.core.objects.autoisf.scrollingCells
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.stringResource
@@ -159,18 +162,12 @@ private fun historyHeaders(): List<String> = listOf(
     stringResource(UiStrings.autoisf_history_basal),
     stringResource(UiStrings.autoisf_history_profile_basal),
     stringResource(UiStrings.autoisf_history_note),
+    stringResource(UiStrings.autoisf_history_mj),
     stringResource(UiStrings.autoisf_history_steps_5),
     stringResource(UiStrings.autoisf_history_steps_15),
     stringResource(UiStrings.autoisf_history_steps_30),
     stringResource(UiStrings.autoisf_history_steps_60),
     stringResource(UiStrings.autoisf_history_steps_180)
-)
-
-private fun AutoIsfHistoryRow.scrollingCells(): List<String> = listOf(
-    glucose, ukf, ukfDelta5, ukfDelta15, finalIsf, acceIsf, bgIsf, ppIsf, duraIsf,
-    acceleration, delta, shortDelta, longDelta, iob, iob5, iobTh, smb,
-    target, uam, smbRatio, acceWeight, ppWeight, slope, cob, basal, profileBasal, note,
-    steps5, steps15, steps30, steps60, steps180
 )
 
 @Composable
@@ -206,6 +203,7 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
         insulin,
         insulin,
         insulin,
+        time,
         time,
         time,
         time,

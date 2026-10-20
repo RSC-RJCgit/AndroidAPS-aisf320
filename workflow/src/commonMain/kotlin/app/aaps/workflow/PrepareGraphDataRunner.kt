@@ -54,6 +54,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.autoisf.mjStateFromNote
 import app.aaps.core.objects.extensions.combine
 import app.aaps.core.utils.carbModelRatePer5Min
 import app.aaps.core.objects.workflow.WorkOutcome
@@ -962,21 +963,8 @@ class PrepareGraphDataRunner(
     // Latest MJ care-portal note in the last 24 hours. No note means NOM.
     private suspend fun latestMjState(at: Long): String {
         val notes = persistenceLayer.getTherapyEventDataFromTime(at - T.hours(24).msecs(), TE.Type.NOTE, ascending = false)
-        val note = notes.firstOrNull {
-            val text = it.note ?: ""
-            it.timestamp <= at && (
-                text == "MJ" || text == "MJ active" || text == "MJsAc" ||
-                    text == "MJ2" || text == "MJs2" ||
-                    text == "MJ3" || text == "MJs3" || text == "MoreMJ" ||
-                    text == "A1" || text == "NOMJremains" || text == "MJsNO" || text.startsWith("MJoff")
-                )
-        } ?: return "NOM"
-        return when (note.note) {
-            "MJ", "MJ active", "MJsAc" -> "MJa"
-            "MJ2", "MJs2" -> "MJ2"
-            "MJ3", "MJs3", "MoreMJ" -> "MJ3"
-            else -> "NOM"
-        }
+        // The same reading of the notes as the MJ column of the AutoISF table
+        return notes.filter { it.timestamp <= at }.firstNotNullOfOrNull { mjStateFromNote(it.note ?: "") } ?: "NOM"
     }
 
     private fun factorOrDash(value: Double): String = if (value == 1.0 || value == 0.0) "--" else twoDecimals(value)

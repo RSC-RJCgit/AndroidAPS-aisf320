@@ -81,10 +81,10 @@ data class GraphConfig(
         /** Default graph height in dp (minimum value — user-adjustable up to [MAX_GRAPH_HEIGHT_DP]) */
         const val DEFAULT_GRAPH_HEIGHT_DP = 100
 
-        /** Maximum graph height in dp (2.5x default) */
-        const val MAX_GRAPH_HEIGHT_DP = 250
+        /** Maximum height of the other graphs in dp: the same as the main graph (2026-10-21, per explicit request; was 250). */
+        const val MAX_GRAPH_HEIGHT_DP = 600
 
-        /** Main glucose graph only. The other graphs stay at [MAX_GRAPH_HEIGHT_DP]. */
+        /** Main glucose graph. */
         // 2026-10-16, per explicit request: was 500.
         const val MAX_BG_GRAPH_HEIGHT_DP = 600
     }

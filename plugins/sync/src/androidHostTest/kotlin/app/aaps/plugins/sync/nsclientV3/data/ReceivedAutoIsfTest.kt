@@ -53,4 +53,26 @@ class ReceivedAutoIsfTest {
         assertEquals(0.6, row.basal)
         assertEquals(100.0, row.targetMgdl)
     }
+
+    @Test
+    fun liveResultWithoutTheTextLinesUsesItsOwnFields() {
+        // The 3426 loop phone writes no targetMgdl, mealCOB, basalRate or uamCarbImpact lines
+        val rt = RT(
+            runningDynamicIsf = false,
+            algorithm = APSResult.Algorithm.AUTO_ISF,
+            bg = 150.0,
+            targetBG = 99.0,
+            COB = 7.0,
+            rate = 0.3,
+            autoIsfUamCarbImpact = 4.5,
+            autoIsfFinal = 1.2,
+            reason = StringBuilder("Delta: 0.2 ;")
+        )
+        val row = receivedAutoIsfRow(60L, rt, enactedRate = 0.8) { it * 18.0 }!!
+        assertEquals(99.0, row.targetMgdl)
+        assertEquals(7.0, row.cob)
+        assertEquals(4.5, row.uamCarbImpact)
+        assertEquals(0.8, row.basal)
+        assertEquals(0.3, receivedAutoIsfRow(60L, rt) { it * 18.0 }!!.basal)
+    }
 }

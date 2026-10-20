@@ -21,10 +21,15 @@ private val targetMgdlRegex = Regex("""targetMgdl:\s*([0-9.]+)""")
  * One history row from a loop result the live phone already uploaded.
  * Returns null when that result has no AutoISF fields and no delta text.
  * [displayDeltaToMgdl] converts Delta, SDelta and LDelta. bg_acce and targetMgdl stay in mg/dL.
+ *
+ * The 3426 loop phone (Live) writes no targetMgdl, mealCOB, basalRate or uamCarbImpact text lines, so those come from
+ * the result's own fields when the line is missing (2026-10-21, per explicit request: they were always empty).
+ * [enactedRate] is the temp basal the loop phone set, from the enacted result, as the 3426 client reads it.
  */
 internal fun receivedAutoIsfRow(
     timestamp: Long,
     rt: RT,
+    enactedRate: Double? = null,
     displayDeltaToMgdl: (Double) -> Double,
 ): AIV? {
     val reason = rt.reason.toString()
@@ -51,14 +56,14 @@ internal fun receivedAutoIsfRow(
         smbDelivered = rt.units ?: 0.0,
         ukfRawBgl = rt.autoIsfUkfRawBgl ?: 0.0,
         iobThEffective = firstNumber(iobThEffectiveRegex, reason) ?: 0.0,
-        targetMgdl = firstNumber(targetMgdlRegex, reason) ?: 0.0,
-        uamCarbImpact = firstNumber(uamCarbImpactRegex, reason) ?: 0.0,
+        targetMgdl = firstNumber(targetMgdlRegex, reason) ?: rt.targetBG ?: 0.0,
+        uamCarbImpact = firstNumber(uamCarbImpactRegex, reason) ?: rt.autoIsfUamCarbImpact ?: 0.0,
         smbDeliveryRatio = firstNumber(smbDeliveryRatioRegex, reason) ?: 0.0,
         acceIsfWeight = firstNumber(acceIsfWeightRegex, reason) ?: 0.0,
         ppIsfWeight = firstNumber(ppIsfWeightRegex, reason) ?: 0.0,
         fslCalSlope = firstNumber(fslCalSlopeRegex, reason) ?: 0.0,
-        cob = firstNumber(mealCobRegex, reason) ?: 0.0,
-        basal = firstNumber(basalRateRegex, reason) ?: 0.0,
+        cob = firstNumber(mealCobRegex, reason) ?: rt.COB ?: 0.0,
+        basal = firstNumber(basalRateRegex, reason) ?: enactedRate ?: rt.rate ?: 0.0,
     )
 }
 

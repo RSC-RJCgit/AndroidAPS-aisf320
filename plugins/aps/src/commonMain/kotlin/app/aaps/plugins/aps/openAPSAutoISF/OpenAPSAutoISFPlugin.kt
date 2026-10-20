@@ -6681,6 +6681,15 @@ open class OpenAPSAutoISFPlugin(
         rt.autoIsfDura = factors.duraIsf
         rt.autoIsfFinal = factors.finalIsf
         rt.autoIsfUkfRawBgl = ukfRawMgdl
+        // The states go out with the result, so a client shows the real current ones (2026-10-21)
+        if (preferences.get(BooleanKey.AutomationStatesEnabled)) {
+            val current = preferences.get(StringNonKey.AutomationCurrentStates)
+            val values = preferences.get(StringNonKey.AutomationStateValues)
+            if (values.isNotBlank() && values != "{}") {
+                rt.automationStatesCurrent = current
+                rt.automationStatesValues = values
+            }
+        }
         val shown = { mgdl: Double -> round(convert_bg_to_units(mgdl, profile), 2) }
         rt.reason.append("Delta: ${shown(factors.delta)} ;")
         rt.reason.append("SDelta: ${shown(factors.shortAvgDelta)} ;")

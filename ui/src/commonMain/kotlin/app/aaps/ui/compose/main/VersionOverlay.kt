@@ -1,15 +1,24 @@
 package app.aaps.ui.compose.main
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.keys.LongComposedKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalPreferences
+import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 
 /**
  * @see VersionOverlayPreview
@@ -28,10 +37,31 @@ fun VersionOverlay(
         preferences.get(LongComposedKey.AppExpiration, config.VERSION_NAME) != 0L -> colors.versionWarning
         else                                                                      -> colors.versionUncommitted
     }
-    Text(
-        text = "${config.VERSION_NAME} (${config.HEAD.substring(0, minOf(4, config.HEAD.length))})",
-        color = versionColor,
-        fontSize = 10.sp,
-        modifier = modifier.padding(top = 4.dp, start = 4.dp)
-    )
+    val appName = when {
+        config.AAPSCLIENT3 -> stringResource(UiStrings.overview_app_client3)
+        config.AAPSCLIENT2 -> stringResource(UiStrings.overview_app_client2)
+        config.AAPSCLIENT1 -> stringResource(UiStrings.overview_app_client)
+        config.PUMPCONTROL -> stringResource(UiStrings.overview_app_pump_control)
+        else               -> stringResource(UiStrings.overview_app_master)
+    }
+    // Only the major version, so "4.0.0-rc1" shows as v4
+    val label = stringResource(UiStrings.overview_app_version, appName, config.VERSION_NAME.firstOrNull { it.isDigit() }?.toString().orEmpty())
+    // The first part of the Nightscout address, for example "aapsfour" from https://aapsfour.ns.com.hr
+    val nsUrl by preferences.observe(StringKey.NsClientUrl).collectAsStateWithLifecycle()
+    val site = nsUrl.substringAfter("://").substringBefore('/').substringBefore('.').trim()
+    // 2026-10-21, per explicit request: one line, as in 3426. The version on the left, the app and its Nightscout site on the
+    // right. The line is fixed, so it stays on screen while the page scrolls.
+    Row(modifier = modifier.fillMaxWidth().padding(top = 4.dp, start = 4.dp, end = 4.dp)) {
+        Text(
+            text = "${config.VERSION_NAME} (${config.HEAD.substring(0, minOf(4, config.HEAD.length))})",
+            color = versionColor,
+            fontSize = 10.sp
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = if (site.isEmpty()) label else stringResource(UiStrings.overview_app_site, label, site),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 10.sp
+        )
+    }
 }

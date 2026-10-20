@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.scenes.ActiveSceneSnapshot
 import app.aaps.core.interfaces.scenes.ActiveSceneSync
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
@@ -155,8 +156,15 @@ class RunningConfigurationImpl(
      * out-wins this remotely-adopted value under last-write-wins.
      */
     private fun applySyncedPrefs(prefs: Map<String, String>) {
+        val readOnlyClient = preferences.get(BooleanKey.NsClientReadOnlyClient)
         prefs.forEach { (keyString, valueString) ->
             val key = preferences.get(keyString) ?: return@forEach
+            // 2026-10-21: only keys this app still shares. A master on an older build still publishes a key that is now
+            // local to each device (Graph 5), and taking it switched the client's own choice off again.
+            if (key.sync == null) return@forEach
+            // A read-only client keeps what it changed itself: its edit is not sent to the master, so the master's next
+            // publish put the old value back (insulin totals, boost...). A key it never changed still follows the master.
+            if (readOnlyClient && preferences.get(LongComposedKey.SyncedPrefModified, key.key) > 0L) return@forEach
             when (key) {
                 is BooleanNonPreferenceKey -> valueString.toBooleanStrictOrNull()?.let { preferences.putRemote(key, it, 0L) }
                 is StringNonPreferenceKey  -> preferences.putRemote(key, valueString, 0L)

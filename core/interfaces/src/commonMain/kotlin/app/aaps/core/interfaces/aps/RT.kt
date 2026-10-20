@@ -51,6 +51,12 @@ data class RT(
     var autoIsfFinal: Double? = null,
     /** UKF-smoothed raw glucose, mg/dL, from the phone that ran the loop. */
     var autoIsfUkfRawBgl: Double? = null,
+    /** UAM carb impact the 3426 loop phone sends as its own field (it writes no `uamCarbImpact:` text line). */
+    var autoIsfUamCarbImpact: Double? = null,
+    // The loop phone's automation states (2026-10-21, per explicit request), so a client can show them: the current value of
+    // each state and the values each may hold, as the same JSON texts the loop phone stores. Null when states are off.
+    var automationStatesCurrent: String? = null,
+    var automationStatesValues: String? = null,
 
     var consoleLog: MutableList<String>? = null,
     var consoleError: MutableList<String>? = null
