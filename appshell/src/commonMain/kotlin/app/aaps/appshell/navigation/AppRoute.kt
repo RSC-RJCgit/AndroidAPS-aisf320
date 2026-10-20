@@ -97,6 +97,8 @@ sealed class AppRoute(val route: String) {
     }
 
     data object AutomationList : AppRoute("automation_list")
+    /** The Automation screen, opened on its states page (from search). */
+    data object AutomationStates : AppRoute("automation_states")
     data object SceneList : AppRoute("scene_list")
     data object SceneWizard : AppRoute("scene_wizard?sceneId={sceneId}") {
 
