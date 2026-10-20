@@ -185,8 +185,16 @@ android {
 
 
     sourceSets {
-        getByName("aapsclient2") { kotlin.directories.add("src/aapsclient/kotlin") }
-        getByName("aapsclient3") { kotlin.directories.add("src/aapsclient/kotlin") }
+        // Client2 and Client3 use the Client manifest too (2026-10-20): it drops the wear permission, so they install beside a
+        // full AAPS signed with another key. Only Client had it, and Client2 was refused on a phone with vanilla AAPS.
+        getByName("aapsclient2") {
+            kotlin.directories.add("src/aapsclient/kotlin")
+            manifest.srcFile("src/aapsclient/AndroidManifest.xml")
+        }
+        getByName("aapsclient3") {
+            kotlin.directories.add("src/aapsclient/kotlin")
+            manifest.srcFile("src/aapsclient/AndroidManifest.xml")
+        }
 
         // Instrumented tests that drive one pump, added only where that pump is in the build. An e2e
         // test for a Dana emulator has nothing to test without :pump:dana:danar, so it should not compile
