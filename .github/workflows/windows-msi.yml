@@ -20,6 +20,9 @@ permissions:
 jobs:
   package:
     name: Build and upload Windows installer (Client${{ matrix.client }})
+    # Only in AndroidAPS-aisf320, which has the signing and Drive secrets. The same branches are also pushed to
+    # AndroidAPS-v4-autoisf321 for the unit tests; there this job stopped at "Check Secrets" and showed red (2026-10-20).
+    if: github.repository == 'RSC-RJCgit/AndroidAPS-aisf320'
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -125,7 +128,7 @@ jobs:
   mac:
     name: Build and upload macOS installer (Client${{ matrix.client }}, ${{ matrix.arch }})
     needs: package
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && github.repository == 'RSC-RJCgit/AndroidAPS-aisf320' }}
     strategy:
       fail-fast: false
       max-parallel: 1
