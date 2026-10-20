@@ -503,9 +503,11 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // On by default (2026-10-20, per explicit request): a read-only or unpaired client never gets the master's value, so
+    // Windows and iPhone clients never showed the row.
     ApsAutoIsfShowInsulinTotals(
         "autoisf_show_insulin_totals",
-        false,
+        true,
         KeysStrings.pref_title_show_insulin_totals,
         KeysStrings.pref_summary_show_insulin_totals,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
