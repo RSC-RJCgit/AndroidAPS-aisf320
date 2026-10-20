@@ -142,6 +142,9 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
+/** What AlarmHypo1 ("_____H4") and AlarmHypo2 ("__________A4", "H4") write as graph announcements. */
+private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
+
 // Which delta test StuckRisingSlowly uses (2026-10-06, per explicit request): it used to ask "was a delayed bolus delivered
 // in the last hour", which is not a meal event at all. It now reads the same meal-event age as every other "bolus ago"
 // test (minutesSinceLastMealEvent(): carb age, or the last manual bolus age while extended carbs are active; delayed, split
@@ -3218,6 +3221,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // which does not render on the graph. TE.asAnnouncement() + Action.TREATMENT + the explicit
     // EventRefreshOverview send are all load-bearing; this isn't just insertPumpTherapyEventIfNewByTimestamp
     // with a different Type.
+    /**
+     * A hypo alarm in the last 24 hours, from the graph announcements AlarmHypo1 ("_____H4") and AlarmHypo2
+     * ("__________A4", "H4") write (2026-10-21). They are in the database, so the answer also holds after a restart.
+     */
+    private fun hypoAlarmAnnouncedWithin24h(): Boolean =
+        persistenceLayer.getTherapyEventDataFromTime(dateUtil.now() - T.hours(24).msecs(), TE.Type.ANNOUNCEMENT, true)
+            .any { it.isValid && it.note?.trim() in HYPO_ALARM_ANNOUNCEMENTS }
+
     private fun addGraphAnnouncement(note: String) {
         disposable += persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE.asAnnouncement(note),
@@ -8251,8 +8262,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && checkAutomationState("AlarmHypo", "AlarmRecent")
                 && iobData.iob >= 0.2
             // Independent OR-path: no recent genuine high (raw Libre >12.0mmol within 48h) plus MJ
-            // state still allowing it -- ignores all the other existingConditionsMet checks above.
+            // state still allowing it, a hypo alarm in the last 24 h and few steps -- ignores the other
+            // existingConditionsMet checks above.
+            // 2026-10-21, per explicit request: this path also needs a hypo alarm (AlarmHypo1 or AlarmHypo2) in the last 24
+            // hours and very few steps (under 50 in 60 min, under 500 in 180 min). Without them it set MJ3 at 06:00 every
+            // day: MJoff puts MJ back to NOMJremains at 00:00-01:00, and "no high in 48 h" alone was nearly always true.
             val noRecentHighTrigger = !recentLibreOver12(48) && checkAutomationState("MJ", "NOMJremains")
+                && hypoAlarmAnnouncedWithin24h()
+                && recentSteps60Minutes < 50
+                && recentSteps180Minutes < 500
             // Split 2026-09-17, per explicit request: existingConditionsMet is specifically the
             // hypoalarm-triggered path (requires AlarmHypo=AlarmRecent) -- MJ3 unlocks fuller dosing
             // eligibility (e.g. HighDaytimeBrake's mid-band SMB boost, widened to MJ3 the same day),
