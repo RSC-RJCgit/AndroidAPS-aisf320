@@ -94,8 +94,9 @@ class MaintenanceImpl(
         return performCloudLogUpload(zipFile)
     }
 
-    override suspend fun exportCoordinated(trigger: String) {
+    override suspend fun exportCoordinated(trigger: String, withLogs: Boolean) {
         historyFilesWriter.writeAndUpload(trigger)
+        if (!withLogs) return
         val uploaded = uploadLogsToCloud()
         aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOGS result=${if (uploaded) "SUCCESS" else "FAILURE"}")
     }

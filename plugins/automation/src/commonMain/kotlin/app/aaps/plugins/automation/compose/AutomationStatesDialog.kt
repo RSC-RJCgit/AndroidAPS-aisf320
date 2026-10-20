@@ -59,6 +59,8 @@ fun AutomationStatesDialog(
 ) {
     var editing by remember { mutableStateOf<AutomationStateEntry?>(null) }
     var adding by remember { mutableStateOf(false) }
+    // A client shows the same coloured values (2026-10-20, per explicit request); a tap only says where to change them
+    var showSetOnLoopPhone by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onClose,
@@ -73,13 +75,21 @@ fun AutomationStatesDialog(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)
                 ) {
+                    if (editor == null && showSetOnLoopPhone) {
+                        Text(
+                            text = stringResource(AutomationStrings.automation_states_set_on_loop_phone),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                     for (row in rows) {
                         Text(
                             text = row.name,
                             style = MaterialTheme.typography.titleSmall,
-                            modifier = if (editor != null) Modifier.fillMaxWidth().clickable { editing = row } else Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().clickable { if (editor != null) editing = row else showSetOnLoopPhone = true }
                         )
-                        if (editor == null) {
+                        if (row.values.isEmpty()) {
+                            // No list of possible values here (an old copy from the loop phone): the current one only
                             Text(if (row.current.isEmpty()) "--" else row.current)
                         } else {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
@@ -87,7 +97,7 @@ fun AutomationStatesDialog(
                                     val selected = value == row.current
                                     FilterChip(
                                         selected = selected,
-                                        onClick = { editor.setCurrent(row.name, value) },
+                                        onClick = { if (editor != null) editor.setCurrent(row.name, value) else showSetOnLoopPhone = true },
                                         label = { Text(value, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
                                         // As in 3.2.1 (2026-10-20, per explicit request): the current value solid green, the
                                         // others plain grey. The default chip only tinted the selected one.

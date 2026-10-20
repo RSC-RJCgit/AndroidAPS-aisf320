@@ -205,7 +205,9 @@ class StatsViewModel(
     private fun loadTirStats() {
         tirLoadJob?.cancel()
         tirLoadJob = viewModelScope.launch {
-            _uiState.update { it.copy(tirLoading = true) }
+            // 2026-10-20: the spinner only before the first result. A refresh keeps the last numbers on screen until
+            // the new ones are ready, so the card no longer blanks at every new reading.
+            _uiState.update { it.copy(tirLoading = it.tirStatsData == null) }
             val data = withContext(aapsIoDispatcher) {
                 val lowTirMgdl = Constants.STATS_RANGE_LOW_MMOL * Constants.MMOLL_TO_MGDL
                 val highTirMgdl = Constants.STATS_RANGE_HIGH_MMOL * Constants.MMOLL_TO_MGDL
@@ -248,7 +250,7 @@ class StatsViewModel(
     private fun loadDexcomTirStats() {
         dexcomLoadJob?.cancel()
         dexcomLoadJob = viewModelScope.launch {
-            _uiState.update { it.copy(dexcomTirLoading = true) }
+            _uiState.update { it.copy(dexcomTirLoading = it.dexcomTirData == null) }
             val data = withContext(aapsIoDispatcher) {
                 dexcomTirCalculator.calculate()
             }

@@ -49,8 +49,9 @@ class IosMaintenance(
      * The scheduled and manual export: the AutoISF history files, then a copy of the log, each uploaded to the
      * cloud folder when that is on.
      */
-    override suspend fun exportCoordinated(trigger: String) {
+    override suspend fun exportCoordinated(trigger: String, withLogs: Boolean) {
         history.writeAndUpload(trigger)
+        if (!withLogs) return
         val uploaded = uploadLogsToCloud()
         aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=LOGS result=${if (uploaded) "SUCCESS" else "FAILURE"}")
     }

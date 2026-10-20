@@ -65,6 +65,7 @@ import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.SecondaryGraph
 import app.aaps.core.interfaces.overview.graph.SeriesType
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.keys.interfaces.AppPlatform
@@ -74,6 +75,7 @@ import app.aaps.ui.UiStrings
 import app.aaps.core.ui.compose.blockSystemEdgeGesture
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalDecimalFormatter
+import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.rowAction
@@ -300,7 +302,8 @@ fun GraphsSection(
         // Scrolling keeps the width, so only a real zoom (more than 1 minute) ends the override
         if (start != null && visibleMinutes != null && abs(visibleMinutes - start) > 1.0) graphViewModel.clearCleanGraphOverride()
     }
-    val automaticCleanGraph = cleanGraphForWindow && !cleanGraphOverride
+    val autoCleanGraphOn by LocalPreferences.current.observe(BooleanKey.ApsAutoIsfAutoCleanGraph).collectAsStateWithLifecycle()
+    val automaticCleanGraph = autoCleanGraphOn && cleanGraphForWindow && !cleanGraphOverride
 
     // Settle further before feeding into BG specifically: unlike the secondary graphs (which are
     // non-interactive and unaffected by frequent updates), BG has live pinch-zoom. Updating its
@@ -614,6 +617,12 @@ fun GraphsSection(
                             "mainZoom",
                             "zoom $lastMainZoom -> $bgZoom scroll $scrollBefore -> $bgScroll max=$bgMax followNow=$followNow"
                         )
+                        // 2026-10-21, per explicit request: a pinch on the main graph is the user's too. It kept "follow now" on, so the next
+                        // reading moved the window back to the current time. A zoom made by code (the -/+ buttons) is not.
+                        if (recentTouch() && dateUtil.now() > skipInteractionUntilMs[0]) {
+                            followNow = false
+                            graphViewModel.onGraphInteraction()
+                        }
                         lastMainZoom = bgZoom
                         appliedZoom[0] = bgZoom
                     }
@@ -718,6 +727,10 @@ fun GraphsSection(
                             "mainZoom",
                             "zoom $lastMainZoom -> $bgZoom scroll $lastMainScroll -> $bgScroll max=$bgMax followNow=$followNow"
                         )
+                        if (recentTouch() && dateUtil.now() > skipInteractionUntilMs[0]) {
+                            followNow = false
+                            graphViewModel.onGraphInteraction()
+                        }
                         lastMainZoom = bgZoom
                         appliedZoom[0] = bgZoom
                     } else {
@@ -810,7 +823,8 @@ fun GraphsSection(
                     // used to move left after a zoom step, so the current time went off the right edge.
                     val atNow = bgScrollState.value >= bgScrollState.maxValue - 2f
                     skipInteractionUntilMs[0] = dateUtil.now() + 1000L
-                    bgZoomState.animateZoom(Zoom.fixed(factor), animationSpec = tween(0), bias = 1f)
+                    // 2026-10-21: around the middle of the window, so the time in the centre stays; at "now" the right edge stays
+                    bgZoomState.animateZoom(Zoom.fixed(factor), animationSpec = tween(0), bias = if (atNow) 1f else 0.5f)
                     if (atNow) bgScrollState.scroll(Scroll.Absolute.End)
                 }
             }
@@ -1032,6 +1046,7 @@ fun GraphsSection(
             )
             // No "IOB / Basal ..." title here since 2026-10-14: graph 1 is always IOB + basal, and the hourly basal
             // peak numbers now use the top line of the graph instead.
+            if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = 32.dp))
             if (!isSimpleMode) {
                 GraphEditButton(
                     onClick = { editingIobOverlays = true },
@@ -1092,6 +1107,7 @@ fun GraphsSection(
                         .align(Alignment.TopStart)
                         .padding(start = 36.dp, top = 2.dp)
                 )
+                if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = 32.dp))
                 if (!isSimpleMode) {
                     GraphEditButton(
                         onClick = { editingGraphIndex = i },
@@ -1123,6 +1139,7 @@ fun GraphsSection(
                         .fillMaxWidth()
                         .height(graphConfig.graph5Height.dp)
                 )
+                if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = 32.dp))
                 if (!isSimpleMode) {
                     GraphEditButton(
                         onClick = { editingGraph5 = true },
@@ -1303,6 +1320,23 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
 // =========================================================================
 // Graph edit button + series picker bottom sheet
 // =========================================================================
+
+/**
+ * Small − and + on a lower graph (2026-10-20, per explicit request). They zoom every graph together, the same as the
+ * buttons above the main graph, and keep the current time at the right edge when it was there. So a lower graph can be
+ * zoomed without a pinch, which could put the graphs out of line.
+ */
+@Composable
+private fun GraphZoomButtons(zoomStep: (Int) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier = modifier) {
+        IconButton(onClick = { zoomStep(-1) }, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.Remove, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+        IconButton(onClick = { zoomStep(1) }, modifier = Modifier.size(28.dp)) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+    }
+}
 
 /** Small pencil icon button overlaid on a graph */
 @Composable

@@ -197,9 +197,11 @@ enum class BooleanKey(
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
     ApsUseAutoIsfWeights("openapsama_enable_autoISF", false, KeysStrings.pref_title_aps_use_autoisf_weights, KeysStrings.pref_summary_aps_use_autoisf_weights, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // On by default (2026-10-20, per explicit request), as the loop phone (Live) runs: an even target in mg/dL allows SMB,
+    // an odd one stops it. The coded temp targets rely on it.
     ApsAutoIsfSmbOnEvenTarget(
         "Enable alternative activation of SMB always",
-        false,
+        true,
         KeysStrings.pref_title_aps_smb_on_even_target,
         KeysStrings.pref_summary_aps_smb_on_even_target,
         defaultedBySM = true,
@@ -233,9 +235,10 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // On by default (2026-10-20, per explicit request): a new install starts as the loop phone (Live) runs.
     ApsAutoIsfLowReboundGuardEnabled(
         "autoisf_low_rebound_guard_enabled",
-        false,
+        true,
         KeysStrings.pref_title_aps_low_rebound_guard_enabled,
         KeysStrings.pref_summary_aps_low_rebound_guard_enabled,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
@@ -286,9 +289,10 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_use_live_mj_state,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // On by default (2026-10-20, per explicit request): a new install starts as the loop phone (Live) runs.
     ApsAutoIsfSmbOffsetOverrideEnabled(
         "autoisf_smb_offset_override_enabled",
-        false,
+        true,
         KeysStrings.pref_title_aps_smb_offset_override_enabled,
         KeysStrings.pref_summary_aps_smb_offset_override_enabled,
         defaultedBySM = true,
@@ -302,17 +306,19 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // On by default (2026-10-20, per explicit request): a new install starts as the loop phone (Live) runs.
     ApsAutoIsfUamBoostEnabled(
         "autoisf_uam_boost_enabled",
-        false,
+        true,
         KeysStrings.pref_title_aps_uam_boost,
         KeysStrings.pref_summary_aps_uam_boost,
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // On by default (2026-10-20, per explicit request): a new install starts as the loop phone (Live) runs.
     ApsAutoIsfUamBoostUnrestrictedEnabled(
         "autoisf_uam_boost_unrestricted_enabled",
-        false,
+        true,
         KeysStrings.pref_title_aps_uam_boost_unrestricted,
         KeysStrings.pref_summary_aps_uam_boost_unrestricted,
         dependency = ApsAutoIsfUamBoostEnabled,
@@ -514,6 +520,14 @@ enum class BooleanKey(
     ),
     // 2026-10-10: the text lines on the graphs (every one but the hypoprediction line). True (default) = shown. List 3 "Clean graph, no
     // text" (TT 5.244) turns it off; it is switched back on here, in Settings.
+    // 2026-10-21, per explicit request: whether a long time span or many SMBs clean the graph by themselves (no SMB labels
+    // and arrows, plain line, no text lines). Local to each device: it is a display choice.
+    ApsAutoIsfAutoCleanGraph(
+        "autoisf_auto_clean_graph",
+        true,
+        KeysStrings.pref_title_auto_clean_graph,
+        KeysStrings.pref_summary_auto_clean_graph
+    ),
     ApsAutoIsfShowGraphText(
         "show_graph_text_lines",
         true,

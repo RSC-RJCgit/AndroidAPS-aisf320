@@ -25,7 +25,20 @@ class MjCycleTest {
 
     @Test
     fun moreMjNoHighPathSetsMj3() {
-        assertEquals("MJ3", moreMj(alarmRecent = false, noRecentHigh = true, bg = 140.0, profilePercent = 100))
+        assertEquals("MJ3", moreMj(alarmRecent = false, noRecentHigh = true, bg = 140.0, profilePercent = 100, hypoAlarmWithin24h = true))
+    }
+
+    @Test
+    fun moreMjNoHighPathNeedsAHypoAlarmInTheLastDay() {
+        // 2026-10-21: before this it set MJ3 at 06:00 every day
+        assertNull(moreMj(minuteOfDay = 6 * 60, alarmRecent = false, noRecentHigh = true, bg = 140.0, profilePercent = 100))
+    }
+
+    @Test
+    fun moreMjNoHighPathNeedsFewSteps() {
+        assertNull(moreMj(alarmRecent = false, noRecentHigh = true, bg = 140.0, profilePercent = 100, hypoAlarmWithin24h = true, steps60 = 50))
+        assertNull(moreMj(alarmRecent = false, noRecentHigh = true, bg = 140.0, profilePercent = 100, hypoAlarmWithin24h = true, steps180 = 500))
+        assertEquals("MJ3", moreMj(alarmRecent = false, noRecentHigh = true, bg = 140.0, profilePercent = 100, hypoAlarmWithin24h = true, steps60 = 49, steps180 = 499))
     }
 
     @Test
@@ -94,14 +107,17 @@ class MjCycleTest {
         noRecentHigh: Boolean = false,
         bg: Double = 90.0,
         profilePercent: Int = 50,
+        hypoAlarmWithin24h: Boolean = false,
+        steps60: Int = 0,
+        steps180: Int = 0,
     ): String? =
         moreMjTarget(
             ready = true,
             mjOffReady = true,
             minuteOfDay = minuteOfDay,
             acceWeight = 0.05,
-            steps180 = 0,
-            steps60 = 0,
+            steps180 = steps180,
+            steps60 = steps60,
             noMjRemains = true,
             bg = bg,
             profilePercent = profilePercent,
@@ -110,6 +126,7 @@ class MjCycleTest {
             alarmRecent = alarmRecent,
             iob = 0.4,
             noRecentHigh = noRecentHigh,
+            hypoAlarmWithin24h = hypoAlarmWithin24h,
         )
 
     private fun morning(

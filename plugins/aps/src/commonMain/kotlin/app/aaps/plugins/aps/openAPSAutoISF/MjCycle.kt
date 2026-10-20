@@ -60,6 +60,9 @@ internal fun mjRecentShouldTune(
 // Returns "MJ2" for the hypo-alarm path, "MJ3" when there has been no raw high in 48 hours.
 // The hypo path wins when both match. Closed from midnight until 06:00.
 // [mjOffReady] is false for 65 minutes after MJoff.
+// 2026-10-21, per explicit request: the MJ3 path also needs a hypo alarm in the last 24 hours ([hypoAlarmWithin24h]) and
+// very few steps (under 50 in 60 minutes, under 500 in 180). Without them it set MJ3 at 06:00 every day: MJoff puts MJ back
+// to NOMJremains at 00:00-01:00, and "no high in 48 hours" alone was nearly always true.
 internal fun moreMjTarget(
     ready: Boolean,
     mjOffReady: Boolean,
@@ -75,6 +78,7 @@ internal fun moreMjTarget(
     alarmRecent: Boolean,
     iob: Double,
     noRecentHigh: Boolean,
+    hypoAlarmWithin24h: Boolean,
 ): String? {
     if (!ready || !mjOffReady || !minuteInWindow(minuteOfDay, 6 * 60, 24 * 60)) return null
     val hypo = acceWeight <= 0.11 &&
@@ -89,7 +93,7 @@ internal fun moreMjTarget(
         alarmRecent &&
         iob >= 0.2
     if (hypo) return "MJ2"
-    if (noRecentHigh && noMjRemains) return "MJ3"
+    if (noRecentHigh && noMjRemains && hypoAlarmWithin24h && steps60 < 50 && steps180 < 500) return "MJ3"
     return null
 }
 

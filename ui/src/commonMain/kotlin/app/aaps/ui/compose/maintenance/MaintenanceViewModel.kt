@@ -201,7 +201,8 @@ class MaintenanceViewModel(
     fun sendLogs() {
         maintenanceAction("sending logs") {
             val result = withContext(aapsIoDispatcher) {
-                maintenance.exportCoordinated("MANUAL")
+                // The logs go once, with executeSendLogs below
+                maintenance.exportCoordinated("MANUAL", withLogs = false)
                 maintenance.executeSendLogs()
             }
             val message = buildResultMessage(

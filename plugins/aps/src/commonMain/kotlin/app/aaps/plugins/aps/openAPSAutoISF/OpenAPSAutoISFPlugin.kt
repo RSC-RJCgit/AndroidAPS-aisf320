@@ -127,6 +127,9 @@ import kotlin.math.round
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+/** What AlarmHypo1 ("_____H4") and AlarmHypo2 ("__________A4", "H4") write as graph announcements. */
+private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
+
 @SingleIn(AppScope::class)
 @Inject
 open class OpenAPSAutoISFPlugin(
@@ -232,6 +235,15 @@ open class OpenAPSAutoISFPlugin(
     // settings import) makes them differ, and the copy is built again. Before, the copy was read once and kept until the
     // app restarted, so such a change had no effect on the loop, and the loop's next write could put the old values back.
     private var statesLoadedFrom: Pair<String, String>? = null
+
+    /**
+     * A hypo alarm in the last 24 hours, from the graph announcements AlarmHypo1 ("_____H4") and AlarmHypo2
+     * ("__________A4", "H4") write (2026-10-21). They are in the database, so the answer also holds after a restart, and on
+     * a phone that shares the loop phone's Nightscout site it also sees the loop phone's alarms.
+     */
+    private suspend fun hypoAlarmAnnouncedWithin24h(now: Long): Boolean =
+        persistenceLayer.getTherapyEventDataFromTime(now - 24 * 3_600_000L, TE.Type.ANNOUNCEMENT, true)
+            .any { it.isValid && it.note?.trim() in HYPO_ALARM_ANNOUNCEMENTS }
 
     private fun states(): AutomationStateStore {
         val currentJson = preferences.get(StringNonKey.AutomationCurrentStates)
@@ -1677,6 +1689,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfShowInsulinTotals,
             BooleanKey.ApsAutoIsfLoopEveryMinute,
             BooleanKey.ApsAutoIsfShowGraphText,
+            BooleanKey.ApsAutoIsfAutoCleanGraph,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,
             BooleanKey.ApsUseSmbWithCob,
@@ -5203,6 +5216,7 @@ open class OpenAPSAutoISFPlugin(
             alarmRecent = statesOn && store.inState("AlarmHypo", "AlarmRecent"),
             iob = iob,
             noRecentHigh = !libreRawOver12Within(now, 48),
+            hypoAlarmWithin24h = hypoAlarmAnnouncedWithin24h(now),
         )
         if (more != null && statesOn && store.hasStateValues("MJ")) {
             store.setState("MJ", more)
