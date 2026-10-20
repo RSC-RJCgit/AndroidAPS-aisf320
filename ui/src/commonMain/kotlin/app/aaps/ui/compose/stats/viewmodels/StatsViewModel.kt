@@ -22,9 +22,11 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.stats.DexcomTIR
 import app.aaps.core.interfaces.stats.DexcomTirCalculator
+import app.aaps.core.interfaces.stats.TIR
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -166,8 +168,11 @@ class StatsViewModel(
             .map {}
             .debounce(BG_RELOAD_DEBOUNCE_MS)
             .onEach {
-                loadTirStats()
-                loadDexcomTirStats()
+                // 2026-10-20: never cancel a calculation that is still running. A reading comes every minute, and on an
+                // iPhone the 30 day TIR took longer than that, so it was restarted for ever and showed "in progress".
+                // A running one finishes and shows its result, then it runs once more with the new readings.
+                if (tirLoadJob?.isActive == true) tirReloadPending = true else loadTirStats()
+                if (dexcomLoadJob?.isActive == true) dexcomReloadPending = true else loadDexcomTirStats()
             }
             .launchIn(viewModelScope)
     }
@@ -194,6 +199,8 @@ class StatsViewModel(
 
     private var tirLoadJob: Job? = null
     private var dexcomLoadJob: Job? = null
+    private var tirReloadPending = false
+    private var dexcomReloadPending = false
 
     private fun loadTirStats() {
         tirLoadJob?.cancel()
@@ -205,10 +212,11 @@ class StatsViewModel(
                 val lowTitMgdl = Constants.STATS_TARGET_LOW_MMOL * Constants.MMOLL_TO_MGDL
                 val highTitMgdl = Constants.STATS_TARGET_HIGH_MMOL * Constants.MMOLL_TO_MGDL
 
-                val tir7 = tirCalculator.calculate(7, lowTirMgdl, highTirMgdl)
-                val tir30 = tirCalculator.calculate(30, lowTirMgdl, highTirMgdl)
-                val tit7 = tirCalculator.calculate(7, lowTitMgdl, highTitMgdl)
-                val tit30 = tirCalculator.calculate(30, lowTitMgdl, highTitMgdl)
+                // One read of 30 days for both ranges; the 7 day figures are the last 7 of those days
+                val (tir30, tit30) = tirCalculator.calculate(30, listOf(lowTirMgdl to highTirMgdl, lowTitMgdl to highTitMgdl))
+                val sevenDaysStart = MidnightTime.calcDaysBack(7)
+                val tir7 = tir30.fromDay(sevenDaysStart)
+                val tit7 = tit30.fromDay(sevenDaysStart)
 
                 TirStatsData(
                     tir7 = tir7,
@@ -223,7 +231,18 @@ class StatsViewModel(
                 )
             }
             _uiState.update { it.copy(tirStatsData = data, tirLoading = false) }
+            if (tirReloadPending) {
+                tirReloadPending = false
+                loadTirStats()
+            }
         }
+    }
+
+    /** The days from [start] on, the same as calculating only that many days. */
+    private fun LongSparseArray<TIR>.fromDay(start: Long): LongSparseArray<TIR> {
+        val out = LongSparseArray<TIR>()
+        for (i in 0 until size()) if (keyAt(i) >= start) out.append(keyAt(i), valueAt(i))
+        return out
     }
 
     private fun loadDexcomTirStats() {
@@ -234,6 +253,10 @@ class StatsViewModel(
                 dexcomTirCalculator.calculate()
             }
             _uiState.update { it.copy(dexcomTirData = data, dexcomTirLoading = false) }
+            if (dexcomReloadPending) {
+                dexcomReloadPending = false
+                loadDexcomTirStats()
+            }
         }
     }
 

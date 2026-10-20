@@ -11,6 +11,8 @@ import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 
+private const val DAY_PLUS_ONE_HOUR_MS = 25 * 60 * 60 * 1000L
+
 /**
  * Implementation of Time In Range (TIR) statistics calculator.
  *
@@ -81,27 +83,44 @@ class TirCalculatorImpl(
      * @return LongSparseArray mapping midnight timestamps to daily TIR statistics
      * @throws RuntimeException if lowMgdl < 39 or lowMgdl > highMgdl
      */
-    override suspend fun calculate(days: Long, lowMgdl: Double, highMgdl: Double): LongSparseArray<TIR> {
-        if (lowMgdl < 39) throw RuntimeException("Low below 39")
-        if (lowMgdl > highMgdl) throw RuntimeException("Low > High")
+    override suspend fun calculate(days: Long, lowMgdl: Double, highMgdl: Double): LongSparseArray<TIR> =
+        calculate(days, listOf(lowMgdl to highMgdl)).single()
+
+    override suspend fun calculate(days: Long, ranges: List<Pair<Double, Double>>): List<LongSparseArray<TIR>> {
+        for ((lowMgdl, highMgdl) in ranges) {
+            if (lowMgdl < 39) throw RuntimeException("Low below 39")
+            if (lowMgdl > highMgdl) throw RuntimeException("Low > High")
+        }
         val startTime = MidnightTime.calcDaysBack(days)
         val endTime = MidnightTime.calc(dateUtil.now())
 
         val bgReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(startTime, endTime, true)
-        val result = LongSparseArray<TIR>()
+        val results = ranges.map { LongSparseArray<TIR>() }
+        // The readings come oldest first, so the day changes rarely. Work out each day's start and end once, not for
+        // every reading: that needs the time zone, which is slow on iOS.
+        var dayStart = Long.MIN_VALUE
+        var dayEnd = Long.MIN_VALUE
         for (bg in bgReadings) {
-            val midnight = MidnightTime.calc(bg.timestamp)
-            var tir = result[midnight]
-            if (tir == null) {
-                tir = TirImpl(midnight, lowMgdl, highMgdl)
-                result.append(midnight, tir)
+            if (bg.timestamp < dayStart || bg.timestamp >= dayEnd) {
+                dayStart = MidnightTime.calc(bg.timestamp)
+                // 25 h after a midnight is always on the next day, also on a 23 h or 25 h daylight-saving day
+                dayEnd = MidnightTime.calc(dayStart + DAY_PLUS_ONE_HOUR_MS)
             }
-            if (bg.value < 39) tir.error()
-            if (bg.value >= 39 && bg.value < lowMgdl) tir.below()
-            if (bg.value in lowMgdl..highMgdl) tir.inRange()
-            if (bg.value > highMgdl) tir.above()
+            for (i in ranges.indices) {
+                val (lowMgdl, highMgdl) = ranges[i]
+                val result = results[i]
+                var tir = result[dayStart]
+                if (tir == null) {
+                    tir = TirImpl(dayStart, lowMgdl, highMgdl)
+                    result.append(dayStart, tir)
+                }
+                if (bg.value < 39) tir.error()
+                if (bg.value >= 39 && bg.value < lowMgdl) tir.below()
+                if (bg.value in lowMgdl..highMgdl) tir.inRange()
+                if (bg.value > highMgdl) tir.above()
+            }
         }
-        return result
+        return results
     }
 
     /**

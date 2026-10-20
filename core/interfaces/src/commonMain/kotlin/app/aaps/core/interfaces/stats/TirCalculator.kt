@@ -51,6 +51,13 @@ interface TirCalculator {
     suspend fun calculate(days: Long, lowMgdl: Double, highMgdl: Double): LongSparseArray<TIR>
 
     /**
+     * The same as [calculate] for several ranges at once, from ONE read of the readings (2026-10-20). Element i of
+     * the result belongs to `ranges[i]` (low to high, mg/dL). With a reading every minute, 30 days is about 43,000
+     * readings, and reading them once per range made the statistics screen too slow on an iPhone to ever finish.
+     */
+    suspend fun calculate(days: Long, ranges: List<Pair<Double, Double>>): List<LongSparseArray<TIR>>
+
+    /**
      * Calculates average TIR across multiple days.
      *
      * Aggregates the counts from all provided daily TIR objects to produce

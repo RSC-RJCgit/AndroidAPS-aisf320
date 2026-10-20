@@ -1228,10 +1228,18 @@ fun BgGraphCompose(
     )
     selectedBg?.let { reading ->
         val mgdl = if (profileUtil.units == GlucoseUnit.MGDL) reading.value else reading.value * Constants.MMOLL_TO_MGDL
+        val valueText = profileUtil.fromMgdlToStringWithUnits(mgdl)
+        // A raw or UKF dot is a copy of a BG reading with that value in place of the BG, so without a name the popup
+        // looked like the BG (2026-10-20). The same object is in that line's list, so it is found by identity.
+        val lineName = when {
+            seriesRegistry[SERIES_UKF].orEmpty().any { it === reading } -> stringResource(CoreUiStrings.ukf_bg_shortname)
+            seriesRegistry[SERIES_RAW].orEmpty().any { it === reading } -> stringResource(CoreUiStrings.raw_bg_shortname)
+            else                                                         -> null
+        }
         Surface(modifier = Modifier.align(Alignment.TopStart).padding(8.dp), tonalElevation = 4.dp, shadowElevation = 4.dp) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                 Column {
-                    Text(profileUtil.fromMgdlToStringWithUnits(mgdl))
+                    Text(if (lineName != null) stringResource(CoreUiStrings.graph_point_line_value, lineName, valueText) else valueText)
                     Text(dateUtil.dateAndTimeString(reading.timestamp))
                 }
                 TextButton(onClick = { selectedBg = null }) { Text(stringResource(CoreUiStrings.close)) }
