@@ -68,7 +68,9 @@ class AutomationComposeContent(
     private val uel: UserEntryLogger,
     private val profileRepository: ProfileRepository,
     private val sceneApi: SceneAutomationApi,
-    private val pairedBtDevices: PairedBtDevices
+    private val pairedBtDevices: PairedBtDevices,
+    /** Open on the automation states page instead of the rule list (the search entry). */
+    private val startOnStates: Boolean = false
 ) : ComposablePluginContent {
 
     @Composable
@@ -78,7 +80,7 @@ class AutomationComposeContent(
         onSettings: (() -> Unit)?
     ) {
         val holder = remember {
-            AutomationStateHolder(plugin, rxBus, aapsLogger, automationEventFactory)
+            AutomationStateHolder(plugin, rxBus, aapsLogger, automationEventFactory).also { if (startOnStates) it.openStates() }
         }
         DisposableEffect(holder) {
             holder.start()

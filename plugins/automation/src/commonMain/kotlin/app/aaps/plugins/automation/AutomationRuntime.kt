@@ -163,7 +163,8 @@ class AutomationRuntime(
      * Build the Compose screen content. Replaces the old plugin-descriptor `composeContent` lambda;
      * called from the standalone `AutomationList` nav route.
      */
-    fun composeContent(): ComposablePluginContent =
+    /** [startOnStates] opens the automation states page first, for the search entry. */
+    fun composeContent(startOnStates: Boolean = false): ComposablePluginContent =
         AutomationComposeContent(
             plugin = this,
             rxBus = rxBus,
@@ -174,7 +175,8 @@ class AutomationRuntime(
             uel = uel,
             profileRepository = profileRepository,
             sceneApi = sceneApi,
-            pairedBtDevices = pairedBtDevices
+            pairedBtDevices = pairedBtDevices,
+            startOnStates = startOnStates
         )
 
     private var scope: CoroutineScope? = null

@@ -70,6 +70,8 @@ enum class ElementType(
 
     // System
     AUTOMATION(category = ElementCategory.SYSTEM),
+    // The AutoISF 3.2.1 automation states screen, found by search (2026-10-20, per explicit request)
+    AUTOMATION_STATES(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.PREFERENCES, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT),
     AUTOMATION_MANAGEMENT(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.PREFERENCES, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT),
 
     // Pump management — only where the build drives a real pump: full + pumpcontrol (i.e. !isClient).

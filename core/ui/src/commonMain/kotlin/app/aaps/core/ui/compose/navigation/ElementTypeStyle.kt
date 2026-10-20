@@ -93,6 +93,7 @@ fun ElementType.color(): Color = when (this) {
     ElementType.TEMP_BASAL              -> AapsTheme.elementColors.tempBasal
     ElementType.EXTENDED_BOLUS          -> AapsTheme.elementColors.extendedBolus
     ElementType.AUTOMATION,
+    ElementType.AUTOMATION_STATES,
     ElementType.AUTOMATION_MANAGEMENT   -> AapsTheme.elementColors.automation
 
     ElementType.PUMP                    -> AapsTheme.elementColors.pump
@@ -158,6 +159,7 @@ fun ElementType.icon(): ImageVector = when (this) {
     ElementType.TEMP_BASAL              -> IcTbrHigh
     ElementType.EXTENDED_BOLUS          -> IcExtendedBolus
     ElementType.AUTOMATION,
+    ElementType.AUTOMATION_STATES,
     ElementType.AUTOMATION_MANAGEMENT   -> IcPluginAutomation
 
     ElementType.PUMP                    -> Pump
@@ -227,6 +229,7 @@ fun ElementType.label(): TextRef? = when (this) {
     ElementType.EXTENDED_BOLUS          -> CoreUiStrings.extended_bolus
     ElementType.AUTOMATION              -> null // dynamic label
     ElementType.AUTOMATION_MANAGEMENT   -> CoreUiStrings.automation
+    ElementType.AUTOMATION_STATES       -> CoreUiStrings.search_automation_states
     ElementType.PUMP                    -> CoreUiStrings.pump
     ElementType.SETTINGS                -> CoreUiStrings.settings
     ElementType.QUICK_LAUNCH_CONFIG     -> CoreUiStrings.quick_launch_configure
@@ -292,6 +295,7 @@ fun ElementType.description(): TextRef? = when (this) {
     ElementType.SCENE                   -> CoreUiStrings.scene_desc
     ElementType.SCENE_MANAGEMENT        -> CoreUiStrings.scene_management_desc
     ElementType.AUTOMATION_MANAGEMENT   -> CoreUiStrings.automation_management_desc
+    ElementType.AUTOMATION_STATES       -> CoreUiStrings.search_automation_states_desc
     ElementType.AUTHORIZED_CLIENTS      -> CoreUiStrings.authorized_clients_manage_desc
     ElementType.PAIR_WITH_MASTER        -> CoreUiStrings.pair_with_master_manage_desc
     ElementType.RUNNING_MODE            -> CoreUiStrings.running_mode_desc
