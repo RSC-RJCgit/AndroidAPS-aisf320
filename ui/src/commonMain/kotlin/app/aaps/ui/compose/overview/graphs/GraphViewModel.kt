@@ -51,6 +51,9 @@ data class GraphDisplay(
     val uniformGreenBg: Boolean get() = basalToggleIndex == 2
 }
 
+/** Shortest gap between two graph-sync log lines of one kind. */
+private const val GRAPH_SYNC_LOG_GAP_MS = 2_000L
+
 /**
  * ViewModel for Overview graphs (Compose/Vico version).
  *
@@ -351,6 +354,21 @@ class GraphViewModel(
     fun onGraphInteraction() {
         preferences.put(BooleanNonKey.ObjectivesScaleUsed, true)
         lastInteractionMs = dateUtil.now()
+    }
+
+    private val lastGraphSyncLogMs = mutableMapOf<String, Long>()
+
+    /**
+     * One line about how the graphs were kept in step, into the app log (2026-10-20). These lines went to the
+     * developer console only, so an exported log never showed why the lower graphs lost their place. At most one line
+     * of each [kind] every 2 seconds: a drag repeats the same decision many times a second.
+     */
+    fun graphSyncLog(kind: String, message: String) {
+        // Only called from the graphs' own effects, on the main thread, so the map needs no lock
+        val now = dateUtil.now()
+        if (now - (lastGraphSyncLogMs[kind] ?: 0L) < GRAPH_SYNC_LOG_GAP_MS) return
+        lastGraphSyncLogMs[kind] = now
+        aapsLogger.debug(LTag.UI, "GraphSync $kind: $message")
     }
 
     override fun onCleared() {

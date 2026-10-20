@@ -72,6 +72,7 @@ import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
+import app.aaps.core.interfaces.overview.graph.TherapyEventType
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -103,6 +104,8 @@ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 @Deprecated("Basal moved to IOB graph as flipped overlay")
 private const val showBasalOnBgGraph = false
 
+/** The announcement text Live writes for its Tier 3 UAM boost, drawn over the BG as on Live's main graph. */
+private const val UAM_BOOST_GRAPH_MARK = "B"
 private const val SERIES_REGULAR = "regular"
 private const val SERIES_BUCKETED = "bucketed"
 private const val SERIES_RAW = "raw"
@@ -982,6 +985,27 @@ fun BgGraphCompose(
     val carbNumbers = remember(carbLabels, carbText) {
         SmbStackLabels(carbLabels, carbText, pinToBottom = false)
     }
+    // Live's Tier 3 UAM boost writes an announcement "B" (2026-10-20, per explicit request). Live draws it as "B" over
+    // the BG on its main graph; here it was only an icon on the treatment row. Drawn the same way now.
+    val uamBoostColor = AapsTheme.elementColors.announcement
+    val uamBoostText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
+    val uamBoostLabels = remember(treatments, bgReadings, minTimestamp, uamBoostColor) {
+        treatments.therapyEvents
+            .filter { it.eventType == TherapyEventType.ANNOUNCEMENT && it.label.trim() == UAM_BOOST_GRAPH_MARK }
+            .mapNotNull { event ->
+                val y = bgReadings.minByOrNull { abs(it.timestamp - event.timestamp) }?.value ?: return@mapNotNull null
+                SmbStackItem(
+                    x = timestampToX(event.timestamp, minTimestamp),
+                    label = UAM_BOOST_GRAPH_MARK,
+                    stackIndex = 0,
+                    anchorY = y,
+                    color = uamBoostColor,
+                )
+            }
+    }
+    val uamBoostMarks = remember(uamBoostLabels, uamBoostText) {
+        SmbStackLabels(uamBoostLabels, uamBoostText, pinToBottom = false)
+    }
     val bolusText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val bolusStack = remember(treatments, minTimestamp, lowMark) {
         val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
@@ -1048,8 +1072,8 @@ fun BgGraphCompose(
             )
         }
     }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
     }
 
     // =========================================================================

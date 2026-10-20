@@ -211,6 +211,10 @@ const val STARTUP_GUARD_MS = 180_000L
 
 /** A lower graph that moves counts as a finger drag only within this long of a real touch on the graphs area (GraphsSection). */
 const val GRAPH_TOUCH_WINDOW_MS = 3_000L
+
+/** How long after the last copied move a still-moving graph (a fling) counts as the user's move. */
+const val GRAPH_FLING_CHAIN_MS = 1_000L
+
 const val STARTUP_GUARD_INTERVAL_MS = 5_000L
 const val STARTUP_GUARD_GAP_MINUTES = 12.0
 
@@ -555,7 +559,19 @@ internal fun abbreviateCareNote(label: String): String {
 }
 
 /**
- * Drop success log notes and a repeated exact label inside one 25 minute stack.
+ * Live's delayed bolus notes ("Db10 delayed bolus: 0.4U delivered…", "Db20 delayed bolus: covered…") differ every
+ * time, so the exact-text check never saw them as repeats and each attempt got its own line (2026-10-20, per explicit
+ * request). They all count as one note, "Db", for that check.
+ */
+private val delayedBolusNote = Regex("""^Db\d+\s+delayed bolus""")
+
+/** The text a note is compared by when looking for a repeat in one stack. */
+internal fun careNoteRepeatKey(label: String): String =
+    if (delayedBolusNote.containsMatchIn(label)) "Db" else label
+
+/**
+ * Drop success log notes and a repeated label inside one 25 minute stack: the first one stays.
+ * A repeat is the same text, or another delayed bolus note (see [careNoteRepeatKey]).
  * The label on the way out is already shortened.
  */
 internal fun visibleCareNotes(notes: List<Pair<Long, String>>): List<Pair<Long, String>> {
@@ -570,7 +586,7 @@ internal fun visibleCareNotes(notes: List<Pair<Long, String>>): List<Pair<Long, 
             anchor = time
             seen.clear()
         }
-        if (!seen.add(full)) continue
+        if (!seen.add(careNoteRepeatKey(full))) continue
         out.add(time to abbreviateCareNote(full))
     }
     return out

@@ -361,7 +361,15 @@ fun GraphsSection(
     // When a finger last touched the graphs area. A lower graph that moves on its own at startup (its saved or
     // first-layout position) is not a drag: only a move within GRAPH_TOUCH_WINDOW_MS of a real touch is.
     val lastTouchMs = remember { longArrayOf(0L) }
-    fun recentTouch() = dateUtil.now() - lastTouchMs[0] < GRAPH_TOUCH_WINDOW_MS
+    // When a move was last copied to the other graphs. A fling keeps going after the finger lifts, on iOS for more
+    // than GRAPH_TOUCH_WINDOW_MS. It then counted as "moved by itself" and the other graphs were pulled back while the
+    // flung one kept going (2026-10-20). Each copy keeps the move counted as the user's for GRAPH_FLING_CHAIN_MS more.
+    val lastShareMs = remember { longArrayOf(0L) }
+    fun recentTouch(): Boolean {
+        val now = dateUtil.now()
+        return now - lastTouchMs[0] < GRAPH_TOUCH_WINDOW_MS ||
+            (lastTouchMs[0] != 0L && now - lastShareMs[0] < GRAPH_FLING_CHAIN_MS)
+    }
     // The live overview stays on the current time until the user drags the main graph.
     var followNow by remember { mutableStateOf(!fitWholeWindow) }
     var placedOnNow by remember(bgScrollState) { mutableStateOf(false) }
@@ -450,7 +458,7 @@ fun GraphsSection(
             // Safety net (2026-10-08): followNow can only be cleared by a finger. If nothing has ever touched the graphs since
             // start, it was cleared by a misread startup move, so put it back.
             if (!followNow && lastTouchMs[0] == 0L) {
-                println("GraphStart guard: followNow was false with no touch since start - following the current time again")
+                graphViewModel.graphSyncLog("guard", "followNow was false with no touch since start - following the current time again")
                 followNow = true
             }
             if (!followNow || range == null || sinceInteraction < INTERACTION_GRACE_MS) continue
@@ -467,7 +475,7 @@ fun GraphsSection(
             if (visible == null) continue
             val nowX = timestampToX(nowMs, range.first)
             if (visible.second < nowX - STARTUP_GUARD_GAP_MINUTES) {
-                println("GraphStart guard: window ends at ${visible.second} min, now is at $nowX min - putting now on the right edge")
+                graphViewModel.graphSyncLog("guard", "window ends at ${visible.second} min, now is at $nowX min - putting now on the right edge")
                 skipInteractionUntilMs[0] = nowMs + 1000L
                 bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, nowMs))
             }
@@ -490,7 +498,7 @@ fun GraphsSection(
             // Keep the hours the user is already looking at. Slide the window so the current
             // time is the right edge. Recreating the zoom state here used to snap back to 6 hours.
             val timeRange = derivedTimeRange
-            println("GraphStart newReading: timeRangeFirst=${timeRange?.first} bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue}")
+            graphViewModel.graphSyncLog("newReading", "timeRangeFirst=${timeRange?.first} bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue}")
             if (fitWholeWindow || timeRange == null) {
                 bgScrollState.scroll(Scroll.Absolute.End)
             } else {
@@ -539,7 +547,7 @@ fun GraphsSection(
                 // The first layout often stores the start as 0, or at the axis end, which can be
                 // the next hour. Once there is a real width, put the current time on the right edge.
                 if (!placedOnNow && bgMax > 24f && (fitWholeWindow || range != null)) {
-                    println("GraphStart place: followNow=$followNow bgScroll=$bgScroll bgMax=$bgMax rangeFirst=${range?.first} now=$now")
+                    graphViewModel.graphSyncLog("place", "followNow=$followNow bgScroll=$bgScroll bgMax=$bgMax rangeFirst=${range?.first} now=$now")
                     lastMainMax = bgMax
                     if (!fitWholeWindow && followNow && range != null) {
                         skipInteractionUntilMs[0] = dateUtil.now() + 1000L
@@ -563,7 +571,7 @@ fun GraphsSection(
                     !lastMainMax.isNaN() && abs(bgMax - lastMainMax) > 24f
                 lastMainMax = bgMax
                 if (rebuiltToStart) {
-                    println("GraphStart rebuiltToStart: followNow=$followNow bgScroll=$bgScroll bgMax=$bgMax lastMainScroll=$lastMainScroll")
+                    graphViewModel.graphSyncLog("rebuiltToStart", "followNow=$followNow bgScroll=$bgScroll bgMax=$bgMax lastMainScroll=$lastMainScroll")
                     if (followNow && !fitWholeWindow && range != null) {
                         skipInteractionUntilMs[0] = dateUtil.now() + 1000L
                         bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
@@ -610,17 +618,18 @@ fun GraphsSection(
                     if (!recentTouch()) {
                         // No finger on the graphs: a lower graph moved by itself (startup position, rebuild). It must not
                         // pull the main graph away from the current time. Put the lower graphs back on the main graph's place.
-                        println("GraphStart shareScroll ignored (no touch): place=$place bgScroll=$bgScroll bgMax=$bgMax")
+                        graphViewModel.graphSyncLog("shareScroll ignored (no touch)", "place=$place bgScroll=$bgScroll bgMax=$bgMax")
                         beltScrollState.copyPixelsIfDifferent(bgScroll, null)
                         iobScrollState.copyPixelsIfDifferent(bgScroll, null)
                         if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(bgScroll, null)
                         for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(bgScroll, null)
                         return
                     }
-                    println("GraphStart shareScroll: place=$place bgScroll=$bgScroll bgMax=$bgMax placedOnNow=$placedOnNow followNowWas=$followNow")
+                    graphViewModel.graphSyncLog("shareScroll", "place=$place bgScroll=$bgScroll bgMax=$bgMax placedOnNow=$placedOnNow followNowWas=$followNow")
                     pendingScroll[0] = place
                     appliedScroll[0] = place
                     drivingScroll[0] = driver
+                    lastShareMs[0] = dateUtil.now()
                     followNow = false
                     graphViewModel.onGraphInteraction()
                     skipInteractionUntilMs[0] = dateUtil.now() + 1000L
@@ -689,6 +698,7 @@ fun GraphsSection(
                         appliedZoom[0] = bgZoom
                     } else {
                         var zoomFinger: Float? = null
+                        var zoomFingerIndex = -1
                         for (i in states.indices) {
                             if (i >= lastFollowerZoom.size) break
                             val zoom = states[i].second
@@ -699,6 +709,7 @@ fun GraphsSection(
                                 abs(zoom - appliedZoom[0]) < abs(prev - appliedZoom[0])
                             if (moved && !towardApplied) {
                                 zoomFinger = zoom
+                                zoomFingerIndex = i
                                 break
                             }
                         }
@@ -719,6 +730,11 @@ fun GraphsSection(
                             }
                             lastMainZoom = zoomFinger
                             appliedZoom[0] = zoomFinger
+                            // 2026-10-20: the place too, not only the width. A pinch zooms around the fingers, so each
+                            // graph ended the same width but on a different time, until a drag lined them up again.
+                            val pinchedPlace = states.getOrNull(zoomFingerIndex)?.first
+                            graphViewModel.graphSyncLog("pinch", "graph=$zoomFingerIndex zoom=$zoomFinger place=$pinchedPlace bgScroll=$bgScroll")
+                            if (pinchedPlace != null && pinchedPlace.isFinite()) shareScroll(pinchedPlace, driverAt(zoomFingerIndex))
                         } else if (lastMainZoom.isNaN()) {
                             lastMainZoom = bgZoom
                             appliedZoom[0] = bgZoom

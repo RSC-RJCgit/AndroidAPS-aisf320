@@ -16,6 +16,40 @@ import org.junit.jupiter.params.provider.CsvSource
 internal class GraphUtilsTest {
 
     @Nested
+    inner class CareNotesTest {
+
+        private val minute = 60_000L
+
+        @Test
+        fun onlyTheFirstDelayedBolusNoteOfAStackIsShown() {
+            // Each attempt has its own text. Before 2026-10-20 every one got a line on the notes row.
+            val notes = listOf(
+                0L to "Delayed bolus attempt check",
+                10 * minute to "Db10 delayed bolus: 0.4U delivered",
+                20 * minute to "Db20 delayed bolus: covered, nothing delivered",
+            )
+            val shown = visibleCareNotes(notes).map { it.second }
+            assertThat(shown.count { it.startsWith("Db") }).isEqualTo(1)
+            assertThat(shown.single { it.startsWith("Db") }).startsWith("Db10")
+        }
+
+        @Test
+        fun aDelayedBolusNoteInTheNextStackIsShownAgain() {
+            val notes = listOf(
+                0L to "Db10 delayed bolus: 0.4U delivered",
+                30 * minute to "Db40 delayed bolus: 0.2U delivered",
+            )
+            assertThat(visibleCareNotes(notes)).hasSize(2)
+        }
+
+        @Test
+        fun otherNotesStillCompareByTheirFullText() {
+            assertThat(careNoteRepeatKey("TierSetA")).isEqualTo("TierSetA")
+            assertThat(careNoteRepeatKey("Db30 delayed bolus: covered")).isEqualTo("Db")
+        }
+    }
+
+    @Nested
     inner class NiceScaleTest {
 
         @ParameterizedTest(name = "max just above {0} rounds to a clean ({1}, {2})")
