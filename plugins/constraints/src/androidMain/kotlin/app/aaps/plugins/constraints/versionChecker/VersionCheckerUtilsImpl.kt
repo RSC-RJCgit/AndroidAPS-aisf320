@@ -142,7 +142,8 @@ class VersionCheckerUtilsImpl(
         val now = dateUtil.now()
         if (dateUtil.isAfterNoon() && now > preferences.get(VersionCheckerLongKey.LastVersionCheckWarning) + warnEvery(0)) {
             aapsLogger.debug(LTag.CORE, "Version $currentVersion outdated. Found $newVersion")
-            notificationManager.post(NotificationId.NEW_VERSION_DETECTED, ConstraintsStrings.versionavailable.withArgs(newVersion.toString()), level = NotificationLevel.LOW)
+            // 2026-10-18, per explicit request: no notification. It compares this fork with the upstream AAPS release,
+            // so it always said a new version was available. Only the log line stays.
             preferences.put(VersionCheckerLongKey.LastVersionCheckWarning, now)
         }
         return true

@@ -832,7 +832,8 @@ class PrepareGraphDataRunner(
             IobGraphData(
                 iob = iobListCompose,
                 predictions = iobPredictionsListCompose,
-                iobTh = autoIsfValues.map { GraphDataPoint(it.timestamp, it.iobThEffective) },
+                // 0 is "not known": a row a client received from a master that does not send the threshold
+                iobTh = autoIsfValues.filter { it.iobThEffective > 0.0 }.map { GraphDataPoint(it.timestamp, it.iobThEffective) },
                 finalIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.finalIsf) },
                 acceIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.acceIsf) },
                 bgIsf = autoIsfValues.map { GraphDataPoint(it.timestamp, it.bgIsf) },

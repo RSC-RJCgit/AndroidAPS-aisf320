@@ -14,6 +14,7 @@ import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.jupiter.api.BeforeEach
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -122,6 +124,49 @@ internal class NSDeviceStatusHandlerTest {
         sut.handleNewData(arrayOf(deviceStatusWithSuggested()))
 
         verifyBlocking(persistenceLayer) { insertOrUpdateApsResult(apsResult) }
+    }
+
+    /**
+     * The live 3.4-based phone sends no runningDynamicIsf. Its result was rejected, and the client lost the AutoISF
+     * factors that came with it (2026-10-20). Now they are stored, so the client graph can draw them.
+     */
+    @Test
+    fun clientStoresAutoIsfFactorsFromAResultWithoutRunningDynamicIsf() {
+        givenNewSuggested(APSResult.Algorithm.AUTO_ISF)
+        runBlocking { whenever(persistenceLayer.getAutoIsfValuesFromTimeToTime(any(), any())).thenReturn(emptyList()) }
+        val deviceStatus = NSDeviceStatus(
+            device = "openaps://live",
+            openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
+                put("timestamp", SUGGESTED_TIME)
+                put("autoIsfAcce", 0.7)
+                put("autoIsfFinal", 1.2)
+                put("reason", "iobThEffectiveU: 3.5 ;")
+            })
+        )
+
+        sut.handleNewData(arrayOf(deviceStatus))
+
+        verifyBlocking(persistenceLayer) {
+            insertAutoIsfValue(argThat { timestamp == 5_000L && acceIsf == 0.7 && finalIsf == 1.2 && bgIsf == 1.0 && iobThEffective == 3.5 })
+        }
+    }
+
+    /** A master runs its own loop and keeps its own rows: it stores nothing it received. */
+    @Test
+    fun masterDoesNotStoreReceivedAutoIsfFactors() {
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        givenNewSuggested(APSResult.Algorithm.AUTO_ISF)
+        val deviceStatus = NSDeviceStatus(
+            device = "openaps://other",
+            openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
+                put("timestamp", SUGGESTED_TIME)
+                put("autoIsfFinal", 1.2)
+            })
+        )
+
+        sut.handleNewData(arrayOf(deviceStatus))
+
+        verifyBlocking(persistenceLayer, never()) { insertAutoIsfValue(any()) }
     }
 
     private fun givenNewSuggested(algorithm: APSResult.Algorithm): APSResult {

@@ -521,6 +521,13 @@ open class OpenAPSAutoISFPlugin(
             auto_isf_consoleError = consoleError,
             auto_isf_consoleLog = consoleLog
         ).also {
+            // The factors go out with the result, so a client can draw the same lines (2026-10-20)
+            it.autoIsfAcce = autoIsfValues.acceIsf
+            it.autoIsfBg = autoIsfValues.bgIsf
+            it.autoIsfPp = autoIsfValues.ppIsf
+            it.autoIsfDura = autoIsfValues.duraIsf
+            it.autoIsfFinal = autoIsfValues.finalIsf
+            it.autoIsfIobTh = autoIsfValues.iobThEffective
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
             determineBasalResult.inputConstraints = inputConstraints

@@ -19,6 +19,11 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Real features that are not ported to desktop yet, refusing rather than pretending.
@@ -84,12 +89,10 @@ class DesktopBgQualityCheck(
 }
 
 /**
- * Sending and pruning logs. Pruning works; sending does not.
+ * Sending and pruning logs.
  *
- * `deleteLogs` is real, and matches the iOS one. `executeSendLogs` still refuses: nothing about
- * zipping a folder is Android-specific, but the Android version ends in an email intent, and where a
- * desktop should send a log - a mail client, a save dialog, a folder it opens - is a question about
- * the product rather than about the port.
+ * `deleteLogs` matches the iOS one. `executeSendLogs` (2026-10-20, taken from the v4 fork, where it has run since
+ * 11 Oct) zips the log into `AAPS/logs`, then offers the zip to the cloud folder and the mail client.
  */
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
@@ -100,11 +103,47 @@ class DesktopMaintenance(
      * The live log, whose siblings are the rotated ones. Overridden in a test so it neither reads
      * nor deletes anything in the user's real data directory.
      */
-    private val logFile: File = DesktopFolders.log
+    private val logFile: File = DesktopFolders.log,
+    /** Cloud and mail. A test builds this class without one, and then nothing is delivered. */
+    private val delivery: LogDelivery = NoLogDelivery
 ) : Maintenance {
 
-    override suspend fun executeSendLogs(): ExportResult =
-        aapsLogger.failNotOnDesktopYet("Maintenance.executeSendLogs")
+    /**
+     * Zips the log, then offers the zip to the cloud folder and the mail client, as the phone does.
+     * The zip is always kept in `AAPS/logs`, so a failed upload or mail still leaves the file.
+     */
+    override suspend fun executeSendLogs(): ExportResult {
+        val zip = writeLogZip() ?: return ExportResult(localSuccess = false)
+        val mailed = delivery.mail(zip)
+        val uploaded = delivery.uploadToCloud(zip)
+        // localSuccess is the mail side on the phone; with no mail attempted the zip itself is the local result.
+        return ExportResult(localSuccess = mailed ?: true, cloudSuccess = uploaded)
+    }
+
+    /** Zips `aaps.log` and its rotated siblings into `AAPS/logs/AndroidAPS_LOG_<time>.zip`. Null when nothing was written. */
+    private fun writeLogZip(): File? {
+        val sources = logFile.parentFile?.listFiles()
+            ?.filter { it.isFile && (it.name == logFile.name || it.name.startsWith("${logFile.name}.")) }
+            .orEmpty()
+        if (sources.isEmpty()) return null
+        return try {
+            val folder = File(DesktopFolders.root, "logs").apply { mkdirs() }
+            val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+            val target = File(folder, "AndroidAPS_LOG_$stamp.zip")
+            ZipOutputStream(target.outputStream().buffered()).use { zip ->
+                sources.forEach { file ->
+                    zip.putNextEntry(ZipEntry(file.name))
+                    file.inputStream().use { it.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+            aapsLogger.debug(LTag.CORE, "Logs written to ${target.absolutePath}")
+            target
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.CORE, "Could not write the log zip", e)
+            null
+        }
+    }
 
     /**
      * Removes rotated log files, keeping the newest [keep] of them.
