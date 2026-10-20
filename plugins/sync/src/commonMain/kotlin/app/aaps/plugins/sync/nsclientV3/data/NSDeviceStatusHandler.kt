@@ -174,6 +174,19 @@ class NSDeviceStatusHandler(
         }
     }
 
+    /**
+     * A client does not run the loop, so its AutoISF table stays empty and the ISF lines on the graph were blank. Store
+     * the factors the master sent with its loop result instead (2026-10-20), once per loop.
+     */
+    private fun storeReceivedAutoIsf(rt: RT, clock: Long) {
+        if (!config.AAPSCLIENT) return
+        val row = receivedAutoIsfRow(clock, rt) ?: return
+        appScope.launch {
+            if (persistenceLayer.getAutoIsfValuesFromTimeToTime(clock, clock).any { it.timestamp == clock }) return@launch
+            persistenceLayer.insertAutoIsfValue(row)
+        }
+    }
+
     private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus) {
         nsDeviceStatus.openaps?.suggested?.let {
             it.safeGetString("timestamp")?.let { timestamp ->
@@ -181,7 +194,9 @@ class NSDeviceStatusHandler(
                 // check if this is new data
                 if (clock > processedDeviceStatusData.openAPSData.clockSuggested) {
                     try {
-                        processedDeviceStatusData.openAPSData.suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        val suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        processedDeviceStatusData.openAPSData.suggested = suggested
+                        storeReceivedAutoIsf(suggested, clock)
                     } catch (e: Exception) {
                         aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
                     }

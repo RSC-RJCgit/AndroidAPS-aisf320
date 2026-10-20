@@ -18,7 +18,11 @@ import kotlin.time.Instant
 @Serializable
 data class RT(
     var algorithm: APSResult.Algorithm = APSResult.Algorithm.UNKNOWN,
-    var runningDynamicIsf: Boolean,
+    /**
+     * A 3.4-based master (the live phone) does not send this field. A missing value must not reject the whole result
+     * (2026-10-20): the client then dropped every loop status from that master.
+     */
+    var runningDynamicIsf: Boolean = false,
     /** True for an AutoISF 3.2.1 result. */
     var runningAutoIsf: Boolean? = false,
     @Serializable(with = TimestampToIsoSerializer::class)
@@ -45,6 +49,14 @@ data class RT(
     var IOB: Double? = null,
     var variable_sens: Double? = null,
     var isfMgdlForCarbs: Double? = null, // used to pass to AAPS client
+    /** AutoISF 3.2.1 factors of this loop, so a client can draw them. The live 3.4-based phone sends the same names. */
+    var autoIsfAcce: Double? = null,
+    var autoIsfBg: Double? = null,
+    var autoIsfPp: Double? = null,
+    var autoIsfDura: Double? = null,
+    var autoIsfFinal: Double? = null,
+    /** AutoISF 3.2.1 effective IOB threshold of this loop, in U. Not sent by the live phone. */
+    var autoIsfIobTh: Double? = null,
 
     var consoleLog: MutableList<String>? = null,
     var consoleError: MutableList<String>? = null

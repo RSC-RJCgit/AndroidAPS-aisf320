@@ -236,6 +236,8 @@ fun SecondaryGraphCompose(
     val activityData = if (needsActivity) viewModel.activityGraphFlow.collectAsStateWithLifecycle().value else null
     // AutoISF 3.2.1 ISF factors: as series of this graph, or as overlays on the IOB graph
     val autoIsfData = if (isfTypes.isNotEmpty() || (hasIob && isfOverlays.isNotEmpty())) viewModel.iobGraphFlow.collectAsStateWithLifecycle().value else null
+    // AutoISF 3.2.1 IOB threshold as the series of a graph other than the IOB graph
+    val iobThSeriesData = if (primaryType == SeriesType.IOB_TH) viewModel.iobGraphFlow.collectAsStateWithLifecycle().value else null
     // Basal overlay only when IOB is primary and single-axis (no room for basal with dual-axis)
     val basalData = if (hasIob && !isDualAxis) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
 
@@ -263,7 +265,7 @@ fun SecondaryGraphCompose(
         SeriesType.STEPS           -> viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value.steps
         SeriesType.ACTIVITY        -> viewModel.activityGraphFlow.collectAsStateWithLifecycle().value.activity
         SeriesType.PREDICTIONS     -> emptyList() // UI-only overlay flag, not a secondary series
-        SeriesType.IOB_TH          -> emptyList() // IOB graph overlay flag, not a secondary series
+        SeriesType.IOB_TH          -> viewModel.iobGraphFlow.collectAsStateWithLifecycle().value.iobTh
         SeriesType.BG_PARAB        -> emptyList() // BG graph overlay flag, not a secondary series
         SeriesType.FIN_ISF, SeriesType.ACC_ISF, SeriesType.BG_ISF, SeriesType.PP_ISF, SeriesType.DUR_ISF ->
             viewModel.iobGraphFlow.collectAsStateWithLifecycle().value.autoIsfFactor(secondaryType)
@@ -281,7 +283,7 @@ fun SecondaryGraphCompose(
 
     // Simple line series processing (excludes BASAL — it's a fixed flipped overlay on IOB)
     val processedSimpleSeries = remember(
-        stableTimeRange, absIobData, bgiData, ratioData, varSensData, devSlopeData, hrData, stepsData, activityData, autoIsfData
+        stableTimeRange, absIobData, bgiData, ratioData, varSensData, devSlopeData, hrData, stepsData, activityData, autoIsfData, iobThSeriesData
     ) {
         if (!hasRealTimeRange) return@remember emptyList()
         buildList {
@@ -310,6 +312,9 @@ fun SecondaryGraphCompose(
             }
             stepsData?.steps?.takeIf { it.isNotEmpty() }?.let {
                 add(SeriesType.STEPS to processPoints(it, minTimestamp, minX, maxX))
+            }
+            iobThSeriesData?.iobTh?.takeIf { it.isNotEmpty() }?.let {
+                add(SeriesType.IOB_TH to processPoints(it, minTimestamp, minX, maxX))
             }
             autoIsfData?.let { data ->
                 isfTypes.forEach { type ->
@@ -1334,6 +1339,8 @@ fun createSeriesLine(type: SeriesType, colors: SeriesColors): LineCartesianLayer
             fill = LineCartesianLayer.LineFill.single(Fill(color)),
             areaFill = null
         )
+        // The IOB threshold: the same dashed line as on the IOB graph
+        SeriesType.IOB_TH                                                        -> createIobThLine(color)
         // AutoISF factors: line only, the final factor thicker (as in 3.2.1)
         SeriesType.FIN_ISF, SeriesType.ACC_ISF, SeriesType.BG_ISF, SeriesType.PP_ISF, SeriesType.DUR_ISF -> LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(color)),

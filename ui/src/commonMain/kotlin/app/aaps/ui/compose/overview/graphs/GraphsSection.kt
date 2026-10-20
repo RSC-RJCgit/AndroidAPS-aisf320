@@ -196,16 +196,21 @@ private val PREDICTION_SPOKEN_ORDER = listOf(
 /** Series types available as BG graph overlays */
 private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.BG_PARAB)
 
-/** Series types available for user-configurable secondary graphs (IOB + UI-only overlays excluded) */
+/**
+ * Series types available for user-configurable secondary graphs (IOB + UI-only overlays excluded). The IOB threshold is
+ * one of them since 2026-10-20 (per explicit request): before, only the IOB graph could show it.
+ */
 private val CONFIGURABLE_SERIES = SeriesType.entries.filter {
-    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.IOB_TH && it != SeriesType.BG_PARAB
+    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.BG_PARAB
 }
 
 /**
  * Series that can go on the right axis of the fixed IOB graph, one at a time (as in 3.2.1, where graph 1 could show
- * any series). Activity and the AutoISF lines are overlays instead and are not in this list.
+ * any series). Activity, the IOB threshold and the AutoISF lines are overlays there instead and are not in this list.
  */
-private val IOB_RIGHT_AXIS_SERIES = CONFIGURABLE_SERIES.filter { it != SeriesType.ACTIVITY && it !in AUTO_ISF_SERIES }
+private val IOB_RIGHT_AXIS_SERIES = CONFIGURABLE_SERIES.filter {
+    it != SeriesType.ACTIVITY && it != SeriesType.IOB_TH && it !in AUTO_ISF_SERIES
+}
 
 /** Series types available on the fixed IOB graph: the overlays, then one series for the right axis */
 private val IOB_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.IOB_TH) + AUTO_ISF_SERIES + IOB_RIGHT_AXIS_SERIES

@@ -13,6 +13,7 @@ import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
+import kotlin.time.Clock
 
 /*
  * Maintenance and cloud export.
@@ -24,7 +25,7 @@ import platform.Foundation.NSUserDomainMask
  * meant to collect them at all, which makes an empty answer correct rather than unfinished.
  */
 
-/** Sending logs needs a mail composer, which is not wired up on iOS. Deleting them is real. */
+/** Sending logs (2026-10-20, taken from the v4 fork): a copy in `logs`, the cloud folder and the share sheet. Deleting them is real. */
 @OptIn(ExperimentalForeignApi::class)
 @SingleIn(AppScope::class)
 @ContributesBinding(AppScope::class)
@@ -32,11 +33,47 @@ import platform.Foundation.NSUserDomainMask
 class IosMaintenance(
     private val aapsLogger: AAPSLogger,
     /** Overridden in a test, so it neither reads the real log nor deletes it. */
-    private val logDirectory: String? = defaultLogDirectory()
+    private val logDirectory: String? = defaultLogDirectory(),
+    /** Cloud and the share sheet. A test builds this class without one, and then nothing is delivered. */
+    private val delivery: IosLogDelivery = NoIosLogDelivery
 ) : Maintenance {
 
-    override suspend fun executeSendLogs(): ExportResult =
-        aapsLogger.failNotOnIosYet("Maintenance.executeSendLogs")
+    /**
+     * Keeps a copy of the live log and its rotated sibling in `logs` beside them, under a time stamped
+     * name, then offers the copies to the cloud folder and the share sheet (Mail is in it).
+     *
+     * The copy is kept even when nothing could be delivered: the live log is rotated and overwritten
+     * within hours, and a copy in the Files app can be shared from there.
+     */
+    override suspend fun executeSendLogs(): ExportResult {
+        val copies = copyLogs()
+        if (copies.isEmpty()) return ExportResult(localSuccess = false)
+        val uploaded = delivery.uploadToCloud(copies)
+        delivery.share(copies)
+        return ExportResult(localSuccess = true, cloudSuccess = uploaded)
+    }
+
+    /** Copies the log files into `logs` and returns the paths of the copies. Empty when there was nothing to copy. */
+    private fun copyLogs(): List<String> {
+        val directory = logDirectory ?: return emptyList()
+        val manager = NSFileManager.defaultManager
+
+        @Suppress("UNCHECKED_CAST")
+        val names = (manager.contentsOfDirectoryAtPath(directory, null) as? List<String>)
+            ?.filter { it == LOG_NAME || it.startsWith("$LOG_NAME.") }
+            .orEmpty()
+        if (names.isEmpty()) return emptyList()
+        val target = "$directory/logs"
+        manager.createDirectoryAtPath(target, withIntermediateDirectories = true, attributes = null, error = null)
+        val stamp = Clock.System.now().toEpochMilliseconds()
+        val copies = mutableListOf<String>()
+        for (name in names) {
+            val to = "$target/${stamp}_$name"
+            if (manager.copyItemAtPath("$directory/$name", toPath = to, error = null)) copies += to
+        }
+        aapsLogger.debug(LTag.CORE, "Copied ${copies.size} log file(s) to $target")
+        return copies
+    }
 
     /**
      * Removes rotated log files, keeping the newest [keep] of them.
