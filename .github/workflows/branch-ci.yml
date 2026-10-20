@@ -35,6 +35,9 @@ on:
 jobs:
   build:
     name: Build AAPS (${{ matrix.variant }})
+    # Only in AndroidAPS-aisf320, which has the signing and Drive secrets. The same branches are also pushed to
+    # AndroidAPS-v4-autoisf321 for the unit tests; there this job stopped at "Check Secrets" and showed red (2026-10-20).
+    if: github.repository == 'RSC-RJCgit/AndroidAPS-aisf320'
     runs-on: ubuntu-latest
     strategy:
       # One variant at a time so the full APK reaches Drive first; one failing variant does not stop the next.
