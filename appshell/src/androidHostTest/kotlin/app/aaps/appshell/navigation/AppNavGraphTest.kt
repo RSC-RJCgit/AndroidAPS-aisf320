@@ -124,6 +124,7 @@ class AppNavGraphTest {
             AppRoute.FoodManagement.route,
             AppRoute.SceneList.route,
             AppRoute.AutomationList.route,
+            AppRoute.AutomationStates.route,
             AppRoute.SiteRotationManagement.route
         )
     }

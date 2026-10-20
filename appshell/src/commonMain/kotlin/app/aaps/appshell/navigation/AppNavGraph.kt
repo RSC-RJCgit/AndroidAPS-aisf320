@@ -600,6 +600,16 @@ fun NavGraphBuilder.appNavGraph(
         )
     }
 
+    composable(AppRoute.AutomationStates.route) {
+        // The same Automation screen, opened with its states dialog showing. Closing the dialog leaves the rule list.
+        val automationContent = remember { automationRuntime.composeContent(startOnStates = true) }
+        AutomationContentRoute(
+            navController = navController,
+            composeContent = automationContent,
+            withProtection = withProtection,
+        )
+    }
+
     composable(AppRoute.SceneList.route) {
         SceneListScreen(
             onNavigateToWizard = {

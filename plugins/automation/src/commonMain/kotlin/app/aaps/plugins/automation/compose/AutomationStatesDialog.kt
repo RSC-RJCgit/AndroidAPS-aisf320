@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -27,8 +28,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
+import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.plugins.automation.AutomationStateEntry
 import app.aaps.plugins.automation.AutomationStrings
@@ -80,10 +84,21 @@ fun AutomationStatesDialog(
                         } else {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
                                 for (value in row.values) {
+                                    val selected = value == row.current
                                     FilterChip(
-                                        selected = value == row.current,
+                                        selected = selected,
                                         onClick = { editor.setCurrent(row.name, value) },
-                                        label = { Text(value) }
+                                        label = { Text(value, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
+                                        // As in 3.2.1 (2026-10-20, per explicit request): the current value solid green, the
+                                        // others plain grey. The default chip only tinted the selected one.
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            selectedContainerColor = AapsTheme.generalColors.statusNormal,
+                                            // Black on the green, the same as the green badges in the navigation bar
+                                            selectedLabelColor = Color.Black,
+                                            selectedLeadingIconColor = Color.Black
+                                        )
                                     )
                                 }
                             }

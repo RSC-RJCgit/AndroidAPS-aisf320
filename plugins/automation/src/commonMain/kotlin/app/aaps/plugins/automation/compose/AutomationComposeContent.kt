@@ -67,7 +67,9 @@ class AutomationComposeContent(
     private val uel: UserEntryLogger,
     private val profileRepository: ProfileRepository,
     private val sceneApi: SceneAutomationApi,
-    private val pairedBtDevices: PairedBtDevices
+    private val pairedBtDevices: PairedBtDevices,
+    /** Open with the automation states dialog showing (the search entry, 2026-10-20). */
+    private val startOnStates: Boolean = false
 ) : ComposablePluginContent {
 
     @Composable
@@ -127,8 +129,8 @@ class AutomationComposeContent(
     ) {
         val state by holder.state.collectAsStateWithLifecycle()
         var deleteTarget by remember { mutableStateOf<Int?>(null) }
-        var showStates by remember { mutableStateOf(false) }
-        var stateRows by remember { mutableStateOf<List<AutomationStateEntry>>(emptyList()) }
+        var showStates by remember { mutableStateOf(startOnStates) }
+        var stateRows by remember { mutableStateOf(if (startOnStates) plugin.automationStates() else emptyList()) }
 
         val title = stringResource(AutomationStrings.automation)
         val backDesc = stringResource(CoreUiStrings.back)
