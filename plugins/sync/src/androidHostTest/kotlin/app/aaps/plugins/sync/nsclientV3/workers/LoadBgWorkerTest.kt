@@ -212,6 +212,8 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
 
         assertThat(nsClientV3Plugin.lastLoadedSrvModified.collections.entries).isEqualTo(now - 1000)
         assertIs<ListenableWorker.Result.Success>(result)
+        // An AAPS site answers the first question, so the reading-time question is never asked
+        verify(nsAndroidClient, never()).getSgvsNewerThan(anyLong(), anyInt())
     }
 
     @Test
@@ -224,10 +226,46 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
         sut = buildSut()
         whenever(nsAndroidClient.getSgvsModifiedSince(anyLong(), anyInt()))
             .thenReturn(NSAndroidClient.ReadResponse(200, now - 1000, emptyList()))
+        whenever(nsAndroidClient.getSgvsNewerThan(anyLong(), anyInt()))
+            .thenReturn(NSAndroidClient.ReadResponse(200, 0, emptyList()))
 
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
+        assertThat(nsClientV3Plugin.lastLoadedSrvModified.collections.entries).isEqualTo(now - 1000)
+    }
+
+    @Test
+    fun readingsWithoutServerChangeTimeAreReadByReadingTime() = runTest(timeout = 30.seconds) {
+        // A site filled with the v1 API (iAPS): no srvModified, so "modified since" returns nothing, while the server's
+        // newest entry is newer. Seen on 2026-10-20: Client2 asked every minute and never got a reading.
+        val reading = GV(
+            timestamp = now - 500,
+            isValid = true,
+            raw = 101.0,
+            value = 99.0,
+            trendArrow = TrendArrow.FLAT,
+            noise = 1.0,
+            sourceSensor = SourceSensor.UNKNOWN,
+            ids = IDs()
+        ).toNSSvgV3()
+        whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
+        whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
+        nsClientV3Plugin.nsAndroidClient = nsAndroidClient
+        nsClientV3Plugin.lastLoadedSrvModified.collections.entries = now - 2000 // Not first load
+        nsClientV3Plugin.newestDataOnServer?.collections?.entries = now
+        sut = buildSut()
+        whenever(nsAndroidClient.getSgvsModifiedSince(anyLong(), anyInt()))
+            .thenReturn(NSAndroidClient.ReadResponse(200, null, emptyList()))
+        whenever(nsAndroidClient.getSgvsNewerThan(anyLong(), anyInt()))
+            .thenReturn(NSAndroidClient.ReadResponse(200, 0, listOf(reading)))
+
+        val result = sut.doWorkAndLog()
+
+        assertIs<ListenableWorker.Result.Success>(result)
+        verify(nsIncomingDataProcessor).processSgvs(listOf(reading), false, false)
+        // The mark moves to the newest reading time, so the next question starts after it
+        assertThat(nsClientV3Plugin.lastLoadedSrvModified.collections.entries).isEqualTo(now - 500)
     }
 
     @Test

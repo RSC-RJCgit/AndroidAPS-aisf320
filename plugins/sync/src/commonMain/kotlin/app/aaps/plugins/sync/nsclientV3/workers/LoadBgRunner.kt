@@ -74,7 +74,7 @@ class LoadBgRunner(
                     else max(nsClientV3Plugin.lastLoadedSrvModified.collections.entries, dateUtil.now() - nsClientV3Plugin.maxAge)
                 if ((nsClientV3Plugin.newestDataOnServer?.collections?.entries ?: Long.MAX_VALUE) > lastLoaded) {
                     val sgvs: List<NSSgvV3>
-                    val response: NSAndroidClient.ReadResponse<List<NSSgvV3>>?
+                    var response: NSAndroidClient.ReadResponse<List<NSSgvV3>>?
                     // Replaces the old `response.code != 304` brake.
                     //
                     // A 304 could only ever appear because OkHttp's disk cache revalidated a GET, and
@@ -91,6 +91,21 @@ class LoadBgRunner(
                         aapsLogger.debug(LTag.NSCLIENT, "lastLoadedSrvModified: ${response.lastServerModified}")
                         cursorStalled = response.lastServerModified?.let { it <= lastLoaded } == true
                         response.lastServerModified?.let { nsClientV3Plugin.lastLoadedSrvModified.collections.entries = it }
+                        // 2026-10-20, per explicit request: readings written with the v1 API (iAPS, older uploaders) carry no
+                        // srvModified, so "modified since" never returns them, while the server's newest entry (taken from the
+                        // reading time) is newer. Then ask by reading time instead, and move the mark to the newest reading.
+                        // An AAPS site never gets here: its readings come back from the first question.
+                        val newestOnServer = nsClientV3Plugin.newestDataOnServer?.collections?.entries
+                        if (response.values.isEmpty() && newestOnServer != null && newestOnServer > lastLoaded) {
+                            val byDate = nsAndroidClient.getSgvsNewerThan(lastLoaded, NSClientV3Plugin.RECORDS_TO_LOAD)
+                            val newestDate = byDate.values.mapNotNull { it.date }.maxOrNull()
+                            if (newestDate != null && newestDate > lastLoaded) {
+                                nsClientRepository.addLog("◄ RCV", "${byDate.values.size} SVGs without a server change time, read by reading time")
+                                response = byDate
+                                cursorStalled = false
+                                nsClientV3Plugin.lastLoadedSrvModified.collections.entries = newestDate
+                            }
+                        }
                         nsClientV3Plugin.storeLastLoadedSrvModified()
                         nsClientV3Plugin.scheduleIrregularExecution() // Idea is to run after 5 min after last BG
                     }
