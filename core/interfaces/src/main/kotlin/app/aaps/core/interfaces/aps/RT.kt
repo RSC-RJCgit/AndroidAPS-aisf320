@@ -67,6 +67,10 @@ data class RT(
     // Authoritative AutoISF preference snapshot from the APS-running phone. AAPSClient stores and
     // exports this mirror instead of presenting its unrelated local/default preferences as pump data.
     var autoIsfSettingsSnapshot: String? = null,
+    // The loop phone's automation states (2026-10-21, per explicit request), so a client can show them: the current value of
+    // each state and the values each may hold, as the same JSON texts the loop phone stores. Null when states are off.
+    var automationStatesCurrent: String? = null,
+    var automationStatesValues: String? = null,
 
 
     var consoleLog: MutableList<String>? = null,

@@ -141,6 +141,7 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
+import org.json.JSONArray
 
 /** What AlarmHypo1 ("_____H4") and AlarmHypo2 ("__________A4", "H4") write as graph announcements. */
 private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
@@ -10280,6 +10281,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // for outbound sync. See computeUkfRawBgl() below.
                 autoIsfValues.ukfRawBgl = computeUkfRawBgl()
                 rt.autoIsfUkfRawBgl = autoIsfValues.ukfRawBgl
+                // The states go out with the result, so a client shows the real current ones (2026-10-21)
+                if (preferences.get(BooleanKey.AutomationStatesEnabled)) {
+                    val states = automationStateService.getAllStates()
+                    if (states.isNotEmpty()) {
+                        rt.automationStatesCurrent = JSONObject().apply { states.forEach { (name, value) -> put(name, value) } }.toString()
+                        rt.automationStatesValues = JSONObject().apply {
+                            states.forEach { (name, _) -> put(name, JSONArray(automationStateService.getStateValues(name))) }
+                        }.toString()
+                    }
+                }
                 rt.autoIsfSettingsSnapshot = autoIsfSettingsSnapshot()
                 // Dedicated, unconditional reason lines for the client-sync fallback (see
                 // NSDeviceStatusHandler.kt). Unlike the existing consoleLog.add() text for these
@@ -10291,6 +10302,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 rt.reason.append("iobThEffectiveU: ${round(autoIsfValues.iobThEffective, 2)} ;")
                 rt.reason.append("FslCalSlope: ${round(preferences.get(DoubleKey.FslCalSlope), 2)} ;")
                 rt.reason.append("AcceIsfWeight: ${round(bgAccel_ISF_weight, 2)} ;")
+                // For the ppwt column of a KMP client's AutoISF table (2026-10-21, per explicit request)
+                rt.reason.append("ppIsfWeight: ${round(pp_ISF_weight, 2)} ;")
                 // LowBG state, logged EVERY cycle (not only when the recent-low rebound guard in
                 // DetermineBasalAutoISF.kt actually fires) so the exporter's LowBG column shows whether
                 // the guard was armed at any given row, not merely where it bit. That distinction is the
