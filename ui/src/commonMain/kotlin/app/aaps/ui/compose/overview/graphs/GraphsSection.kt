@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -521,6 +522,19 @@ fun GraphsSection(
     var lastMainZoom by remember { mutableFloatStateOf(Float.NaN) }
     val lastFollowerScroll = remember { FloatArray(8) { Float.NaN } }
     val lastFollowerZoom = remember { FloatArray(8) { Float.NaN } }
+    // 2026-10-20: why the main graph was set up again. A whole new graph area ("sectionShown") is a new screen; a
+    // "stateNew" alone means the main graph's position and zoom were made again inside the same screen.
+    DisposableEffect(Unit) {
+        graphViewModel.graphSyncLog("sectionShown", "graph area shown")
+        onDispose { graphViewModel.graphSyncLog("sectionGone", "graph area removed") }
+    }
+    LaunchedEffect(bgScrollState, bgZoomState) {
+        graphViewModel.graphSyncLog(
+            "stateNew",
+            "main graph state made: scroll=${bgScrollState.value} max=${bgScrollState.maxValue} zoom=${bgZoomState.value} followNow=$followNow"
+        )
+    }
+
     LaunchedEffect(bgScrollState, bgZoomState) {
         snapshotFlow {
             val count = activeCount
@@ -591,10 +605,15 @@ fun GraphsSection(
                 // The main graph moved. Its own effect already copies that place to the other graphs.
                 // A lower graph that is still on the old place is not a finger, so it must not pull the main graph back.
                 if (abs(bgScroll - lastMainScroll) > 1f) {
+                    val scrollBefore = lastMainScroll
                     lastMainScroll = bgScroll
                     pendingScroll[0] = Float.NaN
                     appliedScroll[0] = bgScroll
                     if (zoomOk && (lastMainZoom.isNaN() || abs(bgZoom - lastMainZoom) > 0.001f)) {
+                        graphViewModel.graphSyncLog(
+                            "mainZoom",
+                            "zoom $lastMainZoom -> $bgZoom scroll $scrollBefore -> $bgScroll max=$bgMax followNow=$followNow"
+                        )
                         lastMainZoom = bgZoom
                         appliedZoom[0] = bgZoom
                     }
@@ -694,6 +713,11 @@ fun GraphsSection(
                 if (zoomOk) {
                     val mainZoomMoved = !lastMainZoom.isNaN() && abs(bgZoom - lastMainZoom) > 0.001f
                     if (mainZoomMoved) {
+                        // 2026-10-20: a pinch on the main graph, with where it was before and after
+                        graphViewModel.graphSyncLog(
+                            "mainZoom",
+                            "zoom $lastMainZoom -> $bgZoom scroll $lastMainScroll -> $bgScroll max=$bgMax followNow=$followNow"
+                        )
                         lastMainZoom = bgZoom
                         appliedZoom[0] = bgZoom
                     } else {

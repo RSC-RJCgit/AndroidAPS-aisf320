@@ -98,6 +98,7 @@ import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
 import com.patrykandpatrick.vico.compose.common.component.TextComponent
 import com.patrykandpatrick.vico.compose.common.component.rememberTextComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
+import kotlin.math.roundToLong
 
 /** Series identifiers */
 /** Basal on BG graph — deprecated, now shown as flipped overlay on IOB graph. Set to true to restore. */
@@ -1246,6 +1247,19 @@ fun BgGraphCompose(
             }
         }
     }
+    // How many hours the main graph shows now, at the top left next to the BG axis (2026-10-20, per explicit request).
+    // Rounded to 5 minutes, so it does not flicker while a pinch settles.
+    val shownSpanText = visibleTimeRange?.let { (from, to) ->
+        val minutes = (((to - from) / 60_000.0) / 5.0).roundToLong() * 5
+        val hours = (minutes / 60).toInt()
+        val rest = (minutes % 60).toInt()
+        if (rest == 0) stringResource(CoreUiStrings.format_hours_only, hours)
+        else stringResource(CoreUiStrings.format_hour_minute, hours, rest)
+    }
+    val shownSpanStyle = TextStyle(fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (!topBandLines && shownSpanText != null) {
+        Text(text = shownSpanText, style = shownSpanStyle, modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp))
+    }
     if (topBandLines) {
         // Legend for the four top band lines, each name in its own line colour, followed by that line's last-24-hour range
         // (lowest on the lane bottom, highest on its top). A name is shown only when that line really has data to draw,
@@ -1260,6 +1274,8 @@ fun BgGraphCompose(
         }
         // Two rows of two (with the ranges the names no longer fit on one row of a phone).
         Column(modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp)) {
+            // The shown hours first, then the legend below it
+            if (shownSpanText != null) Text(text = shownSpanText, style = shownSpanStyle)
             legend.chunked(2).forEach { rowItems ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     rowItems.forEach { (name, color) ->
