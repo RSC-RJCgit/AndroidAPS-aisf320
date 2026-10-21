@@ -781,6 +781,7 @@
     <string name="wizard_bg_label">BG</string>
     <string name="wizard_correction">Correction</string>
     <string name="wizard_subtotal">Subtotal</string>
+    <string name="wizard_calculated_at" comment="First row of the bolus calculation details. %1$s = date and time of the calculation. Example: Calculated 22/10/26 07:52:41">Calculated %1$s</string>
     <string name="carbs_type_bread">Bread, savory pastries, yogurt, fruit (apple, banana, pear), potatoes, rice, buckwheat, oatmeal, slow and low carb foods, vegetables</string>
     <string name="carbs_type_cake">Dumplings, pasta, Asian cuisine rich in carbs and fats, sweet and yeast pastries, cereals, grain porridge, honey, jam</string>
     <string name="carbs_type_pizza">Lasagna, pizza, hamburgers, fries, baked potatoes, chips and similar snacks</string>

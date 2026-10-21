@@ -429,9 +429,30 @@ class BolusWizard(
         warsawPlan?.let { plan ->
             extras.add(rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60))
         }
+        // Saved with the calculation, so the report shows what was given at once and what follows in parts.
+        if (calculatedTotalInsulin - insulinAfterConstraints >= 0.005 && insulinAfterConstraints > 0.0)
+            extras.add(rh.gs(InterfacesStrings.wizard_given_now_max_bolus, insulinAfterConstraints))
+        extras.addAll(splitLeftoverTexts())
         return extras.fold(base) { acc, line ->
             if (acc.isEmpty()) line else rh.gs(InterfacesStrings.wizard_notes_join, acc, line)
         }
+    }
+
+    /**
+     * "Remaining x U, one part every n min" for the insulin over max bolus and the insulin held back for walking soon.
+     * The confirm screen shows these lines and the calculation note saves them. Empty when no part will follow.
+     */
+    private fun splitLeftoverTexts(): List<String> {
+        if (!::profile.isInitialized || useSuperBolus || profileSwitchPercent(profile) < 100) return emptyList()
+        val step = ch.bolusStep(max(insulinAfterConstraints, walkingSoonHeldUnits).coerceAtLeast(0.05))
+        val aboveMax = if (splitOverMax) splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, step) ?: 0.0 else 0.0
+        val walkLeft = if (walkingSoonHeldUnits >= step / 2.0) walkingSoonHeldUnits else 0.0
+        val usualLeft = if (rapidFallForSplit) walkLeft else walkLeft + aboveMax
+        val rapidLeft = if (rapidFallForSplit) aboveMax else 0.0
+        return listOfNotNull(
+            rh.gs(InterfacesStrings.wizard_split_leftover, usualLeft, splitIntervalMinutes).takeIf { usualLeft >= step / 2.0 },
+            rh.gs(InterfacesStrings.wizard_split_leftover, rapidLeft, SPLIT_RAPID_FALL_INTERVAL_MINUTES).takeIf { rapidLeft >= step / 2.0 }
+        )
     }
 
     /** Add insulin that the wizard held back, as later hourly doses. */
@@ -1038,25 +1059,7 @@ class BolusWizard(
                     rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60)
                 )
             }
-            if (!useSuperBolus && profileSwitchPercent(profile) >= 100) {
-                val step = ch.bolusStep(max(insulinAfterConstraints, walkingSoonHeldUnits).coerceAtLeast(0.05))
-                val aboveMax = if (splitOverMax) splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, step) ?: 0.0 else 0.0
-                val walkLeft = if (walkingSoonHeldUnits >= step / 2.0) walkingSoonHeldUnits else 0.0
-                val usualLeft = if (rapidFallForSplit) walkLeft else walkLeft + aboveMax
-                val rapidLeft = if (rapidFallForSplit) aboveMax else 0.0
-                if (usualLeft >= step / 2.0) {
-                    line(
-                        ConfirmationRole.INFO,
-                        rh.gs(InterfacesStrings.wizard_split_leftover, usualLeft, splitIntervalMinutes)
-                    )
-                }
-                if (rapidLeft >= step / 2.0) {
-                    line(
-                        ConfirmationRole.INFO,
-                        rh.gs(InterfacesStrings.wizard_split_leftover, rapidLeft, SPLIT_RAPID_FALL_INTERVAL_MINUTES)
-                    )
-                }
-            }
+            splitLeftoverTexts().forEach { line(ConfirmationRole.INFO, it) }
         }
 
     fun buildWizardDetail(): EventData.WizardDetail {

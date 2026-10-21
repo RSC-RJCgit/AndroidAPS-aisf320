@@ -20,13 +20,17 @@ internal const val CALCULATION_AFTER_BOLUS_MS = 60_000L
 /**
  * Calculations and treatments have no shared ID. The calculation is saved when OK is pressed and the bolus when the
  * pump confirms it, seconds later (more for a client, a split dose or a past time), so the two times rarely match.
- * Pick from the calculations made 10 min before to 1 min after the bolus: an exact time first, otherwise the one
- * whose insulin is closest to the bolus, then the closest in time. [calculations] are (timestamp, total insulin).
+ * Pick from the calculations made 10 min before to 1 min after the bolus: an exact time first, otherwise the closest
+ * in time whose total is at least the bolus, otherwise the closest in time. [calculations] are (timestamp, total insulin).
+ *
+ * 2026-10-22: it was "closest insulin first". A dose cut by max bolus (2.50 U of a 3.75 U calculation) then matched a
+ * cancelled calculation of 3.70 U made 10 min earlier. A cut dose is never more than its own calculation.
  */
 internal fun matchingCalculationTimestamp(bolus: Long, bolusAmount: Double, calculations: List<Pair<Long, Double>>): Long? {
     val inWindow = calculations.filter { it.first in (bolus - CALCULATION_BEFORE_BOLUS_MS)..(bolus + CALCULATION_AFTER_BOLUS_MS) }
     inWindow.firstOrNull { it.first == bolus }?.let { return it.first }
-    return inWindow.minWithOrNull(compareBy<Pair<Long, Double>>({ abs(it.second - bolusAmount) }, { abs(it.first - bolus) }))?.first
+    val nearest = compareBy<Pair<Long, Double>> { abs(it.first - bolus) }
+    return (inWindow.filter { it.second >= bolusAmount - 0.01 }.minWithOrNull(nearest) ?: inWindow.minWithOrNull(nearest))?.first
 }
 
 /** [smb]: an SMB dose label, arrow or baseline triangle; a tap shows the dose (2026-10-21, per explicit request). */

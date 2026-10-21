@@ -7,7 +7,6 @@ import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.clientcontrol.FailureReason
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.resources.TextResolver
-import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -30,7 +29,6 @@ class WizardExecutorImplTest : TestBase() {
     @Mock lateinit var config: Config
     @Mock lateinit var preferences: Preferences
     @Mock lateinit var wizardBolusExecutor: WizardBolusExecutor
-    @Mock lateinit var rxBus: RxBus
     @Mock lateinit var rh: TextResolver
 
     @Test fun readOnlyClient_commit_isRefusedAndNothingIsGiven() = runTest {

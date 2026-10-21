@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
+import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.stringResource
 import kotlin.math.abs
@@ -34,6 +35,7 @@ internal fun WizardInfoDialog(
     onDismiss: () -> Unit
 ) {
     val profileUtil = LocalProfileUtil.current
+    val dateUtil = LocalDateUtil.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -49,7 +51,8 @@ internal fun WizardInfoDialog(
                 bgString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseValue),
                 isfInUnits = profileUtil.fromMgdlToUnits(bcr.isf),
                 trendString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseTrend * 3),
-                decimalFormatter = decimalFormatter
+                decimalFormatter = decimalFormatter,
+                timeString = dateUtil.dateAndTimeAndSecondsString(bcr.timestamp)
             )
         },
         confirmButton = {
@@ -70,9 +73,15 @@ internal fun WizardInfoDialogContent(
     bgString: String,
     isfInUnits: Double,
     trendString: String,
-    decimalFormatter: DecimalFormatter
+    decimalFormatter: DecimalFormatter,
+    timeString: String = ""
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
+        // When the calculation was made
+        if (timeString.isNotEmpty()) {
+            CalcRow(label = stringResource(CoreUiStrings.wizard_calculated_at, timeString), value = "")
+        }
+
         // === Scaled components (affected by percentage) ===
 
         // BG with ISF

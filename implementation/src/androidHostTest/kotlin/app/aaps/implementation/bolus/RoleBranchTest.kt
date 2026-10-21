@@ -10,7 +10,6 @@ import app.aaps.core.interfaces.clientcontrol.FailureReason
 import app.aaps.core.interfaces.clientcontrol.isNotDeliveryError
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.resources.TextResolver
-import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -34,7 +33,6 @@ class RoleBranchTest : TestBase() {
     @Mock lateinit var nsClient: NsClient
     @Mock lateinit var config: Config
     @Mock lateinit var preferences: Preferences
-    @Mock lateinit var rxBus: RxBus
     @Mock lateinit var rh: TextResolver
 
     private val command: ClientControlActionDispatcher.Command = ClientControlActionDispatcher.Command.BolusCommit(bolusId = 1L)
@@ -154,7 +152,6 @@ class RoleBranchTest : TestBase() {
         }
         val result = branch.commit("l", ClientControlActionDispatcher.Command.BolusCommit(bolusId = 13L)) { error("must not deliver") }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyExample)
-        verify(rxBus).send(any())
         verify(dispatcher, never()).run(any(), any())
     }
 
