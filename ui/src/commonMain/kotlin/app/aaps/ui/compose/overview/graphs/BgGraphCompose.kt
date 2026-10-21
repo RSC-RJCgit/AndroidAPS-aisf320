@@ -213,7 +213,7 @@ fun BgGraphCompose(
     topBandLines: Boolean = false,
     automaticCleanGraph: Boolean = false,
     /** With [automaticCleanGraph]: also hide the text lines (the "Clean graph hides text lines" setting). */
-    cleanGraphHidesTextLines: Boolean = true,
+    cleanGraphHidesTextLines: Boolean = false,
     /** Press and hold to see the values at a reading. Null turns it off. */
     inspect: GraphInspectState? = null,
     modifier: Modifier = Modifier

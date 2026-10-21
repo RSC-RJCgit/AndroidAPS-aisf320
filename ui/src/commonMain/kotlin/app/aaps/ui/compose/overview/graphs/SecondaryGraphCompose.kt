@@ -842,9 +842,8 @@ fun SecondaryGraphCompose(
         }
         listOf(
             NoteArrows(arrows, smbText),
-            // One full line apart plus a small gap (2026-10-21, per explicit request): at half a line each note covered
-            // half of the one below it.
-            SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 1.1f),
+            // One full line apart (2026-10-21, per explicit request): at half a line each note covered half of the one below it.
+            SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 1.0f),
         )
     }
     // One label per hour, counted back from now. The newest is drawn first, so it always shows.

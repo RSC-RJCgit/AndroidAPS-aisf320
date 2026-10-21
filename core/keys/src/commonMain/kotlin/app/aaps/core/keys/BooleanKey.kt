@@ -520,11 +520,11 @@ enum class BooleanKey(
     ),
     // 2026-10-10: the text lines on the graphs (every one but the hypoprediction line). True (default) = shown. List 3 "Clean graph, no
     // text" (TT 5.244) turns it off; it is switched back on here, in Settings.
-    // 2026-10-21, per explicit request: whether a long time span or many SMBs clean the graph by themselves (no SMB labels
-    // and arrows, plain line, no text lines). Local to each device: it is a display choice.
+    // 2026-10-21, per explicit request: whether the automatic clean graph (a long time span or many SMBs) also hides the
+    // text lines. The SMB labels and arrows are hidden in any case. Off by default. Local to each device: a display choice.
     ApsAutoIsfAutoCleanGraph(
         "autoisf_auto_clean_graph",
-        true,
+        false,
         KeysStrings.pref_title_auto_clean_graph,
         KeysStrings.pref_summary_auto_clean_graph
     ),

@@ -581,7 +581,7 @@
     <string name="pref_title_show_insulin_totals">Insulin totals row</string>
     <string name="pref_summary_show_insulin_totals">Show twelve insulin totals on the IOB graph.</string>
     <string name="pref_title_auto_clean_graph">Clean graph also hides the text lines</string>
-    <string name="pref_summary_auto_clean_graph">When the graph shows many hours or many SMBs, the SMB labels and the arrows are hidden by themselves. On (default): the text lines are hidden then too. Off: the text lines stay.</string>
+    <string name="pref_summary_auto_clean_graph">When the graph shows many hours or many SMBs, the SMB labels and the arrows are hidden by themselves. On: the text lines are hidden then too. Off (default): the text lines stay.</string>
     <string name="pref_title_show_graph_text">Show the text lines on the graphs</string>
     <string name="pref_summary_show_graph_text">On (default): the steps, ISF index, target offset and other text lines are shown. Off: only the hypoprediction line stays. List 3 "Clean graph, no text" turns this off.</string>
     <string name="pref_title_coded_locations">Location texts</string>
