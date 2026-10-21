@@ -771,7 +771,7 @@ fun SecondaryGraphCompose(
     }
     val smbLabelSize = rememberSmbLabelSize()
     val smbNumbers = remember(smbStack, smbText, smbLabelSize) {
-        SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.5f, labelSize = smbLabelSize)
+        SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.65f, labelSize = smbLabelSize)
     }
     // Actual basal (U/h step points), only collected for the SMB-totals graph. Used for the "b0.35" line above each total.
     val basalForTotals = if (secondaryMarks == SecondaryMarks.SMB_TOTALS) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value.actualBasal else emptyList()
@@ -797,7 +797,7 @@ fun SecondaryGraphCompose(
                 subLabel = basalLine,
             )
         }
-        SmbStackLabels(items, smbText, pinToBottom = true, stackStepFraction = 0.5f)
+        SmbStackLabels(items, smbText, pinToBottom = true, stackStepFraction = 0.65f)
     }
     val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor) {
         if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()
@@ -842,8 +842,10 @@ fun SecondaryGraphCompose(
         }
         listOf(
             NoteArrows(arrows, smbText),
-            // One full line apart (2026-10-21, per explicit request): at half a line each note covered half of the one below it.
-            SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 1.0f),
+            // 2026-10-21, per explicit request: the notes nearly touch. At half a line each covered half of the one below it,
+            // and a full line (the text box includes space above and below the letters) left gaps. The SMB stacks above went
+            // from 0.5 to 0.65 to match.
+            SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 0.75f),
         )
     }
     // One label per hour, counted back from now. The newest is drawn first, so it always shows.
