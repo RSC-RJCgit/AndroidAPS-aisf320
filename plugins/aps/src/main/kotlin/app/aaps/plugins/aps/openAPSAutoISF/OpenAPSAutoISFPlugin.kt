@@ -275,6 +275,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var lastBigDoseSDeltaMgdl: Double = 0.0
     private var lastDuraTaperTimestamp: Long = 0L
     private var lastDuraTaperInfo: String = ""
+
+    // DuraCap: since when BG has been flat (delta and short delta both at most +0.1 mmol per 5 min). 0 = not flat now.
+    // In memory only: after a restart the cap needs 15 flat minutes again before it acts, which is the safe direction.
+    private var duraFlatSince: Long = 0L
+    private var duraCapWasActive: Boolean = false
     // TodOffsetsZero's own sustained-duration tracking -- see that block's doc comment. 0L means "not
     // currently in a continuously-true streak"; set once when the streak starts, cleared the moment the
     // condition goes false again, so a flickering condition never accumulates partial credit.
@@ -3098,6 +3103,26 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // dedup check keys purely on (type, timestamp), not note text, so two different notes landing on the
     // same millisecond (very possible with ~20+ automations checked sequentially, synchronously, in the
     // same cycle) would otherwise silently drop whichever one loses the race, with no error anywhere.
+    /**
+     * DuraCap (2026-10-21, per explicit request). True when dura is the largest factor and above 1.2, BG is under 6.8 mmol,
+     * BG has been flat for 15 minutes, COB is under 5 g and IOB is at least 1.0 U. Then the loop gives no SMB and no temp
+     * basal above the profile basal (see `DetermineBasalAutoISF.duraFlatCapActive`).
+     *
+     * Checked against 9 Sep - 21 Oct Client data: 55 times, 2.5 U of SMB and 2.1 U of extra temp basal held back in six
+     * weeks. Of the 11 times BG went over 9.0 in the next 3 hours, insulin was held back in only 3 (0.3-0.55 U each). On
+     * 21 Oct it would have held back 0.4 U of SMB and 0.4 U of temp basal before the 3.5 low.
+     * The dura IOB taper (from 1.5 U) did not act on 21 Oct because IOB peaked at 1.46 U.
+     */
+    private fun duraFlatCapApplies(bgMgdl: Double, iob: Double, cob: Double, now: Long): Boolean {
+        val dura = autoIsfValues.duraIsf
+        val others = maxOf(autoIsfValues.acceIsf, autoIsfValues.bgIsf, autoIsfValues.ppIsf)
+        return dura > 1.2 && dura >= others &&
+            bgMgdl < 122.5 /* 6.8 mmol */ &&
+            cob < 5.0 &&
+            iob >= 1.0 &&
+            duraFlatSince > 0L && now - duraFlatSince >= T.mins(15).msecs()
+    }
+
     private fun addCarePortalNote(note: String, durationInMinutes: Int = 1) {
         val therapyEvent = TE(
             timestamp = NoteTimestampAllocator.next(dateUtil.now()),
@@ -4962,7 +4987,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 bgAcce
             )
             variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, liveHp2, liveStepsForCycle)
-        }
+            val flatNow = glucoseStatus.delta <= 1.8 && glucoseStatus.shortAvgDelta <= 1.8
+            duraFlatSince = if (!flatNow) 0L else if (duraFlatSince == 0L) dateUtil.now() else duraFlatSince
+        } else duraFlatSince = 0L
+        val duraCapActive = autoIsfMode && duraFlatCapApplies(glucoseStatus.glucose, iobData.iob, mealData.mealCOB, dateUtil.now())
+        determineBasalAutoISF.duraFlatCapActive = duraCapActive
+        if (duraCapActive && !duraCapWasActive) addCarePortalNote("DuraCap")
+        duraCapWasActive = duraCapActive
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
         // Tier 3 UAM Boost caution reduction added 2026-09-18 at explicit request, same

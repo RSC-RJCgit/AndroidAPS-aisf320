@@ -83,6 +83,12 @@ class DetermineBasalAutoISF @Inject constructor(
     // the AIV export without pulling raw device logs. Added 2026-09-16, per explicit request.
     var recentLowReboundGuardFiredThisCycle: Boolean = false
 
+    // DuraCap (2026-10-21, per explicit request): set by the plugin each cycle. True while dura is the main factor, BG is
+    // flat and under 6.8 mmol, there are no carbs and IOB is already 1 U or more. Then no SMB is given and a temp basal
+    // is never above the profile basal. On 21 Oct 07:55-08:22 about 20 small SMBs and a temp basal up to 2.7 U/h at a
+    // flat 6.4 built IOB to 1.46 U, and BG fell to 3.5 by 09:46. See duraFlatCapApplies in the plugin.
+    var duraFlatCapActive: Boolean = false
+
     // Switch for the recent-low rebound guard ("LoReb": trims SMB after a recent low), from the setting
     // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
     // 2026-09-20 "for now" and became this toggle the same day). While off it never fires, so no LoReb note
@@ -185,6 +191,10 @@ class DetermineBasalAutoISF @Inject constructor(
         var rate = _rate
         if (rate < 0) rate = 0.0
         else if (rate > maxSafeBasal) rate = maxSafeBasal
+        if (duraFlatCapActive && rate > profile.current_basal) {
+            rT.reason.append("DuraCap: temp basal ${round(rate, 2)} limited to profile basal ${round(profile.current_basal, 2)}; ")
+            rate = profile.current_basal
+        }
 
         val suggestedRate = round_basal(rate)
         if (currenttemp.duration > (duration - 10) && currenttemp.duration <= 120 && suggestedRate <= currenttemp.rate * 1.2 && suggestedRate >= currenttemp.rate * 0.8 && duration > 0) {
@@ -1324,6 +1334,11 @@ class DetermineBasalAutoISF @Inject constructor(
         if (maxDelta > maxDeltaPercentage * bg) {
             consoleError.add("maxDelta ${convert_bg2(maxDelta)} > ${100 * maxDeltaPercentage}% of BG ${convert_bg(bg)} - disabling SMB")
             rT.reason.append("maxDelta " + convert_bg2(maxDelta) + " > " + 100 * maxDeltaPercentage + "% of BG " + convert_bg(bg) + ": SMB disabled; ")
+            enableSMB = false
+        }
+        if (enableSMB && duraFlatCapActive) {
+            consoleError.add("DuraCap: dura is the main factor at a flat BG with IOB ${round(iob_data.iob, 2)} U - disabling SMB")
+            rT.reason.append("DuraCap: SMB disabled; ")
             enableSMB = false
         }
 
