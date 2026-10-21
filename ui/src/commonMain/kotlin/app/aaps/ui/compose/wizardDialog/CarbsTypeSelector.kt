@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.PlainTooltip
@@ -37,6 +38,7 @@ import kotlinx.coroutines.launch
  * Bread / cake / pizza buttons with the info tooltip. Shared by the Bolus Wizard and the QuickWizard editor
  * (2026-10-22), so both show the same choice.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun CarbsTypeSelector(selected: CarbsType, onChange: (CarbsType) -> Unit, modifier: Modifier = Modifier) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
