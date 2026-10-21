@@ -77,6 +77,8 @@ data class QuickWizardEntryData(
     val splitOverMax: Boolean? = null,
     /** Minutes between those parts. Null follows the calculator setting. */
     val splitIntervalMinutes: Int? = null,
+    /** Meal type, a [CarbsType] name, as in the Bolus Wizard (2026-10-22). A button saved before this is BREAD. */
+    val carbsType: String = CarbsType.BREAD.name,
 ) {
 
     companion object {
@@ -140,6 +142,7 @@ data class QuickWizardEntryData(
                 directCorrection = json.lenientDouble("directCorrection", 0.0),
                 splitOverMax = json.lenientBooleanOrNull("splitOverMax"),
                 splitIntervalMinutes = json.lenientIntOrNull("splitIntervalMinutes"),
+                carbsType = json.lenientString("carbsType").ifEmpty { CarbsType.BREAD.name },
             )
     }
 
@@ -188,5 +191,6 @@ data class QuickWizardEntryData(
             put("directCorrection", directCorrection)
             splitOverMax?.let { put("splitOverMax", it) }
             splitIntervalMinutes?.let { put("splitIntervalMinutes", it) }
+            put("carbsType", carbsType)
         }
 }

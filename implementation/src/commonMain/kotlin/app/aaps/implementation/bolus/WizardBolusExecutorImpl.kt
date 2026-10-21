@@ -285,8 +285,8 @@ class WizardBolusExecutorImpl(
             wizard.carbs,
             wizard.createBolusCalculatorResult(
                 eCarbsGrams = eCarbsGrams,
-                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.time() else 0,
-                eCarbsDurationHours = if (eCarbsGrams > 0) entry.duration() else 0,
+                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.eCarbsDelayMinutes() else 0,
+                eCarbsDurationHours = if (eCarbsGrams > 0) entry.eCarbsDurationHours() else 0,
             ),
             wizard.timeStamp,
             entry,
@@ -313,8 +313,8 @@ class WizardBolusExecutorImpl(
             advisorLines = if (advisorApplies) wizard.buildConfirmationLines(advisor = true, quickWizardEntry = entry) else emptyList(),
             wizardDetail = wizard.buildWizardDetail().copy(
                 eCarbsGrams = eCarbsGrams,
-                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.time() else 0,
-                eCarbsDurationHours = if (eCarbsGrams > 0) entry.duration() else 0,
+                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.eCarbsDelayMinutes() else 0,
+                eCarbsDurationHours = if (eCarbsGrams > 0) entry.eCarbsDurationHours() else 0,
                 carbTimeMinutes = entry.carbTime(),
                 alarm = entry.useAlarm() == QuickWizardEntry.ALWAYS && entry.carbTime() > 0,
                 maxBolus = buttonMax ?: constraintChecker.getMaxBolusAllowed().value(),
@@ -760,11 +760,14 @@ class WizardBolusExecutorImpl(
         val qwe = p.entry
         if (qwe != null) {
             useAlarm = qwe.useAlarm() == QuickWizardEntry.ALWAYS
-            if (qwe.useEcarbs() == QuickWizardEntry.ALWAYS) {
-                eCarbsDelay = qwe.time()
+            // The same extended carbs the confirmation showed: the meal type's or the button's own, none when fat and
+            // protein replace them. It read carbs2 directly before, so those carbs came too (2026-10-22).
+            val qweECarbs = qwe.eCarbsGrams()
+            if (qweECarbs > 0) {
+                eCarbsDelay = qwe.eCarbsDelayMinutes()
                 eventTime += (eCarbsDelay * 60000)
-                carbs2 = qwe.carbs2()
-                duration = qwe.duration()
+                carbs2 = qweECarbs
+                duration = qwe.eCarbsDurationHours()
             }
         } else if (p.eCarbsGrams > 0) {
             // Manual wizard from a client (no QuickWizardEntry): the eCarbs split travels in PendingBolus so the

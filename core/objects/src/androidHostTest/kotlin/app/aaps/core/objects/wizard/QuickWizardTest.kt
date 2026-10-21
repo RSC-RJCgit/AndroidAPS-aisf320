@@ -142,4 +142,34 @@ class QuickWizardTest : TestBaseWithProfile() {
 
         assertThat(buttonTexts()).containsExactly("Meal", "Lunch", "Dinner").inOrder()
     }
+
+    @Test
+    fun mealTypeSplitsCarbsAsTheWizard() {
+        // Cake: 90% of the carbs now, 20% as extended carbs from +60 min over 2 h. The button's own fixed extended carbs are not used.
+        quickWizard.setData(entries("{\"buttonText\":\"Pasta\",\"carbs\":20,\"validFrom\":0,\"validTo\":86340,\"unreliableSmb\":false,\"autoFpu\":false,\"carbsType\":\"CAKE\",\"useEcarbs\":0,\"carbs2\":30,\"time\":15,\"duration\":4}"))
+        val e = quickWizard[0]
+        assertThat(e.carbsNow()).isEqualTo(18)
+        assertThat(e.eCarbsGrams()).isEqualTo(4)
+        assertThat(e.eCarbsDelayMinutes()).isEqualTo(60)
+        assertThat(e.eCarbsDurationHours()).isEqualTo(2)
+    }
+
+    @Test
+    fun buttonWithoutMealTypeKeepsItsOwnExtendedCarbs() {
+        quickWizard.setData(entries("{\"buttonText\":\"Pasta\",\"carbs\":20,\"validFrom\":0,\"validTo\":86340,\"unreliableSmb\":false,\"autoFpu\":false,\"useEcarbs\":0,\"carbs2\":30,\"time\":15,\"duration\":4}"))
+        val e = quickWizard[0]
+        assertThat(e.carbsType()).isEqualTo(CarbsType.BREAD)
+        assertThat(e.carbsNow()).isEqualTo(20)
+        assertThat(e.eCarbsGrams()).isEqualTo(30)
+        assertThat(e.eCarbsDelayMinutes()).isEqualTo(15)
+        assertThat(e.eCarbsDurationHours()).isEqualTo(4)
+    }
+
+    @Test
+    fun automaticFatAndProteinReplaceTheMealTypeExtendedCarbs() {
+        quickWizard.setData(entries("{\"buttonText\":\"Pasta\",\"carbs\":20,\"validFrom\":0,\"validTo\":86340,\"unreliableSmb\":false,\"autoFpu\":true,\"carbsType\":\"CAKE\"}"))
+        val e = quickWizard[0]
+        assertThat(e.carbsNow()).isEqualTo(18)
+        assertThat(e.eCarbsGrams()).isEqualTo(0)
+    }
 }

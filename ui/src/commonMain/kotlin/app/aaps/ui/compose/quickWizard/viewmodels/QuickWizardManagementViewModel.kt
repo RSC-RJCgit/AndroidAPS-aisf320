@@ -14,6 +14,7 @@ import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.wizard.CarbsType
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.QuickWizardMode
@@ -183,6 +184,7 @@ class QuickWizardManagementViewModel(
             editorCarbs2 = entry.carbs2(),
             editorAutoFpu = entry.autoFpu(),
             editorSmallMeal = entry.smallMeal(),
+            editorCarbsType = entry.carbsType(),
             editorUnreliableSmb = entry.unreliableSmb(),
             editorWalkingSoonAuto = entry.walkingSoon() == QuickWizardEntry.AUTO,
             editorWalkingSoon = entry.walkingSoon() == QuickWizardEntry.ALWAYS,
@@ -390,6 +392,7 @@ class QuickWizardManagementViewModel(
                     carbs2 = currentState.editorCarbs2,
                     autoFpu = currentState.editorAutoFpu,
                     smallMeal = currentState.editorSmallMeal,
+                    carbsType = currentState.editorCarbsType.name,
                     unreliableSmb = currentState.editorUnreliableSmb,
                     walkingSoon = when {
                         currentState.editorWalkingSoonAuto -> QuickWizardEntry.AUTO
@@ -600,6 +603,10 @@ class QuickWizardManagementViewModel(
 
     fun updateSmallMeal(value: Boolean) {
         _uiState.update { it.copy(editorSmallMeal = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateCarbsType(value: CarbsType) {
+        _uiState.update { it.copy(editorCarbsType = value, hasUnsavedChanges = true) }
     }
 
     fun updateWalkingSoonAuto(value: Boolean) {

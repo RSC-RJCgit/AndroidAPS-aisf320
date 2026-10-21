@@ -1030,15 +1030,15 @@ class BolusWizard(
             }
 
             if (quickWizardEntry != null) {
-                val eCarbsYesNo = quickWizardEntry.useEcarbs()
-                if (eCarbsYesNo == QuickWizardEntry.ALWAYS) {
-                    val timeOffset = quickWizardEntry.time()
-                    val duration = quickWizardEntry.duration()
-                    val carbs2 = quickWizardEntry.carbs2()
-                    if (carbs2 > 0) {
-                        val ecarbsMessage = rh.gs(InterfacesStrings.format_carbs, carbs2) + "/" + duration + "h (+" + timeOffset + "min)"
-                        line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.confirmation_line, rh.gs(InterfacesStrings.uel_extended_carbs), ecarbsMessage))
-                    }
+                // The extended carbs the button really gives: its meal type or its own fixed amount, none when fat and
+                // protein replace them (2026-10-22).
+                // Same line as the wizard's own extended carbs.
+                val carbs2 = quickWizardEntry.eCarbsGrams()
+                if (carbs2 > 0) {
+                    line(
+                        ConfirmationRole.INFO,
+                        rh.gs(InterfacesStrings.wizard_ecarbs, carbs2, quickWizardEntry.eCarbsDurationHours(), quickWizardEntry.eCarbsDelayMinutes())
+                    )
                 }
             }
             if (eCarbsGrams > 0) {

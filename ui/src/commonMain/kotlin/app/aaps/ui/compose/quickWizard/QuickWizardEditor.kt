@@ -30,6 +30,7 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.IntKey
+import app.aaps.core.objects.wizard.CarbsType
 import app.aaps.core.objects.wizard.QuickWizardMode
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LabeledSwitch
@@ -42,6 +43,7 @@ import app.aaps.core.ui.compose.icons.IcQuickwizard
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.quickWizard.viewmodels.TrendOption
+import app.aaps.ui.compose.wizardDialog.CarbsTypeSelector
 
 /**
  * Editor for QuickWizard entry with all configurable fields.
@@ -172,6 +174,8 @@ fun QuickWizardEditor(
     onTimeChange: (Int) -> Unit,
     onDurationChange: (Int) -> Unit,
     onCarbs2Change: (Int) -> Unit,
+    carbsType: CarbsType = CarbsType.BREAD,
+    onCarbsTypeChange: (CarbsType) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     LocalDateUtil.current
@@ -438,6 +442,8 @@ fun QuickWizardEditor(
                 checked = smallMeal,
                 onCheckedChange = onSmallMealChange
             )
+            // Meal type, as in the Bolus Wizard (2026-10-22): cake and pizza give part of the carbs later as extended carbs
+            CarbsTypeSelector(selected = carbsType, onChange = onCarbsTypeChange, modifier = Modifier.fillMaxWidth())
             SwitchRow(
                 label = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel),
                 checked = retryFpuLater,
@@ -514,8 +520,9 @@ fun QuickWizardEditor(
             )
         }
 
-        // Extended Carbs Section (WIZARD and CARBS modes)
-        if (mode != QuickWizardMode.INSULIN) {
+        // Extended Carbs Section (WIZARD and CARBS modes). Hidden while a cake or pizza meal type sets the extended carbs,
+        // so the two cannot add up.
+        if (mode != QuickWizardMode.INSULIN && !(mode == QuickWizardMode.WIZARD && carbsType != CarbsType.BREAD)) {
             HorizontalDivider()
             SwitchRow(
                 label = stringResource(UiStrings.additional_ecarbs),

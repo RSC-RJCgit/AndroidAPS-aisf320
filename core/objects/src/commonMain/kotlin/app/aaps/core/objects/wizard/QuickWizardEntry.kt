@@ -151,7 +151,7 @@ class QuickWizardEntry(
             typedFat = fat(),
             typedProtein = protein(),
             percentage = percentage(),
-            extendedCarbPercent = 0,
+            extendedCarbPercent = carbsType().eCarbsPercent,
             smallMeal = smallMeal(),
         )
         val bgMgdl = lastBG.value
@@ -170,7 +170,7 @@ class QuickWizardEntry(
             profile,
             profileName,
             tempTarget,
-            carbs(),
+            carbsNow(),
             cob,
             bg,
             directCorrection(),
@@ -270,9 +270,32 @@ class QuickWizardEntry(
      * The extended-carbs amount this preset really delivers: [carbs2] when eCarbs are switched on, 0 when they
      * are off. Every caller needs the switch together with the amount, so the two stay in one place.
      */
-    fun eCarbsGrams(): Int =
+    fun eCarbsGrams(): Int = when {
         // As in the wizard, automatic fat and protein (or unreliable SMBs) send the slow part as later doses instead
-        if (useEcarbs() == ALWAYS && !(mode() == QuickWizardMode.WIZARD && (autoFpu() || unreliableSmb()))) carbs2() else 0
+        mode() == QuickWizardMode.WIZARD && (autoFpu() || unreliableSmb()) -> 0
+        mealTypeApplies()                                                    -> carbs() * carbsType().eCarbsPercent / 100
+        useEcarbs() == ALWAYS                                                -> carbs2()
+        else                                                                 -> 0
+    }
+
+    /** Minutes until the extended carbs start: the meal type's, else the button's own [time]. */
+    fun eCarbsDelayMinutes(): Int = if (mealTypeApplies()) carbsType().eCarbsDelayMinutes else time()
+
+    /** Hours the extended carbs last: the meal type's, else the button's own [duration]. */
+    fun eCarbsDurationHours(): Int = if (mealTypeApplies()) carbsType().eCarbsDurationHours else duration()
+
+    /** Meal type of a calculator button (2026-10-22). CARBS and INSULIN buttons keep their own fixed extended carbs. */
+    fun carbsType(): CarbsType = if (mode() == QuickWizardMode.WIZARD) CarbsType.fromName(data.carbsType) else CarbsType.BREAD
+
+    private fun mealTypeApplies(): Boolean = carbsType() != CarbsType.BREAD
+
+    /**
+     * The carbs given and bolused now: the meal type's share, as in the wizard. Unreliable SMBs keep all of them now,
+     * because the slow part becomes fat and protein doses instead.
+     */
+    fun carbsNow(): Int =
+        if (mode() == QuickWizardMode.WIZARD && unreliableSmb()) carbs()
+        else carbs() * carbsType().carbsPercent / 100
 
     fun time(): Int = data.time
 

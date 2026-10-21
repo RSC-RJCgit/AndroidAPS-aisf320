@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.quickWizard.viewmodels
 
+import app.aaps.core.objects.wizard.CarbsType
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.QuickWizardMode
 import app.aaps.core.ui.compose.ScreenMode
@@ -45,6 +46,7 @@ data class QuickWizardManagementUiState(
     // The Bolus Wizard's own options (2026-10-21)
     val editorAutoFpu: Boolean = false,
     val editorSmallMeal: Boolean = false,
+    val editorCarbsType: CarbsType = CarbsType.BREAD,
     val editorUnreliableSmb: Boolean = false,
     val editorWalkingSoonAuto: Boolean = true,
     val editorWalkingSoon: Boolean = false,
