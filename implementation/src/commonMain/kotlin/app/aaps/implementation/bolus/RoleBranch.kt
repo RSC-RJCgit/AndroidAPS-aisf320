@@ -6,12 +6,18 @@ import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.clientcontrol.FailureReason
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.resources.TextResolver
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.ui.CoreUiStrings
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * The shared role branch for the two-step relayed execution path — extracted from [BatchExecutorImpl] and
@@ -23,12 +29,12 @@ import dev.zacsweers.metro.SingleIn
  *
  * A client set to read-only ([BooleanKey.NsClientReadOnlyClient], for a master that takes no remote control, such as
  * 3.4) sends no command. A batch made only of a profile switch, a temp target or a note runs on the LOCAL executor:
- * the record is saved here and the normal Nightscout upload carries it to the master, as a 3.4 client does. Anything
- * else (insulin, carbs, pump commands, running mode) is refused at once with [FailureReason.ReadOnlyClient].
+ * the record is saved here and the normal Nightscout upload carries it to the master, as a 3.4 client does.
  *
- * The bolus calculator is the one exception on the prepare side (2026-10-16): a read-only client calculates it
- * locally as an example, so the confirmation lines can be shown. Its commit is always refused (`WizardExecutorImpl`),
- * so that example is never given.
+ * Every other action (2026-10-22, per explicit request) is worked out here as an EXAMPLE, so its normal confirmation
+ * shows: the bolus calculator, QuickWizard, insulin, carbs, scenes, pump commands. Its confirm gives nothing and shows
+ * "example only" once. Commit allows only the ids prepared as Nightscout records, so an example can never be given from
+ * this phone. An action that cannot be worked out on a client is refused at once with [FailureReason.ReadOnlyClient].
  */
 @SingleIn(AppScope::class)
 @Inject
@@ -36,8 +42,15 @@ class RoleBranch(
     private val dispatcher: ClientControlActionDispatcher,
     private val nsClient: NsClient,
     private val config: Config,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val rxBus: RxBus,
+    private val rh: TextResolver
 ) {
+
+    // A read-only client's prepares: the Nightscout records it may commit, and the examples it may not
+    private val idsLock = Mutex()
+    private val recordOnlyIds = mutableSetOf<Long>()
+    private val exampleIds = mutableSetOf<Long>()
 
     val readOnlyClient: Boolean
         get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
@@ -53,8 +66,18 @@ class RoleBranch(
         masterPrepare: suspend () -> WizardBolusExecutor.PrepareResult
     ): ActionProgress {
         if (readOnlyClient) {
-            if (!isNightscoutRecordOnly(clientCommand) && clientCommand !is ClientControlActionDispatcher.Command.WizardPrepare)
-                return ActionProgress.Rejected(FailureReason.ReadOnlyClient)
+            val recordOnly = isNightscoutRecordOnly(clientCommand)
+            return when (val r = masterPrepare()) {
+                is WizardBolusExecutor.PrepareResult.Preview -> {
+                    idsLock.withLock { if (recordOnly) recordOnlyIds += r.bolusId else exampleIds += r.bolusId }
+                    ActionProgress.Prepared(r.bolusId, r.lines, r.advisorApplies, r.advisorLines, r.wizardDetail)
+                }
+                // An example that cannot be worked out on a client: the read-only message at once, as before
+                is WizardBolusExecutor.PrepareResult.Error   ->
+                    if (recordOnly) ActionProgress.Rejected(FailureReason.ExecutionFailed, r.message)
+                    else ActionProgress.Rejected(FailureReason.ReadOnlyClient)
+                WizardBolusExecutor.PrepareResult.NoAction   -> ActionProgress.Rejected(FailureReason.NoAction)
+            }
         } else if (config.AAPSCLIENT) {
             if (!nsClient.masterReachable.value) return ActionProgress.Rejected(clientBlockReason())
             return dispatcher.run(clientCommand, label)
@@ -84,8 +107,20 @@ class RoleBranch(
         clientCommand: ClientControlActionDispatcher.Command,
         masterConfirm: suspend ((WizardBolusExecutor.Failure) -> Unit) -> WizardBolusExecutor.ConfirmResult
     ): ActionProgress {
-        // A read-only client commits locally. Only a batch that passed [isNightscoutRecordOnly] in prepare was parked
-        // here, so any other id finds nothing and comes back as NoPendingBolus.
+        // A read-only client commits locally only an id it prepared as a Nightscout record. Anything else was an example:
+        // it is never given from this phone, and the message is shown here once for every kind of action.
+        if (readOnlyClient) {
+            val id = commandId(clientCommand)
+            val allowed = idsLock.withLock {
+                val record = id != null && recordOnlyIds.remove(id)
+                if (id != null) exampleIds.remove(id)
+                record
+            }
+            if (!allowed) {
+                rxBus.send(EventShowDialog.Ok(title = label, message = rh.gs(CoreUiStrings.clientcontrol_read_only_example)))
+                return ActionProgress.Rejected(FailureReason.ReadOnlyExample)
+            }
+        }
         if (config.AAPSCLIENT && !readOnlyClient) {
             if (!nsClient.masterReachable.value) return ActionProgress.Rejected(clientBlockReason())
             return dispatcher.run(clientCommand, label)
@@ -119,6 +154,13 @@ class RoleBranch(
                 it is BatchAction.ProfileSwitch || it is BatchAction.TempTarget ||
                     it is BatchAction.TherapyEvent || it is BatchAction.TherapyEventEdit
             }
+
+    /** The prepared id a commit refers to. Null for a command that carries none. */
+    private fun commandId(command: ClientControlActionDispatcher.Command): Long? = when (command) {
+        is ClientControlActionDispatcher.Command.BolusCommit -> command.bolusId
+        is ClientControlActionDispatcher.Command.SceneCommit -> command.bolusId
+        else                                                 -> null
+    }
 
     private fun clientBlockReason(): FailureReason =
         if (!nsClient.masterControlAllowed.value) FailureReason.ControlDisabled else FailureReason.NotReachable

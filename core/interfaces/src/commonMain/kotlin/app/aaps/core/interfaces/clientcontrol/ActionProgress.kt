@@ -62,6 +62,7 @@ enum class FailureReason {
     Busy,            // another client-control action is already in progress
     SendFailed,      // upload to Nightscout failed (detail = transport error)
     ReadOnlyClient,  // this client is set to read-only: it sends no remote commands (only a profile switch, temp target or note goes, through Nightscout)
+    ReadOnlyExample, // a read-only client's confirm of an example: nothing was given. RoleBranch already showed the message once.
 
     // --- master-side execution ---
     NoActiveProfile, // insulin: master has no active profile to re-apply onto

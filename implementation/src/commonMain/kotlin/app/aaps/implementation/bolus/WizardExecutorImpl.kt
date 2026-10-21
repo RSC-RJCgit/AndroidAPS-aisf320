@@ -5,7 +5,6 @@ import app.aaps.core.interfaces.bolus.WizardBolusExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
-import app.aaps.core.interfaces.clientcontrol.FailureReason
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
@@ -40,11 +39,9 @@ class WizardExecutorImpl(
         }
     }
 
+    // A read-only client's dose was an example: RoleBranch.commit refuses it, shows "example only" and never gives it.
     override suspend fun commit(bolusId: Long, asAdvisor: Boolean, source: Sources, label: String, correctionU: Double): ActionProgress =
-        // A read-only client only shows the calculation as an example. Its dose was prepared on this phone, so a
-        // commit here would give it from this phone: never.
-        if (roleBranch.readOnlyClient) ActionProgress.Rejected(FailureReason.ReadOnlyClient)
-        else roleBranch.commit(label, ClientControlActionDispatcher.Command.BolusCommit(bolusId, asAdvisor, correctionU = correctionU)) { onError ->
+        roleBranch.commit(label, ClientControlActionDispatcher.Command.BolusCommit(bolusId, asAdvisor, correctionU = correctionU)) { onError ->
             wizardBolusExecutor.confirm(bolusId, source, onError, asAdvisor, correctionU)
         }
 }

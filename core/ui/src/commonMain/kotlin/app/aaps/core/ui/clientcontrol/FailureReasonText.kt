@@ -18,6 +18,7 @@ fun FailureReason.failText(): TextRef = when (this) {
     FailureReason.Busy               -> CoreUiStrings.clientcontrol_fail_busy
     FailureReason.SendFailed         -> CoreUiStrings.clientcontrol_fail_send_failed
     FailureReason.ReadOnlyClient     -> CoreUiStrings.clientcontrol_fail_read_only_client
+    FailureReason.ReadOnlyExample    -> CoreUiStrings.clientcontrol_read_only_example
     FailureReason.NoActiveProfile    -> CoreUiStrings.clientcontrol_fail_no_active_profile
     FailureReason.SceneNotFound      -> CoreUiStrings.clientcontrol_fail_scene_not_found
     FailureReason.SceneDisabled      -> CoreUiStrings.clientcontrol_fail_scene_disabled
