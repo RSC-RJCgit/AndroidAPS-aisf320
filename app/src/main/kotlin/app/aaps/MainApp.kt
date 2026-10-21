@@ -87,6 +87,9 @@ import javax.inject.Inject
 import javax.inject.Provider
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.full.declaredMemberProperties
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.implementation.preference.BuildDefaultsReset
 
 class MainApp : DaggerApplication() {
 
@@ -99,6 +102,7 @@ class MainApp : DaggerApplication() {
     @Inject lateinit var sp: SP
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var config: Config
+    @Inject lateinit var activePlugin: ActivePlugin
     @Inject lateinit var configBuilder: ConfigBuilder
     @Inject lateinit var plugins: List<@JvmSuppressWildcards PluginBase>
     @Inject lateinit var compatDBHelper: CompatDBHelper
@@ -139,6 +143,11 @@ class MainApp : DaggerApplication() {
         // Register and initialize plugins
         pluginStore.plugins = plugins
         configBuilder.initialize()
+        // A Virtual master or a client gets the agreed on/off switches once per new build (2026-10-21, per explicit
+        // request). The main master looping phone is never touched.
+        BuildDefaultsReset.apply(preferences, config, activePlugin.activePump is VirtualPump, BuildConfig.HEAD).let { changed ->
+            if (changed.isNotEmpty()) aapsLogger.info(LTag.CORE, "New build: agreed switches set: ${changed.joinToString { it.key }}")
+        }
 
         // Do initializations in another thread
         scope.launch { doInit() }

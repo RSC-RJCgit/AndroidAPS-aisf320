@@ -90,6 +90,9 @@ class IobCobOref1Worker(
             val prevDataTime = ads.roundUpTime(bucketedData[bucketedData.size - 3].timestamp)
             aapsLogger.debug(LTag.AUTOSENS) { "Prev data time: " + dateUtil.dateAndTimeString(prevDataTime) }
             var previous = autosensDataTable[prevDataTime]
+            // A long recalculation is logged once, whatever tags are on (2026-10-21): see the note in
+            // IobCobCalculatorPlugin.newHistoryData.
+            var longRunLogged = false
             // start from oldest to be able sub cob
             for (i in bucketedData.size - 4 downTo 0) {
                 // IOB-Action patch (2026-07-12): throttle the progress event — this fired once per
@@ -108,6 +111,10 @@ class IobCobOref1Worker(
                 if (autosensDataTable[bgTime].also { existing = it } != null) {
                     previous = existing
                     continue
+                }
+                if (!longRunLogged && i > 30) {
+                    aapsLogger.info(LTag.CORE, "IOB/COB recalculating $i steps from ${dateUtil.dateAndTimeString(bgTime)}: ${data.reason}")
+                    longRunLogged = true
                 }
                 val profile = profileFunction.getProfile(bgTime)
                 if (profile == null) {

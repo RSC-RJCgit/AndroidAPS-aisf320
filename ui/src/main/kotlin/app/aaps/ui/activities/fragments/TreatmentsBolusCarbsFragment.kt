@@ -44,7 +44,6 @@ import app.aaps.ui.R
 import app.aaps.ui.databinding.TreatmentsBolusCarbsFragmentBinding
 import app.aaps.ui.databinding.TreatmentsBolusCarbsItemBinding
 import app.aaps.ui.dialogs.WizardInfoDialog
-import com.google.gson.Gson
 import dagger.android.support.DaggerFragment
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -294,12 +293,9 @@ class TreatmentsBolusCarbsFragment : DaggerFragment(), MenuProvider {
                 binding.calculation.setOnClickListener {
                     val mealLinkLoaded = it.tag as MealLink? ?: return@setOnClickListener
                     mealLinkLoaded.bolusCalculatorResult?.let { bolusCalculatorResult ->
-                        WizardInfoDialog().also { wizardDialog ->
-                            wizardDialog.arguments = Bundle().also { bundle ->
-                                bundle.putString("data", Gson().toJson(bolusCalculatorResult).toString())
-                            }
-                            wizardDialog.show(childFragmentManager, "WizardInfoDialog")
-                        }
+                        // The bolus given with it, so a dose over MaxBolus shows what was given and what was left to split
+                        WizardInfoDialog.newInstance(bolusCalculatorResult, mealLinkLoaded.bolus?.amount)
+                            .show(childFragmentManager, "WizardInfoDialog")
                     }
                 }
                 binding.calculation.paintFlags = binding.calculation.paintFlags or Paint.UNDERLINE_TEXT_FLAG

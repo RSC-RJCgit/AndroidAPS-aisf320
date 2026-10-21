@@ -27,9 +27,15 @@ class WizardInfoDialog : DaggerDialogFragment() {
 
     companion object {
 
-        /** The dialog for one saved calculation, packed the way onCreateView reads it back. */
-        fun newInstance(bolusCalculatorResult: BCR): WizardInfoDialog = WizardInfoDialog().also { dialog ->
-            dialog.arguments = Bundle().also { it.putString("data", Gson().toJson(bolusCalculatorResult).toString()) }
+        /**
+         * The dialog for one saved calculation, packed the way onCreateView reads it back. [givenNow] is the bolus actually
+         * given with it, when known (Treatments has it); then a dose over MaxBolus shows what was given and what was left to split.
+         */
+        fun newInstance(bolusCalculatorResult: BCR, givenNow: Double? = null): WizardInfoDialog = WizardInfoDialog().also { dialog ->
+            dialog.arguments = Bundle().also {
+                it.putString("data", Gson().toJson(bolusCalculatorResult).toString())
+                if (givenNow != null) it.putDouble("givenNow", givenNow)
+            }
         }
     }
 
@@ -39,6 +45,7 @@ class WizardInfoDialog : DaggerDialogFragment() {
     @Inject lateinit var dateUtil: DateUtil
 
     private lateinit var data: BCR
+    private var givenNow: Double? = null
 
     private var _binding: DialogWizardinfoBinding? = null
 
@@ -51,6 +58,7 @@ class WizardInfoDialog : DaggerDialogFragment() {
             it.getString("data")?.let { str ->
                 data = Gson().fromJson(str, BCR::class.java)
             }
+            if (it.containsKey("givenNow")) givenNow = it.getDouble("givenNow")
         }
         dialog?.window?.requestFeature(Window.FEATURE_NO_TITLE)
         dialog?.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN)
@@ -73,6 +81,8 @@ class WizardInfoDialog : DaggerDialogFragment() {
         val isf = profileUtil.fromMgdlToUnits(data.isf)
         val trend = profileUtil.fromMgdlToStringInUnits(data.glucoseTrend * 3)
         fun units(value: Double) = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, value)
+        // 2026-10-21, per explicit request: when it was calculated
+        addCalcRow(rh.gs(R.string.calc_detail_time, dateUtil.dateAndTimeAndSecondsString(data.timestamp)), "")
         if (data.wasGlucoseUsed) {
             addCalcRow(rh.gs(R.string.format_bg_isf, bgString, isf), units(data.glucoseInsulin))
             if (data.wasTempTargetUsed) addCalcRow(rh.gs(app.aaps.core.ui.R.string.tt_label), "")
@@ -80,19 +90,29 @@ class WizardInfoDialog : DaggerDialogFragment() {
         if (data.wasTrendUsed) addCalcRow(rh.gs(R.string.calc_detail_trend, trend), units(data.trendInsulin))
         if (data.wasCOBUsed) addCalcRow(rh.gs(R.string.format_cob_ic, data.cob, data.ic), units(data.cobInsulin))
         if (data.wereCarbsUsed) addCalcRow(rh.gs(R.string.format_carbs_ic, data.carbs, data.ic), units(data.carbsInsulin))
-        if (data.percentageCorrection != 100) {
-            addCalcDivider()
-            val subtotal = data.glucoseInsulin + data.trendInsulin + data.cobInsulin + data.carbsInsulin
-            addCalcRow(rh.gs(R.string.calc_detail_subtotal), units(subtotal))
-            addCalcRow(rh.gs(app.aaps.core.ui.R.string.format_percent, data.percentageCorrection), units(subtotal * data.percentageCorrection / 100.0))
-        }
-        addCalcDivider()
+        // IOB and corrections come before the percentage (2026-10-21): the wizard applies the % to the whole sum, IOB included,
+        // so with IOB after it the rows did not add up to the total.
         if (data.wasBolusIOBUsed) addCalcRow(rh.gs(app.aaps.core.ui.R.string.bolus_iob_label), units(-data.bolusIOB))
         if (data.wasBasalIOBUsed) addCalcRow(rh.gs(app.aaps.core.ui.R.string.treatments_wizard_basaliob_label), units(-data.basalIOB))
         if (abs(data.otherCorrection) > 0.005) addCalcRow(rh.gs(R.string.calc_detail_correction), units(data.otherCorrection))
         if (data.wasSuperbolusUsed) addCalcRow(rh.gs(app.aaps.core.ui.R.string.superbolus), units(data.superbolusInsulin))
+        if (data.percentageCorrection != 100) {
+            addCalcDivider()
+            val subtotal = data.glucoseInsulin + data.trendInsulin + data.cobInsulin + data.carbsInsulin +
+                (if (data.wasBolusIOBUsed) -data.bolusIOB else 0.0) + (if (data.wasBasalIOBUsed) -data.basalIOB else 0.0) +
+                data.otherCorrection + (if (data.wasSuperbolusUsed) data.superbolusInsulin else 0.0)
+            addCalcRow(rh.gs(R.string.calc_detail_subtotal), units(subtotal))
+            addCalcRow(rh.gs(app.aaps.core.ui.R.string.format_percent, data.percentageCorrection), units(subtotal * data.percentageCorrection / 100.0))
+        }
         addCalcDivider()
         addCalcRow(rh.gs(R.string.calc_detail_total), units(data.totalInsulin), bold = true)
+        // A dose over MaxBolus (2026-10-21, per explicit request): what was given now and what was left to split
+        givenNow?.let { given ->
+            if (data.totalInsulin > given + 0.005) {
+                addCalcRow(rh.gs(R.string.calc_detail_given_now), units(given))
+                addCalcRow(rh.gs(R.string.calc_detail_to_split), units(data.totalInsulin - given))
+            }
+        }
         addCalcDivider()
         addCalcFooter(rh.gs(R.string.calc_detail_profile, data.profileName))
         if (data.note.isNotEmpty()) addCalcFooter(rh.gs(R.string.calc_detail_notes, data.note))

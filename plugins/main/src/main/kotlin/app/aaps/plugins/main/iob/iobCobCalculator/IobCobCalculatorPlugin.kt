@@ -215,6 +215,7 @@ class IobCobCalculatorPlugin @Inject constructor(
     }
 
     private fun resetDataAndRunCalculation(reason: String, event: Event?) {
+        aapsLogger.info(LTag.CORE, "IOB/COB cache cleared completely: $reason")
         calculationWorkflow.stopCalculation(CalculationWorkflow.MAIN_CALCULATION, reason)
         clearCache()
         ads.reset()
@@ -524,6 +525,10 @@ class IobCobCalculatorPlugin @Inject constructor(
             // clear up 5 min back for proper COB calculation
             val time = oldDataTimestamp - 5 * 60 * 1000L
             aapsLogger.debug(LTag.AUTOSENS, "Invalidating cached data to: " + dateUtil.dateAndTimeAndSecondsString(time))
+            // Always in the log, whatever tags are on (2026-10-21): a reset far back makes a long recalculation, and on 21 Oct
+            // Virtual stopped looping for hours while one kept being restarted. This says what asked for it.
+            if (time < System.currentTimeMillis() - 60 * 60 * 1000L)
+                aapsLogger.info(LTag.CORE, "IOB/COB cache cleared back to ${dateUtil.dateAndTimeAndSecondsString(time)} by ${event.javaClass.simpleName}")
             for (index in iobTable.size() - 1 downTo 0) {
                 if (iobTable.keyAt(index) > time) {
                     aapsLogger.debug(LTag.AUTOSENS, "Removing from iobTable: " + dateUtil.dateAndTimeAndSecondsString(iobTable.keyAt(index)))

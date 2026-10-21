@@ -519,18 +519,23 @@ class BolusWizard @Inject constructor(
         ) {
             if (ceil(calculatedTotalInsulin / maxBolusAllowed).toInt() > 1) {
                 val residual = calculatedTotalInsulin - maxBolusAllowed
-                parts.add("Carb split ${decimalFormatter.to2Decimal(residual)}U every ${manualSplitBolusIntervalMins}min")
+                parts.add(
+                    "Carb split: ${decimalFormatter.to2Decimal(residual)}U left, in parts every ${manualSplitBolusIntervalMins} min " +
+                        "while BG is 7.0 or more and not falling"
+                )
             }
         }
         warsawFpuPlan()?.let { plan ->
             val cappedNote = if (plan.capped) " [CAPPED, full tier=${decimalFormatter.to2Decimal(plan.fullTierInsulin)}U/8h]" else ""
+            val gap = plan.durationMinutes / plan.numDoses.coerceAtLeast(1)
             parts.add(
-                "Protein+Fat ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
-                    "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})$cappedNote"
+                "Protein+Fat: ${plan.numDoses} x ${decimalFormatter.to2Decimal(plan.perDoseInsulin)}U " +
+                    "(${decimalFormatter.to2Decimal(plan.totalInsulin)}U, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)}), " +
+                    "first in $gap min, then every $gap min, each only if BG and IOB allow$cappedNote"
             )
         }
         if (parts.isEmpty()) return ""
-        return parts.joinToString(" and ") + " split, capped by insulinReq"
+        return parts.joinToString("\n") + "\nEach later part is capped by the loop's insulinReq"
     }
 
     // Added 2026-08-29, per explicit request: an UNCONDITIONAL calc-info line, appended to every note
@@ -595,7 +600,13 @@ class BolusWizard @Inject constructor(
         // (see insulinFromProteinOnly/insulinFromFatOnly's own doc comment); WizardDialog may have
         // auto-filled these from carbs, or the user may have typed/overridden them directly.
         val fpuText = if (protein <= 0 && fat <= 0) "off" else "on (fat=${fat}g/protein=${protein}g)"
-        return "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U$recentEntryText, $icText, Profile=${delayedProfilePctPreview}%, " +
+        // 2026-10-21, per explicit request: the calculated dose and the dose given now, first, so the MaxBolus cap shows.
+        val givenNow = min(calculatedTotalInsulin, maxBolusAllowed)
+        val capText = if (calculatedTotalInsulin > maxBolusAllowed + 0.005)
+            "Calculated ${decimalFormatter.to2Decimal(calculatedTotalInsulin)}U, given now ${decimalFormatter.to2Decimal(givenNow)}U (MaxBolus), " +
+                "over MaxBolus ${decimalFormatter.to2Decimal(calculatedTotalInsulin - givenNow)}U\n"
+        else ""
+        return capText + "MaxBolus ${decimalFormatter.to2Decimal(maxBolusAllowed)}U$recentEntryText, $icText, Profile=${delayedProfilePctPreview}%, " +
             "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel, FPU $fpuText"
     }
 
@@ -631,7 +642,9 @@ class BolusWizard @Inject constructor(
             wasCOBUsed = useCob,
             cobInsulin = insulinFromCOB,
             carbs = carbs.toDouble(),
-            wereCarbsUsed = cob > 0,
+            // carbs > 0, not cob > 0 (2026-10-21, per explicit request): new carbs are not in COB yet, so the calc dialog in
+            // Treatments never showed the carbs line or the IC. Upstream v4 made the same fix.
+            wereCarbsUsed = carbs > 0,
             carbsInsulin = insulinFromCarbs,
             otherCorrection = correction,
             wasSuperbolusUsed = useSuperBolus,
@@ -1223,7 +1236,7 @@ class BolusWizard @Inject constructor(
                 )
                 scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + maxPart, intervalMins, schedulingPct, myScheduleToken)
                 totalProjectedFutureSplitDoses += residual
-                noteDetails.add("carb split ${decimalFormatter.to2Decimal(residual)}U every ${intervalMins}min")
+                noteDetails.add("carb split ${decimalFormatter.to2Decimal(residual)}U left, in parts every $intervalMins min while BG allows")
             }
         }
         // Shared baseline for the Warsaw-FPU series' OWN IOB-delta reduction: IOB right after the actual

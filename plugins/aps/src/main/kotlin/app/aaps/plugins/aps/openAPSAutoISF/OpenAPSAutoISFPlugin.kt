@@ -769,7 +769,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
         val sensitivity = if (count == 0) null else sum / count
-        aapsLogger.debug(LTag.APS, "getAverageIsfMgdl() $sensitivity from $count values ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $caller")
+        // Not for the IOB/COB worker (2026-10-21, per explicit request): it asks once per 5-minute step, 20,000-30,000 lines an
+        // hour during a full recalculation, and writing them slowed the very calculation that had to finish before the next BG.
+        if (caller != "iobCobOref1Worker")
+            aapsLogger.debug(LTag.APS, "getAverageIsfMgdl() $sensitivity from $count values ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $caller")
         return sensitivity
     }
 

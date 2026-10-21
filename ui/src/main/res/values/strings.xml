@@ -201,6 +201,9 @@
     <string name="calc_detail_subtotal">Subtotal</string>
     <string name="calc_detail_correction">Correction</string>
     <string name="calc_detail_total">Total</string>
+    <string name="calc_detail_time" comment="First row of the bolus calculation details. %1$s=date and time of the calculation. Example: Calculated 21/10/26 17:18:42">Calculated %1$s</string>
+    <string name="calc_detail_given_now" comment="Row after the total when the dose was more than MaxBolus: the insulin given at once">Given now (MaxBolus)</string>
+    <string name="calc_detail_to_split" comment="Row after the total when the dose was more than MaxBolus: the insulin left over, given later in split parts">Over MaxBolus, to split</string>
     <string name="calc_detail_profile">Profile: %1$s</string>
     <string name="calc_detail_notes">Notes: %1$s</string>
 </resources>
