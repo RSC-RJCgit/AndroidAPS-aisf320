@@ -212,6 +212,8 @@ fun BgGraphCompose(
     /** Graph 5 only: draw SMB delivery, acce weight, pp weight and profile basal in the top band of the BG axis. */
     topBandLines: Boolean = false,
     automaticCleanGraph: Boolean = false,
+    /** With [automaticCleanGraph]: also hide the text lines (the "Clean graph hides text lines" setting). */
+    cleanGraphHidesTextLines: Boolean = true,
     /** Press and hold to see the values at a reading. Null turns it off. */
     inspect: GraphInspectState? = null,
     modifier: Modifier = Modifier
@@ -254,7 +256,7 @@ fun BgGraphCompose(
     val bgReadings by viewModel.bgReadingsFlow.collectAsStateWithLifecycle()
     val savedGraphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
     val graphDisplay = if (automaticCleanGraph) savedGraphDisplay.copy(
-        showSmbLabels = false, basalToggleIndex = 2, showTextLines = false
+        showSmbLabels = false, basalToggleIndex = 2, showTextLines = savedGraphDisplay.showTextLines && !cleanGraphHidesTextLines
     ) else savedGraphDisplay
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays

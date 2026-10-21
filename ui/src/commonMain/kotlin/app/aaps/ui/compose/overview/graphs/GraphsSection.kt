@@ -302,8 +302,10 @@ fun GraphsSection(
         // Scrolling keeps the width, so only a real zoom (more than 1 minute) ends the override
         if (start != null && visibleMinutes != null && abs(visibleMinutes - start) > 1.0) graphViewModel.clearCleanGraphOverride()
     }
-    val autoCleanGraphOn by LocalPreferences.current.observe(BooleanKey.ApsAutoIsfAutoCleanGraph).collectAsStateWithLifecycle()
-    val automaticCleanGraph = autoCleanGraphOn && cleanGraphForWindow && !cleanGraphOverride
+    val automaticCleanGraph = cleanGraphForWindow && !cleanGraphOverride
+    // The setting decides only whether the automatic clean graph also hides the text lines (2026-10-21, per explicit
+    // request). The SMB labels and the arrows are hidden in any case.
+    val cleanGraphHidesTextLines by LocalPreferences.current.observe(BooleanKey.ApsAutoIsfAutoCleanGraph).collectAsStateWithLifecycle()
 
     // Settle further before feeding into BG specifically: unlike the secondary graphs (which are
     // non-interactive and unaffected by frequent updates), BG has live pinch-zoom. Updating its
@@ -945,6 +947,7 @@ fun GraphsSection(
             BgGraphCompose(
                 viewModel = graphViewModel,
                 automaticCleanGraph = automaticCleanGraph,
+                cleanGraphHidesTextLines = cleanGraphHidesTextLines,
                 bgOverlays = graphConfig.bgOverlays,
                 scrollState = bgScrollState,
                 zoomState = bgZoomState,
@@ -1128,6 +1131,7 @@ fun GraphsSection(
                 BgGraphCompose(
                     viewModel = graphViewModel,
                     automaticCleanGraph = automaticCleanGraph,
+                    cleanGraphHidesTextLines = cleanGraphHidesTextLines,
                     bgOverlays = graphConfig.bgOverlays,
                     scrollState = g5ScrollState,
                     zoomState = g5ZoomState,
