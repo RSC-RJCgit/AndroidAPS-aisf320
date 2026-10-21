@@ -43,6 +43,8 @@ import app.aaps.core.ui.compose.icons.IcAaps
 import app.aaps.core.ui.compose.metroViewModel
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.implementation.lifecycle.IosProtectionLifecycle
+import app.aaps.core.keys.StringNonKey
+import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.ios.shell.IosAppStartup
 import app.aaps.ios.shell.IosCrashLog
@@ -119,6 +121,8 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
     IosCrashLog.install(logger)
     // A brand-new install starts read-only, as on Android (see FreshInstallDefaults). Before anything reads the setting.
     FreshInstallDefaults.apply(graph.preferences, graph.config)
+    // A client gets the agreed on/off switches once per new build (2026-10-21, per explicit request)
+    BuildDefaultsReset.apply(graph.preferences, graph.config, graph.preferences.get(StringNonKey.ActivePluginPump))
 
     // Before the composition, not beside it: the first view model built reads the active pump, and
     // an empty plugin list there throws from a coroutine and takes the process with it.

@@ -13,6 +13,8 @@ enum class StringNonKey(
 ) : StringNonPreferenceKey {
 
     ImportRestoreBaseline("import_restore_baseline", "{}", exportable = false),
+    /** The build (version and commit) the switch defaults were last reset for, see `BuildDefaultsReset`. */
+    DefaultsResetBuild("defaults_reset_build", "", exportable = false),
 
     QuickWizard(key = "QuickWizard", defaultValue = "[]", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     WearCwfWatchfaceName(key = "wear_cwf_watchface_name", defaultValue = ""),

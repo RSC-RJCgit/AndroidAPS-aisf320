@@ -23,7 +23,6 @@ class AutoIsfExportTextTest {
     @Test
     fun settingsLinesAreSortedByKey() {
         val text = autoIsfSettingsText(listOf("b" to "2", "a" to "1"))
-        assertEquals("a = 1
-b = 2", text)
+        assertEquals("a = 1\nb = 2", text)
     }
 }

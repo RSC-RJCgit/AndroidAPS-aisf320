@@ -49,6 +49,7 @@ import app.aaps.implementation.maintenance.migration.InsulinMigration
 import app.aaps.implementation.maintenance.migration.InsulinMigrationPlan
 import app.aaps.implementation.maintenance.migration.LegacyInsulin
 import app.aaps.implementation.maintenance.migration.PreferenceMigrations
+import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.implementation.maintenance.migration.ProfileDiaHarvest
 import app.aaps.implementation.receivers.BTReceiver
@@ -605,6 +606,10 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         // A brand-new install starts with a few settings that differ from their defaults, for example a client starts
         // read-only. Only on a fresh install, so an update changes nothing.
         FreshInstallDefaults.apply(preferences, config)
+        // A Virtual master or a client gets the agreed on/off switches once per new build (2026-10-21, per explicit request)
+        BuildDefaultsReset.apply(preferences, config, preferences.get(StringNonKey.ActivePluginPump)).let { changed ->
+            if (changed.isNotEmpty()) aapsLogger.info(LTag.CORE, "New build: agreed switches set: ${changed.joinToString { it.key }}")
+        }
 
         // Harvest the DIA each old profile was using, for the database migration in dataMigrations().
         //
