@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.23.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.24.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -52,16 +52,36 @@ FULL_COPY = [
     # BG/delta text in the user's units for the calculation notes.
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedDoseSteps.kt",
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/GateGlucoseText.kt",
+    # Added in patch .24: MealFpuFromCarbs.kt is brand-new (auto fat/protein ratios, shared by the dialog and QuickWizard).
+    # WizardInfoDialog.kt + dialog_wizardinfo.xml: the calculation report in Treatments (rows with time, carbs/IC, total,
+    # given now and to split). Its calc_detail_* strings are added to ui strings.xml further down.
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/MealFpuFromCarbs.kt",
+    "ui/src/main/kotlin/app/aaps/ui/dialogs/WizardInfoDialog.kt",
+    "ui/src/main/res/layout/dialog_wizardinfo.xml",
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .23, 2026-10-19)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .24, 2026-10-22)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.23.patch
-  git apply bolus-calculator-on-3426-aisf321.23.patch
+  git apply --check bolus-calculator-on-3426-aisf321.24.patch
+  git apply bolus-calculator-on-3426-aisf321.24.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .24 (2026-10-22):
+- QuickWizard buttons now use the same rules as the Bolus Wizard dialog:
+    the falling-BG / high-IOB caution (WizardDropTrendCaution) halves wiz% for that dose, and the held-back part
+    can follow later through the delayed bolus, as in the dialog;
+    new boxes in the button editor: Unreliable SMBs (wiz% at most 90, auto fat/protein doubles), Small meal
+    (auto fat/protein halves) and Auto fat/protein from carbs (only when the button's protein and fat are both 0).
+  A NEW button starts with these boxes as set in "Bolus calculator defaults". A button saved before .24 keeps
+  Auto fat/protein OFF (so it gives what it gave before), and Unreliable SMBs / Small meal follow those defaults
+  (both off by default). Open a button and tick the box to change it.
+- The calculation report (Treatments -> calc) shows the time of the calculation, carbs and IC, each part, the
+  total, and when the dose was over MaxBolus: the part given now and the part left to split.
+- "Carbs" in the report is shown whenever carbs were entered (wereCarbsUsed = carbs > 0).
+- Retains all patch .23 changes below.
 
 Changes in patch .23 (2026-10-19):
 - Protein/fat (FPU) doses: the BG check is now BG above 5.5 mmol/L (99 mg/dL) and both deltas at least
@@ -606,8 +626,8 @@ def apply_surgical(staging: Path) -> None:
         "            // computed by the time doCalc() returns). Previously QuickWizard had no way to supply these\n"
         "            // at all, so the Warsaw-FPU extended series could never engage for a QuickWizard-triggered\n"
         "            // bolus regardless of BolusWizard's own logic.\n"
-        "            protein = protein(),\n"
-        "            fat = fat(),\n"
+        "            protein = autoProtein,\n"
+        "            fat = autoFat,\n"
         "            // \"Always on\" is live S30 (S5 OR watch only), not a hard 50%. Seated press uses standing wiz%.\n"
         "            walkingSoon = useWalkingSoon() == YES &&\n"
         "                WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())\n"
@@ -618,13 +638,26 @@ def apply_surgical(staging: Path) -> None:
         "        // reasoning/timing as split-bolus above -- warsawFpuPlan() only runs later, on demand, so this\n"
         "        // is safe to set post-doCalc() (unlike protein/fat themselves further up).\n"
         "        wizard.warsawDurationHours = warsawDurationHours()\n"
+        "        // A fourth DelayedBolusWorker reason, as in the dialog: the held-back part can follow once BG rises.\n"
+        "        wizard.dropTrendCautionApplied = dropTrendCaution\n"
         "        return wizard\n    }",
         "QuickWizardEntry doCalc",
     )
     t = must_replace(
         t,
         "        val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()\n        return bolusWizardProvider.get().doCalc(",
-        "        val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()\n        val wizard = bolusWizardProvider.get().doCalc(",
+        "        // 2026-10-22: same rules as the Bolus Wizard dialog. \"Unreliable SMBs\" caps wiz% at 90 for this calculation (never\n"
+        "        // raises a lower button %), and WizardDropTrendCaution halves it while BG is falling or IOB is high for the rise.\n"
+        "        val basePercentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()\n"
+        "        var percentage = if (unreliableSmb()) min(basePercentage, MealFpuFromCarbs.UNRELIABLE_WIZ_PERCENT) else basePercentage\n"
+        "        val dropTrendCaution =\n"
+        "            WizardDropTrendCaution.appliesNow(lastBG.value, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)\n"
+        "        if (dropTrendCaution) percentage = min(percentage, WizardDropTrendCaution.scaledWizPercent(percentage))\n"
+        "        // Auto fat/protein: only when the button has no protein or fat of its own (like a manual edit in the dialog).\n"
+        "        val (autoFat, autoProtein) =\n"
+        "            if (autoFpu() && protein() == 0 && fat() == 0) MealFpuFromCarbs.fatProtein(carbs().toDouble(), unreliableSmb(), smallMeal())\n"
+        "            else fat() to protein()\n"
+        "        val wizard = bolusWizardProvider.get().doCalc(",
         "QuickWizardEntry val wizard",
     )
     # safeGetDouble import for warsawDurationHours() below (added 2026-09-16)
@@ -651,8 +684,31 @@ def apply_surgical(staging: Path) -> None:
         '    fun useAlarm(): Int = safeGetInt(storage, "useAlarm", NO)\n\n'
         '    fun useWalkingSoon(): Int = safeGetInt(storage, "useWalkingSoon", NO)\n\n'
         '    fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", NO)\n\n'
-        '    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)\n}',
+        '    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)\n\n'
+        '    // Bolus Wizard boxes (2026-10-22). For a button saved before these existed, Unreliable SMBs and Small meal follow the\n'
+        '    // "Bolus calculator defaults" settings (both off by default) and Auto fat/protein is off.\n'
+        '    fun unreliableSmb(): Boolean = optionOrDefault("useUnreliableSmb", BooleanKey.WizardDefaultUnreliableSmbs)\n\n'
+        '    fun smallMeal(): Boolean = optionOrDefault("useSmallMeal", BooleanKey.WizardDefaultSmallMeal)\n\n'
+        '    fun autoFpu(): Boolean = safeGetInt(storage, "useAutoFpu", NO) == YES\n\n'
+        '    private fun optionOrDefault(name: String, default: BooleanKey): Boolean =\n'
+        '        if (storage.has(name)) safeGetInt(storage, name, NO) == YES else preferences.get(default)\n}',
         "QuickWizardEntry getters",
+    )
+    t = must_replace(
+        t,
+        "import javax.inject.Provider\n",
+        "import javax.inject.Provider\nimport kotlin.math.min\n",
+        "QuickWizardEntry min import",
+    )
+    t = must_replace(
+        t,
+        "            storage = JSONObject(emptyData)\n        } catch",
+        "            storage = JSONObject(emptyData)\n"
+        "            // A new button starts with Auto fat/protein as set in \"Bolus calculator defaults\". A button saved before this\n"
+        "            // box existed has no value and stays off (see autoFpu()), so it keeps giving what it gave before.\n"
+        "            storage.put(\"useAutoFpu\", if (preferences.get(BooleanKey.WizardDefaultAutoFpu)) YES else NO)\n"
+        "        } catch",
+        "QuickWizardEntry new-button autoFpu",
     )
     write(staging, p, t)
 
@@ -958,6 +1014,9 @@ def apply_surgical(staging: Path) -> None:
         '                    entry.storage.put("carbs2", carbs2)\n                } catch (e: JSONException) {',
         '                    entry.storage.put("carbs2", carbs2)\n'
         '                    entry.storage.put("useWalkingSoon", checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))\n'
+        '                    entry.storage.put("useUnreliableSmb", checkBoxToRadioNumbers(binding.unreliableSmbsCheckbox.isChecked))\n'
+        '                    entry.storage.put("useSmallMeal", checkBoxToRadioNumbers(binding.smallMealCheckbox.isChecked))\n'
+        '                    entry.storage.put("useAutoFpu", checkBoxToRadioNumbers(binding.autoFpuCheckbox.isChecked))\n'
         '                    entry.storage.put("useSplitBolus", checkBoxToRadioNumbers(binding.splitBolusCheckbox.isChecked))\n'
         '                    entry.storage.put("splitBolusIntervalMins", binding.splitBolusIntervalInput.value.toInt())\n'
         '                    entry.storage.put("protein", binding.proteinInput.value.toInt())\n'
@@ -1009,6 +1068,9 @@ def apply_surgical(staging: Path) -> None:
         "        useECarbs(radioNumbersToCheckBox(entry.useEcarbs()))\n\n        binding.useCob.setOnCheckedChangeListener { _, _ -> processCob() }",
         "        useECarbs(radioNumbersToCheckBox(entry.useEcarbs()))\n\n"
         "        binding.walkingSoonCheckbox.isChecked = radioNumbersToCheckBox(entry.useWalkingSoon())\n"
+        "        binding.unreliableSmbsCheckbox.isChecked = entry.unreliableSmb()\n"
+        "        binding.smallMealCheckbox.isChecked = entry.smallMeal()\n"
+        "        binding.autoFpuCheckbox.isChecked = entry.autoFpu()\n"
         "        binding.splitBolusCheckbox.isChecked = radioNumbersToCheckBox(entry.useSplitBolus())\n"
         "        binding.splitBolusIntervalInput.value = SafeParse.stringToDouble(entry.splitBolusIntervalMins().toString())\n"
         "        processSplitBolus()\n"
@@ -1070,6 +1132,36 @@ def apply_surgical(staging: Path) -> None:
                 android:gravity="start|center_vertical"
                 android:lines="1"
                 android:text="Walking soon (50% now, rest later if needed)"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                tools:ignore="HardcodedText" />
+
+            <CheckBox
+                android:id="@+id/unreliable_smbs_checkbox"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="Unreliable SMBs / bad sensor / high protein: wiz% at most 90, auto fat/protein doubles"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                tools:ignore="HardcodedText" />
+
+            <CheckBox
+                android:id="@+id/small_meal_checkbox"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="Small meal: auto fat/protein halves"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                tools:ignore="HardcodedText" />
+
+            <CheckBox
+                android:id="@+id/auto_fpu_checkbox"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="Auto fat/protein from carbs (only when protein and fat below are both 0)"
                 android:textAppearance="@style/TextAppearance.AppCompat.Medium"
                 tools:ignore="HardcodedText" />
 
@@ -1233,6 +1325,23 @@ def apply_surgical(staging: Path) -> None:
         '    <string name="unit_hour_short">h</string>\n',
         "ui strings.xml unit_hour_short",
     )
+    # Patch .24: rows of the calculation report (WizardInfoDialog, FULL_COPY).
+    t = must_replace(
+        t,
+        "\n</resources>",
+        "\n"
+        '    <string name="calc_detail_trend">BG Δ15m: %1$s</string>\n'
+        '    <string name="calc_detail_subtotal">Subtotal</string>\n'
+        '    <string name="calc_detail_correction">Correction</string>\n'
+        '    <string name="calc_detail_total">Total</string>\n'
+        '    <string name="calc_detail_time" comment="First row of the bolus calculation details. %1$s=date and time of the calculation. Example: Calculated 21/10/26 17:18:42">Calculated %1$s</string>\n'
+        '    <string name="calc_detail_given_now" comment="Row after the total when the dose was more than MaxBolus: the insulin given at once">Given now (MaxBolus)</string>\n'
+        '    <string name="calc_detail_to_split" comment="Row after the total when the dose was more than MaxBolus: the insulin left over, given later in split parts">Over MaxBolus, to split</string>\n'
+        '    <string name="calc_detail_profile">Profile: %1$s</string>\n'
+        '    <string name="calc_detail_notes">Notes: %1$s</string>\n'
+        "</resources>",
+        "ui strings.xml calc_detail rows",
+    )
     write(staging, p, t)
 
     # BolusProgressDialog
@@ -1377,6 +1486,23 @@ def apply_surgical(staging: Path) -> None:
                 selectedItems.forEach { _, ml ->""",
         "TreatmentsBolusCarbsFragment bump",
     )
+    # Patch .24: pass the bolus given with the calculation, so the report can show "given now" and "to split".
+    t = must_replace(
+        t,
+        """                        WizardInfoDialog().also { wizardDialog ->
+                            wizardDialog.arguments = Bundle().also { bundle ->
+                                bundle.putString("data", Gson().toJson(bolusCalculatorResult).toString())
+                            }
+                            wizardDialog.show(childFragmentManager, "WizardInfoDialog")
+                        }
+""",
+        """                        // The bolus given with it, so a dose over MaxBolus shows what was given and what was left to split
+                        WizardInfoDialog.newInstance(bolusCalculatorResult, mealLinkLoaded.bolus?.amount)
+                            .show(childFragmentManager, "WizardInfoDialog")
+""",
+        "TreatmentsBolusCarbsFragment WizardInfoDialog",
+    )
+    t = must_replace(t, "import com.google.gson.Gson\n", "", "TreatmentsBolusCarbsFragment Gson import")
     write(staging, p, t)
 
 

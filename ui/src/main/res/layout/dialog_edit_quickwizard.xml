@@ -446,6 +446,36 @@
                 android:textAppearance="@style/TextAppearance.AppCompat.Medium"
                 tools:ignore="HardcodedText" />
 
+            <CheckBox
+                android:id="@+id/unreliable_smbs_checkbox"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="Unreliable SMBs / bad sensor / high protein: wiz% at most 90, auto fat/protein doubles"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                tools:ignore="HardcodedText" />
+
+            <CheckBox
+                android:id="@+id/small_meal_checkbox"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="Small meal: auto fat/protein halves"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                tools:ignore="HardcodedText" />
+
+            <CheckBox
+                android:id="@+id/auto_fpu_checkbox"
+                style="@style/Widget.App.CheckBox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="start|center_vertical"
+                android:text="Auto fat/protein from carbs (only when protein and fat below are both 0)"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                tools:ignore="HardcodedText" />
+
             <LinearLayout
                 android:id="@+id/split_bolus_row"
                 android:layout_width="wrap_content"

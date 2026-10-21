@@ -71,6 +71,7 @@ class WizardInfoDialog : DaggerDialogFragment() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString("data", Gson().toJson(data).toString())
+        givenNow?.let { outState.putDouble("givenNow", it) }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

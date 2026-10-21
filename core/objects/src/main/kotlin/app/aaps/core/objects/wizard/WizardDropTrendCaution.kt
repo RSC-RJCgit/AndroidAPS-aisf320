@@ -1,5 +1,13 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+import app.aaps.core.interfaces.iob.IobCobCalculator
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.LongKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.extensions.round
 
 /**
  * Downtrend caution rule for the Bolus Wizard dialog (added 2026-09-30, per explicit request, after a
@@ -80,6 +88,25 @@ object WizardDropTrendCaution {
         // same low-BG territory path 1 already lives in, per explicit request.
         val path2 = bgMgdl < PATH2_BGL_CEILING_MGDL && iobDisproportionateToRise(iobUnits, bgRiseMgdl)
         return path1 || path2
+    }
+
+    /** The full check with live data: deltas, the HP1 that OpenAPSAutoISFPlugin caches every cycle, total IOB and the
+     *  BG rise from its own low in the last [WizardRecentEntry.WINDOW_MINUTES]. Used by the Bolus Wizard dialog and by
+     *  QuickWizard buttons, so both give the same dose. No glucose status means no caution. */
+    fun appliesNow(
+        bgMgdl: Double, glucoseStatusProvider: GlucoseStatusProvider, preferences: Preferences,
+        iobCobCalculator: IobCobCalculator, persistenceLayer: PersistenceLayer, dateUtil: DateUtil
+    ): Boolean {
+        val gs = glucoseStatusProvider.getGlucoseStatusData() ?: return false
+        val hp1Cached = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
+        val hp1Mmol = if (hp1Cached != 0L) hp1Cached / 1000.0 else null
+        val iobUnits = iobCobCalculator.calculateIobFromBolus().round().iob +
+            iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
+        val from = dateUtil.now() - T.mins(WizardRecentEntry.WINDOW_MINUTES).msecs()
+        // <= 0 (or no readings at all) means "not risen"; iobDisproportionateToRise() floors that to 0.1 mmol.
+        val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true).minOfOrNull { it.value }
+        val riseMgdl = if (recentMin == null) 0.0 else bgMgdl - recentMin
+        return applies(gs.delta, gs.shortAvgDelta, gs.longAvgDelta, bgMgdl, hp1Mmol, iobUnits, riseMgdl)
     }
 
     /** Wiz% scaled to 50%, rounded to the nearest whole percent, floor 1. */

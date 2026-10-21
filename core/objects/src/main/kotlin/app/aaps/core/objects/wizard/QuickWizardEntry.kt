@@ -25,6 +25,7 @@ import org.json.JSONObject
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Provider
+import kotlin.math.min
 
 class QuickWizardEntry @Inject constructor(
     aapsLogger: AAPSLogger,
@@ -79,6 +80,9 @@ class QuickWizardEntry @Inject constructor(
             }""".trimMargin()
         try {
             storage = JSONObject(emptyData)
+            // A new button starts with Auto fat/protein as set in "Bolus calculator defaults". A button saved before this
+            // box existed has no value and stays off (see autoFpu()), so it keeps giving what it gave before.
+            storage.put("useAutoFpu", if (preferences.get(BooleanKey.WizardDefaultAutoFpu)) YES else NO)
         } catch (e: JSONException) {
             aapsLogger.error("Unhandled exception", e)
         }
@@ -152,7 +156,17 @@ class QuickWizardEntry @Inject constructor(
         } else if (useTrend() == NEGATIVE_ONLY && glucoseStatus != null && glucoseStatus.shortAvgDelta < 0) {
             trend = true
         }
-        val percentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()
+        // 2026-10-22: same rules as the Bolus Wizard dialog. "Unreliable SMBs" caps wiz% at 90 for this calculation (never
+        // raises a lower button %), and WizardDropTrendCaution halves it while BG is falling or IOB is high for the rise.
+        val basePercentage = if (usePercentage() == DEFAULT) preferences.get(IntKey.OverviewBolusPercentage) else percentage()
+        var percentage = if (unreliableSmb()) min(basePercentage, MealFpuFromCarbs.UNRELIABLE_WIZ_PERCENT) else basePercentage
+        val dropTrendCaution =
+            WizardDropTrendCaution.appliesNow(lastBG.value, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+        if (dropTrendCaution) percentage = min(percentage, WizardDropTrendCaution.scaledWizPercent(percentage))
+        // Auto fat/protein: only when the button has no protein or fat of its own (like a manual edit in the dialog).
+        val (autoFat, autoProtein) =
+            if (autoFpu() && protein() == 0 && fat() == 0) MealFpuFromCarbs.fatProtein(carbs().toDouble(), unreliableSmb(), smallMeal())
+            else fat() to protein()
         // 2026-09-26, per explicit request: partway up a rise the carbs are dated back from the rise onset (CarbTimeFromRise), same as the
         // Bolus Wizard dialog's pre-fill. Only for a button with carbs and no carb time of its own, and only while the Settings -> Overview
         // switch is on (default). The offset shows in the confirmation dialog and is appended to the note.
@@ -188,8 +202,8 @@ class QuickWizardEntry @Inject constructor(
             // computed by the time doCalc() returns). Previously QuickWizard had no way to supply these
             // at all, so the Warsaw-FPU extended series could never engage for a QuickWizard-triggered
             // bolus regardless of BolusWizard's own logic.
-            protein = protein(),
-            fat = fat(),
+            protein = autoProtein,
+            fat = autoFat,
             // "Always on" is live S30 (S5 OR watch only), not a hard 50%. Seated press uses standing wiz%.
             walkingSoon = useWalkingSoon() == YES &&
                 (WizardActivitySteps.stillMovingNow(stepCountSource, dateUtil.now()) == true)
@@ -205,6 +219,8 @@ class QuickWizardEntry @Inject constructor(
         // reasoning/timing as split-bolus above -- warsawFpuPlan() only runs later, on demand, so this
         // is safe to set post-doCalc() (unlike protein/fat themselves further up).
         wizard.warsawDurationHours = warsawDurationHours()
+        // A fourth DelayedBolusWorker reason, as in the dialog: the held-back part can follow once BG rises.
+        wizard.dropTrendCautionApplied = dropTrendCaution
         return wizard
     }
 
@@ -269,4 +285,15 @@ class QuickWizardEntry @Inject constructor(
     fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", NO)
 
     fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
+
+    // Bolus Wizard boxes (2026-10-22). For a button saved before these existed, Unreliable SMBs and Small meal follow the
+    // "Bolus calculator defaults" settings (both off by default) and Auto fat/protein is off.
+    fun unreliableSmb(): Boolean = optionOrDefault("useUnreliableSmb", BooleanKey.WizardDefaultUnreliableSmbs)
+
+    fun smallMeal(): Boolean = optionOrDefault("useSmallMeal", BooleanKey.WizardDefaultSmallMeal)
+
+    fun autoFpu(): Boolean = safeGetInt(storage, "useAutoFpu", NO) == YES
+
+    private fun optionOrDefault(name: String, default: BooleanKey): Boolean =
+        if (storage.has(name)) safeGetInt(storage, name, NO) == YES else preferences.get(default)
 }

@@ -42,7 +42,6 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
-import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.formatColor
@@ -53,6 +52,7 @@ import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.WizardActivitySteps
 import app.aaps.core.objects.wizard.CarbTimeFromRise
 import app.aaps.core.objects.wizard.WizardRecentEntry
+import app.aaps.core.objects.wizard.MealFpuFromCarbs
 import app.aaps.core.objects.wizard.WizardDropTrendCaution
 import app.aaps.core.objects.utils.StepCountSource
 import app.aaps.core.ui.extensions.runOnUiThread
@@ -70,7 +70,6 @@ import javax.inject.Provider
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.min
-import kotlin.math.roundToInt
 
 class WizardDialog : DaggerDialogFragment() {
 
@@ -645,52 +644,26 @@ class WizardDialog : DaggerDialogFragment() {
         applyingCobRecentDefault = false
     }
 
-    // How much [currentBgMgdl] has actually risen from its own recent low -- WizardDropTrendCaution's path 2
-    // (IOB-vs-rise). Same 60-min lookback window as WizardRecentEntry.WINDOW_MINUTES, same
-    // getBgReadingsDataFromTimeToTime pattern that class already uses. <= 0 (or no readings at all) means
-    // "not risen" -- WizardDropTrendCaution.iobDisproportionateToRise() floors that to 0.1 mmol itself.
-    private fun recentBgRiseMgdl(currentBgMgdl: Double): Double {
-        val from = dateUtil.now() - T.mins(WizardRecentEntry.WINDOW_MINUTES).msecs()
-        val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true)
-            .minOfOrNull { it.value } ?: return 0.0
-        return currentBgMgdl - recentMin
-    }
-
     // Fat/Protein auto-fill from carbs (2026-10-02, per explicit request, matching KMP's fpuInstead/
     // unreliableSmb ratios applied directly against the FULL entered carbs -- no meal-type/extended-
     // carb-percentage concept ported, parked for later per that same discussion). No-op once the user
     // has directly edited either box (proteinFatManuallyOverridden) -- see that field's own doc comment.
     private fun autoFillProteinFatFromCarbs() {
         if (proteinFatManuallyOverridden || !binding.autoFpuCheckbox.isChecked) return
-        val carbsValue = binding.carbsInput.value
-        val unreliable = binding.unreliableSmbsCheckbox.isChecked
-        // 2026-10-05, per explicit request: an average mixed meal is about 0.35 g fat and 0.4 g protein per g of carbs
-        // (was 1.0 / 1.5, which is a very heavy meal: 150% of the carb insulin as FPU). Unreliable SMBs / high protein /
-        // bad sensor doubles it, Small meal halves it, both together give the average again.
-        val scale = (if (unreliable) 2.0 else 1.0) * (if (binding.smallMealCheckbox.isChecked) 0.5 else 1.0)
-        val fatRatio = 0.35 * scale
-        val proteinRatio = 0.4 * scale
-        val newFat = (carbsValue * fatRatio).roundToInt().coerceIn(0, 200)
-        val newProtein = (carbsValue * proteinRatio).roundToInt().coerceIn(0, 200)
+        // Ratios in MealFpuFromCarbs, shared with QuickWizard buttons.
+        val (newFat, newProtein) = MealFpuFromCarbs.fatProtein(
+            binding.carbsInput.value, binding.unreliableSmbsCheckbox.isChecked, binding.smallMealCheckbox.isChecked
+        )
         applyingAutoFpu = true
         binding.fatInput.value = newFat.toDouble()
         binding.proteinInput.value = newProtein.toDouble()
         applyingAutoFpu = false
     }
 
-    // Shared trigger check for WizardDropTrendCaution -- see that object's own doc comment for the full
-    // rule and the real episode that motivated it. Reads live glucoseStatus fresh each call (same pattern
-    // as lowBgRuleMgdl above), the HP1 value OpenAPSAutoISFPlugin caches every cycle, and current total IOB
-    // (same calculateIobFromBolus/calculateIobFromTempBasalsIncludingConvertedExtended pair already used
-    // a few lines below in calculateInsulin() -- recomputed independently here since this check runs first).
-    private fun dropTrendCautionApplies(bgMgdl: Double): Boolean {
-        val gs = glucoseStatusProvider.getGlucoseStatusData() ?: return false
-        val hp1Cached = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
-        val hp1Mmol = if (hp1Cached != 0L) hp1Cached / 1000.0 else null
-        val iobUnits = iobCobCalculator.calculateIobFromBolus().round().iob +
-            iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
-        return WizardDropTrendCaution.applies(gs.delta, gs.shortAvgDelta, gs.longAvgDelta, bgMgdl, hp1Mmol, iobUnits, recentBgRiseMgdl(bgMgdl))
-    }
+    // WizardDropTrendCaution's live check -- see that object's own doc comment for the full rule and the real
+    // episode that motivated it. Shared with QuickWizard buttons.
+    private fun dropTrendCautionApplies(bgMgdl: Double): Boolean =
+        WizardDropTrendCaution.appliesNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
 
     @SuppressLint("SetTextI18n")
     private fun calculateInsulin() {
@@ -749,7 +722,7 @@ class WizardDialog : DaggerDialogFragment() {
         // unreliableSmbsCheckbox auto-sets wiz% to 90 for THIS calculation only (per explicit request) --
         // does not touch the standing IntKey.OverviewBolusPercentage preference, so every other dose is
         // unaffected.
-        var wizPercentForThisCalc = if (binding.unreliableSmbsCheckbox.isChecked) 90 else preferences.get(IntKey.OverviewBolusPercentage)
+        var wizPercentForThisCalc = if (binding.unreliableSmbsCheckbox.isChecked) MealFpuFromCarbs.UNRELIABLE_WIZ_PERCENT else preferences.get(IntKey.OverviewBolusPercentage)
         // WizardDropTrendCaution (2026-09-30): same calc-scoped-only override, takes whichever of the two
         // is MORE conservative (lower) rather than replacing the checkbox's own value.
         val dropTrendCautionActive = dropTrendCautionApplies(lowBgRuleMgdl(bg))
