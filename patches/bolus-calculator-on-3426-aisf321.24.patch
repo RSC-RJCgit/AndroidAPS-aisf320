@@ -12,9 +12,8 @@ Changes in patch .24 (2026-10-22):
     can follow later through the delayed bolus, as in the dialog;
     new boxes in the button editor: Unreliable SMBs (wiz% at most 90, auto fat/protein doubles), Small meal
     (auto fat/protein halves) and Auto fat/protein from carbs (only when the button's protein and fat are both 0).
-  A NEW button starts with these boxes as set in "Bolus calculator defaults". A button saved before .24 keeps
-  Auto fat/protein OFF (so it gives what it gave before), and Unreliable SMBs / Small meal follow those defaults
-  (both off by default). Open a button and tick the box to change it.
+  A button saved before .24 follows the "Bolus calculator defaults" settings for these three boxes. Auto fat/protein
+  is ON by default there, so an older button with carbs and no protein/fat will now add fat/protein doses.
 - The calculation report (Treatments -> calc) shows the time of the calculation, carbs and IC, each part, the
   total, and when the dose was over MaxBolus: the part given now and the part left to split.
 - "Carbs" in the report is shown whenever carbs were entered (wereCarbsUsed = carbs > 0).
@@ -2809,7 +2808,7 @@ index 0000000000..1111111111
 +    }
 +}
 diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
-index fd34e33415..aa4addd95c 100644
+index fd34e33415..49c5d74f41 100644
 --- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
 @@ -15,6 +15,7 @@ import app.aaps.core.keys.BooleanKey
@@ -2828,17 +2827,7 @@ index fd34e33415..aa4addd95c 100644
  
  class QuickWizardEntry @Inject constructor(
      aapsLogger: AAPSLogger,
-@@ -76,6 +78,9 @@ class QuickWizardEntry @Inject constructor(
-             }""".trimMargin()
-         try {
-             storage = JSONObject(emptyData)
-+            // A new button starts with Auto fat/protein as set in "Bolus calculator defaults". A button saved before this
-+            // box existed has no value and stays off (see autoFpu()), so it keeps giving what it gave before.
-+            storage.put("useAutoFpu", if (preferences.get(BooleanKey.WizardDefaultAutoFpu)) YES else NO)
-         } catch (e: JSONException) {
-             aapsLogger.error("Unhandled exception", e)
-         }
-@@ -146,8 +151,18 @@ class QuickWizardEntry @Inject constructor(
+@@ -146,8 +148,18 @@ class QuickWizardEntry @Inject constructor(
          } else if (useTrend() == NEGATIVE_ONLY && glucoseStatus != null && glucoseStatus.shortAvgDelta < 0) {
              trend = true
          }
@@ -2859,7 +2848,7 @@ index fd34e33415..aa4addd95c 100644
              profile,
              profileName,
              tempTarget,
-@@ -167,8 +182,29 @@ class QuickWizardEntry @Inject constructor(
+@@ -167,8 +179,29 @@ class QuickWizardEntry @Inject constructor(
              buttonText(),
              carbTime(),
              quickWizard = true,
@@ -2890,7 +2879,7 @@ index fd34e33415..aa4addd95c 100644
      }
  
      fun guid(): String = safeGetString(storage, "guid", "")
-@@ -181,6 +217,12 @@ class QuickWizardEntry @Inject constructor(
+@@ -181,6 +214,12 @@ class QuickWizardEntry @Inject constructor(
  
      fun carbs(): Int = safeGetInt(storage, "carbs")
  
@@ -2903,7 +2892,7 @@ index fd34e33415..aa4addd95c 100644
      fun validFromDate(): Long = dateUtil.secondsOfTheDayToMillisecondsOfHoursAndMinutes(validFrom())
  
      fun validToDate(): Long = dateUtil.secondsOfTheDayToMillisecondsOfHoursAndMinutes(validTo())
-@@ -218,4 +260,21 @@ class QuickWizardEntry @Inject constructor(
+@@ -218,4 +257,20 @@ class QuickWizardEntry @Inject constructor(
      fun carbTime(): Int = safeGetInt(storage, "carbTime")
  
      fun useAlarm(): Int = safeGetInt(storage, "useAlarm", NO)
@@ -2914,13 +2903,12 @@ index fd34e33415..aa4addd95c 100644
 +
 +    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
 +
-+    // Bolus Wizard boxes (2026-10-22). For a button saved before these existed, Unreliable SMBs and Small meal follow the
-+    // "Bolus calculator defaults" settings (both off by default) and Auto fat/protein is off.
++    // Bolus Wizard boxes (2026-10-22). A button saved before these existed follows the "Bolus calculator defaults" settings.
 +    fun unreliableSmb(): Boolean = optionOrDefault("useUnreliableSmb", BooleanKey.WizardDefaultUnreliableSmbs)
 +
 +    fun smallMeal(): Boolean = optionOrDefault("useSmallMeal", BooleanKey.WizardDefaultSmallMeal)
 +
-+    fun autoFpu(): Boolean = safeGetInt(storage, "useAutoFpu", NO) == YES
++    fun autoFpu(): Boolean = optionOrDefault("useAutoFpu", BooleanKey.WizardDefaultAutoFpu)
 +
 +    private fun optionOrDefault(name: String, default: BooleanKey): Boolean =
 +        if (storage.has(name)) safeGetInt(storage, name, NO) == YES else preferences.get(default)

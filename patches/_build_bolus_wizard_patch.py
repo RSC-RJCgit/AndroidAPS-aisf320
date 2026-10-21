@@ -75,9 +75,8 @@ Changes in patch .24 (2026-10-22):
     can follow later through the delayed bolus, as in the dialog;
     new boxes in the button editor: Unreliable SMBs (wiz% at most 90, auto fat/protein doubles), Small meal
     (auto fat/protein halves) and Auto fat/protein from carbs (only when the button's protein and fat are both 0).
-  A NEW button starts with these boxes as set in "Bolus calculator defaults". A button saved before .24 keeps
-  Auto fat/protein OFF (so it gives what it gave before), and Unreliable SMBs / Small meal follow those defaults
-  (both off by default). Open a button and tick the box to change it.
+  A button saved before .24 follows the "Bolus calculator defaults" settings for these three boxes. Auto fat/protein
+  is ON by default there, so an older button with carbs and no protein/fat will now add fat/protein doses.
 - The calculation report (Treatments -> calc) shows the time of the calculation, carbs and IC, each part, the
   total, and when the dose was over MaxBolus: the part given now and the part left to split.
 - "Carbs" in the report is shown whenever carbs were entered (wereCarbsUsed = carbs > 0).
@@ -685,11 +684,10 @@ def apply_surgical(staging: Path) -> None:
         '    fun useWalkingSoon(): Int = safeGetInt(storage, "useWalkingSoon", NO)\n\n'
         '    fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", NO)\n\n'
         '    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)\n\n'
-        '    // Bolus Wizard boxes (2026-10-22). For a button saved before these existed, Unreliable SMBs and Small meal follow the\n'
-        '    // "Bolus calculator defaults" settings (both off by default) and Auto fat/protein is off.\n'
+        '    // Bolus Wizard boxes (2026-10-22). A button saved before these existed follows the "Bolus calculator defaults" settings.\n'
         '    fun unreliableSmb(): Boolean = optionOrDefault("useUnreliableSmb", BooleanKey.WizardDefaultUnreliableSmbs)\n\n'
         '    fun smallMeal(): Boolean = optionOrDefault("useSmallMeal", BooleanKey.WizardDefaultSmallMeal)\n\n'
-        '    fun autoFpu(): Boolean = safeGetInt(storage, "useAutoFpu", NO) == YES\n\n'
+        '    fun autoFpu(): Boolean = optionOrDefault("useAutoFpu", BooleanKey.WizardDefaultAutoFpu)\n\n'
         '    private fun optionOrDefault(name: String, default: BooleanKey): Boolean =\n'
         '        if (storage.has(name)) safeGetInt(storage, name, NO) == YES else preferences.get(default)\n}',
         "QuickWizardEntry getters",
@@ -699,16 +697,6 @@ def apply_surgical(staging: Path) -> None:
         "import javax.inject.Provider\n",
         "import javax.inject.Provider\nimport kotlin.math.min\n",
         "QuickWizardEntry min import",
-    )
-    t = must_replace(
-        t,
-        "            storage = JSONObject(emptyData)\n        } catch",
-        "            storage = JSONObject(emptyData)\n"
-        "            // A new button starts with Auto fat/protein as set in \"Bolus calculator defaults\". A button saved before this\n"
-        "            // box existed has no value and stays off (see autoFpu()), so it keeps giving what it gave before.\n"
-        "            storage.put(\"useAutoFpu\", if (preferences.get(BooleanKey.WizardDefaultAutoFpu)) YES else NO)\n"
-        "        } catch",
-        "QuickWizardEntry new-button autoFpu",
     )
     write(staging, p, t)
 

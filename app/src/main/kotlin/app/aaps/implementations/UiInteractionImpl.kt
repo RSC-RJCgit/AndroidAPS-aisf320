@@ -103,10 +103,16 @@ class UiInteractionImpl @Inject constructor(
             .observeOn(aapsSchedulers.main)
             .subscribe({ list ->
                 val candidates = list.filter { it.isValid && it.timestamp in from..to }
+                // Exact time first, else the closest in time whose total is at least the bolus, else the closest in time.
+                // 2026-10-22: it was "closest insulin first", so a dose cut by max bolus (2.50 U of 3.75 U) matched a
+                // cancelled 3.70 U calculation made 10 min earlier. A cut dose is never more than its own calculation.
+                val nearest = compareBy<BCR> { abs(it.timestamp - bolusTimestamp) }
                 val match = candidates.firstOrNull { it.timestamp == bolusTimestamp }
-                    ?: candidates.minWithOrNull(compareBy<BCR>({ abs(it.totalInsulin - bolusAmount) }, { abs(it.timestamp - bolusTimestamp) }))
+                    ?: candidates.filter { it.totalInsulin >= bolusAmount - 0.01 }.minWithOrNull(nearest)
+                    ?: candidates.minWithOrNull(nearest)
                 if (fragmentManager.isStateSaved || fragmentManager.isDestroyed) return@subscribe
-                if (match != null) WizardInfoDialog.newInstance(match).show(fragmentManager, "WizardInfoDialog")
+                // The tapped bolus is the dose given now, so a dose over max bolus shows what was given and what was left.
+                if (match != null) WizardInfoDialog.newInstance(match, bolusAmount).show(fragmentManager, "WizardInfoDialog")
                 else ToastUtils.infoToast(context, fallbackText)
             }, { aapsLogger.error(LTag.UI, "Could not read the bolus calculation", it) })
     }

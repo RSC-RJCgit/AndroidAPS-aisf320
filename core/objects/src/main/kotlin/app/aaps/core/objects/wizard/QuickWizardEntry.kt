@@ -80,9 +80,6 @@ class QuickWizardEntry @Inject constructor(
             }""".trimMargin()
         try {
             storage = JSONObject(emptyData)
-            // A new button starts with Auto fat/protein as set in "Bolus calculator defaults". A button saved before this
-            // box existed has no value and stays off (see autoFpu()), so it keeps giving what it gave before.
-            storage.put("useAutoFpu", if (preferences.get(BooleanKey.WizardDefaultAutoFpu)) YES else NO)
         } catch (e: JSONException) {
             aapsLogger.error("Unhandled exception", e)
         }
@@ -286,13 +283,12 @@ class QuickWizardEntry @Inject constructor(
 
     fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
 
-    // Bolus Wizard boxes (2026-10-22). For a button saved before these existed, Unreliable SMBs and Small meal follow the
-    // "Bolus calculator defaults" settings (both off by default) and Auto fat/protein is off.
+    // Bolus Wizard boxes (2026-10-22). A button saved before these existed follows the "Bolus calculator defaults" settings.
     fun unreliableSmb(): Boolean = optionOrDefault("useUnreliableSmb", BooleanKey.WizardDefaultUnreliableSmbs)
 
     fun smallMeal(): Boolean = optionOrDefault("useSmallMeal", BooleanKey.WizardDefaultSmallMeal)
 
-    fun autoFpu(): Boolean = safeGetInt(storage, "useAutoFpu", NO) == YES
+    fun autoFpu(): Boolean = optionOrDefault("useAutoFpu", BooleanKey.WizardDefaultAutoFpu)
 
     private fun optionOrDefault(name: String, default: BooleanKey): Boolean =
         if (storage.has(name)) safeGetInt(storage, name, NO) == YES else preferences.get(default)
