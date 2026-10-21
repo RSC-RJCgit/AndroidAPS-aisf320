@@ -13,10 +13,12 @@ import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.scenes.ActiveSceneSnapshot
 import app.aaps.core.interfaces.scenes.ActiveSceneSync
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.LongComposedKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -56,6 +58,7 @@ internal class RunningConfigurationImplTest {
     @Mock private lateinit var notificationManager: NotificationManager
     @Mock private lateinit var nsClientRepository: NSClientRepository
     @Mock private lateinit var constraintsChecker: ConstraintsChecker
+    @Mock private lateinit var dateUtil: DateUtil
 
     private lateinit var sut: RunningConfigurationImpl
 
@@ -65,8 +68,9 @@ internal class RunningConfigurationImplTest {
         whenever(config.AAPSCLIENT).thenReturn(true)
         sut = RunningConfigurationImpl(
             activePlugin, activeSceneSync,
-            preferences, aapsLogger, config, pumpSync, notificationManager, nsClientRepository, constraintsChecker
+            preferences, aapsLogger, config, pumpSync, notificationManager, nsClientRepository, constraintsChecker, dateUtil
         )
+        whenever(dateUtil.now()).thenReturn(NOW)
     }
 
     /** Empty cold doc — nothing to apply, and crucially the active scene is left alone. */
@@ -143,6 +147,46 @@ internal class RunningConfigurationImplTest {
         whenever(preferences.get(LongComposedKey.SyncedPrefModified, DoubleKey.AutosensMin.key)).thenReturn(1_000L)
         sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
         verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
+    }
+
+    /** An unpaired client keeps its change too: it can never reach the master (the iPhone toggles that switched back). */
+    @Test
+    fun unpairedClientKeepsASettingItChangedItself() {
+        whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
+        whenever(preferences.get(LongComposedKey.SyncedPrefModified, DoubleKey.AutosensMin.key)).thenReturn(NOW - 60 * 60_000L)
+        sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
+        verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
+    }
+
+    /** A paired client keeps a change for 3 minutes, so a settings doc already on its way cannot undo it. */
+    @Test
+    fun pairedClientKeepsAFreshChange() {
+        whenever(preferences.get(LongNonKey.NsClientControlPairedAt)).thenReturn(1L)
+        whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
+        whenever(preferences.get(LongComposedKey.SyncedPrefModified, DoubleKey.AutosensMin.key)).thenReturn(NOW - 60_000L)
+        sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
+        verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
+    }
+
+    /** After that the master's value counts on a paired client: these settings change the loop. */
+    @Test
+    fun pairedClientFollowsTheMasterAfterTheHold() {
+        whenever(preferences.get(LongNonKey.NsClientControlPairedAt)).thenReturn(1L)
+        whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
+        whenever(preferences.get(LongComposedKey.SyncedPrefModified, DoubleKey.AutosensMin.key)).thenReturn(NOW - 5 * 60_000L)
+        sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
+        verify(preferences).putRemote(DoubleKey.AutosensMin, 0.85, 0L)
+    }
+
+    /** The display settings belong to each phone and are not shared at all. */
+    @Test
+    fun displaySettingsAreLocalToEachPhone() {
+        assertNull(BooleanKey.ApsAutoIsfShowInsulinTotals.sync)
+        assertNull(BooleanKey.ApsAutoIsfShowCarbModelCurve.sync)
+        assertNull(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled.sync)
+        assertNull(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled.sync)
+        assertNull(BooleanKey.AutomationCodedLocationsEnabled.sync)
+        assertNull(BooleanKey.OverviewUseBolusAdvisor.sync)
     }
 
     /** A read-only client still follows the master for a shared setting it never changed. */
@@ -222,5 +266,10 @@ internal class RunningConfigurationImplTest {
         val result = sut.configuration()
         assertEquals(0, result.size)
         verify(activePlugin, never()).activePump
+    }
+
+    private companion object {
+
+        const val NOW = 10_000_000_000L
     }
 }

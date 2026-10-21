@@ -119,16 +119,16 @@ class AutomationDownlinkIntegrationTest : TestBaseWithProfile() {
         masterRuntime = AutomationRuntime(
             mock<LocationPermissions>(), eventFactory, aapsLogger, rh, masterPreferences, loop, rxBus, constraintsChecker,
             masterConfig, locationServiceController, dateUtil, activePlugin, reminderScheduler, actionFactory, triggerFactory, triggerDeps, receiverStatusStore,
-            uel, profileRepository, sceneApi, mock(), mock()
+            uel, profileRepository, sceneApi, mock(), mock(), mock()
         )
         clientRuntime = AutomationRuntime(
             mock<LocationPermissions>(), eventFactory, aapsLogger, rh, preferences, loop, rxBus, constraintsChecker,
             config, locationServiceController, dateUtil, activePlugin, reminderScheduler, actionFactory, triggerFactory, triggerDeps, receiverStatusStore,
-            uel, profileRepository, sceneApi, mock(), mock()
+            uel, profileRepository, sceneApi, mock(), mock(), mock()
         )
         runningConfig = RunningConfigurationImpl(
             activePlugin, activeSceneSync, preferences, aapsLogger, config,
-            pumpSync, notificationManager, nsClientRepository, constraintsChecker
+            pumpSync, notificationManager, nsClientRepository, constraintsChecker, dateUtil
         )
     }
 

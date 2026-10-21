@@ -60,7 +60,8 @@ enum class BooleanKey(
     ),
     OverviewShowNotesInDialogs(key = "show_notes_entry_dialogs", defaultValue = false, title = KeysStrings.pref_title_show_notes_in_dialogs, defaultedBySM = true),
     // 2026-10-16, per explicit request: off = the main graph's dark area above the green range stays shorter than the range itself.
-    OverviewUseBolusAdvisor("use_bolus_advisor", true, KeysStrings.pref_title_use_bolus_advisor, KeysStrings.pref_summary_use_bolus_advisor, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // Local to each phone (2026-10-21, per explicit request): how this phone's own wizard works, not the loop.
+    OverviewUseBolusAdvisor("use_bolus_advisor", true, KeysStrings.pref_title_use_bolus_advisor, KeysStrings.pref_summary_use_bolus_advisor, defaultedBySM = true),
     OverviewUseBolusReminder("use_bolus_reminder", true, KeysStrings.pref_title_use_bolus_reminder, KeysStrings.pref_summary_use_bolus_reminder, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 
     @Deprecated("Remove support")
@@ -243,12 +244,12 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_low_rebound_guard_enabled,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     ApsAutoIsfShowCarbModelCurve(
         "show_carb_model_curve",
         true,
         KeysStrings.pref_title_aps_show_carb_model_curve,
-        KeysStrings.pref_summary_aps_show_carb_model_curve,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+        KeysStrings.pref_summary_aps_show_carb_model_curve
     ),
     // Local to each device (2026-10-19, per explicit request): a display choice per screen. While it was synced, the master's
     // value came back with its next settings publish and turned a client's Graph 5 off again (always on a read-only client).
@@ -486,19 +487,19 @@ enum class BooleanKey(
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_pump, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_cgm, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 
+    // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     ApsAutoIsfMjKotlinButtonsEnabled(
         "autoisf_mj_kotlin_buttons",
         false,
         KeysStrings.pref_title_mj_kotlin_buttons,
-        KeysStrings.pref_summary_mj_kotlin_buttons,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+        KeysStrings.pref_summary_mj_kotlin_buttons
     ),
+    // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     ApsAutoIsfSteroidKotlinButtonEnabled(
         "autoisf_steroid_kotlin_button",
         false,
         KeysStrings.pref_title_steroid_kotlin_button,
-        KeysStrings.pref_summary_steroid_kotlin_button,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+        KeysStrings.pref_summary_steroid_kotlin_button
     ),
     // 2026-10-08: true (default) = loop on every new 1-minute reading (rolling bucket); false = every 5 minutes (grid pinned).
     ApsAutoIsfLoopEveryMinute(
@@ -511,12 +512,12 @@ enum class BooleanKey(
     ),
     // On by default (2026-10-20, per explicit request): a read-only or unpaired client never gets the master's value, so
     // Windows and iPhone clients never showed the row.
+    // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     ApsAutoIsfShowInsulinTotals(
         "autoisf_show_insulin_totals",
         true,
         KeysStrings.pref_title_show_insulin_totals,
-        KeysStrings.pref_summary_show_insulin_totals,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+        KeysStrings.pref_summary_show_insulin_totals
     ),
     // 2026-10-10: the text lines on the graphs (every one but the hypoprediction line). True (default) = shown. List 3 "Clean graph, no
     // text" (TT 5.244) turns it off; it is switched back on here, in Settings.
@@ -536,12 +537,12 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     AutomationCodedLocationsEnabled(
         "automation_coded_locations",
         false,
         KeysStrings.pref_title_coded_locations,
-        KeysStrings.pref_summary_coded_locations,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+        KeysStrings.pref_summary_coded_locations
     ),
 
     ;

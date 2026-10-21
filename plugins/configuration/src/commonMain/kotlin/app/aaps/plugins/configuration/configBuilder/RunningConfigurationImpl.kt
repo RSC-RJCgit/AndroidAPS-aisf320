@@ -16,9 +16,11 @@ import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.fillFor
 import app.aaps.core.interfaces.scenes.ActiveSceneSnapshot
 import app.aaps.core.interfaces.scenes.ActiveSceneSync
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.LongComposedKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
@@ -43,6 +45,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
+/** How long a paired client keeps its own change of a shared setting before the master's value counts again. */
+private const val LOCAL_EDIT_HOLD_MS = 3 * 60_000L
+
 @ContributesBinding(AppScope::class, binding = binding<RunningConfiguration>())
 @ContributesBinding(AppScope::class, binding = binding<RunningConfigurationKeys>())
 @SingleIn(AppScope::class)
@@ -56,7 +61,8 @@ class RunningConfigurationImpl(
     private val pumpSync: PumpSync,
     private val notificationManager: NotificationManager,
     private val nsClientRepository: NSClientRepository,
-    private val constraintsChecker: ConstraintsChecker
+    private val constraintsChecker: ConstraintsChecker,
+    private val dateUtil: DateUtil
 ) : RunningConfiguration, RunningConfigurationKeys {
 
     // Omit null fields so the frequently-published hot doc stays small.
@@ -157,14 +163,20 @@ class RunningConfigurationImpl(
      */
     private fun applySyncedPrefs(prefs: Map<String, String>) {
         val readOnlyClient = preferences.get(BooleanKey.NsClientReadOnlyClient)
+        val paired = preferences.get(LongNonKey.NsClientControlPairedAt) > 0L
+        val now = dateUtil.now()
         prefs.forEach { (keyString, valueString) ->
             val key = preferences.get(keyString) ?: return@forEach
             // 2026-10-21: only keys this app still shares. A master on an older build still publishes a key that is now
             // local to each device (Graph 5), and taking it switched the client's own choice off again.
             if (key.sync == null) return@forEach
-            // A read-only client keeps what it changed itself: its edit is not sent to the master, so the master's next
-            // publish put the old value back (insulin totals, boost...). A key it never changed still follows the master.
-            if (readOnlyClient && preferences.get(LongComposedKey.SyncedPrefModified, key.key) > 0L) return@forEach
+            // A client keeps what it changed itself (2026-10-21, per explicit request: iPhone toggles kept switching back).
+            // Read-only or not paired: its edit never reaches the master, so it is kept. Paired: the edit goes to the master
+            // as a signed change, and is kept for [LOCAL_EDIT_HOLD_MS] so a settings doc already on its way cannot undo it;
+            // after that the master's value counts, because these settings change the loop. A key it never changed still
+            // follows the master. Display settings are not shared at all (they have no sync).
+            val localEdit = preferences.get(LongComposedKey.SyncedPrefModified, key.key)
+            if (localEdit > 0L && (readOnlyClient || !paired || now - localEdit < LOCAL_EDIT_HOLD_MS)) return@forEach
             when (key) {
                 is BooleanNonPreferenceKey -> valueString.toBooleanStrictOrNull()?.let { preferences.putRemote(key, it, 0L) }
                 is StringNonPreferenceKey  -> preferences.putRemote(key, valueString, 0L)
