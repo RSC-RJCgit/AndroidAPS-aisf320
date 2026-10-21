@@ -92,9 +92,9 @@ class GraphData @Inject constructor(
         if (drawSeries) {
             addSeries(overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
             if (addPredictions) addSeries(overviewData.predictionsGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-            (overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
+            onTap { (overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
                 if (dataPoint is GlucoseValueDataPoint) ToastUtils.infoToast(context, dataPoint.label)
-            }
+            } }
         }
     }
 
@@ -193,18 +193,18 @@ class GraphData @Inject constructor(
     fun addTreatments(context: Context?, onBolusTap: ((BolusDataPoint) -> Unit)? = null) {
         maxY = maxOf(maxY, overviewData.maxTreatmentsValue)
         addSeries(overviewData.treatmentsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-        (overviewData.treatmentsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
+        onTap { (overviewData.treatmentsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
             if (dataPoint is BolusDataPoint) {
                 if (onBolusTap != null) onBolusTap(dataPoint) else ToastUtils.infoToast(context, dataPoint.label)
             }
-        }
+        } }
     }
 
     fun addEps(context: Context?, scale: Double) {
         addSeries(overviewData.epsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
-        (overviewData.epsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
+        onTap { (overviewData.epsSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
             if (dataPoint is EffectiveProfileSwitchDataPoint) ToastUtils.infoToast(context, dataPoint.data.originalCustomizedName)
-        }
+        } }
         overviewData.epsScale.multiplier = maxY * scale / overviewData.maxEpsValue
     }
 
@@ -332,6 +332,17 @@ class GraphData @Inject constructor(
         // Split into color-banded segments (red / yellow low / yellow high) rather than one series —
         // see PrepareBgDataWorker.kt.
         overviewData.rawBgSeries.forEach { addSeries(it as LineGraphSeries<*>) }
+        // 2026-10-21, per explicit request: a tap on the raw line shows its value, like the UKF raw line below. The line is
+        // drawn in coloured pieces, so the change is worked out over the points of all the pieces.
+        val pieces = overviewData.rawBgSeries.map { it as LineGraphSeries<DataPoint> }
+        pieces.forEach { piece ->
+            onTap {
+                piece.setOnDataPointTapListener { _, dataPoint ->
+                    val earlier = pieces.flatMap { it.getValues(dataPoint.x - 17.5 * 60_000, dataPoint.x).asSequence().toList() }
+                    showLineTap(rh.gs(R.string.graph_line_raw), dataPoint, earlier)
+                }
+            }
+        }
     }
 
     // UKF-smoothed trace of the same raw/noise values as addRawBg() — own checkbox (RAW_BG_SMOOTHED),
@@ -343,15 +354,7 @@ class GraphData @Inject constructor(
         }
         addSeries(overviewData.rawBgSmoothedSeries as LineGraphSeries<*>)
         // 2026-10-18, per explicit request: a tap on the UKF raw line shows its value and short delta.
-        val ukfSeries = overviewData.rawBgSmoothedSeries as LineGraphSeries<DataPoint>
-        ukfSeries.setOnDataPointTapListener { _, dataPoint ->
-            val earlier = ukfSeries.getValues(dataPoint.x - 17.5 * 60_000, dataPoint.x).asSequence().toList()
-            val change = ukfShortDelta(dataPoint, earlier) ?: return@setOnDataPointTapListener
-            val mgdl = units == GlucoseUnit.MGDL
-            val value = if (mgdl) decimalFormatter.to0Decimal(dataPoint.y) else decimalFormatter.to1Decimal(dataPoint.y)
-            val delta = if (mgdl) decimalFormatter.to1Decimal(change) else decimalFormatter.to2Decimal(change)
-            ToastUtils.infoToast(graph.context, rh.gs(R.string.ukf_raw_tap, dateUtil.timeString(dataPoint.x.toLong()), value, delta))
-        }
+        ukfLineTap(overviewData.rawBgSmoothedSeries as LineGraphSeries<DataPoint>)
         // With UKF2 this is the original LibreSpecial EMA immediately before UKF; otherwise empty.
         // It shares this graph selection so no saved chart-menu ordinals/configurations are disturbed.
         addSeries(overviewData.libreSpecialPreUkfSeries as LineGraphSeries<*>)
@@ -368,6 +371,7 @@ class GraphData @Inject constructor(
             maxY = overviewData.maxBgValue
         }
         addSeries(overviewData.rawBgSmoothedSeriesGraph5 as LineGraphSeries<*>)
+        ukfLineTap(overviewData.rawBgSmoothedSeriesGraph5 as LineGraphSeries<DataPoint>)
         addSeries(overviewData.libreSpecialPreUkfSeriesGraph5 as LineGraphSeries<*>)
         addSeries(overviewData.libreSpecialFromUkf1SeriesGraph5 as LineGraphSeries<*>)
     }
@@ -599,6 +603,33 @@ class GraphData @Inject constructor(
 
     private fun addSeries(s: Series<*>) = series.add(s)
 
+    // Tap listeners are set after the old series are removed (2026-10-21). `removeAllSeries()` clears the listener of
+    // every series still on the graph, and most series are the same objects from one redraw to the next, so a listener
+    // set before `performUpdate()` was wiped at once. That is why the UKF raw tap did nothing.
+    private val pendingTaps = mutableListOf<() -> Unit>()
+
+    private fun onTap(set: () -> Unit) {
+        pendingTaps.add(set)
+    }
+
+    private fun ukfLineTap(line: LineGraphSeries<DataPoint>) = onTap {
+        line.setOnDataPointTapListener { _, dataPoint ->
+            val earlier = line.getValues(dataPoint.x - 17.5 * 60_000, dataPoint.x).asSequence().toList()
+            showLineTap(rh.gs(R.string.graph_line_ukf_raw), dataPoint, earlier)
+        }
+    }
+
+    // "UKF raw = 6.4  Δ-0.05  09:46". Without an earlier point for the change, the value and time only.
+    private fun showLineTap(name: String, dataPoint: DataPointInterface, earlier: List<DataPointInterface>) {
+        val mgdl = units == GlucoseUnit.MGDL
+        val value = if (mgdl) decimalFormatter.to0Decimal(dataPoint.y) else decimalFormatter.to1Decimal(dataPoint.y)
+        val time = dateUtil.timeString(dataPoint.x.toLong())
+        val change = ukfShortDelta(dataPoint, earlier)
+        val text = if (change == null) rh.gs(R.string.graph_line_tap_no_delta, name, value, time)
+        else rh.gs(R.string.graph_line_tap, name, value, if (mgdl) decimalFormatter.to1Decimal(change) else decimalFormatter.to2Decimal(change), time)
+        ToastUtils.infoToast(graph.context, text)
+    }
+
     fun applyFontScale(scale: Float) {
         val scaled = (18 * scale).toInt()
         series.filterIsInstance<PointsWithLabelGraphSeries<*>>().forEach { it.setSpSize(scaled) }
@@ -607,6 +638,8 @@ class GraphData @Inject constructor(
     fun performUpdate() {
         // clear old data - use removeAllSeries() to properly detach GraphView from series
         graph.removeAllSeries()
+        pendingTaps.forEach { it() }
+        pendingTaps.clear()
 
         // add pre calculated series
         for (s in series) {

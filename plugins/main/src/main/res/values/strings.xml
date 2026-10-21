@@ -421,5 +421,8 @@
     <string name="overview_app_client3" translatable="false">Client3</string>
     <string name="overview_app_pump_control" translatable="false">PumpControl</string>
     <string name="overview_app_version" translatable="false">UKF-%1$s-v%2$s %3$s</string>
-    <string name="ukf_raw_tap" comment="Toast when the UKF raw line on the graph is tapped. %1$s=time, %2$s=UKF-smoothed raw glucose, %3$s=its short average change per 5 minutes, both in the user glucose units. Example: 18:05 ukf 7.4 Δ-0.12">%1$s ukf %2$s Δ%3$s</string>
+    <string name="graph_line_tap" comment="Toast when a glucose line on the graph is tapped. %1$s=line name (UKF raw or Raw), %2$s=glucose, %3$s=its short average change per 5 minutes, both in the user glucose units, %4$s=time. Example: UKF raw = 6.4  Δ-0.05  09:46">%1$s = %2$s  Δ%3$s  %4$s</string>
+    <string name="graph_line_tap_no_delta" comment="Toast when a glucose line on the graph is tapped and no earlier point is close enough for the change. %1$s=line name, %2$s=glucose, %3$s=time. Example: Raw = 6.3  09:46">%1$s = %2$s  %3$s</string>
+    <string name="graph_line_ukf_raw" comment="Short name of the UKF-smoothed raw glucose line on the graph">UKF raw</string>
+    <string name="graph_line_raw" comment="Short name of the raw glucose line on the graph">Raw</string>
 </resources>
