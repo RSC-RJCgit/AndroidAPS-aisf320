@@ -384,6 +384,7 @@ class ClientControlReceiver(
             is ClientControlMessage.SceneCommit       -> onVerifiedSceneCommit(entry, envelope, message, now)
             is ClientControlMessage.SceneStop         -> onVerifiedSceneStop(entry, envelope, message, now)
             is ClientControlMessage.PreferencesUpdate -> onVerifiedPreferencesUpdate(entry, envelope, message, now)
+            is ClientControlMessage.AutomationStateSet -> onVerifiedAutomationStateSet(entry, message)
             is ClientControlMessage.BolusPrepare      -> onVerifiedBolusPrepare(entry, envelope, message, now)
             is ClientControlMessage.BolusCommit       -> onVerifiedBolusCommit(entry, envelope, message, now)
             is ClientControlMessage.WizardPrepare     -> onVerifiedWizardPrepare(entry, envelope, message, now)
@@ -493,6 +494,27 @@ class ClientControlReceiver(
             err != null                                           -> AckOutcome(AckStatus.Failed, FailureReason.ExecutionFailed.name, err)
             else                                                  -> AckOutcome(AckStatus.Ok, null)
         }
+    }
+
+    /**
+     * A paired client set the current value of one automation state (2026-10-21, per explicit request), as a tap on the
+     * States dialog does on this phone. The AutoISF loop reads the states again from its next run.
+     */
+    private fun onVerifiedAutomationStateSet(entry: AuthorizedClient, message: ClientControlMessage.AutomationStateSet): AckOutcome {
+        val updated = automationStateSetJson(
+            preferences.get(StringNonKey.AutomationCurrentStates),
+            preferences.get(StringNonKey.AutomationStateValues),
+            message.name,
+            message.value
+        )
+        if (updated == null) {
+            aapsLogger.warn(LTag.NSCLIENT, "ClientControl: state ${message.name}=${message.value} from ${entry.name} rejected (unknown state or value)")
+            nsClientRepository.addLog("◄ CLIENTCTL", "state ${message.name}=${message.value} from ${entry.name}: rejected")
+            return AckOutcome(AckStatus.Failed, FailureReason.ExecutionFailed.name)
+        }
+        preferences.put(StringNonKey.AutomationCurrentStates, updated)
+        nsClientRepository.addLog("◄ CLIENTCTL", "state ${message.name}=${message.value} from ${entry.name}")
+        return AckOutcome(AckStatus.Ok, null)
     }
 
     private suspend fun onVerifiedSceneStop(entry: AuthorizedClient, envelope: SignedEnvelope, message: ClientControlMessage.SceneStop, now: Long): AckOutcome {

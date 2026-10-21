@@ -37,12 +37,18 @@ import app.aaps.core.ui.compose.stringResource
 import app.aaps.plugins.automation.AutomationStateEntry
 import app.aaps.plugins.automation.AutomationStrings
 
-/** What the States dialog may change. Null makes the dialog read only (a client). */
+/**
+ * What the States dialog may change. Null makes the dialog read only.
+ * Without [setValues] and [delete] (a client) only the current value can be changed; the list of values stays on the loop phone.
+ */
 class AutomationStatesEditor(
     val setCurrent: (name: String, value: String) -> Unit,
-    val setValues: (name: String, values: List<String>) -> Unit,
-    val delete: (name: String) -> Unit
-)
+    val setValues: ((name: String, values: List<String>) -> Unit)? = null,
+    val delete: ((name: String) -> Unit)? = null
+) {
+
+    val valuesEditable: Boolean get() = setValues != null && delete != null
+}
 
 /**
  * The stored automation states. Each state shows its name and its values; the current value is selected.
@@ -75,7 +81,7 @@ fun AutomationStatesDialog(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)
                 ) {
-                    if (editor == null && showSetOnLoopPhone) {
+                    if (editor?.valuesEditable != true && showSetOnLoopPhone) {
                         Text(
                             text = stringResource(AutomationStrings.automation_states_set_on_loop_phone),
                             style = MaterialTheme.typography.bodyMedium,
@@ -86,7 +92,7 @@ fun AutomationStatesDialog(
                         Text(
                             text = row.name,
                             style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.fillMaxWidth().clickable { if (editor != null) editing = row else showSetOnLoopPhone = true }
+                            modifier = Modifier.fillMaxWidth().clickable { if (editor?.valuesEditable == true) editing = row else showSetOnLoopPhone = true }
                         )
                         if (row.values.isEmpty()) {
                             // No list of possible values here (an old copy from the loop phone): the current one only
@@ -122,12 +128,13 @@ fun AutomationStatesDialog(
                 Text(stringResource(CoreUiStrings.close))
             }
         },
-        dismissButton = if (editor != null) {
+        dismissButton = if (editor?.valuesEditable == true) {
             { TextButton(onClick = { adding = true }) { Text(stringResource(AutomationStrings.add_automation_state)) } }
         } else null
     )
 
-    if (editor == null) return
+    val setValues = editor?.setValues ?: return
+    val delete = editor?.delete ?: return
 
     if (adding) {
         AddStateDialog(
@@ -146,11 +153,11 @@ fun AutomationStatesDialog(
             isNew = rows.none { it.name == entry.name },
             onDismiss = { editing = null },
             onSave = { values ->
-                editor.setValues(entry.name, values)
+                setValues(entry.name, values)
                 editing = null
             },
             onDelete = {
-                editor.delete(entry.name)
+                delete(entry.name)
                 editing = null
             }
         )

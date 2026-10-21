@@ -91,6 +91,9 @@ interface ClientControlActionDispatcher {
         /** Prepare a MANUAL bolus-wizard bolus on the master from raw [inputs] (master recomputes + returns the preview). */
         data class WizardPrepare(val inputs: WizardBolusExecutor.WizardInputs) : Command
 
+        /** Make [value] the current value of the master's automation state [name]. One step, the ACK resolves it. */
+        data class AutomationStateSet(val name: String, val value: String) : Command
+
         /** PREPARE a multi-action batch on the master — TWO-STEP: master caps + returns the MERGED confirmation; commit via [BolusCommit]. */
         data class BatchPrepare(val actions: List<BatchAction>) : Command
     }

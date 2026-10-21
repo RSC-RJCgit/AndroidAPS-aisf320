@@ -13,6 +13,8 @@ import app.aaps.core.interfaces.alerts.ReminderScheduler
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.automation.AutomationEvent
+import app.aaps.core.interfaces.clientcontrol.ActionProgress
+import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.concurrent.AapsLock
 import app.aaps.core.interfaces.concurrent.withLock
 import app.aaps.core.interfaces.configuration.Config
@@ -156,6 +158,7 @@ class AutomationRuntime(
     private val sceneApi: SceneAutomationApi,
     private val pairedBtDevices: PairedBtDevices,
     private val codedLocations: CodedLocations,
+    private val clientControl: ClientControlActionDispatcher,
 ) : Automation, PermissionProvider, BtConnectionSource {
 
     override val executionEnabled: Boolean get() = config.APS
@@ -192,6 +195,17 @@ class AutomationRuntime(
     /** Makes [value] the current value of [name]. Does nothing when the value is not declared for that state. */
     fun setAutomationStateCurrent(name: String, value: String) {
         setAutomationStateCurrent(storedCurrentStates(), storedStateValues(), name, value)?.let { saveAutomationStates(it) }
+    }
+
+    /**
+     * On a client (2026-10-21, per explicit request): asks the loop phone to make [value] the current value of [name], as
+     * a signed command. A read-only or unpaired client is told so in the usual client-control dialog. On success the
+     * local copy changes at once; the next loop result from the loop phone confirms it.
+     */
+    suspend fun requestAutomationStateOnLoopPhone(name: String, value: String) {
+        val result = clientControl.run(ClientControlActionDispatcher.Command.AutomationStateSet(name, value), rh.gs(AutomationStrings.automation_state_remote_label, name, value))
+        if (result == ActionProgress.Applied)
+            setAutomationStateCurrent(storedCurrentStates(), storedStateValues(), name, value)?.let { saveAutomationStates(it) }
     }
 
     /** Declares [name] with [values], or changes its values. */

@@ -92,6 +92,18 @@ sealed class ClientControlMessage {
      * key's declared type), plus a per-key `lastModified` the master applies last-writer-wins by.
      * Master adopts strictly-newer values and republishes via the running-config doc.
      */
+    /**
+     * Client asks the master to make [value] the current value of the automation state [name] (2026-10-21, per explicit
+     * request). One state only: sending the whole states text would let a client's older copy undo states the loop has
+     * changed since. The master checks that the state exists and that [value] is one of its values.
+     */
+    @Serializable
+    @SerialName("automation_state_set")
+    data class AutomationStateSet(
+        val name: String,
+        val value: String
+    ) : ClientControlMessage()
+
     @Serializable
     @SerialName("preferences_update")
     data class PreferencesUpdate(

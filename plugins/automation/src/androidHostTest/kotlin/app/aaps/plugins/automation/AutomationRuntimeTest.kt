@@ -65,7 +65,7 @@ class AutomationRuntimeTest : TestBaseWithProfile() {
         automationRuntime = AutomationRuntime(
             AndroidLocationPermissions(), eventFactory, aapsLogger, text, preferences, loop, rxBus, constraintChecker,
             config, locationServiceController, dateUtil, activePlugin, reminderScheduler, actionFactory, triggerFactory, triggerDeps, receiverStatusStore,
-            uel, profileRepository, sceneApi, mock(), mock()
+            uel, profileRepository, sceneApi, mock(), mock(), mock()
         )
     }
 

@@ -136,6 +136,7 @@ class ClientControlPublisher(
             ClientControlMessage.DismissAlarm,
             ClientControlMessage.StopBolus,
             is ClientControlMessage.PreferencesUpdate,
+            is ClientControlMessage.AutomationStateSet,
             is ClientControlMessage.BolusPrepare,
             is ClientControlMessage.BolusCommit,
             is ClientControlMessage.WizardPrepare,

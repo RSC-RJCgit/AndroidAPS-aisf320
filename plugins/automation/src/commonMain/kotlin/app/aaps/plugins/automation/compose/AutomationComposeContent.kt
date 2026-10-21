@@ -174,12 +174,21 @@ class AutomationComposeContent(
         )
 
         if (showStates) {
-            // Editable on the loop phone only: the states live there, and a client's copy changes nothing on it
+            val statesScope = rememberCoroutineScope()
+            // The loop phone changes everything. A client (2026-10-21, per explicit request) changes only the current value,
+            // and only by a signed command to the loop phone, like a remote bolus: a read-only or unpaired client is told so.
             val editor = if (plugin.executionEnabled) AutomationStatesEditor(
                 setCurrent = { name, value -> plugin.setAutomationStateCurrent(name, value); stateRows = plugin.automationStates() },
                 setValues = { name, values -> plugin.setAutomationStateValues(name, values); stateRows = plugin.automationStates() },
                 delete = { name -> plugin.deleteAutomationState(name); stateRows = plugin.automationStates() }
-            ) else null
+            ) else AutomationStatesEditor(
+                setCurrent = { name, value ->
+                    statesScope.launch {
+                        plugin.requestAutomationStateOnLoopPhone(name, value)
+                        stateRows = plugin.automationStates()
+                    }
+                }
+            )
             AutomationStatesDialog(
                 rows = stateRows,
                 editor = editor,
