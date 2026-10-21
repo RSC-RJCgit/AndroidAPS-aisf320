@@ -29,17 +29,19 @@ internal fun matchingCalculationTimestamp(bolus: Long, bolusAmount: Double, calc
     return inWindow.minWithOrNull(compareBy<Pair<Long, Double>>({ abs(it.second - bolusAmount) }, { abs(it.first - bolus) }))?.first
 }
 
-internal data class GraphTapHit(val bounds: Rect, val bg: BgDataPoint? = null, val bolus: BolusGraphPoint? = null)
+/** [smb]: an SMB dose label, arrow or baseline triangle; a tap shows the dose (2026-10-21, per explicit request). */
+internal data class GraphTapHit(val bounds: Rect, val bg: BgDataPoint? = null, val bolus: BolusGraphPoint? = null, val smb: BolusGraphPoint? = null)
 
 /** Updated during drawing, so hit testing uses the current scroll, zoom and axis bounds. */
 internal class GraphTapTargets {
     @Volatile var points: List<GraphTapHit> = emptyList()
     @Volatile var labels: List<GraphTapHit> = emptyList()
+    @Volatile var smbLabels: List<GraphTapHit> = emptyList()
 
     fun at(position: Offset): GraphTapHit? {
         fun nearest(hits: List<GraphTapHit>) = hits.filter { position in it.bounds }
             .minByOrNull { (it.bounds.center - position).getDistanceSquared() }
-        return nearest(labels) ?: nearest(points.filter { it.bolus != null }) ?: nearest(points.filter { it.bg != null })
+        return nearest(labels + smbLabels) ?: nearest(points.filter { it.bolus != null || it.smb != null }) ?: nearest(points.filter { it.bg != null })
     }
 }
 
@@ -49,6 +51,9 @@ internal class GraphPointTapReporter(
     private val bolusReadings: List<BgDataPoint>,
     private val boluses: List<BolusGraphPoint>,
     private val minTimestamp: Long,
+    /** SMBs: a tap on the arrow under the BG dot, or on the baseline triangle at [lowMark], shows the dose. */
+    private val smbs: List<BolusGraphPoint> = emptyList(),
+    private val lowMark: Double? = null,
 ) : Decoration {
     override fun drawOverLayers(context: CartesianDrawingContext) {
         targets.points = emptyList()
@@ -71,6 +76,19 @@ internal class GraphPointTapReporter(
                     val reading = bolusReadings.minByOrNull { abs(it.timestamp - bolus.timestamp) } ?: continue
                     val point = position(bolus.timestamp, reading.value)
                     if (point in layerBounds) add(GraphTapHit(Rect(point.x - radius, point.y, point.x + radius, point.y + triangleHeight), bolus = bolus))
+                }
+                for (smb in smbs) {
+                    val reading = bolusReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
+                    if (reading != null) {
+                        val point = position(smb.timestamp, reading.value)
+                        if (point in layerBounds) add(GraphTapHit(Rect(point.x - radius, point.y, point.x + radius, point.y + triangleHeight), smb = smb))
+                    }
+                    if (lowMark != null) {
+                        // The baseline triangle: its tip is on the low mark and its stem runs down by the dose
+                        val tip = position(smb.timestamp, lowMark)
+                        if (tip.x in layerBounds.left..layerBounds.right)
+                            add(GraphTapHit(Rect(tip.x - radius, tip.y - radius, tip.x + radius, tip.y + triangleHeight * 2), smb = smb))
+                    }
                 }
             }
         }

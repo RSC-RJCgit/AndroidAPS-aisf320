@@ -224,6 +224,7 @@ fun BgGraphCompose(
     val tapTargets = remember { GraphTapTargets() }
     var selectedBg by remember { mutableStateOf<BgDataPoint?>(null) }
     var selectedBolus by remember { mutableStateOf<BolusGraphPoint?>(null) }
+    var selectedSmb by remember { mutableStateOf<BolusGraphPoint?>(null) }
     var selectedCalculation by remember { mutableStateOf<BCR?>(null) }
     var calculationLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(selectedBolus) {
@@ -937,6 +938,7 @@ fun BgGraphCompose(
                 stackIndex = stack[index],
                 anchorY = dot?.value,
                 color = isfColor(dot?.dominantIsf),
+                tapTimestamp = smb.timestamp,
             )
         }
     }
@@ -954,8 +956,12 @@ fun BgGraphCompose(
         }
     }
     val smbLabelSize = rememberSmbLabelSize()
-    val smbNumbers = remember(smbStack, smbText, smbLabelSize) {
-        SmbStackLabels(smbStack, smbText, pinToBottom = false, labelSize = smbLabelSize)
+    val smbNumbers = remember(smbStack, smbText, smbLabelSize, treatments) {
+        SmbStackLabels(smbStack, smbText, pinToBottom = false, labelSize = smbLabelSize, onBounds = { bounds ->
+            tapTargets.smbLabels = bounds.mapNotNull { (item, rect) ->
+                treatments.boluses.firstOrNull { it.bolusType == BolusType.SMB && it.timestamp == item.tapTimestamp }?.let { GraphTapHit(rect, smb = it) }
+            }
+        })
     }
     val smbBaseArrows = remember(treatments, bgReadings, minTimestamp, lowMark) {
         treatments.boluses.filter { it.bolusType == BolusType.SMB }.map { smb ->
@@ -1061,8 +1067,12 @@ fun BgGraphCompose(
     val tapReadings = bgReadings + bucketedData +
         (if (showRaw) seriesRegistry[SERIES_RAW].orEmpty() else emptyList()) +
         (if (showUkf) seriesRegistry[SERIES_UKF].orEmpty() else emptyList())
-    val tapReporter = remember(tapReadings, bgReadings, treatments, minTimestamp) {
-        GraphPointTapReporter(tapTargets, tapReadings, bgReadings, treatments.boluses.filter { it.bolusType == BolusType.NORMAL }, minTimestamp)
+    val tapReporter = remember(tapReadings, bgReadings, treatments, minTimestamp, lowMark) {
+        GraphPointTapReporter(
+            tapTargets, tapReadings, bgReadings, treatments.boluses.filter { it.bolusType == BolusType.NORMAL }, minTimestamp,
+            smbs = treatments.boluses.filter { it.bolusType == BolusType.SMB },
+            lowMark = lowMark,
+        )
     }
     val basalPeaks = remember(basalData, nowTimestamp) {
         if (showBasalOnBgGraph) hourlyPeaks(basalData.actualBasal, nowTimestamp, stepped = true) else emptyList()
@@ -1209,12 +1219,14 @@ fun BgGraphCompose(
                     if (event.changes.size > 1 || event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) {
                         moved = true
                         selectedBg = null
+                        selectedSmb = null
                     }
                     if (event.changes.none { it.pressed }) {
                         val up = event.changes.firstOrNull { it.id == down.id }
                         if (!moved && up != null && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
                             val hit = tapTargets.at(up.position)
                             selectedBg = hit?.bg
+                            selectedSmb = hit?.smb
                             hit?.bolus?.let { bolus ->
                                 calculationLoaded = false
                                 selectedBolus = bolus
@@ -1246,6 +1258,17 @@ fun BgGraphCompose(
                     Text(dateUtil.dateAndTimeString(reading.timestamp))
                 }
                 TextButton(onClick = { selectedBg = null }) { Text(stringResource(CoreUiStrings.close)) }
+            }
+        }
+    }
+    selectedSmb?.let { smb ->
+        Surface(modifier = Modifier.align(Alignment.TopStart).padding(8.dp), tonalElevation = 4.dp, shadowElevation = 4.dp) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
+                Column {
+                    Text(stringResource(CoreUiStrings.graph_point_line_value, stringResource(CoreUiStrings.smb_shortname), stringResource(InterfacesStrings.format_insulin_units, smb.amount)))
+                    Text(dateUtil.dateAndTimeAndSecondsString(smb.timestamp))
+                }
+                TextButton(onClick = { selectedSmb = null }) { Text(stringResource(CoreUiStrings.close)) }
             }
         }
     }
