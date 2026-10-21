@@ -18,6 +18,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.mock
 
 class QuickWizardTest : TestBaseWithProfile() {
 
@@ -52,7 +53,7 @@ class QuickWizardTest : TestBaseWithProfile() {
     fun setup() {
         whenever(preferences.get(StringNonKey.QuickWizard)).thenReturn("[]")
         whenever(preferences.observe(StringNonKey.QuickWizard)).thenReturn(MutableStateFlow("[]"))
-        val quickWizardEntry = QuickWizardEntry(aapsLogger, preferences, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, { bolusWizard }, { quickWizardMock })
+        val quickWizardEntry = QuickWizardEntry(aapsLogger, preferences, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, mock(), mock(), { bolusWizard }, { quickWizardMock })
         quickWizardEntry.time = mockedTime
         quickWizard = QuickWizard(preferences) { quickWizardEntry }
     }

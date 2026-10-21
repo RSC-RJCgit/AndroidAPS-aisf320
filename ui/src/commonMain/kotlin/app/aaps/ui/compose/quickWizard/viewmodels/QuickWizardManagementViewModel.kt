@@ -181,6 +181,16 @@ class QuickWizardManagementViewModel(
             editorTime = entry.time(),
             editorDuration = entry.duration(),
             editorCarbs2 = entry.carbs2(),
+            editorAutoFpu = entry.autoFpu(),
+            editorSmallMeal = entry.smallMeal(),
+            editorUnreliableSmb = entry.unreliableSmb(),
+            editorWalkingSoonAuto = entry.walkingSoon() == QuickWizardEntry.AUTO,
+            editorWalkingSoon = entry.walkingSoon() == QuickWizardEntry.ALWAYS,
+            editorRetryFpuLater = entry.retryFpuLater(),
+            editorGiveRestLater = entry.giveRestLater(),
+            editorDirectCorrection = entry.directCorrection(),
+            editorSplitOverMax = entry.splitOverMax(),
+            editorSplitIntervalMinutes = entry.splitIntervalMinutes(),
             hasUnsavedChanges = false
         )
     }
@@ -314,7 +324,8 @@ class QuickWizardManagementViewModel(
     /**
      * Save current entry
      */
-    fun saveCurrentEntry() {
+    /** [onSaved] runs after a successful save, for example to run the button once its changes are stored. */
+    fun saveCurrentEntry(onSaved: (() -> Unit)? = null) {
         viewModelScope.launch {
             try {
                 val currentState = uiState.value
@@ -376,7 +387,20 @@ class QuickWizardManagementViewModel(
                     useEcarbs = booleanToRadioNumber(currentState.editorUseEcarbs),
                     time = currentState.editorTime,
                     duration = currentState.editorDuration,
-                    carbs2 = currentState.editorCarbs2
+                    carbs2 = currentState.editorCarbs2,
+                    autoFpu = currentState.editorAutoFpu,
+                    smallMeal = currentState.editorSmallMeal,
+                    unreliableSmb = currentState.editorUnreliableSmb,
+                    walkingSoon = when {
+                        currentState.editorWalkingSoonAuto -> QuickWizardEntry.AUTO
+                        currentState.editorWalkingSoon     -> QuickWizardEntry.ALWAYS
+                        else                               -> QuickWizardEntry.NEVER
+                    },
+                    retryFpuLater = currentState.editorRetryFpuLater,
+                    giveRestLater = currentState.editorGiveRestLater,
+                    directCorrection = currentState.editorDirectCorrection,
+                    splitOverMax = currentState.editorSplitOverMax,
+                    splitIntervalMinutes = currentState.editorSplitIntervalMinutes
                 )
 
                 quickWizard.addOrUpdate(entry)
@@ -390,6 +414,7 @@ class QuickWizardManagementViewModel(
                     val base = state.copy(entries = updatedEntries, hasUnsavedChanges = false)
                     if (savedEntry != null) loadEntryIntoEditor(base, savedEntry) else base
                 }
+                onSaved?.invoke()
             } catch (e: Exception) {
                 aapsLogger.error(LTag.UI, "Failed to save QuickWizard entry", e)
                 rxBus.send(EventShowSnackbar(e.message ?: "Failed to save entry", EventShowSnackbar.Type.Error))
@@ -562,6 +587,47 @@ class QuickWizardManagementViewModel(
 
     fun updateUseTempTarget(value: Boolean) {
         _uiState.update { it.copy(editorUseTempTarget = value, hasUnsavedChanges = true) }
+    }
+
+    // Unreliable SMBs and automatic fat and protein exclude each other, as in the Bolus Wizard
+    fun updateAutoFpu(value: Boolean) {
+        _uiState.update { it.copy(editorAutoFpu = value, editorUnreliableSmb = if (value) false else it.editorUnreliableSmb, hasUnsavedChanges = true) }
+    }
+
+    fun updateUnreliableSmb(value: Boolean) {
+        _uiState.update { it.copy(editorUnreliableSmb = value, editorAutoFpu = if (value) false else it.editorAutoFpu, hasUnsavedChanges = true) }
+    }
+
+    fun updateSmallMeal(value: Boolean) {
+        _uiState.update { it.copy(editorSmallMeal = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateWalkingSoonAuto(value: Boolean) {
+        _uiState.update { it.copy(editorWalkingSoonAuto = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateWalkingSoon(value: Boolean) {
+        _uiState.update { it.copy(editorWalkingSoon = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateRetryFpuLater(value: Boolean) {
+        _uiState.update { it.copy(editorRetryFpuLater = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateGiveRestLater(value: Boolean) {
+        _uiState.update { it.copy(editorGiveRestLater = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateSplitOverMax(value: Boolean) {
+        _uiState.update { it.copy(editorSplitOverMax = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateSplitIntervalMinutes(value: Int) {
+        _uiState.update { it.copy(editorSplitIntervalMinutes = value.coerceIn(1, 60), hasUnsavedChanges = true) }
+    }
+
+    fun updateDirectCorrection(value: Double) {
+        _uiState.update { it.copy(editorDirectCorrection = value, hasUnsavedChanges = true) }
     }
 
     fun updateUseAlarm(value: Boolean) {

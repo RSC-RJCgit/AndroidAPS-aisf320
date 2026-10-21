@@ -10,11 +10,14 @@ import kotlin.math.min
 /** Minutes between leftover parts. The usual delayed-carb checks. */
 const val SPLIT_LEFTOVER_INTERVAL_MINUTES = 7
 
-/** The usual leftover series stops after 60 minutes. */
-const val SPLIT_LEFTOVER_DEADLINE_MINUTES = 60
+/**
+ * The usual leftover series keeps trying for 2.5 hours, as v3 does since 30 Sep 2026 (2026-10-22, per explicit request):
+ * a slow fat or protein rise (15 Sep: BG under 6.0 for about 107 minutes, then 8.3) still needed the rest.
+ */
+const val SPLIT_LEFTOVER_DEADLINE_MINUTES = 150
 
-/** Stop the usual leftover series after this many unsafe glucose checks. */
-const val SPLIT_UNSAFE_CANCEL_COUNT = 3
+/** The usual leftover series never stops for unsafe glucose: it waits and tries again, as v3 does (2026-10-22). */
+const val SPLIT_UNSAFE_CANCEL_COUNT = Int.MAX_VALUE
 
 /** Minutes between checks when all three deltas are falling faster than 0.1 mmol/L. Six checks cover 2.5 hours. */
 const val SPLIT_RAPID_FALL_INTERVAL_MINUTES = 25

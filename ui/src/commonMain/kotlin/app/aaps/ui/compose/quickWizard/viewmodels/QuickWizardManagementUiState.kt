@@ -42,6 +42,17 @@ data class QuickWizardManagementUiState(
     val editorTime: Int = 0,                // eCarbs time in minutes
     val editorDuration: Int = 0,            // eCarbs duration in hours
     val editorCarbs2: Int = 0,              // eCarbs additional carbs
+    // The Bolus Wizard's own options (2026-10-21)
+    val editorAutoFpu: Boolean = false,
+    val editorSmallMeal: Boolean = false,
+    val editorUnreliableSmb: Boolean = false,
+    val editorWalkingSoonAuto: Boolean = true,
+    val editorWalkingSoon: Boolean = false,
+    val editorRetryFpuLater: Boolean = true,
+    val editorGiveRestLater: Boolean = true,
+    val editorDirectCorrection: Double = 0.0,
+    val editorSplitOverMax: Boolean = true,
+    val editorSplitIntervalMinutes: Int = 7,
 
     // UI control
     val showNotesField: Boolean = false,

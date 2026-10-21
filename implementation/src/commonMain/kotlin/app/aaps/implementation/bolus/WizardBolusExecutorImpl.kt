@@ -66,6 +66,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.ceil
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+import app.aaps.core.objects.wizard.SPLIT_LEFTOVER_INTERVAL_MINUTES
+import app.aaps.core.objects.wizard.WizardDropTrendCaution
+import app.aaps.core.objects.wizard.dropTrendCautionNow
+import kotlin.math.min
 
 /**
  * [WizardBolusExecutor] implementation. The `BolusWizard`/`QuickWizardEntry` compute objects stay
@@ -101,6 +106,7 @@ class WizardBolusExecutorImpl(
     // commonMain. AppCoroutineBindings.unqualifiedAppScope binds the very same scope without it.
     private val appScope: CoroutineScope,
     private val preferences: Preferences,
+    private val glucoseStatusProvider: GlucoseStatusProvider,
 ) : WizardBolusExecutor {
 
     /**
@@ -153,6 +159,8 @@ class WizardBolusExecutorImpl(
         val wizardMaxBolus: Double? = null,
         val walkingSoonHeld: Double = 0.0,
         val splitRapidFall: Boolean = false,
+        val splitOverMax: Boolean = true,
+        val splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES,
     )
 
     // Consume-once slots keyed by bolusId — a map, NOT a single var, so prepares from different actors (the
@@ -245,6 +253,8 @@ class WizardBolusExecutorImpl(
         if (!pump.isInitialized()) return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_pump_not_available))
 
         val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        // The button's own max bolus always counts; 0 uses the saved max bolus. As in the Bolus Wizard, unreliable SMBs only
+        // fall back to the saved value when nothing was set for this bolus (2026-10-22, per explicit request).
         val buttonMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
         if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, buttonMax)
         val wizard = try {
@@ -252,6 +262,8 @@ class WizardBolusExecutorImpl(
         } finally {
             if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
         }
+        wizard.splitOverMax = entry.splitOverMax()
+        wizard.splitIntervalMinutes = entry.splitIntervalMinutes()
 
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(entry.carbs(), aapsLogger)).value()
         if (carbsAfterConstraints != entry.carbs()) return WizardBolusExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_carbs_constraint))
@@ -286,6 +298,8 @@ class WizardBolusExecutorImpl(
             wizardMaxBolus = buttonMax,
             walkingSoonHeld = wizard.walkingSoonHeldUnits,
             splitRapidFall = wizard.rapidFallForSplit,
+            splitOverMax = wizard.splitOverMax,
+            splitIntervalMinutes = wizard.splitIntervalMinutes,
         ))
         // Build the master's color-coded confirmation lines here so the client renders the master's EXACT
         // wizard confirmation (shared builder). advisorApplies offers the high-BG "correct now, eat later" fork.
@@ -340,9 +354,16 @@ class WizardBolusExecutorImpl(
         val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
         val wizardMax = inputs.maxBolus?.coerceIn(0.1, 60.0)
         if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
+        // The falling-BG caution is applied here, on the master's live data (2026-10-22). The calculator only showed it:
+        // its percent was sent un-halved, so the dose given was not reduced. The cut part is given later when asked.
+        val bgMgdl = if (inputs.useBg && inputs.bg > 0.0) profileUtil.convertToMgdl(inputs.bg, profileFunction.getUnits())
+        else glucoseStatusProvider.getGlucoseStatusData()?.glucose ?: 999.0
+        val percentForCalc = if (dropTrendCautionNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil))
+            min(inputs.percentage, WizardDropTrendCaution.scaledWizPercent(inputs.percentage))
+        else inputs.percentage
         val wizard = try {
             bolusWizardProvider().doCalc(
-                profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, inputs.percentage,
+                profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, percentForCalc,
                 inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
                 protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
                 walkingSoon = inputs.walkingSoon,
@@ -350,6 +371,13 @@ class WizardBolusExecutorImpl(
         } finally {
             if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
         }
+        wizard.warsawRetryLater = inputs.retryFpuLater
+        if (inputs.giveRestLater && inputs.percentage > percentForCalc) {
+            val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
+            wizard.addLaterUnits(scaled * (inputs.percentage - percentForCalc) / 100.0)
+        }
+        wizard.splitOverMax = inputs.splitOverMax
+        wizard.splitIntervalMinutes = inputs.splitIntervalMinutes.coerceIn(1, 60)
         // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
         // Commit applies the same cap again, so the pump never sees the uncapped amount.
         val insulinAfterConstraints = wizard.insulinAfterConstraints
@@ -392,6 +420,8 @@ class WizardBolusExecutorImpl(
                 wizardMaxBolus = inputs.maxBolus,
                 walkingSoonHeld = wizard.walkingSoonHeldUnits,
                 splitRapidFall = wizard.rapidFallForSplit,
+                splitOverMax = wizard.splitOverMax,
+                splitIntervalMinutes = wizard.splitIntervalMinutes,
             )
         )
         val advisorApplies = wizard.needsBolusAdvisor()
@@ -789,6 +819,8 @@ class WizardBolusExecutorImpl(
                 source,
                 rapidFall = p.splitRapidFall,
                 walkingSoonHeld = p.walkingSoonHeld,
+                splitOverMax = p.splitOverMax,
+                intervalMinutes = p.splitIntervalMinutes,
             )
         } else {
             bolusWizardProvider().cancelLeftoverSplit()

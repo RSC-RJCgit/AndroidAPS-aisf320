@@ -2,6 +2,8 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.core.objects.wizard.QuickWizardEntryData.Companion.DEVICE_ALL
 import app.aaps.core.objects.wizard.QuickWizardEntryData.Companion.fromJsonObject
+import app.aaps.core.utils.lenientBoolean
+import app.aaps.core.utils.lenientBooleanOrNull
 import app.aaps.core.utils.lenientDouble
 import app.aaps.core.utils.lenientInt
 import app.aaps.core.utils.lenientLong
@@ -9,6 +11,7 @@ import app.aaps.core.utils.lenientString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import app.aaps.core.utils.lenientIntOrNull
 
 /**
  * One quick wizard preset, as plain data.
@@ -54,6 +57,26 @@ data class QuickWizardEntryData(
     val warsawDurationHours: Double = 5.0,
     /** Max bolus for this button only. 0 keeps the saved safety max. */
     val maxBolus: Double = 0.0,
+    // The Bolus Wizard's own options (2026-10-21, per explicit request), so a button gives the same dose as the wizard.
+    // A null switch follows the wizard's default setting when the button is used; the editor writes the value it shows.
+    /** Automatic fat and protein from the carbs (fat 0.35 x, protein 0.4 x). */
+    val autoFpu: Boolean? = null,
+    /** Halves the automatic fat and protein. */
+    val smallMeal: Boolean? = null,
+    /** Larger fat and protein, wizard percent 90 and the saved max bolus. */
+    val unreliableSmb: Boolean? = null,
+    /** [ALWAYS], [NEVER] or [AUTO]: from the steps, as the wizard sets its box. */
+    val walkingSoon: Int = AUTO,
+    /** A protein or fat dose that is not safe at its hour is checked again every 10 minutes instead of cancelled. */
+    val retryFpuLater: Boolean = true,
+    /** The part the falling-BG caution removes is given later, as hourly doses. */
+    val giveRestLater: Boolean = true,
+    /** Insulin added to (or taken from) the calculated dose, in units. */
+    val directCorrection: Double = 0.0,
+    /** Give the dose over max bolus later, in parts. Null follows the calculator setting (2026-10-22). */
+    val splitOverMax: Boolean? = null,
+    /** Minutes between those parts. Null follows the calculator setting. */
+    val splitIntervalMinutes: Int? = null,
 ) {
 
     companion object {
@@ -65,6 +88,8 @@ data class QuickWizardEntryData(
         const val NEVER = 1
         const val POSITIVE_ONLY = 2
         const val NEGATIVE_ONLY = 3
+        /** Set from the live data when the button is used (walking soon). */
+        const val AUTO = 4
         const val DEVICE_ALL = 0
         const val DEVICE_PHONE = 1
         const val DEVICE_WATCH = 2
@@ -106,6 +131,15 @@ data class QuickWizardEntryData(
                 fat = json.lenientInt("fat"),
                 warsawDurationHours = json.lenientDouble("warsawDurationHours", 5.0),
                 maxBolus = json.lenientDouble("maxBolus", 0.0),
+                autoFpu = json.lenientBooleanOrNull("autoFpu"),
+                smallMeal = json.lenientBooleanOrNull("smallMeal"),
+                unreliableSmb = json.lenientBooleanOrNull("unreliableSmb"),
+                walkingSoon = json.lenientInt("walkingSoon", AUTO),
+                retryFpuLater = json.lenientBoolean("retryFpuLater", true),
+                giveRestLater = json.lenientBoolean("giveRestLater", true),
+                directCorrection = json.lenientDouble("directCorrection", 0.0),
+                splitOverMax = json.lenientBooleanOrNull("splitOverMax"),
+                splitIntervalMinutes = json.lenientIntOrNull("splitIntervalMinutes"),
             )
     }
 
@@ -145,5 +179,14 @@ data class QuickWizardEntryData(
             put("fat", fat)
             put("warsawDurationHours", warsawDurationHours)
             put("maxBolus", maxBolus)
+            autoFpu?.let { put("autoFpu", it) }
+            smallMeal?.let { put("smallMeal", it) }
+            unreliableSmb?.let { put("unreliableSmb", it) }
+            put("walkingSoon", walkingSoon)
+            put("retryFpuLater", retryFpuLater)
+            put("giveRestLater", giveRestLater)
+            put("directCorrection", directCorrection)
+            splitOverMax?.let { put("splitOverMax", it) }
+            splitIntervalMinutes?.let { put("splitIntervalMinutes", it) }
         }
 }

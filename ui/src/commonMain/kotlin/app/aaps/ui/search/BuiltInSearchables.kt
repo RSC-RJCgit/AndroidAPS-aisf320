@@ -314,7 +314,9 @@ class BuiltInSearchables(
             BooleanKey.OverviewUseBolusAdvisor,
             BooleanKey.WizardDefaultUnreliableSmbs,
             BooleanKey.WizardDefaultSmallMeal,
-            BooleanKey.WizardDefaultAutoFpu
+            BooleanKey.WizardDefaultAutoFpu,
+            BooleanKey.WizardSplitOverMaxBolus,
+            IntKey.WizardSplitIntervalMinutes
         ),
         icon = IcCalculator
     )

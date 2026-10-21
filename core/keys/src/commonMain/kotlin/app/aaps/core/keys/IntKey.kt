@@ -392,6 +392,16 @@ enum class IntKey(
         unitType = UnitType.PERCENT,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // v3's split interval (2026-10-22, per explicit request): minutes between the parts of a dose over max bolus
+    WizardSplitIntervalMinutes(
+        key = "split_bolus_interval",
+        defaultValue = 7,
+        min = 1,
+        max = 10,
+        title = KeysStrings.pref_title_wizard_split_interval,
+        summary = KeysStrings.pref_summary_wizard_split_interval,
+        unitType = UnitType.MIN
+    ),
     ApsAutoIsfIobThPercentNormal(
         key = "autoisf_iob_threshold_percent_normal",
         defaultValue = 70,

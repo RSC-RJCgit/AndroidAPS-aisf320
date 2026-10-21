@@ -121,6 +121,8 @@ fun QuickWizardManagementScreen(
     // Dialog states
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showUnsavedChangesDialog by remember { mutableStateOf(false) }
+    // Running a button with unsaved edits ran the stored version, not what the editor showed (2026-10-21)
+    var showSaveBeforeRunDialog by remember { mutableStateOf(false) }
     var pendingPageChange by remember { mutableIntStateOf(-1) }
 
     // Delete confirmation dialog
@@ -134,6 +136,20 @@ fun QuickWizardManagementScreen(
                 showDeleteDialog = false
             },
             onDismiss = { showDeleteDialog = false }
+        )
+    }
+
+    // Save before running: OK saves and then runs the button, Cancel runs nothing
+    if (showSaveBeforeRunDialog) {
+        val guid = uiState.selectedGuid
+        OkCancelDialog(
+            title = stringResource(CoreUiStrings.unsaved_changes),
+            message = stringResource(UiStrings.quickwizard_save_before_run),
+            onConfirm = {
+                showSaveBeforeRunDialog = false
+                viewModel.saveCurrentEntry(onSaved = { onExecuteClick(guid) })
+            },
+            onDismiss = { showSaveBeforeRunDialog = false }
         )
     }
 
@@ -436,6 +452,16 @@ fun QuickWizardManagementScreen(
                                         useSuperBolus = uiState.editorUseSuperBolus,
                                         useTempTarget = uiState.editorUseTempTarget,
                                         useAlarm = uiState.editorUseAlarm,
+                                        autoFpu = uiState.editorAutoFpu,
+                                        smallMeal = uiState.editorSmallMeal,
+                                        unreliableSmb = uiState.editorUnreliableSmb,
+                                        walkingSoonAuto = uiState.editorWalkingSoonAuto,
+                                        walkingSoon = uiState.editorWalkingSoon,
+                                        retryFpuLater = uiState.editorRetryFpuLater,
+                                        giveRestLater = uiState.editorGiveRestLater,
+                                        directCorrection = uiState.editorDirectCorrection,
+                                        splitOverMax = uiState.editorSplitOverMax,
+                                        splitIntervalMinutes = uiState.editorSplitIntervalMinutes,
                                         percentage = uiState.editorPercentage,
                                         devicePhone = uiState.editorDevicePhone,
                                         deviceWatch = uiState.editorDeviceWatch,
@@ -467,6 +493,16 @@ fun QuickWizardManagementScreen(
                                         onUseSuperBolusChange = viewModel::updateUseSuperBolus,
                                         onUseTempTargetChange = viewModel::updateUseTempTarget,
                                         onUseAlarmChange = viewModel::updateUseAlarm,
+                                        onAutoFpuChange = viewModel::updateAutoFpu,
+                                        onSmallMealChange = viewModel::updateSmallMeal,
+                                        onUnreliableSmbChange = viewModel::updateUnreliableSmb,
+                                        onWalkingSoonAutoChange = viewModel::updateWalkingSoonAuto,
+                                        onWalkingSoonChange = viewModel::updateWalkingSoon,
+                                        onRetryFpuLaterChange = viewModel::updateRetryFpuLater,
+                                        onGiveRestLaterChange = viewModel::updateGiveRestLater,
+                                        onDirectCorrectionChange = viewModel::updateDirectCorrection,
+                                        onSplitOverMaxChange = viewModel::updateSplitOverMax,
+                                        onSplitIntervalMinutesChange = viewModel::updateSplitIntervalMinutes,
                                         onPercentageChange = viewModel::updatePercentage,
                                         onDevicePhoneChange = viewModel::updateDevicePhone,
                                         onDeviceWatchChange = viewModel::updateDeviceWatch,
@@ -552,7 +588,10 @@ fun QuickWizardManagementScreen(
                             // bolus without saying which one. Reads "Breakfast, Execute".
                             val selectedName = uiState.entries.getOrNull(uiState.selectedIndex)?.buttonText() ?: ""
                             AapsFab(
-                                onClick = { onExecuteClick(uiState.selectedGuid) },
+                                onClick = {
+                                    if (!isPlayMode && viewModel.hasUnsavedChanges()) showSaveBeforeRunDialog = true
+                                    else onExecuteClick(uiState.selectedGuid)
+                                },
                                 modifier = Modifier.semantics { contentDescription = selectedName }
                             ) {
                                 Icon(

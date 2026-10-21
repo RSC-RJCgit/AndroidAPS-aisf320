@@ -53,6 +53,9 @@ data class WizardDialogUiState(
     val unreliableSmb: Boolean = false,
     /** Halves the automatic fat and protein. With unreliableSmb ticked too, the two cancel to the average. */
     val smallMeal: Boolean = false,
+    /** v3's split box (2026-10-22): give the dose over max bolus later, in parts, every [splitIntervalMinutes]. */
+    val splitOverMax: Boolean = true,
+    val splitIntervalMinutes: Int = 7,
     val alarmChecked: Boolean = false,
     val calculationExpanded: Boolean = false,
 

@@ -222,6 +222,13 @@ enum class BooleanKey(
         KeysStrings.pref_title_wizard_default_small_meal,
         KeysStrings.pref_summary_wizard_default_small_meal
     ),
+    // v3's split over max bolus (2026-10-22, per explicit request): how the calculator's and QuickWizard's split box start
+    WizardSplitOverMaxBolus(
+        "split_bolus_enabled",
+        true,
+        KeysStrings.pref_title_wizard_split_over_max,
+        KeysStrings.pref_summary_wizard_split_over_max
+    ),
     WizardDefaultAutoFpu(
         "wizard_default_auto_fpu",
         true,

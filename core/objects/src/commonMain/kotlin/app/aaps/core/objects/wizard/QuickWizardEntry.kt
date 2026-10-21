@@ -5,6 +5,8 @@ import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.aps.Loop
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
@@ -16,8 +18,10 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.utils.MidnightUtils
+import kotlin.math.min
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import app.aaps.core.keys.IntKey
 
 enum class QuickWizardMode(val value: Int) {
     WIZARD(0),
@@ -39,6 +43,9 @@ class QuickWizardEntry(
     private val persistenceLayer: PersistenceLayer,
     private val dateUtil: DateUtil,
     private val glucoseStatusProvider: GlucoseStatusProvider,
+    // For the walking-soon default from the steps, the same as the Bolus Wizard (2026-10-21)
+    private val config: Config,
+    private val activePlugin: ActivePlugin,
     // Plain factories rather than javax.inject.Provider - see QuickWizard for why.
     private val bolusWizardProvider: () -> BolusWizard,
     private val quickWizardProvider: () -> QuickWizard
@@ -71,6 +78,7 @@ class QuickWizardEntry(
         const val NEVER = QuickWizardEntryData.NEVER
         const val POSITIVE_ONLY = QuickWizardEntryData.POSITIVE_ONLY
         const val NEGATIVE_ONLY = QuickWizardEntryData.NEGATIVE_ONLY
+        const val AUTO = QuickWizardEntryData.AUTO
         const val DEVICE_ALL = QuickWizardEntryData.DEVICE_ALL
         const val DEVICE_PHONE = QuickWizardEntryData.DEVICE_PHONE
         const val DEVICE_WATCH = QuickWizardEntryData.DEVICE_WATCH
@@ -134,15 +142,38 @@ class QuickWizardEntry(
         } else if (useTrend() == NEGATIVE_ONLY && glucoseStatus != null && glucoseStatus.shortAvgDelta < 0) {
             trend = true
         }
-        val percentage = percentage()
-        return bolusWizardProvider().doCalc(
+        // 2026-10-21, per explicit request: the same meal extras, falling-BG caution, walking soon and later doses as the
+        // Bolus Wizard (WizardDialogViewModel), so a button gives the dose the wizard would give with the same options.
+        val extra = mealExtra(
+            fpuInstead = autoFpu(),
+            unreliableSmb = unreliableSmb(),
+            carbs = carbs(),
+            typedFat = fat(),
+            typedProtein = protein(),
+            percentage = percentage(),
+            extendedCarbPercent = 0,
+            smallMeal = smallMeal(),
+        )
+        val bgMgdl = lastBG.value
+        val percentage = if (dropTrendCautionNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil))
+            min(extra.percentage, WizardDropTrendCaution.scaledWizPercent(extra.percentage))
+        else extra.percentage
+        val walking = when (walkingSoon()) {
+            ALWAYS -> true
+            NEVER  -> false
+            else   -> {
+                val (steps5, steps30, steps15) = walkingSoonStepCounts(config, preferences, activePlugin, persistenceLayer, dateUtil)
+                walkingSoonDefault(steps5, steps30, bgMgdl, glucoseStatus?.delta ?: 0.0, steps15) ?: false
+            }
+        }
+        val wizard = bolusWizardProvider().doCalc(
             profile,
             profileName,
             tempTarget,
             carbs(),
             cob,
             bg,
-            0.0,
+            directCorrection(),
             percentage,
             true,
             useCOB() == ALWAYS,
@@ -156,11 +187,38 @@ class QuickWizardEntry(
             carbTime(),
             positiveIOBOnly = uPositiveIOBOnly,
             source = Sources.QuickWizard,
-            protein = protein(),
-            fat = fat(),
+            protein = extra.proteinGrams,
+            fat = extra.fatGrams,
             warsawDurationHours = warsawDurationHours(),
+            walkingSoon = walking,
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
+        wizard.warsawRetryLater = retryFpuLater()
+        if (giveRestLater() && extra.percentage > percentage) {
+            val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
+            wizard.addLaterUnits(scaled * (extra.percentage - percentage) / 100.0)
+        }
+        return wizard
     }
+
+    // The Bolus Wizard's options. A switch the editor never wrote follows the wizard's default setting. Unreliable SMBs
+    // win over automatic fat and protein, as in the wizard.
+    fun unreliableSmb(): Boolean = data.unreliableSmb ?: preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+
+    fun autoFpu(): Boolean = (data.autoFpu ?: preferences.get(BooleanKey.WizardDefaultAutoFpu)) && !unreliableSmb()
+
+    fun smallMeal(): Boolean = data.smallMeal ?: preferences.get(BooleanKey.WizardDefaultSmallMeal)
+
+    fun walkingSoon(): Int = data.walkingSoon
+
+    fun retryFpuLater(): Boolean = data.retryFpuLater
+
+    fun giveRestLater(): Boolean = data.giveRestLater
+
+    fun directCorrection(): Double = data.directCorrection
+
+    fun splitOverMax(): Boolean = data.splitOverMax ?: preferences.get(BooleanKey.WizardSplitOverMaxBolus)
+
+    fun splitIntervalMinutes(): Int = (data.splitIntervalMinutes ?: preferences.get(IntKey.WizardSplitIntervalMinutes)).coerceIn(1, 60)
 
     fun mode(): QuickWizardMode = QuickWizardMode.fromValue(data.mode)
 
@@ -212,7 +270,9 @@ class QuickWizardEntry(
      * The extended-carbs amount this preset really delivers: [carbs2] when eCarbs are switched on, 0 when they
      * are off. Every caller needs the switch together with the amount, so the two stay in one place.
      */
-    fun eCarbsGrams(): Int = if (useEcarbs() == ALWAYS) carbs2() else 0
+    fun eCarbsGrams(): Int =
+        // As in the wizard, automatic fat and protein (or unreliable SMBs) send the slow part as later doses instead
+        if (useEcarbs() == ALWAYS && !(mode() == QuickWizardMode.WIZARD && (autoFpu() || unreliableSmb()))) carbs2() else 0
 
     fun time(): Int = data.time
 

@@ -229,6 +229,8 @@ fun WizardDialogScreen(
         onWalkingSoonToggle = viewModel::toggleWalkingSoon,
         onFpuInsteadToggle = viewModel::toggleFpuInstead,
         onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
+        onSplitOverMaxToggle = viewModel::toggleSplitOverMax,
+        onSplitIntervalChange = viewModel::updateSplitIntervalMinutes,
         onDelayFpuInsteadOfCancelToggle = viewModel::toggleDelayFpuInsteadOfCancel,
         onUnreliableSmbToggle = viewModel::toggleUnreliableSmb,
         onSmallMealToggle = viewModel::toggleSmallMeal,
@@ -267,6 +269,8 @@ internal fun WizardDialogContent(
     onWalkingSoonToggle: (Boolean) -> Unit = {},
     onFpuInsteadToggle: (Boolean) -> Unit = {},
     onGiveRestLaterToggle: (Boolean) -> Unit = {},
+    onSplitOverMaxToggle: (Boolean) -> Unit = {},
+    onSplitIntervalChange: (Int) -> Unit = {},
     onDelayFpuInsteadOfCancelToggle: (Boolean) -> Unit = {},
     onUnreliableSmbToggle: (Boolean) -> Unit = {},
     onSmallMealToggle: (Boolean) -> Unit = {},
@@ -709,6 +713,32 @@ internal fun WizardDialogContent(
                             unitLabel = TextRef.Literal("U"),
                             decimalPlaces = 2
                         )
+                        // v3's split box (2026-10-22): shown when the dose is over max bolus
+                        if (uiState.totalInsulin > uiState.maxBolus + 0.005) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = uiState.splitOverMax,
+                                    onCheckedChange = onSplitOverMaxToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_split_over_max),
+                                    modifier = Modifier.clickable { onSplitOverMaxToggle(!uiState.splitOverMax) }
+                                )
+                            }
+                            if (uiState.splitOverMax) {
+                                NumberInputRow(
+                                    labelRef = UiStrings.wizard_split_interval,
+                                    value = uiState.splitIntervalMinutes.toDouble(),
+                                    onValueChange = { onSplitIntervalChange(it.toInt()) },
+                                    valueRange = 1.0..60.0,
+                                    step = 1.0,
+                                    unitLabel = TextRef.Literal("min")
+                                )
+                            }
+                        }
                         NumberInputRow(
                             labelRef = InterfacesStrings.carbs,
                             value = uiState.carbs.toDouble(),

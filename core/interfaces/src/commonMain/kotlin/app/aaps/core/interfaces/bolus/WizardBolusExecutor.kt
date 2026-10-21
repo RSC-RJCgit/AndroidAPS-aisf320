@@ -262,5 +262,10 @@ interface WizardBolusExecutor {
         val warsawDurationHours: Double = 5.0,
         val maxBolus: Double? = null,
         val walkingSoon: Boolean = false,
+        // 2026-10-22: the calculator's own boxes reach the master, which works the dose out again
+        val giveRestLater: Boolean = true,
+        val retryFpuLater: Boolean = true,
+        val splitOverMax: Boolean = true,
+        val splitIntervalMinutes: Int = 7,
     )
 }

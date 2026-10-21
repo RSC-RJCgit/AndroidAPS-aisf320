@@ -7,8 +7,6 @@ import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import app.aaps.core.data.model.GlucoseUnit
-import app.aaps.core.data.model.LiveSteps
-import app.aaps.core.data.pump.defs.PumpType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
@@ -37,8 +35,9 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
-import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.wizard.walkingSoonStepCounts
+import app.aaps.core.objects.wizard.dropTrendCautionNow
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.valueToUnits
@@ -74,7 +73,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** BG rise window for the drop-trend caution: the lowest BG in the last hour. */
-private const val BG_RISE_WINDOW_MINUTES = 60L
 
 @Stable
 @AssistedInject
@@ -235,6 +233,8 @@ class WizardDialogViewModel(
                 useCOB = useCOB,
                 fpuInstead = defaultAutoFpu,
                 smallMeal = defaultSmallMeal,
+                splitOverMax = preferences.get(BooleanKey.WizardSplitOverMaxBolus),
+                splitIntervalMinutes = preferences.get(IntKey.WizardSplitIntervalMinutes),
                 alarmChecked = false,
                 calculationExpanded = false,
                 // Config
@@ -288,6 +288,14 @@ class WizardDialogViewModel(
     fun toggleDelayFpuInsteadOfCancel(checked: Boolean) {
         _uiState.update { it.copy(delayFpuInsteadOfCancel = checked) }
         recalculate()
+    }
+
+    fun toggleSplitOverMax(checked: Boolean) {
+        _uiState.update { it.copy(splitOverMax = checked) }
+    }
+
+    fun updateSplitIntervalMinutes(value: Int) {
+        _uiState.update { it.copy(splitIntervalMinutes = value.coerceIn(1, 60)) }
     }
 
     fun toggleGiveRestLater(checked: Boolean) {
@@ -368,29 +376,9 @@ class WizardDialogViewModel(
     private fun suggestedMaxBolus(): Double =
         savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
 
-    private suspend fun dropTrendCautionApplies(bgMgdl: Double): Boolean {
-        val glucose = glucoseStatusProvider.getGlucoseStatusData() ?: return false
-        val hp1Cached = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
-        val hp1Mmol = if (hp1Cached != 0L) hp1Cached / 1000.0 else null
-        val bolusIob = iobCobCalculator.calculateIobFromBolus().round().iob
-        val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
-        return WizardDropTrendCaution.applies(
-            delta = glucose.delta,
-            shortAvgDelta = glucose.shortAvgDelta,
-            longAvgDelta = glucose.longAvgDelta,
-            bgMgdl = bgMgdl,
-            hp1Mmol = hp1Mmol,
-            iobUnits = bolusIob + basalIob,
-            bgRiseMgdl = recentBgRiseMgdl(bgMgdl),
-        )
-    }
-
-    private suspend fun recentBgRiseMgdl(currentBgMgdl: Double): Double {
-        val from = dateUtil.now() - T.mins(BG_RISE_WINDOW_MINUTES).msecs()
-        val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true)
-            .minOfOrNull { it.value } ?: return 0.0
-        return currentBgMgdl - recentMin
-    }
+    // Shared with QuickWizard (2026-10-21), see WizardLiveChecks
+    private suspend fun dropTrendCautionApplies(bgMgdl: Double): Boolean =
+        dropTrendCautionNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
 
     private fun applyWizardMaxBolus(value: Double) {
         val saved = savedSafetyMaxBolus ?: return
@@ -761,6 +749,8 @@ class WizardDialogViewModel(
             profileName = profileName, protein = state.protein, fat = state.fat,
             warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
             walkingSoon = state.walkingSoon,
+            giveRestLater = state.giveRestLater, retryFpuLater = state.delayFpuInsteadOfCancel,
+            splitOverMax = state.splitOverMax, splitIntervalMinutes = state.splitIntervalMinutes,
         )
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         appScope.launch {
@@ -810,39 +800,9 @@ class WizardDialogViewModel(
         return uiState.value
     }
 
-    // Live steps when this virtual phone is set to use them. No fresh live sample leaves the box alone.
-    // Otherwise the phone's own latest steps are used, and none means not moving.
-    private suspend fun stepCountsForWalkingSoon(): Triple<Int?, Int?, Int?> {
-        val now = dateUtil.now()
-        val useLive = config.APS && !config.AAPSCLIENT &&
-            preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&
-            activePlugin.activePump.pumpDescription.pumpType == PumpType.GENERIC_AAPS
-        if (useLive) {
-            val own = "openaps://${config.deviceModelForUpload}"
-            val sample = LiveSteps.sampleFor(
-                now,
-                persistenceLayer.getStepsCountFromTimeToTime(now - LiveSteps.MAX_AGE_MS, now),
-                fromLivePhone = true,
-                ownDevice = own,
-            )?.takeIf { row ->
-                LiveSteps.hasDosingBuckets(
-                    mapOf(
-                        5 to row.steps5min,
-                        10 to row.steps10min,
-                        15 to row.steps15min,
-                        30 to row.steps30min,
-                        60 to row.steps60min,
-                        180 to row.steps180min,
-                    )
-                )
-            }
-            if (sample == null) return Triple(null, null, null)
-            return Triple(sample.steps5min, sample.steps30min, sample.steps15min)
-        }
-        val local = persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60_000L, now)
-        if (local == null) return Triple(0, 0, 0)
-        return Triple(local.steps5min, local.steps30min, local.steps15min)
-    }
+    // Shared with QuickWizard (2026-10-21), see WizardLiveChecks
+    private suspend fun stepCountsForWalkingSoon(): Triple<Int?, Int?, Int?> =
+        walkingSoonStepCounts(config, preferences, activePlugin, persistenceLayer, dateUtil)
 
     /**
      * The same split assisted injection expresses everywhere: [SavedStateHandle] comes from the

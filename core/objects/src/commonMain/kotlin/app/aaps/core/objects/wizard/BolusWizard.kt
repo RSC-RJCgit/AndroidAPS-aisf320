@@ -150,6 +150,10 @@ class BolusWizard(
     var walkingSoonHeldUnits: Double = 0.0
         private set
     var rapidFallForSplit: Boolean = false
+    /** Give the dose over max bolus later, in parts (v3's split box, 2026-10-22). Off gives max bolus only. */
+    var splitOverMax: Boolean = true
+    /** Minutes between the usual split parts. */
+    var splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES
         private set
 
     /** Immutable snapshot of the computed result, built at the end of [doCalc] (additive — the legacy
@@ -706,12 +710,14 @@ class BolusWizard(
         source: Sources,
         rapidFall: Boolean = false,
         walkingSoonHeld: Double = 0.0,
+        splitOverMax: Boolean = true,
+        intervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES,
     ) {
         val token = SplitScheduleGate.next()
         val profile = profileFunction.getProfile() ?: return
         if (profileSwitchPercent(profile) < 100) return
         val step = ch.bolusStep(max(delivered, walkingSoonHeld).coerceAtLeast(0.05))
-        val aboveMax = splitLeftover(requested, delivered, step) ?: 0.0
+        val aboveMax = if (splitOverMax) splitLeftover(requested, delivered, step) ?: 0.0 else 0.0
         val walkLeft = Round.roundTo(walkingSoonHeld, 0.001).let { held ->
             if (held >= step / 2.0) held else 0.0
         }
@@ -719,17 +725,17 @@ class BolusWizard(
         val rapidLeft = if (rapidFall) aboveMax else 0.0
         val now = dateUtil.now()
         if (usualLeft >= step / 2.0) {
-            aapsLogger.info(LTag.CORE, "Split leftover ${usualLeft} U every $SPLIT_LEFTOVER_INTERVAL_MINUTES min")
+            aapsLogger.info(LTag.CORE, "Split leftover ${usualLeft} U every $intervalMinutes min")
             launchSplitPart(
                 remaining = usualLeft,
                 previousPart = if (delivered > 0.0) delivered else usualLeft,
                 iobBaseline = iobBaseline,
                 token = token,
                 source = source,
-                deliverAt = now + SPLIT_LEFTOVER_INTERVAL_MINUTES * 60_000L,
+                deliverAt = now + intervalMinutes * 60_000L,
                 deadline = now + SPLIT_LEFTOVER_DEADLINE_MINUTES * 60_000L,
                 unsafeCount = 0,
-                intervalMinutes = SPLIT_LEFTOVER_INTERVAL_MINUTES,
+                intervalMinutes = intervalMinutes,
                 unsafeLimit = SPLIT_UNSAFE_CANCEL_COUNT,
                 // 2026-10-19, per explicit request: insulin walking soon held back is not cut again for walking.
                 walkingCutAllowed = walkLeft <= 0.0,
@@ -1034,14 +1040,14 @@ class BolusWizard(
             }
             if (!useSuperBolus && profileSwitchPercent(profile) >= 100) {
                 val step = ch.bolusStep(max(insulinAfterConstraints, walkingSoonHeldUnits).coerceAtLeast(0.05))
-                val aboveMax = splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, step) ?: 0.0
+                val aboveMax = if (splitOverMax) splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, step) ?: 0.0 else 0.0
                 val walkLeft = if (walkingSoonHeldUnits >= step / 2.0) walkingSoonHeldUnits else 0.0
                 val usualLeft = if (rapidFallForSplit) walkLeft else walkLeft + aboveMax
                 val rapidLeft = if (rapidFallForSplit) aboveMax else 0.0
                 if (usualLeft >= step / 2.0) {
                     line(
                         ConfirmationRole.INFO,
-                        rh.gs(InterfacesStrings.wizard_split_leftover, usualLeft, SPLIT_LEFTOVER_INTERVAL_MINUTES)
+                        rh.gs(InterfacesStrings.wizard_split_leftover, usualLeft, splitIntervalMinutes)
                     )
                 }
                 if (rapidLeft >= step / 2.0) {

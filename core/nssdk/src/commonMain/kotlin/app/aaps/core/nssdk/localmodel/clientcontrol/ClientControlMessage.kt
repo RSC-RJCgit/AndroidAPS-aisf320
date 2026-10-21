@@ -161,6 +161,15 @@ sealed class ClientControlMessage {
         // null → the master's active profile; a name → that stored profile (additive, default keeps old clients wire-compatible).
         val profileName: String? = null,
         val walkingSoon: Boolean = false,
+        // 2026-10-22: the rest of the calculator's inputs. Defaults keep an older client wire-compatible.
+        val protein: Int = 0,
+        val fat: Int = 0,
+        val warsawDurationHours: Double = 5.0,
+        val maxBolus: Double? = null,
+        val giveRestLater: Boolean = true,
+        val retryFpuLater: Boolean = true,
+        val splitOverMax: Boolean = true,
+        val splitIntervalMinutes: Int = 7,
     ) : ClientControlMessage()
 
     /**

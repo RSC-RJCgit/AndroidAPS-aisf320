@@ -73,10 +73,12 @@ object CoreObjectsGraph {
         persistence: PersistenceLayer,
         dates: DateUtil,
         glucose: GlucoseStatusProvider,
+        cfg: Config,
+        plugins: ActivePlugin,
         wizard: () -> BolusWizard,
         quick: () -> QuickWizard
     ): QuickWizardEntry = QuickWizardEntry(
-        logger, prefs, profile, loopRef, iobCob, persistence, dates, glucose, { wizard() }, { quick() }
+        logger, prefs, profile, loopRef, iobCob, persistence, dates, glucose, cfg, plugins, { wizard() }, { quick() }
     )
 
     @Suppress("LongParameterList")

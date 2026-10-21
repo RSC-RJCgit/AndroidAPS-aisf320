@@ -114,6 +114,16 @@ fun QuickWizardEditor(
     useSuperBolus: Boolean,
     useTempTarget: Boolean,
     useAlarm: Boolean,
+    autoFpu: Boolean,
+    smallMeal: Boolean,
+    unreliableSmb: Boolean,
+    walkingSoonAuto: Boolean,
+    walkingSoon: Boolean,
+    retryFpuLater: Boolean,
+    giveRestLater: Boolean,
+    directCorrection: Double,
+    splitOverMax: Boolean,
+    splitIntervalMinutes: Int,
     percentage: Int,
     devicePhone: Boolean,
     deviceWatch: Boolean,
@@ -145,6 +155,16 @@ fun QuickWizardEditor(
     onUseSuperBolusChange: (Boolean) -> Unit,
     onUseTempTargetChange: (Boolean) -> Unit,
     onUseAlarmChange: (Boolean) -> Unit,
+    onAutoFpuChange: (Boolean) -> Unit,
+    onSmallMealChange: (Boolean) -> Unit,
+    onUnreliableSmbChange: (Boolean) -> Unit,
+    onWalkingSoonAutoChange: (Boolean) -> Unit,
+    onWalkingSoonChange: (Boolean) -> Unit,
+    onRetryFpuLaterChange: (Boolean) -> Unit,
+    onGiveRestLaterChange: (Boolean) -> Unit,
+    onDirectCorrectionChange: (Double) -> Unit,
+    onSplitOverMaxChange: (Boolean) -> Unit,
+    onSplitIntervalMinutesChange: (Int) -> Unit,
     onPercentageChange: (Int) -> Unit,
     onDevicePhoneChange: (Boolean) -> Unit,
     onDeviceWatchChange: (Boolean) -> Unit,
@@ -387,6 +407,72 @@ fun QuickWizardEditor(
                 checked = useAlarm,
                 onCheckedChange = onUseAlarmChange,
                 icon = Icons.Default.Alarm
+            )
+
+            // The Bolus Wizard's own options (2026-10-21, per explicit request), so this button gives the wizard's dose
+            SwitchRow(
+                label = stringResource(UiStrings.quickwizard_walking_soon_auto),
+                checked = walkingSoonAuto,
+                onCheckedChange = onWalkingSoonAutoChange
+            )
+            if (!walkingSoonAuto) {
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_walking_soon),
+                    checked = walkingSoon,
+                    onCheckedChange = onWalkingSoonChange,
+                    modifier = Modifier.padding(start = 16.dp)
+                )
+            }
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_fpu_instead),
+                checked = autoFpu,
+                onCheckedChange = onAutoFpuChange
+            )
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_unreliable_smb),
+                checked = unreliableSmb,
+                onCheckedChange = onUnreliableSmbChange
+            )
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_small_meal),
+                checked = smallMeal,
+                onCheckedChange = onSmallMealChange
+            )
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel),
+                checked = retryFpuLater,
+                onCheckedChange = onRetryFpuLaterChange
+            )
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_give_rest_later),
+                checked = giveRestLater,
+                onCheckedChange = onGiveRestLaterChange
+            )
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_split_over_max),
+                checked = splitOverMax,
+                onCheckedChange = onSplitOverMaxChange
+            )
+            if (splitOverMax) {
+                NumberInputRow(
+                    labelRef = UiStrings.wizard_split_interval,
+                    value = splitIntervalMinutes.toDouble(),
+                    onValueChange = { onSplitIntervalMinutesChange(it.toInt()) },
+                    valueRange = 1.0..60.0,
+                    step = 1.0,
+                    unitLabel = CoreUiStrings.units_min,
+                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp)
+                )
+            }
+            NumberInputRow(
+                labelRef = CoreUiStrings.wizard_correction,
+                value = directCorrection,
+                onValueChange = onDirectCorrectionChange,
+                valueRange = -maxInsulin..maxInsulin,
+                step = 0.05,
+                decimalPlaces = 2,
+                unitLabel = CoreUiStrings.insulin_unit_shortname,
+                modifier = Modifier.fillMaxWidth()
             )
 
             HorizontalDivider()
