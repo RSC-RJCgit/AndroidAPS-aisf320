@@ -150,11 +150,11 @@ class BolusWizard(
     var walkingSoonHeldUnits: Double = 0.0
         private set
     var rapidFallForSplit: Boolean = false
+        private set
     /** Give the dose over max bolus later, in parts (v3's split box, 2026-10-22). Off gives max bolus only. */
     var splitOverMax: Boolean = true
     /** Minutes between the usual split parts. */
     var splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES
-        private set
 
     /** Immutable snapshot of the computed result, built at the end of [doCalc] (additive — the legacy
      *  fields above stay). The shared bolus path consumes this instead of reaching into individual fields. */
