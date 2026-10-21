@@ -860,6 +860,11 @@ class DetermineBasalAutoISF(
     var uamBoostFiredThisCycle: Boolean = false
         private set
 
+    // DuraCap (2026-10-21, per explicit request), the same rule as the 3426 loop phone: set by the plugin each cycle.
+    // True while dura is the main factor, BG is flat and under 6.8 mmol, there are no carbs and IOB is already 1 U or
+    // more. Then no SMB is given and a temp basal is never above the profile basal. See `duraFlatCapRule` in the plugin.
+    var duraFlatCapActive: Boolean = false
+
     private fun Double.toFixed2(): String = NumberFormat.DECIMAL_2_UP_TO_3.format(round(this, 2))
 
     fun round_basal(value: Double): Double = value
@@ -972,6 +977,10 @@ class DetermineBasalAutoISF(
         }
         if (rate < 0) rate = 0.0
         else if (rate > maxSafeBasal) rate = maxSafeBasal
+        if (duraFlatCapActive && rate > profile.current_basal) {
+            rT.reason.append("DuraCap: temp basal ${round(rate, 2)} limited to profile basal ${round(profile.current_basal, 2)}; ")
+            rate = profile.current_basal
+        }
 
         val suggestedRate = round_basal(rate)
         if (currenttemp.duration > (duration - 10) && currenttemp.duration <= 120 && suggestedRate <= currenttemp.rate * 1.2 && suggestedRate >= currenttemp.rate * 0.8 && duration > 0) {
@@ -1802,6 +1811,11 @@ class DetermineBasalAutoISF(
         if (maxDelta > maxDeltaPercentage * bg) {
             consoleError.add("maxDelta ${convert_bg(maxDelta)} > ${100 * maxDeltaPercentage}% of BG ${convert_bg(bg)} - disabling SMB")
             rT.reason.append("maxDelta " + convert_bg(maxDelta) + " > " + 100 * maxDeltaPercentage + "% of BG " + convert_bg(bg) + ": SMB disabled; ")
+            enableSMB = false
+        }
+        if (enableSMB && duraFlatCapActive) {
+            consoleError.add("DuraCap: dura is the main factor at a flat BG with IOB ${round(iob_data.iob, 2)} U - disabling SMB")
+            rT.reason.append("DuraCap: SMB disabled; ")
             enableSMB = false
         }
 

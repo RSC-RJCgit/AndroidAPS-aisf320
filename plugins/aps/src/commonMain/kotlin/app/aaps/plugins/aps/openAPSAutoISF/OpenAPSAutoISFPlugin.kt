@@ -229,6 +229,11 @@ open class OpenAPSAutoISFPlugin(
     private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
     private val runMarks = RunMarks()
     private var processStartedAtMs: Long = 0L
+
+    // DuraCap: since when BG has been flat (delta and short delta both at most +0.1 mmol per 5 min). 0 = not flat now.
+    // In memory only: after a restart the cap needs 15 flat minutes again before it acts, which is the safe direction.
+    private var duraFlatSince: Long = 0L
+    private var duraCapWasActive: Boolean = false
     private var automationStates: AutomationStateStore? = null
 
     // The two stored texts the copy above was built from (2026-10-19). A change made elsewhere (the States dialog, a
@@ -931,6 +936,12 @@ open class OpenAPSAutoISFPlugin(
         }
         // 2026-10-18: the activity factor for the Tier 3 UAM boost (scale) and its pseudo-wizard FPU. 0 turns the boost off.
         val tier3Activity = tier3ActivityFactor(now, iobArray[0].iob, oapsProfile.max_iob)
+        val flatNow = autoIsfMode && glucoseStatus.delta <= 1.8 && glucoseStatus.shortAvgDelta <= 1.8
+        duraFlatSince = if (!flatNow) 0L else if (duraFlatSince == 0L) now else duraFlatSince
+        val duraCapActive = autoIsfMode && duraFlatCapRule(autoIsfFactors, glucoseStatus.glucose, iobArray[0].iob, mealData.mealCOB, duraFlatSince, now)
+        determineBasalAutoISF.duraFlatCapActive = duraCapActive
+        if (duraCapActive && !duraCapWasActive) carePortalNote("DuraCap")
+        duraCapWasActive = duraCapActive
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -6722,6 +6733,24 @@ open class OpenAPSAutoISFPlugin(
 }
 
 /** The four AutoISF factors from one call of autoISF, when that call actually worked them out. */
+/**
+ * DuraCap (2026-10-21, per explicit request), the same rule as the 3426 loop phone. True when dura is the largest factor
+ * and above 1.2, BG is under 6.8 mmol, BG has been flat for 15 minutes ([flatSince]), COB is under 5 g and IOB is at
+ * least 1.0 U. Then the loop gives no SMB and no temp basal above the profile basal.
+ *
+ * Checked against 9 Sep - 21 Oct Client data: 55 times, 2.5 U of SMB and 2.1 U of extra temp basal held back in six weeks.
+ * Of the 11 times BG went over 9.0 in the next 3 hours, insulin was held back in only 3 (0.3-0.55 U each). On 21 Oct it
+ * would have held back 0.4 U of SMB and 0.4 U of temp basal before a 3.5 low. The dura IOB taper starts only at 1.5 U.
+ */
+internal fun duraFlatCapRule(factors: AutoIsfFactors, bgMgdl: Double, iob: Double, cob: Double, flatSince: Long, now: Long): Boolean {
+    val dura = factors.duraIsf
+    return dura > 1.2 && dura >= maxOf(factors.acceIsf, factors.bgIsf, factors.ppIsf) &&
+        bgMgdl < 122.5 /* 6.8 mmol */ &&
+        cob < 5.0 &&
+        iob >= 1.0 &&
+        flatSince > 0L && now - flatSince >= 15 * 60_000L
+}
+
 class AutoIsfFactors {
     var recorded: Boolean = false
     var acceIsf: Double = 1.0
