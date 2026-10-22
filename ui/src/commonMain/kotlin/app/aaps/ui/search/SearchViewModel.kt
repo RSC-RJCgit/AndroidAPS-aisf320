@@ -8,7 +8,9 @@ import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.ClientRole
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.ui.plugin.HardwarePumpConfirmation
 import app.aaps.ui.plugin.PluginSwitchConfirmation
 import app.aaps.ui.plugin.PluginSwitchDialogs
@@ -48,7 +50,8 @@ class SearchViewModel(
     private val nsClient: NsClient,
     private val activePlugin: ActivePlugin,
     private val configBuilder: ConfigBuilder,
-    private val config: Config
+    private val config: Config,
+    private val preferences: Preferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -84,7 +87,10 @@ class SearchViewModel(
     fun togglePlugin(plugin: PluginBase) {
         // Defense-in-depth for the SearchResults UI gate: a client must not change a synced single-select
         // selection (APS/Sensitivity/Smoothing/Calibration) while the master is offline, or below the admin role.
-        if (config.AAPSCLIENT && plugin.getType().selectionSyncs && (!nsClient.masterReachable.value || !nsClient.clientRole.value.allows(ClientRole.Admin))) return
+        // A "v3 style only" client keeps its choice on this phone (2026-10-23, per explicit request).
+        if (config.AAPSCLIENT && plugin.getType().selectionSyncs && !preferences.get(BooleanKey.NsClientReadOnlyClient) &&
+            (!nsClient.masterReachable.value || !nsClient.clientRole.value.allows(ClientRole.Admin))
+        ) return
         switchHandler.toggle(plugin, plugin.getType(), !plugin.isEnabled())
         syncSwitchDialogs(switchHandler.dialogs.value)
     }

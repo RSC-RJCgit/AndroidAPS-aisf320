@@ -106,7 +106,7 @@ fun InsulinManagementScreen(
     // while they couldn't sync. DERIVED from current state (no setScreenMode side-effect) → deterministic at
     // startup and flips the instant reachability changes. Master is never gated. Both edits AND the
     // master-bound Activate FAB (a client→master command) are gated by this on a client.
-    // A read-only client may try everything as an example: the view model saves nothing there (2026-10-22).
+    // A "v3 style only" client keeps its insulin list on this phone (2026-10-23, per explicit request), as a v3 client does.
     val readOnlyClient = LocalReadOnlyClient.current
     val editingEnabled = masterEditingEnabled() || readOnlyClient
     // Activating an insulin needs a caregiver, which this screen already needs to open; changing the insulin list is an

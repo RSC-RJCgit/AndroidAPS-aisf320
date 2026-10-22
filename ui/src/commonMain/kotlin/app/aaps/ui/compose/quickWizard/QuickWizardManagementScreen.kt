@@ -463,6 +463,7 @@ fun QuickWizardManagementScreen(
                                         autoFpu = uiState.editorAutoFpu,
                                         smallMeal = uiState.editorSmallMeal,
                                         carbsType = uiState.editorCarbsType,
+                                        savedMaxBolus = viewModel.savedMaxBolus(),
                                         unreliableSmb = uiState.editorUnreliableSmb,
                                         walkingSoonAuto = uiState.editorWalkingSoonAuto,
                                         walkingSoon = uiState.editorWalkingSoon,

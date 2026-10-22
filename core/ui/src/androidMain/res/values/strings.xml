@@ -432,7 +432,7 @@
     <string name="master_offline_banner">Master device unreachable. Editing is disabled until the connection is restored.</string>
     <string name="master_control_disabled_banner">Master has disabled remote control. Editing is disabled until it is re-enabled on the master.</string>
     <string name="wizard_read_only_example">Example only. This phone is set to v3 style only and did not give the bolus. Give it on the master if you need it.</string>
-    <string name="read_only_client_banner">v3 style only. The master does not accept remote control. A profile switch, a temp target or a note is sent to the master through Nightscout. Other actions only show an example.</string>
+    <string name="read_only_client_banner">v3 style only. The master does not accept remote control. A profile switch, a temp target or a note is sent to the master through Nightscout. Settings are kept on this phone. A bolus, carbs or a pump command only shows an example.</string>
     <string name="hardened_mode_on">Hardened mode on</string>
     <string name="hardened_mode_title">Hardened mode</string>
     <string name="hardened_mode_info_open">About hardened mode</string>

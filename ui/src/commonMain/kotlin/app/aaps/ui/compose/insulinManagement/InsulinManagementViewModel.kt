@@ -24,7 +24,6 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
@@ -418,14 +417,6 @@ class InsulinManagementViewModel(
             return false
         }
 
-        // A read-only client shows how a save works and changes nothing (2026-10-22, per explicit request): the checks
-        // above ran, then the example message, and the editor goes back to the stored insulin.
-        if (readOnlyClient) {
-            showReadOnlyExample()
-            loadData(reload = false)
-            return true
-        }
-
         // No card yet: the catalogue was empty. Save creates the first insulin from the editor
         // instead of reporting that a target is missing.
         if (state.insulins.isEmpty()) {
@@ -464,11 +455,6 @@ class InsulinManagementViewModel(
     }
 
     fun addNewInsulin() {
-        // A read-only client changes no insulin list, it only says so
-        if (readOnlyClient) {
-            showReadOnlyExample()
-            return
-        }
         val state = uiState.value
         val source = state.insulins.getOrNull(state.currentCardIndex)
         val newICfg = source?.deepClone() ?: InsulinType.OREF_RAPID_ACTING.iCfg
@@ -493,11 +479,6 @@ class InsulinManagementViewModel(
         if (currentICfg.insulinLabel == state.activeInsulinLabel) {
             showSnackbar(rh.gs(UiStrings.cannot_delete_active_insulin))
             return false
-        }
-
-        if (readOnlyClient) {
-            showReadOnlyExample()
-            return true
         }
 
         // By label, not by index, for the same reason as in saveCurrentInsulin. If a sync already removed
@@ -583,18 +564,6 @@ class InsulinManagementViewModel(
     fun concentrationList(): List<ConcentrationType> = insulinManager.concentrationList()
     val concentrationEnabled: Boolean
         get() = preferences.get(BooleanKey.GeneralInsulinConcentration)
-
-    /**
-     * A read-only client (for a master without client control) may open the editor and try everything, so it shows how
-     * the screen works. Save, add and delete then change nothing; activation goes through RoleBranch, which gives the
-     * confirmation and then its own "example only" message.
-     */
-    val readOnlyClient: Boolean
-        get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
-
-    private fun showReadOnlyExample() {
-        rxBus.send(EventShowDialog.Ok(title = rh.gs(CoreUiStrings.insulin_label), message = rh.gs(UiStrings.read_only_example_not_saved)))
-    }
 
     fun diaRange(): ClosedFloatingPointRange<Double> = hardLimits.diaRange()
     /** Peak limits as a Double range, because the sliders work with Double. */

@@ -177,6 +177,7 @@ fun QuickWizardEditor(
     onCarbs2Change: (Int) -> Unit,
     carbsType: CarbsType = CarbsType.BREAD,
     onCarbsTypeChange: (CarbsType) -> Unit = {},
+    savedMaxBolus: Double = 0.0,
     modifier: Modifier = Modifier
 ) {
     LocalDateUtil.current
@@ -270,7 +271,9 @@ fun QuickWizardEditor(
             )
             NumberInputRow(
                 labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
-                value = maxBolus,
+                // 2026-10-23, per explicit request: a button without its own max bolus (0) uses the max bolus setting when
+                // it runs, so the box shows that setting instead of staying empty. It is stored only when changed here.
+                value = if (maxBolus < 0.1) savedMaxBolus else maxBolus,
                 onValueChange = onMaxBolusChange,
                 valueRange = 0.0..60.0,
                 step = 0.1,

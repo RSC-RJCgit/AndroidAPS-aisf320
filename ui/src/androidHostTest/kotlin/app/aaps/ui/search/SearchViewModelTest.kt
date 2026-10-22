@@ -6,6 +6,7 @@ import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.keys.interfaces.Preferences
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,6 +35,7 @@ internal class SearchViewModelTest {
     @Mock private lateinit var activePlugin: ActivePlugin
     @Mock private lateinit var configBuilder: ConfigBuilder
     @Mock private lateinit var config: Config
+    @Mock private lateinit var preferences: Preferences
 
     private lateinit var sut: SearchViewModel
 
@@ -48,7 +50,7 @@ internal class SearchViewModelTest {
         whenever(nsClient.masterOrPairedClientFlow).thenReturn(MutableStateFlow(false))
         whenever(nsClient.masterReachable).thenReturn(MutableStateFlow(true))
         whenever(configBuilder.activeSelectionChanges).thenReturn(emptyFlow())
-        sut = SearchViewModel(searchIndexBuilder, wikiSearchRepository, nsClient, activePlugin, configBuilder, config)
+        sut = SearchViewModel(searchIndexBuilder, wikiSearchRepository, nsClient, activePlugin, configBuilder, config, preferences)
     }
 
     @AfterEach

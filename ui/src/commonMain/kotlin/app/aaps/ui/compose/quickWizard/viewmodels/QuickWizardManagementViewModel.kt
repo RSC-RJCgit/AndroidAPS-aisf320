@@ -13,6 +13,7 @@ import app.aaps.core.interfaces.rx.collectResilient
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.wizard.CarbsType
 import app.aaps.core.objects.wizard.QuickWizard
@@ -70,6 +71,9 @@ class QuickWizardManagementViewModel(
      */
     fun getMaxCarbs(): Double = constraintChecker.getMaxCarbsAllowed().value().toDouble()
     fun getMaxInsulin(): Double = constraintChecker.getMaxBolusAllowed().value().coerceAtLeast(25.0)
+
+    /** The max bolus setting, which a button without its own max bolus (0) uses when it runs. */
+    fun savedMaxBolus(): Double = preferences.get(DoubleKey.SafetyMaxBolus)
 
     private val _sideEffect = MutableSharedFlow<SideEffect>(
         replay = 0,

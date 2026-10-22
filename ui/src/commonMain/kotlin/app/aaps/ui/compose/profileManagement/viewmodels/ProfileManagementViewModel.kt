@@ -162,7 +162,7 @@ class ProfileManagementViewModel(
      * The client's role splits it in two: activating a profile is a caregiver's, editing profiles (presets)
      * is an admin's. A master is always both.
      */
-    private val access: ProfileAccess get() = accessFlow.value
+    private val access: ProfileAccess get() = accessFlow.value.let { if (readOnlyClient) ProfileAccess(activate = it.activate, edit = true) else it }
 
     private data class ProfileAccess(val activate: Boolean, val edit: Boolean)
 
@@ -173,8 +173,9 @@ class ProfileManagementViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProfileAccess(!config.AAPSCLIENT, !config.AAPSCLIENT))
 
     /**
-     * A read-only client cannot edit profiles (the master owns them), but it can still activate one and set roles:
-     * the switch and the role note are saved here and go to the master through Nightscout (see `RoleBranch`).
+     * A read-only ("v3 style only") client activates a profile and sets roles: the switch and the role note are saved here
+     * and go to the master through Nightscout (see `RoleBranch`). It also edits profiles here (2026-10-23, per explicit
+     * request), as a v3 client does: the changed profile store is uploaded to Nightscout like any other change.
      */
     private val readOnlyClient: Boolean
         get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)

@@ -149,10 +149,12 @@ val LocalClientRole = compositionLocalOf { ClientRole.Admin }
 /**
  * [masterEditingEnabled], and this phone's role allows [role]. For controls inside a screen that both uses and defines
  * presets: "activate" needs the screen's role, "edit" needs [ClientRole.Admin]. Always `true` on a master.
+ * Also `true` on a "v3 style only" client (2026-10-23, per explicit request): it keeps automations, plugin choices and
+ * the like on this phone, as a v3 client does, because its master takes none of them.
  */
 @Composable
 fun masterEditingEnabled(role: ClientRole): Boolean =
-    masterEditingEnabled() && (LocalInspectionMode.current || LocalClientRole.current.allows(role))
+    masterEditingEnabled() && (LocalInspectionMode.current || LocalReadOnlyClient.current || LocalClientRole.current.allows(role))
 
 /**
  * CompositionLocal providing access to ProfileUtil for glucose unit conversions.
