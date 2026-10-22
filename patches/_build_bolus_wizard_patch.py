@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.24.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.25.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -61,13 +61,25 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .24, 2026-10-22)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .25, 2026-10-22)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.24.patch
-  git apply bolus-calculator-on-3426-aisf321.24.patch
+  git apply --check bolus-calculator-on-3426-aisf321.25.patch
+  git apply bolus-calculator-on-3426-aisf321.25.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .25 (2026-10-22):
+- Falling-BG caution fires earlier: a fast fall now needs only Delta <= -0.15 and SDelta <= -0.10 mmol/L (the long
+  delta is no longer needed), with BG under 6.0 or the loop's HP1 under 5.0 as before. A real case it missed:
+  a 2.5 U meal bolus at BG 7.2 with 3.0 U on board, Delta -0.31, SDelta -0.25, HP1 4.0, but LDelta only -0.02.
+- When the caution fires, the max bolus is halved again (rounded down to the pump step), as well as wiz%.
+  The calculator keeps its max bolus box at your value; the calculation and confirmation use the halved one.
+  A QuickWizard button lowers it for that one press, and the max bolus dialog starts at the halved value.
+- Cancel and wait notes say which bolus and what: "C1.30 Carb split of the 12:57 bolus: all 1.30 U still to
+  come, cancelled: HP1 below 4.0 mmol/L", "D0.94 Protein/fat fpu2 of 4 of the 12:57 bolus: 0.94 U, waiting: ...".
+  The graph still shows only the first 5 characters ("C1.30").
+- Retains all patch .24 changes below.
 
 Changes in patch .24 (2026-10-22):
 - QuickWizard buttons now use the same rules as the Bolus Wizard dialog:
@@ -837,7 +849,8 @@ def apply_surgical(staging: Path) -> None:
         "import app.aaps.core.objects.wizard.QuickWizard\n",
         "import app.aaps.core.objects.wizard.BolusWizard\n"
         "import app.aaps.core.objects.wizard.QuickWizard\n"
-        "import app.aaps.core.objects.wizard.QuickWizardEntry\n",
+        "import app.aaps.core.objects.wizard.QuickWizardEntry\n"
+        "import app.aaps.core.objects.wizard.WizardDropTrendCaution\n",
         "OverviewFragment wizard imports",
     )
     t = must_replace(
@@ -898,34 +911,59 @@ def apply_surgical(staging: Path) -> None:
         val quickWizardEntry = quickWizard.getActive()
         if (quickWizardEntry != null && actualBg != null && profile != null) {
             binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
-            val wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+            var wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+            // The falling-BG caution (WizardDropTrendCaution) halves the max bolus for this press: lowered for the
+            // calculation and the confirmation, and put back afterwards.
+            var cautionMaxBolus: Double? = null
+            if (wizard.dropTrendCautionApplied) {
+                val baseMax = constraintChecker.getMaxBolusAllowed().value()
+                val reducedMax = WizardDropTrendCaution.scaledMaxBolus(baseMax, activePlugin.activePump.pumpDescription.bolusStep)
+                if (baseMax > 0.0 && reducedMax < baseMax) {
+                    restoreQuickWizardSafetyMaxBolus()
+                    quickWizardOriginalSafetyMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+                    preferences.put(DoubleKey.SafetyMaxBolus, reducedMax)
+                    cautionMaxBolus = reducedMax
+                    wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
+                }
+            }
             if (wizard.calculatedTotalInsulin > 0.0 && quickWizardEntry.carbs() > 0.0) {
                 val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(quickWizardEntry.carbs(), aapsLogger)).value()
                 activity?.let {
                     if (carbsAfterConstraints != quickWizardEntry.carbs()) {
+                        restoreQuickWizardSafetyMaxBolus()
                         OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), rh.gs(R.string.constraints_violation) + "\\n" + rh.gs(R.string.change_your_input))
                         return
                     }
                     val maxBolusAllowed = constraintChecker.getMaxBolusAllowed().value()
                     if (wizard.calculatedTotalInsulin > maxBolusAllowed && maxBolusAllowed > 0.0) {
-                        showQuickWizardMaxBolusDialog(it, quickWizardEntry)
+                        showQuickWizardMaxBolusDialog(it, quickWizardEntry, cautionMaxBolus)
                     } else {
-                        wizard.confirmAndExecute(it, quickWizardEntry)
+                        // The confirmation reads the allowed maximum at once, so the real setting can come back right after
+                        try {
+                            wizard.confirmAndExecute(it, quickWizardEntry)
+                        } finally {
+                            restoreQuickWizardSafetyMaxBolus()
+                        }
                     }
+                    return
                 }
             }
+            restoreQuickWizardSafetyMaxBolus()
         }
     }
 
     private fun showQuickWizardMaxBolusDialog(
         activity: androidx.fragment.app.FragmentActivity,
-        quickWizardEntry: QuickWizardEntry
+        quickWizardEntry: QuickWizardEntry,
+        startMaxBolus: Double? = null
     ) {
         quickWizardMaxBolusDialog?.dismiss()
         restoreQuickWizardSafetyMaxBolus()
 
         val originalMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
         quickWizardOriginalSafetyMaxBolus = originalMaxBolus
+        // A lowered start (the falling-BG caution) is in force while the dialog is open; the real setting comes back on dismiss
+        startMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
         val dialogBinding = DialogQuickWizardMaxBolusBinding.inflate(layoutInflater)
         val bolusStep = activePlugin.activePump.pumpDescription.bolusStep.takeIf { it > 0.0 } ?: 0.05
 
@@ -942,7 +980,7 @@ def apply_surgical(staging: Path) -> None:
         }
 
         dialogBinding.maxBolusInput.setParams(
-            originalMaxBolus,
+            startMaxBolus ?: originalMaxBolus,
             0.1,
             60.0,
             bolusStep,
