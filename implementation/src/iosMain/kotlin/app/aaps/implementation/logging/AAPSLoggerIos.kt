@@ -9,6 +9,7 @@ import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileHandle
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSISO8601DateFormatter
+import platform.Foundation.NSLock
 import platform.Foundation.NSLog
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSString
@@ -149,17 +150,25 @@ class AAPSLoggerIos(
         return out.toString()
     }
 
+    // One thread at a time checks the size, rotates and writes (2026-10-22, per explicit request), as on desktop: two
+    // threads past the bound could both rotate, and the second one replaced the full log.1 with a nearly empty file.
+    private val fileLock = NSLock()
+
     private fun appendToFile(line: String) {
         val path = logPath() ?: return
-        val manager = NSFileManager.defaultManager
-        rotateIfNeeded(manager, path)
-        if (!manager.fileExistsAtPath(path)) manager.createFileAtPath(path, null, null)
-
         val data = (line + "\n").let { NSString.create(string = it) }.dataUsingEncoding(NSUTF8StringEncoding) ?: return
-        val handle = NSFileHandle.fileHandleForWritingAtPath(path) ?: return
-        handle.seekToEndOfFile()
-        handle.writeData(data)
-        handle.closeFile()
+        fileLock.lock()
+        try {
+            val manager = NSFileManager.defaultManager
+            rotateIfNeeded(manager, path)
+            if (!manager.fileExistsAtPath(path)) manager.createFileAtPath(path, null, null)
+            val handle = NSFileHandle.fileHandleForWritingAtPath(path) ?: return
+            handle.seekToEndOfFile()
+            handle.writeData(data)
+            handle.closeFile()
+        } finally {
+            fileLock.unlock()
+        }
     }
 
     /** Keeps one previous file, so the worst case on disk is twice [maxBytes]. */

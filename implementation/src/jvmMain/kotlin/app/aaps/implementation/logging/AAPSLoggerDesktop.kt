@@ -93,11 +93,18 @@ class AAPSLoggerDesktop(
         return result
     }
 
+    // One thread at a time checks the size, rotates and writes (2026-10-22, per explicit request). Without it, two
+    // threads past the bound both rotated: the second deleted the full aaps.log.1 the first had just made and moved
+    // the new, nearly empty log onto it. A full sync logs from many threads at once, and the log was lost that way.
+    private val fileLock = Any()
+
     private fun appendToFile(line: String) {
         runCatching {
-            file.parentFile?.mkdirs()
-            if (file.length() > maxBytes) rotate()
-            file.appendText(line + "\n")
+            synchronized(fileLock) {
+                file.parentFile?.mkdirs()
+                if (file.length() > maxBytes) rotate()
+                file.appendText(line + "\n")
+            }
         }
         // A logger that throws would take down whatever it was reporting on, which is never the right
         // trade. The console line above has already been written either way.

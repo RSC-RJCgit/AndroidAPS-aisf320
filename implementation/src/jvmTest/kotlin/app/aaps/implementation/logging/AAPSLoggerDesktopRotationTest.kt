@@ -2,6 +2,8 @@ package app.aaps.implementation.logging
 
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -78,6 +80,35 @@ class AAPSLoggerDesktopRotationTest {
 
         val logs = directory.listFiles()?.map { it.name }?.sorted().orEmpty()
         assertEquals(listOf("aaps.log", "aaps.log.1"), logs, "rotation should not accumulate files")
+    }
+
+    /**
+     * Many threads crossing the bound together rotate once, and no line is lost (2026-10-22).
+     *
+     * Without the lock, two threads both rotated: the second deleted the full `aaps.log.1` and moved the new, nearly
+     * empty log onto it. A Windows client showed exactly that after a full sync: an empty `aaps.log.1` and a log of
+     * three seconds. The bound is set so the lines written are about 1.3 times it: exactly one rotation is right.
+     */
+    @Test
+    fun `threads crossing the bound together lose no lines`() {
+        val threads = 8
+        val linesEach = 40
+        val sut = logger(maxBytes = 20_000L)
+        val start = CountDownLatch(1)
+        val workers = (0 until threads).map { t ->
+            thread {
+                start.await()
+                repeat(linesEach) { sut.error("thread-$t-line-$it padded out to make the file grow reasonably quickly") }
+            }
+        }
+        start.countDown()
+        workers.forEach { it.join() }
+
+        assertTrue(rotated.exists(), "one rotation should have happened")
+        assertTrue(rotated.length() > 20_000L, "aaps.log.1 must hold the full old log, not a nearly empty one")
+        val written = logFile.readLines() + rotated.readLines()
+        for (t in 0 until threads) for (i in 0 until linesEach)
+            assertTrue(written.any { it.contains("thread-$t-line-$i ") }, "thread-$t-line-$i was lost")
     }
 
     /** Writing continues into a fresh file rather than appending to the rotated one. */
