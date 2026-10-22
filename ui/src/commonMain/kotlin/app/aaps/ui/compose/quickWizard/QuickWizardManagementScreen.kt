@@ -61,6 +61,7 @@ import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.AapsTopAppBar
 import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.ui.compose.LocalClientRole
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.MasterOfflineBanner
 import app.aaps.core.ui.compose.ScreenMode
 import app.aaps.core.ui.compose.clearFocusOnTap
@@ -102,7 +103,8 @@ fun QuickWizardManagementScreen(
     val editingEnabled = masterEditingEnabled()
     // Running a QuickWizard is a caregiver's here (this screen needs one to open); changing the entries is an admin's.
     // Below admin the screen stays VIEW-ONLY, like an unreachable master.
-    val canDefine = LocalClientRole.current.allows(ClientRole.Admin)
+    // A "v3 style only" client keeps its own buttons: its master takes none from it (2026-10-22, per explicit request).
+    val canDefine = LocalClientRole.current.allows(ClientRole.Admin) || LocalReadOnlyClient.current
     val isPlayMode = uiState.screenMode == ScreenMode.PLAY || !editingEnabled || !canDefine
 
     // Set initial screen mode

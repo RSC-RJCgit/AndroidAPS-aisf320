@@ -41,7 +41,7 @@ class RoleBranchTest : TestBase() {
         whenever(config.AAPSCLIENT).thenReturn(client)
         if (client) whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(readOnly)
         whenever(rh.gs(any<TextRef>())).thenReturn("text")
-        return RoleBranch(dispatcher, nsClient, config, preferences, rxBus, rh)
+        return RoleBranch(dispatcher, nsClient, config, preferences, rxBus, rh, aapsLogger)
     }
 
     private val profileSwitch = BatchAction.ProfileSwitch(percentage = 90, timeShiftHours = 0, durationMinutes = 10, profileName = "Standard100")
@@ -124,6 +124,7 @@ class RoleBranchTest : TestBase() {
         }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyClient)
         assertThat(result.reason.isNotDeliveryError()).isTrue()
+        assertThat(result.detail).isEqualTo("pump not available")
     }
 
     // The bolus calculator on a read-only client: calculated here as an example, never sent (2026-10-16).

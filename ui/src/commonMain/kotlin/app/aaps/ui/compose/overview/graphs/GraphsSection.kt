@@ -593,6 +593,7 @@ fun GraphsSection(
                 val wasAtEnd = !lastMainScroll.isNaN() && !lastMainMax.isNaN() && abs(lastMainScroll - lastMainMax) < 48f
                 val rebuiltToStart = bgMax > 24f && bgScroll < 1f && lastMainScroll > 24f &&
                     !lastMainMax.isNaN() && abs(bgMax - lastMainMax) > 24f
+                val axisGrew = !lastMainMax.isNaN() && bgMax - lastMainMax > 24f
                 lastMainMax = bgMax
                 if (rebuiltToStart) {
                     graphViewModel.graphSyncLog("rebuiltToStart", "followNow=$followNow bgScroll=$bgScroll bgMax=$bgMax lastMainScroll=$lastMainScroll")
@@ -604,6 +605,20 @@ fun GraphsSection(
                     } else {
                         bgScrollState.scroll(Scroll.Absolute.pixels(lastMainScroll.coerceAtMost(bgMax)))
                     }
+                    lastMainScroll = bgScrollState.value
+                    for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = Float.NaN
+                    for (i in lastFollowerZoom.indices) lastFollowerZoom[i] = Float.NaN
+                    pendingScroll[0] = Float.NaN
+                    return@collect
+                }
+                // 2026-10-22, per explicit request: new data made the axis longer. A full sync or a new install loads the
+                // data in pieces, oldest first, and the scroll is kept in pixels, so the window stayed on the end of the data
+                // loaded at that moment (02:50 last night instead of now). The startup guard stops after 3 minutes, before a
+                // full sync ends. While following the current time, put it on the right edge again.
+                if (axisGrew && followNow && !fitWholeWindow && range != null) {
+                    graphViewModel.graphSyncLog("axisGrew", "bgScroll=$bgScroll bgMax=$bgMax rangeFirst=${range.first} now=$now")
+                    skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                    bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
                     lastMainScroll = bgScrollState.value
                     for (i in lastFollowerScroll.indices) lastFollowerScroll[i] = Float.NaN
                     for (i in lastFollowerZoom.indices) lastFollowerZoom[i] = Float.NaN

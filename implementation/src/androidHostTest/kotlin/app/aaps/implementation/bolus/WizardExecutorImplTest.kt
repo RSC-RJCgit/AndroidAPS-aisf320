@@ -36,7 +36,7 @@ class WizardExecutorImplTest : TestBase() {
         whenever(config.AAPSCLIENT).thenReturn(true)
         whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
         whenever(rh.gs(any<TextRef>())).thenReturn("text")
-        val sut = WizardExecutorImpl(RoleBranch(dispatcher, nsClient, config, preferences, rxBus, rh), masterActionExecutor)
+        val sut = WizardExecutorImpl(RoleBranch(dispatcher, nsClient, config, preferences, rxBus, rh, aapsLogger), masterActionExecutor)
 
         val result = sut.commit(bolusId = 9L, asAdvisor = false, source = Sources.WizardDialog, label = "l", correctionU = 0.0)
 

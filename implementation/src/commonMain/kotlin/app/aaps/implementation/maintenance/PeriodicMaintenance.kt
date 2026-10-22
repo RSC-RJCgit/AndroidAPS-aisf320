@@ -84,9 +84,28 @@ class PeriodicMaintenance(
                 } catch (e: Exception) {
                     aapsLogger.error(LTag.CORE, "Periodic maintenance pass failed", e)
                 }
+                try {
+                    exportIfDue()
+                } catch (e: Exception) {
+                    aapsLogger.error(LTag.CORE, "Automatic export failed", e)
+                }
                 delay(INTERVAL)
             }
         }
+    }
+
+    /**
+     * Every six hours: the AutoISF history files and a copy of the log, in this app's own `logs` folder, and uploaded
+     * when cloud storage is on. Only [start] calls it, so only iOS and desktop: Android has `AutomaticExportImpl`,
+     * called by `KeepAliveWorker`. Before 2026-10-22 (per explicit request) these two wrote files only when the user
+     * pressed export. Also runs when the last export is in the future: the clock went back.
+     */
+    private suspend fun exportIfDue() {
+        val now = dateUtil.now()
+        val last = preferences.get(LongNonKey.LastAutoIsfHistoryExport)
+        if (last >= now - T.hours(EXPORT_HOURS).msecs() && last <= now) return
+        preferences.put(LongNonKey.LastAutoIsfHistoryExport, now)
+        maintenance.exportCoordinated("AUTOMATIC_6H", withLogs = true)
     }
 
     /**
@@ -143,5 +162,6 @@ class PeriodicMaintenance(
         /** One day per daily pass, plus room for a pass that runs late. */
         val MAX_CUTOFF_STEP = 2.days
         const val KEEP_LOG_FILES = 30
+        const val EXPORT_HOURS = 6L
     }
 }

@@ -109,7 +109,8 @@ fun TempTargetManagementScreen(
     val editingEnabled = masterEditingEnabled() || LocalReadOnlyClient.current
     // Using presets (activate, cancel) needs a caregiver, which this screen already needs to open; changing presets
     // is an admin's. Below admin the screen stays VIEW-ONLY, like an unreachable master.
-    val canDefine = LocalClientRole.current.allows(ClientRole.Admin)
+    // A "v3 style only" client keeps its own presets: its master takes none from it (2026-10-22, per explicit request).
+    val canDefine = LocalClientRole.current.allows(ClientRole.Admin) || LocalReadOnlyClient.current
     val isPlayMode = uiState.screenMode == ScreenMode.PLAY || !editingEnabled || !canDefine
 
     // Set initial screen mode

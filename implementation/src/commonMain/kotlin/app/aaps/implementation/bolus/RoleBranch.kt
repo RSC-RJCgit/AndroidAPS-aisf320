@@ -6,6 +6,8 @@ import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.clientcontrol.FailureReason
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowDialog
@@ -44,7 +46,8 @@ class RoleBranch(
     private val config: Config,
     private val preferences: Preferences,
     private val rxBus: RxBus,
-    private val rh: TextResolver
+    private val rh: TextResolver,
+    private val aapsLogger: AAPSLogger
 ) {
 
     // A read-only client's prepares: the Nightscout records it may commit, and the examples it may not
@@ -72,10 +75,13 @@ class RoleBranch(
                     idsLock.withLock { if (recordOnly) recordOnlyIds += r.bolusId else exampleIds += r.bolusId }
                     ActionProgress.Prepared(r.bolusId, r.lines, r.advisorApplies, r.advisorLines, r.wizardDetail)
                 }
-                // An example that cannot be worked out on a client: the read-only message at once, as before
-                is MasterActionExecutor.PrepareResult.Error   ->
+                // An example that cannot be worked out on a client. The reason is shown and logged (2026-10-22, per explicit
+                // request): only the general read-only message hid why an iPhone QuickWizard stopped before its confirmation.
+                is MasterActionExecutor.PrepareResult.Error   -> {
+                    aapsLogger.warn(LTag.CORE, "Read-only client: $label could not be worked out: ${r.message}")
                     if (recordOnly) ActionProgress.Rejected(FailureReason.ExecutionFailed, r.message)
-                    else ActionProgress.Rejected(FailureReason.ReadOnlyClient)
+                    else ActionProgress.Rejected(FailureReason.ReadOnlyClient, r.message)
+                }
                 MasterActionExecutor.PrepareResult.NoAction   -> ActionProgress.Rejected(FailureReason.NoAction)
             }
         } else if (config.AAPSCLIENT) {
