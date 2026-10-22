@@ -1,7 +1,7 @@
 package app.aaps.implementation.bolus
 
 import app.aaps.core.data.ue.Sources
-import app.aaps.core.interfaces.bolus.WizardBolusExecutor
+import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.clientcontrol.FailureReason
@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verifyBlocking
 import org.mockito.kotlin.whenever
@@ -28,20 +29,20 @@ class WizardExecutorImplTest : TestBase() {
     @Mock lateinit var nsClient: NsClient
     @Mock lateinit var config: Config
     @Mock lateinit var preferences: Preferences
-    @Mock lateinit var wizardBolusExecutor: WizardBolusExecutor
+    @Mock lateinit var masterActionExecutor: MasterActionExecutor
     @Mock lateinit var rh: TextResolver
 
     @Test fun readOnlyClient_commit_isRefusedAndNothingIsGiven() = runTest {
         whenever(config.AAPSCLIENT).thenReturn(true)
         whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
         whenever(rh.gs(any<TextRef>())).thenReturn("text")
-        val sut = WizardExecutorImpl(RoleBranch(dispatcher, nsClient, config, preferences, rxBus, rh), wizardBolusExecutor)
+        val sut = WizardExecutorImpl(RoleBranch(dispatcher, nsClient, config, preferences, rxBus, rh), masterActionExecutor)
 
         val result = sut.commit(bolusId = 9L, asAdvisor = false, source = Sources.WizardDialog, label = "l", correctionU = 0.0)
 
         // 2026-10-22: refused in RoleBranch as an example, with the "example only" message
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyExample)
-        verifyBlocking(wizardBolusExecutor, never()) { confirm(any(), any(), any(), any(), any(), any()) }
+        verifyBlocking(masterActionExecutor, never()) { confirm(any(), any(), any(), any(), any(), anyOrNull(), any()) }
         verifyBlocking(dispatcher, never()) { run(any(), any()) }
     }
 }

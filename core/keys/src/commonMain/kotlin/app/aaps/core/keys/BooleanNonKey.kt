@@ -83,4 +83,9 @@ enum class BooleanNonKey(
     // One-shot, like the one above: List 3 "Graph back to normal" (TT 5.246) raises it, the overview applies it and clears it.
     ApsAutoIsfGraphResetRequested("autoisf_graph_reset_requested", false, exportable = false),
 
+
+    // Client: the pairing secret has been replaced by the key exchange in the hello. Until then the client sends a hello
+    // with a key on each connection, which is also how a phone paired from a QR code says hello at all. Belongs to the
+    // pairing.
+    NsClientControlSecretReplaced("nsclient_control_secret_replaced", false, exportable = false),
 }

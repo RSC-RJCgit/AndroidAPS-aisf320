@@ -1,7 +1,7 @@
 package app.aaps.core.interfaces.clientcontrol
 
 import app.aaps.core.interfaces.bolus.BatchAction
-import app.aaps.core.interfaces.bolus.WizardBolusExecutor
+import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,7 +89,7 @@ interface ClientControlActionDispatcher {
         data class BolusCommit(val bolusId: Long, val asAdvisor: Boolean = false, val pumpDirect: Boolean = false, val correctionU: Double = 0.0) : Command
 
         /** Prepare a MANUAL bolus-wizard bolus on the master from raw [inputs] (master recomputes + returns the preview). */
-        data class WizardPrepare(val inputs: WizardBolusExecutor.WizardInputs) : Command
+        data class WizardPrepare(val inputs: MasterActionExecutor.WizardInputs) : Command
 
         /** Make [value] the current value of the master's automation state [name]. One step, the ACK resolves it. */
         data class AutomationStateSet(val name: String, val value: String) : Command

@@ -59,6 +59,7 @@ import app.aaps.core.ui.compose.LocalAppIcon
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalDecimalFormatter
+import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.LocalMasterControlAllowed
 import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.LocalClientPaired
@@ -143,6 +144,7 @@ fun AapsAppRoot(
     val clientPaired by nsClient.masterOrPairedClientFlow.collectAsStateWithLifecycle()
     val masterControlAllowed by nsClient.masterControlAllowed.collectAsStateWithLifecycle()
     val readOnlyClientSetting by preferences.observe(BooleanKey.NsClientReadOnlyClient).collectAsStateWithLifecycle()
+    val clientRole by nsClient.clientRole.collectAsStateWithLifecycle()
     val bolusState by bolusProgressData.state.collectAsStateWithLifecycle()
     val pumpStatusBanner by pumpCommunicationStatus.statusBannerFlow.collectAsStateWithLifecycle()
     val pumpQueueStatus by pumpCommunicationStatus.queueStatusFlow.collectAsStateWithLifecycle()
@@ -173,6 +175,7 @@ fun AapsAppRoot(
         LocalClientPaired provides clientPaired,
         LocalMasterControlAllowed provides masterControlAllowed,
         LocalReadOnlyClient provides (config.AAPSCLIENT && readOnlyClientSetting),
+        LocalClientRole provides clientRole,
         LocalProfileUtil provides profileUtil,
         LocalCheckPassword provides passwordHasher::checkPassword,
         LocalHashPassword provides passwordHasher::hashPassword,

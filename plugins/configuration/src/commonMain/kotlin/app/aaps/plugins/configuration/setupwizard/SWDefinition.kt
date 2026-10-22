@@ -100,6 +100,7 @@ class SWDefinition(
     var onProfileSwitch: (() -> Unit)? = null
     var onOpenAuthorizedClients: (() -> Unit)? = null
     var onPairWithMaster: (() -> Unit)? = null
+    var onScanMasterQr: (() -> Unit)? = null
     var onOpenNsReceiveSettings: (() -> Unit)? = null
     var onRunObjectives: (() -> Unit)? = null
     var onRequestDirectoryAccess: (() -> Unit)? = null
@@ -237,14 +238,38 @@ class SWDefinition(
             )
             .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_pairing_ws_warning).visibility { !preferences.get(BooleanKey.NsClient3UseWs) })
             .add(swBreakProvider())
-            .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_ns_receive_info))
+            // In hardened mode the "accept from Nightscout" settings are hidden, so the button would open an empty
+            // screen. Explain hardened mode instead.
+            .add(swInfoTextProvider().label(CoreUiStrings.hardened_mode_info).visibility { preferences.hardenedMode })
+            .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_ns_receive_info).visibility { !preferences.hardenedMode })
             .add(
                 swButtonProvider()
                     .text(ConfigurationStrings.setupwizard_open_ns_receive_settings)
+                    .visibility { !preferences.hardenedMode }
                     .action { onOpenNsReceiveSettings?.invoke() }
             )
 
-    // Client side: explain pairing with a master and open the "Pair with master" (PIN entry) screen.
+    // Client side, before Nightscout: the master can show a QR code with the Nightscout address and the client's own
+    // token, and the pairing too. One scan does this step and the next two, so a used code finishes the wizard
+    // (AppNavGraph). Android only: the scanner is not built for iOS yet, and a desktop has no camera to point at the
+    // master.
+    private val screenSetupFromMaster
+        get() = swScreenProvider().with(ConfigurationStrings.setupwizard_setup_from_master_title)
+            .skippable(true)
+            .add(swInfoTextProvider().label(ConfigurationStrings.setupwizard_setup_from_master_info))
+            .add(swBreakProvider())
+            .add(
+                swButtonProvider()
+                    .text(ConfigurationStrings.setupwizard_scan_master_qr)
+                    .action { onScanMasterQr?.invoke() }
+            )
+            .add(swBreakProvider())
+            .add(swPairingStatusProvider())
+            // Not for a read-only client: its master (for example 3.4) has no QR code to show
+            .visibility { config.platform in AppPlatform.ANDROID_ONLY && !readOnlyClient }
+
+    // Client side: explain pairing with a master and open the "Pair with master" (PIN entry) screen. After Nightscout,
+    // because the PIN offer comes through Nightscout. A pairing finishes the wizard (AppNavGraph).
     // 2026-10-16, per explicit request: a "Read-only client" switch first. A master that takes no remote control
     // (for example 3.4) cannot be paired, so with the switch on the pairing parts are hidden and Next goes on.
     private val readOnlyClient: Boolean get() = preferences.get(BooleanKey.NsClientReadOnlyClient)
@@ -469,7 +494,10 @@ class SWDefinition(
             .add(screenMasterPassword)
             .add(screenImport)
 
+            .add(screenSetupFromMaster)
             .add(screenNsClient)
             .add(screenPairWithMaster)
+            // Last, so a QR code or a PIN pairing never shows it: they finish the wizard and the client takes the name
+            // it was added with on the master. Only a client set up by hand gets here.
             .add(screenInstanceName)
 }

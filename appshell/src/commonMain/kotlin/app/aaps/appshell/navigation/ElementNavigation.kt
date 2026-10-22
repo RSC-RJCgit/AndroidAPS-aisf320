@@ -134,7 +134,7 @@ class ElementNavigator(
             ElementType.AUTOMATION_MANAGEMENT   -> navController.navigate(AppRoute.AutomationList.route)
             ElementType.AUTOMATION_STATES       -> navController.navigate(AppRoute.AutomationStates.route)
             ElementType.AUTHORIZED_CLIENTS      -> navController.navigate(AppRoute.AuthorizedClients.route)
-            ElementType.PAIR_WITH_MASTER        -> navController.navigate(AppRoute.PairWithMaster.route)
+            ElementType.PAIR_WITH_MASTER        -> navController.navigate(AppRoute.PairWithMaster.createRoute())
             ElementType.QUICK_LAUNCH_CONFIG     -> navController.navigate(AppRoute.QuickLaunchConfig.route)
 
             // Treatment dialogs

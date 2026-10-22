@@ -25,6 +25,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -65,6 +66,8 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
             nsIncomingDataProcessor = { nsIncomingDataProcessor },
             runningConfiguration = { runningConfiguration },
             orphanDetector = { orphanDetector },
+            clientKeyExchange = { mock() },
+            masterDocVerifier = { mock() },
             storeDataForDb = storeDataForDb,
             notificationManager = notificationManager,
             nsClientRepository = NSClientRepositoryImpl(rxBus, aapsLogger),
@@ -184,10 +187,26 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
 
     @Test
     fun `deleted entry is queued for removal`() = runTest {
+        whenever(nsIncomingDataProcessor.acceptsGlucose(false)).thenReturn(true)
+
         sut.onDataDelete("""{"colName":"entries","identifier":"e1"}""")
 
         verify(storeDataForDb).addToDeleteGlucoseValue("e1")
         verify(storeDataForDb).requestUpdateDeletedGlucoseValues()
+    }
+
+    /**
+     * A phone that does not take BG from Nightscout must not take BG deletes from there either. This path
+     * had no check at all, so anyone who could write to Nightscout could remove a master's readings.
+     */
+    @Test
+    fun `deleted entry is ignored when BG is not taken from Nightscout`() = runTest {
+        whenever(nsIncomingDataProcessor.acceptsGlucose(false)).thenReturn(false)
+
+        sut.onDataDelete("""{"colName":"entries","identifier":"e1"}""")
+
+        verify(storeDataForDb, never()).addToDeleteGlucoseValue(any())
+        verify(storeDataForDb, never()).requestUpdateDeletedGlucoseValues()
     }
 
     /** A document with no collection name matches no branch. It must not delete anything. */

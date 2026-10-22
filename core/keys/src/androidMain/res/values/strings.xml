@@ -239,7 +239,7 @@
     <string name="pref_title_ns_read_only_client">Read-only client</string>
     <string name="pref_summary_ns_read_only_client">Turn on when the master does not accept remote control, for example a 3.4 master. A profile switch, a temp target or a note is then saved here and sent through Nightscout, like a 3.4 client does. The master must have the matching Nightscout \"receive\" settings on. Other changes are refused here.</string>
     <string name="pref_title_ns_allow_client_control">Allow client control</string>
-    <string name="pref_summary_ns_allow_client_control">Let paired client devices send signed commands (e.g. start/stop scenes) over Nightscout.</string>
+    <string name="pref_summary_ns_allow_client_control">Let paired client devices send signed commands (e.g. start/stop scenes) over Nightscout. This also turns on hardened mode: changes made directly in Nightscout are not taken any more.</string>
 
     <!-- OpenHumans preferences -->
     <string name="pref_title_openhumans_wifi_only">WiFi only</string>

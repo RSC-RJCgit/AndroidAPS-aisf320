@@ -3,7 +3,7 @@ package app.aaps.implementation.bolus
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.bolus.BatchAction
-import app.aaps.core.interfaces.bolus.WizardBolusExecutor
+import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.clientcontrol.FailureReason
@@ -51,7 +51,7 @@ class RoleBranchTest : TestBase() {
 
     @Test fun prepare_masterPreview_returnsPrepared() = runTest {
         val result = roleBranch(client = false).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.Preview(insulin = 1.0, carbs = 0, bolusId = 42L)
+            MasterActionExecutor.PrepareResult.Preview(insulin = 1.0, carbs = 0, bolusId = 42L)
         }
         assertThat(result).isInstanceOf(ActionProgress.Prepared::class.java)
         assertThat((result as ActionProgress.Prepared).id).isEqualTo(42L)
@@ -59,14 +59,14 @@ class RoleBranchTest : TestBase() {
 
     @Test fun prepare_masterError_returnsRejectedExecutionFailed() = runTest {
         val result = roleBranch(client = false).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.Error("boom")
+            MasterActionExecutor.PrepareResult.Error("boom")
         }
         assertThat(result).isEqualTo(ActionProgress.Rejected(FailureReason.ExecutionFailed, "boom"))
     }
 
     @Test fun prepare_masterNoAction_returnsRejectedNoAction() = runTest {
         val result = roleBranch(client = false).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.NoAction
+            MasterActionExecutor.PrepareResult.NoAction
         }
         assertThat(result).isEqualTo(ActionProgress.Rejected(FailureReason.NoAction))
     }
@@ -99,7 +99,7 @@ class RoleBranchTest : TestBase() {
     @Test fun prepare_readOnlyClient_profileSwitchAndNote_runLocally() = runTest {
         val command = ClientControlActionDispatcher.Command.BatchPrepare(listOf(profileSwitch, note))
         val result = roleBranch(client = true, readOnly = true).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.Preview(insulin = 0.0, carbs = 0, bolusId = 7L)
+            MasterActionExecutor.PrepareResult.Preview(insulin = 0.0, carbs = 0, bolusId = 7L)
         }
         assertThat((result as ActionProgress.Prepared).id).isEqualTo(7L)
         verify(dispatcher, never()).run(any(), any())
@@ -112,7 +112,7 @@ class RoleBranchTest : TestBase() {
         )
         val command = ClientControlActionDispatcher.Command.BatchPrepare(listOf(profileSwitch, bolus))
         val result = roleBranch(client = true, readOnly = true).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.Preview(insulin = 1.0, carbs = 0, bolusId = 11L)
+            MasterActionExecutor.PrepareResult.Preview(insulin = 1.0, carbs = 0, bolusId = 11L)
         }
         assertThat((result as ActionProgress.Prepared).id).isEqualTo(11L)
         verify(dispatcher, never()).run(any(), any())
@@ -120,7 +120,7 @@ class RoleBranchTest : TestBase() {
 
     @Test fun prepare_readOnlyClient_exampleThatCannotBeWorkedOut_rejectedReadOnly() = runTest {
         val result = roleBranch(client = true, readOnly = true).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.Error("pump not available")
+            MasterActionExecutor.PrepareResult.Error("pump not available")
         }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyClient)
         assertThat(result.reason.isNotDeliveryError()).isTrue()
@@ -128,9 +128,9 @@ class RoleBranchTest : TestBase() {
 
     // The bolus calculator on a read-only client: calculated here as an example, never sent (2026-10-16).
     @Test fun prepare_readOnlyClient_wizard_runsLocallyAsExample() = runTest {
-        val command = ClientControlActionDispatcher.Command.WizardPrepare(mock<WizardBolusExecutor.WizardInputs>())
+        val command = ClientControlActionDispatcher.Command.WizardPrepare(mock<MasterActionExecutor.WizardInputs>())
         val result = roleBranch(client = true, readOnly = true).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.Preview(insulin = 2.0, carbs = 20, bolusId = 9L)
+            MasterActionExecutor.PrepareResult.Preview(insulin = 2.0, carbs = 20, bolusId = 9L)
         }
         assertThat((result as ActionProgress.Prepared).id).isEqualTo(9L)
         verify(dispatcher, never()).run(any(), any())
@@ -139,7 +139,7 @@ class RoleBranchTest : TestBase() {
     @Test fun prepare_readOnlyClient_quickWizard_preparedAsExample() = runTest {
         val command = ClientControlActionDispatcher.Command.BolusPrepare("guid")
         val result = roleBranch(client = true, readOnly = true).prepare("l", command) {
-            WizardBolusExecutor.PrepareResult.Preview(insulin = 2.0, carbs = 20, bolusId = 12L)
+            MasterActionExecutor.PrepareResult.Preview(insulin = 2.0, carbs = 20, bolusId = 12L)
         }
         assertThat((result as ActionProgress.Prepared).id).isEqualTo(12L)
     }
@@ -148,7 +148,7 @@ class RoleBranchTest : TestBase() {
     @Test fun commit_readOnlyClient_exampleIsNeverGiven() = runTest {
         val branch = roleBranch(client = true, readOnly = true)
         branch.prepare("l", ClientControlActionDispatcher.Command.BolusPrepare("guid")) {
-            WizardBolusExecutor.PrepareResult.Preview(insulin = 2.0, carbs = 20, bolusId = 13L)
+            MasterActionExecutor.PrepareResult.Preview(insulin = 2.0, carbs = 20, bolusId = 13L)
         }
         val result = branch.commit("l", ClientControlActionDispatcher.Command.BolusCommit(bolusId = 13L)) { error("must not deliver") }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ReadOnlyExample)
@@ -163,9 +163,9 @@ class RoleBranchTest : TestBase() {
     @Test fun commit_readOnlyClient_nightscoutRecordRunsLocally() = runTest {
         val branch = roleBranch(client = true, readOnly = true)
         branch.prepare("l", ClientControlActionDispatcher.Command.BatchPrepare(listOf(profileSwitch, note))) {
-            WizardBolusExecutor.PrepareResult.Preview(insulin = 0.0, carbs = 0, bolusId = 14L)
+            MasterActionExecutor.PrepareResult.Preview(insulin = 0.0, carbs = 0, bolusId = 14L)
         }
-        val result = branch.commit("l", ClientControlActionDispatcher.Command.BolusCommit(bolusId = 14L)) { WizardBolusExecutor.ConfirmResult.Delivered }
+        val result = branch.commit("l", ClientControlActionDispatcher.Command.BolusCommit(bolusId = 14L)) { MasterActionExecutor.ConfirmResult.Delivered }
         assertThat(result).isEqualTo(ActionProgress.Applied)
         verify(dispatcher, never()).run(any(), any())
     }
@@ -173,18 +173,18 @@ class RoleBranchTest : TestBase() {
     // ---- master (commit) ----
 
     @Test fun commit_masterDelivered_returnsApplied() = runTest {
-        val result = roleBranch(client = false).commit("l", command) { WizardBolusExecutor.ConfirmResult.Delivered }
+        val result = roleBranch(client = false).commit("l", command) { MasterActionExecutor.ConfirmResult.Delivered }
         assertThat(result).isEqualTo(ActionProgress.Applied)
     }
 
     @Test fun commit_masterNoPending_returnsRejected() = runTest {
-        val result = roleBranch(client = false).commit("l", command) { WizardBolusExecutor.ConfirmResult.NoPending }
+        val result = roleBranch(client = false).commit("l", command) { MasterActionExecutor.ConfirmResult.NoPending }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.NoPendingBolus)
     }
 
     @Test fun commit_masterSyncError_returnsRejectedExecutionFailed() = runTest {
         val result = roleBranch(client = false).commit("l", command) { onError ->
-            onError(WizardBolusExecutor.Failure("fail")); WizardBolusExecutor.ConfirmResult.Delivered
+            onError(MasterActionExecutor.Failure("fail")); MasterActionExecutor.ConfirmResult.Delivered
         }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.ExecutionFailed)
         assertThat(result.detail).isEqualTo("fail")
@@ -192,13 +192,13 @@ class RoleBranchTest : TestBase() {
 
     /**
      * A command dropped from the queue on purpose fills the same `onError` comment as a real failure, so without
-     * the [WizardBolusExecutor.ConfirmResult.Cancelled] check first, the dialog would raise the full screen
+     * the [MasterActionExecutor.ConfirmResult.Cancelled] check first, the dialog would raise the full screen
      * BOLUS_ERROR alarm for something that never reached the pump.
      */
     @Test fun commit_masterCancelled_returnsRejectedCancelledNotExecutionFailed() = runTest {
         val result = roleBranch(client = false).commit("l", command) { onError ->
-            onError(WizardBolusExecutor.Failure("cancelled by import", cancelled = true))
-            WizardBolusExecutor.ConfirmResult.Cancelled
+            onError(MasterActionExecutor.Failure("cancelled by import", cancelled = true))
+            MasterActionExecutor.ConfirmResult.Cancelled
         }
         assertThat((result as ActionProgress.Rejected).reason).isEqualTo(FailureReason.Cancelled)
         assertThat(result.detail).isEqualTo("cancelled by import")

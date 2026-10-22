@@ -76,6 +76,7 @@ import app.aaps.core.interfaces.overview.graph.TherapyEventType
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.ui.compose.icons.IcBgCheck
 import app.aaps.core.ui.compose.icons.IcProfile
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
@@ -124,6 +125,31 @@ private const val SERIES_CARBS = "carbs"
 
 /** All prediction series identifiers */
 private val PREDICTION_SERIES = listOf(SERIES_PRED_IOB, SERIES_PRED_COB, SERIES_PRED_ACOB, SERIES_PRED_UAM, SERIES_PRED_ZT)
+
+/**
+ * Half the space between the insulin and the carbs half of one meal, as a share of the Y axis.
+ * The axis is a fixed height on screen, so this is a steady distance in dp whatever the glucose
+ * range is — about 1 dp on each side. Enough that the two triangles do not merge into a block,
+ * small enough that they still read as one marker.
+ */
+private const val MARKER_GAP_FRACTION = 0.015
+
+/** Height of a marker that has no reading near it, as a share of the Y axis above its floor. */
+private const val MARKER_FALLBACK_FRACTION = 0.04
+
+/** Marker sizes per [MarkerTier]. The largest must stay within [NORMALIZER_POINT_SIZE]. */
+private val MARKER_SIZE_SMALL = 12.dp
+private val MARKER_SIZE_MEDIUM = 17.dp
+private val MARKER_SIZE_LARGE = 22.dp
+
+/** Size of the icon drawn at a measured glucose value (calibration, BG check). */
+private val MARKER_SIZE_CALIBRATION = 14.dp
+
+/**
+ * Y data for an empty marker slot. Far below any axis floor, so Vico clips it away — the treatment
+ * block always emits every series, so the line list never has to be matched to the data.
+ */
+private val MARKER_EMPTY_Y = listOf(-10_000.0, -10_000.0)
 
 /**
  * CartesianChartModelProducer.update() skips notifying receivers (and thus skips recomputing axis
@@ -190,6 +216,10 @@ private class MutableYRangeProvider(
  *
  * Layer 0 (start axis): BG readings — regular (outlined circles) + bucketed (filled, range-colored)
  * Layer 1 (end axis, hidden): Basal — profile (dashed step) + actual delivered (solid step + area fill)
+ * Layer 5 (start axis): Graph 5 top band lines.
+ * Layer 6 (start axis): treatment markers. In the fork only the measured values (calibration, BG check) are drawn
+ * here, on their own value; boluses and carbs keep the fork's marks in the BG layer (2026-10-22 merge). See
+ * [treatmentMarkers] for the placement rules.
  *
  * Basal Y-axis is scaled so maxBasal occupies [BASAL_HEIGHT_FRACTION] of the chart height (maxY = maxBasal / BASAL_HEIGHT_FRACTION).
  *
@@ -322,6 +352,9 @@ fun BgGraphCompose(
     val basalColor = AapsTheme.elementColors.tempBasal
     val targetLineColor = AapsTheme.elementColors.tempTarget
     val activityColor = AapsTheme.elementColors.activity
+    val insulinColor = AapsTheme.elementColors.insulin
+    val carbsColor = AapsTheme.elementColors.carbs
+    val bgCheckColor = AapsTheme.elementColors.bgCheck
 
     // Prediction colors
     val iobPredColor = AapsTheme.generalColors.iobPrediction
@@ -358,6 +391,7 @@ fun BgGraphCompose(
         currentActivityData: ActivityGraphData,
         currentMinBgY: Double,
         currentMaxBgY: Double,
+        currentMarkers: TreatmentMarkers,
         currentVisibleTimeRange: Pair<Long, Long>?,
         bolusPoints: List<Pair<Long, Double>>,
         carbPoints: List<Pair<Long, Double>>,
@@ -548,6 +582,28 @@ fun BgGraphCompose(
                 topBandLines5.forEachIndexed { lane, line -> addBand(lane, line) }
             }
 
+            // Block 6 → Treatment markers (layer 5, start axis — drawn at the glucose value of the
+            // moment they happened, see TreatmentMarkers.kt). Insulin grows up from the reading and
+            // carbs down from the same value, so a meal entered with its bolus is one diamond; a
+            // measured value sits on its own value.
+            // Drawn last on purpose: a carbs marker hangs into the curve, and under the BG layer it
+            // was covered by the reading dots and the profile icon. It does cover the one reading
+            // it sits on.
+            // Fixed series order, always all 7: insulin small/medium/large, carbs small/medium/large,
+            // measured glucose. An empty slot gets a clipped dummy, so the line list below is a
+            // plain fixed list instead of something that has to be matched to the data.
+            lineModel {
+                fun markerSeries(markers: List<TreatmentMarker>) {
+                    if (markers.isEmpty()) series(x = listOf(0.0, 1.0), y = MARKER_EMPTY_Y)
+                    else series(x = markers.map { it.x }, y = markers.map { it.y })
+                }
+                for (tier in MarkerTier.entries) markerSeries(currentMarkers.insulin.filter { it.tier == tier })
+                for (tier in MarkerTier.entries) markerSeries(currentMarkers.carbs.filter { it.tier == tier })
+                val measured = currentMarkers.calibrations
+                if (measured.isEmpty()) series(x = listOf(0.0, 1.0), y = MARKER_EMPTY_Y)
+                else series(x = measured.map { it.first }, y = measured.map { it.second })
+            }
+
             // Forces Vico to reprocess this transaction even when the series data above is
             // identical to last time (see BG_VISIBLE_RANGE_KEY doc) — otherwise scrolling/zooming
             // would re-submit the same partials and get silently skipped, never picking up the
@@ -615,8 +671,14 @@ fun BgGraphCompose(
         // prediction data (no real BG readings) makes the windowed set empty, falling back to the
         // full unwindowed history's max instead of the actually-visible prediction values.
         fun inWindow(timestamp: Long) = visibleTimeRange == null || timestamp in visibleTimeRange.first..visibleTimeRange.second
-        val allBgAndPredictionValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).map { it.value }
-        val windowedValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).filter { inWindow(it.timestamp) }.map { it.value }
+        // A measured value (calibration, BG check) is drawn at its own glucose value and can sit
+        // well off the curve, so it widens the axis like a reading — otherwise it would be clamped
+        // to the edge and lie about what the meter said.
+        val measuredPoints = measuredGlucosePoints(treatments.calibrations, treatments.therapyEvents)
+        val allBgAndPredictionValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).map { it.value } +
+            measuredPoints.map { it.second }
+        val windowedValues = (bgReadings + bucketedData + predictions + rawPoints + ukfPoints).filter { inWindow(it.timestamp) }.map { it.value } +
+            measuredPoints.filter { inWindow(it.first) }.map { it.second }
         val windowedOrFull = windowedValues.ifEmpty { allBgAndPredictionValues }
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
@@ -644,7 +706,27 @@ fun BgGraphCompose(
         }
         // Activity scales to the axis as it is without the Graph 5 top band, so its peak never reaches the band lanes.
         val activityAxisMax = if (!showActivity) maxBgY else if (topBandLines) niceScale(dataMin, axisDataMax).max else niceBgScale.max
-        rebuildChart(basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, visibleTimeRange, bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max)
+        // Upstream's treatment markers (2026-10 merge): only the measured values here (calibrations, BG checks). Boluses
+        // and carbs keep the fork's own marks on the curve (bolusPoints / carbPoints above), so they are not drawn twice.
+        val axisSpan = niceBgScale.max - niceBgScale.min
+        val markers = treatmentMarkers(
+            boluses = emptyList(),
+            carbs = emptyList(),
+            calibrations = treatments.calibrations,
+            therapyEvents = treatments.therapyEvents,
+            readings = bucketedData.ifEmpty { bgReadings },
+            minTimestamp = minTimestamp,
+            minX = 0.0,
+            maxX = maxX,
+            minY = niceBgScale.min,
+            maxY = niceBgScale.max,
+            gap = axisSpan * MARKER_GAP_FRACTION,
+            fallbackY = niceBgScale.min + axisSpan * MARKER_FALLBACK_FRACTION
+        )
+        rebuildChart(
+            basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, markers, visibleTimeRange,
+            bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max
+        )
     }
 
     // Build lookup map for BUCKETED points: x-value -> BgDataPoint (for PointProvider)
@@ -884,6 +966,35 @@ fun BgGraphCompose(
             areaFill = null
         )
         listOf(line(SMB_BAND_COLOR), line(acceColor), line(ppColor), line(PROFILE_BASAL_BAND_COLOR))
+    }
+
+    // =========================================================================
+    // Treatment marker lines (layer 5) — order must match block 6 in rebuildChart
+    // =========================================================================
+
+    val bgCheckPainter = rememberVectorPainter(IcBgCheck)
+
+    val treatmentLines = remember(insulinColor, carbsColor, bgCheckColor, bgCheckPainter) {
+        buildList {
+            for (size in listOf(MARKER_SIZE_SMALL, MARKER_SIZE_MEDIUM, MARKER_SIZE_LARGE)) {
+                add(createMarkerLine(insulinColor, TriangleShape, size))
+            }
+            for (size in listOf(MARKER_SIZE_SMALL, MARKER_SIZE_MEDIUM, MARKER_SIZE_LARGE)) {
+                add(createMarkerLine(carbsColor, TriangleBelowShape, size))
+            }
+            add(
+                LineCartesianLayer.Line(
+                    fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+                    areaFill = null,
+                    pointProvider = LineCartesianLayer.PointProvider.single(
+                        LineCartesianLayer.Point(
+                            component = PainterComponent(bgCheckPainter, tint = bgCheckColor),
+                            size = MARKER_SIZE_CALIBRATION
+                        )
+                    )
+                )
+            )
+        }
     }
 
     // Basal Y-axis range: maxBasal / BASAL_HEIGHT_FRACTION so basal occupies that fraction of chart height
@@ -1187,6 +1298,12 @@ fun BgGraphCompose(
                 rangeProvider = startAxisRangeProvider,
                 verticalAxisPosition = Axis.Position.Vertical.Start
             ),
+            // Layer 6: Treatment markers (start axis — drawn last, see block 6)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(treatmentLines),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
             startAxis = VerticalAxis.rememberStart(
                 itemPlacer = VerticalAxis.ItemPlacer.step({ startAxisRangeProvider.yStep }),
                 label = rememberTextComponent(
@@ -1445,3 +1562,16 @@ private fun String.withoutLastItem(prefix: String): String {
     val items = trim().split(' ')
     return if (items.size > 1 && items.last().startsWith(prefix)) items.dropLast(1).joinToString(" ") else this
 }
+
+/**
+ * A line that draws no line at all, only a [shape] marker in [color] at every point. Used for the
+ * treatment markers on the BG graph, one line per size.
+ */
+private fun createMarkerLine(color: Color, shape: Shape, size: Dp): LineCartesianLayer.Line =
+    LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+        areaFill = null,
+        pointProvider = LineCartesianLayer.PointProvider.single(
+            LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(color), shape = shape), size = size)
+        )
+    )

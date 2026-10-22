@@ -58,7 +58,7 @@ internal class TreatmentsViewModelTest {
         sut = TreatmentsViewModel(
             persistenceLayer, profileUtil, profileFunction, activePlugin, profileRepository,
             rh, translator, dateUtil, decimalFormatter, uiInteraction, userEntryPresentationHelper,
-            importExportPrefs, maintenance, uel, aapsLogger, rxBus
+            importExportPrefs, maintenance, uel, aapsLogger, rxBus, mock(), mock()
         )
     }
 

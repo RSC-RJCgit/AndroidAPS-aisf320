@@ -38,11 +38,17 @@ conflict was solved.
    ```
    git then stores how each conflict was solved and solves the same conflict the same way in the next merge.
 
-4. **Fallback tag** instead of a new branch or worktree. No CI change is needed:
+4. **Fallback tag**, and for a big merge a **trial branch**. No CI change is needed:
    ```bash
    git tag pre-merge-YYYYMMDD
+   git switch -c merge-dev-YYYYMMDD     # big merge only (dozens of conflicts, or client control / pairing changes)
    ```
-   If the merge goes badly: `git reset --hard pre-merge-YYYYMMDD`.
+   A tag is a clean undo only until the merge is pushed. After that the way back is a force-push (rewrites the
+   branch the phones' builds come from) or `git revert -m 1` (git then thinks the upstream commits are merged, and
+   the next merge silently leaves them out). A trial branch avoids both: Branch CI builds every pushed branch, the
+   user tests it, then `git merge --ff-only merge-dev-YYYYMMDD` on the merge branch, or the branch is dropped.
+   CI names APKs and Drive folders from `appVersion`, not the branch, so tell the user the trial APKs can land
+   next to the normal ones.
 
 5. **Merge, without committing.**
    ```bash
@@ -58,8 +64,14 @@ conflict was solved.
      choices in `.github/workflows/aaps-ci.yml`. CI derives the APK names and Drive folders from `appVersion`.
    - After solving a file, `git add` it, so rerere records the answer.
    - `git diff --name-only --diff-filter=U` must end empty.
+   - `git checkout --conflict=diff3 -- <files>` adds the common base to each block, which shows which side changed
+     what. A script that rewrites a file must keep its CRLF line endings (read and write with `newline=""`).
+   - After the conflicts, look for what merged cleanly but no longer fits: names upstream renamed that our own
+     code still uses (grep the old name), and `when` over a sealed type that must list a case only we added (for
+     example our `ClientControlMessage.AutomationStateSet` in upstream's `requiredRole`).
 
-7. **Prove it.** Use redirect, not a pipe, so the exit code is real.
+7. **Prove it.** Only when the user agrees: a local Gradle build locks Android Studio's files, and the user
+   normally lets CI check the commit after pushing it. Use redirect, not a pipe, so the exit code is real.
    - Android: `./gradlew.bat assembleFullDebug --no-daemon > merge-build.log 2>&1` (and `assembleAapsclient2Debug`).
    - Desktop: `./gradlew.bat :desktop:shell:compileKotlin --no-daemon`.
    - iOS klibs: `./gradlew.bat compileKotlinIosArm64 --no-daemon` (the tests only run on the Mac).

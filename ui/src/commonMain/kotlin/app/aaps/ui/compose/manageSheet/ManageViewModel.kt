@@ -205,7 +205,7 @@ class ManageViewModel(
                     showMutatingActions = !config.AAPSCLIENT || nsClient.masterOrPairedClientFlow.value ||
                         preferences.get(BooleanKey.NsClientReadOnlyClient),
                     // General gate: PUMP declares its own visibility (!isClient → full + pumpcontrol, not aapsclient).
-                    showPump = ElementType.PUMP.visibility.isVisible(visibilityContext),
+                    showPump = ElementType.PUMP.isAvailable(visibilityContext),
                     cancelTempBasalText = cancelTempBasalText,
                     cancelExtendedBolusText = cancelExtendedBolusText,
                     isPatchPump = pumpDescription.isPatchPump,

@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.scenes.SceneStore
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
@@ -68,6 +69,8 @@ class QuickLaunchConfigViewModelFixture(private val screen: AapsScreenFixture) {
         // Left null it threw only once such an element reached the list, which is a long way from
         // the cause.
         whenever(visibilityContext.preferences).thenReturn(screen.preferences)
+        // A mock returns null here, not the interface default, and every element checks the role.
+        whenever(visibilityContext.clientRole).thenReturn(ClientRole.Admin)
         whenever(quickWizard.list()).thenReturn(arrayListOf())
         whenever(automation.executionEnabled).thenReturn(false)
         whenever(activePlugin.getPluginsList()).thenReturn(arrayListOf())
@@ -96,6 +99,8 @@ class QuickLaunchConfigViewModelFixture(private val screen: AapsScreenFixture) {
         // Not read-only either, so the bolus calculator (also shown on a read-only client) is filtered out too.
         whenever(visibilityContext.preferences).thenReturn(screen.preferences)
         whenever(screen.preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(false)
+        // What a real unpaired client reads: it has no role on any master.
+        whenever(visibilityContext.clientRole).thenReturn(ClientRole.ReadOnly)
     }
 
     /** Puts [selected] into the stored preference, through the real serializer the screen also uses. */
