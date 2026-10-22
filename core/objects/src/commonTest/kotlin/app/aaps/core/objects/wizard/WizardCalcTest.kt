@@ -33,8 +33,9 @@ class WizardCalcTest {
             percentage = 80,
             extendedCarbPercent = 35,
         )
-        assertEquals(14, later.fatGrams)
-        assertEquals(16, later.proteinGrams)
+        // Pizza (35% extended carbs): 40 g x 0.35 x 1.35 fat, 40 g x 0.4 x 1.35 protein
+        assertEquals(19, later.fatGrams)
+        assertEquals(22, later.proteinGrams)
         assertEquals(0, later.extendedCarbs)
         assertEquals(80, later.percentage)
         assertFalse(later.useSavedMaxBolus)
@@ -48,8 +49,9 @@ class WizardCalcTest {
             percentage = 100,
             extendedCarbPercent = 20,
         )
-        assertEquals(28, unreliable.fatGrams)
-        assertEquals(32, unreliable.proteinGrams)
+        // Unreliable x2, cake x1.2
+        assertEquals(34, unreliable.fatGrams)
+        assertEquals(38, unreliable.proteinGrams)
         assertEquals(90, unreliable.percentage)
         assertEquals(0, unreliable.extendedCarbs)
         assertTrue(unreliable.useSavedMaxBolus)
@@ -60,15 +62,24 @@ class WizardCalcTest {
             fpuInstead = true, unreliableSmb = false, carbs = 40, typedFat = 3, typedProtein = 4,
             percentage = 100, extendedCarbPercent = 35, smallMeal = true,
         )
-        assertEquals(7, small.fatGrams)
-        assertEquals(8, small.proteinGrams)
+        // Small meal x0.5, pizza x1.35
+        assertEquals(9, small.fatGrams)
+        assertEquals(11, small.proteinGrams)
 
         val both = mealExtra(
             fpuInstead = false, unreliableSmb = true, carbs = 40, typedFat = 3, typedProtein = 4,
             percentage = 100, extendedCarbPercent = 20, smallMeal = true,
         )
-        assertEquals(14, both.fatGrams)
-        assertEquals(16, both.proteinGrams)
+        // x2 x0.5 x1.2 (cake)
+        assertEquals(17, both.fatGrams)
+        assertEquals(19, both.proteinGrams)
+
+        val bread = mealExtra(
+            fpuInstead = true, unreliableSmb = false, carbs = 20, typedFat = 0, typedProtein = 0,
+            percentage = 80, extendedCarbPercent = 0,
+        )
+        assertEquals(7, bread.fatGrams)
+        assertEquals(8, bread.proteinGrams)
     }
 
 
