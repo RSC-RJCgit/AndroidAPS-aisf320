@@ -455,6 +455,8 @@ enum class BooleanKey(
     NsClientSlowSync("ns_sync_slow", false, KeysStrings.pref_title_ns_slow_sync),
     // Client control and hardened mode both ride the WebSocket, so simple mode and hardened mode keep it on.
     NsClient3UseWs("ns_use_ws", true, KeysStrings.pref_title_ns_use_ws, KeysStrings.pref_summary_ns_use_ws, defaultedBySM = true, defaultedByHardenedMode = true),
+    // Shown as "v3 style only" (2026-10-22, per explicit request), so it is not mixed up with upstream's Read-only client
+    // role, which is set on the master. The stored name stays ns_read_only_client, so phones keep their setting.
     // Client only. For a master with no remote control (a 3.4-based one): no "master unreachable" warning and
     // no reachability probes. Editing stays off, as on any unpaired client.
     NsClientReadOnlyClient(

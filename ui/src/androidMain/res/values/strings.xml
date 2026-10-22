@@ -159,7 +159,7 @@
     <string name="load_peak_from">Load peak from</string>
     <string name="cannot_delete_last_insulin">Cannot delete the last insulin</string>
     <string name="cannot_delete_active_insulin">Cannot delete the active insulin</string>
-    <string name="read_only_example_not_saved">Example only. This read-only client did not save it. Change it on the master if you need it.</string>
+    <string name="read_only_example_not_saved">Example only. This phone is set to v3 style only and did not save it. Change it on the master if you need it.</string>
 
     <string name="reuse_profile_pct_hours">Reuse %1$d%% %2$dh</string>
     <string name="percentage_label">Percentage</string>
