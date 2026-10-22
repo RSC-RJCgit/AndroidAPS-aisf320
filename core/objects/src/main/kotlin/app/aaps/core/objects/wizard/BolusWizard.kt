@@ -1394,19 +1394,30 @@ class BolusWizard @Inject constructor(
     // (the isLast IOB-rose branch), so that event is not recorded twice.
     // One CarePortal note when an FPU part's due-time check fails and it is being re-checked every 10 min instead of cancelled
     // ("D1.30", 5 chars like the cancel note). Not repeated on each re-check, and no zero-dose bolus marker.
-    private fun deferDoseNote(amount: Double, reason: String) {
+    // 2026-10-22, per explicit request: a cancel or wait note says what it belongs to - which bolus (its calculation time),
+    // and whether it is all the rest of a carb split or one protein/fat dose. A carb split cancel always drops all the rest.
+    private fun ofBolus(): String = "the ${dateUtil.timeString(timeStamp)} bolus"
+
+    private fun splitCancelWhat(amount: Double): String =
+        "Carb split of ${ofBolus()}: all ${decimalFormatter.to2Decimal(amount)} U still to come"
+
+    private fun fpuWhat(label: String, dose: Double): String =
+        "Protein/fat $label of ${ofBolus()}: ${decimalFormatter.to2Decimal(dose)} U"
+
+    private fun deferDoseNote(what: String, amount: Double, reason: String) {
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
                 timestamp = NoteTimestampAllocator.next(dateUtil.now()),
                 type = TE.Type.NOTE,
                 glucoseUnit = profileFunction.getUnits()
             ).also {
-                it.note = "D${decimalFormatter.to2Decimal(amount)}"
+                // The graph shows only the first 5 characters ("D0.62"); Treatments shows what it belongs to
+                it.note = "D${decimalFormatter.to2Decimal(amount)} $what, waiting: $reason"
                 it.duration = T.mins(1).msecs()
             },
             action = Action.CAREPORTAL,
             source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
-            note = "Split/protein/fat dose deferred, re-checking every 10 min: $reason",
+            note = "$what. Waiting, checked again every 10 min: $reason",
             listValues = listOf()
         ).blockingGet()
     }
@@ -1419,25 +1430,26 @@ class BolusWizard @Inject constructor(
         return IDs(pumpId = timestamp, pumpType = pump.model(), pumpSerial = pump.serialNumber())
     }
 
-    private fun cancelDoseNote(amount: Double, reason: String, label: String? = null, iobBaseline: Double? = null) {
+    private fun cancelDoseNote(what: String, amount: Double, reason: String, label: String? = null, iobBaseline: Double? = null) {
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
                 timestamp = NoteTimestampAllocator.next(dateUtil.now()),
                 type = TE.Type.NOTE,
                 glucoseUnit = profileFunction.getUnits()
             ).also {
-                it.note = "C${decimalFormatter.to2Decimal(amount)}" // e.g. "C1.30" — 5 chars, matches the graph's 5-char note truncation
+                // The graph shows only the first 5 characters ("C1.30"); Treatments shows what was cancelled (2026-10-22)
+                it.note = "C${decimalFormatter.to2Decimal(amount)} $what, cancelled: $reason"
                 it.duration = T.mins(1).msecs()
             },
             action = Action.CAREPORTAL,
             source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
-            note = "Split/protein/fat dose cancelled: $reason",
+            note = "$what. Cancelled: $reason",
             listValues = listOf()
         ).blockingGet()
         if (label != null && iobBaseline != null) {
             val liveIob = currentTotalIob()
-            val calculation = followUpCalculation(dateUtil.now(), label, amount, iobBaseline, liveIob, 0.0, "Cancelled: $reason")
-            val cancelledBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = "$label: cancelled ($reason)", ids = zeroBolusIds(calculation.timestamp))
+            val calculation = followUpCalculation(dateUtil.now(), label, amount, iobBaseline, liveIob, 0.0, "Cancelled: $what ($reason)")
+            val cancelledBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = "$what: cancelled ($reason)", ids = zeroBolusIds(calculation.timestamp))
             persistenceLayer.insertOrUpdateBolus(
                 cancelledBolus, Action.BOLUS,
                 if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
@@ -1598,7 +1610,7 @@ class BolusWizard @Inject constructor(
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: bolus was stopped — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "bolus stopped", "Carb split", iobBaselineForNextGap)
+                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "bolus stopped", "Carb split", iobBaselineForNextGap)
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
@@ -1606,7 +1618,7 @@ class BolusWizard @Inject constructor(
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superseded by a newer bolus/carbs entry — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
                 // Replaced by a newer entry: the note only, with no 0 U bolus row and no calculator record.
-                cancelDoseNote(remainingResidual, "superseded by newer entry")
+                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "superseded by newer entry")
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
@@ -1614,21 +1626,21 @@ class BolusWizard @Inject constructor(
             if (pct < 100) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: profile switch at $pct% (scheduled at $schedulingPct%) — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "profile switch to $pct%", "Carb split", iobBaselineForNextGap)
+                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "profile switch to $pct%", "Carb split", iobBaselineForNextGap)
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (pumpUnavailable()) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: pump suspended — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "pump suspended", "Carb split", iobBaselineForNextGap)
+                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "pump suspended", "Carb split", iobBaselineForNextGap)
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
             if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superbolus active — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "superbolus active", "Carb split", iobBaselineForNextGap)
+                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "superbolus active", "Carb split", iobBaselineForNextGap)
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
@@ -1642,7 +1654,7 @@ class BolusWizard @Inject constructor(
             if (dateUtil.now() > retryDeadline) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: retry window (150min) exhausted — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(remainingResidual, "retry timeout exceeded", "Carb split", iobBaselineForNextGap)
+                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "retry timeout exceeded", "Carb split", iobBaselineForNextGap)
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
@@ -1654,7 +1666,7 @@ class BolusWizard @Inject constructor(
                 SplitHpCheck.Cancel -> {
                     aapsLogger.info(LTag.CORE, "ReducedSplitBolus: HP1 below 4.0 mmol/L — cancelling remaining ${remainingResidual}U")
                     writeLastSkippedZero(lastSkippedZero)
-                    cancelDoseNote(remainingResidual, "HP1 below 4.0 mmol/L", "Carb split", iobBaselineForNextGap)
+                    cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "HP1 below 4.0 mmol/L", "Carb split", iobBaselineForNextGap)
                     setSplitPendingRemaining(0.0)
                     return@postDelayed
                 }
@@ -1821,14 +1833,14 @@ class BolusWizard @Inject constructor(
         Handler(Looper.getMainLooper()).postDelayed({
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): bolus was stopped — cancelling ${dose}U")
-                cancelDoseNote(dose, "$label dose: bolus stopped", label, iobBaseline)
+                cancelDoseNote(fpuWhat(label, dose), dose, "bolus stopped", label, iobBaseline)
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
             if (!ScheduledDoseSupersession.isCurrent(myScheduleToken)) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): superseded by a newer bolus/carbs entry — cancelling ${dose}U")
                 // Replaced by a newer entry: the note only, with no 0 U bolus row and no calculator record.
-                cancelDoseNote(dose, "$label dose: superseded by newer entry")
+                cancelDoseNote(fpuWhat(label, dose), dose, "superseded by newer entry")
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
@@ -1845,7 +1857,7 @@ class BolusWizard @Inject constructor(
             // The dose stays counted in the Warsaw pending total while it waits. onExpired runs only on that final drop.
             val doseDeadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
             if (dateUtil.now() > doseDeadline) {
-                cancelDoseNote(dose, "$label dose: retry window expired", label, iobBaseline)
+                cancelDoseNote(fpuWhat(label, dose), dose, "retry window expired", label, iobBaseline)
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
@@ -1854,27 +1866,27 @@ class BolusWizard @Inject constructor(
                 val deadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
                 if ((retryLater || forceRetry) && retryAt <= deadline) {
                     aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — deferring ${dose}U, re-check at ${dateUtil.timeString(retryAt)} (window ends ${dateUtil.timeString(deadline)})")
-                    if (!deferNoted) deferDoseNote(dose, noteReason)
+                    if (!deferNoted) deferDoseNote(fpuWhat(label, dose), dose, noteReason)
                     scheduleSingleDelayedDose(dose, delayMins, label, schedulingPct, iobBaseline, myScheduleToken, retryAt, isLast, nextDueAt, firstDueAt, true, retryLater)
                 } else {
                     aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — ${if (retryLater) "retry window over, " else ""}cancelling ${dose}U")
                     onExpired?.invoke()
                     val expired = if (retryLater || forceRetry) "$noteReason (not delivered within the retry window)" else noteReason
-                    if (withLabel) cancelDoseNote(dose, expired, label, iobBaseline) else cancelDoseNote(dose, expired)
+                    if (withLabel) cancelDoseNote(fpuWhat(label, dose), dose, expired, label, iobBaseline) else cancelDoseNote(fpuWhat(label, dose), dose, expired)
                     decrementWarsawPendingRemaining(dose)
                 }
             }
             val pct = activeProfileSwitchPct()
             if (pct < 100) {
-                deferOrCancel("profile switch at $pct% (scheduled at $schedulingPct%)", "$label dose: profile switch to $pct%")
+                deferOrCancel("profile switch at $pct% (scheduled at $schedulingPct%)", "profile switch to $pct%")
                 return@postDelayed
             }
             if (pumpUnavailable()) {
-                deferOrCancel("pump suspended", "$label dose: pump suspended")
+                deferOrCancel("pump suspended", "pump suspended")
                 return@postDelayed
             }
             if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
-                deferOrCancel("superbolus active", "$label dose: superbolus active")
+                deferOrCancel("superbolus active", "superbolus active")
                 return@postDelayed
             }
             val gs = glucoseStatusProvider.glucoseStatusData
@@ -1882,7 +1894,7 @@ class BolusWizard @Inject constructor(
             // (was BG >= 7.0 and not falling, which cancelled most doses on 17 Oct Live while BG was 5.5-7.0).
             val bgOk = gs != null && gs.glucose > 99.1 /* 5.5 mmol */ && gs.delta >= 0.90 /* 0.05 mmol */ && gs.shortAvgDelta >= 0.90 /* 0.05 mmol */
             if (!bgOk) {
-                deferOrCancel("BG safety check failed (${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())})", "$label dose: BG safety check failed")
+                deferOrCancel("BG safety check failed (${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())})", "BG safety check failed")
                 return@postDelayed
             }
             val liveIob = currentTotalIob()
@@ -1896,7 +1908,7 @@ class BolusWizard @Inject constructor(
             val thisDose = cappedFollowUpDose(iobAdjustedDose, pumpStep)
             if (thisDose == null || thisDose <= 0.0) {
                 val reason = if (thisDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
-                deferOrCancel(reason, "$label dose: $reason", forceRetry = true)
+                deferOrCancel(reason, reason, forceRetry = true)
                 return@postDelayed
             }
             val capResidual = Round.roundTo(max(0.0, iobAdjustedDose - thisDose), 0.001)
@@ -1928,7 +1940,7 @@ class BolusWizard @Inject constructor(
                                 scheduleSingleDelayedDose(capRemaining, delayMins, label, schedulingPct, liveIob + thisDose, myScheduleToken,
                                     retryAt, isLast, nextDueAt, firstDueAt, false, retryLater)
                             } else {
-                                cancelDoseNote(capRemaining, "$label dose: insulinReq-limited remainder expired", label, liveIob + thisDose)
+                                cancelDoseNote(fpuWhat(label, capRemaining), capRemaining, "insulinReq-limited remainder expired", label, liveIob + thisDose)
                                 decrementWarsawPendingRemaining(capRemaining)
                             }
                         }

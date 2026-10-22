@@ -8,6 +8,8 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
+import kotlin.math.floor
+import kotlin.math.min
 
 /**
  * Downtrend caution rule for the Bolus Wizard dialog (added 2026-09-30, per explicit request, after a
@@ -22,12 +24,10 @@ import app.aaps.core.objects.extensions.round
  * Delta was still +0.22 -- deltas didn't turn negative until ~10 minutes later. A delta-only rule checked
  * at calc time would have missed the actual over-delivery; path 2 exists to catch that case directly.
  *
- * Path 1 (confirmed downtrend): ALL of
- *  - Delta <= -0.15 mmol, SDelta <= -0.10 mmol, AND LDelta <= -0.10 mmol (an ESTABLISHED three-way
- *    downtrend, not just barely negative -- calibrated against the real episode's own data: all three
- *    first went negative around minute 03:11 of that episode, barely (LDelta -0.01), but were solidly
- *    established by 03:30 (Delta -0.17, SDelta -0.13, LDelta -0.10 there) -- these thresholds are pinned
- *    to that 03:30 moment, not the earlier, thinner 03:11 crossing);
+ * Path 1 (fast fall): ALL of
+ *  - Delta <= -0.15 mmol AND SDelta <= -0.10 mmol. 2026-10-22, per explicit request: LDelta is no longer needed.
+ *    The 22 Oct hypo: a 2.5U meal bolus at BG 7.2 with 3.0U on board, Delta -0.31, SDelta -0.25, HP1 4.0, but
+ *    LDelta only -0.02 because BG had been falling for 15 minutes. The old three-delta rule missed it.
  *  - AND EITHER current BG < 6.0 mmol, OR the live HP1 (hypoPrediction1Mmol, cached by
  *    OpenAPSAutoISFPlugin every cycle into ApsAutoIsfLastCycleHp1MilliMmol -- see that LongKey's own doc
  *    comment) is < 5.0 mmol.
@@ -42,10 +42,10 @@ import app.aaps.core.objects.extensions.round
  * at 0.1 mmol avoids a division-by-tiny-number blowup when BG has barely moved off its recent low.
  *
  * When either path applies: both the max bolus in force AND wiz% (percentageCorrection) are scaled to 50%
- * for that one calculation -- max bolus the same visible-override + SafetyMaxBolus-write pattern
- * WizardRecentEntry/applyMaxBolusLowBgDefault already use; wiz% a calc-scoped-only override (no live field
- * in this dialog to show it, and no reason to touch the standing IntKey.OverviewBolusPercentage
- * preference for every future dose -- same reasoning as unreliableSmbsCheckbox's wiz%-90 override).
+ * for that one calculation. Both are calc-scoped only: the standing SafetyMaxBolus and OverviewBolusPercentage are
+ * not changed. The max bolus half was removed on 18 Oct with the low-BG max bolus rules and put back on 22 Oct
+ * (per explicit request, [scaledMaxBolus]): the Bolus Wizard dialog writes it for the calculation, QuickWizard
+ * lowers it for that one press the same way as the recent-entry rule.
  *
  * Changed 2026-10-02, per explicit request: DOES now feed DelayedBolusWorker (reversing this class's
  * original "deliberately does NOT touch DelayedBolusWorker" design) -- the withheld amount is a real,
@@ -65,7 +65,6 @@ object WizardDropTrendCaution {
     const val HP1_THRESHOLD_MMOL = 5.0
     const val DELTA_THRESHOLD_MGDL = -2.7 // -0.15 mmol
     const val SDELTA_THRESHOLD_MGDL = -1.8 // -0.10 mmol
-    const val LDELTA_THRESHOLD_MGDL = -1.8 // -0.10 mmol
     const val IOB_PER_MMOL_RISE = 3.0
     const val PATH2_BGL_CEILING_MGDL = 99.1 // 5.5 mmol
     private const val MMOL_TO_MGDL = 18.0182
@@ -78,10 +77,10 @@ object WizardDropTrendCaution {
     }
 
     /** [hp1Mmol] null (no live HP1 cached yet, or the plugin hasn't run) never satisfies path 1's HP1 half of its OR. */
-    fun applies(delta: Double, shortAvgDelta: Double, longAvgDelta: Double, bgMgdl: Double, hp1Mmol: Double?, iobUnits: Double, bgRiseMgdl: Double): Boolean {
-        val allStronglyDropping = delta <= DELTA_THRESHOLD_MGDL && shortAvgDelta <= SDELTA_THRESHOLD_MGDL && longAvgDelta <= LDELTA_THRESHOLD_MGDL
+    fun applies(delta: Double, shortAvgDelta: Double, bgMgdl: Double, hp1Mmol: Double?, iobUnits: Double, bgRiseMgdl: Double): Boolean {
+        val fastFall = delta <= DELTA_THRESHOLD_MGDL && shortAvgDelta <= SDELTA_THRESHOLD_MGDL
         val lowOrPredictedLow = bgMgdl < BGL_THRESHOLD_MGDL || (hp1Mmol != null && hp1Mmol < HP1_THRESHOLD_MMOL)
-        val path1 = allStronglyDropping && lowOrPredictedLow
+        val path1 = fastFall && lowOrPredictedLow
         // 2026-10-02: path 2 had no BG ceiling at all, so a large FPU-driven correction bolus
         // started from an already-elevated BG (big IOB, only a small recent "rise" to compare
         // against) could trip this and get halved even though BG was high, not low -- gated to the
@@ -106,7 +105,15 @@ object WizardDropTrendCaution {
         // <= 0 (or no readings at all) means "not risen"; iobDisproportionateToRise() floors that to 0.1 mmol.
         val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true).minOfOrNull { it.value }
         val riseMgdl = if (recentMin == null) 0.0 else bgMgdl - recentMin
-        return applies(gs.delta, gs.shortAvgDelta, gs.longAvgDelta, bgMgdl, hp1Mmol, iobUnits, riseMgdl)
+        return applies(gs.delta, gs.shortAvgDelta, bgMgdl, hp1Mmol, iobUnits, riseMgdl)
+    }
+
+    /** Max bolus scaled to 50%, rounded down to the pump step, at least one step and never above [base]. */
+    fun scaledMaxBolus(base: Double, bolusStep: Double): Double {
+        val step = if (bolusStep > 0.0) bolusStep else 0.05
+        val scaled = floor(base * SCALE / step + 1e-6) * step
+        val rounded = Math.round(scaled * 1000.0) / 1000.0
+        return min(base, rounded.coerceAtLeast(min(base, step)))
     }
 
     /** Wiz% scaled to 50%, rounded to the nearest whole percent, floor 1. */

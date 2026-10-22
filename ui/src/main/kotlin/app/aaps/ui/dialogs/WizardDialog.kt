@@ -728,6 +728,13 @@ class WizardDialog : DaggerDialogFragment() {
         val dropTrendCautionActive = dropTrendCautionApplies(lowBgRuleMgdl(bg))
         if (dropTrendCautionActive)
             wizPercentForThisCalc = min(wizPercentForThisCalc, WizardDropTrendCaution.scaledWizPercent(wizPercentForThisCalc))
+        // 2026-10-22, per explicit request: the caution halves the max bolus too, for this calculation. The stepper keeps
+        // its own value; the confirmation reads this one, and onDestroy puts the real setting back.
+        val stepperMax = binding.maxBolusOverrideInput.value
+        preferences.put(
+            DoubleKey.SafetyMaxBolus,
+            if (dropTrendCautionActive) WizardDropTrendCaution.scaledMaxBolus(stepperMax, bolusStep) else stepperMax
+        )
         wizard = bolusWizardProvider.get().doCalc(
             specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, wizPercentForThisCalc,
             binding.bgCheckbox.isChecked,

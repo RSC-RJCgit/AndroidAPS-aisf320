@@ -131,6 +131,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
+import app.aaps.core.objects.wizard.WizardDropTrendCaution
 import app.aaps.core.objects.wizard.WizardRecentEntry
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.elements.SingleClickButton
@@ -692,11 +693,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // applies (SafetyMaxBolus is lowered temporarily and restored afterwards) and the confirmation dialog
             // carries a limit box so it can be seen and changed without an extra dialog. COB is left to the button's
             // own COB setting.
+            // 2026-10-22, per explicit request: the falling-BG caution (WizardDropTrendCaution) halves the max bolus for this
+            // press the same way, taking whichever limit is lower.
             var recentEntryMaxBolus: Double? = null
-            if (wizard.lowBgRecentEntryRule) {
+            if (wizard.lowBgRecentEntryRule || wizard.dropTrendCautionApplied) {
                 val baseMax = constraintChecker.getMaxBolusAllowed().value()
                 val bolusStepForCap = activePlugin.activePump.pumpDescription.bolusStep
-                val reducedMax = WizardRecentEntry.scaledMaxBolus(baseMax, bolusStepForCap)
+                var reducedMax = baseMax
+                if (wizard.lowBgRecentEntryRule) reducedMax = WizardRecentEntry.scaledMaxBolus(baseMax, bolusStepForCap)
+                if (wizard.dropTrendCautionApplied) reducedMax = min(reducedMax, WizardDropTrendCaution.scaledMaxBolus(baseMax, bolusStepForCap))
                 if (baseMax > 0.0 && reducedMax < baseMax) {
                     restoreQuickWizardSafetyMaxBolus()
                     quickWizardOriginalSafetyMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
