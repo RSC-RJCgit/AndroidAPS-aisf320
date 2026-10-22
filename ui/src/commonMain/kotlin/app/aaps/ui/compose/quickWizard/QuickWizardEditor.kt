@@ -32,6 +32,7 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.IntKey
 import app.aaps.core.objects.wizard.CarbsType
 import app.aaps.core.objects.wizard.QuickWizardMode
+import app.aaps.core.objects.wizard.mealExtra
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LabeledSwitch
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -253,6 +254,20 @@ fun QuickWizardEditor(
         }
 
         if (mode == QuickWizardMode.WIZARD) {
+            // 2026-10-22, per explicit request: with automatic fat/protein or unreliable SMB ticked, the boxes show the grams
+            // the button will use (the same mealExtra as QuickWizardEntry at run time), greyed out because a typed value is
+            // not used then. Unticked, they show the typed values again. Only the display changes, not what is saved.
+            val autoExtra = autoFpu || unreliableSmb
+            val shownExtra = mealExtra(
+                fpuInstead = autoFpu,
+                unreliableSmb = unreliableSmb,
+                carbs = carbs,
+                typedFat = fat,
+                typedProtein = protein,
+                percentage = 100,
+                extendedCarbPercent = carbsType.eCarbsPercent,
+                smallMeal = smallMeal,
+            )
             NumberInputRow(
                 labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
                 value = maxBolus,
@@ -265,20 +280,22 @@ fun QuickWizardEditor(
             )
             NumberInputRow(
                 labelRef = InterfacesStrings.wizard_protein,
-                value = protein.toDouble(),
+                value = shownExtra.proteinGrams.toDouble(),
                 onValueChange = { onProteinChange(it.toInt()) },
                 valueRange = 0.0..250.0,
                 step = 1.0,
                 unitLabel = CoreUiStrings.units_grams,
+                enabled = !autoExtra,
                 modifier = Modifier.fillMaxWidth()
             )
             NumberInputRow(
                 labelRef = InterfacesStrings.wizard_fat,
-                value = fat.toDouble(),
+                value = shownExtra.fatGrams.toDouble(),
                 onValueChange = { onFatChange(it.toInt()) },
                 valueRange = 0.0..250.0,
                 step = 1.0,
                 unitLabel = CoreUiStrings.units_grams,
+                enabled = !autoExtra,
                 modifier = Modifier.fillMaxWidth()
             )
             NumberInputRow(
