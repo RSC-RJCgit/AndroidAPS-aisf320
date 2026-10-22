@@ -274,7 +274,12 @@ class MasterActionExecutorImpl(
         val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
         // The button's own max bolus always counts; 0 uses the saved max bolus. As in the Bolus Wizard, unreliable SMBs only
         // fall back to the saved value when nothing was set for this bolus (2026-10-22, per explicit request).
-        val buttonMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
+        // 2026-10-22, per explicit request: the falling-BG caution also halves the max bolus, for the calculation and the
+        // commit. The button works the caution out again inside doCalc with the same live data.
+        val caution = dropTrendCautionNow(actualBg.value, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+        val ownMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
+        val buttonMax = if (caution) WizardDropTrendCaution.scaledMaxBolus(ownMax ?: savedMaxBolus, pump.bolusStepSize(ownMax ?: savedMaxBolus))
+        else ownMax
         if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, buttonMax)
         val wizard = try {
             entry.doCalc(profile, profileName, actualBg)
@@ -373,14 +378,17 @@ class MasterActionExecutorImpl(
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(inputs.carbs, aapsLogger)).value()
         if (carbsAfterConstraints != inputs.carbs) return MasterActionExecutor.PrepareResult.Error(rh.gs(CoreUiStrings.wizard_carbs_constraint))
         val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
-        val wizardMax = inputs.maxBolus?.coerceIn(0.1, 60.0)
-        if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
         // The falling-BG caution is applied here, on the master's live data (2026-10-22). The calculator only showed it:
         // its percent was sent un-halved, so the dose given was not reduced. The cut part is given later when asked.
+        // It halves the max bolus too (2026-10-22, per explicit request), for the calculation and the commit.
         val bgMgdl = if (inputs.useBg && inputs.bg > 0.0) profileUtil.convertToMgdl(inputs.bg, profileFunction.getUnits())
         else glucoseStatusProvider.getGlucoseStatusData()?.glucose ?: 999.0
-        val percentForCalc = if (dropTrendCautionNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil))
-            min(inputs.percentage, WizardDropTrendCaution.scaledWizPercent(inputs.percentage))
+        val caution = dropTrendCautionNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+        val ownMax = inputs.maxBolus?.coerceIn(0.1, 60.0)
+        val wizardMax = if (caution) WizardDropTrendCaution.scaledMaxBolus(ownMax ?: savedMaxBolus, pump.bolusStepSize(ownMax ?: savedMaxBolus))
+        else ownMax
+        if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
+        val percentForCalc = if (caution) min(inputs.percentage, WizardDropTrendCaution.scaledWizPercent(inputs.percentage))
         else inputs.percentage
         val wizard = try {
             bolusWizardProvider().doCalc(
@@ -438,7 +446,7 @@ class MasterActionExecutorImpl(
                 warsawPlan = wizard.warsawPlan,
                 warsawIobBaseline = wizard.warsawIobBaseline,
                 warsawRetryLater = wizard.warsawRetryLater,
-                wizardMaxBolus = inputs.maxBolus,
+                wizardMaxBolus = wizardMax,
                 walkingSoonHeld = wizard.walkingSoonHeldUnits,
                 splitRapidFall = wizard.rapidFallForSplit,
                 splitOverMax = wizard.splitOverMax,

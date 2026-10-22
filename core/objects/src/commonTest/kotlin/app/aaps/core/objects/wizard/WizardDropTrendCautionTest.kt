@@ -8,23 +8,22 @@ import kotlin.test.assertTrue
 class WizardDropTrendCautionTest {
 
     @Test
-    fun anEstablishedFallUnderFivePointFiveHalvesTheDose() {
+    fun aFastFallUnderSixHalvesTheDose() {
         assertTrue(
             WizardDropTrendCaution.applies(
                 delta = -2.8,
                 shortAvgDelta = -1.9,
-                longAvgDelta = -1.9,
                 bgMgdl = 90.0,
                 hp1Mmol = 6.0,
                 iobUnits = 0.0,
                 bgRiseMgdl = 40.0,
             )
         )
-        assertFalse(
+        // 2026-10-22: path 1 has no 5.5 mmol ceiling any more, so HP1 4.0 is enough at 5.55 mmol
+        assertTrue(
             WizardDropTrendCaution.applies(
                 delta = -2.8,
                 shortAvgDelta = -1.9,
-                longAvgDelta = -1.9,
                 bgMgdl = 100.0,
                 hp1Mmol = 4.0,
                 iobUnits = 4.2,
@@ -34,12 +33,44 @@ class WizardDropTrendCautionTest {
     }
 
     @Test
+    fun the22OctMealBolusAt72WithHp14WouldHaveBeenHalved() {
+        // 12:57: BG 7.2, delta -0.31, short delta -0.25, long delta only -0.02 (15 minutes of fall), HP1 4.0, IOB 3.0 U
+        assertTrue(
+            WizardDropTrendCaution.applies(
+                delta = -0.31 * 18.0182,
+                shortAvgDelta = -0.25 * 18.0182,
+                bgMgdl = 7.2 * 18.0182,
+                hp1Mmol = 4.0,
+                iobUnits = 3.0,
+                bgRiseMgdl = 0.0,
+            )
+        )
+        // The same fall with the loop still predicting 5.0 or more above 6.0 mmol: no caution
+        assertFalse(
+            WizardDropTrendCaution.applies(
+                delta = -0.31 * 18.0182,
+                shortAvgDelta = -0.25 * 18.0182,
+                bgMgdl = 7.2 * 18.0182,
+                hp1Mmol = 5.2,
+                iobUnits = 3.0,
+                bgRiseMgdl = 0.0,
+            )
+        )
+    }
+
+    @Test
+    fun halfTheMaxBolusOnThePumpStep() {
+        assertEquals(1.25, WizardDropTrendCaution.scaledMaxBolus(2.5, 0.05), 0.0001)
+        assertEquals(1.2, WizardDropTrendCaution.scaledMaxBolus(2.5, 0.1), 0.0001)
+        assertEquals(0.05, WizardDropTrendCaution.scaledMaxBolus(0.05, 0.05), 0.0001)
+    }
+
+    @Test
     fun aThinFallDoesNotCount() {
         assertFalse(
             WizardDropTrendCaution.applies(
                 delta = -1.4,
                 shortAvgDelta = -7.0,
-                longAvgDelta = -30.0,
                 bgMgdl = 66.0,
                 hp1Mmol = 3.0,
                 iobUnits = 0.0,
@@ -49,12 +80,11 @@ class WizardDropTrendCautionTest {
     }
 
     @Test
-    fun anEstablishedFallWithHp1Under5DoesNotCountAtFivePointFiveOrAbove() {
-        assertFalse(
+    fun aFastFallWithHp1Under5CountsAboveFivePointFive() {
+        assertTrue(
             WizardDropTrendCaution.applies(
                 delta = -2.8,
                 shortAvgDelta = -1.9,
-                longAvgDelta = -1.9,
                 bgMgdl = 140.0,
                 hp1Mmol = 4.9,
                 iobUnits = 0.0,
@@ -70,7 +100,6 @@ class WizardDropTrendCautionTest {
             WizardDropTrendCaution.applies(
                 delta = 4.0,
                 shortAvgDelta = 4.0,
-                longAvgDelta = 4.0,
                 bgMgdl = 106.0,
                 hp1Mmol = 7.0,
                 iobUnits = 4.2,
@@ -81,7 +110,6 @@ class WizardDropTrendCautionTest {
             WizardDropTrendCaution.applies(
                 delta = 4.0,
                 shortAvgDelta = 4.0,
-                longAvgDelta = 4.0,
                 bgMgdl = 90.0,
                 hp1Mmol = 7.0,
                 iobUnits = 4.2,

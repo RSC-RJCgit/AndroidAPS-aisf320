@@ -38,7 +38,6 @@ suspend fun dropTrendCautionNow(
     return WizardDropTrendCaution.applies(
         delta = glucose.delta,
         shortAvgDelta = glucose.shortAvgDelta,
-        longAvgDelta = glucose.longAvgDelta,
         bgMgdl = bgMgdl,
         hp1Mmol = hp1Mmol,
         iobUnits = bolusIob + basalIob,
