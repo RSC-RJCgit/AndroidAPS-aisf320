@@ -68,6 +68,7 @@ import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTopAppBar
 import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.ui.compose.LocalClientRole
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.MasterOfflineBanner
 import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.ScreenMode
@@ -105,10 +106,12 @@ fun InsulinManagementScreen(
     // while they couldn't sync. DERIVED from current state (no setScreenMode side-effect) → deterministic at
     // startup and flips the instant reachability changes. Master is never gated. Both edits AND the
     // master-bound Activate FAB (a client→master command) are gated by this on a client.
-    val editingEnabled = masterEditingEnabled()
+    // A read-only client may try everything as an example: the view model saves nothing there (2026-10-22).
+    val readOnlyClient = LocalReadOnlyClient.current
+    val editingEnabled = masterEditingEnabled() || readOnlyClient
     // Activating an insulin needs a caregiver, which this screen already needs to open; changing the insulin list is an
     // admin's. Below admin the screen stays VIEW-ONLY, like an unreachable master.
-    val canDefine = LocalClientRole.current.allows(ClientRole.Admin)
+    val canDefine = LocalClientRole.current.allows(ClientRole.Admin) || readOnlyClient
     val isPlayMode = uiState.screenMode == ScreenMode.PLAY || !editingEnabled || !canDefine
 
     // Set initial mode
@@ -280,7 +283,8 @@ fun InsulinManagementScreen(
                 .clearFocusOnTap(focusManager)
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-                MasterOfflineBanner(editingEnabled = editingEnabled)
+                // A read-only client keeps its grey note, so it is clear the edits here are examples
+                MasterOfflineBanner(editingEnabled = editingEnabled && !readOnlyClient)
                 if (cardCount > 0) {
                     // Carousel
                     val pagerState = rememberPagerState(

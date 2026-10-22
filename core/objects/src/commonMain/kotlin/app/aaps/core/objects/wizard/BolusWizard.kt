@@ -489,7 +489,7 @@ class BolusWizard(
                 scheduledAt + warsawDoseDelayMinutes(index + 1, plan.numDoses, plan.durationMinutes) * 60_000L
             } else null
             val planned = plan.perDoseInsulin
-            appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, "fpu$index") }
+            appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, "fpu$index of ${plan.numDoses}") }
         }
     }
 
@@ -512,7 +512,7 @@ class BolusWizard(
                 if (!WarsawScheduleGate.isCurrent(token)) {
                     // Only the note. A newer entry replacing the waiting series is not a dose that was calculated and
                     // dropped, so it gets no 0 U bolus row and no calculator record on the graph or in Treatments.
-                    warsawNote("C", planned, "superseded by a newer entry", source)
+                    warsawNote("C", planned, "superseded by a newer entry", source, fpuWhat(label, planned))
                     return
                 }
                 val wait = dueAt - dateUtil.now()
@@ -521,7 +521,7 @@ class BolusWizard(
             }
             if (dateUtil.now() > warsawRetryDeadlineMs(firstDueAt, nextDueAt)) {
                 val expired = "retry window expired"
-                warsawNote("C", planned, expired, source)
+                warsawNote("C", planned, expired, source, fpuWhat(label, planned))
                 recordCancelledDose(label, planned, expired, iobBaseline, source)
                 return
             }
@@ -533,7 +533,7 @@ class BolusWizard(
                             initialDueAt = now + WARSAW_RETRY_MINUTES * 60_000L)
                     } else {
                         val expired = "insulinReq-limited remainder expired"
-                        warsawNote("C", remaining, expired, source)
+                        warsawNote("C", remaining, expired, source, fpuWhat(label, remaining))
                         recordCancelledDose(label, remaining, expired, nextBaseline, source)
                     }
                 }
@@ -543,14 +543,14 @@ class BolusWizard(
             if ((retryLater || capWait) && warsawCanRetry(now, firstDueAt, nextDueAt)) {
                 aapsLogger.info(LTag.CORE, "Warsaw dose deferred: $reason, checking again in $WARSAW_RETRY_MINUTES min")
                 if (!deferralNoted) {
-                    warsawNote("D", planned, "deferred, checking every $WARSAW_RETRY_MINUTES min: $reason", source)
+                    warsawNote("D", planned, "checked again every $WARSAW_RETRY_MINUTES min: $reason", source, fpuWhat(label, planned))
                     deferralNoted = true
                 }
                 dueAt = now + WARSAW_RETRY_MINUTES * 60_000L
             } else {
                 aapsLogger.info(LTag.CORE, "Warsaw dose dropped: $reason")
                 val dropReason = if (retryLater || capWait) "$reason, not delivered within the retry window" else reason
-                warsawNote("C", planned, dropReason, source)
+                warsawNote("C", planned, dropReason, source, fpuWhat(label, planned))
                 recordCancelledDose(label, planned, dropReason, iobBaseline, source)
                 return
             }
@@ -688,23 +688,35 @@ class BolusWizard(
         )
     }
 
-    /** A one minute care portal note, "D1.30" for a deferred dose or "C1.30" for a dropped one. */
-    private suspend fun warsawNote(prefix: String, amount: Double, text: String, source: Sources, what: String = "Protein and fat dose") {
+    /** Which bolus a follow-up dose belongs to: the time of this calculation. */
+    private fun ofBolus(): String = "the ${dateUtil.timeString(timeStamp)} bolus"
+
+    /** A carb split cancel always drops all the rest of the split. */
+    private fun splitCancelWhat(amount: Double): String = "Carb split of ${ofBolus()}: all ${warsawNoteAmount(amount)} U still to come"
+
+    private fun fpuWhat(label: String, dose: Double): String = "Protein/fat $label of ${ofBolus()}: ${warsawNoteAmount(dose)} U"
+
+    /**
+     * A one minute care portal note, "D1.30" for a deferred dose or "C1.30" for a dropped one. The graph shows only those
+     * 5 characters; the rest of the note says which bolus it belongs to and what it is (2026-10-22, per explicit request).
+     */
+    private suspend fun warsawNote(prefix: String, amount: Double, text: String, source: Sources, what: String) {
         val timestamp = max(dateUtil.now(), lastWarsawNoteAt + 1)
         lastWarsawNoteAt = timestamp
         val label = "$prefix${warsawNoteAmount(amount)}"
+        val noteText = "$label $what, ${if (prefix == "D") "waiting" else "cancelled"}: $text"
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
                 timestamp = timestamp,
                 type = TE.Type.NOTE,
-                note = label,
+                note = noteText,
                 duration = 60_000L,
                 glucoseUnit = profileFunction.getUnits(),
             ),
             timestamp = timestamp,
             action = Action.CAREPORTAL,
             source = source,
-            note = "$what: $text",
+            note = "$what. ${if (prefix == "D") "Waiting" else "Cancelled"}: $text",
             listValues = listOf(ValueWithUnit.SimpleString(label)),
         )
     }
@@ -782,7 +794,7 @@ class BolusWizard(
 
     /** The leftover split was dropped: one care portal note ("C1.30"), a 0 U bolus row and a calculator record. */
     private suspend fun cancelSplitPart(remaining: Double, reason: String, iobBaseline: Double, source: Sources) {
-        warsawNote("C", remaining, reason, source, "Split leftover dose")
+        warsawNote("C", remaining, reason, source, splitCancelWhat(remaining))
         recordCancelledDose("Carb split", remaining, reason, iobBaseline, source)
     }
 
@@ -806,7 +818,7 @@ class BolusWizard(
             delay(min(wait, 120_000L))
             if (!SplitScheduleGate.isCurrent(token)) {
                 // Only the note, for the same reason as the Warsaw doses above.
-                warsawNote("C", remaining, "superseded by newer entry", source, "Split leftover dose")
+                warsawNote("C", remaining, "superseded by newer entry", source, splitCancelWhat(remaining))
                 return@launch
             }
             val profile = profileFunction.getProfile()
