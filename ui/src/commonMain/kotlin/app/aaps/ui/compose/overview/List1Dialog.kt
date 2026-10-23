@@ -49,7 +49,7 @@ fun List1Dialog(viewModel: ChipsViewModel) {
     if (pickProfiles) {
         CodedProfileDialog(viewModel, onDismiss = { pickProfiles = false })
     }
-    ReadOnlyNotice(viewModel)
+    NotAutoIsfNotice(viewModel)
 }
 
 @Composable
@@ -63,7 +63,7 @@ fun List2Dialog(viewModel: ChipsViewModel) {
         onApply = viewModel::applyList1,
         queuedText = viewModel.queuedRelayText(),
     )
-    ReadOnlyNotice(viewModel)
+    NotAutoIsfNotice(viewModel)
 }
 
 @Composable
@@ -76,18 +76,18 @@ fun List3Dialog(viewModel: ChipsViewModel) {
         onDismiss = viewModel::closeList3,
         onApply = viewModel::applyList3,
     )
-    ReadOnlyNotice(viewModel)
+    NotAutoIsfNotice(viewModel)
 }
 
-/** Shown after Apply on a read-only client: practice only, nothing was sent to the master. */
+/** Shown after Apply on a read-only client when the master's last loop result is not AutoISF: nothing was sent. */
 @Composable
-private fun ReadOnlyNotice(viewModel: ChipsViewModel) {
-    if (!viewModel.readOnlyNotice) return
+private fun NotAutoIsfNotice(viewModel: ChipsViewModel) {
+    if (!viewModel.notAutoIsfNotice) return
     AlertDialog(
-        onDismissRequest = viewModel::closeReadOnlyNotice,
-        text = { Text(stringResource(CoreUiStrings.clientcontrol_fail_read_only_client)) },
+        onDismissRequest = viewModel::closeNotAutoIsfNotice,
+        text = { Text(stringResource(CoreUiStrings.list_code_not_sent_not_autoisf)) },
         confirmButton = {
-            TextButton(onClick = viewModel::closeReadOnlyNotice) { Text(stringResource(CoreUiStrings.ok)) }
+            TextButton(onClick = viewModel::closeNotAutoIsfNotice) { Text(stringResource(CoreUiStrings.ok)) }
         }
     )
 }

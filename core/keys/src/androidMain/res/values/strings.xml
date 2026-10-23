@@ -237,7 +237,7 @@
     <string name="pref_title_ns_use_ws">Use websockets</string>
     <string name="pref_summary_ns_use_ws">Use websockets for real-time communication with Nightscout.</string>
     <string name="pref_title_ns_read_only_client">v3 style only</string>
-    <string name="pref_summary_ns_read_only_client">Turn on when the master does not accept remote control, for example a 3.4 master. A profile switch, a temp target or a note is then saved here and sent through Nightscout, like a 3.4 client does. The master must have the matching Nightscout \"receive\" settings on. Settings, automations, profiles, insulins and QuickWizard buttons are kept on this phone, as on a 3.4 client. A bolus, carbs or a pump command shows its confirmation and then \"example only\": nothing is given.</string>
+    <string name="pref_summary_ns_read_only_client">Turn on when the master does not accept remote control, for example a 3.4 master. A profile switch, a temp target or a note is then saved here and sent through Nightscout, like a 3.4 client does. The master must have the matching Nightscout \"receive\" settings on. Settings, automations, profiles, insulins and QuickWizard buttons are kept on this phone, as on a 3.4 client. List 1, 2 and 3 codes go to the master as on a 3.4 client, when its last loop result is AutoISF. A bolus, carbs or a pump command shows its confirmation and then \"example only\": nothing is given.</string>
     <string name="pref_title_ns_allow_client_control">Allow client control</string>
     <string name="pref_summary_ns_allow_client_control">Let paired client devices send signed commands (e.g. start/stop scenes) over Nightscout. This also turns on hardened mode: changes made directly in Nightscout are not taken any more.</string>
 

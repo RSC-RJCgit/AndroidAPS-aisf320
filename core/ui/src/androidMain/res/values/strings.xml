@@ -467,6 +467,7 @@
     <string name="clientcontrol_fail_busy">Another action is already in progress.</string>
     <string name="clientcontrol_fail_send_failed">Couldn\'t reach Nightscout.</string>
     <string name="clientcontrol_fail_read_only_client">This phone is set to v3 style only. Make this change on the master.</string>
+    <string name="list_code_not_sent_not_autoisf">Not sent. The master\'s last loop result in Nightscout is not AutoISF, so it would not read this code.</string>
     <string name="clientcontrol_read_only_example">Example only. This phone is set to v3 style only and did not give it. Do it on the master if you need it.</string>
     <string name="clientcontrol_fail_no_active_profile">The master has no active profile to apply it onto.</string>
     <string name="clientcontrol_fail_scene_not_found">The scene no longer exists.</string>
