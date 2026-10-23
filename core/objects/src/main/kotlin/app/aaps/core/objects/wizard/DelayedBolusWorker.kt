@@ -381,9 +381,14 @@ class DelayedBolusWorker(
         val heldBackBy = inputData.getString(KEY_HELD_BACK_BY) ?: ""
         val overMaxBolus = inputData.getDouble(KEY_OVER_MAX_BOLUS, 0.0)
         val heldBack = heldBackText(heldBackBy)
+        // 2026-10-23, per explicit request: an end or cancel note says what is not given and why it was held back. The
+        // carb split's part (given, dropped or still pending) is not counted, it is the split's own.
+        val splitNow = (preferences.get(LongKey.ApsAutoIsfSplitHandledMilliU) + preferences.get(LongKey.ApsAutoIsfPendingSplitRemainingMilliU)) / 1000.0
+        val notGiven = "${Round.roundTo((fullRequired - originalDose - deliveredSoFar - splitNow).coerceAtLeast(0.0), 0.01)}U held back by $heldBack is not given"
 
         if (BolusProgressData.followUpBolusCancelled) {
             aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: cancelled by user")
+            addCheckNote("Db${attempt * POLL_MINUTES} cancelled: the bolus was stopped; $notGiven")
             unblockSmb("cancelled")
             return Result.success()
         }
@@ -440,7 +445,7 @@ class DelayedBolusWorker(
             val movingNow = WizardActivitySteps.stillMovingNow(stepCountSource, now)
             if (movingNow == null) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus: Live steps unavailable; no automatic dose")
-                addCheckNote("$dbLabel Live steps unavailable")
+                addCheckNote("$dbLabel Live steps unavailable: nothing given; $notGiven")
                 unblockSmb("Live steps unavailable")
                 return Result.success()
             }
@@ -548,7 +553,7 @@ class DelayedBolusWorker(
                 enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar, heldBackBy, overMaxBolus)
             } else {
                 aapsLogger.info(LTag.CORE, "Delayed bolus: $reason at attempt $attempt — no delayed dose delivered")
-                addCheckNote("$dbLabel end")
+                addCheckNote("$dbLabel end: $reason after ${attempt * POLL_MINUTES} min; $notGiven")
                 unblockSmb("gave up after attempt $attempt")
             }
         }
