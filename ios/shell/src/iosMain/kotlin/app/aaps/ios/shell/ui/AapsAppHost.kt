@@ -153,6 +153,8 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
 
     // Silent audio so iOS does not suspend the app in the background. Same UIKit reason as above.
     graph.backgroundKeepAlive.start()
+    // Or a RileyLink's tick wakes it about once a minute; the silent sound takes over when the RileyLink is lost.
+    graph.rileyLinkHeartbeat.start()
     // Both need the app running, which in the background the keep-alive above provides.
     graph.batteryFallAlarm.start()
     graph.noBgReload.start()

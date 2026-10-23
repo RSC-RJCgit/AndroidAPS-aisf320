@@ -54,6 +54,14 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>bluetooth-central</string>
 	</array>
+	<!--
+	  RileyLink heartbeat (2026-10-23): `IosRileyLinkHeartbeat` connects to a RileyLink or OrangeLink, whose timer tick wakes
+	  the app about once a minute in the background. `bluetooth-central` above allows that wake-up. Setting: Alerts >
+	  RileyLink heartbeat. This text is what iOS shows when it asks for Bluetooth.
+	-->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>A RileyLink or OrangeLink wakes AAPS about once a minute in the background, so it can load from Nightscout and check the alarms.</string>
 </dict>
 </plist>

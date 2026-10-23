@@ -41,6 +41,7 @@ import app.aaps.database.di.IosAppDatabaseBuilder
 import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.implementation.maintenance.cloud.AuthBrowser
 import app.aaps.implementation.notifications.IosBackgroundKeepAlive
+import app.aaps.implementation.notifications.IosRileyLinkHeartbeat
 import app.aaps.implementation.notifications.IosBatteryFallAlarm
 import app.aaps.implementation.notifications.SnackbarNotificationFallback
 import app.aaps.implementation.plugin.PluginStore
@@ -154,6 +155,8 @@ interface IosAppGraph : MetroViewModelMultibindings {
     val snackbarNotificationFallback: SnackbarNotificationFallback
     // Silent audio that keeps the app running in the background (setting: Keep running in background).
     val backgroundKeepAlive: IosBackgroundKeepAlive
+    // A RileyLink's timer tick wakes the app instead of silent sound (setting: RileyLink heartbeat, 2026-10-23).
+    val rileyLinkHeartbeat: IosRileyLinkHeartbeat
     // Phone battery under 50% and falling fast (2026-10-18).
     val batteryFallAlarm: IosBatteryFallAlarm
     // Reload from Nightscout when no BG has come for 2 minutes (2026-10-18).

@@ -195,6 +195,7 @@ class BuiltInSearchables(
             BooleanKey.AlertIncreaseVolume,
             BooleanKey.AlertOverrideDoNotDisturb,
             BooleanKey.IosKeepRunningInBackground,
+            BooleanKey.IosRileyLinkHeartbeat,
             BooleanKey.IosReloadWhenNoBg
         ),
         icon = Icons.Default.Notifications

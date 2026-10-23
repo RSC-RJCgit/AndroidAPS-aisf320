@@ -91,6 +91,32 @@ class IosBackgroundKeepAlive(
     /** Set by the alarm player while an alarm sounds. */
     var alarmPlaying = false
 
+    // True while the RileyLink heartbeat (IosRileyLinkHeartbeat) is connected: its ticks wake the app, so no silent sound
+    private var heartbeatConnected = false
+
+    /**
+     * The RileyLink heartbeat connected or was lost (2026-10-23, per explicit request). Connected: the silent sound stops,
+     * the ticks move the "stopped" notice instead. Lost: the silent sound starts again if its own setting is on.
+     */
+    fun onHeartbeatConnected(connected: Boolean) {
+        if (heartbeatConnected == connected) return
+        heartbeatConnected = connected
+        if (connected) {
+            stopStoppedNotice()
+            player?.stop()
+            player = null
+            scheduleStoppedNotice()
+            aapsLogger.debug(LTag.CORE, "Keep alive: RileyLink heartbeat connected, silent audio not needed")
+        } else {
+            resume()
+        }
+    }
+
+    /** A RileyLink tick woke the app: the "stopped" notice moves into the future, as it does while the silent sound plays. */
+    fun onHeartbeatTick() {
+        if (heartbeatConnected) scheduleStoppedNotice()
+    }
+
     /** Called once at app start. Follows the setting from then on. */
     fun start() {
         if (started) return
@@ -156,7 +182,7 @@ class IosBackgroundKeepAlive(
 
     /** Sets the session to "playback, mix with others" and makes sure the silent loop plays. */
     fun resume() {
-        if (!preferences.get(BooleanKey.IosKeepRunningInBackground) || alarmPlaying) return
+        if (!preferences.get(BooleanKey.IosKeepRunningInBackground) || alarmPlaying || heartbeatConnected) return
         memScoped {
             val session = AVAudioSession.sharedInstance()
             val error = alloc<ObjCObjectVar<NSError?>>()

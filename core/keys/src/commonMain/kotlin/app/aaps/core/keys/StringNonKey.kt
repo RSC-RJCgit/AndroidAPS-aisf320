@@ -15,6 +15,8 @@ enum class StringNonKey(
     ImportRestoreBaseline("import_restore_baseline", "{}", exportable = false),
     /** The build (version and commit) the switch defaults were last reset for, see `BuildDefaultsReset`. */
     DefaultsResetBuild("defaults_reset_build", "", exportable = false),
+    /** iOS: the RileyLink used for the background heartbeat (its Bluetooth identifier). This phone's own device, so not exported. */
+    IosRileyLinkId("ios_rileylink_id", "", exportable = false),
 
     QuickWizard(key = "QuickWizard", defaultValue = "[]", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     WearCwfWatchfaceName(key = "wear_cwf_watchface_name", defaultValue = ""),
