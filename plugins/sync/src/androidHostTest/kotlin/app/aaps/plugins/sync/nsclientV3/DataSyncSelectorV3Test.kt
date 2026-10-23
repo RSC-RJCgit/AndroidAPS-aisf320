@@ -1201,4 +1201,23 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
         verify(preferences, Times(1)).put(NsclientLongKey.CarbsLastSyncedId, 7L)
         verify(preferences, Times(1)).put(NsclientLongKey.CarbsLastSyncedId, 8L)
     }
+
+    // 2026-10-23: a "v3 style only" client sends the delete of a BG reading or calibration, and nothing else of the master's
+    @Test
+    fun readOnlyClientSendsOnlyDeletes() {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        assertThat(sut.readOnlyClientDelete(isValid = false)).isTrue()
+        assertThat(sut.readOnlyClientDelete(isValid = true)).isFalse()
+    }
+
+    @Test
+    fun pairedClientAndMasterSendNoDeleteThisWay() {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(false)
+        assertThat(sut.readOnlyClientDelete(isValid = false)).isFalse()
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        assertThat(sut.readOnlyClientDelete(isValid = false)).isFalse()
+    }
 }

@@ -126,6 +126,14 @@ class DataSyncSelectorV3(
      */
     internal fun clientMustNotUpdate(nightscoutId: String?): Boolean = config.AAPSCLIENT && nightscoutId != null
 
+    /**
+     * True for the delete of a BG reading or a calibration on a read-only ("v3 style only") client, which sends it as a 3.4
+     * client does (2026-10-23, per explicit request; see `RoleBranch.CLIENT_REMOVABLE`). Any other change to those stays
+     * the master's. Temp targets, profile switches and notes are not blocked for a client at all.
+     */
+    internal fun readOnlyClientDelete(isValid: Boolean): Boolean =
+        config.AAPSCLIENT && !isValid && preferences.get(BooleanKey.NsClientReadOnlyClient)
+
     override suspend fun doUpload() {
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
         // A client uploads nothing. Everything it does goes to the master through the settings collection, and the
@@ -540,7 +548,7 @@ class DataSyncSelectorV3(
                         }
 
                         // a client does not change master data
-                        clientMustNotUpdate(gv.first.ids.nightscoutId) -> {
+                        clientMustNotUpdate(gv.first.ids.nightscoutId) && !readOnlyClientDelete(gv.first.isValid) -> {
                             aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring GlucoseValue. Client does not update master data: ${gv.second.id}")
                             ignored++
                         }
@@ -605,7 +613,7 @@ class DataSyncSelectorV3(
                     }
 
                     // a client does not change master data
-                    clientMustNotUpdate(cal.first.ids.nightscoutId) -> {
+                    clientMustNotUpdate(cal.first.ids.nightscoutId) && !readOnlyClientDelete(cal.first.isValid) -> {
                         aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring CalibrationEntry. Client does not update master data: ${cal.second.id}")
                         ignored++
                     }

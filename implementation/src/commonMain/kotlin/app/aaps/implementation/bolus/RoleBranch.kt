@@ -158,8 +158,28 @@ class RoleBranch(
             command.actions.isNotEmpty() &&
             command.actions.all {
                 it is BatchAction.ProfileSwitch || it is BatchAction.TempTarget ||
-                    it is BatchAction.TherapyEvent || it is BatchAction.TherapyEventEdit
+                    it is BatchAction.TherapyEvent || it is BatchAction.TherapyEventEdit ||
+                    it is BatchAction.RemoveStartEvents ||
+                    (it is BatchAction.Remove && it.kind in CLIENT_REMOVABLE)
             }
+
+    companion object {
+
+        /**
+         * What a read-only ("v3 style only") client deletes itself, like a 3.4 client (2026-10-23, per explicit request): its
+         * own kinds of record (notes, temp targets, profile switches) and BG and calibrations. The delete is saved here and
+         * goes to Nightscout. Insulin, carbs, temp basals, extended boluses and running modes stay the master's: a delete
+         * the master does not take would leave Nightscout without a dose the loop still counts, so other followers would
+         * show too little IOB or COB.
+         */
+        val CLIENT_REMOVABLE = setOf(
+            BatchAction.Remove.Kind.THERAPY_EVENT,
+            BatchAction.Remove.Kind.TEMPORARY_TARGET,
+            BatchAction.Remove.Kind.PROFILE_SWITCH,
+            BatchAction.Remove.Kind.GLUCOSE_VALUE,
+            BatchAction.Remove.Kind.CALIBRATION
+        )
+    }
 
     /** The prepared id a commit refers to. Null for a command that carries none. */
     private fun commandId(command: ClientControlActionDispatcher.Command): Long? = when (command) {
