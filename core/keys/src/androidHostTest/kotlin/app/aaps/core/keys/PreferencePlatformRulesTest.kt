@@ -55,6 +55,8 @@ class PreferencePlatformRulesTest {
      * left out genuinely cannot honour it rather than merely not having got round to it.
      * - the notification policy switch: iOS gives an app no say in whether an OS notification appears
      * - allow roaming: iOS publishes no roaming state and desktop reports every link as wifi
+     * - keep running in background, reload when no BG, the RileyLink heartbeat and its status: only iOS suspends an app
+     *   in the background, so only iOS needs them (2026-10-24: listed here, they had been added without it)
      */
     @Test
     fun `restrictions are the exception`() {
@@ -63,7 +65,11 @@ class PreferencePlatformRulesTest {
         assertThat(restricted).containsExactly(
             "raise_urgent_alarms_as_android_notification", AppPlatform.ANDROID_ONLY,
             "keep_screen_on", setOf(AppPlatform.Android, AppPlatform.Ios),
-            "ns_allow_roaming", AppPlatform.ANDROID_ONLY
+            "ns_allow_roaming", AppPlatform.ANDROID_ONLY,
+            "ios_keep_running_in_background", setOf(AppPlatform.Ios),
+            "ios_reload_when_no_bg", setOf(AppPlatform.Ios),
+            "ios_rileylink_heartbeat", setOf(AppPlatform.Ios),
+            "ios_rileylink_status", setOf(AppPlatform.Ios)
         )
     }
 }

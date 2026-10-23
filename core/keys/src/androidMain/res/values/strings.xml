@@ -39,6 +39,7 @@
     <string name="pref_summary_ios_keep_running_in_background">Plays silent sound so iOS does not stop the app in the background. Uses more battery. When off, iOS stops the app soon after you leave it: no updates and no alarms until you open it again.</string>
     <string name="pref_title_ios_rileylink_heartbeat">RileyLink heartbeat</string>
     <string name="pref_summary_ios_rileylink_heartbeat">Instead of silent sound, a RileyLink or OrangeLink wakes the app about once a minute, so it loads from Nightscout and checks the alarms. Keep the device near the phone and charged. The nearest one is used; turn this off and on to pick another. When it is lost, silent sound takes over if Keep running in background is on.</string>
+    <string name="pref_title_ios_rileylink_status">RileyLink heartbeat status</string>
     <string name="pref_title_ios_reload_when_no_bg">Reload from Nightscout when no BG</string>
     <string name="pref_summary_ios_reload_when_no_bg">When no new BG has come for 2 minutes, load from Nightscout again. If that brings no new BG, the next load waits longer each time, up to 15 minutes.</string>
     <string name="pref_summary_alert_override_dnd">When enabled, AAPS alarms sound even if the phone is silenced or in Do Not Disturb. When disabled, alarms stay quiet in those modes.</string>

@@ -112,6 +112,19 @@
     <string name="google_drive_download_error">Error downloading file: %1$s</string>
     <string name="google_drive_authorized">Google Drive Authorized</string>
     <string name="google_drive_reauth_required">Please clear settings and re-authorize Google Drive</string>
+    <string name="ios_rileylink_no_permission">RileyLink heartbeat needs Bluetooth. Allow it in iPhone Settings, Privacy and Security, Bluetooth, for this app.</string>
+    <string name="ios_rileylink_bluetooth_off">RileyLink heartbeat: Bluetooth is off. Turn it on to use the RileyLink.</string>
+    <string name="ios_rileylink_no_tick" comment="iOS background heartbeat. %1$s=the Bluetooth device name. Example: Connected to OrangePro, but it has no RileyLink timer tick, so it cannot wake the app.">Connected to %1$s, but it has no RileyLink timer tick, so it cannot wake the app.</string>
+    <string name="ios_rileylink_status_off">Off</string>
+    <string name="ios_rileylink_status_scanning">Looking for a RileyLink</string>
+    <string name="ios_rileylink_status_not_found" comment="%1$s=time of the next scan. Example: Not found. Next look at 14:35">Not found. Next look at %1$s</string>
+    <string name="ios_rileylink_status_connecting" comment="%1$s=device name. Example: Connecting to OrangePro">Connecting to %1$s</string>
+    <string name="ios_rileylink_status_waiting" comment="%1$s=device name. Example: Connected to OrangePro, waiting for the first tick">Connected to %1$s, waiting for the first tick</string>
+    <string name="ios_rileylink_status_tick" comment="%1$s=device name, %2$s=time of the last tick. Example: Connected to OrangePro, last tick 14:32">Connected to %1$s, last tick %2$s</string>
+    <string name="ios_rileylink_status_lost" comment="%1$s=device name, %2$s=time it was lost. Example: Lost OrangePro at 14:40, waiting for it to come back">Lost %1$s at %2$s, waiting for it to come back</string>
+    <string name="ios_rileylink_status_no_permission">Bluetooth is not allowed for this app</string>
+    <string name="ios_rileylink_status_bluetooth_off">Bluetooth is off</string>
+    <string name="ios_rileylink_status_no_tick" comment="%1$s=device name. Example: OrangePro has no timer tick">%1$s has no timer tick</string>
     <string name="ios_rileylink_not_found">No RileyLink found nearby. Trying again in 2 minutes. Until then silent sound is used if Keep running in background is on.</string>
     <string name="ios_rileylink_lost" comment="iOS background heartbeat. %1$s=the Bluetooth device name. Example: RileyLink heartbeat lost: OrangeLink. Silent sound takes over if Keep running in background is on.">RileyLink heartbeat lost: %1$s. Silent sound takes over if Keep running in background is on.</string>
     <string name="ios_background_stopped">AAPS has stopped running in the background. Open it to start it again.</string>

@@ -641,6 +641,53 @@ internal fun basalBetween(points: List<GraphDataPoint>, from: Long, to: Long): D
     return total
 }
 
+/** The times the basal [points] (step points, U/h) go from above zero to zero: a zero temp basal starts. */
+internal fun basalZeroDrops(points: List<GraphDataPoint>): List<Long> =
+    points.zipWithNext().filter { (a, b) -> a.value > 0.0 && b.value <= 0.0 }.map { it.second.timestamp }.distinct()
+
+/** A drop to zero is labelled only from this long after the stack's last SMB... */
+internal const val ZERO_DROP_MIN_MS = 10 * 60_000L
+
+/** ...and only when at least this much basal ran since then (units). */
+internal const val ZERO_DROP_MIN_U = 0.05
+
+/**
+ * The basal ("b") labels of the SMB totals graph (2026-10-24, per explicit request).
+ *
+ * [perTotal]: for each total, the basal from the latest of the preceding stack's last SMB and that stack's drop label, to
+ * this total's time (or now). The first total has no preceding stack in the data, so it counts from the last zero temp
+ * basal start before its stack, or from the start of the basal data.
+ * [drops]: after a stack, the first drop to zero that comes at least [ZERO_DROP_MIN_MS] after its last SMB, with at least
+ * [ZERO_DROP_MIN_U] of basal since then, and before the next stack starts: (time, basal since the last SMB).
+ */
+internal data class TotalsBasal(val perTotal: List<Double?>, val drops: List<Pair<Long, Double>>)
+
+internal fun totalsBasal(
+    basal: List<GraphDataPoint>,
+    totals: List<Pair<Long, Double>>,
+    lastDose: List<Long?>,
+    now: Long,
+    windowMs: Long = 20 * 60_000L
+): TotalsBasal {
+    if (basal.size < 2 || totals.isEmpty()) return TotalsBasal(totals.map { null }, emptyList())
+    val zeroStarts = basalZeroDrops(basal)
+    val dropAfter = totals.indices.map { i ->
+        val last = lastDose.getOrNull(i) ?: return@map null
+        val until = minOf(totals.getOrNull(i + 1)?.let { it.first - windowMs } ?: now, now)
+        zeroStarts.asSequence()
+            .filter { it > last && it <= until }
+            .map { it to basalBetween(basal, last, it) }
+            .firstOrNull { (time, units) -> time - last >= ZERO_DROP_MIN_MS && units >= ZERO_DROP_MIN_U }
+    }
+    val perTotal = totals.mapIndexed { i, total ->
+        val previousLast = if (i > 0) lastDose.getOrNull(i - 1) else null
+        val from = if (previousLast != null) maxOf(previousLast, dropAfter[i - 1]?.first ?: previousLast)
+        else zeroStarts.lastOrNull { it < total.first - windowMs } ?: basal.first().timestamp
+        basalBetween(basal, from, minOf(total.first, now))
+    }
+    return TotalsBasal(perTotal, dropAfter.filterNotNull())
+}
+
 // Within each 10-minute run, the newest dose is index 0 (closest to the anchor). Older doses stack further up.
 internal fun smbStackIndex(timestamps: List<Long>, windowMs: Long = 35 * 60_000L): List<Int> {
     if (timestamps.isEmpty()) return emptyList()

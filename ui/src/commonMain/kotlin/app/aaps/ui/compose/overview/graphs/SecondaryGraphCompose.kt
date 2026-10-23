@@ -782,13 +782,12 @@ fun SecondaryGraphCompose(
         val stack = smbStackIndex(totals.map { it.first }, windowMs = 30 * 60_000L)
         // 2026-10-08, per explicit request: the time of the last dose inside each total's 20-minute window.
         val lastDoseInWindow = totals.map { total -> doses.filter { it.first in (total.first - 20 * 60_000L)..total.first }.maxOfOrNull { it.first } }
+        // 2026-10-07, per explicit request: a basal line. 2026-10-08: from the LAST dose of the PRECEDING stack to this total's own
+        // time (up to now). 2026-10-24, per explicit request: also a label where basal drops to zero after a stack, the next
+        // stack counts from that drop, and the first total counts from the last zero temp basal start (see totalsBasal).
+        val basal = totalsBasal(basalForTotals, totals, lastDoseInWindow, nowTimestamp)
         val items = totals.mapIndexed { index, total ->
-            // 2026-10-07, per explicit request: a basal line. 2026-10-08: it counts the basal delivered from the LAST dose of the
-            // PRECEDING stack to the end of this stack's window, this total's own time (up to now when that is in the future).
-            // The first total in view has no preceding stack, so no basal line.
-            val previousLastDose = if (index == 0) null else lastDoseInWindow[index - 1]
-            val basalLine = if (previousLastDose == null || basalForTotals.isEmpty()) null
-            else "b" + smbDoseFormatter.to2Decimal(basalBetween(basalForTotals, previousLastDose, minOf(total.first, nowTimestamp)))
+            val basalLine = basal.perTotal[index]?.let { "b" + smbDoseFormatter.to2Decimal(it) }
             SmbStackItem(
                 x = timestampToX(total.first, minTimestamp),
                 label = formatBolusLabel(total.second, smbDoseFormatter),
@@ -797,7 +796,11 @@ fun SecondaryGraphCompose(
                 subLabel = basalLine,
             )
         }
-        SmbStackLabels(items, smbText, pinToBottom = true, stackStepFraction = 0.65f)
+        // The drop-to-zero labels: the basal line only, in its light blue
+        val dropItems = basal.drops.map { (time, units) ->
+            SmbStackItem(x = timestampToX(time, minTimestamp), label = "b" + smbDoseFormatter.to2Decimal(units), stackIndex = 0, color = Color(0xFF64C8FF))
+        }
+        SmbStackLabels(items + dropItems, smbText, pinToBottom = true, stackStepFraction = 0.65f)
     }
     val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor) {
         if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()

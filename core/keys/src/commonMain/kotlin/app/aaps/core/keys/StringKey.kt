@@ -1,5 +1,6 @@
 package app.aaps.core.keys
 
+import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.BooleanPreferenceKey
 import app.aaps.core.keys.interfaces.ElementVisibility
 import app.aaps.core.keys.interfaces.PreferenceEnabledCondition
@@ -31,8 +32,21 @@ enum class StringKey(
     override val validator: StringValidator = StringValidator.NONE,
     override val visibility: ElementVisibility = ElementVisibility.ALWAYS,
     override val enabledCondition: PreferenceEnabledCondition = PreferenceEnabledCondition.ALWAYS,
-    override val sync: SyncSpec? = null
+    override val sync: SyncSpec? = null,
+    override val platforms: Set<AppPlatform> = AppPlatform.ALL
 ) : StringPreferenceKey {
+
+    /**
+     * iOS only (2026-10-24, per explicit request): what the RileyLink heartbeat is doing, written by `IosRileyLinkHeartbeat`
+     * and shown read-only under its switch, for example "Connected to OrangePro, last tick 14:32".
+     */
+    IosRileyLinkStatus(
+        key = "ios_rileylink_status",
+        defaultValue = "",
+        title = KeysStrings.pref_title_ios_rileylink_status,
+        enabledCondition = PreferenceEnabledCondition { false },
+        platforms = setOf(AppPlatform.Ios)
+    ),
 
     GeneralUnits(
         key = "units",

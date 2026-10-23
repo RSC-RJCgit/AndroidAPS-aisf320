@@ -4,7 +4,9 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.implementation.ImplementationStrings
@@ -19,12 +21,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import platform.CoreBluetooth.CBAdvertisementDataLocalNameKey
+import platform.CoreBluetooth.CBAdvertisementDataServiceUUIDsKey
 import platform.CoreBluetooth.CBCentralManager
 import platform.CoreBluetooth.CBCentralManagerDelegateProtocol
 import platform.CoreBluetooth.CBCentralManagerOptionRestoreIdentifierKey
 import platform.CoreBluetooth.CBCentralManagerRestoredStatePeripheralsKey
 import platform.CoreBluetooth.CBCharacteristic
+import platform.CoreBluetooth.CBManagerStatePoweredOff
 import platform.CoreBluetooth.CBManagerStatePoweredOn
+import platform.CoreBluetooth.CBManagerStateUnauthorized
 import platform.CoreBluetooth.CBPeripheral
 import platform.CoreBluetooth.CBPeripheralDelegateProtocol
 import platform.CoreBluetooth.CBService
@@ -65,7 +71,8 @@ class IosRileyLinkHeartbeat(
     private val rh: TextResolver,
     private val keepAlive: IosBackgroundKeepAlive,
     private val nsClient: NsClient,
-    private val periodicMaintenance: PeriodicMaintenance
+    private val periodicMaintenance: PeriodicMaintenance,
+    private val dateUtil: DateUtil
 ) {
 
     private val scope = CoroutineScope(Dispatchers.Main)
@@ -77,6 +84,9 @@ class IosRileyLinkHeartbeat(
 
     // Found while scanning: identifier -> (device, signal strength)
     private val found = mutableMapOf<String, Pair<CBPeripheral, Int>>()
+
+    // Devices already written to the log in this scan
+    private val logged = mutableSetOf<String>()
 
     // Strong reference: the central manager and the device hold their delegate weakly
     private val delegate = RileyLinkDelegate(this)
@@ -111,7 +121,13 @@ class IosRileyLinkHeartbeat(
         tickSeen = false
         preferences.put(StringNonKey.IosRileyLinkId, "")
         keepAlive.onHeartbeatConnected(false)
+        setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_off))
     }
+
+    // The read-only line under the switch (2026-10-24, per explicit request)
+    private fun setStatus(text: String) = preferences.put(StringKey.IosRileyLinkStatus, text)
+
+    private fun timeNow(): String = dateUtil.timeString(dateUtil.now())
 
     private fun connectOrScan(manager: CBCentralManager) {
         if (device != null) return
@@ -129,8 +145,12 @@ class IosRileyLinkHeartbeat(
     private fun scan(manager: CBCentralManager) {
         if (scanJob?.isActive == true) return
         found.clear()
-        manager.scanForPeripheralsWithServices(listOf(CBUUID.UUIDWithString(SERVICE_UUID)), null)
+        logged.clear()
+        // 2026-10-24, per explicit request: no service filter. An OrangeLink Pro ("OrangePro") showed in the Bluetooth list long
+        // before LoopFollow saw it as a RileyLink, so it is also taken by name. handleDiscovered picks the devices.
+        manager.scanForPeripheralsWithServices(null, null)
         aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: scanning")
+        setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_scanning))
         scanJob = scope.launch {
             delay(SCAN_MS)
             manager.stopScan()
@@ -138,6 +158,7 @@ class IosRileyLinkHeartbeat(
             if (best == null) {
                 aapsLogger.info(LTag.CORE, "RileyLink heartbeat: no device found, trying again in ${RESCAN_MS / 1000} s")
                 notify(rh.gs(ImplementationStrings.ios_rileylink_not_found))
+                setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_not_found, dateUtil.timeString(dateUtil.now() + RESCAN_MS)))
                 delay(RESCAN_MS)
                 if (preferences.get(BooleanKey.IosRileyLinkHeartbeat) && device == null) scan(manager)
                 return@launch
@@ -151,6 +172,7 @@ class IosRileyLinkHeartbeat(
         device = peripheral
         peripheral.delegate = delegate
         aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: connecting to ${peripheral.name}")
+        setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_connecting, peripheral.name ?: "RileyLink"))
         manager.connectPeripheral(peripheral, null)
     }
 
@@ -160,6 +182,7 @@ class IosRileyLinkHeartbeat(
             aapsLogger.info(LTag.CORE, "RileyLink heartbeat: first tick from ${device?.name}")
         }
         keepAlive.onHeartbeatTick()
+        setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_tick, device?.name ?: "RileyLink", timeNow()))
         nsClient.resend("RileyLink tick")
         scope.launch {
             try {
@@ -179,7 +202,21 @@ class IosRileyLinkHeartbeat(
     }
 
     internal fun handleStateUpdate(central: CBCentralManager) {
-        if (central.state == CBManagerStatePoweredOn && preferences.get(BooleanKey.IosRileyLinkHeartbeat)) connectOrScan(central)
+        aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: Bluetooth state ${central.state}")
+        if (!preferences.get(BooleanKey.IosRileyLinkHeartbeat)) return
+        // 2026-10-24, per explicit request: no permission or Bluetooth off used to wait without a word
+        when (central.state) {
+            CBManagerStatePoweredOn    -> connectOrScan(central)
+            CBManagerStateUnauthorized -> {
+                notify(rh.gs(ImplementationStrings.ios_rileylink_no_permission))
+                setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_no_permission))
+            }
+
+            CBManagerStatePoweredOff   -> {
+                notify(rh.gs(ImplementationStrings.ios_rileylink_bluetooth_off))
+                setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_bluetooth_off))
+            }
+        }
     }
 
     // iOS started the app again for a tick: take the device back
@@ -190,13 +227,25 @@ class IosRileyLinkHeartbeat(
         aapsLogger.info(LTag.CORE, "RileyLink heartbeat: restored ${restored.name}")
     }
 
-    internal fun handleDiscovered(peripheral: CBPeripheral, rssi: Int) {
-        found[peripheral.identifier.UUIDString] = peripheral to rssi
+    /**
+     * A device seen while scanning. Every device is logged once with its name and announced services, so the log shows
+     * what a device that is not found sends. Taken: one that announces the RileyLink or the OrangeLink service, or whose
+     * name says OrangeLink, RileyLink or EmaLink (an OrangeLink Pro calls itself "OrangePro").
+     */
+    internal fun handleDiscovered(peripheral: CBPeripheral, advertisement: Map<Any?, *>, rssi: Int) {
+        val id = peripheral.identifier.UUIDString
+        val name = (advertisement[CBAdvertisementDataLocalNameKey] as? String) ?: peripheral.name ?: ""
+        val services = (advertisement[CBAdvertisementDataServiceUUIDsKey] as? List<*>).orEmpty().mapNotNull { (it as? CBUUID)?.UUIDString?.uppercase() }
+        if (logged.add(id)) aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: seen \"$name\" rssi $rssi services $services")
+        val byService = SERVICE_UUID in services || ORANGE_SERVICE_UUID in services
+        val byName = NAME_HINTS.any { name.contains(it, ignoreCase = true) }
+        if (byService || byName) found[id] = peripheral to rssi
     }
 
     internal fun handleConnected(peripheral: CBPeripheral) {
         aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: connected to ${peripheral.name}")
-        peripheral.discoverServices(listOf(CBUUID.UUIDWithString(SERVICE_UUID)))
+        // All services: the RileyLink service may only show after connecting, and the log lists what is there
+        peripheral.discoverServices(null)
     }
 
     internal fun handleDisconnected(central: CBCentralManager, peripheral: CBPeripheral, error: NSError?) {
@@ -205,26 +254,36 @@ class IosRileyLinkHeartbeat(
         tickSeen = false
         if (!preferences.get(BooleanKey.IosRileyLinkHeartbeat)) return
         notify(rh.gs(ImplementationStrings.ios_rileylink_lost, peripheral.name ?: "RileyLink"))
+        setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_lost, peripheral.name ?: "RileyLink", timeNow()))
         // Waits for the device without a time limit: iOS connects as soon as it is in range again
         central.connectPeripheral(peripheral, null)
     }
 
     internal fun handleServices(peripheral: CBPeripheral) {
-        val service = peripheral.services?.firstOrNull { (it as? CBService)?.UUID == CBUUID.UUIDWithString(SERVICE_UUID) } as? CBService
+        val all = peripheral.services.orEmpty().mapNotNull { it as? CBService }
+        aapsLogger.info(LTag.CORE, "RileyLink heartbeat: ${peripheral.name} services ${all.map { it.UUID.UUIDString }}")
+        val service = all.firstOrNull { it.UUID == CBUUID.UUIDWithString(SERVICE_UUID) }
         if (service == null) {
             aapsLogger.error(LTag.CORE, "RileyLink heartbeat: ${peripheral.name} has no RileyLink service")
+            notify(rh.gs(ImplementationStrings.ios_rileylink_no_tick, peripheral.name ?: "RileyLink"))
+            setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_no_tick, peripheral.name ?: "RileyLink"))
             return
         }
-        peripheral.discoverCharacteristics(listOf(CBUUID.UUIDWithString(TIMER_TICK_UUID)), service)
+        // All of its characteristics, so the log lists them when the timer tick is missing
+        peripheral.discoverCharacteristics(null, service)
     }
 
     internal fun handleCharacteristics(peripheral: CBPeripheral, service: CBService) {
         val tick = service.characteristics?.firstOrNull { (it as? CBCharacteristic)?.UUID == CBUUID.UUIDWithString(TIMER_TICK_UUID) } as? CBCharacteristic
         if (tick == null) {
-            aapsLogger.error(LTag.CORE, "RileyLink heartbeat: ${peripheral.name} has no timer tick (firmware 2 or newer is needed)")
+            val list = service.characteristics.orEmpty().mapNotNull { (it as? CBCharacteristic)?.UUID?.UUIDString }
+            aapsLogger.error(LTag.CORE, "RileyLink heartbeat: ${peripheral.name} has no timer tick (firmware 2 or newer is needed), it has $list")
+            notify(rh.gs(ImplementationStrings.ios_rileylink_no_tick, peripheral.name ?: "RileyLink"))
+            setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_no_tick, peripheral.name ?: "RileyLink"))
             return
         }
         peripheral.setNotifyValue(true, tick)
+        setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_waiting, peripheral.name ?: "RileyLink"))
         keepAlive.onHeartbeatConnected(true)
         aapsLogger.info(LTag.CORE, "RileyLink heartbeat: listening to ${peripheral.name}")
     }
@@ -238,9 +297,13 @@ class IosRileyLinkHeartbeat(
         // From LoopKit RileyLinkBLEKit (PeripheralManager+RileyLink.swift): the main service and its timer tick characteristic
         const val SERVICE_UUID = "0235733B-99C5-4197-B856-69219C2A3845"
         const val TIMER_TICK_UUID = "6E6C7910-B89E-43A5-78AF-50C5E2B86F7E"
+        // The OrangeLink's own service (LoopKit RileyLinkServiceUUID.orange)
+        const val ORANGE_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+        private val NAME_HINTS = listOf("orang", "riley", "emalink") // "orang" also matches a shortened "OrangPro"
         private const val RESTORE_ID = "aaps.rileylink.heartbeat"
         private const val NOTICE_ID = "aaps.rileylink.heartbeat"
-        private const val SCAN_MS = 15_000L
+        // 60 s (2026-10-24, per explicit request; was 15 s): LoopFollow took a while to see an OrangeLink Pro
+        private const val SCAN_MS = 60_000L
         private const val RESCAN_MS = 120_000L
     }
 }
@@ -257,7 +320,7 @@ private class RileyLinkDelegate(private val owner: IosRileyLinkHeartbeat) : NSOb
     override fun centralManager(central: CBCentralManager, willRestoreState: Map<Any?, *>) = owner.handleRestore(willRestoreState)
 
     override fun centralManager(central: CBCentralManager, didDiscoverPeripheral: CBPeripheral, advertisementData: Map<Any?, *>, RSSI: NSNumber) =
-        owner.handleDiscovered(didDiscoverPeripheral, RSSI.intValue)
+        owner.handleDiscovered(didDiscoverPeripheral, advertisementData, RSSI.intValue)
 
     override fun centralManager(central: CBCentralManager, didConnectPeripheral: CBPeripheral) = owner.handleConnected(didConnectPeripheral)
 
