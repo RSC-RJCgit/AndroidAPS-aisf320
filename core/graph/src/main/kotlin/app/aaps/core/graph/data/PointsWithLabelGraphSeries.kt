@@ -807,9 +807,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
                 val bolusSize = value.size * scaledPxSize * 1.2f
-                if ((value as? BolusDataPoint)?.data?.amount == 0.0) {
+                if ((value as? BolusDataPoint)?.data?.amount == 0.0 || automaticCleanGraph) {
                     // A 0.00 bolus (real, or a "Wizard: 0U calculated" point): the slim SMB arrow under the BG
                     // dot, ZERO_BOLUS_ARROW_SCALE times larger, not the big triangle a real bolus gets.
+                    // 2026-10-23, per explicit request: in the automatic clean graph every bolus is this slim arrow.
                     val k = ZERO_BOLUS_ARROW_SCALE
                     val triTop = endY + bolusSize
                     val triBase = triTop + bolusSize * 1.5f * k
@@ -837,7 +838,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, bTriBase, endX, bTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
                 }
-                if (value.label.isNotEmpty()) {
+                // No bolus numbers in the automatic clean graph (2026-10-23, per explicit request)
+                if (value.label.isNotEmpty() && !automaticCleanGraph) {
                     val labelRatY = (value.labelY - minY) / diffY
                     val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
                     val savedColor = mPaint.color

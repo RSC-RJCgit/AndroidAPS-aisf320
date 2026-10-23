@@ -3320,7 +3320,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addEps(context, 0.95)
         if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
             graphData.addTherapyEvents()
-        if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
+        // 2026-10-23, per explicit request: the automatic clean graph (more than CLEAN_GRAPH_ABOVE_HOURS shown) also leaves out
+        // the insulin activity and carbs model curves and Raw and smoothed raw BG
+        val cleanGraph = PointsWithLabelGraphSeries.automaticCleanGraph
+        if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal] && !cleanGraph)
             graphData.addActivity(0.8)
         // Line1 (empirical Carbs Absorption): checkbox is a master gate (off => always off, regardless
         // of push state). carbLine1QuickShow is set directly by the relevant long-press ACTIONS (basal
@@ -3331,7 +3334,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // Line2 (carb model curve) is intentionally independent of line1's own checkbox/toggle state --
         // controlled purely by its own settings switch, never affected by the CARB_ABS checkbox above or
         // any basal-icon/IOB-icon long-press effect on line1.
-        if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
+        if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve) && !cleanGraph)
             graphData.addCarbModelCurve(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal))
             graphData.addUamCarbImpact(0.8)
@@ -3339,9 +3342,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addCombinedCarbs(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal) && !cleanGraph)
             graphData.addRawBg(false)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) && !cleanGraph)
             graphData.addRawBgSmoothed(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
