@@ -84,6 +84,8 @@ Changes in patch .26 (2026-10-23):
   When the split gave its part: "Less 0.20U over MaxBolus: the carb split covered it, so it is left out here".
 - The meal note says what is held back and why: "Delayed pending (held back by walking soon: needs 3.42U
   without it, 2.50U given now, 0.20U of it over MaxBolus is left to the carb split; checks every 5min up to 80min)".
+- The delayed bolus end and stop notes say what is not given and why it was held back, for example
+  "Db80 end: glucose criteria not met (BGL=5.4) after 80 min; 0.72U held back by walking soon is not given".
 - Retains all patch .25 changes below.
 
 Changes in patch .25 (2026-10-22):
@@ -420,7 +422,7 @@ def revert_steps_source(staging: Path) -> None:
         """            val movingNow = WizardActivitySteps.stillMovingNow(stepCountSource, now)
             if (movingNow == null) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus: Live steps unavailable; no automatic dose")
-                addCheckNote("$dbLabel Live steps unavailable")
+                addCheckNote("$dbLabel Live steps unavailable: nothing given; $notGiven")
                 unblockSmb("Live steps unavailable")
                 return Result.success()
             }

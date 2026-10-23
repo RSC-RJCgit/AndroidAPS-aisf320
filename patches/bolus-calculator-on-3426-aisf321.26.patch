@@ -21,6 +21,8 @@ Changes in patch .26 (2026-10-23):
   When the split gave its part: "Less 0.20U over MaxBolus: the carb split covered it, so it is left out here".
 - The meal note says what is held back and why: "Delayed pending (held back by walking soon: needs 3.42U
   without it, 2.50U given now, 0.20U of it over MaxBolus is left to the carb split; checks every 5min up to 80min)".
+- The delayed bolus end and stop notes say what is not given and why it was held back, for example
+  "Db80 end: glucose criteria not met (BGL=5.4) after 80 min; 0.72U held back by walking soon is not given".
 - Retains all patch .25 changes below.
 
 Changes in patch .25 (2026-10-22):
@@ -2240,7 +2242,7 @@ new file mode 100644
 index 0000000000..1111111111
 --- /dev/null
 +++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt
-@@ -0,0 +1,544 @@
+@@ -0,0 +1,549 @@
 +package app.aaps.core.objects.wizard
 +
 +import android.content.Context
@@ -2621,9 +2623,14 @@ index 0000000000..1111111111
 +        val heldBackBy = inputData.getString(KEY_HELD_BACK_BY) ?: ""
 +        val overMaxBolus = inputData.getDouble(KEY_OVER_MAX_BOLUS, 0.0)
 +        val heldBack = heldBackText(heldBackBy)
++        // 2026-10-23, per explicit request: an end or cancel note says what is not given and why it was held back. The
++        // carb split's part (given, dropped or still pending) is not counted, it is the split's own.
++        val splitNow = (preferences.get(LongKey.ApsAutoIsfSplitHandledMilliU) + preferences.get(LongKey.ApsAutoIsfPendingSplitRemainingMilliU)) / 1000.0
++        val notGiven = "${Round.roundTo((fullRequired - originalDose - deliveredSoFar - splitNow).coerceAtLeast(0.0), 0.01)}U held back by $heldBack is not given"
 +
 +        if (BolusProgressData.followUpBolusCancelled) {
 +            aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: cancelled by user")
++            addCheckNote("Db${attempt * POLL_MINUTES} cancelled: the bolus was stopped; $notGiven")
 +            unblockSmb("cancelled")
 +            return Result.success()
 +        }
@@ -2778,7 +2785,7 @@ index 0000000000..1111111111
 +                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar, heldBackBy, overMaxBolus)
 +            } else {
 +                aapsLogger.info(LTag.CORE, "Delayed bolus: $reason at attempt $attempt — no delayed dose delivered")
-+                addCheckNote("$dbLabel end")
++                addCheckNote("$dbLabel end: $reason after ${attempt * POLL_MINUTES} min; $notGiven")
 +                unblockSmb("gave up after attempt $attempt")
 +            }
 +        }
