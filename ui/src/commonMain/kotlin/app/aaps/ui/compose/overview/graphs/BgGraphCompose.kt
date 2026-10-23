@@ -291,8 +291,10 @@ fun BgGraphCompose(
     ) else savedGraphDisplay
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
-    val showRaw = SeriesType.RAW_BG in bgOverlays
-    val showUkf = SeriesType.UKF_BG in bgOverlays
+    // 2026-10-23, per explicit request: the automatic clean graph (zoomed out past its width) also hides Raw and UKF raw BG,
+    // the insulin activity and carbs model curves and the bolus numbers, and draws boluses as slim arrows (bolusArrowMarks)
+    val showRaw = SeriesType.RAW_BG in bgOverlays && !automaticCleanGraph
+    val showUkf = SeriesType.UKF_BG in bgOverlays && !automaticCleanGraph
     val rawPredictions by viewModel.predictionsFlow.collectAsStateWithLifecycle()
     val predictions = if (showPredictions) rawPredictions else emptyList()
     val rawBasalData by viewModel.basalGraphFlow.collectAsStateWithLifecycle()
@@ -303,7 +305,8 @@ fun BgGraphCompose(
     @Suppress("DEPRECATION")
     val basalData = if (showBasalOnBgGraph) rawBasalData else BasalGraphData(emptyList(), emptyList(), 0.0)
     val epsPoints by viewModel.epsGraphFlow.collectAsStateWithLifecycle()
-    val showActivity = SeriesType.ACTIVITY in bgOverlays
+    val showActivity = SeriesType.ACTIVITY in bgOverlays && !automaticCleanGraph
+    val showCarbModel = !automaticCleanGraph
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
@@ -549,7 +552,7 @@ fun BgGraphCompose(
                 }
                 val maxCarb = currentActivityData.maxCarbModel
                 val carbs = currentActivityData.carbModel
-                if (maxCarb <= 0.0 || carbs.size < 2) {
+                if (!showCarbModel || maxCarb <= 0.0 || carbs.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                 } else {
                     val carbScale = activityTop / maxCarb
@@ -632,7 +635,7 @@ fun BgGraphCompose(
     } else emptyList()
     var epsLabelAnchors by remember { mutableStateOf(emptyList<SmbStackItem>()) }
 
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData, topBandLines, topBandLines5) {
+    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData, topBandLines, topBandLines5) {
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
         seriesRegistry[SERIES_RAW] = rawPoints
@@ -698,7 +701,7 @@ fun BgGraphCompose(
             bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
         val markDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
         // A zero bolus gets a small arrow (zeroBolusArrows), not the big mark
-        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 }.mapNotNull { bolus ->
+        val bolusPoints = if (automaticCleanGraph) emptyList() else treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 }.mapNotNull { bolus ->
             nearest(bolus.timestamp)?.let { bolus.timestamp to it }
         }
         val carbPoints = treatments.carbs.mapNotNull { carb ->
@@ -1127,13 +1130,15 @@ fun BgGraphCompose(
         SmbStackLabels(uamBoostLabels, uamBoostText, pinToBottom = false)
     }
     val bolusText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
-    val bolusStack = remember(treatments, minTimestamp, lowMark) {
+    val bolusStack = remember(treatments, minTimestamp, lowMark, automaticCleanGraph) {
+        if (automaticCleanGraph) return@remember emptyList()
         val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
         val stack = smbStackIndex(boluses.map { it.timestamp })
         boluses.mapIndexed { index, bolus ->
             SmbStackItem(
                 x = timestampToX(bolus.timestamp, minTimestamp),
-                label = bolus.label,
+                // The number only, without "U" (2026-10-23, per explicit request); the press-and-hold pill keeps the unit
+                label = bolus.number.ifEmpty { bolus.label },
                 stackIndex = stack[index],
                 anchorY = lowMark,
                 color = Color(0xFFFFFF00),
@@ -1160,13 +1165,29 @@ fun BgGraphCompose(
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
     // A zero bolus: an SMB-style arrow under the BG dot, a little larger, in the bolus colour. Its 0.00 label stays at
     // the bottom (bolusStack).
+    // In the automatic clean graph every bolus is a slim arrow under its BG dot, in the bolus colour, like a zero bolus
+    val bolusArrowMarks = remember(treatments, bgReadings, minTimestamp, automaticCleanGraph) {
+        val boluses = if (automaticCleanGraph) treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 } else emptyList()
+        SmbArrows(
+            boluses.map { bolus ->
+                SmbStackItem(
+                    x = timestampToX(bolus.timestamp, minTimestamp),
+                    label = bolus.number.ifEmpty { bolus.label },
+                    stackIndex = 0,
+                    anchorY = bgReadings.minByOrNull { abs(it.timestamp - bolus.timestamp) }?.value,
+                    color = Color(0xFFFF00FF),
+                )
+            },
+            scale = ZERO_BOLUS_ARROW_SCALE
+        )
+    }
     val zeroBolusArrowMarks = remember(treatments, bgReadings, minTimestamp) {
         val zeroBoluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount <= 0.0 }
         SmbArrows(
             zeroBoluses.map { bolus ->
                 SmbStackItem(
                     x = timestampToX(bolus.timestamp, minTimestamp),
-                    label = bolus.label,
+                    label = bolus.number.ifEmpty { bolus.label },
                     stackIndex = 0,
                     anchorY = bgReadings.minByOrNull { abs(it.timestamp - bolus.timestamp) }?.value,
                     color = Color(0xFFFF00FF),
@@ -1196,8 +1217,8 @@ fun BgGraphCompose(
             )
         }
     }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
     }
 
     // =========================================================================

@@ -303,7 +303,8 @@ data class BolusGraphPoint(
     val amount: Double,        // Insulin amount in units
     val bolusType: BolusType,  // NORMAL or SMB
     val isValid: Boolean,
-    val label: String          // Pre-formatted amount with unit (e.g. "0.30 U")
+    val label: String,         // Pre-formatted amount with unit (e.g. "0.30 U")
+    val number: String = ""    // The same amount without the unit (e.g. "0.30"), for the number on the BG graph (2026-10-23)
 )
 
 /**
