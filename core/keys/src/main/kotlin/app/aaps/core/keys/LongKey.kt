@@ -59,6 +59,10 @@ enum class LongKey(
     // delivered) -- see both functions' own doc comments. Added 2026-09-16.
     ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),
     ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),
+    // Internal-only (2026-10-23, per explicit request): how much of the CURRENT meal's carb split (the part over MaxBolus) is
+    // already dealt with: delivered, plus any walking cut the split dropped. Reset to 0 by every wizard confirm. A delayed bolus
+    // subtracts this and the split's pending remainder, so the over-MaxBolus part is not given twice.
+    ApsAutoIsfSplitHandledMilliU("autoisf_split_handled_milliu", 0, defaultedBySM = true),
     // Internal-only: timestamp (ms) when the current sustained-high-BG episode (>10.0mmol) started, for
     // the "OldPod" notify-once check — 0 means no episode currently in progress. Reset to 0 the instant
     // BG drops back to <=10.0mmol, so this only ever measures an UNBROKEN stretch above the threshold.

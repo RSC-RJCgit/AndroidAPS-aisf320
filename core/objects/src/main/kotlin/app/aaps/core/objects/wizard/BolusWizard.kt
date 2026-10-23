@@ -582,7 +582,11 @@ class BolusWizard @Inject constructor(
             val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
             val cautionFullRequired = if (dropTrendCautionApplied) WizardDropTrendCaution.fullRequiredFromScaled(insulinAfterConstraints) else 0.0
             val fullRequired = max(profileFullRequired, cautionFullRequired)
-            "pending($triggerLabel, given ${decimalFormatter.to2Decimal(insulinAfterConstraints)}U of ${decimalFormatter.to2Decimal(fullRequired)}U required, checks every 5min up to 80min)"
+            // 2026-10-23, per explicit request: say what was held back and why, and that the part over MaxBolus is the carb split's
+            val overMax = max(0.0, calculatedTotalInsulin - insulinAfterConstraints)
+            val splitPart = if (splitPending && overMax >= 0.01) ", ${decimalFormatter.to2Decimal(overMax)}U of it over MaxBolus is left to the carb split" else ""
+            "pending (held back by ${DelayedBolusWorker.heldBackText(triggerLabel)}: needs ${decimalFormatter.to2Decimal(fullRequired)}U without it, " +
+                "${decimalFormatter.to2Decimal(insulinAfterConstraints)}U given now$splitPart; checks every 5min up to 80min)"
         }
         // IC/Profile% reporting -- added 2026-08-30 per explicit request: ic itself (set in doCalc()) is
         // already "recovered" back to its base-100 value whenever the active profile is boosted above
@@ -1056,7 +1060,10 @@ class BolusWizard @Inject constructor(
                                         val originalIob = iobCobCalculator.calculateIobFromBolus().iob +
                                             iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().basaliob
                                         aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — $triggerLabel dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
-                                        DelayedBolusWorker.enqueue(ctx, insulinAfterConstraints, fullRequired, attempt = 1, originalCarbs = carbs, originalIob = originalIob)
+                                        DelayedBolusWorker.enqueue(
+                                            ctx, insulinAfterConstraints, fullRequired, attempt = 1, originalCarbs = carbs, originalIob = originalIob,
+                                            heldBackBy = triggerLabel, overMaxBolus = max(0.0, calculatedTotalInsulin - insulinAfterConstraints)
+                                        )
                                         // Careportal marker: delayed-bolus onset (checks follow as Db5/Db10/.../Db80)
                                         // NoteTimestampAllocator.next() — see its own doc comment: guards against
                                         // this note silently losing a same-millisecond dedup race to some other
@@ -1202,6 +1209,8 @@ class BolusWizard @Inject constructor(
         // earlier still-pending schedule (from a previous wizard confirm, a manual bolus via InsulinDialog,
         // or carbs entered via CarbsDialog), not just the reverse.
         val myScheduleToken = ScheduledDoseSupersession.bump()
+        // A new meal: nothing of its carb split is dealt with yet (see LongKey.ApsAutoIsfSplitHandledMilliU)
+        preferences.put(LongKey.ApsAutoIsfSplitHandledMilliU, 0L)
         // IOB right before THIS (the first/immediate) dose, from doCalc()'s own fields.
         val iobBeforeFirstDose = insulinFromBolusIOB + insulinFromBasalIOB
         // Sum of everything actually scheduled below (carb-split residual, protein, fat) — used for the
@@ -1465,6 +1474,11 @@ class BolusWizard @Inject constructor(
     // (0.0 on any terminal branch, since cancellation there always drops the WHOLE remaining chain).
     private fun setSplitPendingRemaining(amountU: Double) {
         preferences.put(LongKey.ApsAutoIsfPendingSplitRemainingMilliU, Math.round(amountU.coerceAtLeast(0.0) * 1000))
+    }
+
+    private fun addSplitHandled(amountU: Double) {
+        val current = preferences.get(LongKey.ApsAutoIsfSplitHandledMilliU)
+        preferences.put(LongKey.ApsAutoIsfSplitHandledMilliU, current + Math.round(amountU.coerceAtLeast(0.0) * 1000))
     }
 
     // Warsaw: each fpu-N sub-dose is independent (not a shared decrementing total like split above), so
@@ -1782,6 +1796,8 @@ class BolusWizard @Inject constructor(
                             // the guard at the top of this function then finishes anything under half a pump step.
                             // The walking cut is dropped from the total. The next part keeps the size it had before the cut.
                             val newResidual = Round.roundTo(reducedResidual - thisDose - walkingCut, 0.001)
+                            // What the split dealt with, for the delayed bolus (2026-10-23, per explicit request): given, plus the dropped walking cut
+                            addSplitHandled(result.bolusDelivered + walkingCut)
                             if (newResidual > 0.0)
                                 scheduleReducedPartsSplitBolus(newResidual, thisDose + walkingCut, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
                             else

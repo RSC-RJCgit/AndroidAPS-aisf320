@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.25.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.26.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -61,13 +61,30 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .25, 2026-10-22)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .26, 2026-10-23)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.25.patch
-  git apply bolus-calculator-on-3426-aisf321.25.patch
+  git apply --check bolus-calculator-on-3426-aisf321.26.patch
+  git apply bolus-calculator-on-3426-aisf321.26.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .26 (2026-10-23):
+- Delayed bolus no longer gives the part over MaxBolus twice. "Needed" (without walking soon, the 50% profile,
+  the recent low BG rule or the falling-BG caution) includes the part over MaxBolus, which the carb split also
+  gives. The delayed bolus now leaves out what the carb split gave (or dropped for walking) and what it still
+  holds. When the carb split part was cancelled (for example HP1 below 4.0), the delayed bolus gives that part,
+  as before.
+- Clearer delayed bolus notes, for example:
+    Db25 delayed bolus (held back by walking soon): 0.80U delivered
+    Needed without walking soon 3.42U - given 2.50U = 0.92U
+    This includes 0.20U over MaxBolus: the carb split did not give it (cancelled or not used), so it is given here
+    Left to give 0.92U
+    COB 13.1/15.0g (x0.88) -> 0.81U; seated 100%
+  When the split gave its part: "Less 0.20U over MaxBolus: the carb split covered it, so it is left out here".
+- The meal note says what is held back and why: "Delayed pending (held back by walking soon: needs 3.42U
+  without it, 2.50U given now, 0.20U of it over MaxBolus is left to the carb split; checks every 5min up to 80min)".
+- Retains all patch .25 changes below.
 
 Changes in patch .25 (2026-10-22):
 - Falling-BG caution fires earlier: a fast fall now needs only Delta <= -0.15 and SDelta <= -0.10 mmol/L (the long
@@ -568,6 +585,7 @@ def apply_surgical(staging: Path) -> None:
         '    ApsAutoIsfLastCycleInsulinReqMilliU("autoisf_last_cycle_insulin_req_milliu", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfPendingSplitRemainingMilliU("autoisf_pending_split_remaining_milliu", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfPendingWarsawRemainingMilliU("autoisf_pending_warsaw_remaining_milliu", 0, defaultedBySM = true),\n'
+        '    ApsAutoIsfSplitHandledMilliU("autoisf_split_handled_milliu", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0, defaultedBySM = true),\n'
         '    ApsAutoIsfLastCycleHp1At("autoisf_last_cycle_hp1_at", 0, defaultedBySM = true),\n',
         "LongKey",
