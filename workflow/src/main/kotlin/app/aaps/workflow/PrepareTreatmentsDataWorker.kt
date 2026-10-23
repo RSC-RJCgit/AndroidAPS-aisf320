@@ -293,51 +293,62 @@ class PrepareTreatmentsDataWorker(
         val allAmountsForStack = bolusDataPoints.map { it.x.toLong() to it.data.amount }
         val allTimestampsForStack = allAmountsForStack.map { it.first }.distinct().sorted()
         val smbStackTotalLabels: MutableList<DataPointWithLabelInterface> = ArrayList()
-        var reconstructedStackStart = 0L
         // 2026-10-07, per explicit request: a second line above each total, "b0.35" = basal insulin delivered between the stacks
         // (temp-basal absolute, minute by minute, same method as the insulin-totals row below; no SMB, bolus or extended bolus; see
-        // the 2026-10-08 note below for the exact span). The span ends at the present time at most. The first label in view has no
-        // preceding stack, so no basal line. Encoded as "<total>\n<basal line>" and split by the renderer.
+        // the 2026-10-08 note below for the exact span). The span ends at the present time at most. The first label counts from the
+        // last zero temp basal start (2026-10-24). Encoded as "<total>\n<basal line>" and split by the renderer.
         // 2026-10-08, per explicit request: the basal line now counts from the LAST SMB or bolus of the preceding stack to the END of
         // this stack's window (the label's own time). It used to run from the preceding window's end to this window's end.
-        var previousLastBolusTs = 0L
+        // 2026-10-24, per explicit request: also a "b" label where basal drops to zero after a stack (the first such drop at least
+        // 10 min after the stack's last dose, with at least 0.05 U since then, before the next stack). The next stack's basal line
+        // counts from that drop, so nothing is shown twice. The first stack counts from the last zero temp basal start before it,
+        // or from the start of the shown data. Same "\nb" encoding; a drop label has an empty first line.
         val nowForBasal = System.currentTimeMillis()
+        data class Stack(val start: Long, val end: Long, val total: Double, val lastTs: Long)
+        val stacks = mutableListOf<Stack>()
         allTimestampsForStack.forEach { ts ->
-            if (reconstructedStackStart == 0L || ts - reconstructedStackStart >= stackWindowMs) {
-                reconstructedStackStart = ts
-                val windowEnd = reconstructedStackStart + stackWindowMs
-                val stackTotal = allAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.sumOf { it.second }
-                var labelText = String.format("%.2f", stackTotal)
-                if (previousLastBolusTs != 0L) {
-                    val basalEnd = minOf(windowEnd, nowForBasal)   // to the label's own time, the end of this stack's window
-                    var basalSince = 0.0
-                    var t = previousLastBolusTs
-                    while (t < basalEnd) {
-                        profileFunction.getProfile(t)?.let { profile ->
-                            basalSince += data.iobCobCalculator.getBasalData(profile, t).tempBasalAbsolute / 60.0
-                        }
-                        t += 60_000L
-                    }
-                    labelText += "\nb" + String.format("%.2f", basalSince)
-                }
-                previousLastBolusTs = allAmountsForStack.filter { it.first in reconstructedStackStart..windowEnd }.maxOf { it.first }
-                smbStackTotalLabels.add(object : DataPointWithLabelInterface {
-                    override fun getX(): Double = windowEnd.toDouble()
-                    override fun getY(): Double = 0.0
-                    override fun setY(y: Double) {}
-                    override val label: String = labelText
-                    override val duration: Long = 0L
-                    override val shape = app.aaps.core.graph.data.Shape.SMB_STACK_TOTAL
-                    override val size: Float = 1.0f
-                    override val paintStyle = android.graphics.Paint.Style.FILL
-                    // Not actually read by the renderer (SMB_STACK_TOTAL's branch hardcodes yellow,
-                    // matching graph4's time labels) -- kept accurate anyway rather than stale.
-                    override fun color(context: android.content.Context?) = android.graphics.Color.YELLOW
-                })
+            if (stacks.isEmpty() || ts - stacks.last().start >= stackWindowMs) {
+                val inWindow = allAmountsForStack.filter { it.first in ts..ts + stackWindowMs }
+                stacks.add(Stack(ts, ts + stackWindowMs, inWindow.sumOf { it.second }, inWindow.maxOf { it.first }))
             }
             // else: falls within an already-active window -- already swept into that window's
             // total via the filter at open time, and (unlike the old code) nothing can end it early.
         }
+        // Temp-basal absolute rate for each minute of the shown data, same method as before
+        val basalStart = (fromTime / 60_000L) * 60_000L
+        val minuteRates = generateSequence(basalStart) { it + 60_000L }.takeWhile { it < nowForBasal }
+            .map { t -> t to (profileFunction.getProfile(t)?.let { data.iobCobCalculator.getBasalData(it, t).tempBasalAbsolute } ?: 0.0) }
+            .toList()
+        fun basalBetween(from: Long, to: Long): Double = minuteRates.filter { it.first in from until to }.sumOf { it.second / 60.0 }
+        val zeroStarts = minuteRates.zipWithNext().filter { (a, b) -> a.second > 0.0 && b.second <= 0.0 }.map { it.second.first }
+        val dropAfter = stacks.mapIndexed { i, stack ->
+            val until = minOf(stacks.getOrNull(i + 1)?.start ?: nowForBasal, nowForBasal)
+            zeroStarts.asSequence()
+                .filter { it > stack.lastTs && it <= until }
+                .map { it to basalBetween(stack.lastTs, it) }
+                .firstOrNull { (time, units) -> time - stack.lastTs >= 10 * 60_000L && units >= 0.05 }
+        }
+        fun stackTotalLabel(x: Long, text: String) = object : DataPointWithLabelInterface {
+            override fun getX(): Double = x.toDouble()
+            override fun getY(): Double = 0.0
+            override fun setY(y: Double) {}
+            override val label: String = text
+            override val duration: Long = 0L
+            override val shape = app.aaps.core.graph.data.Shape.SMB_STACK_TOTAL
+            override val size: Float = 1.0f
+            override val paintStyle = android.graphics.Paint.Style.FILL
+            // Not actually read by the renderer (SMB_STACK_TOTAL's branch hardcodes yellow,
+            // matching graph4's time labels) -- kept accurate anyway rather than stale.
+            override fun color(context: android.content.Context?) = android.graphics.Color.YELLOW
+        }
+        stacks.forEachIndexed { i, stack ->
+            val previous = stacks.getOrNull(i - 1)
+            val from = if (previous != null) maxOf(previous.lastTs, dropAfter[i - 1]?.first ?: previous.lastTs)
+            else zeroStarts.lastOrNull { it < stack.start } ?: basalStart
+            val basalSince = basalBetween(from, minOf(stack.end, nowForBasal))   // to the label's own time, the end of this stack's window
+            smbStackTotalLabels.add(stackTotalLabel(stack.end, String.format("%.2f", stack.total) + "\nb" + String.format("%.2f", basalSince)))
+        }
+        dropAfter.filterNotNull().forEach { (time, units) -> smbStackTotalLabels.add(stackTotalLabel(time, "\nb" + String.format("%.2f", units))) }
         data.overviewData.smbStackTotalSeries = PointsWithLabelGraphSeries(smbStackTotalLabels.toTypedArray())
 
         // Exactly 12 equal slices of the visible fromTime..toTime window (rangeToDisplay hours),
