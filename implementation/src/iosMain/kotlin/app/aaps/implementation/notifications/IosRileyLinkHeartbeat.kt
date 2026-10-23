@@ -139,6 +139,16 @@ class IosRileyLinkHeartbeat(
                 return
             }
         }
+        // 2026-10-24, per explicit request: one that another app on this phone (LoopFollow, Loop, Trio) is connected to. It does
+        // not announce itself while connected, so a scan would miss it. Both apps then share the one connection.
+        val serviceIds = listOf(CBUUID.UUIDWithString(SERVICE_UUID), CBUUID.UUIDWithString(ORANGE_SERVICE_UUID))
+        val connected = manager.retrieveConnectedPeripheralsWithServices(serviceIds).firstOrNull() as? CBPeripheral
+        if (connected != null) {
+            aapsLogger.info(LTag.CORE, "RileyLink heartbeat: ${connected.name} is already connected on this phone, using it")
+            preferences.put(StringNonKey.IosRileyLinkId, connected.identifier.UUIDString)
+            connect(manager, connected)
+            return
+        }
         scan(manager)
     }
 
@@ -160,7 +170,9 @@ class IosRileyLinkHeartbeat(
                 notify(rh.gs(ImplementationStrings.ios_rileylink_not_found))
                 setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_not_found, dateUtil.timeString(dateUtil.now() + RESCAN_MS)))
                 delay(RESCAN_MS)
-                if (preferences.get(BooleanKey.IosRileyLinkHeartbeat) && device == null) scan(manager)
+                // connectOrScan, not scan: by now another app may have connected to it. In a new coroutine, because scan()
+                // does nothing while this job (its own scanJob) is still active, so the retry used to never scan.
+                scope.launch { if (preferences.get(BooleanKey.IosRileyLinkHeartbeat) && device == null) connectOrScan(manager) }
                 return@launch
             }
             preferences.put(StringNonKey.IosRileyLinkId, best.identifier.UUIDString)
