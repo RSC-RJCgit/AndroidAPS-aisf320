@@ -29,6 +29,28 @@
             android:padding="0dp"
             android:textAllCaps="false" />
 
+        <Button
+            android:id="@+id/history_previous"
+            android:layout_width="35dp"
+            android:layout_height="35dp"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentTop="true"
+            android:contentDescription="@string/history_previous_window"
+            android:padding="0dp"
+            android:text="‹"
+            android:textSize="24sp" />
+
+        <Button
+            android:id="@+id/history_next"
+            android:layout_width="35dp"
+            android:layout_height="35dp"
+            android:layout_alignParentTop="true"
+            android:layout_toEndOf="@id/scale_button"
+            android:contentDescription="@string/history_current_window"
+            android:padding="0dp"
+            android:text="›"
+            android:textSize="24sp" />
+
         <ImageButton
             android:id="@+id/chart_menu_button"
             android:layout_width="35dp"

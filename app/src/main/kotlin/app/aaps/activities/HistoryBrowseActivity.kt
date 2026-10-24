@@ -49,6 +49,12 @@ import kotlin.math.min
 
 class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
 
+    companion object {
+        const val EXTRA_START_TIME = UiInteraction.HISTORY_BROWSER_START_TIME
+        const val EXTRA_RANGE_HOURS = UiInteraction.HISTORY_BROWSER_RANGE_HOURS
+        const val EXTRA_OPEN_DATE_PICKER = UiInteraction.HISTORY_BROWSER_OPEN_DATE_PICKER
+    }
+
     @Inject lateinit var historyBrowserData: HistoryBrowserData
     @Inject lateinit var aapsSchedulers: AapsSchedulers
     @Inject lateinit var preferences: Preferences
@@ -76,6 +82,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
 
     private lateinit var binding: ActivityHistorybrowseBinding
     private var destroyed = false
+    private var openDatePickerOnResume = false
+    private var loadInitialRange = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -170,6 +178,13 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             rangeToDisplay = bundle.getInt("rangeToDisplay", 0)
             historyBrowserData.overviewData.fromTime = bundle.getLong("start", 0)
             historyBrowserData.overviewData.toTime = bundle.getLong("end", 0)
+        } ?: run {
+            rangeToDisplay = intent.getIntExtra(EXTRA_RANGE_HOURS, rangeToDisplay)
+            intent.getLongExtra(EXTRA_START_TIME, 0L).takeIf { it > 0L }?.let {
+                setTime(it)
+                loadInitialRange = true
+            }
+            openDatePickerOnResume = intent.getBooleanExtra(EXTRA_OPEN_DATE_PICKER, false)
         }
     }
 
@@ -230,8 +245,15 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             // set start of current day
             setTime(dateUtil.now())
             loadAll("onResume")
+        } else if (loadInitialRange) {
+            loadInitialRange = false
+            loadAll("overviewLaunch")
         } else {
             updateGUI("onResume")
+        }
+        if (openDatePickerOnResume) {
+            openDatePickerOnResume = false
+            binding.date.post { binding.date.performClick() }
         }
     }
 

@@ -25,6 +25,9 @@ interface UiInteraction {
     companion object {
 
         const val PLUGIN_NAME = "PluginName"
+        const val HISTORY_BROWSER_START_TIME = "history_browser_start_time"
+        const val HISTORY_BROWSER_RANGE_HOURS = "history_browser_range_hours"
+        const val HISTORY_BROWSER_OPEN_DATE_PICKER = "history_browser_open_date_picker"
 
         /**
          * Preference from [Preferences]

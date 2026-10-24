@@ -316,6 +316,21 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         overviewMenus.setupChartMenu(binding.graphsLayout.chartMenuButton, binding.graphsLayout.scaleButton)
         binding.graphsLayout.scaleButton.text = overviewMenus.scaleString(overviewData.rangeToDisplay)
 
+        binding.graphsLayout.historyPrevious.setOnClickListener {
+            openHistoryBrowser(previousPeriod = true)
+        }
+        binding.graphsLayout.historyNext.setOnClickListener {
+            openHistoryBrowser(previousPeriod = false)
+        }
+        binding.graphsLayout.historyPrevious.setOnLongClickListener {
+            openHistoryBrowser(previousPeriod = true, openDatePicker = true)
+            true
+        }
+        binding.graphsLayout.historyNext.setOnLongClickListener {
+            openHistoryBrowser(previousPeriod = false, openDatePicker = true)
+            true
+        }
+
         binding.graphsLayout.chartMenuButton.visibility = preferences.simpleMode.not().toVisibility()
 
         binding.activeProfile.setOnClickListener(this)
@@ -351,6 +366,26 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
         // End mod
 
+    }
+
+    private fun openHistoryBrowser(previousPeriod: Boolean, openDatePicker: Boolean = false) {
+        val rangeHours = overviewData.rangeToDisplay
+        val currentPeriodStart = Calendar.getInstance().apply {
+            timeInMillis = dateUtil.now()
+            set(Calendar.MILLISECOND, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.HOUR_OF_DAY, get(Calendar.HOUR_OF_DAY) - (get(Calendar.HOUR_OF_DAY) % rangeHours))
+        }.timeInMillis
+        val periodMillis = rangeHours.toLong() * 60L * 60_000L
+        val startTime = if (previousPeriod) currentPeriodStart - periodMillis else currentPeriodStart
+        startActivity(
+            Intent(requireContext(), uiInteraction.historyBrowseActivity)
+                .putExtra(UiInteraction.HISTORY_BROWSER_START_TIME, startTime)
+                .putExtra(UiInteraction.HISTORY_BROWSER_RANGE_HOURS, rangeHours)
+                .putExtra(UiInteraction.HISTORY_BROWSER_OPEN_DATE_PICKER, openDatePicker)
+                .setAction("info.nightscout.androidaps.MainActivity")
+        )
     }
 
     override fun onPause() {
