@@ -110,6 +110,7 @@ class BuiltInSearchables(
             ),
 
             BooleanKey.OverviewShowNotesInDialogs,
+            StringKey.OverviewLandscapeLayout,
             // Also here, not only in the AutoISF settings, so a client or a phone on another APS can switch Graph 5 too.
             BooleanKey.ApsAutoIsfShowGraph5,
             StringKey.GeneralDarkMode

@@ -119,6 +119,23 @@ enum class StringKey(
         summary = KeysStrings.pref_summary_patient_name,
         validator = StringValidator.personName()
     ),
+    /**
+     * The main screen in landscape (2026-10-24, per explicit request): "auto" keeps the old choice (a phone wide, a tablet
+     * split), "wide" and "split" force one. See `overviewLayout` in :ui.
+     */
+    OverviewLandscapeLayout(
+        key = "overview_landscape_layout",
+        defaultValue = "auto",
+        title = KeysStrings.pref_title_overview_landscape_layout,
+        summary = KeysStrings.pref_summary_overview_landscape_layout,
+        preferenceType = PreferenceType.LIST,
+        entriesRefs = mapOf(
+            "auto" to KeysStrings.overview_landscape_layout_auto,
+            "wide" to KeysStrings.overview_landscape_layout_wide,
+            "split" to KeysStrings.overview_landscape_layout_split
+        )
+    ),
+
     GeneralDarkMode(
         key = "use_dark_mode",
         defaultValue = "dark",

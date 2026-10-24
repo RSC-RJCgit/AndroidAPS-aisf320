@@ -428,6 +428,11 @@
     <string name="pref_dark_theme">Dark theme</string>
     <string name="pref_light_theme">Light theme</string>
     <string name="pref_follow_system_theme">Use device theme</string>
+    <string name="pref_title_overview_landscape_layout">Landscape layout</string>
+    <string name="pref_summary_overview_landscape_layout">Wide: the graphs use the full width. Split: a panel with BG and the chips on the left, the graphs on the right. Auto: a phone uses wide, a tablet uses split. The button in the corner of the main screen switches too.</string>
+    <string name="overview_landscape_layout_auto">Auto</string>
+    <string name="overview_landscape_layout_wide">Wide</string>
+    <string name="overview_landscape_layout_split">Split</string>
 
     <!-- StringKey: Safety preferences -->
     <string name="pref_title_patient_age">Patient age</string>

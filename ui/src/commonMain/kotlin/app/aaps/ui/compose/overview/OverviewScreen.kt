@@ -9,9 +9,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VerticalSplit
+import androidx.compose.material.icons.filled.ViewAgenda
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,7 +36,11 @@ import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.notifications.AapsNotification
 import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.interfaces.pump.BolusProgressState
+import app.aaps.core.keys.StringKey
+import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.TABLET_MIN_SW_DP
+import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.keys.interfaces.AppPlatform
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -54,6 +66,30 @@ import kotlinx.coroutines.delay
  * stays split.
  */
 private const val DESKTOP_FULL_WIDTH_MIN_DP = 1400
+
+/** Narrower than this, the split layout's left panel leaves the graphs too little room, so it stays wide. */
+private const val SPLIT_LAYOUT_MIN_WIDTH_DP = 720f
+
+internal enum class OverviewLayout { WIDE, SPLIT, TABLET }
+
+/**
+ * Which main screen layout to use (2026-10-24, per explicit request). Portrait is always wide. In landscape [choice] (the
+ * Landscape layout setting) decides: "wide" and "split" force one, and "auto" keeps the old rule, which gives a tablet its
+ * split layout and everything else wide. A tablet's split is its own layout (with the large clock); a phone's split needs
+ * [SPLIT_LAYOUT_MIN_WIDTH_DP] of width, as it did before 26 Sep, when phones were moved to wide.
+ */
+internal fun overviewLayout(choice: String, landscape: Boolean, tabletScreen: Boolean, splitFits: Boolean, wideDesktopWindow: Boolean): OverviewLayout =
+    when {
+        !landscape        -> OverviewLayout.WIDE
+        choice == "wide"  -> OverviewLayout.WIDE
+        choice == "split" -> when {
+            tabletScreen -> OverviewLayout.TABLET
+            splitFits    -> OverviewLayout.SPLIT
+            else         -> OverviewLayout.WIDE
+        }
+
+        else              -> if (tabletScreen && !wideDesktopWindow) OverviewLayout.TABLET else OverviewLayout.WIDE
+    }
 
 @Composable
 fun OverviewScreen(
@@ -152,11 +188,53 @@ fun OverviewScreen(
     // scrolls) instead of the split with a fixed left panel. Only desktop: a tablet keeps the split at any width.
     val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
     val wideDesktopWindow = LocalConfig.current.platform == AppPlatform.Desktop && windowWidthDp >= DESKTOP_FULL_WIDTH_MIN_DP
-    val isTablet = smallestScreenWidthDp() >= TABLET_MIN_SW_DP && isLandscape && !wideDesktopWindow
+    val tabletScreen = smallestScreenWidthDp() >= TABLET_MIN_SW_DP
+    val splitFits = windowWidthDp >= SPLIT_LAYOUT_MIN_WIDTH_DP
+    val preferences = LocalPreferences.current
+    val layoutChoice by preferences.observe(StringKey.OverviewLandscapeLayout).collectAsState()
+    val layout = overviewLayout(layoutChoice, isLandscape, tabletScreen, splitFits, wideDesktopWindow)
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (isTablet) {
+        if (layout == OverviewLayout.TABLET) {
             OverviewScreenTablet(
+                profileName = profileName,
+                isProfileModified = isProfileModified,
+                profileProgress = profileProgress,
+                profileSceneManaged = profileSceneManaged,
+                tempTargetText = tempTargetText,
+                tempTargetState = tempTargetState,
+                tempTargetProgress = tempTargetProgress,
+                tempTargetReason = tempTargetReason,
+                tempTargetSceneManaged = tempTargetSceneManaged,
+                runningMode = runningMode,
+                runningModeText = runningModeText,
+                runningModeRemaining = runningModeRemaining,
+                runningModeProgress = runningModeProgress,
+                runningModeSceneManaged = runningModeSceneManaged,
+                tbrState = tbrState,
+                smbEnabled = smbEnabled,
+                isSimpleMode = isSimpleMode,
+                graphViewModel = graphViewModel,
+                chipsViewModel = chipsViewModel,
+                manageViewModel = manageViewModel,
+                statusViewModel = statusViewModel,
+                statusLightsDef = statusLightsDef,
+                onNavigate = onNavigate,
+                onTbrChipClick = onTbrChipClick,
+                onIobChipClick = onIobChipClick,
+                paddingValues = paddingValues,
+                activeSceneState = activeSceneState,
+                sceneExpired = sceneExpired,
+                activeSceneChainTargetName = activeSceneChainTargetName,
+                onEndScene = onEndScene,
+                onDismissScene = onDismissScene,
+                endSceneEnabled = endSceneEnabled,
+                commandsAllowed = commandsAllowed,
+                formatDuration = formatDuration,
+                overlaidBarsHeight = overlaidBarsHeight
+            )
+        } else if (layout == OverviewLayout.SPLIT) {
+            OverviewScreenSplit(
                 profileName = profileName,
                 isProfileModified = isProfileModified,
                 profileProgress = profileProgress,
@@ -231,6 +309,25 @@ fun OverviewScreen(
                     formatDuration = formatDuration,
                     overlaidBarsHeight = overlaidBarsHeight
             )
+        }
+
+        // 2026-10-24, per explicit request: one tap switches between the wide and the split layout and keeps the choice
+        // (the Landscape layout setting). Only in landscape, and only where split fits. A phone in landscape hides the top
+        // bar, so the button sits in the corner of the screen itself.
+        if (isLandscape && (tabletScreen || splitFits)) {
+            val toSplit = layout == OverviewLayout.WIDE
+            IconButton(
+                onClick = { preferences.put(StringKey.OverviewLandscapeLayout, if (toSplit) "split" else "wide") },
+                colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(paddingValues)
+            ) {
+                Icon(
+                    imageVector = if (toSplit) Icons.Filled.VerticalSplit else Icons.Filled.ViewAgenda,
+                    contentDescription = stringResource(if (toSplit) UiStrings.overview_switch_to_split_layout else UiStrings.overview_switch_to_wide_layout)
+                )
+            }
         }
 
         List1Dialog(chipsViewModel)

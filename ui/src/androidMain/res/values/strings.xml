@@ -334,6 +334,8 @@
     <!-- Other dialogs -->
 
     <!--QuickWizard-->
+    <string name="overview_switch_to_split_layout">Switch to the split layout</string>
+    <string name="overview_switch_to_wide_layout">Switch to the wide layout</string>
     <string name="overview_edit_quickwizard_button_text">Button text</string>
     <string name="quick_wizard_mode_wizard">Wizard</string>
     <string name="quick_wizard_mode_insulin">Insulin</string>
