@@ -334,6 +334,12 @@
     <!-- Other dialogs -->
 
     <!--QuickWizard-->
+    <string name="graph_short_number" comment="Start of the label on each graph below the BG graph. %1$d=graph number. Example: G2">G%1$d</string>
+    <string name="graph_label_basal">Basal</string>
+    <string name="graph_label_max_rates" comment="The highest basal rate of each hour, shown as numbers at the top of graph 1">Max rates</string>
+    <string name="graph_label_smb" comment="The SMB doses shown as numbers on this graph">SMB</string>
+    <string name="graph_label_stack_totals" comment="The total of each group (stack) of SMBs, shown on this graph">Stacks total</string>
+    <string name="graph_label_notes" comment="Notes shown at their time on this graph">Notes timed</string>
     <string name="overview_switch_to_split_layout">Switch to the split layout</string>
     <string name="overview_switch_to_wide_layout">Switch to the wide layout</string>
     <string name="overview_edit_quickwizard_button_text">Button text</string>

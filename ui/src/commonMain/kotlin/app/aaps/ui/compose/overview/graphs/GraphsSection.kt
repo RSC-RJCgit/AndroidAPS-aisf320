@@ -1105,8 +1105,18 @@ fun GraphsSection(
                     .fillMaxWidth()
                     .height(graphConfig.iobHeight.dp)
             )
-            // No "IOB / Basal ..." title here since 2026-10-14: graph 1 is always IOB + basal, and the hourly basal
-            // peak numbers now use the top line of the graph instead.
+            // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates").
+            // It sits at the bottom left, because the hourly basal peak numbers use the top line of this graph.
+            GraphLabel(
+                number = 1,
+                names = graphConfig.iobOverlays.let { overlays ->
+                    listOf(stringResource(CoreUiStrings.iob)) + overlays.map { stringResource(seriesShortNameId(it)) } +
+                        listOf(stringResource(UiStrings.graph_label_basal), stringResource(UiStrings.graph_label_max_rates))
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 36.dp, bottom = 18.dp)
+            )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = 32.dp))
             if (!isSimpleMode) {
                 GraphEditButton(
@@ -1161,10 +1171,17 @@ fun GraphsSection(
                         .height(secondary.height.dp)
                 )
                 // Name at the top left and the pencil at the top right, as before the merge: the bottom is the time labels.
-                Text(
-                    text = seriesListLabel(secondary.series),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                // 2026-10-24, per explicit request: numbered (G2 is the first of these), full strength instead of 60%, and
+                // with what the graph draws besides its curves.
+                GraphLabel(
+                    number = i + 2,
+                    // The same graphs as showSmbDoseLabels and secondaryMarks above
+                    names = secondary.series.map { stringResource(seriesShortNameId(it)) } + when (i) {
+                        0    -> listOf(stringResource(UiStrings.graph_label_smb))
+                        1    -> listOf(stringResource(UiStrings.graph_label_stack_totals))
+                        2    -> listOf(stringResource(UiStrings.graph_label_notes))
+                        else -> emptyList()
+                    },
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(start = 36.dp, top = 2.dp)
@@ -1355,6 +1372,20 @@ internal fun withSecondaryGraphHeight(config: GraphConfig, index: Int, expectedS
 
 /** Generate a short label from the series types in a graph (e.g., "IOB", "COB", "BGI / DEV") */
 @Composable
+/**
+ * The label on a graph below the BG graph (2026-10-24, per explicit request): "G2 Acce PP SMB". The graph number, then what
+ * it shows. In the theme's text colour at full strength, which is white in the dark theme.
+ */
+@Composable
+private fun GraphLabel(number: Int, names: List<String>, modifier: Modifier = Modifier) {
+    Text(
+        text = (listOf(stringResource(UiStrings.graph_short_number, number)) + names).joinToString("  "),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = modifier
+    )
+}
+
 private fun seriesListLabel(seriesList: List<SeriesType>): String {
     val names = seriesList.map { stringResource(seriesShortNameId(it)) }
     return names.joinToString(" / ")

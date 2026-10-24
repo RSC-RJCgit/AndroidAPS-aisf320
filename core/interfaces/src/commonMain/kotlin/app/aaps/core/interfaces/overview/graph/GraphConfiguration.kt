@@ -63,13 +63,18 @@ data class SecondaryGraph(
  */
 data class GraphConfig(
     val bgOverlays: List<SeriesType> = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS),
-    val iobOverlays: List<SeriesType> = listOf(SeriesType.ACTIVITY),
+    // 2026-10-24, per explicit request: the graphs a new install starts with (until the graphs are changed and saved).
+    // G1 (this fixed IOB graph) IOB and COB; G2 acce and pp ISF; G3 final, dura and bg ISF; G4 iobTH; G5 steps.
+    val iobOverlays: List<SeriesType> = listOf(SeriesType.COB),
     val bgHeight: Int = DEFAULT_GRAPH_HEIGHT_DP,
     val iobHeight: Int = DEFAULT_GRAPH_HEIGHT_DP,
     /** Graph 5 (second copy of the glucose graph, shown last). Adjustable up to [MAX_BG_GRAPH_HEIGHT_DP] like the main graph. */
     val graph5Height: Int = DEFAULT_GRAPH_HEIGHT_DP,
     val secondaryGraphs: List<SecondaryGraph> = listOf(
-        SecondaryGraph(listOf(SeriesType.COB))
+        SecondaryGraph(listOf(SeriesType.ACCE_ISF, SeriesType.PP_ISF)),
+        SecondaryGraph(listOf(SeriesType.FINAL_ISF, SeriesType.DURA_ISF, SeriesType.BG_ISF)),
+        SecondaryGraph(listOf(SeriesType.IOB_TH)),
+        SecondaryGraph(listOf(SeriesType.STEPS))
     )
 ) {
 
