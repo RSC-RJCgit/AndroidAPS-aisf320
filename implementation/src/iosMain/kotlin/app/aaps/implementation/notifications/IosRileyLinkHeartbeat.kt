@@ -6,6 +6,7 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.IOS_HEARTBEAT_FORGET_CHECKED
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -71,6 +72,12 @@ import platform.darwin.NSObject
  * The silent sound keeps running while they are tried and stops at the first backup value, so there is no gap in which
  * iOS can stop the app. When the RileyLink ticks again, the backup is let go.
  *
+ * An Android phone running AAPS with "Send heartbeat to an iPhone" on (v3 `IphoneHeartbeatSender`) announces
+ * [AAPS_PHONE_SERVICE_UUID] and sends a value every minute (2026-10-24, per explicit request). Android changes its Bluetooth
+ * address about every 15 minutes, so such a phone is saved as [PHONE_BACKUP_ID], not by its identifier, and found again by
+ * its service when it is tried. The "forget" entry of the device list ([IOS_HEARTBEAT_FORGET_CHECKED]) clears the devices
+ * that failed, so they can be checked again.
+ *
  * Everything runs on the main thread (a null queue for the central manager means the main queue).
  */
 @OptIn(ExperimentalForeignApi::class)
@@ -102,6 +109,11 @@ class IosRileyLinkHeartbeat(
     // Look for other devices: identifier -> (name, signal strength)
     private var lookJob: Job? = null
     private val seen = mutableMapOf<String, Pair<String, Int>>()
+
+    // Identifiers seen announcing the AAPS phone heartbeat service, and the one found while looking for it as a backup
+    private val phoneIds = mutableSetOf<String>()
+    private var phoneScanActive = false
+    private var phoneFound: CBPeripheral? = null
 
     // The device being checked, and the minutes (since 1970) in which it sent a value
     private var checkDevice: CBPeripheral? = null
@@ -267,7 +279,9 @@ class IosRileyLinkHeartbeat(
         lookJob = scope.launch {
             delay(LOOK_MS)
             if (scanJob?.isActive != true) manager.stopScan()
-            val skip = rejected() + backups().map { it.first } + listOfNotNull(device?.identifier?.UUIDString)
+            val savedPhone = backups().any { it.first == PHONE_BACKUP_ID }
+            val skip = rejected() + backups().map { it.first } + listOfNotNull(device?.identifier?.UUIDString) +
+                if (savedPhone) phoneIds else emptySet()
             val list = seen.filterKeys { it !in skip }.entries.sortedByDescending { it.value.second }
             aapsLogger.info(LTag.CORE, "RileyLink heartbeat: other devices found ${list.map { "${it.value.first} ${it.value.second}" }}")
             preferences.put(
@@ -285,6 +299,10 @@ class IosRileyLinkHeartbeat(
     }
 
     private fun check(id: String) {
+        if (id == IOS_HEARTBEAT_FORGET_CHECKED) {
+            forgetRejected()
+            return
+        }
         val manager = central ?: return
         endCheck(save = false)
         val peripheral = manager.retrievePeripheralsWithIdentifiers(listOf(NSUUID(uUIDString = id))).firstOrNull() as? CBPeripheral
@@ -305,6 +323,14 @@ class IosRileyLinkHeartbeat(
         }
     }
 
+    private fun forgetRejected() {
+        aapsLogger.info(LTag.CORE, "RileyLink heartbeat: forgetting ${rejected().size} devices that did not work")
+        preferences.put(StringNonKey.IosHeartbeatRejected, "")
+        preferences.put(StringKey.IosHeartbeatCheckDevice, "")
+        setStatus(rh.gs(ImplementationStrings.ios_heartbeat_forgotten))
+        lookAround()
+    }
+
     /** Ends the check. With [save], the result is kept and the user is told. */
     private fun endCheck(save: Boolean, id: String = "") {
         checkJob?.cancel()
@@ -314,7 +340,12 @@ class IosRileyLinkHeartbeat(
         if (!save) return
         val works = checkMinutes.size >= CHECK_MINUTES_NEEDED
         aapsLogger.info(LTag.CORE, "RileyLink heartbeat: check of \"$checkName\" connected=$checkConnected values in ${checkMinutes.size} minutes, works=$works")
-        if (works) preferences.put(StringNonKey.IosHeartbeatBackups, (backups() + (id to checkName)).joinToString("\n") { "${it.first}\t${it.second}" })
+        // A phone changes its address, so it is saved by its service (once), not by this identifier
+        val backupId = if (id in phoneIds) PHONE_BACKUP_ID else id
+        if (works) preferences.put(
+            StringNonKey.IosHeartbeatBackups,
+            (backups().filter { it.first != backupId } + (backupId to checkName)).joinToString("\n") { "${it.first}\t${it.second}" }
+        )
         else preferences.put(StringNonKey.IosHeartbeatRejected, (rejected() + id).joinToString("\n"))
         // Take it out of the list, so it is not picked again
         preferences.put(StringNonKey.IosHeartbeatSeen, preferences.get(StringNonKey.IosHeartbeatSeen).lines().filterNot { it.startsWith("$id\t") }.joinToString("\n"))
@@ -354,12 +385,49 @@ class IosRileyLinkHeartbeat(
             return
         }
         val (id, name) = list[backupIndex]
+        if (id == PHONE_BACKUP_ID) {
+            tryPhoneBackup(manager, name)
+            return
+        }
         val peripheral = manager.retrievePeripheralsWithIdentifiers(listOf(NSUUID(uUIDString = id))).firstOrNull() as? CBPeripheral
         if (peripheral == null) {
             backupIndex++
             tryBackup()
             return
         }
+        connectBackup(manager, peripheral, name)
+    }
+
+    /** An AAPS phone: connected already, or found by its service in [PHONE_SCAN_MS]. Its address is not kept, see the class doc. */
+    private fun tryPhoneBackup(manager: CBCentralManager, name: String) {
+        val serviceIds = listOf(CBUUID.UUIDWithString(AAPS_PHONE_SERVICE_UUID))
+        val connected = manager.retrieveConnectedPeripheralsWithServices(serviceIds).firstOrNull() as? CBPeripheral
+        if (connected != null) {
+            connectBackup(manager, connected, name)
+            return
+        }
+        phoneFound = null
+        phoneScanActive = true
+        // With a service filter, because iOS gives a background app no scan results without one. The RileyLink services are
+        // in it too: this scan replaces any scan that is looking for the RileyLink.
+        manager.scanForPeripheralsWithServices(
+            serviceIds + listOf(CBUUID.UUIDWithString(SERVICE_UUID), CBUUID.UUIDWithString(ORANGE_SERVICE_UUID)), null
+        )
+        setStatus(rh.gs(ImplementationStrings.ios_heartbeat_status_trying_backup, name))
+        backupJob = scope.launch {
+            delay(PHONE_SCAN_MS)
+            phoneScanActive = false
+            if (scanJob?.isActive != true && lookJob?.isActive != true) manager.stopScan()
+            val phone = phoneFound
+            if (phone == null) {
+                aapsLogger.info(LTag.CORE, "RileyLink heartbeat: backup \"$name\" not found")
+                backupIndex++
+                scope.launch { tryBackup() }
+            } else scope.launch { connectBackup(manager, phone, name) }
+        }
+    }
+
+    private fun connectBackup(manager: CBCentralManager, peripheral: CBPeripheral, name: String) {
         backupDevice = peripheral
         backupName = name
         backupTickSeen = false
@@ -384,6 +452,10 @@ class IosRileyLinkHeartbeat(
     private fun stopBackup() {
         backupJob?.cancel()
         backupJob = null
+        if (phoneScanActive) {
+            phoneScanActive = false
+            if (scanJob?.isActive != true && lookJob?.isActive != true) central?.stopScan()
+        }
         backupDevice?.let {
             aapsLogger.info(LTag.CORE, "RileyLink heartbeat: letting backup \"$backupName\" go")
             central?.cancelPeripheralConnection(it)
@@ -480,8 +552,14 @@ class IosRileyLinkHeartbeat(
         if (logged.add(id)) aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: seen \"$name\" rssi $rssi services $services")
         val byService = SERVICE_UUID in services || ORANGE_SERVICE_UUID in services
         val byName = NAME_HINTS.any { name.contains(it, ignoreCase = true) }
+        val isPhone = AAPS_PHONE_SERVICE_UUID in services
+        if (isPhone) {
+            phoneIds.add(id)
+            if (phoneScanActive && phoneFound == null) phoneFound = peripheral
+        }
         if (byService || byName) found[id] = peripheral to rssi
-        else if (lookJob?.isActive == true && name.isNotEmpty()) seen[id] = name to rssi
+        else if (lookJob?.isActive == true && (name.isNotEmpty() || isPhone))
+            seen[id] = name.ifEmpty { rh.gs(ImplementationStrings.ios_heartbeat_phone_name) } to rssi
     }
 
     internal fun handleConnected(peripheral: CBPeripheral) {
@@ -573,6 +651,11 @@ class IosRileyLinkHeartbeat(
         const val TIMER_TICK_UUID = "6E6C7910-B89E-43A5-78AF-50C5E2B86F7E"
         // The OrangeLink's own service (LoopKit RileyLinkServiceUUID.orange)
         const val ORANGE_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+        // An Android phone running AAPS with "Send heartbeat to an iPhone" on. Must match v3 IphoneHeartbeatSender.SERVICE_UUID.
+        const val AAPS_PHONE_SERVICE_UUID = "8F5A2C10-3B4E-4C77-9D21-6A0E5B7C1A01"
+        // How a phone backup is saved instead of its identifier, which changes
+        private const val PHONE_BACKUP_ID = "aaps-phone"
+        private const val PHONE_SCAN_MS = 30_000L
         private val NAME_HINTS = listOf("orang", "riley", "emalink") // "orang" also matches a shortened "OrangPro"
         private const val RESTORE_ID = "aaps.rileylink.heartbeat"
         private const val NOTICE_ID = "aaps.rileylink.heartbeat"

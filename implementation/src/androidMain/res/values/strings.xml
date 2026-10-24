@@ -127,6 +127,8 @@
     <string name="ios_rileylink_status_no_tick" comment="%1$s=device name. Example: OrangePro has no timer tick">%1$s has no timer tick</string>
     <string name="ios_rileylink_not_found">No RileyLink found nearby. Trying again in 2 minutes. Until then silent sound is used if Keep running in background is on.</string>
     <string name="ios_rileylink_lost" comment="iOS background heartbeat. %1$s=the Bluetooth device name. Example: RileyLink heartbeat lost: OrangeLink. Silent sound takes over if Keep running in background is on.">RileyLink heartbeat lost: %1$s. Silent sound takes over if Keep running in background is on.</string>
+    <string name="ios_heartbeat_forgotten">The devices that did not work are forgotten. Looking again for 30 seconds.</string>
+    <string name="ios_heartbeat_phone_name" comment="Name in the device list for a phone running AAPS that sends a heartbeat, when it gives no name of its own">AAPS phone</string>
     <string name="ios_heartbeat_seen_label" comment="A Bluetooth device in a list. %1$s=device name, %2$d=signal strength, a negative number. Example: My VW 5779 (-61 dBm)">%1$s (%2$d dBm)</string>
     <string name="ios_heartbeat_status_looking">Looking for other devices for 30 seconds</string>
     <string name="ios_heartbeat_status_found" comment="%1$d=number of devices. Example: 7 devices found. Pick one in Device to check.">%1$d devices found. Pick one in Device to check.</string>

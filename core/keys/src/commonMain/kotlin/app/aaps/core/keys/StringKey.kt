@@ -11,6 +11,12 @@ import app.aaps.core.keys.interfaces.SyncDirection
 import app.aaps.core.keys.interfaces.SyncSpec
 import app.aaps.core.keys.interfaces.TextRef
 
+/**
+ * The entry in [StringKey.IosHeartbeatCheckDevice] that forgets every device that failed the check, so they are listed
+ * again (2026-10-24, per explicit request). Not a Bluetooth identifier.
+ */
+const val IOS_HEARTBEAT_FORGET_CHECKED = "forget"
+
 enum class StringKey(
     override val key: String,
     override val defaultValue: String,

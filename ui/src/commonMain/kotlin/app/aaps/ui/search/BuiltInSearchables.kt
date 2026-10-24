@@ -13,6 +13,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IOS_HEARTBEAT_FORGET_CHECKED
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.KeysStrings
 import app.aaps.core.keys.StringKey
@@ -42,6 +43,7 @@ import dev.zacsweers.metro.ContributesIntoSet
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metro.binding
+import kotlinx.coroutines.flow.merge
 
 /**
  * Single source of truth for built-in (non-plugin) preference screens.
@@ -209,18 +211,26 @@ class BuiltInSearchables(
             StringKey.IosHeartbeatCheckDevice.withEntriesProvider(
                 provider = { seenHeartbeatDevices() },
                 emptyEntriesMessage = KeysStrings.ios_heartbeat_none_seen,
-                refresh = preferences.observe(StringNonKey.IosHeartbeatSeen)
+                refresh = merge(preferences.observe(StringNonKey.IosHeartbeatSeen), preferences.observe(StringNonKey.IosHeartbeatRejected))
             ),
             BooleanKey.IosReloadWhenNoBg
         ),
         icon = Icons.Default.Notifications
     )
 
-    /** The lines "identifier<TAB>label" written by the iOS heartbeat, as list entries. */
-    private fun seenHeartbeatDevices(): Map<String, TextRef> =
+    /**
+     * The lines "identifier<TAB>label" written by the iOS heartbeat, as list entries. First, while any device failed the
+     * check, an entry that forgets them so they are listed again (2026-10-24).
+     */
+    private fun seenHeartbeatDevices(): Map<String, TextRef> {
+        val entries = LinkedHashMap<String, TextRef>()
+        if (preferences.get(StringNonKey.IosHeartbeatRejected).isNotBlank())
+            entries[IOS_HEARTBEAT_FORGET_CHECKED] = KeysStrings.ios_heartbeat_forget_checked
         preferences.get(StringNonKey.IosHeartbeatSeen).lines()
             .mapNotNull { line -> line.split('\t', limit = 2).takeIf { it.size == 2 } }
-            .associate { (id, label) -> id to TextRef.Literal(label) }
+            .forEach { (id, label) -> entries[id] = TextRef.Literal(label) }
+        return entries
+    }
 
     // ========== Dialog Settings (not shown in AllPreferencesScreen, only for search) ==========
 

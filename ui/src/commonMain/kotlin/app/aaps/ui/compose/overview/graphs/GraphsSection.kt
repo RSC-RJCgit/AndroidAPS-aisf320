@@ -1370,8 +1370,6 @@ internal fun withSecondaryGraphHeight(config: GraphConfig, index: Int, expectedS
 // Graph label generation
 // =========================================================================
 
-/** Generate a short label from the series types in a graph (e.g., "IOB", "COB", "BGI / DEV") */
-@Composable
 /**
  * The label on a graph below the BG graph (2026-10-24, per explicit request): "G2 Acce PP SMB". The graph number, then what
  * it shows. In the theme's text colour at full strength, which is white in the dark theme.
@@ -1386,6 +1384,8 @@ private fun GraphLabel(number: Int, names: List<String>, modifier: Modifier = Mo
     )
 }
 
+/** Generate a short label from the series types in a graph (e.g., "IOB", "COB", "BGI / DEV") */
+@Composable
 private fun seriesListLabel(seriesList: List<SeriesType>): String {
     val names = seriesList.map { stringResource(seriesShortNameId(it)) }
     return names.joinToString(" / ")
