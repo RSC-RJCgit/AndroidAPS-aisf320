@@ -50,6 +50,8 @@ import app.aaps.ios.shell.IosAppStartup
 import app.aaps.ios.shell.IosCrashLog
 import app.aaps.ios.shell.PluginStoreRegistry
 import app.aaps.ios.shell.di.IosAppGraph
+import app.aaps.ios.shell.liveactivity.IosLiveActivityUpdater
+import app.aaps.ios.shell.liveactivity.LiveActivityBridge
 import app.aaps.ios.shell.platform.IosLanguage
 import app.aaps.ios.shell.platform.notOnThisPlatform
 import app.aaps.plugins.sync.nsclientV3.ws.NsSocketFactory
@@ -111,7 +113,7 @@ import platform.UIKit.UIViewController
  * platform is supposed to supply - opening a document picker, asking for a permission - and each
  * needs an iOS answer of its own rather than a shared one.
  */
-fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
+fun aapsAppViewController(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivityBridge): UIViewController {
     // Built once, outside the composition: a graph rebuilt on each recomposition would hand out new
     // singletons every frame - a new database wrapper, a new preference store.
     val graph = createGraphFactory<IosAppGraph.Factory>().create(CoreObjectsGraph, ClientGraphBindings, nsSocketFactory)
@@ -158,6 +160,12 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory): UIViewController {
     // Both need the app running, which in the background the keep-alive above provides.
     graph.batteryFallAlarm.start()
     graph.noBgReload.start()
+    // BG on the lock screen, the Dynamic Island, the watch Smart Stack and CarPlay (2026-10-24). ActivityKit is Swift only,
+    // so the Swift app hands its side in here, the same way as the Nightscout socket.
+    IosLiveActivityUpdater(
+        liveActivity, graph.lastBgData, graph.glucoseStatusProvider, graph.iobCobCalculator, graph.profileUtil, graph.decimalFormatter,
+        graph.textResolver, graph.dateUtil, logger
+    ).start(graph.appScope)
 
     // Read once, outside the composition, for the same reason as the graph: decoding the icon on
     // every recomposition would be work for nothing.

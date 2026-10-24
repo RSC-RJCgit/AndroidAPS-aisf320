@@ -30,7 +30,8 @@ struct AapsAppView: UIViewControllerRepresentable {
         // Swift and cannot carry a Kotlin annotation. Android and desktop contribute their own
         // socket.io client automatically; this is the same project's Swift client, so both platforms
         // speak to Nightscout identically.
-        AapsAppHostKt.aapsAppViewController(nsSocketFactory: SwiftNsSocketFactory())
+        // The Live Activity is handed in the same way and for the same reason: ActivityKit is Swift only.
+        AapsAppHostKt.aapsAppViewController(nsSocketFactory: SwiftNsSocketFactory(), liveActivity: SwiftLiveActivity())
     }
 
     func updateUIViewController(_ controller: UIViewController, context: Context) {}

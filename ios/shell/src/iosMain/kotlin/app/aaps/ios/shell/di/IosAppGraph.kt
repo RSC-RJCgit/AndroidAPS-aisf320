@@ -6,7 +6,9 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.constraints.Objectives
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
+import app.aaps.core.interfaces.overview.LastBgData
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.PrefsFileInfo
@@ -161,6 +163,9 @@ interface IosAppGraph : MetroViewModelMultibindings {
     val batteryFallAlarm: IosBatteryFallAlarm
     // Reload from Nightscout when no BG has come for 2 minutes (2026-10-18).
     val noBgReload: IosNoBgReload
+    // What the Live Activity shows (2026-10-24): see `IosLiveActivityUpdater`.
+    val lastBgData: LastBgData
+    val glucoseStatusProvider: GlucoseStatusProvider
     val appScope: CoroutineScope
     val swDefinition: SWDefinition
     val builtInSearchables: BuiltInSearchables

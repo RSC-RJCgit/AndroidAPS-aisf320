@@ -61,6 +61,12 @@
 	  the app about once a minute in the background. `bluetooth-central` above allows that wake-up. Setting: Alerts >
 	  RileyLink heartbeat. This text is what iOS shows when it asks for Bluetooth.
 	-->
+	<!--
+	  BG Live Activity (2026-10-24): lock screen, Dynamic Island, Apple Watch Smart Stack and CarPlay. Drawn by the
+	  LiveActivity extension, fed by `SwiftLiveActivity`. The user can turn it off in iPhone Settings for this app.
+	-->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>A RileyLink or OrangeLink wakes AAPS about once a minute in the background, so it can load from Nightscout and check the alarms.</string>
 </dict>

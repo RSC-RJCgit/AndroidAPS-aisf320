@@ -936,13 +936,7 @@ open class OpenAPSAutoISFPlugin(
         }
         // 2026-10-18: the activity factor for the Tier 3 UAM boost (scale) and its pseudo-wizard FPU. 0 turns the boost off.
         val tier3Activity = tier3ActivityFactor(now, iobArray[0].iob, oapsProfile.max_iob)
-        val flatNow = autoIsfMode && glucoseStatus.delta <= 1.8 && glucoseStatus.shortAvgDelta <= 1.8
-        duraFlatSince = if (!flatNow) 0L else if (duraFlatSince == 0L) now else duraFlatSince
-        val duraCapWalking = isWalking(steps5(now), steps30(now), steps60(now))
-        val duraCapActive = autoIsfMode && duraFlatCapRule(autoIsfFactors, glucoseStatus.glucose, iobArray[0].iob, mealData.mealCOB, duraFlatSince, now, duraCapWalking)
-        determineBasalAutoISF.duraFlatCapActive = duraCapActive
-        if (duraCapActive && !duraCapWasActive) carePortalNote("DuraCap")
-        duraCapWasActive = duraCapActive
+        updateDuraCap(autoIsfMode, autoIsfFactors, glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, iobArray[0].iob, mealData.mealCOB, now)
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -4702,6 +4696,23 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // Kept out of invoke(): its coroutine body is close to the JVM's 64 KB method limit (2026-10-18 build failure).
+    /**
+     * Works out DuraCap for this loop run (see [duraFlatCapRule]) and hands it to determine_basal. A function of its own
+     * (2026-10-24) because `invoke` is at the JVM size limit for one method: the three step reads for the walking test
+     * pushed it over ("Method too large").
+     */
+    private suspend fun updateDuraCap(
+        autoIsfMode: Boolean, factors: AutoIsfFactors, bgMgdl: Double, delta: Double, shortDelta: Double, iob: Double, cob: Double, now: Long
+    ) {
+        val flatNow = autoIsfMode && delta <= 1.8 && shortDelta <= 1.8
+        duraFlatSince = if (!flatNow) 0L else if (duraFlatSince == 0L) now else duraFlatSince
+        val walking = isWalking(steps5(now), steps30(now), steps60(now))
+        val duraCapActive = autoIsfMode && duraFlatCapRule(factors, bgMgdl, iob, cob, duraFlatSince, now, walking)
+        determineBasalAutoISF.duraFlatCapActive = duraCapActive
+        if (duraCapActive && !duraCapWasActive) carePortalNote("DuraCap")
+        duraCapWasActive = duraCapActive
+    }
+
     private suspend fun tier3ActivityFactor(now: Long, iob: Double, maxIob: Double): Double {
         val factor = activityFactor(iob, maxIob, steps5(now), steps30(now), steps60(now))
         if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && runMarks.ready(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, 15, now)) {
