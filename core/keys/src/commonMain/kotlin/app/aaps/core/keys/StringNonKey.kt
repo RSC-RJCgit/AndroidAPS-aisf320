@@ -17,6 +17,8 @@ enum class StringNonKey(
     DefaultsResetBuild("defaults_reset_build", "", exportable = false),
     /** iOS: the RileyLink used for the background heartbeat (its Bluetooth identifier). This phone's own device, so not exported. */
     IosRileyLinkId("ios_rileylink_id", "", exportable = false),
+    /** iOS: encrypted Trio remote-control shared secret. Local to this install and never exported. */
+    IosRemoteControlSecret("ios_remote_control_secret", "", exportable = false),
     /**
      * iOS (2026-10-24): devices found by the last look for other heartbeat devices, one per line as "identifier<TAB>label",
      * strongest signal first. Filled by `IosRileyLinkHeartbeat`, shown in [StringKey.IosHeartbeatCheckDevice].
