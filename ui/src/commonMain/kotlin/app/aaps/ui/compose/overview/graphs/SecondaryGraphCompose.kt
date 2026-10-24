@@ -172,6 +172,8 @@ fun SecondaryGraphCompose(
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
+    /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
+    geometryHolder: ChartGeometryHolder? = null,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -870,8 +872,9 @@ fun SecondaryGraphCompose(
             )
         )
     }
-    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine) {
-        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels + listOfNotNull(inspectLine)
+    val geometryReporter = rememberChartGeometryReporter(geometryHolder)
+    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter) {
+        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels + listOfNotNull(inspectLine, geometryReporter)
     }
 
     // Dual-axis zero alignment.

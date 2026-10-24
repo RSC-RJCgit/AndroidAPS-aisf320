@@ -246,6 +246,8 @@ fun BgGraphCompose(
     cleanGraphHidesTextLines: Boolean = false,
     /** Press and hold to see the values at a reading. Null turns it off. */
     inspect: GraphInspectState? = null,
+    /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
+    geometryHolder: ChartGeometryHolder? = null,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -1217,8 +1219,9 @@ fun BgGraphCompose(
             )
         }
     }
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine)
+    val geometryReporter = rememberChartGeometryReporter(geometryHolder)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine, geometryReporter) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine, geometryReporter)
     }
 
     // =========================================================================

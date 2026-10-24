@@ -367,6 +367,41 @@ fun GraphsSection(
         arrayOf(sec0zoom, sec1zoom, sec2zoom, sec3zoom, sec4zoom)
     }
 
+    // 2026-10-24, per explicit request: each graph's layout, so scroll and zoom are copied as times (see ChartGeometry). The BG
+    // graph's big markers give it other pixel steps than the lower graphs, so the same pixels or zoom factor meant another time.
+    // The sync below works in main (BG) graph units: a lower graph's values are turned into them when read, and back into
+    // that graph's own units when written. A graph without a layout yet (or the belt, which is not drawn) is left as it is.
+    val bgGeometry = remember { ChartGeometryHolder() }
+    val iobGeometry = remember { ChartGeometryHolder() }
+    val g5Geometry = remember { ChartGeometryHolder() }
+    val secGeometry = remember { Array(secScrollStates.size) { ChartGeometryHolder() } }
+    fun geometryOf(scroll: VicoScrollState): ChartGeometry? = when {
+        scroll === bgScrollState  -> bgGeometry.value
+        scroll === iobScrollState -> iobGeometry.value
+        scroll === g5ScrollState  -> g5Geometry.value
+        else                      -> secScrollStates.indexOfFirst { it === scroll }.takeIf { it >= 0 }?.let { secGeometry[it].value }
+    }
+    fun geometryOfZoom(zoom: VicoZoomState): ChartGeometry? = when {
+        zoom === bgZoomState  -> bgGeometry.value
+        zoom === iobZoomState -> iobGeometry.value
+        zoom === g5ZoomState  -> g5Geometry.value
+        else                  -> secZoomStates.indexOfFirst { it === zoom }.takeIf { it >= 0 }?.let { secGeometry[it].value }
+    }
+    fun zoomFor(scroll: VicoScrollState): Float = when {
+        scroll === bgScrollState  -> bgZoomState.value
+        scroll === iobScrollState -> iobZoomState.value
+        scroll === g5ScrollState  -> g5ZoomState.value
+        else                      -> secScrollStates.indexOfFirst { it === scroll }.takeIf { it >= 0 }?.let { secZoomStates[it].value } ?: 0f
+    }
+    /** A main graph scroll as the scroll that shows the same time on [target]. */
+    fun scrollForGraph(mainScroll: Float, target: VicoScrollState): Float =
+        convertScroll(mainScroll, bgGeometry.value, bgZoomState.value, geometryOf(target), zoomFor(target))
+    /** [scroll] of [source] in main graph units. */
+    fun scrollInMain(scroll: Float, source: VicoScrollState): Float =
+        convertScroll(scroll, geometryOf(source), zoomFor(source), bgGeometry.value, bgZoomState.value)
+    fun zoomForGraph(mainZoom: Float, target: VicoZoomState): Float = convertZoom(mainZoom, bgGeometry.value, geometryOfZoom(target))
+    fun zoomInMain(zoom: Float, source: VicoZoomState): Float = convertZoom(zoom, geometryOfZoom(source), bgGeometry.value)
+
     // Set just before this code moves the main graph, so that move is not counted as a finger drag.
     val skipInteractionUntilMs = remember { longArrayOf(0L) }
     // When a finger last touched the graphs area. A lower graph that moves on its own at startup (its saved or
@@ -423,11 +458,11 @@ fun GraphsSection(
                 if (zoom.isFinite() && zoom > 0f && zoom != lastZoom) {
                     lastZoom = zoom
                     appliedZoom[0] = zoom
-                    if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(zoom)
-                    if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(zoom)
-                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(zoom)
+                    if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(zoomForGraph(zoom, beltZoomState))
+                    if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(zoomForGraph(zoom, iobZoomState))
+                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(zoomForGraph(zoom, g5ZoomState))
                     for (i in 0 until count) {
-                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(zoom)
+                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(zoomForGraph(zoom, secZoomStates[i]))
                     }
                 }
                 // Before the chart has a width, the scroll value is 0. Copying that 0 replaces
@@ -439,10 +474,10 @@ fun GraphsSection(
                     lastSentScroll = scroll
                     pendingScroll[0] = Float.NaN
                     appliedScroll[0] = scroll
-                    beltScrollState.copyPixelsIfDifferent(scroll, skip)
-                    iobScrollState.copyPixelsIfDifferent(scroll, skip)
-                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scroll, skip)
-                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(scroll, skip)
+                    beltScrollState.copyPixelsIfDifferent(scrollForGraph(scroll, beltScrollState), skip)
+                    iobScrollState.copyPixelsIfDifferent(scrollForGraph(scroll, iobScrollState), skip)
+                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scrollForGraph(scroll, g5ScrollState), skip)
+                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(scrollForGraph(scroll, secScrollStates[i]), skip)
                 }
             }
     }
@@ -478,10 +513,10 @@ fun GraphsSection(
             // graph moves. While nothing has been touched, put every one of them on the main graph's place.
             val mainScroll = bgScrollState.value
             if (placedOnNow && mainScroll.isFinite() && bgScrollState.maxValue > 24f) {
-                beltScrollState.copyPixelsIfDifferent(mainScroll, null)
-                iobScrollState.copyPixelsIfDifferent(mainScroll, null)
-                if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(mainScroll, null)
-                for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(mainScroll, null)
+                beltScrollState.copyPixelsIfDifferent(scrollForGraph(mainScroll, beltScrollState), null)
+                iobScrollState.copyPixelsIfDifferent(scrollForGraph(mainScroll, iobScrollState), null)
+                if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scrollForGraph(mainScroll, g5ScrollState), null)
+                for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(scrollForGraph(mainScroll, secScrollStates[i]), null)
             }
             if (visible == null) continue
             val nowX = timestampToX(nowMs, range.first)
@@ -551,12 +586,13 @@ fun GraphsSection(
             Triple(
                 latestTimeRange.value,
                 latestNow.value,
+                // In main graph units (2026-10-24), so every comparison below is between equal units
                 buildList {
-                    add(iobScrollState.value to iobZoomState.value)
+                    add(scrollInMain(iobScrollState.value, iobScrollState) to zoomInMain(iobZoomState.value, iobZoomState))
                     for (i in 0 until count) {
-                        add(secScrollStates[i].value to secZoomStates[i].value)
+                        add(scrollInMain(secScrollStates[i].value, secScrollStates[i]) to zoomInMain(secZoomStates[i].value, secZoomStates[i]))
                     }
-                    if (showGraph5Now.value) add(g5ScrollState.value to g5ZoomState.value)
+                    if (showGraph5Now.value) add(scrollInMain(g5ScrollState.value, g5ScrollState) to zoomInMain(g5ZoomState.value, g5ZoomState))
                 }
             )
         }
@@ -669,10 +705,10 @@ fun GraphsSection(
                         // No finger on the graphs: a lower graph moved by itself (startup position, rebuild). It must not
                         // pull the main graph away from the current time. Put the lower graphs back on the main graph's place.
                         graphViewModel.graphSyncLog("shareScroll ignored (no touch)", "place=$place bgScroll=$bgScroll bgMax=$bgMax")
-                        beltScrollState.copyPixelsIfDifferent(bgScroll, null)
-                        iobScrollState.copyPixelsIfDifferent(bgScroll, null)
-                        if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(bgScroll, null)
-                        for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(bgScroll, null)
+                        beltScrollState.copyPixelsIfDifferent(scrollForGraph(bgScroll, beltScrollState), null)
+                        iobScrollState.copyPixelsIfDifferent(scrollForGraph(bgScroll, iobScrollState), null)
+                        if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scrollForGraph(bgScroll, g5ScrollState), null)
+                        for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(scrollForGraph(bgScroll, secScrollStates[i]), null)
                         return
                     }
                     graphViewModel.graphSyncLog("shareScroll", "place=$place bgScroll=$bgScroll bgMax=$bgMax placedOnNow=$placedOnNow followNowWas=$followNow")
@@ -687,11 +723,11 @@ fun GraphsSection(
                     // Our copy moved the main graph. Record it now so the next tick does not
                     // treat that move as a finger on the main graph and drop the rest of the drag.
                     lastMainScroll = bgScrollState.value
-                    beltScrollState.copyPixelsIfDifferent(place, driver)
-                    iobScrollState.copyPixelsIfDifferent(place, driver)
-                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(place, driver)
+                    beltScrollState.copyPixelsIfDifferent(scrollForGraph(place, beltScrollState), driver)
+                    iobScrollState.copyPixelsIfDifferent(scrollForGraph(place, iobScrollState), driver)
+                    if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scrollForGraph(place, g5ScrollState), driver)
                     val count = activeCount
-                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(place, driver)
+                    for (i in 0 until count) secScrollStates[i].copyPixelsIfDifferent(scrollForGraph(place, secScrollStates[i]), driver)
                 }
                 if (!pendingScroll[0].isNaN()) {
                     var newer: Float? = null
@@ -780,12 +816,12 @@ fun GraphsSection(
                             graphViewModel.onGraphInteraction()
                             skipInteractionUntilMs[0] = dateUtil.now() + 1000L
                             bgZoomState.copyFactorIfDifferent(zoomFinger)
-                            if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(zoomFinger)
-                            if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(zoomFinger)
-                            if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(zoomFinger)
+                            if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(zoomForGraph(zoomFinger, beltZoomState))
+                            if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(zoomForGraph(zoomFinger, iobZoomState))
+                            if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(zoomForGraph(zoomFinger, g5ZoomState))
                             val zoomCount = activeCount
                             for (i in 0 until zoomCount) {
-                                if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(zoomFinger)
+                                if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(zoomForGraph(zoomFinger, secZoomStates[i]))
                             }
                             lastMainZoom = zoomFinger
                             appliedZoom[0] = zoomFinger
@@ -810,12 +846,12 @@ fun GraphsSection(
                                 }
                                 if (needsCopy || (bgZoom.isFinite() && abs(bgZoom - sharedZoom) > 0.001f)) {
                                     if (abs(bgZoom - sharedZoom) > 0.001f) bgZoomState.copyFactorIfDifferent(sharedZoom)
-                                    if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(sharedZoom)
-                                    if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(sharedZoom)
-                                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(sharedZoom)
+                                    if (beltZoomState.value.isFinite()) beltZoomState.copyFactorIfDifferent(zoomForGraph(sharedZoom, beltZoomState))
+                                    if (iobZoomState.value.isFinite()) iobZoomState.copyFactorIfDifferent(zoomForGraph(sharedZoom, iobZoomState))
+                                    if (showGraph5Now.value && g5ZoomState.value.isFinite()) g5ZoomState.copyFactorIfDifferent(zoomForGraph(sharedZoom, g5ZoomState))
                                     val zoomCount = activeCount
                                     for (i in 0 until zoomCount) {
-                                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(sharedZoom)
+                                        if (secZoomStates[i].value.isFinite()) secZoomStates[i].copyFactorIfDifferent(zoomForGraph(sharedZoom, secZoomStates[i]))
                                     }
                                 }
                             }
@@ -971,6 +1007,7 @@ fun GraphsSection(
                 bgOverlays = graphConfig.bgOverlays,
                 scrollState = bgScrollState,
                 zoomState = bgZoomState,
+                geometryHolder = bgGeometry,
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 visibleTimeRange = bgVisibleTimeRange,
@@ -1058,6 +1095,7 @@ fun GraphsSection(
                 cobOverlay = SeriesType.COB in graphConfig.iobOverlays,
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
+                geometryHolder = iobGeometry,
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
@@ -1115,6 +1153,7 @@ fun GraphsSection(
                     },
                     scrollState = secScrollStates[i],
                     zoomState = secZoomStates[i],
+                    geometryHolder = secGeometry[i],
                     derivedTimeRange = derivedTimeRange,
                     nowTimestamp = nowTimestamp,
                     modifier = Modifier
@@ -1155,6 +1194,7 @@ fun GraphsSection(
                     bgOverlays = graphConfig.bgOverlays,
                     scrollState = g5ScrollState,
                     zoomState = g5ZoomState,
+                    geometryHolder = g5Geometry,
                     derivedTimeRange = derivedTimeRange,
                     nowTimestamp = nowTimestamp,
                     visibleTimeRange = bgVisibleTimeRange,

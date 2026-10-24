@@ -1002,6 +1002,80 @@ fun rememberVisibleRangeReporter(holder: VisibleRangeHolder): VisibleRangeReport
     return remember(holder) { VisibleRangeReporter(holder) }
 }
 
+/**
+ * A graph's layout as last drawn, without the zoom, so a scroll place can be turned into a time and back (2026-10-24, per
+ * explicit request). Vico sizes each graph from its largest point marker: half of it is added at each end, and it sets the
+ * width of one x step. The BG graph has big markers and the lower graphs small ones, so the same scroll pixels or zoom factor
+ * meant a different time on each graph. The graphs are kept together in times through this instead.
+ *
+ * The zoom multiplies [baseSpacing] and [baseScalableStart]; [unscalableStart] (the marker part) stays the same.
+ */
+class ChartGeometry(
+    val minX: Double,
+    val xStep: Double,
+    val baseSpacing: Float,
+    val baseScalableStart: Float,
+    val unscalableStart: Float
+) {
+
+    private fun startPadding(zoom: Float): Float = unscalableStart + baseScalableStart * zoom
+
+    /** The x value (minutes from the axis start) at the left edge for this [scroll] at this [zoom]. */
+    fun xAt(scroll: Float, zoom: Float): Double = minX + xStep * (scroll - startPadding(zoom)) / (baseSpacing * zoom)
+
+    /** The scroll that puts [x] at the left edge at this [zoom]. */
+    fun scrollFor(x: Double, zoom: Float): Float = (startPadding(zoom) + baseSpacing * zoom * (x - minX) / xStep).toFloat()
+}
+
+/** Written on each draw by [ChartGeometryReporter] and read by the scroll and zoom sync. A plain field, not Compose state. */
+class ChartGeometryHolder {
+
+    var value: ChartGeometry? = null
+}
+
+/**
+ * Records the graph's layout ([ChartGeometry]) into [holder] on each draw. Draws nothing and touches no Compose state, the
+ * same rule as [VisibleRangeReporter], so it is safe on the BG graph's pinch zoom.
+ */
+class ChartGeometryReporter(private val holder: ChartGeometryHolder) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            if (xStep == 0.0 || zoom <= 0f || layerDimensions.xSpacing <= 0f) return
+            holder.value = ChartGeometry(
+                minX = ranges.minX,
+                xStep = xStep,
+                baseSpacing = layerDimensions.xSpacing / zoom,
+                baseScalableStart = layerDimensions.scalableStartPadding / zoom,
+                unscalableStart = layerDimensions.unscalableStartPadding
+            )
+        }
+    }
+}
+
+/** Remember a [ChartGeometryReporter] for [holder], or null when there is no holder. */
+@Composable
+fun rememberChartGeometryReporter(holder: ChartGeometryHolder?): ChartGeometryReporter? =
+    remember(holder) { holder?.let { ChartGeometryReporter(it) } }
+
+/**
+ * The [scroll] of a graph laid out as [from] (at zoom [fromZoom]) turned into the scroll that shows the same time at the
+ * left edge of a graph laid out as [to] (at [toZoom]). Without both layouts it is returned as it is.
+ */
+fun convertScroll(scroll: Float, from: ChartGeometry?, fromZoom: Float, to: ChartGeometry?, toZoom: Float): Float {
+    if (from == null || to == null || !scroll.isFinite() || fromZoom <= 0f || toZoom <= 0f) return scroll
+    val converted = to.scrollFor(from.xAt(scroll, fromZoom), toZoom)
+    return if (converted.isFinite()) converted else scroll
+}
+
+/** A zoom factor for [from] turned into the factor that shows the same minutes per width on [to]. */
+fun convertZoom(zoom: Float, from: ChartGeometry?, to: ChartGeometry?): Float {
+    if (from == null || to == null || !zoom.isFinite() || zoom <= 0f || to.baseSpacing <= 0f) return zoom
+    val converted = zoom * from.baseSpacing / to.baseSpacing
+    return if (converted.isFinite() && converted > 0f) converted else zoom
+}
+
 // =========================================================================
 // Nice-numbers axis scaling ("Nice Numbers for Graph Labels", Paul Heckbert)
 // =========================================================================
