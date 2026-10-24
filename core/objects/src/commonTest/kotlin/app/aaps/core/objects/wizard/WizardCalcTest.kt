@@ -135,16 +135,20 @@ class WizardCalcTest {
         assertEquals(1.0, walkingSoonHeldUnits(true, 80.0, 10.0), 0.0001)
         assertEquals(0.0, walkingSoonHeldUnits(true, 50.0, 10.0), 0.0001)
         assertEquals(0.0, walkingSoonHeldUnits(false, 100.0, 10.0), 0.0001)
-        assertEquals(true, walkingSoonDefault(80, 200, 100.0, 0.0))
         assertEquals(false, walkingSoonDefault(0, 0, 100.0, 0.0))
-        assertEquals(false, walkingSoonDefault(80, 200, 120.0, 0.0))
-        assertEquals(false, walkingSoonDefault(80, 200, 100.0, 2.0))
         assertNull(walkingSoonDefault(null, null, 100.0, 0.0))
-        // Thresholds are 20 for 5 minutes and 100 for 30 minutes. S30 alone does not count once S15 and S5 are both 0.
-        assertEquals(true, walkingSoonDefault(20, 0, 100.0, 0.0))
-        assertEquals(false, walkingSoonDefault(19, 99, 100.0, 0.0))
-        assertEquals(true, walkingSoonDefault(10, 100, 100.0, 0.0, steps15 = 15))
-        assertEquals(false, walkingSoonDefault(0, 100, 100.0, 0.0, steps15 = 0))
+        // Hard walking (S30 >= 1000) up to 10.0 mmol/L. 24 Oct 14:21: S30 1375, S15 224, BG 7.5, falling.
+        assertEquals(true, walkingSoonDefault(0, 1375, 136.0, -2.0, steps15 = 224))
+        assertEquals(true, walkingSoonDefault(0, 1000, 180.0, 0.0, steps15 = 50))
+        assertEquals(false, walkingSoonDefault(0, 1200, 185.0, 0.0, steps15 = 50))
+        // S30 lingers after you stop: with S15 and S5 both 0 it does not count
+        assertEquals(false, walkingSoonDefault(0, 1200, 120.0, 0.0, steps15 = 0))
+        // Light walking (S15 >= 200) only below 8.0 mmol/L
+        assertEquals(true, walkingSoonDefault(0, 300, 140.0, 0.0, steps15 = 200))
+        assertEquals(false, walkingSoonDefault(0, 300, 145.0, 0.0, steps15 = 200))
+        assertEquals(false, walkingSoonDefault(50, 300, 100.0, 0.0, steps15 = 199))
+        // Never while rising fast
+        assertEquals(false, walkingSoonDefault(0, 1200, 100.0, 1.0, steps15 = 300))
     }
 
     private fun halve(

@@ -109,17 +109,20 @@ internal fun walkingSoonHeldUnits(walkingSoon: Boolean, standingPct: Double, sca
 }
 
 /**
- * Default for the Walking soon box. Steps over 5 minutes at 20 or more, or steps over 30 minutes at
- * 100 or more while steps over 15 or 5 minutes are above 0 (S30 alone lingers about 25 minutes after
- * you stop). A missing 15-minute count keeps the older 30-minute-only test. Also glucose under
- * 6 mmol/L and not rising fast. Null when the 5 or 30 minute counts are missing, so the box is left as it is.
+ * Default for the Walking soon box (2026-10-24, per explicit request; the same rule as the 3426 wizard). Never while glucose is
+ * rising fast (more than +0.05 mmol/L per 5 minutes).
+ * - Hard walking: 1000 or more steps over 30 minutes, up to glucose 10.0 mmol/L. S30 alone lingers about 25 minutes after you
+ *   stop, so steps over 15 or 5 minutes must also be above 0 (a missing 15-minute count is not held against it).
+ * - Light walking: 200 or more steps over 15 minutes, below glucose 8.0 mmol/L.
+ *
+ * 24 Oct 14:21: S30 1375 at 7.5 mmol/L left the box off under the old rule (any walking, but only below 6.0).
+ * Null when the 5 or 30 minute counts are missing, so the box is left as it is.
  */
 fun walkingSoonDefault(steps5: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: Double, steps15: Int? = null): Boolean? {
     if (steps5 == null || steps30 == null) return null
-    // 20 and 100 (were 100 and 200), as in the loop's own standing gates and the 3426 wizard.
-    val moving = steps5 >= 20 || (steps30 >= 100 && (steps15 == null || steps15 > 0 || steps5 > 0))
-    val low = bgMgdl < 108.1
-    val notRisingFast = deltaMgdl <= 0.9
-    return moving && low && notRisingFast
+    if (deltaMgdl > 0.9) return false
+    val hardWalking = steps30 >= 1000 && (steps15 == null || steps15 > 0 || steps5 > 0)
+    val lightWalking = (steps15 ?: 0) >= 200
+    return (hardWalking && bgMgdl <= 180.2 /* 10.0 mmol */) || (lightWalking && bgMgdl < 144.1 /* 8.0 mmol */)
 }
 

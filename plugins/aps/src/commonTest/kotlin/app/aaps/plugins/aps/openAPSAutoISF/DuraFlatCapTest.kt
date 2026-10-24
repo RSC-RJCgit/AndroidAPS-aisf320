@@ -30,6 +30,14 @@ class DuraFlatCapTest {
     }
 
     @Test
+    fun whileWalkingTheLimitIs90() {
+        // 24 Oct 10:20: BG 7.5, IOB 2.2, flat, walking
+        assertTrue(duraFlatCapRule(factors(dura = 1.9), 135.0, 2.2, 0.0, now - 20 * minute, now, walking = true))
+        assertFalse(duraFlatCapRule(factors(dura = 1.9), 135.0, 2.2, 0.0, now - 20 * minute, now, walking = false))
+        assertFalse(duraFlatCapRule(factors(dura = 1.9), 162.2, 2.2, 0.0, now - 20 * minute, now, walking = true))
+    }
+
+    @Test
     fun lessThan15FlatMinutesIsNotCapped() {
         assertFalse(duraFlatCapRule(factors(), 115.0, 1.2, 0.0, now - 10 * minute, now))
         assertFalse(duraFlatCapRule(factors(), 115.0, 1.2, 0.0, 0L, now))
