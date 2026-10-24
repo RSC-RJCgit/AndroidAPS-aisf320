@@ -365,6 +365,12 @@
     <string name="iob_threshold_shortname">IOB_TH</string>
     <string name="graph_scale">Graph scale</string>
     <string name="graph_menu_divider_header">Graph</string>
+    <string name="graph_short_number" comment="Start of the label on each graph below the BG graph. %1$d=graph number. Example: G2">G%1$d</string>
+    <string name="graph_label_basal">Basal</string>
+    <string name="graph_label_max_rates" comment="The highest basal rates, shown as numbers on graph 1">Max rates</string>
+    <string name="graph_label_smb" comment="The SMB doses shown as numbers on this graph">SMB</string>
+    <string name="graph_label_stack_totals" comment="The total of each group (stack) of SMBs, shown on this graph">Stacks total</string>
+    <string name="graph_label_notes" comment="Notes shown at their time on this graph">Notes timed</string>
     <string name="temp_basal_overview_short_name">T:</string>
 
     <!-- Skins -->

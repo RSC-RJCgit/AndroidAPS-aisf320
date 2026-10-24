@@ -1469,6 +1469,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 layoutParams.addRule(RelativeLayout.ALIGN_PARENT_TOP)
                 layoutParams.addRule(RelativeLayout.ALIGN_PARENT_LEFT)
                 label.layoutParams = layoutParams
+                // White (the theme's text colour) since 2026-10-24, per explicit request
+                label.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.defaultTextColor))
                 relativeLayout.addView(label)
                 secondaryGraphsLabel.add(label)
 
@@ -3617,7 +3619,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             secondaryGraphsData.add(secondGraphData)
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
-            secondaryGraphsLabel[g].text = stepsLinesLabel(overviewMenus.enabledTypes(g + 1), rh, context)
+            // 2026-10-24, per explicit request: "G2 ACCE PP SMB" - the graph number, the curves, then what the graph draws
+            // besides them (the same graphs as addInsulinIntervalTotals, addSmbLabels, addSmbStackTotalLabels and the notes above)
+            val extras = when (g) {
+                0    -> listOf(rh.gs(R.string.graph_label_basal), rh.gs(R.string.graph_label_max_rates))
+                1    -> listOf(rh.gs(R.string.graph_label_smb))
+                2    -> listOf(rh.gs(R.string.graph_label_stack_totals))
+                3    -> if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) listOf(rh.gs(R.string.graph_label_notes)) else emptyList()
+                else -> emptyList()
+            }
+            secondaryGraphsLabel[g].text = SpannableStringBuilder(rh.gs(R.string.graph_short_number, g + 1)).append(" ")
+                .append(stepsLinesLabel(overviewMenus.enabledTypes(g + 1), rh, context))
+                .append(extras.joinToString(" "))
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal) ||

@@ -243,12 +243,29 @@ class OverviewMenusImpl @Inject constructor(
             }.toMutableList()
             for (s in _setting)
                 if (s.size != expected) {
-                    _setting = ArrayList<Array<Boolean>>().also { it.add(Array(expected) { CharTypeData.entries[it].enabledByDefault }) }
+                    _setting = defaultGraphs()
                     break
                 }
         } else {
-            _setting = ArrayList<Array<Boolean>>().also { it.add(Array(OverviewMenus.CharType.entries.size) { CharTypeData.entries[it].enabledByDefault }) }
+            _setting = defaultGraphs()
         }
+    }
+
+    /**
+     * The graphs a new install starts with (2026-10-24, per explicit request; the same as the v4 defaults): the main graph,
+     * then G1 IOB and COB, G2 acce and pp ISF, G3 final, dura and bg ISF, G4 iobTH, G5 steps. Until the graphs are changed.
+     */
+    private fun defaultGraphs(): MutableList<Array<Boolean>> {
+        val size = OverviewMenus.CharType.entries.size
+        fun graph(vararg types: CharTypeData): Array<Boolean> = Array(size) { i -> types.any { it.ordinal == i } }
+        return mutableListOf(
+            Array(size) { CharTypeData.entries[it].enabledByDefault },
+            graph(CharTypeData.IOB, CharTypeData.COB),
+            graph(CharTypeData.ACC_ISF, CharTypeData.PP_ISF),
+            graph(CharTypeData.FIN_ISF, CharTypeData.DUR_ISF, CharTypeData.BG_ISF),
+            graph(CharTypeData.IOB_TH),
+            graph(CharTypeData.STEPS)
+        )
     }
 
     @SuppressLint("SetTextI18n")
