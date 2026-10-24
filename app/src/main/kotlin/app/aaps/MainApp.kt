@@ -272,6 +272,10 @@ class MainApp : DaggerApplication() {
         if (preferences.get(UnitDoubleKey.OverviewHighMark) == 0.0) preferences.remove(UnitDoubleKey.OverviewHighMark)
         if (preferences.getIfExists(BooleanKey.GeneralSimpleMode) == null)
             preferences.put(BooleanKey.GeneralSimpleMode, !preferences.get(BooleanKey.GeneralSetupWizardProcessed))
+        // A new install starts with the clean main graph, no text lines (2026-10-24, per explicit request). Never changes a
+        // stored value, so an update keeps what the phone has.
+        if (!preferences.get(BooleanKey.GeneralSetupWizardProcessed) && preferences.getIfExists(BooleanKey.ApsAutoIsfShowGraphText) == null)
+            preferences.put(BooleanKey.ApsAutoIsfShowGraphText, false)
         // Migrate from OpenAPSSMBDynamicISFPlugin
         if (sp.getBoolean("ConfigBuilder_APS_OpenAPSSMBDynamicISFPlugin_Enabled", false)) {
             sp.remove("ConfigBuilder_APS_OpenAPSSMBDynamicISFPlugin_Enabled")

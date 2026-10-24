@@ -25,7 +25,8 @@ object BuildDefaultsReset {
         BooleanKey.ApsAutoIsfShowInsulinTotals to true,
         BooleanKey.ApsAutoIsfShowCarbModelCurve to true,
         BooleanKey.ApsAutoIsfShowGraph5 to true,
-        BooleanKey.ApsAutoIsfShowGraphText to true,
+        // Clean graph (2026-10-24, per explicit request; was true): no text lines, the same as a new install (see MainApp)
+        BooleanKey.ApsAutoIsfShowGraphText to false,
         BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled to false,
         BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled to false,
         BooleanKey.AutomationCodedLocationsEnabled to false,
