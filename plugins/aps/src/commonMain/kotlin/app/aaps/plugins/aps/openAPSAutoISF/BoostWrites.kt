@@ -58,9 +58,12 @@ internal fun boostedDeliveryRatio(mildBase: Double, strong: Boolean, caution: Bo
  */
 internal fun activityFactor(iob: Double, maxIob: Double, steps5: Int, steps30: Int, steps60: Int): Double = when {
     iob >= 0.40 * maxIob -> 0.0
-    steps5 > 20 || steps30 > 100 || steps60 > 300 -> 0.5
+    isWalking(steps5, steps30, steps60) -> 0.5
     else -> 1.0
 }
+
+/** The walking test of [activityFactor], also used to halve the dura boost (`duraWalkingFactor`). */
+internal fun isWalking(steps5: Int, steps30: Int, steps60: Int): Boolean = steps5 > 20 || steps30 > 100 || steps60 > 300
 
 /** The careportal note for an activity factor below 1, or null at 1. */
 internal fun activityFactorNote(factor: Double): String? = when {

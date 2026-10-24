@@ -518,6 +518,13 @@ internal fun duraIobTaperFactor(iob: Double, hpMmol: Double?): Double {
     }
 }
 
+// 2026-10-24, per explicit request: half the dura boost while walking (the walking test of activityFactor), on top of the IOB
+// taper. A high prediction does not skip it, as it does the taper: walking makes the insulin on board work harder than the
+// prediction shows. 24 Oct Live: dura about 1.9 at the start of a walk gave 1.1 U of SMB and a 1 U/h temp in 15 minutes,
+// then BG fell from 7.6 to 4.3.
+internal fun duraWalkingFactor(steps5: Int, steps30: Int, steps60: Int): Double =
+    if (isWalking(steps5, steps30, steps60)) 0.5 else 1.0
+
 // Extra 25% cut in the day when FastRise already reduced the SMB, the person is walking a little,
 // and the predicted glucose is 6.5 mmol/L or lower. 3.2.1 marks the step counts and 6.5 as a first guess.
 internal fun littleWalkingSmbCut(

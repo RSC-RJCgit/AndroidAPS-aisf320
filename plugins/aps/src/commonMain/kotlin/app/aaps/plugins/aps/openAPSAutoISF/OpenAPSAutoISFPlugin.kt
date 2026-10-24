@@ -938,7 +938,8 @@ open class OpenAPSAutoISFPlugin(
         val tier3Activity = tier3ActivityFactor(now, iobArray[0].iob, oapsProfile.max_iob)
         val flatNow = autoIsfMode && glucoseStatus.delta <= 1.8 && glucoseStatus.shortAvgDelta <= 1.8
         duraFlatSince = if (!flatNow) 0L else if (duraFlatSince == 0L) now else duraFlatSince
-        val duraCapActive = autoIsfMode && duraFlatCapRule(autoIsfFactors, glucoseStatus.glucose, iobArray[0].iob, mealData.mealCOB, duraFlatSince, now)
+        val duraCapWalking = isWalking(steps5(now), steps30(now), steps60(now))
+        val duraCapActive = autoIsfMode && duraFlatCapRule(autoIsfFactors, glucoseStatus.glucose, iobArray[0].iob, mealData.mealCOB, duraFlatSince, now, duraCapWalking)
         determineBasalAutoISF.duraFlatCapActive = duraCapActive
         if (duraCapActive && !duraCapWasActive) carePortalNote("DuraCap")
         duraCapWasActive = duraCapActive
@@ -1425,6 +1426,12 @@ open class OpenAPSAutoISFPlugin(
                 if (taper < 1.0) {
                     consoleError.add("dura_ISF IOB taper: IOB ${round(iob, 2)} -> x${round(taper, 2)}")
                     duraBoost *= taper
+                }
+                val stepsNow = dateUtil.now()
+                val walking = duraWalkingFactor(steps5(stepsNow), steps30(stepsNow), steps60(stepsNow))
+                if (walking < 1.0) {
+                    consoleError.add("dura_ISF walking: boost ${round(duraBoost, 2)} -> ${round(duraBoost * walking, 2)}")
+                    duraBoost *= walking
                 }
                 dura_ISF += duraBoost
                 sens_modified = true
@@ -6741,11 +6748,18 @@ open class OpenAPSAutoISFPlugin(
  * Checked against 9 Sep - 21 Oct Client data: 55 times, 2.5 U of SMB and 2.1 U of extra temp basal held back in six weeks.
  * Of the 11 times BG went over 9.0 in the next 3 hours, insulin was held back in only 3 (0.3-0.55 U each). On 21 Oct it
  * would have held back 0.4 U of SMB and 0.4 U of temp basal before a 3.5 low. The dura IOB taper starts only at 1.5 U.
+ *
+ * While [walking] (the walking test of [activityFactor]) the BG limit is 9.0 mmol instead of 6.8 (2026-10-24, per explicit
+ * request). 24 Oct Live: at the start of a walk, dura about 1.9 at a flat 7.4-7.7 gave 1.1 U of SMB and a 1 U/h temp in 15
+ * minutes, then BG fell to 4.3.
  */
-internal fun duraFlatCapRule(factors: AutoIsfFactors, bgMgdl: Double, iob: Double, cob: Double, flatSince: Long, now: Long): Boolean {
+internal fun duraFlatCapRule(
+    factors: AutoIsfFactors, bgMgdl: Double, iob: Double, cob: Double, flatSince: Long, now: Long, walking: Boolean = false
+): Boolean {
     val dura = factors.duraIsf
+    val bgLimit = if (walking) 162.2 /* 9.0 mmol */ else 122.5 /* 6.8 mmol */
     return dura > 1.2 && dura >= maxOf(factors.acceIsf, factors.bgIsf, factors.ppIsf) &&
-        bgMgdl < 122.5 /* 6.8 mmol */ &&
+        bgMgdl < bgLimit &&
         cob < 5.0 &&
         iob >= 1.0 &&
         flatSince > 0L && now - flatSince >= 15 * 60_000L
