@@ -1,7 +1,5 @@
 package app.aaps.ui.compose.main
 
-import app.aaps.core.ui.compose.LocalConfig
-import app.aaps.core.keys.interfaces.AppPlatform
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -38,12 +36,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalAccessibilityManager
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -57,13 +49,10 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.BolusProgressState
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
-import app.aaps.core.ui.compose.LocalReadOnlyClient
-import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalSnackbarHostState
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.dialogs.ThreeButtonDialog
 import app.aaps.core.ui.compose.navigation.NavigationRequest
-import app.aaps.ui.compose.tempTarget.QuickTempTargetDialog
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -166,7 +155,6 @@ fun MainScreen(
     LocalDateUtil.current
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val isDesktopWindow = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
     var showTreatmentSheet by remember { mutableStateOf(false) }
     var showAutomationSheet by remember { mutableStateOf(false) }
     var showLoopActionSheet by remember { mutableStateOf(false) }
@@ -208,28 +196,14 @@ fun MainScreen(
                 showExit = mainViewModel.showExit
             )
         },
-        // Gestures are off in landscape so a sideways drag on the graphs is not taken for opening the drawer. That
-        // also switches off the tap on the dimmed area, which is the only way to close the drawer without picking an
-        // item, and a desktop window is always landscape. There is no touch to confuse there, so desktop keeps them on.
-        gesturesEnabled = !isLandscape() || isDesktopWindow,
-        modifier = modifier.onPreviewKeyEvent { event ->
-            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape && drawerState.isOpen) {
-                scope.launch { drawerState.close() }
-                onDrawerClosed()
-                true
-            } else false
-        }
+        gesturesEnabled = true,
+        modifier = modifier
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
-            // A phone held sideways hides the bars to give the graphs the room. A desktop window is always wider than
-            // tall, so counting it as landscape removed the menu, search and Manage bar for good (no way to reach
-            // Configuration or Maintenance). Desktop is only ever "short", never "landscape".
-            val desktop = !LocalInspectionMode.current && LocalConfig.current.platform == AppPlatform.Desktop
-            val landscape = isLandscape() && !desktop
-            val previewMode = landscape || maxHeight < PREVIEW_MODE_MIN_HEIGHT
+            val previewMode = maxHeight < PREVIEW_MODE_MIN_HEIGHT
             var chromeVisible by remember { mutableStateOf(false) }
-            val showChrome = !landscape && (!previewMode || chromeVisible)
+            val showChrome = !previewMode || chromeVisible
             val interactionSource = remember { MutableInteractionSource() }
             val accessibilityManager = LocalAccessibilityManager.current
 
@@ -260,17 +234,14 @@ fun MainScreen(
             Scaffold { scaffoldPadding ->
                 val hasToolbar = quickLaunchItems.isNotEmpty()
 
-                // Content padding: in preview mode use only system bars;
-                // in normal mode add measured bar heights
-                val contentPadding = if (previewMode) scaffoldPadding
-                else {
-                    val topBarHeight = with(density) { topBarHeightPx.toDp() }
-                    val bottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
-                    PaddingValues(
-                        top = scaffoldPadding.calculateTopPadding() + topBarHeight,
-                        bottom = scaffoldPadding.calculateBottomPadding() + bottomBarHeight
-                    )
-                }
+                // Keep the top bar (including Search and Settings) available even when
+                // landscape height is short. The bottom navigation may still auto-hide.
+                val topBarHeight = with(density) { topBarHeightPx.toDp() }
+                val bottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
+                val contentPadding = PaddingValues(
+                    top = scaffoldPadding.calculateTopPadding() + topBarHeight,
+                    bottom = scaffoldPadding.calculateBottomPadding() + if (previewMode) 0.dp else bottomBarHeight
+                )
 
                 val activeSceneState by mainViewModel.activeSceneState.collectAsStateWithLifecycle()
                 val sceneExpired by mainViewModel.sceneExpired.collectAsStateWithLifecycle()
@@ -281,32 +252,6 @@ fun MainScreen(
                 // (Probe-while-offline is now global — see ComposeMainActivity. This screen still reads
                 // masterReachable for its own gating.)
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // 2026-10-18: one tap on the TT chip opens the quick TT popup, like the v3 dialog. "More presets" in
-                    // it opens the full TT screen.
-                    var showQuickTempTarget by remember { mutableStateOf(false) }
-                    val overviewNavigate: (NavigationRequest) -> Unit = { request ->
-                        if (request is NavigationRequest.Element && request.type == ElementType.TEMP_TARGET_MANAGEMENT) showQuickTempTarget = true
-                        else onNavigate(request)
-                    }
-                    if (showQuickTempTarget) {
-                        QuickTempTargetDialog(
-                            presetFor = mainViewModel::quickTempTargetPreset,
-                            showStop = uiState.tempTargetText.isNotEmpty() && uiState.tempTargetRecordId > 0,
-                            onSet = { reason, targetMgdl, minutes ->
-                                showQuickTempTarget = false
-                                mainViewModel.requestTempTarget(reason, targetMgdl, minutes)
-                            },
-                            onStop = {
-                                showQuickTempTarget = false
-                                mainViewModel.requestStopTempTarget()
-                            },
-                            onMore = {
-                                showQuickTempTarget = false
-                                onNavigate(NavigationRequest.Element(ElementType.TEMP_TARGET_MANAGEMENT))
-                            },
-                            onDismiss = { showQuickTempTarget = false }
-                        )
-                    }
                     // Main content
                     OverviewScreen(
                         profileName = uiState.profileName,
@@ -332,7 +277,7 @@ fun MainScreen(
                         manageViewModel = manageViewModel,
                         statusViewModel = statusViewModel,
                         statusLightsDef = statusLightsDef,
-                        onNavigate = overviewNavigate,
+                        onNavigate = onNavigate,
                         onTbrChipClick = mainViewModel::showTbrInfo,
                         onIobChipClick = chipsViewModel::showIobInfo,
                         notifications = notifications,
@@ -346,15 +291,10 @@ fun MainScreen(
                         onEndScene = { mainViewModel.requestSceneDeactivation() },
                         onDismissScene = { mainViewModel.dismissExpiredScene() },
                         endSceneEnabled = masterReachable,
-                        // A read-only client may still set a profile switch, temp target or note (sent through Nightscout).
-                        commandsAllowed = masterOrPairedClient || LocalReadOnlyClient.current,
+                        commandsAllowed = masterOrPairedClient,
                         formatDuration = mainViewModel::formatDuration,
                         paddingValues = contentPadding,
                         fabBottomOffset = if (hasToolbar && showChrome) 56.dp else 0.dp,
-                        // In preview mode the bottom bar lies over the content instead of above it, so the end of each
-                        // column needs its height too. The height is kept once measured, so the columns do not move each
-                        // time the bars show and hide.
-                        overlaidBarsHeight = if (previewMode) with(density) { bottomBarHeightPx.toDp() } else 0.dp,
                         bolusState = bolusState,
                         pumpStatusText = pumpStatusText,
                         queueStatusText = queueStatusText,
@@ -404,7 +344,7 @@ fun MainScreen(
                     // Version overlay
                     VersionOverlay(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
+                            .align(Alignment.TopEnd)
                             .padding(contentPadding)
                     )
 
@@ -429,7 +369,7 @@ fun MainScreen(
 
                     // Top bar overlay
                     AnimatedVisibility(
-                        visible = showChrome,
+                        visible = true,
                         enter = slideInVertically { -it },
                         exit = slideOutVertically { -it },
                         modifier = Modifier
@@ -524,7 +464,7 @@ fun MainScreen(
                     }
 
                     // Tap overlay to restore chrome in preview mode (only when hidden)
-                    if (previewMode && !landscape && !chromeVisible) {
+                    if (previewMode && !chromeVisible) {
                         // Named: the top bar, menu and toolbar come back only through this, and a
                         // screen reader announced it as a nameless control.
                         val showControls = stringResource(UiStrings.a11y_show_controls)
