@@ -38,6 +38,7 @@ import app.aaps.core.interfaces.utils.SafeParse
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.versionChecker.VersionCheckerUtils
 import app.aaps.core.keys.BooleanKey
+import app.aaps.implementation.heartbeat.IphoneHeartbeatSender
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.LongKey
@@ -117,6 +118,7 @@ class MainApp : DaggerApplication() {
     @Inject lateinit var profileFunction: ProfileFunction
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var loggerUtils: LoggerUtils
+    @Inject lateinit var iphoneHeartbeatSender: IphoneHeartbeatSender
     lateinit var appComponent: AppComponent
 
     private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
@@ -143,6 +145,8 @@ class MainApp : DaggerApplication() {
         // Register and initialize plugins
         pluginStore.plugins = plugins
         configBuilder.initialize()
+        // Bluetooth heartbeat for an iPhone client, while its setting is on (2026-10-24)
+        iphoneHeartbeatSender.start()
         // A Virtual master or a client gets the agreed on/off switches once per new build (2026-10-21, per explicit
         // request). The main master looping phone is never touched.
         BuildDefaultsReset.apply(preferences, config, activePlugin.activePump is VirtualPump, BuildConfig.HEAD).let { changed ->

@@ -111,6 +111,9 @@ enum class BooleanKey(
     // hypoprediction line is always shown. True (default) = shown. List 3 "Clean graph, no text" (TT 5.244) turns it off; switched back
     // on here, in Settings. Local to the phone, like the other graph display switches.
     ApsAutoIsfShowGraphText("show_graph_text_lines", true, defaultedBySM = true),
+    // 2026-10-24, per explicit request: this phone sends a Bluetooth heartbeat that an iPhone AAPS client can use as a backup
+    // when its RileyLink is not there (IphoneHeartbeatSender). Off by default. This phone's own choice, so not exported.
+    IphoneHeartbeatSender("iphone_heartbeat_sender", false, exportable = false),
     // 2026-09-26, per explicit request: a Quick Wizard press partway up a rise dates its carbs back from the rise onset (CarbTimeFromRise).
     OverviewQuickWizardCarbTimeFromRise("quickwizard_carb_time_from_rise", true, defaultedBySM = true),
     // When graph5 is on: false (default, preserves prior behaviour) = show every series it always has

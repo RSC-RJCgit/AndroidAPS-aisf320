@@ -1,7 +1,9 @@
 package app.aaps
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
@@ -281,6 +283,11 @@ class MainActivity : DaggerAppCompatActivityWithResult() {
         androidPermission.notifyForStoragePermission(this)
         androidPermission.notifyForBatteryOptimizationPermission(this)
         androidPermission.notifyForStepCountPermissions(this)
+        // Send heartbeat to an iPhone (2026-10-24): needs Nearby devices, also on a phone without a Bluetooth pump
+        if (preferences.get(BooleanKey.IphoneHeartbeatSender) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            (checkSelfPermission(Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED ||
+                checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED)
+        ) androidPermission.askForPermission(this, arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT))
         if (!config.AAPSCLIENT) androidPermission.notifyForLocationPermissions(this)
         if (config.PUMPDRIVERS) {
             if (smsCommunicator.isEnabled())
