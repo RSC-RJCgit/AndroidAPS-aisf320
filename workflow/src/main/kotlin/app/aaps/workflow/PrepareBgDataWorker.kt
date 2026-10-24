@@ -314,6 +314,10 @@ class PrepareBgDataWorker(
         // Computed here (moved up from its original spot just above ukfDeltaSeries below) so
         // isfWeightsRowSeries's HP2= field can reuse it too, instead of calling ukfFiveMinuteDelta() twice.
         val ukfDeltaResult = ukfFiveMinuteDelta(rawReadings)
+        // 2026-10-24, per explicit request: the 5 minute change for HP2 / hypoprediction. The UKF change when it can be worked
+        // out, else the newest AIV row's own 5 minute delta, so the line no longer disappears. A client's readings from
+        // Nightscout often have no noise value, and then the UKF change is never available there.
+        val hpDelta5Mgdl = ukfDeltaResult?.first ?: latestAiv?.delta
         // Removed 2026-08-23: the "L=.../A1=.../A5=.../MJ" label pinned to the main graph's own noisy-BG
         // point, per explicit request to declutter the main BGL trace. Left the computation above
         // (noisyBg/aapsDelta/libreDelta/aapsDelta5/libreDelta5) untouched in case another series needs
@@ -338,10 +342,10 @@ class PrepareBgDataWorker(
                 val acceW = preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight)
                 val duraW = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
                 val iobThTxt = latestAiv?.let { String.format(Locale.getDefault(), "%.2f", it.iobThEffective) } ?: "--"
-                val hp2Txt = if (latestAiv != null && ukfDeltaResult != null) {
+                val hp2Txt = if (latestAiv != null && hpDelta5Mgdl != null) {
                     val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                     val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
-                    val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
+                    val ukfDelta5Mmol = hpDelta5Mgdl * Constants.MGDL_TO_MMOLL
                     val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                     val hp2 = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * ukfDelta5Mmol + cob / 12.0
                     String.format(Locale.getDefault(), "%.1f", hp2)
@@ -381,10 +385,10 @@ class PrepareBgDataWorker(
         // own comment above for why the weights/COB-gating changed 2026-08-17.
         // Live COB substitutes for the exporter's historically reconstructed COBt. Requires UKF delta.
         data.overviewData.hpSeries =
-            if (latest != null && latestAiv != null && ukfDeltaResult != null) {
+            if (latest != null && latestAiv != null && hpDelta5Mgdl != null) {
                 val bglMmol = latestAiv.glucose * Constants.MGDL_TO_MMOLL
                 val sdeltaMmol = latestAiv.shortAvgDelta * Constants.MGDL_TO_MMOLL
-                val ukfDelta5Mmol = ukfDeltaResult.first * Constants.MGDL_TO_MMOLL
+                val ukfDelta5Mmol = hpDelta5Mgdl * Constants.MGDL_TO_MMOLL
                 val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
                 val cobTerm = cob / 12.0
                 val hp2 = (bglMmol - latestAiv.iob) + 0.25 * sdeltaMmol + 0.25 * ukfDelta5Mmol + cobTerm
