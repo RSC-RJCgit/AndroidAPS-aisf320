@@ -61,7 +61,8 @@ class IosLiveActivityUpdater(
         }
     }
 
-    private fun push() {
+    // suspend: the IOB and COB calls below are suspend functions. Only called from the loop in start().
+    private suspend fun push() {
         val glucose = lastBgData.lastBg() ?: return
         val delta = glucoseStatusProvider.glucoseStatusData?.delta
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
