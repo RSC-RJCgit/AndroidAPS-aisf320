@@ -896,14 +896,15 @@ class PrepareGraphDataRunner(
 
     // Same formula as hypoPrediction2Mmol: (glucose - IOB) + 0.25*short delta + 0.25*UKF 5 minute change + COB/12, all in mmol.
     // The 5 minute change is the stored UKF glucose minus the stored value about 5 minutes earlier.
-    private suspend fun hypoPredictionMmol(latest: AIV, rows: List<AIV>, data: PrepareGraphData): Double? {
-        if (latest.ukfRawBgl == 0.0) return null
-        val older = rows
-            .filter { it.ukfRawBgl != 0.0 && it.timestamp in (latest.timestamp - 8 * 60_000)..(latest.timestamp - 3 * 60_000) }
+    // 2026-10-24, per explicit request: the earlier row may be up to 12 minutes back (was 8), and the UKF change is scaled to
+    // 5 minutes. When it cannot be worked out (no UKF value, or no earlier row), the newest row's own 5 minute delta is used,
+    // so the line no longer disappears on a client whose rows arrive late or without a UKF value.
+    private suspend fun hypoPredictionMmol(latest: AIV, rows: List<AIV>, data: PrepareGraphData): Double {
+        val older = if (latest.ukfRawBgl == 0.0) null else rows
+            .filter { it.ukfRawBgl != 0.0 && it.timestamp in (latest.timestamp - 12 * 60_000)..(latest.timestamp - 3 * 60_000) }
             .maxByOrNull { it.timestamp }
-            ?: return null
         val mmol = 18.0182
-        val ukfDelta5 = latest.ukfRawBgl - older.ukfRawBgl
+        val ukfDelta5 = older?.let { (latest.ukfRawBgl - it.ukfRawBgl) * 5 * 60_000.0 / (latest.timestamp - it.timestamp) } ?: latest.delta
         val cob = data.iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
         return (latest.glucose / mmol - latest.iob) +
             0.25 * (latest.shortAvgDelta / mmol) +
