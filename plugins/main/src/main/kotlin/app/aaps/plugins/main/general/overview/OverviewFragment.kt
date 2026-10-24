@@ -1974,11 +1974,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private var isfDialogTextCached: String? = null
 
     // 2026-10-10, per explicit request: a double-tap on the ISF icon opens List 3 (one row so far: Clean graph).
-    // Single tap and long press behave as before (sensitivity dialog; AutoISF history and logs when the algorithm is AUTO_ISF).
+    // 2026-10-24, per explicit request, on every phone and the same as v4: a single tap opens the AutoISF history (which always
+    // also writes and uploads AIV and logs), a long press shows the sensitivity dialog. When the algorithm is not AUTO_ISF
+    // there is no history, and a single tap shows the sensitivity dialog as before.
     private val isfGestureDetector by lazy {
         android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
-                isfDialogTextCached?.let { text -> activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.sensitivity), text) } }
+                if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") openAutoIsfHistory() else showSensitivityDialog()
                 return true
             }
 
@@ -1988,13 +1990,20 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             }
 
             override fun onLongPress(e: android.view.MotionEvent) {
-                if (activePlugin.activeAPS.algorithm.name != "AUTO_ISF") return
-                aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=REQUEST result=STARTED")
-                // The dialog writes and uploads AIV first, then starts logs from its cloud-completion
-                // callback. This guarantees AVLs/AVLf -> AVCs/AVCf -> LGsP ordering.
-                uiInteraction.runAutoISFHistoryDialog(childFragmentManager)
+                showSensitivityDialog()
             }
         })
+    }
+
+    private fun showSensitivityDialog() {
+        isfDialogTextCached?.let { text -> activity?.let { OKDialog.show(it, rh.gs(app.aaps.core.ui.R.string.sensitivity), text) } }
+    }
+
+    private fun openAutoIsfHistory() {
+        aapsLogger.info(LTag.CORE, "EXPORT_STATUS trigger=ISF_LONG_PRESS component=REQUEST result=STARTED")
+        // The dialog writes and uploads AIV first, then starts logs from its cloud-completion
+        // callback. This guarantees AVLs/AVLf -> AVCs/AVCf -> LGsP ordering.
+        uiInteraction.runAutoISFHistoryDialog(childFragmentManager)
     }
 
     // List 3 (a display list). Loop phone and virtual phone: items 1 and 2 are applied right here (applyTtControl, which also writes the
