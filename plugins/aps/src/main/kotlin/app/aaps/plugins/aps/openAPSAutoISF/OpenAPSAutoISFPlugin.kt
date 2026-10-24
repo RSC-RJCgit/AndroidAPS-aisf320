@@ -2783,9 +2783,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // went in between 17:00 and 17:15 while walking (S60 to 949 later), and BG fell from 9.9 to 3.6.
     private fun activityFactor(iob: Double = totalIobAt(dateUtil.now())): Double = when {
         iob >= 0.40 * constraintsChecker.getMaxIOBAllowed().value() -> 0.0
-        recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300 -> 0.5
+        walkingNow() -> 0.5
         else -> 1.0
     }
+
+    // The walking test of activityFactor, also used to halve the dura boost (2026-10-24).
+    private fun walkingNow(): Boolean = recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300
 
     // Careportal note for a factor below 1, at most once in 15 min per caller key.
     private fun noteActivityFactor(factor: Double, key: String) {
@@ -3115,12 +3118,17 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
      * weeks. Of the 11 times BG went over 9.0 in the next 3 hours, insulin was held back in only 3 (0.3-0.55 U each). On
      * 21 Oct it would have held back 0.4 U of SMB and 0.4 U of temp basal before the 3.5 low.
      * The dura IOB taper (from 1.5 U) did not act on 21 Oct because IOB peaked at 1.46 U.
+     *
+     * While walking (walkingNow, the walking test of activityFactor) the BG limit is 9.0 mmol instead of 6.8 (2026-10-24, per
+     * explicit request). 24 Oct Live: at the start of a walk, dura about 1.9 at a flat 7.4-7.7 gave 1.1 U of SMB and a 1 U/h
+     * temp in 15 minutes, then BG fell to 4.3.
      */
     private fun duraFlatCapApplies(bgMgdl: Double, iob: Double, cob: Double, now: Long): Boolean {
         val dura = autoIsfValues.duraIsf
         val others = maxOf(autoIsfValues.acceIsf, autoIsfValues.bgIsf, autoIsfValues.ppIsf)
+        val bgLimit = if (walkingNow()) 162.2 /* 9.0 mmol */ else 122.5 /* 6.8 mmol */
         return dura > 1.2 && dura >= others &&
-            bgMgdl < 122.5 /* 6.8 mmol */ &&
+            bgMgdl < bgLimit &&
             cob < 5.0 &&
             iob >= 1.0 &&
             duraFlatSince > 0L && now - duraFlatSince >= T.mins(15).msecs()
@@ -11405,6 +11413,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     lastDuraTaperTimestamp = dateUtil.now()
                     lastDuraTaperInfo = "IOB ${round(iob, 2)}U -> x${round(iobTaperFactor, 2)} (boost ${round(beforeTaper, 2)} -> ${round(duraBoost, 2)})"
                     consoleError.add("dura_ISF IOB taper: $lastDuraTaperInfo")
+                }
+                // 2026-10-24, per explicit request: half the boost while walking (the walking test of activityFactor), on top of
+                // the IOB taper. A high prediction does not skip it, as it does the taper: walking makes the insulin on board
+                // work harder than the prediction shows. 24 Oct Live: dura about 1.9 at the start of a walk gave 1.1 U of SMB
+                // and a 1 U/h temp in 15 minutes, then BG fell from 7.6 to 4.3.
+                if (walkingNow()) {
+                    consoleError.add("dura_ISF walking: boost ${round(duraBoost, 2)} -> ${round(duraBoost * 0.5, 2)}")
+                    duraBoost *= 0.5
                 }
                 dura_ISF += duraBoost
                 sens_modified = true

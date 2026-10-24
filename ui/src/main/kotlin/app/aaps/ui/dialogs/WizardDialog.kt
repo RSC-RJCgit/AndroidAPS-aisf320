@@ -575,19 +575,16 @@ class WizardDialog : DaggerDialogFragment() {
         }
     }
 
-    // S30>=200 = moving (WizardActivitySteps; S5>=100 is OR watch-only). S15 unused. Leftover
-    // S60 never counts. AND BGL<6.0, not rising fast. Quiet / seated meals stay off.
-    // carbs/protein/fat unused here; kept so calculateInsulin can re-apply when those fields
-    // change. Manual tick/untick wins for the rest of the dialog.
+    // 2026-10-24, per explicit request: hard walking (S30 >= 1000) up to BG 10.0, light walking (S15 >= 200) below BG 8.0,
+    // never while rising fast; see WizardActivitySteps.walkingSoonDefault. Leftover S60 never counts. Quiet / seated meals
+    // stay off. carbs/protein/fat unused here; kept so calculateInsulin can re-apply when those fields change. Manual
+    // tick/untick wins for the rest of the dialog.
     @Suppress("UNUSED_PARAMETER")
     private fun computeWalkingSoonDefault(carbs: Int, protein: Int, fat: Int, bgInput: Double): Boolean? {
         val gs = glucoseStatusProvider.getGlucoseStatusData()
-        val notRisingFast = (gs?.delta ?: 0.0) <= 0.9 /* +0.05 mmol/5min */
-        val movingNow = WizardActivitySteps.stillMovingNow(stepCountSource, dateUtil.now()) ?: return null
         val bgMgdl = if (bgInput > 0.0) profileUtil.convertToMgdl(bgInput, profileFunction.getUnits())
         else gs?.glucose ?: 999.0
-        val low = bgMgdl < 108.1 /* 6.0 mmol */
-        return movingNow && low && notRisingFast
+        return WizardActivitySteps.walkingSoonDefault(stepCountSource, dateUtil.now(), bgMgdl, gs?.delta ?: 0.0)
     }
 
     // Carb time pre-filled from the rise the wizard is opened in (CarbTimeFromRise). Computed once when the dialog opens (not on

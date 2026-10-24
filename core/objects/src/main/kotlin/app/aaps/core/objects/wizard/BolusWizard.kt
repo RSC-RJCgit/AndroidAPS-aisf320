@@ -256,8 +256,8 @@ class BolusWizard @Inject constructor(
     // "Walking soon" checkbox: cuts the immediate dose to MOVING_PERCENT (70), independent of and
     // without touching usePercentage/totalPercentage/percentageCorrection, so delayed fullRequired
     // still aims at standing wiz%. QuickWizard "always on" is gated on live S30 (S5 OR watch only)
-    // in QuickWizardEntry (seated = no cut). Dialog auto-tick is stillMovingNow AND BGL<6, not
-    // leftover S60. Manual dialog tick still covers "about to walk" while quiet, at 70% not 50%.
+    // in QuickWizardEntry (seated = no cut). Dialog auto-tick is WizardActivitySteps.walkingSoonDefault (hard walking up to
+    // BG 10, light walking below BG 8), not leftover S60. Manual dialog tick still covers "about to walk" while quiet, at 70%.
     var walkingSoon: Boolean = false
     // True only when walkingSoon actually reduced the immediate % below standing wiz%.
     // Delayed follows this, not the checkbox: a seated QuickWizard "always on"

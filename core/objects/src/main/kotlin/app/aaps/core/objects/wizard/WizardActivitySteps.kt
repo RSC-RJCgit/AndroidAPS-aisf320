@@ -32,6 +32,29 @@ object WizardActivitySteps {
         steps5min >= STILL_NOW_S5 ||
             (steps30min >= STILL_NOW_S30 && (steps15min == null || steps15min > 0 || steps5min > 0))
 
+    // 2026-10-24, per explicit request: the Walking soon auto-tick of the wizard dialog. Never while BG is rising fast (more
+    // than +0.05 mmol per 5 min). Hard walking (S30 >= 1000, with S15 or S5 above 0 because S30 lingers) ticks it up to BG
+    // 10.0. Light walking (S15 >= 200) ticks it only below BG 8.0. 24 Oct 14:21: S30 1375 at BG 7.5 left it off under the old
+    // rule (stillMovingNow, but only below BG 6.0).
+    const val HARD_WALK_S30 = 1000
+    const val LIGHT_WALK_S15 = 200
+
+    fun walkingSoonDefault(steps5: Int?, steps15: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: Double): Boolean {
+        if (deltaMgdl > 0.9) return false
+        val hardWalking = steps30 != null && steps30 >= HARD_WALK_S30 && (steps15 == null || steps15 > 0 || (steps5 ?: 0) > 0)
+        val lightWalking = (steps15 ?: 0) >= LIGHT_WALK_S15
+        return (hardWalking && bgMgdl <= 180.2 /* 10.0 mmol */) || (lightWalking && bgMgdl < 144.1 /* 8.0 mmol */)
+    }
+
+    /** [walkingSoonDefault] from the step source. Null when the counts are missing, so the box is left as it is. */
+    fun walkingSoonDefault(source: StepCountSource, now: Long, bgMgdl: Double, deltaMgdl: Double): Boolean? {
+        val mirrored = source.isMirroring()
+        val values = source.latest(now, if (mirrored) LiveStepsMirror.MAX_AGE_MS else 15 * 60_000L)
+            ?: return if (mirrored) null else false
+        if (values[5] == null && values[15] == null && values[30] == null) return null
+        return walkingSoonDefault(values[5], values[15], values[30], bgMgdl, deltaMgdl)
+    }
+
     fun walkingSoonImmediatePercent(walkingSoon: Boolean, standingPct: Double): Double {
         if (!walkingSoon) return standingPct
         return minOf(standingPct, MOVING_PERCENT)
