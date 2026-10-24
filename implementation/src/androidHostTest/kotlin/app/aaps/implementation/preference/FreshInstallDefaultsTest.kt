@@ -41,13 +41,30 @@ class FreshInstallDefaultsTest {
     fun aStoredValueIsKept() {
         setUp(client = true, wizardDone = false, stored = false)
         FreshInstallDefaults.apply(preferences, config)
-        verify(preferences, never()).put(any<BooleanKey>(), any<Boolean>())
+        verify(preferences, never()).put(BooleanKey.NsClientReadOnlyClient, true)
     }
 
     @Test
-    fun aMasterIsNotTouched() {
+    fun aMasterIsNotMadeReadOnly() {
         setUp(client = false, wizardDone = false, stored = null)
         FreshInstallDefaults.apply(preferences, config)
-        verify(preferences, never()).put(any<BooleanKey>(), any<Boolean>())
+        verify(preferences, never()).put(BooleanKey.NsClientReadOnlyClient, true)
+    }
+
+    @Test
+    fun everyNewInstallStartsWithTheCleanGraph() {
+        // 2026-10-24: text lines off, the automatic clean hides them; a master the same as a client
+        setUp(client = false, wizardDone = false, stored = null)
+        FreshInstallDefaults.apply(preferences, config)
+        verify(preferences).put(BooleanKey.ApsAutoIsfShowGraphText, false)
+        verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, true)
+    }
+
+    @Test
+    fun aStoredGraphChoiceIsKept() {
+        setUp(client = false, wizardDone = false, stored = null)
+        whenever(preferences.getIfExists(BooleanKey.ApsAutoIsfShowGraphText)).thenReturn(true)
+        FreshInstallDefaults.apply(preferences, config)
+        verify(preferences, never()).put(BooleanKey.ApsAutoIsfShowGraphText, false)
     }
 }
