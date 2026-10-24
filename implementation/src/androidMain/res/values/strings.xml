@@ -127,6 +127,17 @@
     <string name="ios_rileylink_status_no_tick" comment="%1$s=device name. Example: OrangePro has no timer tick">%1$s has no timer tick</string>
     <string name="ios_rileylink_not_found">No RileyLink found nearby. Trying again in 2 minutes. Until then silent sound is used if Keep running in background is on.</string>
     <string name="ios_rileylink_lost" comment="iOS background heartbeat. %1$s=the Bluetooth device name. Example: RileyLink heartbeat lost: OrangeLink. Silent sound takes over if Keep running in background is on.">RileyLink heartbeat lost: %1$s. Silent sound takes over if Keep running in background is on.</string>
+    <string name="ios_heartbeat_seen_label" comment="A Bluetooth device in a list. %1$s=device name, %2$d=signal strength, a negative number. Example: My VW 5779 (-61 dBm)">%1$s (%2$d dBm)</string>
+    <string name="ios_heartbeat_status_looking">Looking for other devices for 30 seconds</string>
+    <string name="ios_heartbeat_status_found" comment="%1$d=number of devices. Example: 7 devices found. Pick one in Device to check.">%1$d devices found. Pick one in Device to check.</string>
+    <string name="ios_heartbeat_status_checking" comment="%1$s=device name. Example: Checking My VW 5779, this takes 5 minutes">Checking %1$s, this takes 5 minutes</string>
+    <string name="ios_heartbeat_check_works" comment="%1$s=device name">%1$s can wake the app. It is kept as a backup for when the RileyLink is not there.</string>
+    <string name="ios_heartbeat_check_fails" comment="%1$s=device name">%1$s cannot wake the app. It will not be shown again.</string>
+    <string name="ios_heartbeat_status_trying_backup" comment="%1$s=device name. Example: No RileyLink, trying backup My VW 5779">No RileyLink, trying backup %1$s</string>
+    <string name="ios_heartbeat_using_backup" comment="%1$s=device name">No RileyLink. Backup %1$s is now waking the app.</string>
+    <string name="ios_heartbeat_status_backup_tick" comment="%1$s=device name, %2$s=time of the last tick. Example: Backup My VW 5779, last tick 14:32">Backup %1$s, last tick %2$s</string>
+    <string name="ios_heartbeat_no_backup_works">No RileyLink and no backup device is waking the app. Silent sound is used if Keep running in background is on. Trying again in 10 minutes.</string>
+    <string name="ios_heartbeat_status_no_backup_works" comment="%1$s=time of the next try. Example: No backup works. Next try at 14:45">No backup works. Next try at %1$s</string>
     <string name="ios_background_stopped">AAPS has stopped running in the background. Open it to start it again.</string>
     <string name="ios_battery_falling" comment="iOS phone battery alarm. %1$d=battery percent now, %2$d=how many percent it fell in the last 30 minutes. Example: Phone battery 45% and falling fast: 6% in the last 30 minutes.">Phone battery %1$d%% and falling fast: %2$d%% in the last 30 minutes.</string>
 </resources>

@@ -91,6 +91,11 @@ enum class BooleanKey(
     IosReloadWhenNoBg("ios_reload_when_no_bg", true, KeysStrings.pref_title_ios_reload_when_no_bg, KeysStrings.pref_summary_ios_reload_when_no_bg, platforms = setOf(AppPlatform.Ios)),
     /** iOS only (2026-10-23): a RileyLink's timer tick wakes the app about once a minute, instead of silent sound. Off by default. */
     IosRileyLinkHeartbeat("ios_rileylink_heartbeat", false, KeysStrings.pref_title_ios_rileylink_heartbeat, KeysStrings.pref_summary_ios_rileylink_heartbeat, platforms = setOf(AppPlatform.Ios)),
+    /** iOS only (2026-10-24, per explicit request): while on, look for other devices that can be a backup heartbeat. */
+    IosHeartbeatCheckOthers(
+        "ios_heartbeat_check_others", false, KeysStrings.pref_title_ios_heartbeat_check_others, KeysStrings.pref_summary_ios_heartbeat_check_others,
+        platforms = setOf(AppPlatform.Ios), dependency = IosRileyLinkHeartbeat
+    ),
 
     BgSourceUploadToNs("dexcomg5_nsupload", true, KeysStrings.pref_title_bg_source_upload_to_ns, defaultedBySM = true, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
     BgSourceCreateSensorChange("dexcom_lognssensorchange", true, KeysStrings.pref_title_bg_source_create_sensor_change, KeysStrings.pref_summary_bg_source_create_sensor_change, defaultedBySM = true),

@@ -40,6 +40,10 @@
     <string name="pref_title_ios_rileylink_heartbeat">RileyLink heartbeat</string>
     <string name="pref_summary_ios_rileylink_heartbeat">Instead of silent sound, a RileyLink or OrangeLink wakes the app about once a minute, so it loads from Nightscout and checks the alarms. Keep the device near the phone and charged. The nearest one is used; turn this off and on to pick another. When it is lost, silent sound takes over if Keep running in background is on.</string>
     <string name="pref_title_ios_rileylink_status">RileyLink heartbeat status</string>
+    <string name="pref_title_ios_heartbeat_check_others">Check other Bluetooth devices</string>
+    <string name="pref_summary_ios_heartbeat_check_others">For when the RileyLink is not there, for example with a flat battery. While this is on, the app looks for devices nearby for 30 seconds. Pick one in Device to check, and for 5 minutes the app checks if it can wake the app. A device that works is kept as a backup. A device that does not work is not shown again.</string>
+    <string name="pref_title_ios_heartbeat_check_device">Device to check</string>
+    <string name="ios_heartbeat_none_seen">No new devices nearby yet. See the status line above.</string>
     <string name="pref_title_ios_reload_when_no_bg">Reload from Nightscout when no BG</string>
     <string name="pref_summary_ios_reload_when_no_bg">When no new BG has come for 2 minutes, load from Nightscout again. If that brings no new BG, the next load waits longer each time, up to 15 minutes.</string>
     <string name="pref_summary_alert_override_dnd">When enabled, AAPS alarms sound even if the phone is silenced or in Do Not Disturb. When disabled, alarms stay quiet in those modes.</string>

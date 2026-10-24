@@ -48,6 +48,20 @@ enum class StringKey(
         platforms = setOf(AppPlatform.Ios)
     ),
 
+    /**
+     * iOS only (2026-10-24, per explicit request): the device picked to be checked as a backup heartbeat (its Bluetooth
+     * identifier). The list is filled at run time from [StringNonKey.IosHeartbeatSeen]. `IosRileyLinkHeartbeat` empties it again
+     * when the check is done.
+     */
+    IosHeartbeatCheckDevice(
+        key = "ios_heartbeat_check_device",
+        defaultValue = "",
+        title = KeysStrings.pref_title_ios_heartbeat_check_device,
+        preferenceType = PreferenceType.LIST,
+        dependency = BooleanKey.IosHeartbeatCheckOthers,
+        platforms = setOf(AppPlatform.Ios)
+    ),
+
     GeneralUnits(
         key = "units",
         defaultValue = "mg/dl",

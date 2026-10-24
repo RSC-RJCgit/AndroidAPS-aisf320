@@ -14,9 +14,14 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.KeysStrings
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.keys.interfaces.withChangeGuard
+import app.aaps.core.keys.interfaces.withEntriesProvider
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.icons.IcBolus
 import app.aaps.core.ui.compose.icons.IcCalculator
@@ -54,7 +59,8 @@ class BuiltInSearchables(
     private val rh: TextResolver,
     private val insulinManager: InsulinManager,
     private val profileFunction: ProfileFunction,
-    private val config: Config
+    private val config: Config,
+    private val preferences: Preferences
 ) : SearchableProvider {
 
     // Decides whether concentration-related preferences are worth surfacing in search, so an unknown
@@ -197,10 +203,23 @@ class BuiltInSearchables(
             BooleanKey.IosKeepRunningInBackground,
             BooleanKey.IosRileyLinkHeartbeat,
             StringKey.IosRileyLinkStatus,
+            BooleanKey.IosHeartbeatCheckOthers,
+            // 2026-10-24, per explicit request: the devices found by the last look, refreshed when a new look is done
+            StringKey.IosHeartbeatCheckDevice.withEntriesProvider(
+                provider = { seenHeartbeatDevices() },
+                emptyEntriesMessage = KeysStrings.ios_heartbeat_none_seen,
+                refresh = preferences.observe(StringNonKey.IosHeartbeatSeen)
+            ),
             BooleanKey.IosReloadWhenNoBg
         ),
         icon = Icons.Default.Notifications
     )
+
+    /** The lines "identifier<TAB>label" written by the iOS heartbeat, as list entries. */
+    private fun seenHeartbeatDevices(): Map<String, TextRef> =
+        preferences.get(StringNonKey.IosHeartbeatSeen).lines()
+            .mapNotNull { line -> line.split('\t', limit = 2).takeIf { it.size == 2 } }
+            .associate { (id, label) -> id to TextRef.Literal(label) }
 
     // ========== Dialog Settings (not shown in AllPreferencesScreen, only for search) ==========
 

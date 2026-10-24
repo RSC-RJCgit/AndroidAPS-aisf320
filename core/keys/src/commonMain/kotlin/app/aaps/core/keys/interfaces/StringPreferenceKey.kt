@@ -1,5 +1,7 @@
 package app.aaps.core.keys.interfaces
 
+import kotlinx.coroutines.flow.Flow
+
 interface StringPreferenceKey : PreferenceKey, StringNonPreferenceKey {
 
     /**
@@ -60,11 +62,13 @@ fun StringPreferenceKey.withEntries(entries: Map<String, TextRef>): StringPrefer
  * Wrapper that attaches a runtime entries provider to a StringPreferenceKey.
  * The provider is called at compose time, and the labels it returns are resolved there.
  * If the provider returns an empty map, shows a disabled preference with the empty message.
+ * When [refresh] is set, the provider runs again each time it emits, so a list filled by a scan shows the new devices.
  */
 class StringKeyWithEntriesProvider(
     private val delegate: StringPreferenceKey,
     val entriesProvider: () -> Map<String, TextRef>,
-    val emptyEntriesMessage: TextRef? = null
+    val emptyEntriesMessage: TextRef? = null,
+    val refresh: Flow<Any?>? = null
 ) : StringPreferenceKey by delegate
 
 /**
@@ -74,10 +78,12 @@ class StringKeyWithEntriesProvider(
  *
  * @param provider Function returning Map of stored value -> label
  * @param emptyEntriesMessage Optional message to show when entries are empty
+ * @param refresh Optional flow; each value it emits runs the provider again
  * @return A new StringKeyWithEntriesProvider
  */
 fun StringPreferenceKey.withEntriesProvider(
     provider: () -> Map<String, TextRef>,
-    emptyEntriesMessage: TextRef? = null
+    emptyEntriesMessage: TextRef? = null,
+    refresh: Flow<Any?>? = null
 ): StringKeyWithEntriesProvider =
-    StringKeyWithEntriesProvider(this, provider, emptyEntriesMessage)
+    StringKeyWithEntriesProvider(this, provider, emptyEntriesMessage, refresh)

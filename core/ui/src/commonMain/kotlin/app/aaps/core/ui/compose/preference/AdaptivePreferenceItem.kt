@@ -7,6 +7,8 @@ package app.aaps.core.ui.compose.preference
 
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.aaps.core.keys.PreferenceType
 import app.aaps.core.keys.StringKey
@@ -22,6 +24,7 @@ import app.aaps.core.keys.interfaces.UnitDoublePreferenceKey
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.ui.compose.ComposeScreenContent
 import app.aaps.core.ui.compose.stringResource
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Renders a preference based on its PreferenceKey type and preferenceType.
@@ -94,7 +97,9 @@ fun AdaptivePreferenceItem(
         is StringKeyWithEntriesProvider -> {
             // Entries are only known at run time, so the provider runs here and its labels are
             // resolved in composable scope.
-            val entries = remember(key) { key.entriesProvider() }.mapValues { stringResource(it.value) }
+            // A key with a refresh flow runs the provider again on each value, for example after a scan
+            val refreshed by (key.refresh ?: emptyFlow<Any?>()).collectAsState(initial = null)
+            val entries = remember(key, refreshed) { key.entriesProvider() }.mapValues { stringResource(it.value) }
             val emptyMessage = key.emptyEntriesMessage
 
             if (entries.isNotEmpty()) {
