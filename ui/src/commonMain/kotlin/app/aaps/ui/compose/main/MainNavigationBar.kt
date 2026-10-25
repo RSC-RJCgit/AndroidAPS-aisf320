@@ -46,6 +46,7 @@ fun MainNavigationBar(
     onManageClick: () -> Unit,
     onTreatmentClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Landscape: icon-only rail on the left. Portrait: bar on the bottom. */
     vertical: Boolean = false,
     /** On a client, hide the mutating nav buttons (Treatments + Scenes) until paired. Always true on master. */
     masterOrPairedClient: Boolean = true,

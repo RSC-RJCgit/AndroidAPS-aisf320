@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -64,7 +65,8 @@ data class ResolvedQuickLaunchItem(
 fun QuickLaunchToolbar(
     items: List<ResolvedQuickLaunchItem>,
     onActionClick: (QuickLaunchAction) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    vertical: Boolean = false
 ) {
     if (items.isEmpty()) return
 
@@ -73,27 +75,45 @@ fun QuickLaunchToolbar(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shadowElevation = 6.dp,
         tonalElevation = 6.dp,
-        modifier = modifier.padding(horizontal = 16.dp)
+        modifier = modifier.padding(
+            horizontal = if (vertical) 4.dp else 16.dp,
+            vertical = if (vertical) 8.dp else 0.dp
+        )
     ) {
-        BoxWithConstraints(Modifier.height(48.dp)) {
+        BoxWithConstraints(if (vertical) Modifier.width(48.dp) else Modifier.height(48.dp)) {
             val itemSizePx = with(LocalDensity.current) { 48.dp.toPx() }
             val contentPaddingPx = with(LocalDensity.current) { 8.dp.toPx() }
-            val maxItems = ((constraints.maxWidth - contentPaddingPx) / itemSizePx).toInt()
+            val availablePx = if (vertical) constraints.maxHeight else constraints.maxWidth
+            val maxItems = ((availablePx - contentPaddingPx) / itemSizePx).toInt()
                 .coerceAtLeast(1)
 
             val needsOverflow = items.size > maxItems
             val visibleItems = if (needsOverflow) items.take((maxItems - 1).coerceAtLeast(0)) else items
             val overflowItems = if (needsOverflow) items.drop((maxItems - 1).coerceAtLeast(0)) else emptyList()
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.padding(horizontal = 4.dp)
-            ) {
-                visibleItems.forEach { item ->
-                    ToolbarIconButton(item, onActionClick)
+            if (vertical) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                ) {
+                    visibleItems.forEach { item ->
+                        ToolbarIconButton(item, onActionClick, tooltipBeside = true)
+                    }
+                    if (needsOverflow) {
+                        OverflowMenuButton(overflowItems, onActionClick)
+                    }
                 }
-                if (needsOverflow) {
-                    OverflowMenuButton(overflowItems, onActionClick)
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                ) {
+                    visibleItems.forEach { item ->
+                        ToolbarIconButton(item, onActionClick)
+                    }
+                    if (needsOverflow) {
+                        OverflowMenuButton(overflowItems, onActionClick)
+                    }
                 }
             }
         }
@@ -124,10 +144,13 @@ internal fun resolveItemColor(item: ResolvedQuickLaunchItem): androidx.compose.u
 @Composable
 private fun ToolbarIconButton(
     item: ResolvedQuickLaunchItem,
-    onActionClick: (QuickLaunchAction) -> Unit
+    onActionClick: (QuickLaunchAction) -> Unit,
+    tooltipBeside: Boolean = false
 ) {
     TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(
+            if (tooltipBeside) TooltipAnchorPosition.Right else TooltipAnchorPosition.Below
+        ),
         tooltip = {
             PlainTooltip {
                 if (item.description != null) {

@@ -35,6 +35,7 @@ import androidx.navigationevent.NavigationEventInfo
 import androidx.navigationevent.compose.NavigationBackHandler
 import androidx.navigationevent.compose.rememberNavigationEventState
 import app.aaps.core.ui.CoreUiStrings
+import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.stringResource
 
 /**
@@ -57,6 +58,7 @@ fun M3SearchBar(
     onQueryChange: (String) -> Unit,
     onClearClick: () -> Unit,
     onActiveChange: (Boolean) -> Unit,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val focusRequester = remember { FocusRequester() }
@@ -86,7 +88,7 @@ fun M3SearchBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .height(if (compact) AapsSpacing.compactSearchHeight else 48.dp),
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface
@@ -103,7 +105,7 @@ fun M3SearchBar(
                     }
                 },
             singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(
+            textStyle = (if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge).copy(
                 color = MaterialTheme.colorScheme.onSurface
             ),
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -123,7 +125,7 @@ fun M3SearchBar(
                     placeholder = {
                         Text(
                             text = stringResource(CoreUiStrings.search),
-                            style = MaterialTheme.typography.bodyLarge,
+                            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     },
@@ -148,7 +150,7 @@ fun M3SearchBar(
                             }
                         }
                     } else null,
-                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    contentPadding = PaddingValues(horizontal = if (compact) 12.dp else 16.dp),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,

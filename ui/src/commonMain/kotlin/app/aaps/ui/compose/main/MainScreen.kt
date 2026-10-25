@@ -1,13 +1,16 @@
 package app.aaps.ui.compose.main
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.WindowInsets
@@ -53,9 +56,7 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.BolusProgressState
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
-import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.AapsSpacing
-import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.ui.compose.LocalSnackbarHostState
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.dialogs.ThreeButtonDialog
@@ -209,7 +210,7 @@ fun MainScreen(
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
             val layoutDirection = LocalLayoutDirection.current
-            val landscapeNavigation = LocalConfig.current.platform == AppPlatform.Ios && maxWidth > maxHeight
+            val landscapeNavigation = maxWidth > maxHeight
             val previewMode = maxHeight < PREVIEW_MODE_MIN_HEIGHT
             var chromeVisible by remember { mutableStateOf(false) }
             val showChrome = landscapeNavigation || !previewMode || chromeVisible
@@ -304,7 +305,7 @@ fun MainScreen(
                         commandsAllowed = masterOrPairedClient,
                         formatDuration = mainViewModel::formatDuration,
                         paddingValues = contentPadding,
-                        fabBottomOffset = if (hasToolbar && showChrome) 56.dp else 0.dp,
+                        fabBottomOffset = if (hasToolbar && showChrome && !landscapeNavigation) 56.dp else 0.dp,
                         bolusState = bolusState,
                         pumpStatusText = pumpStatusText,
                         queueStatusText = queueStatusText,
@@ -399,6 +400,7 @@ fun MainScreen(
                             onSearchClear = onSearchClear,
                             onSearchActiveChange = onSearchActiveChange,
                             isSimpleMode = uiState.isSimpleMode,
+                            compact = landscapeNavigation,
                             // Guard against transient 0 heights during AnimatedVisibility exit:
                             // the resulting contentPadding invalidation can schedule a remeasure
                             // on a node that's losing its owner — crashes in dispatchDraw.
@@ -408,11 +410,11 @@ fun MainScreen(
                         )
                     }
 
-                    // iPhone landscape uses a rail with space reserved beside the graphs.
+                    // Landscape uses a rail with space reserved beside the graphs.
                     AnimatedVisibility(
                         visible = landscapeNavigation || showChrome,
-                        enter = slideInVertically { it },
-                        exit = slideOutVertically { it },
+                        enter = if (landscapeNavigation) slideInHorizontally { -it } else slideInVertically { it },
+                        exit = if (landscapeNavigation) slideOutHorizontally { -it } else slideOutVertically { it },
                         modifier = Modifier
                             .align(if (landscapeNavigation) Alignment.CenterStart else Alignment.BottomCenter)
                             .then(
@@ -427,55 +429,76 @@ fun MainScreen(
                             )
                     ) {
                         val loopActionState = loopActionViewModel.uiState.collectAsStateWithLifecycle().value
-                        MainNavigationBar(
-                            vertical = landscapeNavigation,
-                            onManageClick = { manageSheetState.show() },
-                            onTreatmentClick = {
-                                treatmentViewModel.refreshState()
-                                showTreatmentSheet = true
-                            },
-                            masterOrPairedClient = masterOrPairedClient,
-                            quickWizardCount = uiState.quickWizardItems.size,
-                            onAutomationClick = {
-                                scenesViewModel.refreshState()
-                                showAutomationSheet = true
-                            },
-                            // Total drives nav-button visibility (button stays visible whenever
-                            // scenes/automation exist, even if currently un-activatable).
-                            // Count drives the badge — only items the user can act on right now.
-                            automationTotal = automationState.items.size + automationState.sceneItems.size,
-                            automationCount = automationState.items.count { it.activationReason == null } +
-                                automationState.sceneItems.count { it.activationReason == null },
-                            pumpSetupPlugin = pumpSetupPlugin,
-                            bgSetupPlugin = bgSetupPlugin,
-                            bgQualityBadgeIcon = bgQualityBadgeIcon,
-                            bgQualityBadgeTint = bgQualityBadgeTint,
-                            bgQualityBadgeDescription = bgQualityBadgeDescription,
-                            objectivesSetupPlugin = objectivesSetupPlugin,
-                            objectivesProgressText = objectivesProgressText,
-                            objectivesProgressDescription = objectivesProgressDescription,
-                            onNavigate = onNavigate,
-                            permissionsMissing = permissionsMissing,
-                            onPermissionsClick = onPermissionsClick,
-                            loopActionAvailable = loopActionState.actionAvailable,
-                            onLoopActionClick = { showLoopActionSheet = true },
-                            modifier = if (landscapeNavigation) Modifier.width(AapsSpacing.navigationRailWidth) else Modifier.onSizeChanged {
-                                if (it.height > 0 && it.height != bottomBarHeightPx) bottomBarHeightPx = it.height
+                        @Composable
+                        fun NavigationItems(modifier: Modifier, vertical: Boolean) {
+                            MainNavigationBar(
+                                vertical = vertical,
+                                onManageClick = { manageSheetState.show() },
+                                onTreatmentClick = {
+                                    treatmentViewModel.refreshState()
+                                    showTreatmentSheet = true
+                                },
+                                masterOrPairedClient = masterOrPairedClient,
+                                quickWizardCount = uiState.quickWizardItems.size,
+                                onAutomationClick = {
+                                    scenesViewModel.refreshState()
+                                    showAutomationSheet = true
+                                },
+                                // Total drives nav-button visibility (button stays visible whenever
+                                // scenes/automation exist, even if currently un-activatable).
+                                // Count drives the badge — only items the user can act on right now.
+                                automationTotal = automationState.items.size + automationState.sceneItems.size,
+                                automationCount = automationState.items.count { it.activationReason == null } +
+                                    automationState.sceneItems.count { it.activationReason == null },
+                                pumpSetupPlugin = pumpSetupPlugin,
+                                bgSetupPlugin = bgSetupPlugin,
+                                bgQualityBadgeIcon = bgQualityBadgeIcon,
+                                bgQualityBadgeTint = bgQualityBadgeTint,
+                                bgQualityBadgeDescription = bgQualityBadgeDescription,
+                                objectivesSetupPlugin = objectivesSetupPlugin,
+                                objectivesProgressText = objectivesProgressText,
+                                objectivesProgressDescription = objectivesProgressDescription,
+                                onNavigate = onNavigate,
+                                permissionsMissing = permissionsMissing,
+                                onPermissionsClick = onPermissionsClick,
+                                loopActionAvailable = loopActionState.actionAvailable,
+                                onLoopActionClick = { showLoopActionSheet = true },
+                                modifier = modifier
+                            )
+                        }
+                        if (landscapeNavigation) {
+                            Column(modifier = Modifier.fillMaxHeight().width(AapsSpacing.navigationRailWidth)) {
+                                NavigationItems(
+                                    modifier = Modifier.weight(1f),
+                                    vertical = true
+                                )
+                                if (hasToolbar) {
+                                    QuickLaunchToolbar(
+                                        items = quickLaunchItems,
+                                        onActionClick = onQuickLaunchActionClick,
+                                        vertical = true
+                                    )
+                                }
                             }
-                        )
+                        } else {
+                            NavigationItems(
+                                modifier = Modifier.onSizeChanged {
+                                    if (it.height > 0 && it.height != bottomBarHeightPx) bottomBarHeightPx = it.height
+                                },
+                                vertical = false
+                            )
+                        }
                     }
 
-                    // Quick launch toolbar overlay
+                    // Quick launch stays on the bottom in portrait only. Landscape puts it in the rail.
                     AnimatedVisibility(
-                        visible = hasToolbar && showChrome,
+                        visible = hasToolbar && showChrome && !landscapeNavigation,
                         enter = slideInVertically { it },
                         exit = slideOutVertically { it },
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .padding(
-                                bottom = scaffoldPadding.calculateBottomPadding() +
-                                    (if (landscapeNavigation) 0.dp else bottomBarHeight) + 8.dp,
-                                start = if (landscapeNavigation) AapsSpacing.navigationRailWidth else 0.dp
+                                bottom = scaffoldPadding.calculateBottomPadding() + bottomBarHeight + 8.dp
                             )
                     ) {
                         QuickLaunchToolbar(

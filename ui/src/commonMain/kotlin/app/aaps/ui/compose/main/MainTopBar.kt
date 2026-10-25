@@ -2,6 +2,8 @@ package app.aaps.ui.compose.main
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
@@ -17,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.aaps.core.ui.CoreUiStrings
+import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.icons.IcSettingsOff
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.search.M3SearchBar
@@ -33,6 +36,7 @@ import app.aaps.ui.search.SearchUiState
  * @param onSearchClear Called when search query is cleared
  * @param onSearchActiveChange Called when search active state changes
  * @param isSimpleMode When true, shows a non-interactive simple-mode indicator next to Settings
+ * @param compact Shorter bar for landscape so the graphs keep their height
  * @param modifier Modifier for the component
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,8 +49,41 @@ fun MainTopBar(
     onSearchClear: () -> Unit,
     onSearchActiveChange: (Boolean) -> Unit,
     isSimpleMode: Boolean = false,
+    compact: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    if (compact) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = modifier
+                .fillMaxWidth()
+                .height(AapsSpacing.compactTopBarHeight)
+                .padding(horizontal = 4.dp)
+        ) {
+            IconButton(onClick = onMenuClick) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = stringResource(CoreUiStrings.open_navigation)
+                )
+            }
+            M3SearchBar(
+                query = searchUiState.query,
+                isActive = searchUiState.isSearchActive,
+                onQueryChange = onSearchQueryChange,
+                onClearClick = onSearchClear,
+                onActiveChange = onSearchActiveChange,
+                compact = true,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onPreferencesClick) {
+                Icon(
+                    imageVector = if (isSimpleMode) IcSettingsOff else Icons.Default.Settings,
+                    contentDescription = stringResource(CoreUiStrings.settings)
+                )
+            }
+        }
+        return
+    }
     TopAppBar(
         title = {
             Row(
