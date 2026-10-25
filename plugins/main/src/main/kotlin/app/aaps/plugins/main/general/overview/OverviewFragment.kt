@@ -272,7 +272,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             else -> R.string.overview_app_master
         })
         // Only the major version: "3426+ai321_1039" has no dot, so cutting at the first dot kept the whole name.
-        // 2026-10-16, per explicit request: then the first 5 letters of this phone's main Nightscout site, e.g. "UKF-Master-v3 spicy".
+        // Then the first 5 letters of this phone's main Nightscout site, e.g. "Master-v3 spicy".
         val siteTag = preferences.get(StringKey.NsClientUrl).trim().removePrefix("https://").removePrefix("http://").take(5)
         binding.infoLayout.appVersionLabel.text = rh.gs(
             R.string.overview_app_version, appName, config.VERSION_NAME.firstOrNull { it.isDigit() }?.toString().orEmpty(), siteTag
