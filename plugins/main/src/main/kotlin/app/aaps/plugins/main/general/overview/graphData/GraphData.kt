@@ -16,6 +16,7 @@ import app.aaps.core.graph.data.DoubleDataPoint
 import app.aaps.core.graph.data.EffectiveProfileSwitchDataPoint
 import app.aaps.core.graph.data.FixedLineGraphSeries
 import app.aaps.core.graph.data.GlucoseValueDataPoint
+import app.aaps.core.graph.data.GraphViewWithCleanup
 import app.aaps.core.graph.data.LineGraphSeries
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.graph.data.ScaledDataPoint
@@ -34,6 +35,7 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.R as CoreUiR
 import app.aaps.core.ui.toast.ToastUtils
+import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.plugins.main.R
 import com.jjoe64.graphview.GraphView
 import com.jjoe64.graphview.series.DataPoint
@@ -619,14 +621,6 @@ class GraphData @Inject constructor(
         }
     }
 
-    private fun stepsLineTap(line: LineGraphSeries<ScaledDataPoint>, label: String) = onTap {
-        line.setOnDataPointTapListener { _, dataPoint ->
-            val steps = (dataPoint as? ScaledDataPoint)?.rawValue?.toInt() ?: dataPoint.y.toInt()
-            val time = dateUtil.timeString(dataPoint.x.toLong())
-            ToastUtils.infoToast(graph.context, rh.gs(R.string.graph_steps_line_tap, label, steps, time))
-        }
-    }
-
     // "UKF raw = 6.4  Δ-0.05  09:46". Without an earlier point for the change, the value and time only.
     private fun showLineTap(name: String, dataPoint: DataPointInterface, earlier: List<DataPointInterface>) {
         val mgdl = units == GlucoseUnit.MGDL
@@ -699,10 +693,23 @@ class GraphData @Inject constructor(
         val line30 = overviewData.stepsLine30Series as LineGraphSeries<ScaledDataPoint>
         val line15 = overviewData.stepsLine15Series as LineGraphSeries<ScaledDataPoint>
         val line5 = overviewData.stepsLine5Series as LineGraphSeries<ScaledDataPoint>
-        stepsLineTap(line60, rh.gs(R.string.steps_lines_s60))
-        stepsLineTap(line30, rh.gs(R.string.steps_lines_s30))
-        stepsLineTap(line15, rh.gs(R.string.steps_lines_s15))
-        stepsLineTap(line5, rh.gs(R.string.steps_lines_s5))
+        onTap {
+            (graph as? GraphViewWithCleanup)?.onPlotTap = { timestamp ->
+                val samples = listOf(
+                    R.string.steps_lines_s5 to line5,
+                    R.string.steps_lines_s15 to line15,
+                    R.string.steps_lines_s30 to line30,
+                    R.string.steps_lines_s60 to line60
+                ).mapNotNull { (label, line) ->
+                    val point = line.getValues(graph.viewport.getMinX(false), graph.viewport.getMaxX(false))
+                        .asSequence().minByOrNull { abs(it.x - timestamp) }
+                    point?.let {
+                        rh.gs(R.string.graph_steps_line_tap, rh.gs(label), it.rawValue.toInt(), dateUtil.dateAndTimeString(it.x.toLong()))
+                    }
+                }
+                if (samples.isNotEmpty()) OKDialog.show(graph.context, rh.gs(R.string.steps_shortname), samples.joinToString("\n"))
+            }
+        }
         addSeries(line60)
         addSeries(line30)
         addSeries(line15)
