@@ -1,7 +1,10 @@
 package app.aaps.ui.compose.main
 
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fastfood
 import androidx.compose.material.icons.filled.GppMaybe
@@ -12,8 +15,12 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItem as HorizontalNavigationBarItem
+import androidx.compose.material3.NavigationBarItemColors
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -39,6 +46,7 @@ fun MainNavigationBar(
     onManageClick: () -> Unit,
     onTreatmentClick: () -> Unit,
     modifier: Modifier = Modifier,
+    vertical: Boolean = false,
     /** On a client, hide the mutating nav buttons (Treatments + Scenes) until paired. Always true on master. */
     masterOrPairedClient: Boolean = true,
     quickWizardCount: Int = 0,
@@ -76,12 +84,7 @@ fun MainNavigationBar(
 
     // A client whose role cannot use what a button opens does not get the button: the master would refuse it.
     val role = LocalClientRole.current
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        windowInsets = WindowInsets(0),
-        modifier = modifier
-    ) {
+    MainNavigationContainer(vertical, modifier) {
         // Treatment action button (opens bottom sheet) — hidden on an unpaired client (its bolus/carbs
         // ride the Client-Control channel and would be dropped); always shown on a master.
         if (masterOrPairedClient && role.allows(ElementType.TREATMENT.role)) {
@@ -309,6 +312,57 @@ fun MainNavigationBar(
                 )
             )
         }
+    }
+}
+
+/** Shares every action and badge between the portrait bar and the landscape rail. */
+private class MainNavigationScope(private val row: RowScope? = null) {
+    @Composable
+    fun NavigationBarItem(
+        selected: Boolean,
+        onClick: () -> Unit,
+        icon: @Composable () -> Unit,
+        modifier: Modifier = Modifier,
+        label: @Composable () -> Unit,
+        colors: NavigationBarItemColors
+    ) {
+        if (row == null) {
+            NavigationRailItem(
+                selected = selected,
+                onClick = onClick,
+                icon = icon,
+                modifier = modifier,
+                alwaysShowLabel = false,
+                colors = NavigationRailItemDefaults.colors(
+                    selectedIconColor = colors.selectedIconColor,
+                    selectedTextColor = colors.selectedTextColor,
+                    indicatorColor = colors.selectedIndicatorColor,
+                    unselectedIconColor = colors.unselectedIconColor,
+                    unselectedTextColor = colors.unselectedTextColor
+                )
+            )
+        } else with(row) {
+            HorizontalNavigationBarItem(selected = selected, onClick = onClick, icon = icon, modifier = modifier, label = label, colors = colors)
+        }
+    }
+}
+
+@Composable
+private fun MainNavigationContainer(vertical: Boolean, modifier: Modifier, content: @Composable MainNavigationScope.() -> Unit) {
+    if (vertical) {
+        NavigationRail(
+            modifier = modifier.verticalScroll(rememberScrollState()),
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            windowInsets = WindowInsets(0)
+        ) { MainNavigationScope().content() }
+    } else {
+        NavigationBar(
+            modifier = modifier,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            windowInsets = WindowInsets(0)
+        ) { MainNavigationScope(this).content() }
     }
 }
 

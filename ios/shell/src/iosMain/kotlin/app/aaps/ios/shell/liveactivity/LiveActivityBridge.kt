@@ -10,6 +10,9 @@ package app.aaps.ios.shell.liveactivity
  */
 interface LiveActivityBridge {
 
+    /** Installs the AAPS log sink. Called on the main thread before the first update. */
+    fun setStatusReporter(reporter: LiveActivityStatusReporter)
+
     /**
      * Shows or updates the Live Activity.
      *
@@ -22,4 +25,9 @@ interface LiveActivityBridge {
      * @param range -1 below the low line, 1 above the high line, 0 in between
      */
     fun update(bg: String, arrow: String, delta: String, iob: String, cob: String, bgTimeMillis: Long, range: Int)
+}
+
+/** Receives ActivityKit results, including starts that fail after the Kotlin call returns. */
+interface LiveActivityStatusReporter {
+    fun report(message: String, isError: Boolean)
 }

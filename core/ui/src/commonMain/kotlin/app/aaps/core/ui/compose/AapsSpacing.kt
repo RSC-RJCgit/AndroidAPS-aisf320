@@ -52,4 +52,7 @@ object AapsSpacing {
     val chipHeight = 35.dp
     val chipIconSize = 24.dp
     val chipProgressHeight = 3.dp
+
+    // Icon-only navigation beside the overview on an iPhone in landscape.
+    val navigationRailWidth = 64.dp
 }

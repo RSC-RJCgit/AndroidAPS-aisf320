@@ -9,9 +9,12 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -37,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -49,6 +53,9 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.BolusProgressState
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.core.ui.compose.AapsSpacing
+import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.ui.compose.LocalSnackbarHostState
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.dialogs.ThreeButtonDialog
@@ -201,9 +208,11 @@ fun MainScreen(
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
+            val layoutDirection = LocalLayoutDirection.current
+            val landscapeNavigation = LocalConfig.current.platform == AppPlatform.Ios && maxWidth > maxHeight
             val previewMode = maxHeight < PREVIEW_MODE_MIN_HEIGHT
             var chromeVisible by remember { mutableStateOf(false) }
-            val showChrome = !previewMode || chromeVisible
+            val showChrome = landscapeNavigation || !previewMode || chromeVisible
             val interactionSource = remember { MutableInteractionSource() }
             val accessibilityManager = LocalAccessibilityManager.current
 
@@ -239,8 +248,9 @@ fun MainScreen(
                 val topBarHeight = with(density) { topBarHeightPx.toDp() }
                 val bottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
                 val contentPadding = PaddingValues(
+                    start = if (landscapeNavigation) scaffoldPadding.calculateStartPadding(layoutDirection) + AapsSpacing.navigationRailWidth else 0.dp,
                     top = scaffoldPadding.calculateTopPadding() + topBarHeight,
-                    bottom = scaffoldPadding.calculateBottomPadding() + if (previewMode) 0.dp else bottomBarHeight
+                    bottom = scaffoldPadding.calculateBottomPadding() + if (previewMode || landscapeNavigation) 0.dp else bottomBarHeight
                 )
 
                 val activeSceneState by mainViewModel.activeSceneState.collectAsStateWithLifecycle()
@@ -398,17 +408,27 @@ fun MainScreen(
                         )
                     }
 
-                    // Bottom bar overlay
+                    // iPhone landscape uses a rail with space reserved beside the graphs.
                     AnimatedVisibility(
-                        visible = showChrome,
+                        visible = landscapeNavigation || showChrome,
                         enter = slideInVertically { it },
                         exit = slideOutVertically { it },
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = scaffoldPadding.calculateBottomPadding())
+                            .align(if (landscapeNavigation) Alignment.CenterStart else Alignment.BottomCenter)
+                            .then(
+                                if (landscapeNavigation) Modifier
+                                    .fillMaxHeight()
+                                    .padding(
+                                        start = scaffoldPadding.calculateStartPadding(layoutDirection),
+                                        top = topBarHeight,
+                                        bottom = scaffoldPadding.calculateBottomPadding()
+                                    )
+                                else Modifier.padding(bottom = scaffoldPadding.calculateBottomPadding())
+                            )
                     ) {
                         val loopActionState = loopActionViewModel.uiState.collectAsStateWithLifecycle().value
                         MainNavigationBar(
+                            vertical = landscapeNavigation,
                             onManageClick = { manageSheetState.show() },
                             onTreatmentClick = {
                                 treatmentViewModel.refreshState()
@@ -439,7 +459,7 @@ fun MainScreen(
                             onPermissionsClick = onPermissionsClick,
                             loopActionAvailable = loopActionState.actionAvailable,
                             onLoopActionClick = { showLoopActionSheet = true },
-                            modifier = Modifier.onSizeChanged {
+                            modifier = if (landscapeNavigation) Modifier.width(AapsSpacing.navigationRailWidth) else Modifier.onSizeChanged {
                                 if (it.height > 0 && it.height != bottomBarHeightPx) bottomBarHeightPx = it.height
                             }
                         )
@@ -454,7 +474,8 @@ fun MainScreen(
                             .align(Alignment.BottomCenter)
                             .padding(
                                 bottom = scaffoldPadding.calculateBottomPadding() +
-                                    with(density) { bottomBarHeightPx.toDp() } + 8.dp
+                                    (if (landscapeNavigation) 0.dp else bottomBarHeight) + 8.dp,
+                                start = if (landscapeNavigation) AapsSpacing.navigationRailWidth else 0.dp
                             )
                     ) {
                         QuickLaunchToolbar(
@@ -464,7 +485,7 @@ fun MainScreen(
                     }
 
                     // Tap overlay to restore chrome in preview mode (only when hidden)
-                    if (previewMode && !chromeVisible) {
+                    if (previewMode && !chromeVisible && !landscapeNavigation) {
                         // Named: the top bar, menu and toolbar come back only through this, and a
                         // screen reader announced it as a nameless control.
                         val showControls = stringResource(UiStrings.a11y_show_controls)
