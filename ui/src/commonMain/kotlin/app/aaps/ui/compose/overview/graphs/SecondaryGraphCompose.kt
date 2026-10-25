@@ -1234,6 +1234,9 @@ fun SecondaryGraphCompose(
             stringResource(CoreUiStrings.graph_steps_s60)
         )
         rememberDefaultCartesianMarker(
+            label = rememberTextComponent(
+                style = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
+            ),
             valueFormatter = DefaultCartesianMarker.ValueFormatter { _, targets ->
                 val x = targets.firstOrNull()?.x ?: return@ValueFormatter ""
                 val series = listOf(stepsData.steps, stepsData.steps15, stepsData.steps30, stepsData.steps60)
@@ -1244,7 +1247,7 @@ fun SecondaryGraphCompose(
             }
         )
     } else null
-    val stepsMarkerController = if (stepsMarker != null) CartesianMarkerController.rememberToggleOnTap() else null
+    val stepsMarkerController = CartesianMarkerController.rememberToggleOnTap()
 
     val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp) {
         val samples = iobData?.insulinByMinute.orEmpty()
