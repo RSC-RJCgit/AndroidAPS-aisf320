@@ -1220,6 +1220,7 @@
     <string name="graph_steps_s15" comment="Legend of the steps graph: steps in the last 15 minutes">S15</string>
     <string name="graph_steps_s30" comment="Legend of the steps graph: steps in the last 30 minutes">S30</string>
     <string name="graph_steps_s60" comment="Legend of the steps graph: steps in the last 60 minutes">S60</string>
+    <string name="graph_steps_sample" comment="Step sample shown when the graph is tapped. %1$s=series name, %2$d=step count, %3$s=sample date and time">%1$s = %2$d steps  %3$s</string>
     <string name="graph_pp_weight_scale" comment="Short label for the post-meal ISF weight setting line. The scale is 0 to 0.15.">PP 0–0.15</string>
     <string name="basal_shortname" comment="Short label for Basal, used in graph labels">BAS</string>
     <!-- Graph series short names (used as graph labels, keep very short) -->

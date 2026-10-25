@@ -5,8 +5,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -16,6 +20,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -55,11 +63,9 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProdu
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
+import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
-import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
-import com.patrykandpatrick.vico.compose.cartesian.marker.DefaultCartesianMarker
-import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.Position
@@ -80,6 +86,29 @@ import kotlinx.coroutines.delay
  * transaction instead of silently dropping it.
  */
 private val AXIS_SCALE_KEY = ExtraStore.Key<AxisScale>()
+
+/** Updated while drawing so taps use the current plot bounds, scroll and zoom. */
+private class StepsTapTarget : Decoration {
+    private var bounds: Rect? = null
+    private var originX = 0f
+    private var minX = 0.0
+    private var minutesPerPixel = 0.0
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            bounds = layerBounds
+            originX = layerBounds.left + layerDimensions.startPadding - scroll
+            minX = ranges.minX
+            minutesPerPixel = if (layerDimensions.xSpacing > 0f) ranges.xStep / layerDimensions.xSpacing else 0.0
+        }
+    }
+
+    fun timestampAt(position: Offset, minTimestamp: Long): Long? {
+        val plot = bounds ?: return null
+        if (position !in plot || minutesPerPixel <= 0.0) return null
+        return minTimestamp + ((minX + (position.x - originX) * minutesPerPixel) * 60_000.0).toLong()
+    }
+}
 
 /** The axis setup that a scroll or zoom can change. Equal values mean the axes did not change. */
 private data class AxisScale(
@@ -250,7 +279,7 @@ fun SecondaryGraphCompose(
     val autoIsfData = if (needsAutoIsf) viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value else null
     val devSlopeData = if (primaryType == SeriesType.DEV_SLOPE) viewModel.devSlopeGraphFlow.collectAsStateWithLifecycle().value else null
     val hrData = if (primaryType == SeriesType.HEART_RATE) viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value else null
-    val stepsData = if (primaryType == SeriesType.STEPS) viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value else null
+    val stepsData = if (SeriesType.STEPS in orderedTypes) viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value else null
     // Activity data: either as primary series OR as overlay (on IOB graph)
     val needsActivity = primaryType == SeriesType.ACTIVITY || (activityOverlay && hasIob)
     val activityData = if (needsActivity) viewModel.activityGraphFlow.collectAsStateWithLifecycle().value else null
@@ -330,7 +359,7 @@ fun SecondaryGraphCompose(
                 add(SeriesType.HEART_RATE to processPoints(it, minTimestamp, minX, maxX))
             }
             // S5, S15, S30, S60 in this order; the slots below give each its own colour by this order (2026-10-18)
-            stepsData?.let { data ->
+            stepsData?.takeIf { SeriesType.STEPS in primaryTypes }?.let { data ->
                 listOf(data.steps, data.steps15, data.steps30, data.steps60).forEach { points ->
                     add(SeriesType.STEPS to processPoints(points, minTimestamp, minX, maxX))
                 }
@@ -877,8 +906,10 @@ fun SecondaryGraphCompose(
         )
     }
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
-    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter) {
-        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels + listOfNotNull(inspectLine, geometryReporter)
+    val stepsTapTarget = remember { StepsTapTarget() }
+    val stepsTapReporter = stepsTapTarget.takeIf { stepsData != null }
+    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter, stepsTapReporter) {
+        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels + listOfNotNull(inspectLine, geometryReporter, stepsTapReporter)
     }
 
     // Dual-axis zero alignment.
@@ -1226,28 +1257,26 @@ fun SecondaryGraphCompose(
         guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
     )
 
-    val stepsMarker = if (primaryType == SeriesType.STEPS && stepsData != null) {
-        val stepLabels = listOf(
-            stringResource(CoreUiStrings.graph_steps_s5),
-            stringResource(CoreUiStrings.graph_steps_s15),
-            stringResource(CoreUiStrings.graph_steps_s30),
-            stringResource(CoreUiStrings.graph_steps_s60)
-        )
-        rememberDefaultCartesianMarker(
-            label = rememberTextComponent(
-                style = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp)
-            ),
-            valueFormatter = DefaultCartesianMarker.ValueFormatter { _, targets ->
-                val x = targets.firstOrNull()?.x ?: return@ValueFormatter ""
-                val series = listOf(stepsData.steps, stepsData.steps15, stepsData.steps30, stepsData.steps60)
-                series.mapIndexedNotNull { index, points ->
-                    val nearest = points.minByOrNull { point -> abs(timestampToX(point.timestamp, minTimestamp) - x) }
-                    nearest?.let { "${stepLabels[index]} ${it.value.roundToInt()}" }
-                }.joinToString("   ")
+    val latestStepsData by rememberUpdatedState(stepsData)
+    val latestMinTimestamp by rememberUpdatedState(minTimestamp)
+    var selectedStepSamples by remember { mutableStateOf(emptyList<Pair<Int, GraphDataPoint>>()) }
+    if (selectedStepSamples.isNotEmpty()) {
+        val stepLabels = listOf(CoreUiStrings.graph_steps_s5, CoreUiStrings.graph_steps_s15, CoreUiStrings.graph_steps_s30, CoreUiStrings.graph_steps_s60)
+        AlertDialog(
+            onDismissRequest = { selectedStepSamples = emptyList() },
+            title = { Text(stringResource(CoreUiStrings.steps_shortname)) },
+            text = {
+                Column {
+                    selectedStepSamples.forEach { (index, sample) ->
+                        Text(stringResource(CoreUiStrings.graph_steps_sample, stringResource(stepLabels[index]), sample.value.roundToInt(), dateUtil.dateAndTimeString(sample.timestamp)))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedStepSamples = emptyList() }) { Text(stringResource(CoreUiStrings.close)) }
             }
         )
-    } else null
-    val stepsMarkerController = CartesianMarkerController.rememberToggleOnTap()
+    }
 
     val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp) {
         val samples = iobData?.insulinByMinute.orEmpty()
@@ -1306,7 +1335,33 @@ fun SecondaryGraphCompose(
                 )
             }
         }
-        val chartModifier = Modifier.fillMaxWidth().weight(1f)
+        val chartModifier = Modifier.fillMaxWidth().weight(1f).then(
+            if (stepsData == null) Modifier else Modifier.pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var moved = false
+                    do {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.size > 1 || event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) moved = true
+                        if (event.changes.none { it.pressed }) {
+                            val up = event.changes.firstOrNull { it.id == down.id }
+                            if (!moved && up != null && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
+                                val time = stepsTapTarget.timestampAt(up.position, latestMinTimestamp)
+                                val data = latestStepsData
+                                if (time != null && data != null) {
+                                    selectedStepSamples = listOf(data.steps, data.steps15, data.steps30, data.steps60)
+                                        .mapIndexedNotNull { index, points ->
+                                            points.minByOrNull { abs(it.timestamp - time) }?.let { index to it }
+                                        }
+                                    if (selectedStepSamples.isNotEmpty()) up.consume()
+                                }
+                            }
+                            break
+                        }
+                    } while (true)
+                }
+            }
+        )
         if (hasBasalLayer) {
             val basalLayer = rememberLineCartesianLayer(
                 lineProvider = LineCartesianLayer.LineProvider.series(basalLines),
@@ -1316,8 +1371,6 @@ fun SecondaryGraphCompose(
             CartesianChartHost(
                 chart = rememberCartesianChart(
                     primaryLayer, basalLayer,
-                    marker = stepsMarker,
-                    markerController = stepsMarkerController,
                     startAxis = startAxis,
                     bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
                 ),
@@ -1334,8 +1387,6 @@ fun SecondaryGraphCompose(
             CartesianChartHost(
                 chart = rememberCartesianChart(
                     primaryLayer, secondaryLayer,
-                    marker = stepsMarker,
-                    markerController = stepsMarkerController,
                     startAxis = startAxis,
                     bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
                 ),
@@ -1347,8 +1398,6 @@ fun SecondaryGraphCompose(
             CartesianChartHost(
                 chart = rememberCartesianChart(
                     primaryLayer,
-                    marker = stepsMarker,
-                    markerController = stepsMarkerController,
                     startAxis = startAxis,
                     bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
                 ),
