@@ -9,6 +9,7 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
 import app.aaps.core.interfaces.concurrent.AapsLock
 import app.aaps.core.interfaces.concurrent.withLock
 import app.aaps.core.interfaces.configuration.Config
@@ -102,6 +103,11 @@ class ProfileFunctionImpl(
                 // collector on this flow has no ordering guarantee against it and could re-read the stale
                 // cache, pinning the mirror to the previous insulin until the next profile change.
                 _runningICfg.value = readRunningICfg()
+                persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now())?.let { effective ->
+                    runCatching {
+                        (activePlugin.activeAPS as? ProfileRoleSynchronizer)?.alignEffectiveProfileRoles(effective.originalProfileName)
+                    }.onFailure { failure -> aapsLogger.error("Profile role alignment failed", failure) }
+                }
             }
     }
 
@@ -299,7 +305,7 @@ class ProfileFunctionImpl(
      */
     private suspend fun activeProfileSwitch(durationInMinutes: Int, percentage: Int, timeShiftInHours: Int, timestamp: Long, whyNot: (String) -> Unit): PS? {
         val at = timestamp.takeIf { it > 0L } ?: dateUtil.now()
-        val profile = persistenceLayer.getPermanentProfileSwitchActiveAt(at)
+        val profile = persistenceLayer.getProfileSwitchActiveAt(at) ?: persistenceLayer.getPermanentProfileSwitchActiveAt(at)
         if (profile == null) {
             whyNot(rh.gs(CoreUiStrings.no_profile_set))
             return null
@@ -309,7 +315,13 @@ class ProfileFunctionImpl(
             whyNot(rh.gs(CoreUiStrings.noprofile))
             return null
         }
-        val ps = buildProfileSwitch(profileStore, profile.profileName, durationInMinutes, percentage, timeShiftInHours, at, profile.iCfg)
+        // A percentage change uses the named profile actually running, and cannot extend a temporary
+        // profile past its original end. Zero duration means the remaining duration in this case.
+        val effectiveDuration = if (profile.duration > 0L) {
+            val remaining = ((profile.timestamp + profile.duration - at) / 60_000L).coerceAtLeast(1L).toInt()
+            if (durationInMinutes > 0) minOf(durationInMinutes, remaining) else remaining
+        } else durationInMinutes
+        val ps = buildProfileSwitch(profileStore, profile.profileName, effectiveDuration, percentage, timeShiftInHours, at, profile.iCfg)
         if (ps == null) whyNot(rh.gs(CoreUiStrings.scene_profile_not_found, profile.profileName))
         return ps
     }

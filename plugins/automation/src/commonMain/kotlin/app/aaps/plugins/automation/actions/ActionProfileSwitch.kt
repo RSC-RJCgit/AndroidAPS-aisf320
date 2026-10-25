@@ -37,7 +37,7 @@ class ActionProfileSwitch(
     override fun elementType() = ElementType.PROFILE_MANAGEMENT
 
     override suspend fun doAction(): PumpEnactResult {
-        val activeProfileName = profileFunction.getProfileName()
+        val requestedProfile = profileFunction.getRequestedProfile()
         //Check for uninitialized profileName
         if (inputProfileName.value == "") {
             aapsLogger.error(LTag.AUTOMATION, "Selected profile not initialized")
@@ -47,7 +47,9 @@ class ActionProfileSwitch(
             aapsLogger.error(LTag.AUTOMATION, "ProfileFunctions not initialized")
             return pumpEnactResultProvider().success(false).comment(CoreUiStrings.noprofile)
         }
-        if (inputProfileName.value == activeProfileName) {
+        if (requestedProfile?.let {
+                it.profileName == inputProfileName.value && it.percentage == 100 && it.timeshift == 0L && it.duration == 0L
+            } == true) {
             aapsLogger.debug(LTag.AUTOMATION, "Profile is already switched")
             return pumpEnactResultProvider().success(true).comment(AutomationStrings.alreadyset)
         }

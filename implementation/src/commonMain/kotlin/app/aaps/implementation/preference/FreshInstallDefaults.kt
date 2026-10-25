@@ -19,11 +19,10 @@ object FreshInstallDefaults {
         // A new client is read-only until the user says it controls its master (the setup wizard asks)
         if (config.AAPSCLIENT && preferences.getIfExists(BooleanKey.NsClientReadOnlyClient) == null)
             preferences.put(BooleanKey.NsClientReadOnlyClient, true)
-        // Every new install starts with the clean main graph (2026-10-24, per explicit request): no text lines, and the
-        // automatic clean also hides them. Both can be turned back in Settings.
+        // Show the four main-graph text rows by default.
         if (preferences.getIfExists(BooleanKey.ApsAutoIsfShowGraphText) == null)
-            preferences.put(BooleanKey.ApsAutoIsfShowGraphText, false)
+            preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
         if (preferences.getIfExists(BooleanKey.ApsAutoIsfAutoCleanGraph) == null)
-            preferences.put(BooleanKey.ApsAutoIsfAutoCleanGraph, true)
+            preferences.put(BooleanKey.ApsAutoIsfAutoCleanGraph, false)
     }
 }

@@ -522,7 +522,7 @@ class BolusWizard(
             if (dateUtil.now() > warsawRetryDeadlineMs(firstDueAt, nextDueAt)) {
                 val expired = "retry window expired"
                 warsawNote("C", planned, expired, source, fpuWhat(label, planned))
-                recordCancelledDose(label, planned, expired, iobBaseline, source)
+                recordCancelledDose(label, planned, expired, iobBaseline, source, useIobRise = false)
                 return
             }
             val reason = tryDeliverWarsawDose(planned, iobBaseline, source) { remaining, nextBaseline ->
@@ -534,7 +534,7 @@ class BolusWizard(
                     } else {
                         val expired = "insulinReq-limited remainder expired"
                         warsawNote("C", remaining, expired, source, fpuWhat(label, remaining))
-                        recordCancelledDose(label, remaining, expired, nextBaseline, source)
+                        recordCancelledDose(label, remaining, expired, nextBaseline, source, useIobRise = false)
                     }
                 }
             } ?: return
@@ -551,7 +551,7 @@ class BolusWizard(
                 aapsLogger.info(LTag.CORE, "Warsaw dose dropped: $reason")
                 val dropReason = if (retryLater || capWait) "$reason, not delivered within the retry window" else reason
                 warsawNote("C", planned, dropReason, source, fpuWhat(label, planned))
-                recordCancelledDose(label, planned, dropReason, iobBaseline, source)
+                recordCancelledDose(label, planned, dropReason, iobBaseline, source, useIobRise = false)
                 return
             }
         }
@@ -582,7 +582,7 @@ class BolusWizard(
         val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
         val step = ch.bolusStep(planned)
         // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
-        // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice. iobBaseline stays for the notes.
+        // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice.
         // 2026-10-19, per explicit request: cut while walking. The cut part is dropped: capRemaining below uses the cut dose.
         val walkFactor = walkingFactorNow()
         val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(planned * walkFactor, step) else planned
@@ -627,7 +627,7 @@ class BolusWizard(
         return IDs(pumpId = timestamp, pumpType = pump.model(), pumpSerial = pump.serialNumber())
     }
 
-    private suspend fun recordCancelledDose(label: String, amount: Double, reason: String, iobBaseline: Double, source: Sources) {
+    private suspend fun recordCancelledDose(label: String, amount: Double, reason: String, iobBaseline: Double, source: Sources, useIobRise: Boolean = true) {
         val profile = profileFunction.getProfile() ?: run {
             aapsLogger.info(LTag.CORE, "Cancelled dose row not written, no profile: $label $amount U, $reason")
             return
@@ -635,8 +635,8 @@ class BolusWizard(
         val now = dateUtil.now()
         val timestamp = max(now, lastZeroRowAt + 1)
         lastZeroRowAt = timestamp
-        val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(now, profile).iob
-        val calculation = followUpCalculation(timestamp, label, amount, iobBaseline, liveIob, "Cancelled: $reason", source)
+        val liveIob = if (useIobRise) iobCobCalculator.calculateFromTreatmentsAndTemps(now, profile).iob else 0.0
+        val calculation = followUpCalculation(timestamp, label, amount, iobBaseline, liveIob, "Cancelled: $reason", source, useIobRise)
         val notes = "$label: cancelled ($reason)"
         val bolus = BS(
             timestamp = timestamp,
@@ -650,7 +650,7 @@ class BolusWizard(
         persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation)
     }
 
-    /** A follow-up is an IOB-delta record, not a second calculation of the meal: its inputs are the base dose and the IOB rise. */
+    /** Records the inputs used by this follow-up. FPU doses do not use an IOB-rise correction. */
     private suspend fun followUpCalculation(
         timestamp: Long,
         label: String,
@@ -659,14 +659,20 @@ class BolusWizard(
         liveIob: Double,
         detail: String,
         source: Sources,
+        useIobRise: Boolean = true,
     ): BCR {
         val gs = glucoseStatusProvider.glucoseStatusData
-        val iobIncrease = max(0.0, liveIob - iobBaseline)
+        val iobIncrease = if (useIobRise) max(0.0, liveIob - iobBaseline) else 0.0
+        val iobNote = if (useIobRise)
+            "total IOB baseline ${warsawNoteAmount(iobBaseline)}U, " +
+                "now ${warsawNoteAmount(liveIob)}U, rise ${warsawNoteAmount(iobIncrease)}U; " +
+                "IOB row represents the rise in total IOB. "
+        else "FPU: no IOB-rise correction. "
         return BCR(
             timestamp = timestamp,
             targetBGLow = 0.0, targetBGHigh = 0.0,
             isf = 0.0, ic = ic,
-            bolusIOB = iobIncrease, wasBolusIOBUsed = true,
+            bolusIOB = iobIncrease, wasBolusIOBUsed = useIobRise,
             basalIOB = 0.0, wasBasalIOBUsed = false,
             glucoseValue = gs?.glucose ?: 0.0, wasGlucoseUsed = false,
             glucoseDifference = 0.0, glucoseInsulin = 0.0,
@@ -679,11 +685,9 @@ class BolusWizard(
             percentageCorrection = 100, profileName = profileFunction.getProfileName(),
             note = "$label (${if (source == Sources.QuickWizard) "QuickWizard" else "WizardDialog"}): " +
                 "base ${warsawNoteAmount(baseDose)}U, " +
-                "total IOB baseline ${warsawNoteAmount(iobBaseline)}U, " +
-                "now ${warsawNoteAmount(liveIob)}U, " +
-                "rise ${warsawNoteAmount(iobIncrease)}U; " +
+                iobNote +
                 "calculated 0.00U after residual cap/pump-step rounding. " +
-                "IOB row represents the rise in total IOB. BG is a safety gate, not a correction. " +
+                "BG is a safety gate, not a correction. " +
                 "Gate ${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())}. " + detail
         )
     }

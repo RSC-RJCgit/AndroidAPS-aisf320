@@ -26,10 +26,9 @@ object BuildDefaultsReset {
         BooleanKey.ApsAutoIsfShowInsulinTotals to true,
         BooleanKey.ApsAutoIsfShowCarbModelCurve to true,
         BooleanKey.ApsAutoIsfShowGraph5 to true,
-        // Clean graph (2026-10-24, per explicit request; were false and true): no text lines, and the automatic clean also
-        // hides them. The same as a new install, see FreshInstallDefaults.
-        BooleanKey.ApsAutoIsfAutoCleanGraph to true,
-        BooleanKey.ApsAutoIsfShowGraphText to false,
+        // Show the four main-graph text rows, including after an update.
+        BooleanKey.ApsAutoIsfAutoCleanGraph to false,
+        BooleanKey.ApsAutoIsfShowGraphText to true,
         BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled to false,
         BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled to false,
         BooleanKey.AutomationCodedLocationsEnabled to false,

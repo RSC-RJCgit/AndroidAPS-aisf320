@@ -9,6 +9,7 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APS
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.objects.profile.ProfileSealed
@@ -312,6 +313,49 @@ class ProfileFunctionImplTest : TestBaseWithProfile() {
     // ---------------------------------------------------------------------------------------------
     // The percentage-only overload (wear / CPP / automation), which had no time parameter at all.
     // ---------------------------------------------------------------------------------------------
+
+    @Test
+    fun rolesFollowTheEffectiveProfileNotAnUnactivatedRequest() = runTest {
+        val changes = MutableSharedFlow<List<EPS>>(extraBufferCapacity = 8)
+        val aps = mock<APS>(extraInterfaces = arrayOf(ProfileRoleSynchronizer::class))
+        val roles = aps as ProfileRoleSynchronizer
+        whenever(activePlugin.activeAPS).thenReturn(aps)
+        whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(changes)
+        whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong())).thenReturn(null)
+        createSut()
+        advanceUntilIdle()
+        changes.emit(listOf(effectiveProfileSwitch))
+        advanceUntilIdle()
+        verify(roles, never()).alignEffectiveProfileRoles(any())
+
+        whenever(persistenceLayer.getEffectiveProfileSwitchActiveAt(anyLong()))
+            .thenReturn(effectiveProfileSwitch.copy(originalProfileName = "LowC"))
+        changes.emit(listOf(effectiveProfileSwitch))
+        advanceUntilIdle()
+        verify(roles).alignEffectiveProfileRoles("LowC")
+    }
+
+    @Test
+    fun aPercentageChangeKeepsTheTemporaryBaseAndItsRemainingDuration() = runTest {
+        whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
+        val at = dateUtil.now()
+        val temporary = profileSwitch.copy(profileName = TESTPROFILENAME, iCfg = someICfg,
+            timestamp = at - T.mins(15).msecs(), duration = T.mins(60).msecs())
+        // A different permanent name must never be selected as the percentage base.
+        whenever(persistenceLayer.getProfileSwitchActiveAt(at)).thenReturn(temporary)
+        whenever(persistenceLayer.getPermanentProfileSwitchActiveAt(at))
+            .thenReturn(temporary.copy(profileName = "Permanent", duration = 0L))
+        whenever(profileRepository.profile).thenReturn(MutableStateFlow<ProfileStore?>(getValidProfileStore()))
+        whenever(persistenceLayer.insertOrUpdateProfileSwitch(any(), any(), any(), anyOrNull(), any())).thenAnswer { invocation ->
+            PersistenceLayer.TransactionResult<PS>().also { it.inserted.add(invocation.getArgument<PS>(0)) }
+        }
+        val result = createSutWithText().createProfileSwitch(
+            durationInMinutes = 0, percentage = 80, timeShiftInHours = 0,
+            action = Action.PROFILE_SWITCH, source = Sources.Automation, listValues = emptyList(), timestamp = at)
+        assertThat(result?.profileName).isEqualTo(TESTPROFILENAME)
+        assertThat(result?.duration).isEqualTo(T.mins(45).msecs())
+        assertThat(result?.percentage).isEqualTo(80)
+    }
 
     @Test
     fun aBackDatedPercentageSwitchResolvesTheBaseProfileAtThatTime() = runTest {

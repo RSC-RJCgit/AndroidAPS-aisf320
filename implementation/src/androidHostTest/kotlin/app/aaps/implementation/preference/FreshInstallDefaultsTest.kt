@@ -52,19 +52,19 @@ class FreshInstallDefaultsTest {
     }
 
     @Test
-    fun everyNewInstallStartsWithTheCleanGraph() {
-        // 2026-10-24: text lines off, the automatic clean hides them; a master the same as a client
+    fun everyNewInstallShowsTheGraphTextRows() {
+        // Text rows remain visible on the main graph for both master and client.
         setUp(client = false, wizardDone = false, stored = null)
         FreshInstallDefaults.apply(preferences, config)
-        verify(preferences).put(BooleanKey.ApsAutoIsfShowGraphText, false)
-        verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, true)
+        verify(preferences).put(BooleanKey.ApsAutoIsfShowGraphText, true)
+        verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, false)
     }
 
     @Test
     fun aStoredGraphChoiceIsKept() {
         setUp(client = false, wizardDone = false, stored = null)
-        whenever(preferences.getIfExists(BooleanKey.ApsAutoIsfShowGraphText)).thenReturn(true)
+        whenever(preferences.getIfExists(BooleanKey.ApsAutoIsfShowGraphText)).thenReturn(false)
         FreshInstallDefaults.apply(preferences, config)
-        verify(preferences, never()).put(BooleanKey.ApsAutoIsfShowGraphText, false)
+        verify(preferences, never()).put(BooleanKey.ApsAutoIsfShowGraphText, true)
     }
 }

@@ -20,6 +20,8 @@ import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APS
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
+import app.aaps.core.interfaces.aps.configuredProfileRole
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CodedProfileRoles
@@ -197,7 +199,7 @@ open class OpenAPSAutoISFPlugin(
         .description(ApsStrings.description_auto_isf),
     ownPreferences = ApsIntentKey.entries,
     aapsLogger, rh, preferences, notificationManager
-), APS, PluginConstraints, CodedProfileRoles {
+), APS, PluginConstraints, CodedProfileRoles, ProfileRoleSynchronizer {
 
     // last values
     override var lastAPSRun: Long = 0
@@ -276,6 +278,22 @@ open class OpenAPSAutoISFPlugin(
         val store = states()
         store.ensureDeclared("Steroids", required.values, required.defaultValue)
         store.setState("Steroids", "Steroids Off")
+    }
+
+    private val profileRoleLock = AapsLock()
+
+    override fun alignEffectiveProfileRoles(profileName: String) {
+        val standard = standardLadderNames()
+        val low = lowLadderNames()
+        val role = configuredProfileRole(profileName, standard, low) ?: return
+        val newStandard = standard.getOrNull(role.index).orEmpty()
+        val newLow = low.getOrNull(role.index).orEmpty()
+        val store = profileRepository.profile.value ?: return
+        if (newStandard.isBlank() || newLow.isBlank() ||
+            store.getSpecificProfile(newStandard) == null || store.getSpecificProfile(newLow) == null ||
+            listOf(newStandard, newLow).any { it.contains("steroid", ignoreCase = true) || it.contains("%") }) return
+        writeSharedRoleNames(role.index, newLow, newStandard)
+        aapsLogger.debug(LTag.APS, "Effective profile $profileName aligned Standard=$newStandard Low=$newLow")
     }
 
     private var list1Job: Job? = null
@@ -1092,7 +1110,7 @@ open class OpenAPSAutoISFPlugin(
                     }
                     // 2026-10-16, per explicit request: its fat and protein are really scheduled as a Warsaw FPU series, through
                     // the same scheduler as a confirmed wizard: it cancels a series still waiting from an earlier wizard, and a
-                    // later wizard cancels it. Each dose keeps its BG and IOB-rise checks. The 10 g carbs stay calc-only.
+                    // later wizard cancels it. Each dose keeps its BG and insulinReq checks. The 10 g carbs stay calc-only.
                     // 2026-10-18: scaled by the activity factor (0.5 while walking). At 0 the boost was off, so this is not reached.
                     scheduleTier3Fpu(tier3Activity, profile.getIc(), iobArray[0].iob)
                 }
@@ -2860,26 +2878,19 @@ open class OpenAPSAutoISFPlugin(
         val targetStandard = standardRungs.getOrNull(2)?.ifBlank { currentStandard }.orEmpty()
         if (targetLow.isBlank() || targetStandard.isBlank()) return
         val running = profileFunction.getOriginalProfileName()
-        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, currentLow)
-        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, currentStandard)
-        preferences.put(StringKey.ApsAutoIsfLowProfileName, targetLow)
-        preferences.put(StringKey.ApsAutoIsfStandardProfileName, targetStandard)
-        val nudge = roleTierDeliveryNudge(
-            previousBand = roleTierBandForIndex(sharedRoleLadderIndex(currentStandard, currentLow, standardRungs, lowRungs)),
-            newBand = 1,
-            smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
-            mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
-        )
-        if (nudge != null) {
-            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
-            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
-        }
-        val switchedTo = when (running) {
-            currentLow -> targetLow
-            currentStandard -> targetStandard
+        val profiles = profileRepository.profile.value ?: return
+        if (profiles.getSpecificProfile(targetLow) == null || profiles.getSpecificProfile(targetStandard) == null) return
+        val role = configuredProfileRole(running, standardRungs, lowRungs)
+        val switchedTo = when {
+            role != null -> if (role.low) targetLow else targetStandard
+            running == currentLow && running != currentStandard -> targetLow
+            running == currentStandard && running != currentLow -> targetStandard
             else -> ""
         }
-        if (switchedTo.isNotBlank()) switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C")
+        if (switchedTo.isNotBlank() && !switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C")) return
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, currentLow)
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, currentStandard)
+        if (switchedTo.isBlank()) writeSharedRoleNames(2, targetLow, targetStandard)
         preferences.put(BooleanNonKey.ApsAutoIsfStuckHighTierCActive, true)
         keepSteroidsOff()
         carePortalNote("STCOn")
@@ -2894,36 +2905,26 @@ open class OpenAPSAutoISFPlugin(
         val escalatedStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
         val savedLow = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevLow).trim()
         val savedStandard = preferences.get(StringNonKey.ApsAutoIsfStuckHighPrevStandard).trim()
-        val store = profileRepository.profile.value
+        val store = profileRepository.profile.value ?: return
         val restoredLow = savedLow.takeIf {
-            tierCRoleRestorable(it, escalatedLow, lowLadderNames().getOrNull(2).orEmpty(), store == null || store.getSpecificProfile(it) != null)
+            tierCRoleRestorable(it, escalatedLow, lowLadderNames().getOrNull(2).orEmpty(), store.getSpecificProfile(it) != null)
         }.orEmpty()
         val restoredStandard = savedStandard.takeIf {
-            tierCRoleRestorable(it, escalatedStandard, standardLadderNames().getOrNull(2).orEmpty(), store == null || store.getSpecificProfile(it) != null)
+            tierCRoleRestorable(it, escalatedStandard, standardLadderNames().getOrNull(2).orEmpty(), store.getSpecificProfile(it) != null)
         }.orEmpty()
         if (savedLow.isNotBlank() && restoredLow.isBlank()) aapsLogger.debug(LTag.APS, "Stuck high tier C off: kept Low=$escalatedLow, saved $savedLow not restored")
         if (savedStandard.isNotBlank() && restoredStandard.isBlank()) aapsLogger.debug(LTag.APS, "Stuck high tier C off: kept Standard=$escalatedStandard, saved $savedStandard not restored")
         val running = profileFunction.getOriginalProfileName()
-        if (restoredLow.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, restoredLow)
-        if (restoredStandard.isNotBlank()) preferences.put(StringKey.ApsAutoIsfStandardProfileName, restoredStandard)
         val switchedTo = when {
             running == escalatedLow && restoredLow.isNotBlank() -> restoredLow
             running == escalatedStandard && restoredStandard.isNotBlank() -> restoredStandard
             else -> ""
         }
-        if (switchedTo.isNotBlank()) switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C off")
-        val lowRungs = lowLadderNames()
-        val standardRungs = standardLadderNames()
-        val nudge = roleTierDeliveryNudge(
-            previousBand = 1,
-            newBand = roleTierBandForIndex(sharedRoleLadderIndex(restoredStandard.ifBlank { escalatedStandard }, restoredLow.ifBlank { escalatedLow }, standardRungs, lowRungs)),
-            smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
-            mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
-        )
-        if (nudge != null) {
-            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
-            preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
-        }
+        if (switchedTo.isNotBlank() && !switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C off")) return
+        val newLow = restoredLow.ifBlank { escalatedLow }
+        val newStandard = restoredStandard.ifBlank { escalatedStandard }
+        val index = sharedRoleLadderIndex(newStandard, newLow, standardLadderNames(), lowLadderNames())
+        if (switchedTo.isBlank()) writeSharedRoleNames(index, newLow, newStandard)
         preferences.put(BooleanNonKey.ApsAutoIsfStuckHighTierCActive, false)
         preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, "")
         preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, "")
@@ -5313,44 +5314,43 @@ open class OpenAPSAutoISFPlugin(
         val standardRungs = standardLadderNames()
         val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
         val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
-        val names = sharedRungNames(
-            index = index,
-            lowRungs = lowRungs,
-            standardRungs = standardRungs,
-            lowCurrent = lowCurrent,
-            standardAnchor = preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(),
-            standardCurrent = standardCurrent,
-        ) ?: return false
+        val names = sharedRungNames(index, lowRungs, standardRungs, lowCurrent,
+            preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(), standardCurrent) ?: return false
         val (newLow, newStandard) = names
+        val store = profileRepository.profile.value ?: return false
+        if (store.getSpecificProfile(newLow) == null || store.getSpecificProfile(newStandard) == null) return false
         val running = profileFunction.getOriginalProfileName()
-        val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(standardCurrent, lowCurrent, standardRungs, lowRungs))
+        val role = configuredProfileRole(running, standardRungs, lowRungs)
+        val target = when {
+            role != null -> if (role.low) newLow else newStandard
+            running == lowCurrent && running != standardCurrent -> newLow
+            running == standardCurrent && running != lowCurrent -> newStandard
+            else -> ""
+        }
+        if (switchRunning && target.isNotBlank()) {
+            // The effective-profile event updates Current roles and their delivery band after activation.
+            return switchToStandardFor(target, 0, now, "AutoISF: morning role")
+        }
+        // An explicit role-only action can still repick the roles while another profile is running.
+        writeSharedRoleNames(index, newLow, newStandard)
+        return newLow != lowCurrent || newStandard != standardCurrent || target.isNotBlank()
+    }
+
+    private fun writeSharedRoleNames(index: Int, newLow: String, newStandard: String): Unit = profileRoleLock.withLock {
+        val oldLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val oldStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(oldStandard, oldLow, standardLadderNames(), lowLadderNames()))
         preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
         preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
-        if (newLow != lowCurrent || newStandard != standardCurrent) {
-            val nudge = roleTierDeliveryNudge(
-                previousBand = previousBand,
-                newBand = roleTierBandForIndex(index),
-                smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
-                mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
-            )
+        if (oldLow != newLow || oldStandard != newStandard) {
+            val nudge = roleTierDeliveryNudge(previousBand, roleTierBandForIndex(index),
+                preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline), preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))
             if (nudge != null) {
                 preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
                 preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
             }
         }
         keepSteroidsOff()
-        val matched = running == lowCurrent || running == standardCurrent
-        val target = when (running) {
-            lowCurrent -> newLow
-            standardCurrent -> newStandard
-            else -> ""
-        }
-        if (switchRunning && target.isNotBlank() && running != target) {
-            if (!switchToStandardFor(target, 0, now, "AutoISF: morning role")) {
-                aapsLogger.debug(LTag.APS, "Morning role did not switch to $target")
-            }
-        }
-        return newLow != lowCurrent || newStandard != standardCurrent || matched
     }
 
     // PrepareSet50, GentleHypo, PP50Off, then Skittles. PP50Off runs before Skittles so a recovery
@@ -5458,7 +5458,7 @@ open class OpenAPSAutoISFPlugin(
         )
         if (pp50 != null) {
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
-            val currentName = profileFunction.getOriginalProfileName().trim()
+            val currentName = restorationProfileName()
             if (!writeNamedPercent(now, currentName, 100, 0, "AutoISF: PP50 off")) {
                 aapsLogger.debug(LTag.APS, "PP50Off did not write a profile switch")
             }
@@ -5485,7 +5485,7 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.02)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
-            val currentName = profileFunction.getOriginalProfileName().trim()
+            val currentName = restorationProfileName()
             if (!writeNamedPercent(now, currentName, 100, 0, "AutoISF: Skittles reset to 100%")) {
                 aapsLogger.debug(LTag.APS, "Skittles did not write a profile switch")
             }
@@ -5744,6 +5744,13 @@ open class OpenAPSAutoISFPlugin(
         aapsLogger.debug(LTag.APS, "RecentPod 130% and 4.2 mmol for 5 min")
     }
 
+    private suspend fun restorationProfileName(): String {
+        val running = profileFunction.getOriginalProfileName().trim()
+        val role = configuredProfileRole(running, standardLadderNames(), lowLadderNames()) ?: return running
+        val name = preferences.get(if (role.low) StringKey.ApsAutoIsfLowProfileName else StringKey.ApsAutoIsfStandardProfileName).trim()
+        return name.takeIf { it.isNotBlank() && profileRepository.profile.value?.getSpecificProfile(it) != null } ?: running
+    }
+
     private suspend fun writeNamedPercent(now: Long, name: String, percent: Int, minutes: Int, note: String): Boolean {
         val trimmed = name.trim()
         val values = listOf(ValueWithUnit.Percent(percent), ValueWithUnit.Minute(minutes))
@@ -5947,44 +5954,21 @@ open class OpenAPSAutoISFPlugin(
         switchToRoleAtSharedTier(now, toLow = true, note = note, minutes = minutes)
     }
 
-    private suspend fun switchToRoleAtSharedTier(now: Long, toLow: Boolean, note: String, minutes: Int = 0) {
+    private suspend fun switchToRoleAtSharedTier(now: Long, toLow: Boolean, note: String, minutes: Int = 0): Boolean {
         val lowRungs = lowLadderNames()
         val standardRungs = standardLadderNames()
         val lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
         val standardCurrent = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
         val running = profileFunction.getOriginalProfileName()
-        val index = sourceRoleRung(standardCurrent, lowCurrent, running, standardRungs, lowRungs).coerceAtLeast(0)
-        val names = sharedRungNames(
-            index = index,
-            lowRungs = lowRungs,
-            standardRungs = standardRungs,
-            lowCurrent = lowCurrent,
-            standardAnchor = preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(),
-            standardCurrent = standardCurrent,
-        ) ?: return
-        val (newLow, newStandard) = names
-        if (newLow != lowCurrent || newStandard != standardCurrent) {
-            val previousBand = roleTierBandForIndex(sharedRoleLadderIndex(standardCurrent, lowCurrent, standardRungs, lowRungs))
-            preferences.put(StringKey.ApsAutoIsfLowProfileName, newLow)
-            preferences.put(StringKey.ApsAutoIsfStandardProfileName, newStandard)
-            val nudge = roleTierDeliveryNudge(
-                previousBand = previousBand,
-                newBand = roleTierBandForIndex(index),
-                smbBaseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline),
-                mildRatio = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio),
-            )
-            if (nudge != null) {
-                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, nudge.smbBaseline)
-                preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, nudge.mildRatio)
-                aapsLogger.debug(LTag.APS, "Role tier nudge smb ${nudge.smbBaseline} mild ${nudge.mildRatio}")
-            }
-        }
-        keepSteroidsOff()
+        val index = sourceRoleRung(standardCurrent, lowCurrent, running, standardRungs, lowRungs)
+        if (index < 0) return false
+        val (newLow, newStandard) = sharedRungNames(index, lowRungs, standardRungs, lowCurrent,
+            preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim(), standardCurrent) ?: return false
+        val store = profileRepository.profile.value ?: return false
+        if (store.getSpecificProfile(newLow) == null || store.getSpecificProfile(newStandard) == null) return false
         val target = if (toLow) newLow else newStandard
-        if (target.isNotBlank() && profileFunction.getOriginalProfileName() != target) {
-            val switched = switchToStandardFor(target, minutes, now, note)
-            if (!switched) aapsLogger.debug(LTag.APS, "Role switch did not write $target")
-        }
+        // The same base name may still be at 50/120% or have a pending expiry. Always write the requested 100% switch.
+        return switchToStandardFor(target, minutes, now, note)
     }
 
     // Standard and Low role writes stay on Steroids Off. This does not turn steroids on.
@@ -6078,33 +6062,7 @@ open class OpenAPSAutoISFPlugin(
                 delayedBolusPending = false,
             )
         ) return
-        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-        val iCfg = profileFunction.getRunningOrRequestedICfg()
-        val store = profileRepository.profile.value
-        if (standardName.isBlank() || iCfg == null || store == null || store.getSpecificProfile(standardName) == null) {
-            aapsLogger.debug(LTag.APS, "Activity off: standard profile is not in the store")
-            return
-        }
-        val switched = profileFunction.createProfileSwitch(
-            profileStore = store,
-            profileName = standardName,
-            durationInMinutes = 0,
-            percentage = 100,
-            timeShiftInHours = 0,
-            timestamp = now,
-            action = Action.PROFILE_SWITCH,
-            source = Sources.Automation,
-            note = "AutoISF: activity off",
-            listValues = listOf(
-                ValueWithUnit.SimpleString(standardName),
-                ValueWithUnit.Percent(100)
-            ),
-            iCfg = iCfg,
-        ) != null
-        if (!switched) {
-            aapsLogger.debug(LTag.APS, "Activity off did not write a switch")
-            return
-        }
+        if (!switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: activity off")) return
         persistenceLayer.cancelCurrentTemporaryTargetIfAny(
             timestamp = now,
             action = Action.CANCEL_TT,
@@ -6118,7 +6076,7 @@ open class OpenAPSAutoISFPlugin(
         runMarks.mark(RunMark.ACTIVITY_OFF, now)
         sendAutoSms("Activity 70_0.70 0.35 Acce")
         carePortalNote("ActOff")
-        aapsLogger.debug(LTag.APS, "Activity off -> $standardName at 100%")
+        aapsLogger.debug(LTag.APS, "Activity off -> Standard at 100%")
     }
 
     // Switches to [profileName] at 100% for [minutes]. A zero duration has no end time. Returns false when the name is missing.

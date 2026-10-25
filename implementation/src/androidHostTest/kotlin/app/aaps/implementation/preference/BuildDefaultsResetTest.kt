@@ -69,6 +69,16 @@ internal class BuildDefaultsResetTest {
     }
 
     @Test
+    fun anUpdateRestoresTheGraphTextRows() {
+        given()
+        whenever(preferences.get(BooleanKey.ApsAutoIsfShowGraphText)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.ApsAutoIsfAutoCleanGraph)).thenReturn(true)
+        BuildDefaultsReset.apply(preferences, config, "VirtualPumpPlugin")
+        verify(preferences).put(BooleanKey.ApsAutoIsfShowGraphText, true)
+        verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, false)
+    }
+
+    @Test
     fun theSameBuildDoesNothingTheSecondTime() {
         given(doneFor = "4.0.0-rc1@abc123")
         whenever(preferences.get(BooleanKey.ApsUseAutosens)).thenReturn(true)

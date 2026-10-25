@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.interfaces.aps.configuredRoleRung
+
 internal data class RoleNudge(
     val smbBaseline: Double,
     val mildRatio: Double,
@@ -56,22 +58,7 @@ internal fun sourceRoleRung(
     runningName: String,
     standardRungs: List<String>,
     lowRungs: List<String>,
-): Int {
-    val standardIndex = ladderIndexOf(standardName, standardRungs)
-    val lowIndex = ladderIndexOf(lowName, lowRungs)
-    val runningLowIndex = ladderIndexOf(runningName, lowRungs)
-    val runningStandardIndex = ladderIndexOf(runningName, standardRungs)
-    return when {
-        runningName == lowName && lowIndex >= 0 -> lowIndex
-        runningName == standardName && standardIndex >= 0 -> standardIndex
-        runningLowIndex >= 0 -> runningLowIndex
-        runningStandardIndex >= 0 -> runningStandardIndex
-        standardIndex >= 0 && lowIndex >= 0 -> maxOf(standardIndex, lowIndex)
-        standardIndex >= 0 -> standardIndex
-        lowIndex >= 0 -> lowIndex
-        else -> -1
-    }
-}
+): Int = configuredRoleRung(runningName, standardName, lowName, standardRungs, lowRungs)
 
 internal fun runningOnLowLadder(runningName: String, lowCurrent: String, lowRungs: List<String>): Boolean {
     if (runningName.isBlank()) return false
