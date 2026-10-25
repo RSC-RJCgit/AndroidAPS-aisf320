@@ -1,6 +1,7 @@
 package app.aaps.implementation.profile
 
 import androidx.annotation.VisibleForTesting
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.PS
 import app.aaps.core.data.time.T
@@ -59,6 +60,11 @@ class ProfileFunctionImpl @Inject constructor(
             .subscribe(
                 {
                     synchronized(cache) { cache.keys.removeIf { key -> key > it.startDate } }
+                    persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now())?.let { effective ->
+                        runCatching {
+                            (activePlugin.activeAPS as? ProfileRoleSynchronizer)?.alignEffectiveProfileRoles(effective.originalProfileName)
+                        }.onFailure { failure -> aapsLogger.error("Profile role alignment failed", failure) }
+                    }
                 }, fabricPrivacy::logException
             )
     }

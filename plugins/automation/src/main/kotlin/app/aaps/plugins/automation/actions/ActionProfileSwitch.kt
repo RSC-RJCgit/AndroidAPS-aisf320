@@ -35,7 +35,7 @@ class ActionProfileSwitch(injector: HasAndroidInjector) : Action(injector) {
     @DrawableRes override fun icon(): Int = app.aaps.core.ui.R.drawable.ic_actions_profileswitch_24dp
 
     override fun doAction(callback: Callback) {
-        val activeProfileName = profileFunction.getProfileName()
+        val requestedProfile = profileFunction.getRequestedProfile()
         //Check for uninitialized profileName
         if (inputProfileName.value == "") {
             aapsLogger.error(LTag.AUTOMATION, "Selected profile not initialized")
@@ -47,7 +47,9 @@ class ActionProfileSwitch(injector: HasAndroidInjector) : Action(injector) {
             callback.result(pumpEnactResultProvider.get().success(false).comment(app.aaps.core.ui.R.string.noprofile)).run()
             return
         }
-        if (inputProfileName.value == activeProfileName) {
+        if (duration.value == 0 && requestedProfile?.let {
+                it.profileName == inputProfileName.value && it.percentage == 100 && it.timeshift == 0L && it.duration == 0L
+            } == true) {
             aapsLogger.debug(LTag.AUTOMATION, "Profile is already switched")
             callback.result(pumpEnactResultProvider.get().success(true).comment(R.string.alreadyset)).run()
             return

@@ -61,6 +61,8 @@ class ActionProfileSwitchTest : ActionsTestBase() {
         })
 
         //profile already set
+        whenever(profileFunction.getRequestedProfile()).thenReturn(
+            profileSwitch.copy(profileName = "Test", percentage = 100, timeshift = 0L, duration = 0L))
         whenever(profileFunction.getProfile()).thenReturn(validProfile)
         whenever(profileFunction.getProfileName()).thenReturn("Test")
         sut.inputProfileName = InputProfileName(rh, activePlugin, "Test")
@@ -72,6 +74,7 @@ class ActionProfileSwitchTest : ActionsTestBase() {
         })
 
         // profile doesn't exists
+        whenever(profileFunction.getRequestedProfile()).thenReturn(null)
         whenever(profileFunction.getProfileName()).thenReturn("Active")
         sut.inputProfileName = InputProfileName(rh, activePlugin, "Test")
         sut.doAction(object : Callback() {
@@ -92,6 +95,18 @@ class ActionProfileSwitchTest : ActionsTestBase() {
             }
         })
         verify(profileFunction, times(1)).createProfileSwitch(anyOrNull(), anyString(), anyInt(), anyInt(), anyInt(), anyLong(), any(), any(), any(), any())
+    }
+
+    @Test fun aSameNameTemporarySwitchIsReassertedIndefinitely() {
+        whenever(profileFunction.getProfile()).thenReturn(validProfile)
+        whenever(profileFunction.getRequestedProfile()).thenReturn(
+            profileSwitch.copy(profileName = TESTPROFILENAME, percentage = 100, timeshift = 0L, duration = 600_000L))
+        whenever(profileFunction.createProfileSwitch(anyOrNull(), anyString(), anyInt(), anyInt(), anyInt(), anyLong(), any(), any(), any(), any())).thenReturn(true)
+        sut.inputProfileName = InputProfileName(rh, activePlugin, TESTPROFILENAME)
+        sut.doAction(object : Callback() {
+            override fun run() { assertThat(result.success).isTrue() }
+        })
+        verify(profileFunction).createProfileSwitch(anyOrNull(), anyString(), anyInt(), anyInt(), anyInt(), anyLong(), any(), any(), any(), any())
     }
 
     @Test fun hasDialogTest() {

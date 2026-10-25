@@ -1119,7 +1119,7 @@ class BolusWizard @Inject constructor(
     // set ONE shared extended-delivery duration for BOTH components together (real Warsaw treats
     // fat and protein as one combined load, not two independently-timed contributions), which is then
     // split into roughly-hourly sub-doses, each delivered through the existing
-    // scheduleSingleDelayedDose() gate (BG safety + IOB-delta reduction/cancellation, independently, at
+    // scheduleSingleDelayedDose() gate (BG safety and insulinReq cap, independently, at
     // ITS OWN delivery time — nothing new to build there, just calling it more than twice).
     // insulinFromProteinOnly/insulinFromFatOnly (see doCalc()) already carry the real Warsaw per-gram
     // strength; this only decides duration/split, not amount. Returns null when there's nothing to
@@ -1183,7 +1183,7 @@ class BolusWizard @Inject constructor(
      * 2026-10-16, per explicit request: the UAM Tier3 pseudo-wizard (full AAPS on the Virtual pump only) schedules ONLY the
      * Warsaw protein+fat series of this calculation, through the same scheduler as a confirmed wizard. So, as usual, it
      * cancels doses still pending from an earlier wizard and is cancelled by a later one, and each part keeps its BG and
-     * IOB-rise gates. No immediate dose and no carbs record. Call it after doCalc() with carbs = 0 and only protein and fat.
+     * insulinReq checks. No immediate dose and no carbs record. Call it after doCalc() with carbs = 0 and only protein and fat.
      */
     fun scheduleFpuSeriesOnly() {
         if (insulinFromProteinOnly + insulinFromFatOnly <= 0.0) return
@@ -1439,7 +1439,7 @@ class BolusWizard @Inject constructor(
         return IDs(pumpId = timestamp, pumpType = pump.model(), pumpSerial = pump.serialNumber())
     }
 
-    private fun cancelDoseNote(what: String, amount: Double, reason: String, label: String? = null, iobBaseline: Double? = null) {
+    private fun cancelDoseNote(what: String, amount: Double, reason: String, label: String? = null, iobBaseline: Double? = null, useIobRise: Boolean = true) {
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
                 timestamp = NoteTimestampAllocator.next(dateUtil.now()),
@@ -1456,8 +1456,8 @@ class BolusWizard @Inject constructor(
             listValues = listOf()
         ).blockingGet()
         if (label != null && iobBaseline != null) {
-            val liveIob = currentTotalIob()
-            val calculation = followUpCalculation(dateUtil.now(), label, amount, iobBaseline, liveIob, 0.0, "Cancelled: $what ($reason)")
+            val liveIob = if (useIobRise) currentTotalIob() else 0.0
+            val calculation = followUpCalculation(dateUtil.now(), label, amount, iobBaseline, liveIob, 0.0, "Cancelled: $what ($reason)", useIobRise)
             val cancelledBolus = BS(timestamp = calculation.timestamp, amount = 0.0, type = BS.Type.NORMAL, notes = "$what: cancelled ($reason)", ids = zeroBolusIds(calculation.timestamp))
             persistenceLayer.insertOrUpdateBolus(
                 cancelledBolus, Action.BOLUS,
@@ -1528,19 +1528,23 @@ class BolusWizard @Inject constructor(
         ).blockingGet()
     }
 
-    // A follow-up is an IOB-delta calculation, not a second calculation of the original meal.
-    // Keep its own timestamp/ID and expose the actual inputs in Treatments' calc details.
+    // Record the inputs used by this follow-up. FPU doses do not use an IOB-rise correction.
     private fun followUpCalculation(
         timestamp: Long, label: String, baseDose: Double, iobBaseline: Double,
-        liveIob: Double, dose: Double, detail: String
+        liveIob: Double, dose: Double, detail: String, useIobRise: Boolean = true
     ): BCR {
         val gs = glucoseStatusProvider.glucoseStatusData
-        val iobIncrease = max(0.0, liveIob - iobBaseline)
+        val iobIncrease = if (useIobRise) max(0.0, liveIob - iobBaseline) else 0.0
+        val iobNote = if (useIobRise)
+            "total IOB baseline ${decimalFormatter.to2Decimal(iobBaseline)}U, " +
+                "now ${decimalFormatter.to2Decimal(liveIob)}U, rise ${decimalFormatter.to2Decimal(iobIncrease)}U; " +
+                "IOB row represents the rise in total IOB. "
+        else "FPU: no IOB-rise correction. "
         return BCR(
             timestamp = timestamp,
             targetBGLow = 0.0, targetBGHigh = 0.0,
             isf = 0.0, ic = ic,
-            bolusIOB = iobIncrease, wasBolusIOBUsed = true,
+            bolusIOB = iobIncrease, wasBolusIOBUsed = useIobRise,
             basalIOB = 0.0, wasBasalIOBUsed = false,
             glucoseValue = gs?.glucose ?: 0.0, wasGlucoseUsed = false,
             glucoseDifference = 0.0, glucoseInsulin = 0.0,
@@ -1553,11 +1557,9 @@ class BolusWizard @Inject constructor(
             percentageCorrection = 100, profileName = profileFunction.getProfileName(),
             note = "$label (${if (quickWizard) "QuickWizard" else "WizardDialog"}): " +
                 "base ${decimalFormatter.to2Decimal(baseDose)}U, " +
-                "total IOB baseline ${decimalFormatter.to2Decimal(iobBaseline)}U, " +
-                "now ${decimalFormatter.to2Decimal(liveIob)}U, " +
-                "rise ${decimalFormatter.to2Decimal(iobIncrease)}U; " +
+                iobNote +
                 "calculated ${decimalFormatter.to2Decimal(dose)}U after residual cap/pump-step rounding. " +
-                "IOB row represents the rise in total IOB. BG is a safety gate, not a correction. " +
+                "BG is a safety gate, not a correction. " +
                 "Gate ${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())}. " + detail
         )
     }
@@ -1818,13 +1820,9 @@ class BolusWizard @Inject constructor(
     // the live BG safety check — any failure skips THIS ONE call's dose only (no retry; a sibling
     // sub-dose later in the same series still gets its own independent check).
     //
-    // Dose sizing is ALSO IOB-delta reduced, same principle as scheduleReducedPartsSplitBolus: a lot of
-    // SMBs (or anything else) firing between now and this delivery point may have already covered much of
-    // the anticipated protein/fat-driven rise, so iobBaseline (IOB right after the immediate dose was
-    // delivered — shared across every call in the series, see the call site) is compared against the
-    // live IOB at delivery time; only a genuine rise reduces the dose, and dropping to <=0 cancels it
-    // for now (no partial delivery) — for just this call, other sub-doses are unaffected. Since 2026-10-05 a failed
-    // due-time check (this one, BG safety, profile, pump, superbolus) is re-checked every 10 min instead of being
+    // FPU dose sizing uses the walking adjustment and the current insulinReq cap. An IOB rise since
+    // an earlier dose is not deducted or recorded as a correction. A failed due-time check
+    // (BG safety, profile, pump, superbolus) is re-checked every 10 min instead of being
     // dropped, until 10 min before the next part is due (see the nextDueAt parameter below).
     private fun scheduleSingleDelayedDose(
         dose: Double, delayMins: Int, label: String, schedulingPct: Int, iobBaseline: Double, myScheduleToken: Long,
@@ -1832,7 +1830,7 @@ class BolusWizard @Inject constructor(
         // Only the LAST sub-dose of the FPU series writes a 0U bolus marker when it calculates to <=0
         // (2026-09-19, explicit request); earlier ones just log and write their cancel note.
         isLast: Boolean = true,
-        // 2026-10-05, per explicit request: a due-time check that fails (BG safety, IOB rise, profile switch, pump
+        // 2026-10-05, per explicit request: a due-time check that fails (BG safety, profile switch, pump
         // suspended, superbolus) no longer cancels the part for good. It is re-checked every 10 min and delivered the
         // first time everything passes, and is only dropped (cancelled with an "expired" note) once the next re-check
         // would fall inside the 10 min before the NEXT FPU part is due. nextDueAt = when that next part is due (null for
@@ -1849,7 +1847,7 @@ class BolusWizard @Inject constructor(
         Handler(Looper.getMainLooper()).postDelayed({
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): bolus was stopped — cancelling ${dose}U")
-                cancelDoseNote(fpuWhat(label, dose), dose, "bolus stopped", label, iobBaseline)
+                cancelDoseNote(fpuWhat(label, dose), dose, "bolus stopped", label, iobBaseline, useIobRise = false)
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
@@ -1873,7 +1871,7 @@ class BolusWizard @Inject constructor(
             // The dose stays counted in the Warsaw pending total while it waits. onExpired runs only on that final drop.
             val doseDeadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
             if (dateUtil.now() > doseDeadline) {
-                cancelDoseNote(fpuWhat(label, dose), dose, "retry window expired", label, iobBaseline)
+                cancelDoseNote(fpuWhat(label, dose), dose, "retry window expired", label, iobBaseline, useIobRise = false)
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
@@ -1888,7 +1886,7 @@ class BolusWizard @Inject constructor(
                     aapsLogger.info(LTag.CORE, "DelayedDose($label): $logReason — ${if (retryLater) "retry window over, " else ""}cancelling ${dose}U")
                     onExpired?.invoke()
                     val expired = if (retryLater || forceRetry) "$noteReason (not delivered within the retry window)" else noteReason
-                    if (withLabel) cancelDoseNote(fpuWhat(label, dose), dose, expired, label, iobBaseline) else cancelDoseNote(fpuWhat(label, dose), dose, expired)
+                    if (withLabel) cancelDoseNote(fpuWhat(label, dose), dose, expired, label, iobBaseline, useIobRise = false) else cancelDoseNote(fpuWhat(label, dose), dose, expired)
                     decrementWarsawPendingRemaining(dose)
                 }
             }
@@ -1933,7 +1931,7 @@ class BolusWizard @Inject constructor(
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Delayed $label dose"
-                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "Dose after insulinReq cap; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote")
+                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "Dose after insulinReq cap; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote", useIobRise = false)
                 uel.log(
                     action = Action.BOLUS,
                     source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
@@ -1956,7 +1954,7 @@ class BolusWizard @Inject constructor(
                                 scheduleSingleDelayedDose(capRemaining, delayMins, label, schedulingPct, liveIob + thisDose, myScheduleToken,
                                     retryAt, isLast, nextDueAt, firstDueAt, false, retryLater)
                             } else {
-                                cancelDoseNote(fpuWhat(label, capRemaining), capRemaining, "insulinReq-limited remainder expired", label, liveIob + thisDose)
+                                cancelDoseNote(fpuWhat(label, capRemaining), capRemaining, "insulinReq-limited remainder expired", label, liveIob + thisDose, useIobRise = false)
                                 decrementWarsawPendingRemaining(capRemaining)
                             }
                         }
