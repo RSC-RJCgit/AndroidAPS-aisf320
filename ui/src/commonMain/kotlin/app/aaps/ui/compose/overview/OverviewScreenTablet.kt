@@ -172,7 +172,6 @@ fun OverviewScreenTablet(
                             iobUiState = iobUiState,
                             cobUiState = cobUiState,
                             sensitivityUiState = sensitivityUiState,
-                            onOpenAutoIsfHistory = chipsViewModel::openAutoIsfHistory,
                             actionButtons = chipsViewModel.overviewActions.collectAsStateWithLifecycle().value,
                             onAction = chipsViewModel::applyList1,
                             onNavigate = onNavigate,
@@ -216,7 +215,8 @@ fun OverviewScreenTablet(
                         flavorTint = flavorTint,
                         onOpenList1 = chipsViewModel::openList1,
                         onOpenList2 = chipsViewModel::openList2,
-                        onOpenList3 = chipsViewModel::openList3
+                        onOpenList3 = chipsViewModel::openList3,
+                        onOpenAutoIsfHistory = chipsViewModel::openAutoIsfHistory
                     )
                 }
                 // The QuickLaunch toolbar is centred over both columns, so this one needs space at its end too,

@@ -15,7 +15,6 @@ import app.aaps.ui.compose.overview.chips.SensitivityUiState
 @Composable
 fun SensitivityChipBlock(
     state: SensitivityUiState,
-    onOpenAutoIsfHistory: () -> Unit = {},
     onDoubleClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -23,15 +22,10 @@ fun SensitivityChipBlock(
 
     var showSensitivityDialog by remember { mutableStateOf(false) }
     val showSensitivityText = { if (state.dialogText.isNotEmpty()) showSensitivityDialog = true }
-    // 2026-10-24, per explicit request, on every phone and the same as v3: a tap opens the AutoISF table (which always also
-    // exports and uploads, see openAutoIsfHistory), a long press shows the sensitivity text. Without AutoISF rows there is no
-    // table, and a tap shows the sensitivity text as before.
+    // The AIV action in the oAPS row opens the table. This chip shows the sensitivity details.
     SensitivityChip(
         state = state,
-        onClick = if (state.autoIsfHistory) {
-            { onOpenAutoIsfHistory() }
-        } else showSensitivityText,
-        onLongClick = if (state.autoIsfHistory) showSensitivityText else null,
+        onClick = showSensitivityText,
         onDoubleClick = onDoubleClick,
         modifier = modifier
     )

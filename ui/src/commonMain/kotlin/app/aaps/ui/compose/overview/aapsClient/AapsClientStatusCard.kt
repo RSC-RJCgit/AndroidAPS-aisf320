@@ -51,7 +51,8 @@ fun AapsClientStatusCard(
     modifier: Modifier = Modifier,
     onOpenList1: () -> Unit = {},
     onOpenList2: () -> Unit = {},
-    onOpenList3: () -> Unit = {}
+    onOpenList3: () -> Unit = {},
+    onOpenAutoIsfHistory: () -> Unit = {}
 ) {
     val items = listOfNotNull(statusData.pump, statusData.openAps, statusData.autoIsf, statusData.uploader)
     if (items.isEmpty()) return
@@ -89,6 +90,11 @@ fun AapsClientStatusCard(
                         text = stringResource(UiStrings.client_settings1_chip),
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.clickable(onClick = onOpenList1)
+                    )
+                    Text(
+                        text = stringResource(UiStrings.client_aiv_chip),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.clickable(onClick = onOpenAutoIsfHistory)
                     )
                     statusData.openAps?.let { item ->
                         AapsClientStatusChip(item = item)

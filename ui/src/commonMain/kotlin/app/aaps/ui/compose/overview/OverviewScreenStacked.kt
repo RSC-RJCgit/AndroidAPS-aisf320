@@ -144,7 +144,6 @@ fun OverviewScreenStacked(
                 iobUiState = iobUiState,
                 cobUiState = cobUiState,
                 sensitivityUiState = sensitivityUiState,
-                onOpenAutoIsfHistory = chipsViewModel::openAutoIsfHistory,
                 actionButtons = chipsViewModel.overviewActions.collectAsStateWithLifecycle().value,
                 onAction = chipsViewModel::applyList1,
                 onNavigate = onNavigate,
@@ -190,7 +189,8 @@ fun OverviewScreenStacked(
                 flavorTint = flavorTint,
                 onOpenList1 = chipsViewModel::openList1,
                 onOpenList2 = chipsViewModel::openList2,
-                onOpenList3 = chipsViewModel::openList3
+                onOpenList3 = chipsViewModel::openList3,
+                onOpenAutoIsfHistory = chipsViewModel::openAutoIsfHistory
             )
         }
 

@@ -455,7 +455,8 @@
     <string name="graph_therapy_event_bg_with_note" comment="Shown when the user taps a BG check in the overview graph. %1$s = glucose with its unit, %2$s = the note the user wrote. Example: 6.1 mmol/L, before lunch">%1$s, %2$s</string>
 
     <string name="graph_bolus_calculation_unavailable">Calculation unavailable</string>
-    <string name="client_settings1_chip">Settings1</string>
+    <string name="client_settings1_chip">Set1</string>
+    <string name="client_aiv_chip" comment="Button opening the AutoISF values history table">AIV</string>
     <string name="client_settings2_chip">Set2</string>
     <string name="client_settings3_chip">Set3</string>
     <string name="direct_list_setting_value">%1$s: %2$s</string>
