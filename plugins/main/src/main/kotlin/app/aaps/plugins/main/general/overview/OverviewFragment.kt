@@ -152,6 +152,7 @@ import app.aaps.plugins.main.general.overview.ui.StatusLightHandler
 import app.aaps.plugins.main.R
 import app.aaps.plugins.main.skins.SkinProvider
 import com.jjoe64.graphview.GraphView
+import com.google.android.material.datepicker.MaterialDatePicker
 import dagger.android.support.DaggerFragment
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -196,6 +197,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var glucoseStatusProvider: GlucoseStatusProvider
     @Inject lateinit var overviewData: OverviewData
+    @Inject lateinit var overviewHistoryData: OverviewHistoryData
     @Inject lateinit var overview: Overview
     @Inject lateinit var lastBgData: LastBgData
     @Inject lateinit var automation: Automation
@@ -217,6 +219,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private var graphZoomWidth: Double? = null
     private var graphZoomEndTime: Double? = null
     private var graphZoomDefaultHours: Int? = null
+    private var historicalStartTime: Long? = null
     private lateinit var refreshLoop: Runnable
     private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
@@ -316,18 +319,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         overviewMenus.setupChartMenu(binding.graphsLayout.chartMenuButton, binding.graphsLayout.scaleButton)
         binding.graphsLayout.scaleButton.text = overviewMenus.scaleString(overviewData.rangeToDisplay)
 
-        binding.graphsLayout.historyPrevious.setOnClickListener {
-            openHistoryBrowser(previousPeriod = true)
-        }
-        binding.graphsLayout.historyNext.setOnClickListener {
-            openHistoryBrowser(previousPeriod = false)
-        }
+        binding.graphsLayout.historyPrevious.setOnClickListener { shiftOverviewDate(-1) }
+        binding.graphsLayout.historyNext.setOnClickListener { shiftOverviewDate(1) }
         binding.graphsLayout.historyPrevious.setOnLongClickListener {
-            openHistoryBrowser(previousPeriod = true, openDatePicker = true)
+            showOverviewDatePicker()
             true
         }
         binding.graphsLayout.historyNext.setOnLongClickListener {
-            openHistoryBrowser(previousPeriod = false, openDatePicker = true)
+            showOverviewDatePicker()
             true
         }
 
@@ -368,23 +367,68 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     }
 
-    private fun openHistoryBrowser(previousPeriod: Boolean, openDatePicker: Boolean = false) {
+    private fun shiftOverviewDate(direction: Int) {
         val rangeHours = overviewData.rangeToDisplay
-        val currentPeriodStart = Calendar.getInstance().apply {
-            timeInMillis = dateUtil.now()
-            set(Calendar.MILLISECOND, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.HOUR_OF_DAY, get(Calendar.HOUR_OF_DAY) - (get(Calendar.HOUR_OF_DAY) % rangeHours))
-        }.timeInMillis
-        val periodMillis = rangeHours.toLong() * 60L * 60_000L
-        val startTime = if (previousPeriod) currentPeriodStart - periodMillis else currentPeriodStart
-        startActivity(
-            Intent(requireContext(), uiInteraction.historyBrowseActivity)
-                .putExtra(UiInteraction.HISTORY_BROWSER_START_TIME, startTime)
-                .putExtra(UiInteraction.HISTORY_BROWSER_RANGE_HOURS, rangeHours)
-                .putExtra(UiInteraction.HISTORY_BROWSER_OPEN_DATE_PICKER, openDatePicker)
-                .setAction("info.nightscout.androidaps.MainActivity")
+        val rangeMillis = TimeUnit.HOURS.toMillis(rangeHours.toLong())
+        val liveStart = currentLiveWindowStart(rangeMillis)
+        val currentStart = historicalStartTime ?: liveStart
+        val targetStart = currentStart + direction.toLong() * rangeMillis
+        if (direction > 0 && targetStart >= liveStart) {
+            historicalStartTime = null
+            overviewHistoryData.overviewData.reset()
+            graphZoomWidth = null
+            graphZoomEndTime = null
+            binding.graphsLayout.historyDate.text = ""
+            updateGraph()
+            return
+        }
+        loadOverviewDate(targetStart, "overview date navigation")
+    }
+
+    private fun showOverviewDatePicker() {
+        val rangeMillis = TimeUnit.HOURS.toMillis(overviewData.rangeToDisplay.toLong())
+        val currentStart = historicalStartTime ?: currentLiveWindowStart(rangeMillis)
+        MaterialDatePicker.Builder.datePicker()
+            .setSelection(dateUtil.getTimestampWithCurrentTimeOfDay(currentStart))
+            .setTheme(app.aaps.core.ui.R.style.DatePicker)
+            .build()
+            .apply {
+                addOnPositiveButtonClickListener { selection ->
+                    loadOverviewDate(dateUtil.mergeUtcDateToTimestamp(currentStart, selection), "overview date picker")
+                }
+            }
+            .show(childFragmentManager, "overview_date_picker")
+    }
+
+    private fun currentLiveWindowStart(rangeMillis: Long): Long {
+        val minuteMillis = TimeUnit.MINUTES.toMillis(1)
+        val now = System.currentTimeMillis()
+        val roundedUpNow = ((now / minuteMillis) + 1) * minuteMillis
+        return roundedUpNow + 100000 - rangeMillis
+    }
+
+    private fun loadOverviewDate(start: Long, reason: String) {
+        val rangeHours = overviewData.rangeToDisplay
+        val history = overviewHistoryData.overviewData
+        history.reset()
+        historicalStartTime = start
+        history.rangeToDisplay = rangeHours
+        history.fromTime = start + 100000
+        history.toTime = history.fromTime + TimeUnit.HOURS.toMillis(rangeHours.toLong())
+        history.endTime = history.toTime
+        graphZoomWidth = null
+        graphZoomEndTime = null
+        requireActivity().runOnUiThread {
+            _binding?.graphsLayout?.historyDate?.text = dateUtil.dateAndTimeString(history.fromTime)
+        }
+        calculationWorkflow.runCalculation(
+            job = CalculationWorkflow.HISTORY_CALCULATION,
+            iobCobCalculator = overviewHistoryData.iobCobCalculator,
+            overviewData = history,
+            reason = reason,
+            end = history.toTime,
+            bgDataReload = true,
+            cause = app.aaps.core.interfaces.rx.events.EventCustomCalculationFinished()
         )
     }
 
@@ -416,6 +460,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             .debounce(1L, TimeUnit.SECONDS)
             .observeOn(aapsSchedulers.main)
             .subscribe({ updateGraph() }, fabricPrivacy::logException)
+        disposable += rxBus
+            .toObservable(EventUpdateOverviewGraph::class.java)
+            .debounce(1L, TimeUnit.SECONDS)
+            .observeOn(aapsSchedulers.main)
+            .subscribe({ if (historicalStartTime != null) updateGraph() }, fabricPrivacy::logException)
         disposable += activePlugin.activeOverview.overviewBus
             .toObservable(EventUpdateOverviewNotification::class.java)
             .observeOn(aapsSchedulers.main)
@@ -448,7 +497,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         disposable += rxBus
             .toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
-            .subscribe({ scheduleUpdateGUI() }, fabricPrivacy::logException)
+            .subscribe({ event ->
+                if (event.isChanged(IntNonKey.RangeToDisplay.key)) {
+                    historicalStartTime?.let { loadOverviewDate(it, "overview historical range changed") }
+                }
+                scheduleUpdateGUI()
+            }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventNewOpenLoopNotification::class.java)
             .observeOn(aapsSchedulers.io)
@@ -3300,7 +3354,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphZoomWidth = (if (delta > 0f) width / 1.08 else width * 1.08)
                 .coerceIn(TimeUnit.MINUTES.toMillis(30).toDouble(), TimeUnit.HOURS.toMillis(24).toDouble())
             // A live right edge continues to move with time; a selected historical edge stays fixed.
-            graphZoomEndTime = if (abs(end - overviewData.endTime) < 1000.0) null else end
+            val displayedEndTime = if (historicalStartTime != null) overviewHistoryData.overviewData.endTime else overviewData.endTime
+            graphZoomEndTime = if (abs(end - displayedEndTime) < 1000.0) null else end
             updateGraph()
             true
         }
@@ -3318,7 +3373,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // exactly like before that fix, just with a smaller worst-case gap. Confirmed 2026-09-13 per
         // user report that the 1h view still wasn't rolling. initRange() itself is cheap (three field
         // assignments, no I/O), so calling it on every redraw has no real cost.
-        overviewData.initRange()
+        val overviewData = if (historicalStartTime != null) overviewHistoryData.overviewData else this.overviewData
+        if (historicalStartTime == null) overviewData.initRange()
         // One-shot cross-module signal from CleanGraphTT (OpenAPSAutoISFPlugin.kt, TT=5.042): applies the
         // same "no SMB labels, no BGL arrowheads, solid uniform-green line" combo as long-pressing IOB
         // then Basal, then clears itself so it doesn't keep re-applying and block manual long-presses
@@ -3337,10 +3393,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // 2026-10-10: the graph text lines (every one but the hypoprediction line) follow Settings > AutoISF "Show the text lines".
         PointsWithLabelGraphSeries.showTextRows = preferences.get(BooleanKey.ApsAutoIsfShowGraphText)
         val pump = activePlugin.activePump
+        binding.graphsLayout.historyDate.text = historicalStartTime?.let { dateUtil.dateAndTimeString(it) } ?: ""
+        binding.graphsLayout.historyDate.visibility = if (historicalStartTime != null) View.VISIBLE else View.GONE
         val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData)
         val menuChartSettings = overviewMenus.setting
         if (menuChartSettings.isEmpty()) return
-        extendEndTimeForPredictions()
+        if (historicalStartTime == null) extendEndTimeForPredictions()
         if (graphZoomDefaultHours != overviewData.rangeToDisplay) {
             graphZoomWidth = null
             graphZoomEndTime = null

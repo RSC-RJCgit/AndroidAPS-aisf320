@@ -9,7 +9,13 @@ import kotlin.math.min
 fun followUpInsulinCap(candidate: Double, requirementMilliU: Long, calculatedAt: Long, now: Long, step: Double): Double? {
     if (calculatedAt <= 0L || calculatedAt > now || now - calculatedAt > 300_000L) return null
     val cap = min(max(0.0, candidate), max(0.0, requirementMilliU / 1000.0))
-    return Round.roundTo(floor((cap + 1e-9) / step) * step, step)
+    val roundedCap = Round.roundTo(floor((cap + 1e-9) / step) * step, step)
+    if (roundedCap <= 0.0 || roundedCap >= candidate) return roundedCap
+
+    // For delayed, split, and scheduled FPU follow-up doses, apply only half of the reduction
+    // requested by insulinReq. Keep rounding to a pump-supported step and never exceed the plan.
+    val halfReductionDose = candidate - (candidate - roundedCap) / 2.0
+    return Round.roundTo(halfReductionDose, step).coerceAtMost(candidate)
 }
 
 /**
