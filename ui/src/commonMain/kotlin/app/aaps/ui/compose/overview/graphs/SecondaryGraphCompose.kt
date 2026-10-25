@@ -1234,7 +1234,9 @@ fun SecondaryGraphCompose(
         // Legend of the step count lines (2026-10-19), each name in its line's colour
         if (primaryType == SeriesType.STEPS && stepsData != null) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(start = 8.dp),
+                // The graph title (for example, "G5 STEPS") is overlaid by GraphsSection at the top-left.
+                // Keep S5/S15/S30/S60 on the same horizontal row, starting after that title.
+                modifier = Modifier.fillMaxWidth().padding(start = 100.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 listOf(CoreUiStrings.graph_steps_s5, CoreUiStrings.graph_steps_s15, CoreUiStrings.graph_steps_s30, CoreUiStrings.graph_steps_s60)
@@ -1923,7 +1925,7 @@ fun rememberCobLineStyles(): CobLineStyles {
 // =========================================================================
 
 /** Formats bolus amount: 1.0->"1", 1.2->"1.2", 0.8->".8" (drop leading zero) */
-private fun formatBolusLabel(value: Double, decimalFormatter: DecimalFormatter): String {
+internal fun formatBolusLabel(value: Double, decimalFormatter: DecimalFormatter): String {
     if (value == 0.0) return ""
     val formatted = decimalFormatter.to2Decimal(value).trimEnd('0').trimEnd('.').trimEnd(',')
     return if (formatted.startsWith("0.")) formatted.substring(1) else formatted

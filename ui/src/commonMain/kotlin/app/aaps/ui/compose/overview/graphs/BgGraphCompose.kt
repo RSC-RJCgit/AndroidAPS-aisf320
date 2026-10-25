@@ -1050,7 +1050,7 @@ fun BgGraphCompose(
             val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
             SmbStackItem(
                 x = timestampToX(smb.timestamp, minTimestamp),
-                label = decimalFormatter.to2Decimal(smb.amount),
+                label = formatBolusLabel(smb.amount, decimalFormatter),
                 stackIndex = stack[index],
                 anchorY = dot?.value,
                 color = isfColor(dot?.dominantIsf),
@@ -1239,8 +1239,8 @@ fun BgGraphCompose(
     // =========================================================================
 
     val axisLock = remember { GraphAxisLock() }
-    // 2026-10-09, per explicit request, MAIN graph only (Graph 5 is unchanged): the ISF line and the steps line sit in a strip directly above
-    // the chart, and the hypo prediction line in a strip directly under it, the DR line and the target offset line below the ISF and steps lines, both off the plot. The chart keeps the height it
+    // 2026-10-09, per explicit request, MAIN graph only (Graph 5 is unchanged): the ISF line and steps line sit in a strip directly above
+    // the chart, and the hypo prediction line in a strip directly under it, with the DR line and target offset below ISF and steps, both off the plot. The chart keeps the height it
     // was given; the two strips add height.
     val stripSp = 11.sp
     val stripStyle = TextStyle(
