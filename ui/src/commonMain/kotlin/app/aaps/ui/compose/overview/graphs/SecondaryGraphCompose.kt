@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.abs
 import kotlin.math.round
+import kotlin.math.roundToInt
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.AdaptiveStep
 import app.aaps.core.graph.vico.Square
@@ -56,6 +57,9 @@ import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
+import com.patrykandpatrick.vico.compose.cartesian.marker.DefaultCartesianMarker
+import com.patrykandpatrick.vico.compose.cartesian.marker.rememberDefaultCartesianMarker
 import com.patrykandpatrick.vico.compose.cartesian.rememberCartesianChart
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.Position
@@ -1222,6 +1226,26 @@ fun SecondaryGraphCompose(
         guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
     )
 
+    val stepsMarker = if (primaryType == SeriesType.STEPS && stepsData != null) {
+        val stepLabels = listOf(
+            stringResource(CoreUiStrings.graph_steps_s5),
+            stringResource(CoreUiStrings.graph_steps_s15),
+            stringResource(CoreUiStrings.graph_steps_s30),
+            stringResource(CoreUiStrings.graph_steps_s60)
+        )
+        rememberDefaultCartesianMarker(
+            valueFormatter = DefaultCartesianMarker.ValueFormatter { _, targets ->
+                val x = targets.firstOrNull()?.x ?: return@ValueFormatter ""
+                val series = listOf(stepsData.steps, stepsData.steps15, stepsData.steps30, stepsData.steps60)
+                series.mapIndexedNotNull { index, points ->
+                    val nearest = points.minByOrNull { point -> abs(timestampToX(point.timestamp, minTimestamp) - x) }
+                    nearest?.let { "${stepLabels[index]} ${it.value.roundToInt()}" }
+                }.joinToString("   ")
+            }
+        )
+    } else null
+    val stepsMarkerController = if (stepsMarker != null) CartesianMarkerController.rememberToggleOnTap() else null
+
     val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp) {
         val samples = iobData?.insulinByMinute.orEmpty()
         if (samples.isEmpty()) return@remember emptyList()
@@ -1289,6 +1313,8 @@ fun SecondaryGraphCompose(
             CartesianChartHost(
                 chart = rememberCartesianChart(
                     primaryLayer, basalLayer,
+                    marker = stepsMarker,
+                    markerController = stepsMarkerController,
                     startAxis = startAxis,
                     bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
                 ),
@@ -1305,6 +1331,8 @@ fun SecondaryGraphCompose(
             CartesianChartHost(
                 chart = rememberCartesianChart(
                     primaryLayer, secondaryLayer,
+                    marker = stepsMarker,
+                    markerController = stepsMarkerController,
                     startAxis = startAxis,
                     bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
                 ),
@@ -1316,6 +1344,8 @@ fun SecondaryGraphCompose(
             CartesianChartHost(
                 chart = rememberCartesianChart(
                     primaryLayer,
+                    marker = stepsMarker,
+                    markerController = stepsMarkerController,
                     startAxis = startAxis,
                     bottomAxis = bottomAxis, decorations = decorations, getXStep = { _, _, _ -> 1.0 }
                 ),
