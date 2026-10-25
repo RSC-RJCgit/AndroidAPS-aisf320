@@ -13,6 +13,7 @@ final class SwiftLiveActivity: NSObject, LiveActivityBridge {
 
     private var current: Activity<AapsActivityAttributes>?
     private var latest: AapsActivityAttributes.ContentState?
+    private var retryTask: Task<Void, Never>?
 
     override init() {
         super.init()
@@ -50,6 +51,8 @@ final class SwiftLiveActivity: NSObject, LiveActivityBridge {
         }
         if let activity = current, activity.activityState == .active {
             await activity.update(content)
+            retryTask?.cancel()
+            retryTask = nil
             return
         }
         // Ended by the user or by the 8 hour limit: start a new one, which iOS allows only while the app is in front
@@ -61,8 +64,24 @@ final class SwiftLiveActivity: NSObject, LiveActivityBridge {
         let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "AAPS"
         do {
             current = try Activity.request(attributes: AapsActivityAttributes(appName: name), content: content, pushType: nil)
+            retryTask?.cancel()
+            retryTask = nil
         } catch {
             NSLog("AAPS Live Activity: could not start: \(error)")
+            scheduleRetry()
+        }
+    }
+
+    /// ActivityKit may reject a start during a foreground transition. Keep the latest state and retry
+    /// shortly; the normal updater can otherwise suppress an unchanged payload for five minutes.
+    @MainActor private func scheduleRetry() {
+        guard retryTask == nil else { return }
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled, let self else { return }
+            self.retryTask = nil
+            guard UIApplication.shared.applicationState == .active, let state = self.latest else { return }
+            await self.push(state)
         }
     }
 }
