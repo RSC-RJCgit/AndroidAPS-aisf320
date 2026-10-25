@@ -619,6 +619,14 @@ class GraphData @Inject constructor(
         }
     }
 
+    private fun stepsLineTap(line: LineGraphSeries<ScaledDataPoint>, label: String) = onTap {
+        line.setOnDataPointTapListener { _, dataPoint ->
+            val steps = (dataPoint as? ScaledDataPoint)?.rawValue?.toInt() ?: dataPoint.y.toInt()
+            val time = dateUtil.timeString(dataPoint.x.toLong())
+            ToastUtils.infoToast(graph.context, rh.gs(R.string.graph_steps_line_tap, label, steps, time))
+        }
+    }
+
     // "UKF raw = 6.4  Δ-0.05  09:46". Without an earlier point for the change, the value and time only.
     private fun showLineTap(name: String, dataPoint: DataPointInterface, earlier: List<DataPointInterface>) {
         val mgdl = units == GlucoseUnit.MGDL
@@ -687,10 +695,18 @@ class GraphData @Inject constructor(
             minY = 0.0
             maxY = maxSteps
         }
-        addSeries(overviewData.stepsLine60Series as LineGraphSeries<ScaledDataPoint>)
-        addSeries(overviewData.stepsLine30Series as LineGraphSeries<ScaledDataPoint>)
-        addSeries(overviewData.stepsLine15Series as LineGraphSeries<ScaledDataPoint>)
-        addSeries(overviewData.stepsLine5Series as LineGraphSeries<ScaledDataPoint>)
+        val line60 = overviewData.stepsLine60Series as LineGraphSeries<ScaledDataPoint>
+        val line30 = overviewData.stepsLine30Series as LineGraphSeries<ScaledDataPoint>
+        val line15 = overviewData.stepsLine15Series as LineGraphSeries<ScaledDataPoint>
+        val line5 = overviewData.stepsLine5Series as LineGraphSeries<ScaledDataPoint>
+        stepsLineTap(line60, rh.gs(R.string.steps_lines_s60))
+        stepsLineTap(line30, rh.gs(R.string.steps_lines_s30))
+        stepsLineTap(line15, rh.gs(R.string.steps_lines_s15))
+        stepsLineTap(line5, rh.gs(R.string.steps_lines_s5))
+        addSeries(line60)
+        addSeries(line30)
+        addSeries(line15)
+        addSeries(line5)
         overviewData.stepsLinesScale.multiplier = maxY * scale / maxSteps
     }
 
