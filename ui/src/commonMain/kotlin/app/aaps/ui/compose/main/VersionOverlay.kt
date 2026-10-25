@@ -1,7 +1,6 @@
 package app.aaps.ui.compose.main
 
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -49,15 +48,18 @@ fun VersionOverlay(
     // The first part of the Nightscout address, for example "aapsfour" from https://aapsfour.ns.com.hr
     val nsUrl by preferences.observe(StringKey.NsClientUrl).collectAsStateWithLifecycle()
     val site = nsUrl.substringAfter("://").substringBefore('/').substringBefore('.').trim()
+    // This is the patient_name setting, renamed GeneralInstanceName in v4. Observe it so edits show immediately.
+    val patientName by preferences.observe(StringKey.GeneralInstanceName).collectAsStateWithLifecycle()
+    val version = "${config.VERSION_NAME} (${config.HEAD.take(4)})"
     // 2026-10-21, per explicit request: one line, as in 3426. The version on the left, the app and its Nightscout site on the
     // right. The line is fixed, so it stays on screen while the page scrolls.
     Row(modifier = modifier.fillMaxWidth().padding(top = 4.dp, start = 4.dp, end = 4.dp)) {
         Text(
-            text = "${config.VERSION_NAME} (${config.HEAD.substring(0, minOf(4, config.HEAD.length))})",
+            text = patientName.trim().let { if (it.isEmpty()) version else "$version · $it" },
+            modifier = Modifier.weight(1f).padding(end = 8.dp),
             color = versionColor,
             fontSize = 10.sp
         )
-        Spacer(modifier = Modifier.weight(1f))
         Text(
             text = if (site.isEmpty()) label else stringResource(UiStrings.overview_app_site, label, site),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
