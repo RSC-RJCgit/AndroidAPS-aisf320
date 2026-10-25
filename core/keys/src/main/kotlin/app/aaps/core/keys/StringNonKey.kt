@@ -11,6 +11,8 @@ enum class StringNonKey(
     QuickWizard(key = "QuickWizard", defaultValue = "[]"),
     /** The build (version and commit) the agreed switches were last set for, see `BuildDefaultsReset`. */
     DefaultsResetBuild(key = "defaults_reset_build", defaultValue = "", exportable = false),
+    /** One-time initialization/migration marker for Virtual and Client switches. */
+    DefaultsResetVersion(key = "defaults_reset_version", defaultValue = "", exportable = false),
     WearCwfWatchfaceName(key = "wear_cwf_watchface_name", defaultValue = ""),
     WearCwfAuthorVersion(key = "wear_cwf_author_version", defaultValue = ""),
     WearCwfFileName(key = "wear_cwf_filename", defaultValue = ""),

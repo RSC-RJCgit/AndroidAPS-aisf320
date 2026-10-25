@@ -211,7 +211,9 @@ class OverviewPlugin @Inject constructor(
     @SuppressLint("SetTextI18n")
     override fun setVersionView(view: TextView) {
         // 2026-10-08, per explicit request: shown on every flavor, clients included (it used to be blank unless APS or PUMPCONTROL).
-        view.text = "${config.VERSION_NAME} (${config.HEAD.take(4)})"
+        val patientName = preferences.get(StringKey.GeneralPatientName).trim()
+        val version = "${config.VERSION_NAME} (${config.HEAD.take(4)})"
+        view.text = if (patientName.isEmpty()) version else "$version · $patientName"
         if (config.COMMITTED) {
             view.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.omniGrayColor))
             view.alpha = 1.0f

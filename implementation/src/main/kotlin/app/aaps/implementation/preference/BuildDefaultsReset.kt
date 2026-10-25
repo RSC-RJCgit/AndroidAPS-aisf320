@@ -6,9 +6,8 @@ import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 
 /**
- * Every new build puts the on/off display and AutoISF switches of a Virtual master or a client to an agreed set, once, on
- * its first start (2026-10-21, per explicit request: after an update it was never clear which switches such a phone had).
- * The same set as the v4 app, with this app's switch names.
+ * Initializes switches for a new Virtual master or client once. Existing installations keep their saved switches across
+ * builds; the graph text preference is restored once because a previous build reset it off.
  *
  * The main master looping phone (a master with a real pump) is never touched: an update must not change how it looks or
  * doses, so the code defaults stay as that phone needs them and [AGREED] is a separate list. Numbers, the Nightscout and
@@ -25,8 +24,7 @@ object BuildDefaultsReset {
         BooleanKey.ApsAutoIsfShowInsulinTotals to true,
         BooleanKey.ApsAutoIsfShowCarbModelCurve to true,
         BooleanKey.ApsAutoIsfShowGraph5 to true,
-        // Clean graph (2026-10-24, per explicit request; was true): no text lines, the same as a new install (see MainApp)
-        BooleanKey.ApsAutoIsfShowGraphText to false,
+        BooleanKey.ApsAutoIsfShowGraphText to true,
         BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled to false,
         BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled to false,
         BooleanKey.AutomationCodedLocationsEnabled to false,
@@ -66,19 +64,33 @@ object BuildDefaultsReset {
     )
 
     /**
-     * Sets the agreed switches when this phone is a client or a Virtual master and this build has not done it yet.
-     * Returns the switches it changed.
+     * Initializes fresh Virtual/Client installs once. On existing installs, only restores graph text once; subsequent
+     * builds never overwrite saved switches. Returns the switches it changed.
      */
     fun apply(preferences: Preferences, config: Config, virtualPump: Boolean, headCommit: String): List<BooleanKey> {
         if (!config.AAPSCLIENT && !virtualPump) return emptyList()
         val build = config.VERSION_NAME + "@" + headCommit
-        if (preferences.get(StringNonKey.DefaultsResetBuild) == build) return emptyList()
-        val changed = AGREED.filter { (key, value) ->
-            if (preferences.get(key) == value) return@filter false
-            preferences.put(key, value)
-            true
-        }.keys.toList()
+        if (preferences.get(StringNonKey.DefaultsResetVersion) == RESET_VERSION) return emptyList()
+
+        val isExistingInstall = preferences.get(StringNonKey.DefaultsResetBuild).isNotBlank() ||
+            preferences.get(BooleanKey.GeneralSetupWizardProcessed)
+        val changed = if (isExistingInstall) {
+            if (preferences.get(BooleanKey.ApsAutoIsfShowGraphText)) emptyList()
+            else {
+                preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
+                listOf(BooleanKey.ApsAutoIsfShowGraphText)
+            }
+        } else {
+            AGREED.filter { (key, value) ->
+                if (preferences.get(key) == value) return@filter false
+                preferences.put(key, value)
+                true
+            }.keys.toList()
+        }
         preferences.put(StringNonKey.DefaultsResetBuild, build)
+        preferences.put(StringNonKey.DefaultsResetVersion, RESET_VERSION)
         return changed
     }
+
+    private const val RESET_VERSION = "2"
 }
