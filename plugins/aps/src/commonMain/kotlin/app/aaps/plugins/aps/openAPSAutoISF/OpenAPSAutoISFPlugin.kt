@@ -2888,8 +2888,10 @@ open class OpenAPSAutoISFPlugin(
             else -> ""
         }
         if (switchedTo.isNotBlank() && !switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C")) return
-        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, currentLow)
-        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, currentStandard)
+        val previousLow = role?.let { lowRungs.getOrNull(it.index) }?.takeIf { profiles.getSpecificProfile(it) != null } ?: currentLow
+        val previousStandard = role?.let { standardRungs.getOrNull(it.index) }?.takeIf { profiles.getSpecificProfile(it) != null } ?: currentStandard
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, previousLow)
+        preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevStandard, previousStandard)
         if (switchedTo.isBlank()) writeSharedRoleNames(2, targetLow, targetStandard)
         preferences.put(BooleanNonKey.ApsAutoIsfStuckHighTierCActive, true)
         keepSteroidsOff()
