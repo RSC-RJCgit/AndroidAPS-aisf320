@@ -157,6 +157,13 @@ interface DesktopAppGraph : MetroViewModelMultibindings {
     val chipsViewModelFactory: ChipsViewModel.Factory
     val overviewDataCache: OverviewDataCache
 
+    /**
+     * The factory for a history browsing window. Declared here because a `@GraphExtension` is only reachable through an
+     * accessor its parent graph states. Each window is a separate scope with its own calculation objects - see
+     * [DesktopHistoryWindowGraph].
+     */
+    val historyWindowFactory: DesktopHistoryWindowGraph.Factory
+
     /** The app's own database, inside this client's own data directory so two clients never share one. */
     @Provides
     @SingleIn(AppScope::class)

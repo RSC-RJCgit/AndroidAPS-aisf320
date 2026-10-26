@@ -10,11 +10,13 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.desktop.shell.appIconResource
 import app.aaps.desktop.shell.config.DesktopClientConfig
 import app.aaps.desktop.shell.loadAwtAppIcon
+import app.aaps.desktop.shell.platform.DesktopHistoryScope
 import app.aaps.desktop.shell.platform.DesktopSystemNotificationPlatform
 import app.aaps.desktop.shell.prefs.DesktopSp
 import app.aaps.implementation.logging.AAPSLoggerDesktop
 import app.aaps.shared.impl.utils.DateUtilImpl
 import app.aaps.shared.impl.utils.JvmDateFormatPlatform
+import app.aaps.ui.compose.history.HistoryScope
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ContributesTo
@@ -61,5 +63,15 @@ object DesktopPlatformBindings {
     @SingleIn(AppScope::class)
     fun systemNotificationPlatform(logger: AAPSLogger, config: Config, rh: TextResolver): SystemNotificationPlatform =
         DesktopSystemNotificationPlatform(logger, rh.gs(config.appName), loadAwtAppIcon(appIconResource(config)))
+
+    /**
+     * One history browsing window, app-scoped so every injection point sees the same one. Unscoped would hand out a fresh
+     * window per injection point: two windows calculating over different ranges, with the screen reading one and writing
+     * the other.
+     */
+    @Provides
+    @SingleIn(AppScope::class)
+    fun historyScope(windowFactory: DesktopHistoryWindowGraph.Factory): HistoryScope =
+        DesktopHistoryScope(windowFactory.create())
 
 }

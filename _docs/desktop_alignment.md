@@ -29,7 +29,7 @@ nothing is silently half-done:
 | `DesktopBgQualityCheck` | Not started |
 | `DesktopMaintenance` | Partly - `deleteLogs` works, `executeSendLogs` needs a product decision |
 | `DesktopCloudDirectoryManager` | **Mostly unblocked - see below** |
-| `DesktopHistoryScope` | Not started |
+| `DesktopHistoryScope` | Ported from iOS (`DesktopHistoryWindowGraph`), not yet tested on desktop |
 
 ## Done: import and export of settings
 
