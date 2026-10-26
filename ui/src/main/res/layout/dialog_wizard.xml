@@ -384,7 +384,8 @@
                         android:id="@+id/small_meal_checkbox"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Small meal: Fat/Protein auto-fill halves (average is fat×0.35, protein×0.4 of carbs)"
+                        android:checked="true"
+                        android:text="Fast carbs, if fat/protein auto on, half amounts"
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText,RtlSymmetry" />
 
@@ -392,7 +393,7 @@
                         android:id="@+id/auto_fpu_checkbox"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:checked="true"
+                        android:checked="false"
                         android:text="Auto fat/protein from carbs (untick to stop carbs overwriting these boxes)"
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText,RtlSymmetry" />

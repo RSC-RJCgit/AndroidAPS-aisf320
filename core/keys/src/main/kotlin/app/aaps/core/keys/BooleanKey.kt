@@ -327,8 +327,8 @@ enum class BooleanKey(
     // Bolus calculator starting state (2026-10-06, per explicit request). Applied every time the wizard opens;
     // a box ticked/unticked during use is NOT remembered. Settings are under Overview > Bolus calculator defaults.
     WizardDefaultUnreliableSmbs("wizard_default_unreliable_smbs", defaultValue = false),
-    WizardDefaultSmallMeal("wizard_default_small_meal", defaultValue = false),
-    WizardDefaultAutoFpu("wizard_default_auto_fpu", defaultValue = true),
+    WizardDefaultSmallMeal("wizard_default_small_meal", defaultValue = true),
+    WizardDefaultAutoFpu("wizard_default_auto_fpu", defaultValue = false),
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false),
     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false),
 
