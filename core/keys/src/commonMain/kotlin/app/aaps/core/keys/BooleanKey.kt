@@ -226,7 +226,7 @@ enum class BooleanKey(
     ),
     WizardDefaultSmallMeal(
         "wizard_default_small_meal",
-        false,
+        true,
         KeysStrings.pref_title_wizard_default_small_meal,
         KeysStrings.pref_summary_wizard_default_small_meal
     ),
@@ -239,7 +239,7 @@ enum class BooleanKey(
     ),
     WizardDefaultAutoFpu(
         "wizard_default_auto_fpu",
-        true,
+        false,
         KeysStrings.pref_title_wizard_default_auto_fpu,
         KeysStrings.pref_summary_wizard_default_auto_fpu
     ),

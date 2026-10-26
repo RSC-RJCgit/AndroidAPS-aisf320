@@ -149,6 +149,7 @@ class IosRileyLinkHeartbeat(
     fun start() {
         if (started) return
         started = true
+        refreshStatus()
         scope.launch {
             preferences.observe(BooleanKey.IosRileyLinkHeartbeat).collect { on -> if (on) turnOn() else turnOff() }
         }
@@ -238,7 +239,35 @@ class IosRileyLinkHeartbeat(
         val inactive = backups().map { it.second }.filter { it !in receivingNames }.distinct()
         if (inactive.isNotEmpty()) lines.add(rh.gs(ImplementationStrings.ios_heartbeat_verified_inactive, inactive.joinToString(", ")))
         if (preferences.get(StringNonKey.IosHeartbeatSeen).isNotBlank()) lines.add(rh.gs(ImplementationStrings.ios_heartbeat_detected_only))
-        lines.add(rh.gs(if (keepAlive.silentAudioPlaying) ImplementationStrings.ios_heartbeat_audio_playing else ImplementationStrings.ios_heartbeat_audio_stopped))
+        val audioStatus = rh.gs(if (keepAlive.silentAudioPlaying) ImplementationStrings.ios_heartbeat_audio_playing else ImplementationStrings.ios_heartbeat_audio_stopped)
+        lines.add(audioStatus)
+        // A saved selection or a passed test is not an active source. Prefer a source with
+        // recent received values; otherwise show the latest known stale/disconnected source.
+        val source = listOf(
+            Triple(device?.name ?: "RileyLink", lastPrimaryValueAt, primaryConnected),
+            Triple(backupName, lastBackupValueAt, backupConnected)
+        ).filter { it.second > 0L }.maxWithOrNull(
+            compareBy<Triple<String, Long, Boolean>> {
+                heartbeatReception(it.second, now, it.third) == HeartbeatReception.RECEIVING
+            }.thenBy { it.second }
+        )
+        val heartbeatStatus = when {
+            !enabled -> rh.gs(ImplementationStrings.ios_heartbeat_overview_off)
+            source == null -> rh.gs(ImplementationStrings.ios_heartbeat_overview_waiting)
+            else -> {
+                val statusKey = when (heartbeatReception(source.second, now, source.third)) {
+                    HeartbeatReception.RECEIVING -> ImplementationStrings.ios_heartbeat_overview_receiving
+                    HeartbeatReception.STALE -> ImplementationStrings.ios_heartbeat_overview_stale
+                    HeartbeatReception.DISCONNECTED -> ImplementationStrings.ios_heartbeat_overview_disconnected
+                    HeartbeatReception.WAITING -> null
+                }
+                if (statusKey == null) rh.gs(ImplementationStrings.ios_heartbeat_overview_waiting)
+                else rh.gs(statusKey, source.first, dateUtil.timeStringWithSeconds(source.second))
+            }
+        }
+        val overviewStatus = "$heartbeatStatus\n$audioStatus"
+        if (preferences.get(StringNonKey.IosHeartbeatOverviewStatus) != overviewStatus)
+            preferences.put(StringNonKey.IosHeartbeatOverviewStatus, overviewStatus)
         if (enabled) {
             lines.add(rh.gs(ImplementationStrings.ios_heartbeat_sync_interval))
             syncGate.lastRequestAt?.let { last ->

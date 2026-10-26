@@ -8,9 +8,17 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.AppPlatform
+import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.navigation.ElementType
@@ -73,6 +81,15 @@ fun OverviewChipsColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        if (LocalConfig.current.platform == AppPlatform.Ios) {
+            val status by LocalPreferences.current.observe(StringNonKey.IosHeartbeatOverviewStatus).collectAsStateWithLifecycle()
+            if (status.isNotBlank()) Text(
+                text = status,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         if (actionButtons.isNotEmpty()) {
             OverviewActionButtons(actions = actionButtons, onAction = onAction)
         }

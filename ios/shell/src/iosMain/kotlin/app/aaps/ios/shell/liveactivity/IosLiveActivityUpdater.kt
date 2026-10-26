@@ -1,17 +1,22 @@
 package app.aaps.ios.shell.liveactivity
 
+import app.aaps.core.data.iob.InMemoryGlucoseValue
+import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.overview.LastBgData
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.objects.extensions.round
+import app.aaps.core.objects.extensions.fromGv
+import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
 import kotlinx.coroutines.CancellationException
@@ -26,6 +31,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal data class LiveActivityContent(
     val bg: String, val arrow: String, val delta: String, val iob: String, val cob: String, val bgTime: Long, val range: Int
 )
+
+/** Keep processed values when they are current; a paused calculation must not hide a newer stored reading. */
+internal fun liveActivityGlucose(cached: InMemoryGlucoseValue?, stored: GV?): InMemoryGlucoseValue? =
+    if (stored != null && (cached == null || stored.timestamp > cached.timestamp)) InMemoryGlucoseValue.fromGv(stored)
+    else cached
 
 /** Glucose reaches ActivityKit before either optional calculation can fail or stall. */
 internal suspend fun sendLiveActivityContent(
@@ -64,7 +74,8 @@ internal suspend fun sendLiveActivityContent(
  */
 class IosLiveActivityUpdater(
     private val bridge: LiveActivityBridge,
-    private val lastBgData: LastBgData,
+    private val persistenceLayer: PersistenceLayer,
+    private val preferences: Preferences,
     private val glucoseStatusProvider: GlucoseStatusProvider,
     private val iobCobCalculator: IobCobCalculator,
     private val profileUtil: ProfileUtil,
@@ -107,13 +118,23 @@ class IosLiveActivityUpdater(
 
     // suspend: the IOB and COB calls below are suspend functions. Only called from the loop in start().
     private suspend fun push() {
-        val glucose = lastBgData.lastBg() ?: run {
+        val cached = iobCobCalculator.ads.bucketedData?.firstOrNull()
+        val stored = try {
+            persistenceLayer.getLastGlucoseValue()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.CORE, "Live Activity: cannot read stored glucose; using calculation cache", e)
+            null
+        }
+        val glucose = liveActivityGlucose(cached, stored) ?: run {
             if (!waitingForGlucose) aapsLogger.info(LTag.CORE, "Live Activity: waiting for the first glucose value")
             waitingForGlucose = true
             return
         }
         waitingForGlucose = false
-        val delta = glucoseStatusProvider.glucoseStatusData?.delta
+        // A delta from an older calculation does not describe the newly received glucose.
+        val delta = glucoseStatusProvider.glucoseStatusData?.takeIf { it.date >= glucose.timestamp }?.delta
         val unavailable = rh.gs(CoreUiStrings.value_unavailable_short)
         val previous = last?.takeIf { it.bgTime == glucose.timestamp }
         val shown = LiveActivityContent(
@@ -124,8 +145,8 @@ class IosLiveActivityUpdater(
             cob = previous?.cob ?: unavailable,
             bgTime = glucose.timestamp,
             range = when {
-                lastBgData.isLow()  -> -1
-                lastBgData.isHigh() -> 1
+                glucose.recalculated < preferences.getRaw(UnitDoubleKey.OverviewLowMark) -> -1
+                glucose.recalculated > preferences.getRaw(UnitDoubleKey.OverviewHighMark) -> 1
                 else                -> 0
             }
         )
@@ -153,6 +174,7 @@ class IosLiveActivityUpdater(
         withContext(Dispatchers.Main) {
             bridge.update(shown.bg, shown.arrow, shown.delta, shown.iob, shown.cob, shown.bgTime, shown.range)
         }
+        aapsLogger.info(LTag.CORE, "Live Activity: sent glucose timestamp=${shown.bgTime} ageSeconds=${(now - shown.bgTime) / 1000L}")
         last = shown
         lastSentAt = now
     }

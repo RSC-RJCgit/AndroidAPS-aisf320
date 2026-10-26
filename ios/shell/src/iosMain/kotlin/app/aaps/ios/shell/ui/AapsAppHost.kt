@@ -163,7 +163,7 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory, liveActivity: LiveAc
     // BG on the lock screen, the Dynamic Island, the watch Smart Stack and CarPlay (2026-10-24). ActivityKit is Swift only,
     // so the Swift app hands its side in here, the same way as the Nightscout socket.
     IosLiveActivityUpdater(
-        liveActivity, graph.lastBgData, graph.glucoseStatusProvider, graph.iobCobCalculator, graph.profileUtil, graph.decimalFormatter,
+        liveActivity, graph.persistenceLayer, graph.preferences, graph.glucoseStatusProvider, graph.iobCobCalculator, graph.profileUtil, graph.decimalFormatter,
         graph.textResolver, graph.dateUtil, logger
     ).start(graph.appScope)
 

@@ -153,6 +153,11 @@
     <string name="ios_heartbeat_detected_only">The device list contains detections only, not proof of a working heartbeat.</string>
     <string name="ios_heartbeat_audio_playing">Silent audio: PLAYING</string>
     <string name="ios_heartbeat_audio_stopped">Silent audio: STOPPED</string>
+    <string name="ios_heartbeat_overview_receiving" comment="%1$s=device name, %2$s=last received time">Heartbeat: %1$s — last received %2$s</string>
+    <string name="ios_heartbeat_overview_stale" comment="%1$s=device name, %2$s=last received time">Heartbeat: %1$s — STALE (3+ minutes), last received %2$s</string>
+    <string name="ios_heartbeat_overview_disconnected" comment="%1$s=device name, %2$s=last received time">Heartbeat: %1$s — DISCONNECTED, last received %2$s</string>
+    <string name="ios_heartbeat_overview_waiting">Heartbeat: WAITING — no heartbeat received yet</string>
+    <string name="ios_heartbeat_overview_off">Heartbeat: OFF</string>
     <string name="ios_heartbeat_sync_interval">Heartbeat-triggered Nightscout sync: every 5 minutes. Heartbeat reception and alarm checks continue on each tick.</string>
     <string name="ios_heartbeat_sync_last" comment="%1$s=date/time of the last heartbeat-triggered sync request">Last heartbeat-triggered sync request: %1$s</string>
     <string name="ios_background_stopped">AAPS has stopped running in the background. Open it to start it again.</string>

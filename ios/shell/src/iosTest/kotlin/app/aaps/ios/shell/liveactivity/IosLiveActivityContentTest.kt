@@ -1,5 +1,9 @@
 package app.aaps.ios.shell.liveactivity
 
+import app.aaps.core.data.iob.InMemoryGlucoseValue
+import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.SourceSensor
+import app.aaps.core.data.model.TrendArrow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
@@ -7,10 +11,42 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 class IosLiveActivityContentTest {
 
     private val glucose = LiveActivityContent("5.8", "→", "+0.1", "n/a", "n/a", 1_792_900_000_000L, 0)
+
+    private fun storedGlucose(timestamp: Long) = GV(
+        timestamp = timestamp, raw = null, value = 120.0, trendArrow = TrendArrow.FLAT,
+        noise = null, sourceSensor = SourceSensor.UNKNOWN
+    )
+
+    @Test
+    fun `new stored glucose replaces the cache paused in the background`() {
+        val cached = InMemoryGlucoseValue(timestamp = glucose.bgTime, value = 80.0, smoothed = 85.0)
+        val stored = storedGlucose(glucose.bgTime + 300_000L)
+        val selected = liveActivityGlucose(cached, stored)
+        assertEquals(stored.timestamp, selected?.timestamp)
+        assertEquals(stored.value, selected?.recalculated)
+        assertEquals(stored.trendArrow, selected?.trendArrow)
+    }
+
+    @Test
+    fun `a current cache keeps its smoothed and calibrated values`() {
+        val cached = InMemoryGlucoseValue(timestamp = glucose.bgTime, value = 120.0, smoothed = 110.0, calibrated = 115.0)
+        assertSame(cached, liveActivityGlucose(cached, storedGlucose(glucose.bgTime)))
+        assertSame(cached, liveActivityGlucose(cached, storedGlucose(glucose.bgTime - 300_000L)))
+    }
+
+    @Test
+    fun `either source can supply glucose when the other is unavailable`() {
+        val stored = storedGlucose(glucose.bgTime)
+        assertEquals(stored.timestamp, liveActivityGlucose(null, stored)?.timestamp)
+        val cached = InMemoryGlucoseValue(timestamp = glucose.bgTime, value = 110.0)
+        assertSame(cached, liveActivityGlucose(cached, null))
+        assertNull(liveActivityGlucose(null, null))
+    }
 
     @Test
     fun `glucose is sent before either calculation starts`() = runTest {

@@ -32,8 +32,8 @@ data class WizardDialogUiState(
     val useIOB: Boolean = true,
     val useCOB: Boolean = false,
     val walkingSoon: Boolean = false,
-    /** Ticked accepts automatic fat and protein later. Fat is 0.35 times the carb grams. Protein is 0.4 times. Unticked leaves typed grams. Grams above 0 still schedule hourly doses. On by default. */
-    val fpuInstead: Boolean = true,
+    /** Ticked accepts automatic fat and protein later. Fat is 0.35 times the carb grams. Protein is 0.4 times. Unticked leaves typed grams. Grams above 0 still schedule hourly doses. Off by default. */
+    val fpuInstead: Boolean = false,
     /** Ticked: a protein or fat dose that is not safe at its hour is checked again every 10 minutes and given when it is, until 10 minutes before the next dose. Unticked: it is cancelled. On by default. */
     val delayFpuInsteadOfCancel: Boolean = true,
     /** Ticked delays the part of the bolus the fall caution removed, as hourly boluses. On by default. Unticked, that part is not given. */
@@ -41,7 +41,7 @@ data class WizardDialogUiState(
     /** Same later doses, with larger fat and protein, wizard percent 90, and the saved max bolus. */
     val unreliableSmb: Boolean = false,
     /** Halves the automatic fat and protein. With unreliableSmb ticked too, the two cancel to the average. */
-    val smallMeal: Boolean = false,
+    val smallMeal: Boolean = true,
     /** v3's split box (2026-10-22): give the dose over max bolus later, in parts, every [splitIntervalMinutes]. */
     val splitOverMax: Boolean = true,
     val splitIntervalMinutes: Int = 7,

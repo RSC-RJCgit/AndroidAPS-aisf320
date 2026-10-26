@@ -17,6 +17,8 @@ enum class StringNonKey(
     DefaultsResetBuild("defaults_reset_build", "", exportable = false),
     /** iOS: the RileyLink used for the background heartbeat (its Bluetooth identifier). This phone's own device, so not exported. */
     IosRileyLinkId("ios_rileylink_id", "", exportable = false),
+    /** Current heartbeat reception and audio state for this iPhone's overview. */
+    IosHeartbeatOverviewStatus("ios_heartbeat_overview_status", "", exportable = false),
     /** iOS: encrypted Trio remote-control shared secret. Local to this install and never exported. */
     IosRemoteControlSecret("ios_remote_control_secret", "", exportable = false),
     /**

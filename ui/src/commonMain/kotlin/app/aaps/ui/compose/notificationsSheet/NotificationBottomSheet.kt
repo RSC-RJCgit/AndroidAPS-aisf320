@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,6 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
@@ -53,13 +56,15 @@ fun NotificationBottomSheet(
 ) {
     LocalDateUtil.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Read the current window on each layout change, including rotation while the sheet is open.
+    val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
 
     ModalBottomSheet(
         onDismissRequest = onDismissSheet,
         sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        LazyColumn {
+        LazyColumn(modifier = Modifier.heightIn(max = (windowHeight * 0.85f).coerceAtLeast(1.dp))) {
             item {
                 Text(
                     text = stringResource(CoreUiStrings.notification),

@@ -194,7 +194,7 @@
     <string name="wizard_delay_fpu_instead_of_cancel" comment="Checkbox, on by default. A protein or fat dose that is not safe at its hour is checked again every 10 minutes instead of being cancelled.">Delay protein and fat doses instead of cancelling</string>
     <string name="wizard_delay_fpu_instead_of_cancel_hint" comment="Small text under the Delay protein and fat doses checkbox.">A protein or fat dose that is not safe at its hour (glucose, insulin on board, profile, pump) is checked again every 10 minutes and given when it is safe, until 10 minutes before the next dose is due. Unticked: it is cancelled.</string>
     <string name="wizard_unreliable_smb" comment="Checkbox. Used when SMB cannot be trusted. Wizard percent is 90. Fat and protein are double the average: fat 0.7 and protein 0.8 times the carb grams. Later doses. Max bolus stays at the saved limit.">Unreliable SMB / bad sensor / high protein</string>
-    <string name="wizard_small_meal" comment="Checkbox. Halves the automatic fat and protein from the carb grams (average is fat 0.35 and protein 0.4 times the carbs). With the unreliable box ticked as well, the two cancel out.">Small meal (half fat and protein)</string>
+    <string name="wizard_small_meal" comment="Checkbox. Halves the automatic fat and protein from the carb grams (average is fat 0.35 and protein 0.4 times the carbs). With the unreliable box ticked as well, the two cancel out.">Fast carbs, if fat/protein auto on, half amounts</string>
 
     <!-- Treatments -->
     <string name="no_records_available">No records available</string>
