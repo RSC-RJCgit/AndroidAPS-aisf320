@@ -1459,7 +1459,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
             binding.pump.text = rh.gs(R.string.client_settings1_chip)
             binding.pump.setOnClickListener { showTtCodesListDialog() }
-            binding.openaps.text = if (config.AAPSCLIENT) processedDeviceStatusData.openApsStatus else rh.gs(R.string.openaps)
+            binding.aiv.setOnClickListener { openAutoIsfHistory() }
+            binding.openaps.text = if (config.AAPSCLIENT) processedDeviceStatusData.openApsStatus else {
+                val age = loop.lastRun?.lastAPSRun?.takeIf { it > 0L }?.let { dateUtil.minAgo(rh, it) }.orEmpty()
+                listOf(rh.gs(R.string.client_oaps_chip), age).filter { it.isNotBlank() }.joinToString(" ")
+            }
             binding.openaps.setOnClickListener {
                 if (config.AAPSCLIENT) showClientStatusDetails()
                 else showMasterStatusDetails()
@@ -2063,13 +2067,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private var isfDialogTextCached: String? = null
 
     // 2026-10-10, per explicit request: a double-tap on the ISF icon opens List 3 (one row so far: Clean graph).
-    // 2026-10-24, per explicit request, on every phone and the same as v4: a single tap opens the AutoISF history (which always
-    // also writes and uploads AIV and logs), a long press shows the sensitivity dialog. When the algorithm is not AUTO_ISF
-    // there is no history, and a single tap shows the sensitivity dialog as before.
+    // A single tap or long press shows sensitivity details. The dedicated AIV chip opens the history table.
     private val isfGestureDetector by lazy {
         android.view.GestureDetector(requireContext(), object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapConfirmed(e: android.view.MotionEvent): Boolean {
-                if (activePlugin.activeAPS.algorithm.name == "AUTO_ISF") openAutoIsfHistory() else showSensitivityDialog()
+                showSensitivityDialog()
                 return true
             }
 
@@ -3880,7 +3882,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.infoLayout.variableSensitivity.visibility = View.GONE
             binding.infoLayout.sensitivity.visibility = View.VISIBLE
         }
-        // Tap, double-tap (List 3) and long-press (AutoISF history) all go through one detector, created once.
+        // Tap/long-press (sensitivity details) and double-tap (List 3) share one detector, created once.
         binding.infoLayout.asLayout.setOnTouchListener { _, event ->
             isfGestureDetector.onTouchEvent(event)
             true

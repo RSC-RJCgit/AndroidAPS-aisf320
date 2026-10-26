@@ -418,7 +418,9 @@
     <string name="profile_basal_shortname">pBas</string>
     <string name="simple_mode_enabled">Simple mode enabled</string>
 
-    <string name="client_settings1_chip">Settings1</string>
+    <string name="client_settings1_chip">Set1</string>
+    <string name="client_aiv_chip" translatable="false">AIV</string>
+    <string name="client_oaps_chip" translatable="false">oAPS</string>
     <string name="client_settings2_chip">Set2</string>
     <string name="client_settings3_chip">Set3</string>
     <string name="client_autoisf_detail">AutoISF</string>
