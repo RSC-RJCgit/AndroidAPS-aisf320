@@ -31,10 +31,12 @@ import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
+import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -411,35 +413,83 @@ val BolusUnderLineShape: Shape = GenericShape { size, _ ->
 /**
  * Inverted triangle shape pointing downward (flat base at top, apex at bottom).
  *
- * Used for rendering carbs markers on graphs. The apex sits at the data point's
- * y-coordinate with the base above it.
+ * Used for a manual bolus on the BG and IOB graphs, and for carbs on the COB graph. The apex sits at the data point's
+ * y-coordinate with the base above it, so it points at the value.
  */
-val InvertedTriangleShape: Shape = GenericShape { size, _ ->
-    val baseHalf = size.width * 0.3f         // Narrow base for sharper triangle
+val InvertedTriangleShape: Shape = invertedTriangleShape()
+
+/**
+ * [InvertedTriangleShape] with its apex [tipInset] of the box above the box centre, so the tip
+ * stops short of the data point. The base is narrowed by the same share: in a box grown by twice
+ * the inset the triangle keeps the proportions of the plain shape and only moves away from the
+ * point. The BG graph uses it to keep a marker's tip outside the reading dot.
+ */
+fun invertedTriangleShape(tipInset: Float = 0f): Shape = GenericShape { size, _ ->
+    val baseHalf = size.width * 0.3f * (1f - 2f * tipInset)   // Narrow base for sharper triangle
     val cx = size.width / 2f
-    moveTo(cx - baseHalf, 0f)               // Top left (base)
-    lineTo(cx + baseHalf, 0f)               // Top right (base)
-    lineTo(cx, size.height / 2f)            // Bottom center (apex)
+    moveTo(cx - baseHalf, 0f)                                 // Top left (base)
+    lineTo(cx + baseHalf, 0f)                                 // Top right (base)
+    lineTo(cx, size.height * (0.5f - tipInset))               // Bottom center (apex)
     close()
 }
 
 /**
- * Triangle pointing downward, drawn in the lower half of its box: flat base at the data point's
- * y-coordinate, apex below it.
+ * Triangle pointing upward, drawn in the lower half of its box: apex at the data point's
+ * y-coordinate, flat base below it.
  *
  * Vico centers a point component on its data point, and both [TriangleShape] and
- * [InvertedTriangleShape] draw in the upper half of the box, so neither can hang below a point.
- * This one does, which is what the carbs half of a treatment marker on the BG graph needs:
- * insulin grows upward from the reading ([TriangleShape]) and carbs downward from it.
+ * [InvertedTriangleShape] draw in the upper half of the box, so neither can sit below a point.
+ * This one does, which is what the carbs half of a treatment marker on the BG graph needs: the
+ * bolus points down at the reading from above ([InvertedTriangleShape]) and the carbs point up at
+ * it from below, so both tips meet at the moment on the curve.
  * Same proportions as the other two.
  */
-val TriangleBelowShape: Shape = GenericShape { size, _ ->
-    val baseHalf = size.width * 0.3f         // Narrow base for sharper triangle
+val TriangleBelowShape: Shape = triangleBelowShape()
+
+/** [TriangleBelowShape] with its apex [tipInset] of the box below the box centre, see [invertedTriangleShape]. */
+fun triangleBelowShape(tipInset: Float = 0f): Shape = GenericShape { size, _ ->
+    val baseHalf = size.width * 0.3f * (1f - 2f * tipInset)   // Narrow base for sharper triangle
     val cx = size.width / 2f
-    moveTo(cx - baseHalf, size.height / 2f)  // Left base, at the data point
-    lineTo(cx + baseHalf, size.height / 2f)  // Right base, at the data point
-    lineTo(cx, size.height)                  // Bottom center (apex)
+    moveTo(cx, size.height * (0.5f + tipInset))               // Top center (apex), at the data point
+    lineTo(cx + baseHalf, size.height)                        // Right base
+    lineTo(cx - baseHalf, size.height)                        // Left base
     close()
+}
+
+/**
+ * Size of a treatment marker (manual bolus, carbs) per [MarkerTier], the same on every graph.
+ * The largest, with the BG graph's tip gap added on both sides, must stay within [NORMALIZER_POINT_SIZE].
+ */
+internal val MarkerTier.markerSize: Dp
+    get() = when (this) {
+        MarkerTier.SMALL  -> 12.dp
+        MarkerTier.MEDIUM -> 17.dp
+        MarkerTier.LARGE  -> 22.dp
+    }
+
+/**
+ * Draws every point of a treatment series in the size of its amount: [tierOf] against the largest
+ * amount of its kind in the loaded range, which the chart model carries under [maxAmountKey]. The
+ * y of a point is its amount.
+ *
+ * One series with a size per point, not one series per size: Vico shortens a label only against
+ * its neighbours in the same series, so with three series the labels of two close boluses of
+ * different size would be drawn over each other.
+ */
+internal data class TieredPointProvider(
+    private val shape: Shape,
+    private val color: Color,
+    private val maxAmountKey: ExtraStore.Key<Double>
+) : LineCartesianLayer.PointProvider {
+
+    private val points = MarkerTier.entries.associateWith { tier ->
+        LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(color), shape = shape), size = tier.markerSize)
+    }
+
+    override fun getPoint(entry: LineCartesianLayerModel.Entry, extraStore: ExtraStore): LineCartesianLayer.Point =
+        points.getValue(tierOf(entry.y, extraStore.getOrNull(maxAmountKey)))
+
+    override fun getLargestPoint(extraStore: ExtraStore): LineCartesianLayer.Point = points.getValue(MarkerTier.LARGE)
 }
 
 /**

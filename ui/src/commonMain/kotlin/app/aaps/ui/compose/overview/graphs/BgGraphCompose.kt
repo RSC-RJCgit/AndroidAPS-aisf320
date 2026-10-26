@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -82,6 +83,7 @@ import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.icons.IcBgCheck
 import app.aaps.core.ui.compose.icons.IcProfile
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.VicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.VicoZoomState
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
@@ -90,7 +92,7 @@ import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
-import com.patrykandpatrick.vico.compose.cartesian.decoration.HorizontalBox
+import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
 import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerController
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
 import com.patrykandpatrick.vico.compose.cartesian.layer.rememberLineCartesianLayer
@@ -130,20 +132,15 @@ private const val SERIES_CARBS = "carbs"
 private val PREDICTION_SERIES = listOf(SERIES_PRED_IOB, SERIES_PRED_COB, SERIES_PRED_ACOB, SERIES_PRED_UAM, SERIES_PRED_ZT)
 
 /**
- * Half the space between the insulin and the carbs half of one meal, as a share of the Y axis.
- * The axis is a fixed height on screen, so this is a steady distance in dp whatever the glucose
- * range is — about 1 dp on each side. Enough that the two triangles do not merge into a block,
- * small enough that they still read as one marker.
+ * From the centre of a reading to the tip of the marker that points at it: the 6 dp dot's radius
+ * and 1 dp of air, the same rule as the watch. Both halves of a meal keep this distance, so the
+ * reading stays visible as the seam between them. The gap is drawn into the marker shapes, see
+ * [createMarkerLine], not added to the marker's y: a dp is steady, a share of the axis is not.
  */
-private const val MARKER_GAP_FRACTION = 0.015
+private val MARKER_TIP_GAP = 4.dp
 
 /** Height of a marker that has no reading near it, as a share of the Y axis above its floor. */
 private const val MARKER_FALLBACK_FRACTION = 0.04
-
-/** Marker sizes per [MarkerTier]. The largest must stay within [NORMALIZER_POINT_SIZE]. */
-private val MARKER_SIZE_SMALL = 12.dp
-private val MARKER_SIZE_MEDIUM = 17.dp
-private val MARKER_SIZE_LARGE = 22.dp
 
 /** Size of the icon drawn at a measured glucose value (calibration, BG check). */
 private val MARKER_SIZE_CALIBRATION = 14.dp
@@ -591,10 +588,10 @@ fun BgGraphCompose(
             }
 
             // Block 6 → Treatment markers (layer 5, start axis — drawn at the glucose value of the
-            // moment they happened, see TreatmentMarkers.kt). Insulin grows up from the reading and
-            // carbs down from the same value, so a meal entered with its bolus is one diamond; a
-            // measured value sits on its own value.
-            // Drawn last on purpose: a carbs marker hangs into the curve, and under the BG layer it
+            // moment they happened, see TreatmentMarkers.kt). Insulin points down at the reading from
+            // above and carbs point up at it from below, so a meal entered with its bolus is one marker
+            // with both tips on the curve; a measured value sits on its own value.
+            // Drawn last on purpose: a carbs marker reaches into the curve, and under the BG layer it
             // was covered by the reading dots and the profile icon. It does cover the one reading
             // it sits on.
             // Fixed series order, always all 7: insulin small/medium/large, carbs small/medium/large,
@@ -739,7 +736,8 @@ fun BgGraphCompose(
             maxX = maxX,
             minY = niceBgScale.min,
             maxY = niceBgScale.max,
-            gap = axisSpan * MARKER_GAP_FRACTION,
+            // The markers sit on the reading itself; the space to it is in the shapes, see MARKER_TIP_GAP
+            gap = 0.0,
             fallbackY = niceBgScale.min + axisSpan * MARKER_FALLBACK_FRACTION
         )
         rebuildChart(
@@ -998,11 +996,11 @@ fun BgGraphCompose(
 
     val treatmentLines = remember(insulinColor, carbsColor, bgCheckColor, bgCheckPainter) {
         buildList {
-            for (size in listOf(MARKER_SIZE_SMALL, MARKER_SIZE_MEDIUM, MARKER_SIZE_LARGE)) {
-                add(createMarkerLine(insulinColor, TriangleShape, size))
+            for (tier in MarkerTier.entries) {
+                add(createMarkerLine(insulinColor, ::invertedTriangleShape, tier.markerSize))
             }
-            for (size in listOf(MARKER_SIZE_SMALL, MARKER_SIZE_MEDIUM, MARKER_SIZE_LARGE)) {
-                add(createMarkerLine(carbsColor, TriangleBelowShape, size))
+            for (tier in MarkerTier.entries) {
+                add(createMarkerLine(carbsColor, ::triangleBelowShape, tier.markerSize))
             }
             add(
                 LineCartesianLayer.Line(
@@ -1034,13 +1032,11 @@ fun BgGraphCompose(
     // In-range belt — translucent band between lowMark and highMark on the BG axis
     val lowMark = chartConfig.lowMark
     val highMark = chartConfig.highMark
+    // Drawn under the layers (upstream, ported 2026-10-27): Vico's HorizontalBox drew over them, and its translucent
+    // colour tinted every reading and marker inside the band. The fork keeps its own theme colour for the band.
     val targetRangeArea = AapsTheme.generalColors.bgTargetRangeArea
     val inRangeBox = remember(lowMark, highMark, targetRangeArea) {
-        HorizontalBox(
-            y = { lowMark..highMark },
-            box = ShapeComponent(fill = Fill(targetRangeArea)),
-            verticalAxisPosition = Axis.Position.Vertical.Start
-        )
+        InRangeBand(low = lowMark, high = highMark, color = targetRangeArea)
     }
 
     // Upstream's press-and-hold inspect: the marker draws nothing, the inspect line draws the line and the dot on the
@@ -1375,7 +1371,7 @@ fun BgGraphCompose(
                     style = TextStyle(color = MaterialTheme.colorScheme.onSurface),
                     minWidth = TextComponent.MinWidth.fixed(30.dp)
                 ),
-                guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
+                guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
             ),
             bottomAxis = HorizontalAxis.rememberBottom(
                 valueFormatter = timeFormatter,
@@ -1383,7 +1379,7 @@ fun BgGraphCompose(
                 label = rememberTextComponent(
                     style = TextStyle(color = MaterialTheme.colorScheme.onSurface)
                 ),
-                guideline = LineComponent(fill = Fill(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
+                guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
             ),
             decorations = decorations,
             getXStep = { _, _, _ -> 1.0 },
@@ -1629,14 +1625,49 @@ private fun String.withoutLastItem(prefix: String): String {
 }
 
 /**
- * A line that draws no line at all, only a [shape] marker in [color] at every point. Used for the
+ * A line that draws no line at all, only a marker in [color] at every point. Used for the
  * treatment markers on the BG graph, one line per size.
+ *
+ * The point box is [size] grown by [MARKER_TIP_GAP] on both sides, and [shapeOf] gets the gap as
+ * a share of that box, so the triangle keeps the proportions of [size] and its tip stops
+ * [MARKER_TIP_GAP] away from the reading at the box centre.
  */
-private fun createMarkerLine(color: Color, shape: Shape, size: Dp): LineCartesianLayer.Line =
-    LineCartesianLayer.Line(
+private fun createMarkerLine(color: Color, shapeOf: (tipInset: Float) -> Shape, size: Dp): LineCartesianLayer.Line {
+    val boxSize = size + MARKER_TIP_GAP * 2
+    val shape = shapeOf(MARKER_TIP_GAP / boxSize)
+    return LineCartesianLayer.Line(
         fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
         areaFill = null,
         pointProvider = LineCartesianLayer.PointProvider.single(
-            LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(color), shape = shape), size = size)
+            LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(color), shape = shape), size = boxSize)
         )
     )
+}
+
+/**
+ * The in-range belt between [low] and [high] on the BG axis, drawn under the layers. Vico's
+ * `HorizontalBox` draws over them, and its translucent green then tinted every reading and marker
+ * inside the belt, so a bolus looked one colour in range and another out of it.
+ */
+private data class InRangeBand(private val low: Double, private val high: Double, private val color: Color) : Decoration {
+
+    override fun drawUnderLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
+            if (yRange.length == 0.0) return
+            fun canvasY(value: Double): Float =
+                (layerBounds.bottom - ((value - yRange.minY) / yRange.length).toFloat() * layerBounds.height)
+                    .coerceIn(layerBounds.top, layerBounds.bottom)
+            val top = canvasY(high)
+            val bottom = canvasY(low)
+            if (bottom <= top) return
+            with(mutableDrawScope) {
+                drawRect(
+                    color = this@InRangeBand.color,
+                    topLeft = Offset(layerBounds.left, top),
+                    size = Size(layerBounds.width, bottom - top)
+                )
+            }
+        }
+    }
+}
