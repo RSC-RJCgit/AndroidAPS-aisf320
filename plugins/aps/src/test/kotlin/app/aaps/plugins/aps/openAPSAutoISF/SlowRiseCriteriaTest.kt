@@ -38,18 +38,18 @@ class SlowRiseCriteriaTest {
         assertThat(eligible(bolus = null, carbs = null)).isFalse()
     }
 
-    @Test fun `iob floor is 1_0 U and cap stays 5_5 U`() {
+    @Test fun `iob floor is 0_8 U and cap stays 6_0 U`() {
         val d = 3.6
-        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 1.0, 599, 999, 40, 1)).isTrue()
-        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 0.99, 599, 999, 40, 1)).isFalse()
-        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 5.5, 599, 999, 40, 1)).isTrue()
-        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 5.51, 599, 999, 40, 1)).isFalse()
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 0.8, 599, 999, 40, 1)).isTrue()
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 0.79, 599, 999, 40, 1)).isFalse()
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 6.0, 599, 999, 40, 1)).isTrue()
+        assertThat(slowRiseCriteriaMet(144.0, d, d, d, 8.0, 6.01, 599, 999, 40, 1)).isFalse()
     }
 
-    @Test fun `bg floor is 6_5 mmol and cap stays 9_0`() {
+    @Test fun `bg floor is 6_0 mmol and cap stays 9_0`() {
         val d = 3.6
-        assertThat(slowRiseCriteriaMet(6.5 * 18.0, d, d, d, 8.0, 1.2, 599, 999, 40, 1)).isTrue()
-        assertThat(slowRiseCriteriaMet(6.5 * 18.0 - 0.1, d, d, d, 8.0, 1.2, 599, 999, 40, 1)).isFalse()
+        assertThat(slowRiseCriteriaMet(6.0 * 18.0, d, d, d, 8.0, 1.2, 599, 999, 40, 1)).isTrue()
+        assertThat(slowRiseCriteriaMet(6.0 * 18.0 - 0.1, d, d, d, 8.0, 1.2, 599, 999, 40, 1)).isFalse()
         assertThat(slowRiseCriteriaMet(9.0 * 18.0, d, d, d, 8.0, 1.2, 599, 999, 40, 1)).isTrue()
         assertThat(slowRiseCriteriaMet(9.0 * 18.0 + 0.1, d, d, d, 8.0, 1.2, 599, 999, 40, 1)).isFalse()
     }

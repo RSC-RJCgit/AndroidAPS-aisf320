@@ -167,10 +167,10 @@ internal fun slowRiseCriteriaMet(
     gentleDeltasOnly: Boolean = false
 ): Boolean {
     if (listOf(bg, delta, shortDelta, longDelta, cob, iob).any { !it.isFinite() }) return false
-    if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.0..5.5) return false
+    if (bg !in (6.0 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 0.8..6.0) return false
     if (steps60 == null || steps60 !in 0 until 600 || steps180 == null || steps180 !in 0 until 1000) return false
     if (bolusAgeMinutes?.let { it >= 40 } != true && carbAgeMinutes?.let { it >= 40 } != true) return false
-    val gentle = delta > 0.0 && delta < 2.7 && shortDelta > 0.0 && shortDelta < 2.7 && longDelta > 0.0 && longDelta < 2.7
+    val gentle = delta > 0.0 && shortDelta >= 0.0 && longDelta >= -0.5 && delta < 2.7 && shortDelta < 2.7 && longDelta < 2.7
     if (gentle || gentleDeltasOnly) return gentle
     // All deltas must fit one common band, not independently fit the full 0.15–0.35 range.
     return listOf(0.15 to 0.25, 0.20 to 0.30, 0.25 to 0.35).any { (low, high) ->
