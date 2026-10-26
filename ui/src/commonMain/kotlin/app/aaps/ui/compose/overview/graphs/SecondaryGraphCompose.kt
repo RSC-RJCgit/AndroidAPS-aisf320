@@ -1300,14 +1300,14 @@ fun SecondaryGraphCompose(
             confirmButton = {
                 TextButton(onClick = { selectedStepSamples = emptyList() }) { Text(stringResource(CoreUiStrings.close)) }
             }
+        )
+    }
 
     // Press and hold works here too. The marker draws nothing, it only hands the time under the
     // finger to the shared inspect state; the line, the dot and the pill are drawn elsewhere.
     val inspectMarker = remember(inspect) { inspect?.let { SilentInspectMarker } }
     val defaultMarkerController = CartesianMarkerController.rememberShowOnPress()
     val markerController = inspect?.controller ?: defaultMarkerController
-        )
-    }
 
     val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp) {
         val samples = iobData?.insulinByMinute.orEmpty()
