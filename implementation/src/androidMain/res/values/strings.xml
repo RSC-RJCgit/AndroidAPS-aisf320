@@ -129,17 +129,28 @@
     <string name="ios_rileylink_lost" comment="iOS background heartbeat. %1$s=the Bluetooth device name. Example: RileyLink heartbeat lost: OrangeLink. Silent sound takes over if Keep running in background is on.">RileyLink heartbeat lost: %1$s. Silent sound takes over if Keep running in background is on.</string>
     <string name="ios_heartbeat_forgotten">The devices that did not work are forgotten. Looking again for 30 seconds.</string>
     <string name="ios_heartbeat_phone_name" comment="Name in the device list for a phone running AAPS that sends a heartbeat, when it gives no name of its own">AAPS phone</string>
-    <string name="ios_heartbeat_seen_label" comment="A Bluetooth device in a list. %1$s=device name, %2$d=signal strength, a negative number. Example: My VW 5779 (-61 dBm)">%1$s (%2$d dBm)</string>
+    <string name="ios_heartbeat_seen_label" comment="%1$s=device name, %2$d=signal strength">%1$s (%2$d dBm) — detected only, not tested</string>
     <string name="ios_heartbeat_status_looking">Looking for other devices for 30 seconds</string>
     <string name="ios_heartbeat_status_found" comment="%1$d=number of devices. Example: 7 devices found. Pick one in Device to check.">%1$d devices found. Pick one in Device to check.</string>
     <string name="ios_heartbeat_status_checking" comment="%1$s=device name. Example: Checking My VW 5779, this takes 5 minutes">Checking %1$s, this takes 5 minutes</string>
-    <string name="ios_heartbeat_check_works" comment="%1$s=device name">%1$s can wake the app. It is kept as a backup for when the RileyLink is not there.</string>
+    <string name="ios_heartbeat_check_works" comment="%1$s=device name">%1$s passed the heartbeat test and is saved as a backup. This does not mean it is currently providing heartbeats.</string>
     <string name="ios_heartbeat_check_fails" comment="%1$s=device name">%1$s cannot wake the app. It will not be shown again.</string>
     <string name="ios_heartbeat_status_trying_backup" comment="%1$s=device name. Example: No RileyLink, trying backup My VW 5779">No RileyLink, trying backup %1$s</string>
     <string name="ios_heartbeat_using_backup" comment="%1$s=device name">No RileyLink. Backup %1$s is now waking the app.</string>
     <string name="ios_heartbeat_status_backup_tick" comment="%1$s=device name, %2$s=time of the last tick. Example: Backup My VW 5779, last tick 14:32">Backup %1$s, last tick %2$s</string>
     <string name="ios_heartbeat_no_backup_works">No RileyLink and no backup device is waking the app. Silent sound is used if Keep running in background is on. Trying again in 10 minutes.</string>
     <string name="ios_heartbeat_status_no_backup_works" comment="%1$s=time of the next try. Example: No backup works. Next try at 14:45">No backup works. Next try at %1$s</string>
+    <string name="ios_heartbeat_receiving" comment="%1$s=device name, %2$s=last received date/time">Receiving from %1$s — last heartbeat %2$s</string>
+    <string name="ios_heartbeat_stale" comment="%1$s=device name, %2$s=last received date/time">No heartbeat from %1$s for at least 3 minutes — last received %2$s</string>
+    <string name="ios_heartbeat_disconnected" comment="%1$s=device name, %2$s=last received date/time">Disconnected from %1$s — last heartbeat %2$s</string>
+    <string name="ios_heartbeat_test_progress" comment="%1$s=device name, %2$d=elapsed seconds, %3$d=total test seconds, %4$d=minutes with values, %5$d=required minutes">Testing %1$s: %2$d/%3$d seconds elapsed; heartbeats received in %4$d separate minutes (%5$d required).</string>
+    <string name="ios_heartbeat_test_last" comment="%1$s=last test heartbeat date/time">Last test heartbeat: %1$s</string>
+    <string name="ios_heartbeat_test_waiting">No heartbeat received in this test yet.</string>
+    <string name="ios_heartbeat_test_connecting">Waiting for the test device to connect.</string>
+    <string name="ios_heartbeat_test_bluetooth_not_ready">Bluetooth is not ready; no heartbeat test has started.</string>
+    <string name="ios_heartbeat_test_not_started" comment="%1$s=selected device label">Selected for testing: %1$s. Test not running. Enable the heartbeat switch and Bluetooth, then select the device again.</string>
+    <string name="ios_heartbeat_verified_inactive" comment="%1$s=names of verified backups">Verified backups, not currently providing recent heartbeats: %1$s</string>
+    <string name="ios_heartbeat_detected_only">The device list contains detections only, not proof of a working heartbeat.</string>
     <string name="ios_background_stopped">AAPS has stopped running in the background. Open it to start it again.</string>
     <string name="ios_battery_falling" comment="iOS phone battery alarm. %1$d=battery percent now, %2$d=how many percent it fell in the last 30 minutes. Example: Phone battery 45% and falling fast: 6% in the last 30 minutes.">Phone battery %1$d%% and falling fast: %2$d%% in the last 30 minutes.</string>
 </resources>

@@ -44,7 +44,8 @@ enum class StringKey(
 
     /**
      * iOS only (2026-10-24, per explicit request): what the RileyLink heartbeat is doing, written by `IosRileyLinkHeartbeat`
-     * and shown read-only under its switch, for example "Connected to OrangePro, last tick 14:32".
+     * and shown read-only under its switch as Bluetooth heartbeat status, including test progress,
+     * verified backups and the actual device and time of the last received heartbeat.
      */
     IosRileyLinkStatus(
         key = "ios_rileylink_status",

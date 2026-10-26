@@ -99,6 +99,11 @@ class IosRileyLinkHeartbeat(
     private var device: CBPeripheral? = null
     private var scanJob: Job? = null
     private var tickSeen = false
+    private var primaryConnected = false
+    private var lastPrimaryValueAt = 0L
+    private var lastBackupValueAt = 0L
+    private var backupConnected = false
+    private var operationStatus = ""
 
     // Found while scanning: identifier -> (device, signal strength)
     private val found = mutableMapOf<String, Pair<CBPeripheral, Int>>()
@@ -114,6 +119,7 @@ class IosRileyLinkHeartbeat(
     private val phoneIds = mutableSetOf<String>()
     private var phoneScanActive = false
     private var phoneFound: CBPeripheral? = null
+    private var phoneFoundName = ""
 
     // The device being checked, and the minutes (since 1970) in which it sent a value
     private var checkDevice: CBPeripheral? = null
@@ -121,6 +127,8 @@ class IosRileyLinkHeartbeat(
     private var checkJob: Job? = null
     private var checkConnected = false
     private val checkMinutes = mutableSetOf<Long>()
+    private var checkStartedAt = 0L
+    private var lastCheckValueAt = 0L
 
     // The backup in use while the RileyLink is not there
     private var backupDevice: CBPeripheral? = null
@@ -149,6 +157,12 @@ class IosRileyLinkHeartbeat(
         scope.launch {
             preferences.observe(StringKey.IosHeartbeatCheckDevice).collect { id -> if (id.isNotEmpty()) check(id) }
         }
+        scope.launch {
+            while (true) {
+                delay(15_000L)
+                refreshStatus()
+            }
+        }
     }
 
     private fun turnOn() {
@@ -170,13 +184,62 @@ class IosRileyLinkHeartbeat(
         }
         device = null
         tickSeen = false
+        primaryConnected = false
+        lastPrimaryValueAt = 0L
         preferences.put(StringNonKey.IosRileyLinkId, "")
         keepAlive.onHeartbeatConnected(false)
         setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_off))
     }
 
-    // The read-only line under the switch (2026-10-24, per explicit request)
-    private fun setStatus(text: String) = preferences.put(StringKey.IosRileyLinkStatus, text)
+    // Keep current reception separate from scan/test messages: finding a device must not claim it is sending ticks.
+    private fun setStatus(text: String) {
+        operationStatus = text
+        refreshStatus()
+    }
+
+    private fun refreshStatus() {
+        val enabled = preferences.get(BooleanKey.IosRileyLinkHeartbeat)
+        val now = dateUtil.now()
+        val lines = mutableListOf<String>()
+        val receivingNames = mutableSetOf<String>()
+        fun reception(name: String, lastAt: Long, connected: Boolean) {
+            val state = heartbeatReception(lastAt, now, connected)
+            val key = when (state) {
+                HeartbeatReception.WAITING -> return
+                HeartbeatReception.RECEIVING -> ImplementationStrings.ios_heartbeat_receiving
+                HeartbeatReception.STALE -> ImplementationStrings.ios_heartbeat_stale
+                HeartbeatReception.DISCONNECTED -> ImplementationStrings.ios_heartbeat_disconnected
+            }
+            if (state == HeartbeatReception.RECEIVING) receivingNames.add(name)
+            lines.add(rh.gs(key, name, dateUtil.dateAndTimeAndSecondsString(lastAt)))
+        }
+        if (!enabled) lines.add(rh.gs(ImplementationStrings.ios_rileylink_status_off))
+        else {
+            reception(device?.name ?: "RileyLink", lastPrimaryValueAt, primaryConnected)
+            reception(backupName, lastBackupValueAt, backupConnected)
+            if (checkStartedAt > 0L) {
+                val seconds = ((now - checkStartedAt).coerceAtLeast(0L) / 1000L).coerceAtMost(CHECK_MS / 1000L).toInt()
+                lines.add(rh.gs(ImplementationStrings.ios_heartbeat_test_progress, checkName, seconds,
+                    (CHECK_MS / 1000L).toInt(), checkMinutes.size, CHECK_MINUTES_NEEDED))
+                lines.add(if (lastCheckValueAt > 0L)
+                    rh.gs(ImplementationStrings.ios_heartbeat_test_last, dateUtil.dateAndTimeAndSecondsString(lastCheckValueAt))
+                else rh.gs(ImplementationStrings.ios_heartbeat_test_waiting))
+                if (!checkConnected) lines.add(rh.gs(ImplementationStrings.ios_heartbeat_test_connecting))
+            }
+            if (operationStatus.isNotBlank()) lines.add(operationStatus)
+        }
+        val selected = preferences.get(StringKey.IosHeartbeatCheckDevice)
+        if (checkStartedAt == 0L && selected.isNotBlank() && selected != IOS_HEARTBEAT_FORGET_CHECKED) {
+            val selectedName = seen[selected]?.first ?: preferences.get(StringNonKey.IosHeartbeatSeen).lines()
+                .firstOrNull { it.startsWith("$selected\t") }?.substringAfter('\t') ?: selected
+            lines.add(rh.gs(ImplementationStrings.ios_heartbeat_test_not_started, selectedName))
+        }
+        val inactive = backups().map { it.second }.filter { it !in receivingNames }.distinct()
+        if (inactive.isNotEmpty()) lines.add(rh.gs(ImplementationStrings.ios_heartbeat_verified_inactive, inactive.joinToString(", ")))
+        if (preferences.get(StringNonKey.IosHeartbeatSeen).isNotBlank()) lines.add(rh.gs(ImplementationStrings.ios_heartbeat_detected_only))
+        val text = lines.distinct().joinToString("\n")
+        if (preferences.get(StringKey.IosRileyLinkStatus) != text) preferences.put(StringKey.IosRileyLinkStatus, text)
+    }
 
     private fun timeNow(): String = dateUtil.timeString(dateUtil.now())
 
@@ -235,6 +298,8 @@ class IosRileyLinkHeartbeat(
 
     private fun connect(manager: CBCentralManager, peripheral: CBPeripheral) {
         device = peripheral
+        primaryConnected = false
+        lastPrimaryValueAt = 0L
         peripheral.delegate = delegate
         aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: connecting to ${peripheral.name}")
         setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_connecting, peripheral.name ?: "RileyLink"))
@@ -242,6 +307,8 @@ class IosRileyLinkHeartbeat(
     }
 
     private fun onTick() {
+        lastPrimaryValueAt = dateUtil.now()
+        primaryConnected = true
         if (!tickSeen) {
             tickSeen = true
             aapsLogger.info(LTag.CORE, "RileyLink heartbeat: first tick from ${device?.name}")
@@ -249,7 +316,7 @@ class IosRileyLinkHeartbeat(
             stopBackup()
         }
         keepAlive.onHeartbeatTick()
-        setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_tick, device?.name ?: "RileyLink", timeNow()))
+        setStatus("")
         wake("RileyLink tick")
     }
 
@@ -303,14 +370,23 @@ class IosRileyLinkHeartbeat(
             forgetRejected()
             return
         }
-        val manager = central ?: return
+        val manager = central ?: run {
+            setStatus(rh.gs(ImplementationStrings.ios_heartbeat_test_bluetooth_not_ready))
+            return
+        }
+        if (manager.state != CBManagerStatePoweredOn) {
+            setStatus(rh.gs(ImplementationStrings.ios_heartbeat_test_bluetooth_not_ready))
+            return
+        }
         endCheck(save = false)
         val peripheral = manager.retrievePeripheralsWithIdentifiers(listOf(NSUUID(uUIDString = id))).firstOrNull() as? CBPeripheral
         checkName = peripheral?.name ?: seen[id]?.first ?: id
         checkMinutes.clear()
         checkConnected = false
+        checkStartedAt = dateUtil.now()
+        lastCheckValueAt = 0L
         aapsLogger.info(LTag.CORE, "RileyLink heartbeat: checking \"$checkName\"")
-        setStatus(rh.gs(ImplementationStrings.ios_heartbeat_status_checking, checkName))
+        setStatus("")
         if (peripheral != null) {
             checkDevice = peripheral
             peripheral.delegate = delegate
@@ -335,6 +411,7 @@ class IosRileyLinkHeartbeat(
     private fun endCheck(save: Boolean, id: String = "") {
         checkJob?.cancel()
         checkJob = null
+        checkStartedAt = 0L
         checkDevice?.let { central?.cancelPeripheralConnection(it) }
         checkDevice = null
         if (!save) return
@@ -403,10 +480,11 @@ class IosRileyLinkHeartbeat(
         val serviceIds = listOf(CBUUID.UUIDWithString(AAPS_PHONE_SERVICE_UUID))
         val connected = manager.retrieveConnectedPeripheralsWithServices(serviceIds).firstOrNull() as? CBPeripheral
         if (connected != null) {
-            connectBackup(manager, connected, name)
+            connectBackup(manager, connected, connected.name?.takeIf { it.isNotBlank() } ?: rh.gs(ImplementationStrings.ios_heartbeat_phone_name))
             return
         }
         phoneFound = null
+        phoneFoundName = ""
         phoneScanActive = true
         // With a service filter, because iOS gives a background app no scan results without one. The RileyLink services are
         // in it too: this scan replaces any scan that is looking for the RileyLink.
@@ -423,14 +501,18 @@ class IosRileyLinkHeartbeat(
                 aapsLogger.info(LTag.CORE, "RileyLink heartbeat: backup \"$name\" not found")
                 backupIndex++
                 scope.launch { tryBackup() }
-            } else scope.launch { connectBackup(manager, phone, name) }
+            } else scope.launch {
+                connectBackup(manager, phone, phoneFoundName.ifBlank { rh.gs(ImplementationStrings.ios_heartbeat_phone_name) })
+            }
         }
     }
 
     private fun connectBackup(manager: CBCentralManager, peripheral: CBPeripheral, name: String) {
         backupDevice = peripheral
-        backupName = name
+        backupName = peripheral.name?.takeIf { it.isNotBlank() } ?: name
         backupTickSeen = false
+        backupConnected = false
+        lastBackupValueAt = 0L
         peripheral.delegate = delegate
         aapsLogger.info(LTag.CORE, "RileyLink heartbeat: trying backup \"$name\"")
         setStatus(rh.gs(ImplementationStrings.ios_heartbeat_status_trying_backup, name))
@@ -445,6 +527,8 @@ class IosRileyLinkHeartbeat(
         backupJob?.cancel()
         backupDevice?.let { central?.cancelPeripheralConnection(it) }
         backupDevice = null
+        backupConnected = false
+        lastBackupValueAt = 0L
         backupIndex++
         scope.launch { tryBackup() }
     }
@@ -462,10 +546,15 @@ class IosRileyLinkHeartbeat(
         }
         backupDevice = null
         backupTickSeen = false
+        backupConnected = false
+        lastBackupValueAt = 0L
     }
 
     private fun onBackupValue() {
         val now = dateUtil.now()
+        lastBackupValueAt = now
+        backupConnected = true
+        setStatus("")
         if (!backupTickSeen) {
             backupTickSeen = true
             backupJob?.cancel()
@@ -476,7 +565,7 @@ class IosRileyLinkHeartbeat(
         lastBackupWake = now
         keepAlive.onHeartbeatConnected(true)
         keepAlive.onHeartbeatTick()
-        setStatus(rh.gs(ImplementationStrings.ios_heartbeat_status_backup_tick, backupName, timeNow()))
+        refreshStatus()
         wake("Backup heartbeat")
     }
 
@@ -503,11 +592,17 @@ class IosRileyLinkHeartbeat(
             }
 
             CBManagerStateUnauthorized -> {
+                primaryConnected = false
+                backupConnected = false
+                checkConnected = false
                 notify(rh.gs(ImplementationStrings.ios_rileylink_no_permission))
                 setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_no_permission))
             }
 
             CBManagerStatePoweredOff   -> {
+                primaryConnected = false
+                backupConnected = false
+                checkConnected = false
                 notify(rh.gs(ImplementationStrings.ios_rileylink_bluetooth_off))
                 setStatus(rh.gs(ImplementationStrings.ios_rileylink_status_bluetooth_off))
             }
@@ -555,7 +650,10 @@ class IosRileyLinkHeartbeat(
         val isPhone = AAPS_PHONE_SERVICE_UUID in services
         if (isPhone) {
             phoneIds.add(id)
-            if (phoneScanActive && phoneFound == null) phoneFound = peripheral
+            if (phoneScanActive && phoneFound == null) {
+                phoneFound = peripheral
+                phoneFoundName = name
+            }
         }
         if (byService || byName) found[id] = peripheral to rssi
         else if (lookJob?.isActive == true && (name.isNotEmpty() || isPhone))
@@ -565,6 +663,9 @@ class IosRileyLinkHeartbeat(
     internal fun handleConnected(peripheral: CBPeripheral) {
         aapsLogger.debug(LTag.CORE, "RileyLink heartbeat: connected to ${peripheral.name}")
         if (peripheral.isSame(checkDevice)) checkConnected = true
+        if (peripheral.isSame(device)) primaryConnected = true
+        if (peripheral.isSame(backupDevice)) backupConnected = true
+        refreshStatus()
         // All services: the RileyLink service may only show after connecting, and the log lists what is there
         peripheral.discoverServices(null)
     }
@@ -573,7 +674,11 @@ class IosRileyLinkHeartbeat(
         aapsLogger.info(LTag.CORE, "RileyLink heartbeat: lost ${peripheral.name} (${error?.localizedDescription})")
         when {
             // The check keeps waiting until its time is up; what came in so far still counts
-            peripheral.isSame(checkDevice) -> return
+            peripheral.isSame(checkDevice) -> {
+                checkConnected = false
+                refreshStatus()
+                return
+            }
 
             peripheral.isSame(backupDevice) -> {
                 keepAlive.onHeartbeatConnected(false)
@@ -584,6 +689,7 @@ class IosRileyLinkHeartbeat(
             !peripheral.isSame(device)      -> return
         }
         keepAlive.onHeartbeatConnected(false)
+        primaryConnected = false
         tickSeen = false
         if (!preferences.get(BooleanKey.IosRileyLinkHeartbeat)) return
         notify(rh.gs(ImplementationStrings.ios_rileylink_lost, peripheral.name ?: "RileyLink"))
@@ -637,10 +743,16 @@ class IosRileyLinkHeartbeat(
     }
 
     internal fun handleValue(peripheral: CBPeripheral, characteristic: CBCharacteristic) {
+        if (characteristic.value == null) return
         when {
-            peripheral.isSame(checkDevice)  -> checkMinutes.add(dateUtil.now() / 60_000L)
+            peripheral.isSame(checkDevice)  -> {
+                checkConnected = true
+                lastCheckValueAt = dateUtil.now()
+                checkMinutes.add(lastCheckValueAt / 60_000L)
+                refreshStatus()
+            }
             peripheral.isSame(backupDevice) -> onBackupValue()
-            characteristic.UUID == CBUUID.UUIDWithString(TIMER_TICK_UUID) -> onTick()
+            peripheral.isSame(device) && characteristic.UUID == CBUUID.UUIDWithString(TIMER_TICK_UUID) -> onTick()
         }
     }
 
@@ -700,6 +812,7 @@ private class RileyLinkDelegate(private val owner: IosRileyLinkHeartbeat) : NSOb
         owner.handleCharacteristics(peripheral, didDiscoverCharacteristicsForService)
 
     @ObjCSignatureOverride
-    override fun peripheral(peripheral: CBPeripheral, didUpdateValueForCharacteristic: CBCharacteristic, error: NSError?) =
-        owner.handleValue(peripheral, didUpdateValueForCharacteristic)
+    override fun peripheral(peripheral: CBPeripheral, didUpdateValueForCharacteristic: CBCharacteristic, error: NSError?) {
+        if (error == null) owner.handleValue(peripheral, didUpdateValueForCharacteristic)
+    }
 }

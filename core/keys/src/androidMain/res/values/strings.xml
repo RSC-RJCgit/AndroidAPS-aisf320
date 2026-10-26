@@ -39,9 +39,9 @@
     <string name="pref_summary_ios_keep_running_in_background">Plays silent sound so iOS does not stop the app in the background. Uses more battery. When off, iOS stops the app soon after you leave it: no updates and no alarms until you open it again.</string>
     <string name="pref_title_ios_rileylink_heartbeat">RileyLink heartbeat</string>
     <string name="pref_summary_ios_rileylink_heartbeat">Instead of silent sound, a RileyLink or OrangeLink wakes the app about once a minute, so it loads from Nightscout and checks the alarms. Keep the device near the phone and charged. The nearest one is used; turn this off and on to pick another. When it is lost, silent sound takes over if Keep running in background is on.</string>
-    <string name="pref_title_ios_rileylink_status">RileyLink heartbeat status</string>
+    <string name="pref_title_ios_rileylink_status">Bluetooth heartbeat status</string>
     <string name="pref_title_ios_heartbeat_check_others">Check other Bluetooth devices</string>
-    <string name="pref_summary_ios_heartbeat_check_others">For when the RileyLink is not there, for example with a flat battery. While this is on, the app looks for devices nearby for 30 seconds. Pick one in Device to check, and for 5 minutes the app checks if it can wake the app. A device that works is kept as a backup. A device that does not work is not shown again.</string>
+    <string name="pref_summary_ios_heartbeat_check_others">Looks for nearby devices for 30 seconds. Being listed or selected only means detected or chosen for a test; it does not confirm heartbeats. Pick a device for a 5-minute test and watch Bluetooth heartbeat status above for progress and the last received heartbeat. A device that passes is saved as a backup for when the RileyLink is unavailable.</string>
     <string name="pref_title_ios_heartbeat_check_device">Device to check</string>
     <string name="ios_heartbeat_forget_checked">Forget the devices that did not work, so they can be checked again</string>
     <string name="ios_heartbeat_none_seen">No new devices nearby yet. See the status line above.</string>
