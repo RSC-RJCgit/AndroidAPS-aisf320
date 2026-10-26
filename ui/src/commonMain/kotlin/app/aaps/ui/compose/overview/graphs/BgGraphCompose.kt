@@ -65,6 +65,7 @@ import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
@@ -1072,6 +1073,27 @@ fun BgGraphCompose(
         }
     }
     val smbLabelSize = rememberSmbLabelSize()
+    // The newest BG value next to its dot (2026-10-27, per explicit request), 1.3 x the SMB number size. Only when it is
+    // from the last 15 minutes, so an older day in the history browser gets no label.
+    val lastBgText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
+    val lastBgLabel = remember(bgReadings, minTimestamp, nowTimestamp, lastBgText, smbLabelSize, lowColor, inRangeColor, highColor) {
+        bgReadings.filter { it.type == BgType.REGULAR || it.type == BgType.BUCKETED }.maxByOrNull { it.timestamp }
+            ?.takeIf { nowTimestamp - it.timestamp <= 15 * 60_000L }?.let { bg ->
+            val mgdl = if (profileUtil.units == GlucoseUnit.MGDL) bg.value else bg.value * Constants.MMOLL_TO_MGDL
+            LastBgLabel(
+                x = timestampToX(bg.timestamp, minTimestamp),
+                bg = bg.value,
+                text = profileUtil.fromMgdlToStringInUnits(mgdl),
+                color = when (bg.range) {
+                    BgRange.HIGH     -> highColor
+                    BgRange.IN_RANGE -> inRangeColor
+                    BgRange.LOW      -> lowColor
+                },
+                textMeasurer = lastBgText,
+                labelSize = smbLabelSize * 1.3f,
+            )
+        }
+    }
     val smbNumbers = remember(smbStack, smbText, smbLabelSize, treatments) {
         SmbStackLabels(smbStack, smbText, pinToBottom = false, labelSize = smbLabelSize, onBounds = { bounds ->
             tapTargets.smbLabels = bounds.mapNotNull { (item, rect) ->
@@ -1165,7 +1187,7 @@ fun BgGraphCompose(
     }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
-    // A zero bolus: an SMB-style arrow under the BG dot, a little larger, in the bolus colour. Its 0.00 label stays at
+    // A zero bolus: an SMB-style arrow under the BG dot, a little larger, in the bolus colour. Its 0 label stays at
     // the bottom (bolusStack).
     // In the automatic clean graph every bolus is a slim arrow under its BG dot, in the bolus colour, like a zero bolus
     val bolusArrowMarks = remember(treatments, bgReadings, minTimestamp, automaticCleanGraph) {
@@ -1220,8 +1242,8 @@ fun BgGraphCompose(
         }
     }
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
-    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine, geometryReporter) {
-        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine, geometryReporter)
+    val decorations = remember(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgLabel, inspectLine, geometryReporter) {
+        listOf(inRangeBox, nowLine, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, lastBgLabel, inspectLine, geometryReporter)
     }
 
     // =========================================================================

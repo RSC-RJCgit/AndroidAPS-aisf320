@@ -862,6 +862,43 @@ internal fun rememberSmbLabelSize(): TextUnit {
     return smbLabelSize(heightDp)
 }
 
+/**
+ * The newest BG value next to its dot on the main graph (2026-10-27, per explicit request), a little larger than the SMB
+ * numbers. It sits right of the dot, at the dot's height, so it does not cover the SMB numbers stacked above the dot. When
+ * there is no room on the right it goes left of the dot.
+ */
+class LastBgLabel(
+    private val x: Double,
+    private val bg: Double,
+    private val text: String,
+    private val color: Color,
+    private val textMeasurer: TextMeasurer,
+    private val labelSize: TextUnit,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val xStep = ranges.xStep
+            if (xStep == 0.0) return
+            val canvasX = layerBounds.left +
+                layerDimensions.startPadding +
+                layerDimensions.xSpacing * ((x - ranges.minX) / xStep).toFloat() -
+                scroll
+            if (canvasX < layerBounds.left || canvasX > layerBounds.right) return
+            val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
+            if (yRange.length == 0.0) return
+            val canvasY = layerBounds.bottom - layerBounds.height * ((bg - yRange.minY) / yRange.length).toFloat()
+            val layout = textMeasurer.measure(text, TextStyle(color = color, fontSize = labelSize, fontWeight = FontWeight.Bold))
+            with(mutableDrawScope) {
+                val gap = 6.dp.toPx()
+                val right = canvasX + gap
+                val left = if (right + layout.size.width <= layerBounds.right) right else canvasX - gap - layout.size.width
+                drawText(layout, topLeft = Offset(left, canvasY - layout.size.height / 2f))
+            }
+        }
+    }
+}
+
 class SmbStackLabels(
     private val items: List<SmbStackItem>,
     private val textMeasurer: TextMeasurer,

@@ -953,7 +953,8 @@ class OverviewDataCacheImpl(
                     bolusType = if (bs.type == BS.Type.SMB) BolusType.SMB else BolusType.NORMAL,
                     isValid = bs.isValid,
                     label = decimalFormatter.toPumpSupportedBolusWithUnits(bs.amount, bolusStep),
-                    number = decimalFormatter.toPumpSupportedBolus(bs.amount, bolusStep)
+                    // A zero bolus is just "0" on the graphs (2026-10-27, per explicit request), not "0.00"
+                    number = if (bs.amount == 0.0) "0" else decimalFormatter.toPumpSupportedBolus(bs.amount, bolusStep)
                 )
             }
 
