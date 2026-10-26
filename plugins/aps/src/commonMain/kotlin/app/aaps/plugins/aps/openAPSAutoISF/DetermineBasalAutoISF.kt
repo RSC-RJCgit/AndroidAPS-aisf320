@@ -501,6 +501,27 @@ internal fun highStepsSmbCut(
  * given (temp basal still works). A limit of 0 or less turns the rule off. 26 Oct: HP2 was 3.9-5.1 while 3.15 U of SMBs
  * followed a 2.2 U meal bolus, and BG later fell from 10.9 to 3.8.
  */
+/**
+ * Profile strength in % for the Mcap SMB cap (2026-10-26, per explicit request): 100 = the Standard Tier A profile (the
+ * Standard 100 setting, else the Standard role). From the real values: its ISF divided by the current ISF (both now, the
+ * current one with its percentage). Only when one of them is missing, from the name: the number in it times the
+ * percentage ("Profile150" at 100% = 150).
+ */
+internal fun profileStrengthPercent(referenceIsfMgdl: Double?, currentIsfMgdl: Double?, profileName: String, percentage: Int): Double {
+    if (referenceIsfMgdl != null && currentIsfMgdl != null && referenceIsfMgdl > 0.0 && currentIsfMgdl > 0.0)
+        return referenceIsfMgdl / currentIsfMgdl * 100.0
+    val fromName = Regex("""\d+""").find(profileName)?.value?.toDoubleOrNull() ?: 100.0
+    return fromName * percentage / 100.0
+}
+
+/**
+ * The 30 min SMB cap for Mcap (2026-10-26, per explicit request): 2.1 U at 100% or weaker, smaller for a stronger profile
+ * (2.1 x 100 / strength: 1.6 U at 130%, 1.4 U at 150%), and half that while walking. Replayed over 5-26 Oct: 4 U more held
+ * back before lows by the profile scaling and 2 U more by the walking half, none before a BG above 12 within 3 hours.
+ */
+internal fun mcapSmbCap30Min(strengthPercent: Double, walking: Boolean): Double =
+    2.1 * 100.0 / strengthPercent.coerceAtLeast(100.0) * (if (walking) 0.5 else 1.0)
+
 internal fun hp2BlocksSmb(hp2Mmol: Double, limitMmol: Double): Boolean = limitMmol > 0.0 && hp2Mmol < limitMmol
 
 internal fun hypoPrediction2Mmol(bg: Double, shortDelta: Double, rawDelta5: Double, iob: Double, cob: Double): Double {
@@ -692,15 +713,14 @@ internal fun lateFastRiseTaper(
  * ([bolusSum30]) count in it too, so SMBs pause after a large meal bolus; [smbSum30] itself stays SMB only, because other
  * rules read it. Replayed over 5-26 Oct: 0.87 U a day held back, incl. 2.05 U after the 26 Oct, 1.95 U after the 12 Oct and 1.95 U after the 22 Oct meal boluses that were followed by a low, and none before a BG above 12 within 4 hours.
  */
-internal fun smbCap30Min(microBolus: Double, smbSum30: Double, bolusSum30: Double = 0.0): SmbStepResult {
-    val cap = 2.1
+internal fun smbCap30Min(microBolus: Double, smbSum30: Double, bolusSum30: Double = 0.0, cap: Double = 2.1, capNote: String = ""): SmbStepResult {
     val allowance = (cap - smbSum30 - bolusSum30).coerceAtLeast(0.0)
     if (microBolus <= allowance) return SmbStepResult(microBolus, "")
     // Same wording as the 3426 master, so a client reads the same text from either.
     val bolusText = if (bolusSum30 > 0.0) " + ${twoDecimals(bolusSum30)}U bolus" else ""
     return SmbStepResult(
         allowance,
-        " 30min SMB cap: ${twoDecimals(microBolus)} -> ${twoDecimals(allowance)} (last30min ${twoDecimals(smbSum30)}U$bolusText of ${twoDecimals(cap)}U cap) ",
+        " 30min SMB cap: ${twoDecimals(microBolus)} -> ${twoDecimals(allowance)} (last30min ${twoDecimals(smbSum30)}U$bolusText of ${twoDecimals(cap)}U cap$capNote) ",
         "Cumulative SMB cap: ${twoDecimals(smbSum30)}U$bolusText already delivered in last 30min vs ${twoDecimals(cap)}U cap -> microBolus ${twoDecimals(microBolus)} trimmed to ${twoDecimals(allowance)} "
     )
 }
@@ -752,6 +772,9 @@ internal data class AfterFastRiseInput(
     val smbSum30: Double,
     /** Normal boluses of the last 30 minutes, counted in the 30 min cap only (Mcap, 2026-10-26). */
     val bolusSum30: Double = 0.0,
+    /** The 30 min cap in U (Mcap: smaller for a strong profile and while walking) and a note for the reason. */
+    val cap30: Double = 2.1,
+    val cap30Note: String = "",
     val smbSum10: Double,
     val minuteOfDay: Int,
     val bg: Double,
@@ -815,7 +838,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     )
     smb = taper.microBolus
     reason.append(taper.reason)
-    val cap30 = smbCap30Min(smb, input.smbSum30, input.bolusSum30)
+    val cap30 = smbCap30Min(smb, input.smbSum30, input.bolusSum30, input.cap30, input.cap30Note)
     smb = cap30.microBolus
     reason.append(cap30.reason)
     if (cap30.console.isNotEmpty()) console.append(cap30.console).append('\n')
@@ -894,6 +917,10 @@ class DetermineBasalAutoISF(
     // Mcap (2026-10-26, per explicit request): the normal boluses of the last 30 minutes, counted in the 30 min SMB cap
     // (see smbCap30Min). Set by the plugin each loop; 0 when its setting is off.
     var bolusSum30ForCap: Double = 0.0
+
+    // Mcap (2026-10-26): the 30 min SMB cap in U (see mcapSmbCap30Min; 2.1 when its setting is off) and a note for the reason
+    var smbCap30ForCap: Double = 2.1
+    var smbCap30Note: String = ""
 
     private fun Double.toFixed2(): String = NumberFormat.DECIMAL_2_UP_TO_3.format(round(this, 2))
 
@@ -2271,6 +2298,8 @@ class DetermineBasalAutoISF(
                             cob = meal_data.mealCOB,
                             smbSum30 = smbSum30Min,
                             bolusSum30 = bolusSum30ForCap,
+                            cap30 = smbCap30ForCap,
+                            cap30Note = smbCap30Note,
                             smbSum10 = smbSum10Min,
                             minuteOfDay = minuteOfDay,
                             bg = bg,

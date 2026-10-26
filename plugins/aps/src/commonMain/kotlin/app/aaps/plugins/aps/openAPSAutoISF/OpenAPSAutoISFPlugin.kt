@@ -4717,8 +4717,31 @@ open class OpenAPSAutoISFPlugin(
         if (duraCapActive && !duraCapWasActive) carePortalNote("DuraCap")
         duraCapWasActive = duraCapActive
         determineBasalAutoISF.hp2NoSmbBelowMmol = preferences.get(DoubleKey.ApsAutoIsfHp2NoSmbBelow)
-        determineBasalAutoISF.bolusSum30ForCap =
-            if (preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)) normalBolusSum(now, 30 * 60 * 1000L) else 0.0
+        val mcapOn = preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)
+        determineBasalAutoISF.bolusSum30ForCap = if (mcapOn) normalBolusSum(now, 30 * 60 * 1000L) else 0.0
+        if (mcapOn) {
+            val strength = profileStrengthNow()
+            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walking)
+            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walking) ", walking" else ""
+        } else {
+            determineBasalAutoISF.smbCap30ForCap = 2.1
+            determineBasalAutoISF.smbCap30Note = ""
+        }
+    }
+
+    /**
+     * See [profileStrengthPercent]: from the Standard Tier A profile's ISF (Standard 100, else the Standard role) and the
+     * current ISF now, the name only when one is missing.
+     */
+    private suspend fun profileStrengthNow(): Double {
+        val current = profileFunction.getProfile()
+        val tierA = preferences.get(StringKey.ApsAutoIsfStandard100ProfileName).trim()
+            .ifEmpty { preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim() }
+        val reference = tierA.takeIf { it.isNotEmpty() }?.let { profileRepository.profile.value?.getSpecificProfile(it) }
+            ?.let { ProfileSealed.Pure(value = it, activePlugin = null) }
+        return profileStrengthPercent(
+            reference?.getProfileIsfMgdl(), current?.getProfileIsfMgdl(), profileFunction.getOriginalProfileName(), current?.percentage ?: 100
+        )
     }
 
     private suspend fun tier3ActivityFactor(now: Long, iob: Double, maxIob: Double): Double {
