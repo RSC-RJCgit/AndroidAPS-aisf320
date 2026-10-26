@@ -2710,6 +2710,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // DetermineBasalAutoISF.kt) -- reverted to SMB-only (was briefly changed to include normal boluses
     // too, which turned out to affect that always-on dosing math, not what was actually being asked for
     // -- see the SMB_STACK_TOTAL yellow-label reconstruction in PrepareTreatmentsDataWorker.kt instead).
+    /**
+     * Mcap: strength from the Standard Tier A profile's ISF (Standard 100, else the Standard role, the same as
+     * resetStandardAndLowTiersToA reads it) and the current ISF now, the name only when one is missing.
+     */
+    private fun profileStrengthNow(): Double {
+        val current = profileFunction.getProfile()
+        val tierA = resolveTieredProfileName(StringKey.ApsAutoIsfStandard100ProfileName, StringKey.ApsAutoIsfStandardProfileName).trim()
+        val reference = tierA.takeIf { it.isNotEmpty() }?.let { activePlugin.activeProfileSource.profile?.getSpecificProfile(it) }
+            ?.let { ProfileSealed.Pure(it, null) }
+        return profileStrengthPercent(
+            reference?.getProfileIsfMgdl(), current?.getProfileIsfMgdl(), profileFunction.getOriginalProfileName(), current?.percentage ?: 100
+        )
+    }
+
     // Meal and correction boluses (not SMB) of the last 30 minutes, for the 30 min SMB cap only (Mcap, 2026-10-26).
     private fun normalBolusSum30Min(): Double {
         val now = dateUtil.now()
@@ -4990,7 +5004,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         determineBasalAutoISF.hp2NowMmol = liveHp2
         determineBasalAutoISF.hp2NoSmbBelowMmol = preferences.get(DoubleKey.ApsAutoIsfHp2NoSmbBelow)
         // Mcap (2026-10-26): boluses count in the 30 min SMB cap, see DetermineBasalAutoISF.bolusSum30ForCap
-        determineBasalAutoISF.bolusSum30ForCap = if (preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)) normalBolusSum30Min() else 0.0
+        val mcapOn = preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)
+        determineBasalAutoISF.bolusSum30ForCap = if (mcapOn) normalBolusSum30Min() else 0.0
+        // Mcap (2026-10-26): smaller cap for a stronger profile (real ISF values, name only as fallback) and while walking
+        if (mcapOn) {
+            val strength = profileStrengthNow()
+            val walkingForCap = walkingNow()
+            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walkingForCap)
+            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walkingForCap) ", walking" else ""
+        } else {
+            determineBasalAutoISF.smbCap30ForCap = 2.1
+            determineBasalAutoISF.smbCap30Note = ""
+        }
         if (duraCapActive && !duraCapWasActive) addCarePortalNote("DuraCap")
         duraCapWasActive = duraCapActive
         val lastAppStart = preferences.get(LongKey.AppStart)

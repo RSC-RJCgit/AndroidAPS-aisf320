@@ -102,6 +102,11 @@ class DetermineBasalAutoISF @Inject constructor(
     // setting is off. Replayed over 5-26 Oct: 0.87 U a day held back, incl. 2.05 U after the 26 Oct, 1.95 U after the 12 Oct and 1.95 U after the 22 Oct meal boluses that were followed by a low, and none before a BG above 12 within 4 hours.
     var bolusSum30ForCap: Double = 0.0
 
+    // Mcap (2026-10-26): the 30 min SMB cap in U (see mcapSmbCap30Min in the plugin; 2.1 when its setting is off) and a
+    // note for the reason, set by the plugin each cycle
+    var smbCap30ForCap: Double = 2.1
+    var smbCap30Note: String = ""
+
     // Switch for the recent-low rebound guard ("LoReb": trims SMB after a recent low), from the setting
     // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
     // 2026-09-20 "for now" and became this toggle the same day). While off it never fires, so no LoReb note
@@ -2507,13 +2512,13 @@ class DetermineBasalAutoISF @Inject constructor(
                 // Do not gate the final allowance on fastRiseNow: at the end of the Aug 8 event the raw
                 // rise flattened for two cycles while SMB continued, precisely when accumulated insulin
                 // still needed protection. Trim to the remaining budget rather than always zeroing.
-                val smbCap30Min = 2.1
+                val smbCap30Min = smbCap30ForCap
                 val smbAllowance30Min = (smbCap30Min - smbSum30Min - bolusSum30ForCap).coerceAtLeast(0.0)
                 if (microBolus > smbAllowance30Min) {
                     val before30MinCap = microBolus
                     microBolus = smbAllowance30Min
                     val bolusText = if (bolusSum30ForCap > 0.0) " + ${round(bolusSum30ForCap, 2)}U bolus" else ""
-                    rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 2)} -> ${round(microBolus, 2)} (last30min ${round(smbSum30Min, 2)}U$bolusText of ${round(smbCap30Min, 2)}U cap) ")
+                    rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 2)} -> ${round(microBolus, 2)} (last30min ${round(smbSum30Min, 2)}U$bolusText of ${round(smbCap30Min, 2)}U cap$smbCap30Note) ")
                     consoleError.add("Cumulative SMB cap: ${round(smbSum30Min, 2)}U$bolusText already delivered in last 30min vs ${round(smbCap30Min, 2)}U cap -> microBolus ${round(before30MinCap, 2)} trimmed to ${round(microBolus, 2)} ")
                 }
 // =====================================================
