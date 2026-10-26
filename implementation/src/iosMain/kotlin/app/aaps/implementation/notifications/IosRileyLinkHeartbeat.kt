@@ -352,6 +352,9 @@ class IosRileyLinkHeartbeat(
             // The RileyLink is back: a backup is not needed any more
             stopBackup()
         }
+        // Each tick says the RileyLink is there, so the silent sound is not needed (2026-10-27, per explicit request). A
+        // backup that disconnected could switch it on again while the RileyLink was still ticking; the next tick repairs it.
+        keepAlive.onHeartbeatConnected(true)
         keepAlive.onHeartbeatTick()
         setStatus("")
         wake("RileyLink tick")
@@ -728,7 +731,8 @@ class IosRileyLinkHeartbeat(
             }
 
             peripheral.isSame(backupDevice) -> {
-                keepAlive.onHeartbeatConnected(false)
+                // Only when the RileyLink is not there either: its ticks still keep the app running (2026-10-27)
+                if (!primaryConnected) keepAlive.onHeartbeatConnected(false)
                 nextBackup()
                 return
             }

@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.ui.compose.LocalConfig
@@ -78,8 +79,12 @@ fun OverviewChipsColumn(
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         if (LocalConfig.current.platform == AppPlatform.Ios) {
-            val status by LocalPreferences.current.observe(StringNonKey.IosHeartbeatOverviewStatus).collectAsStateWithLifecycle()
-            if (status.isNotBlank()) Text(
+            val preferences = LocalPreferences.current
+            val status by preferences.observe(StringNonKey.IosHeartbeatOverviewStatus).collectAsStateWithLifecycle()
+            // Hidden with the heartbeat off, or by its own switch (2026-10-27, per explicit request)
+            val heartbeatOn by preferences.observe(BooleanKey.IosRileyLinkHeartbeat).collectAsStateWithLifecycle()
+            val showStatus by preferences.observe(BooleanKey.IosHeartbeatShowOnOverview).collectAsStateWithLifecycle()
+            if (heartbeatOn && showStatus && status.isNotBlank()) Text(
                 text = status,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

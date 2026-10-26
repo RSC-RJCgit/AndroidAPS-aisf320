@@ -1073,7 +1073,7 @@ fun BgGraphCompose(
         }
     }
     val smbLabelSize = rememberSmbLabelSize()
-    // The newest BG value next to its dot (2026-10-27, per explicit request), 1.3 x the SMB number size. Only when it is
+    // The newest BG value next to its dot (2026-10-27, per explicit request), 1.6 x the SMB number size. Only when it is
     // from the last 15 minutes, so an older day in the history browser gets no label.
     val lastBgText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val lastBgLabel = remember(bgReadings, minTimestamp, nowTimestamp, lastBgText, smbLabelSize, lowColor, inRangeColor, highColor) {
@@ -1090,7 +1090,7 @@ fun BgGraphCompose(
                     BgRange.LOW      -> lowColor
                 },
                 textMeasurer = lastBgText,
-                labelSize = smbLabelSize * 1.3f,
+                labelSize = smbLabelSize * 1.6f,
             )
         }
     }

@@ -206,6 +206,7 @@ class BuiltInSearchables(
             BooleanKey.IosKeepRunningInBackground,
             BooleanKey.IosRileyLinkHeartbeat,
             StringKey.IosRileyLinkStatus,
+            BooleanKey.IosHeartbeatShowOnOverview,
             BooleanKey.IosHeartbeatCheckOthers,
             // 2026-10-24, per explicit request: the devices found by the last look, refreshed when a new look is done
             StringKey.IosHeartbeatCheckDevice.withEntriesProvider(
