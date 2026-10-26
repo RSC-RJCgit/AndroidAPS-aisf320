@@ -190,11 +190,11 @@ internal fun slowRiseCriteriaMet(
     mealAgeMinutes: Int,
 ): Boolean {
     if (listOf(bg, delta, shortDelta, longDelta, cob, iob).any { !it.isFinite() }) return false
-    if (bg !in (6.5 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 1.0..5.5) return false
+    if (bg !in (6.0 * 18.0)..(9.0 * 18.0) || cob !in 0.0..8.0 || iob !in 0.8..6.0) return false
     if (steps60 !in 0 until 600 || steps180 !in 0 until 1000) return false
     if (mealAgeMinutes < 40) return false
     val slowCeiling = 0.15 * 18.0
-    if (listOf(delta, shortDelta, longDelta).all { it > 0.0 && it < slowCeiling }) return true
+    if (delta > 0.0 && shortDelta >= 0.0 && longDelta >= -0.5 && listOf(delta, shortDelta, longDelta).all { it < slowCeiling }) return true
     if (!slowRiseWideBandsApply(mealAgeMinutes)) return false
     return listOf(0.15 to 0.25, 0.20 to 0.30, 0.25 to 0.35).any { (low, high) ->
         listOf(delta, shortDelta, longDelta).all { it >= low * 18.0 && it <= high * 18.0 }
