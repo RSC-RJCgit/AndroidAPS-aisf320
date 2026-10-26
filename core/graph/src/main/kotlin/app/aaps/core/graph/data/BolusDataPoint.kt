@@ -29,8 +29,10 @@ class BolusDataPoint(
 
     override fun getX(): Double = data.timestamp.toDouble()
     override fun getY(): Double = if (data.type == BS.Type.SMB) preferences.get(UnitDoubleKey.OverviewLowMark) else yValue
+    // A zero bolus is just "0" on the graphs (2026-10-27, per explicit request), not "0.00" (or ".00" for an SMB)
     override val label
-        get() = if (data.type == BS.Type.SMB)
+        get() = if (data.amount == 0.0) "0"
+        else if (data.type == BS.Type.SMB)
             decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep).trimStart('0')
         else
             decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep)
