@@ -1043,11 +1043,12 @@ fun BgGraphCompose(
         )
     }
 
-    // Upstream's press-and-hold inspect (2026-10-16 merge): its marker, and its line on top of our own decorations.
-    val inspectMarker = remember(inspect) { inspect?.let { GraphInspectMarker(it) } }
+    // Upstream's press-and-hold inspect: the marker draws nothing, the inspect line draws the line and the dot on the
+    // reading (2026-10-27 port: a hold works on every graph).
+    val inspectMarker = remember(inspect) { inspect?.let { SilentInspectMarker } }
     // Always called, so the composable calls do not depend on inspect
     val defaultMarkerController = CartesianMarkerController.rememberShowOnPress()
-    val inspectLine = rememberInspectLine(inspect)
+    val inspectLine = rememberInspectLine(inspect, dotOnReading = true)
     fun isfColor(kind: DominantIsf?): Color = when (kind) {
         DominantIsf.ACCE -> acceColor
         DominantIsf.BG   -> bgIsfColor

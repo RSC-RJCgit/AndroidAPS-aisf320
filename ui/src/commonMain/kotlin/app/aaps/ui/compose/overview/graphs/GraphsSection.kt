@@ -914,6 +914,8 @@ fun GraphsSection(
                 pageScrolling[0] = false
                 lastTouchMs[0] = dateUtil.now()
             }
+            // Upstream (2026-10-27 port): a touch anywhere on the graphs closes the inspect pill
+            .closesInspectPillOnTouch(inspect)
     ) {
         if (showZoomButtons) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -1086,7 +1088,7 @@ fun GraphsSection(
         var editingIobOverlays by remember { mutableStateOf(false) }
         // Fork (restored after the 2026-10-16 merge): the graphs below BG keep their time labels and full height,
         // each drawn 8 dp higher as before. Upstream's pull-up covered the BG graph's own time labels.
-        Box(modifier = Modifier.offset(y = (-8).dp)) {
+        Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
                 seriesTypes = listOf(SeriesType.IOB),
@@ -1148,7 +1150,7 @@ fun GraphsSection(
         var editingGraphIndex by remember { mutableIntStateOf(-1) }
         for (i in 0 until activeCount) {
             val secondary = graphConfig.secondaryGraphs[i]
-            Box(modifier = Modifier.offset(y = (-8).dp)) {
+            Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
                 SecondaryGraphCompose(
                     viewModel = graphViewModel,
                     inspect = inspect,
