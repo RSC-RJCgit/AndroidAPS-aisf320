@@ -954,7 +954,7 @@ open class OpenAPSAutoISFPlugin(
         }
         // 2026-10-18: the activity factor for the Tier 3 UAM boost (scale) and its pseudo-wizard FPU. 0 turns the boost off.
         val tier3Activity = tier3ActivityFactor(now, iobArray[0].iob, oapsProfile.max_iob)
-        updateDuraCap(autoIsfMode, autoIsfFactors, glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, iobArray[0].iob, mealData.mealCOB, now)
+        updateSmbGuards(autoIsfMode, autoIsfFactors, glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, iobArray[0].iob, mealData.mealCOB, now)
         determineBasalAutoISF.determine_basal(
             glucose_status = glucoseStatus,
             currenttemp = currentTemp,
@@ -1711,6 +1711,7 @@ open class OpenAPSAutoISFPlugin(
             IntKey.ApsActivityIdleEnd,
             BooleanKey.ApsUseSmb,
             BooleanKey.ApsAutoIsfFastRiseEnabled,
+            BooleanKey.ApsAutoIsfMealBolusInSmbCap,
             BooleanKey.ApsAutoIsfLowReboundGuardEnabled,
             BooleanKey.ApsAutoIsfShowCarbModelCurve,
             BooleanKey.ApsAutoIsfShowGraph5,
@@ -1756,6 +1757,7 @@ open class OpenAPSAutoISFPlugin(
                     DoubleKey.ApsAutoIsfTodOffset1218,
                     DoubleKey.ApsAutoIsfTodOffset1822,
                     DoubleKey.ApsAutoIsfTodOffset2200,
+                    DoubleKey.ApsAutoIsfHp2NoSmbBelow,
                     DoubleKey.ApsAutoIsfBgAccelWeight,
                     DoubleKey.ApsAutoIsfBgAccelWeightNormal,
                     DoubleKey.ApsAutoIsfBgBrakeWeight,
@@ -4700,11 +4702,11 @@ open class OpenAPSAutoISFPlugin(
 
     // Kept out of invoke(): its coroutine body is close to the JVM's 64 KB method limit (2026-10-18 build failure).
     /**
-     * Works out DuraCap for this loop run (see [duraFlatCapRule]) and hands it to determine_basal. A function of its own
-     * (2026-10-24) because `invoke` is at the JVM size limit for one method: the three step reads for the walking test
-     * pushed it over ("Method too large").
+     * Works out DuraCap for this loop run (see [duraFlatCapRule]) and hands it, and the Rule A limit (2026-10-26, see
+     * `hp2BlocksSmb`), to determine_basal. A function of its own (2026-10-24) because `invoke` is at the JVM size limit for
+     * one method: the three step reads for the walking test pushed it over ("Method too large").
      */
-    private suspend fun updateDuraCap(
+    private suspend fun updateSmbGuards(
         autoIsfMode: Boolean, factors: AutoIsfFactors, bgMgdl: Double, delta: Double, shortDelta: Double, iob: Double, cob: Double, now: Long
     ) {
         val flatNow = autoIsfMode && delta <= 1.8 && shortDelta <= 1.8
@@ -4714,6 +4716,9 @@ open class OpenAPSAutoISFPlugin(
         determineBasalAutoISF.duraFlatCapActive = duraCapActive
         if (duraCapActive && !duraCapWasActive) carePortalNote("DuraCap")
         duraCapWasActive = duraCapActive
+        determineBasalAutoISF.hp2NoSmbBelowMmol = preferences.get(DoubleKey.ApsAutoIsfHp2NoSmbBelow)
+        determineBasalAutoISF.bolusSum30ForCap =
+            if (preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)) normalBolusSum(now, 30 * 60 * 1000L) else 0.0
     }
 
     private suspend fun tier3ActivityFactor(now: Long, iob: Double, maxIob: Double): Double {
@@ -6405,6 +6410,12 @@ open class OpenAPSAutoISFPlugin(
         val spanSec = (smbs.first().timestamp - smbs.last().timestamp).toDouble() / 1000.0
         return spanSec / (smbs.size - 1)
     }
+
+    // Meal and correction boluses (not SMB, not priming) in the window. Mcap, 2026-10-26.
+    private suspend fun normalBolusSum(now: Long, windowMs: Long): Double =
+        persistenceLayer.getBolusesFromTimeToTime(now - windowMs, now, ascending = false)
+            .filter { it.type == BS.Type.NORMAL }
+            .sumOf { it.amount }
 
     private suspend fun smbSum(now: Long, windowMs: Long): Double =
         persistenceLayer.getBolusesFromTimeToTime(now - windowMs, now, ascending = false)

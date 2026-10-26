@@ -252,6 +252,15 @@ enum class BooleanKey(
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
     // On by default (2026-10-20, per explicit request): a new install starts as the loop phone (Live) runs.
+    // Mcap (2026-10-26, per explicit request): normal boluses of the last 30 minutes count in the 2.1 U per 30 min SMB cap.
+    // On by default. The SMB-only sum that other rules read is not changed. See `smbCap30Min`.
+    ApsAutoIsfMealBolusInSmbCap(
+        "autoisf_meal_bolus_in_smb_cap",
+        true,
+        KeysStrings.pref_title_meal_bolus_in_smb_cap,
+        KeysStrings.pref_summary_meal_bolus_in_smb_cap,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfLowReboundGuardEnabled(
         "autoisf_low_rebound_guard_enabled",
         true,

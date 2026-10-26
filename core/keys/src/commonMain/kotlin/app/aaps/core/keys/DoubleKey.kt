@@ -329,6 +329,21 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    /**
+     * Rule A (2026-10-26, per explicit request): no SMB while the hypoprediction HP2 (`hypoPrediction2Mmol`) is below this,
+     * in mmol/L. 0 turns it off. Replayed over 5-26 Oct Client data: 1.3 U a day held back, including all SMBs before the
+     * 12 Oct low and most of those before the 26 Oct low, none before a BG above 12.
+     */
+    ApsAutoIsfHp2NoSmbBelow(
+        key = "hp2_no_smb_below",
+        defaultValue = 5.0,
+        min = 0.0,
+        max = 8.0,
+        title = KeysStrings.pref_title_hp2_no_smb_below,
+        summary = KeysStrings.pref_summary_hp2_no_smb_below,
+        unitType = UnitType.DOUBLE,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfBgAccelWeight(
         key = "bgAccel_ISF_weight",
         defaultValue = 0.0,

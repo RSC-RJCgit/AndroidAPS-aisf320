@@ -119,6 +119,16 @@ class AfterFastRiseSmbTest {
     }
 
     @Test
+    fun aRecentBolusCountsInTheThirtyMinuteCap() {
+        // 26 Oct 16:29: 2.2 U meal bolus 2 minutes earlier, SMBs 0.45 U before it in the window
+        val result = smbCap30Min(microBolus = 0.45, smbSum30 = 0.45, bolusSum30 = 2.2)
+        assertEquals(0.0, result.microBolus, 0.001)
+        assertEquals(" 30min SMB cap: 0.45 -> 0.0 (last30min 0.45U + 2.2U bolus of 2.1U cap) ", result.reason)
+        // A small bolus leaves room
+        assertEquals(0.4, smbCap30Min(microBolus = 0.4, smbSum30 = 0.2, bolusSum30 = 1.0).microBolus, 0.001)
+    }
+
+    @Test
     fun thirtyMinuteCapTrimsEvenWhenTheRiseHasStopped() {
         val result = smbCap30Min(microBolus = 1.0, smbSum30 = 1.8)
         assertEquals(0.3, result.microBolus, 0.001)
