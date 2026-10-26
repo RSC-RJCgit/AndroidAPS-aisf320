@@ -585,8 +585,8 @@ open class OpenAPSAutoISFPlugin(
         var exerciseRatio = 1.0
         // TODO eliminate
         val target_bg = (minBg + maxBg) / 2
-        if (highTemptargetRaisesSensitivity && isTempTarget && target_bg > normalTarget
-            || oapsProfile.low_temptarget_lowers_sensitivity && isTempTarget && target_bg < normalTarget
+        if (highTemptargetRaisesSensitivity && isTempTarget && Constants.isAboveNormalTarget(target_bg)
+            || oapsProfile.low_temptarget_lowers_sensitivity && isTempTarget && Constants.isBelowNormalTarget(target_bg)
         ) {
             // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
             // e.g.: Sensitivity ratio set to 0.8 based on temp target of 120; Adjusting basal from 1.65 to 1.35; ISF from 58.9 to 73.6
@@ -1240,8 +1240,8 @@ open class OpenAPSAutoISFPlugin(
         var sensitivityRatio: Double
         var origin_sens = ""
         val low_temptarget_lowers_sensitivity = preferences.get(BooleanKey.ApsAutoIsfLowTtLowersSens)
-        val exerciseModeActive = high_temptarget_raises_sensitivity && isTempTarget && target_bg > normalTarget
-        val resistanceModeActive = low_temptarget_lowers_sensitivity && isTempTarget && target_bg < normalTarget
+        val exerciseModeActive = high_temptarget_raises_sensitivity && isTempTarget && Constants.isAboveNormalTarget(target_bg)
+        val resistanceModeActive = low_temptarget_lowers_sensitivity && isTempTarget && Constants.isBelowNormalTarget(target_bg)
         var tempTargetRatio = 1.0
         if (exerciseModeActive || resistanceModeActive) {
             // w/ target 100, temp target 110 = .89, 120 = 0.8, 140 = 0.67, 160 = .57, and 200 = .44
@@ -1387,7 +1387,7 @@ open class OpenAPSAutoISFPlugin(
                 liftISF = bg_ISF * acce_ISF                                 // bg_ISF could become > 1 now
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
-            final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg, normalTarget)
+            final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg)
             factors?.record(acce_ISF, bg_ISF, pp_ISF, 1.0, final_ISF, glucose_status)
             return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
@@ -1456,7 +1456,7 @@ open class OpenAPSAutoISFPlugin(
                 consoleError.add("strongest autoISF factor ${round(liftISF, 2)} weakened to ${round(liftISF * acce_ISF, 2)} as bg decelerates already")
                 liftISF = liftISF * acce_ISF
             }
-            final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg, normalTarget)
+            final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg)
             factors?.record(acce_ISF, bg_ISF, pp_ISF, dura_ISF, final_ISF, glucose_status)
             return round(sens / final_ISF, 1)
         }
@@ -1535,7 +1535,7 @@ open class OpenAPSAutoISFPlugin(
 
     fun withinISFlimits(
         liftISF: Double, minISFReduction: Double, maxISFReduction: Double, sensitivityRatio: Double, origin_sens: String, temptargetSet: Boolean,
-        high_temptarget_raises_sensitivity: Boolean, target_bg: Double, normalTarget: Int
+        high_temptarget_raises_sensitivity: Boolean, target_bg: Double
     ): Double {
         var liftISFlimited: Double = liftISF
         if (liftISF < minISFReduction) {
@@ -1547,7 +1547,7 @@ open class OpenAPSAutoISFPlugin(
         }
         val finalISF: Double
         var originSensFinal = origin_sens
-        if (high_temptarget_raises_sensitivity && temptargetSet && target_bg > normalTarget) {
+        if (high_temptarget_raises_sensitivity && temptargetSet && Constants.isAboveNormalTarget(target_bg)) {
             finalISF = liftISFlimited * sensitivityRatio
             originSensFinal = " including exercise mode impact"
         } else if (liftISFlimited >= 1) {

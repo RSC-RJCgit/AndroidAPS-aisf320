@@ -205,7 +205,8 @@ A client needs much less from Nightscout than an admin token gives: it uploads n
 - **The master keeps the role as it is.** `ClientTokens.ensureRole` puts the permissions back if somebody changed them, every time a token is made and every time the Authorized clients screen opens. It stores the role only when it first makes a token.
 - **A client token** is a subject named `aaps-<client name>` with this one role and nothing else. The same name again gets the same token back (the same phone set up again). A subject of that name with other roles is the user's own token: it is never given out, changed or deleted (`NameTaken`). Names are not unique in Nightscout, so the master looks a subject up by `_id` and never trusts a name alone.
 - **The token a client really uses** is in the `subject` field Nightscout writes on every document (the subject's name, not the token; a client cannot choose it). The receiver keeps it in `AuthorizedClient.nsSubject` for each verified message, and the card shows "Own Nightscout token" or, in red, a token with more rights than a client needs.
-- **Removing a client** also deletes the client tokens named `nsSubject`. Tokens of other roles stay. If Nightscout cannot be reached then, the token stays and shows under "Read Nightscout only", to delete later.
+- **A client keeps its own token** (`AuthorizedClient.ownToken`): the first verified message written with the token the master made for it (`ClientTokens.subjectName`, `aaps-<client name>`) binds the client to it. That is the hello for a QR client, the first message after the key exchange for a PIN client, and the next message for a client paired before this. From then on the receiver refuses a command written with another token (another client's, or one with more rights) with `FailureReason.OtherToken`, even with a valid signature, so a pairing secret alone is not enough. Hello and ping still pass, so the pairing, the key exchange and the liveness keep working, and the phone can show why its commands are refused. The card says so in red (`TokenKind.NotItsOwn`). A client that never used its own token (the master could not make one, or the phone's login with it failed) is served as before.
+- **Removing a client** also deletes the client tokens named `nsSubject` and `ownToken`. Tokens of other roles stay. If Nightscout cannot be reached then, the token stays and shows under "Read Nightscout only", to delete later.
 - **The permission check** (`Sync.hasWritePermission`) is `ApiPermissions.isClient()` on a client (read everything, create and update in `settings`) and `isFull()` on a master. With the client role a client now shows "authorized", not "read only".
 - **`v3/status` is wrong for one collection** (Nightscout 15, `lib/api3/specific/status.js`: `for (let col in cols)` hands the collection's name to `permsForCol`, which reads `col.colName`, so it checks `api:undefined:create` and so on). Only wildcard rights show, and the client role is reported as read-only in `settings`, measured on a live server, while its writes there work. So `NSAndroidClientImpl.getStatus` asks `/api/v2/authorization/debug/check/api:settings:create` and `…:update` when status does not show full rights. Measured with a client token: entries read 200, settings list 200, settings write 201, settings delete 403, treatment delete 403, token list 401.
 
@@ -223,7 +224,7 @@ The "Add client" dialog has three ways:
 
 A PIN-paired client gets its own token through the key exchange (2.12).
 
-The master signs the cold and hot docs (2.13), since a client token can write to `settings` too. Not built yet: the master refusing a client's commands written with another token than its own.
+The master signs the cold and hot docs (2.13), since a client token can write to `settings` too, and refuses a client's commands written with another token than its own (above).
 
 ### 2.12 The key exchange: a new secret, and the client's own token
 
@@ -340,21 +341,23 @@ All confirmation builders live on the master in `MasterActionExecutorImpl`: `bui
 
 ## 5. Config / state mirroring
 
-The master publishes its running configuration across **two** `settings` docs, split by write frequency. Both are shaped `{date, utcOffset, app, schemaVersion, runningConfig}`; both use the constant `DOC_DATE = 946684800001L` (configuration snapshots, not timestamped events — a fixed date satisfies NS's immutable-`date` rule on re-PUT).
+The master publishes its running configuration across **two** `settings` docs, split by write frequency. Both are shaped `{date, utcOffset, app, schemaVersion, signed, signature}`, with `runningConfig` inside the signed text (§2.13); both use the constant `DOC_DATE = 946684800001L` (configuration snapshots, not timestamped events — a fixed date satisfies NS's immutable-`date` rule on re-PUT).
 
 ### 5.1 Cold & hot docs
 
 | | COLD (`SettingsIdentifiers.COLD`) | HOT (`SettingsIdentifiers.STATE`) |
 |---|---|---|
 | Debounce | 5 s (`COLD_DEBOUNCE_MS`) | 1 s (`HOT_DEBOUNCE_MS`) |
-| Carries | `syncedPrefs` (flat `Map<String,String>`), pump type, `isFakingTempsByExtendedBoluses`, version, plugin selection (`ActivePlugin*` keys), scene/quickwizard/automation/insulin defs, `authorizedClients` roster | active scene snapshot (or null) + `usedAutosensOnMainPhone` |
-| Triggers | WS-connect rising edge, any synced-key change, `EventConfigBuilderChange`, roster changes, `forceColdRepublish` | scene lifecycle (`hotKeys()`) |
+| Carries | `syncedPrefs` (flat `Map<String,String>`), pump type, `isFakingTempsByExtendedBoluses`, `usedAutosensOnMainPhone`, version, plugin selection (`ActivePlugin*` keys), scene/quickwizard/automation/insulin defs, `authorizedClients` roster | active scene snapshot (or null) only |
+| Triggers | WS-connect rising edge, any synced-key change, `EventConfigBuilderChange`, roster changes, `forceColdRepublish` | WS-connect rising edge, scene lifecycle (`hotKeys()`) |
 
 Kept separate so a cold-doc apply (which has no `activeScene` block) **never clears a running scene**.
 
+**A value goes in the doc whose triggers fire when it changes.** The master sends a doc when a key it watches changes, not when the content changes. `usedAutosensOnMainPhone` is computed from cold settings (`ApsUseAutosens`, the dynamic ISF switches, the APS plugin), so it is in the cold doc. In the hot doc, switching autosens off on the master did not reach the client until the next scene change. One input is master-only state and sends no doc: starting the autosens objective. The next cold publish carries it.
+
 **Client apply (read-only mirror):**
-- **Cold** → adopt version (notify on mismatch), switch `VirtualPump` to the master's pump type, apply each synced pref via `putRemote` (does **not** echo, §5.2), and mirror `isFakingTempsByExtendedBoluses` verbatim to `VirtualPump.fakeDataDetected` (null = older master → leave unchanged). This is a **read-only mirror** — the client must not derive these itself.
-- **Hot** → pass the active-scene snapshot (or null) to `ActiveSceneSync.applyActiveScene()` and put `usedAutosensOnMainPhone`.
+- **Cold** → adopt version (notify on mismatch), switch `VirtualPump` to the master's pump type, apply each synced pref via `putRemote` (does **not** echo, §5.2), mirror `isFakingTempsByExtendedBoluses` verbatim to `VirtualPump.fakeDataDetected` (null = older master → leave unchanged), and put `usedAutosensOnMainPhone`. This is a **read-only mirror** — the client must not derive these itself.
+- **Hot** → pass the active-scene snapshot (or null) to `ActiveSceneSync.applyActiveScene()`.
 
 Notable invariants:
 - **Raw value, not mode-adjusted.** `syncedPrefs` serializes the **raw** persisted value (or the computed default when unset), not `preferences.get()`'s mode-adjusted effective value. Each device re-applies the mode rules on read. Simple mode itself is synced, so both phones apply the same rules. The client-control switch is no exception (see §2.9).

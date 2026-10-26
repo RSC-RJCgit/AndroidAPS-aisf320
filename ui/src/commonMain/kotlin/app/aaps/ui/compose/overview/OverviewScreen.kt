@@ -38,6 +38,7 @@ import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.interfaces.pump.BolusProgressState
 import app.aaps.core.keys.StringKey
 import app.aaps.core.ui.compose.LocalPreferences
+import app.aaps.core.ui.compose.PHONE_COLUMN_MIN_WIDTH_DP
 import app.aaps.core.ui.compose.TABLET_MIN_SW_DP
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -67,8 +68,11 @@ import kotlinx.coroutines.delay
  */
 private const val DESKTOP_FULL_WIDTH_MIN_DP = 1400
 
-/** Narrower than this, the split layout's left panel leaves the graphs too little room, so it stays wide. */
-private const val SPLIT_LAYOUT_MIN_WIDTH_DP = 720f
+/**
+ * Narrower than this there is no room for two phone-width columns, so the layout stays wide. Also for a tablet: a nearly
+ * square tablet window got two columns narrower than any phone has (upstream, 2026-10).
+ */
+private const val SPLIT_LAYOUT_MIN_WIDTH_DP = 2f * PHONE_COLUMN_MIN_WIDTH_DP
 
 internal enum class OverviewLayout { WIDE, SPLIT, TABLET }
 
@@ -83,12 +87,12 @@ internal fun overviewLayout(choice: String, landscape: Boolean, tabletScreen: Bo
         !landscape        -> OverviewLayout.WIDE
         choice == "wide"  -> OverviewLayout.WIDE
         choice == "split" -> when {
-            tabletScreen -> OverviewLayout.TABLET
-            splitFits    -> OverviewLayout.SPLIT
-            else         -> OverviewLayout.WIDE
+            tabletScreen && splitFits -> OverviewLayout.TABLET
+            splitFits                 -> OverviewLayout.SPLIT
+            else                      -> OverviewLayout.WIDE
         }
 
-        else              -> if (tabletScreen && !wideDesktopWindow) OverviewLayout.TABLET else OverviewLayout.WIDE
+        else              -> if (tabletScreen && splitFits && !wideDesktopWindow) OverviewLayout.TABLET else OverviewLayout.WIDE
     }
 
 @Composable
@@ -133,6 +137,8 @@ fun OverviewScreen(
     // Disables the command chips' click (running mode / profile / temp target) on an unpaired client — same gate as nav/Manage.
     commandsAllowed: Boolean = true,
     formatDuration: (Long) -> String = { ms -> "${(ms / 60000L).toInt()}m" },
+    /** The "time to eat" bar, shown under the scene bar in every layout. */
+    eatReminderBanner: @Composable () -> Unit = {},
     paddingValues: PaddingValues,
     fabBottomOffset: Dp = 0.dp,
     /**
@@ -231,6 +237,7 @@ fun OverviewScreen(
                 endSceneEnabled = endSceneEnabled,
                 commandsAllowed = commandsAllowed,
                 formatDuration = formatDuration,
+                eatReminderBanner = eatReminderBanner,
                 overlaidBarsHeight = overlaidBarsHeight
             )
         } else if (layout == OverviewLayout.SPLIT) {
@@ -269,6 +276,7 @@ fun OverviewScreen(
                 endSceneEnabled = endSceneEnabled,
                 commandsAllowed = commandsAllowed,
                 formatDuration = formatDuration,
+                eatReminderBanner = eatReminderBanner,
                 overlaidBarsHeight = overlaidBarsHeight
             )
         } else {
@@ -307,6 +315,7 @@ fun OverviewScreen(
                     endSceneEnabled = endSceneEnabled,
                     commandsAllowed = commandsAllowed,
                     formatDuration = formatDuration,
+                    eatReminderBanner = eatReminderBanner,
                     overlaidBarsHeight = overlaidBarsHeight
             )
         }
@@ -314,7 +323,7 @@ fun OverviewScreen(
         // 2026-10-24, per explicit request: one tap switches between the wide and the split layout and keeps the choice
         // (the Landscape layout setting). Only in landscape, and only where split fits. A phone in landscape hides the top
         // bar, so the button sits in the corner of the screen itself.
-        if (isLandscape && (tabletScreen || splitFits)) {
+        if (isLandscape && splitFits) {
             val toSplit = layout == OverviewLayout.WIDE
             IconButton(
                 onClick = { preferences.put(StringKey.OverviewLandscapeLayout, if (toSplit) "split" else "wide") },

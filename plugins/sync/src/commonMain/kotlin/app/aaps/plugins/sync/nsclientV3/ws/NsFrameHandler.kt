@@ -111,8 +111,14 @@ class NsFrameHandler(
             nsClientV3Plugin().storeLastLoadedSrvModified()
         }
 
+        // advanceInitialLoadCursor = false below, for the same reason as the guard above: a live
+        // record must not move the first-load cursor either. It carries the time of "now", so
+        // during a first load it would make the REST load start at now and the history behind it -
+        // profile switches included - would never be read.
         when (collection) {
-            "devicestatus" -> nsDeviceStatusHandler.handleNewData(arrayOf(docString.toNSDeviceStatus()))
+            "devicestatus" -> decode(collection, raw) { docString.toNSDeviceStatus() }?.let {
+                nsDeviceStatusHandler.handleNewData(arrayOf(it))
+            }
 
             "entries"      -> {
                 // The full app and a client ignore main-site glucose when the second site supplies it.
@@ -122,13 +128,13 @@ class NsFrameHandler(
                         preferences.get(BooleanKey.NsClientBgFromLiveSite)
                     )
                 ) {
-                    docString.toNSSgvV3()?.let {
-                        nsIncomingDataProcessor().processSgvs(listOf(it), doFullSync = false)
+                    decode(collection, raw) { docString.toNSSgvV3() }?.let {
+                        nsIncomingDataProcessor().processSgvs(listOf(it), doFullSync = false, advanceInitialLoadCursor = false)
                         storeDataForDb.requestStoreGlucoseValues()
                     }
                 }
                 // The same collection also carries AAPS calibration entries.
-                docString.toCalibrationMbg()?.let {
+                decode(collection, raw) { docString.toCalibrationMbg() }?.let {
                     nsIncomingDataProcessor().processCalibrations(listOf(it), doFullSync = false)
                     storeDataForDb.requestStoreCalibrationEntries()
                 }
@@ -136,12 +142,12 @@ class NsFrameHandler(
 
             "profile"      -> appScope.launch { nsIncomingDataProcessor().processProfile(doc, doFullSync = false) }
 
-            "treatments"   -> docString.toNSTreatment()?.let {
-                nsIncomingDataProcessor().processTreatments(listOf(it), doFullSync = false)
+            "treatments"   -> decode(collection, raw) { docString.toNSTreatment() }?.let {
+                nsIncomingDataProcessor().processTreatments(listOf(it), doFullSync = false, advanceInitialLoadCursor = false)
                 storeDataForDb.requestStoreTreatments(fullSync = false)
             }
 
-            "foods"        -> docString.toNSFood()?.let {
+            "foods"        -> decode(collection, raw) { docString.toNSFood() }?.let {
                 nsIncomingDataProcessor().processFood(listOf(it))
                 storeDataForDb.requestStoreFoods()
             }
@@ -168,7 +174,7 @@ class NsFrameHandler(
                     nsClientV3Plugin().bumpMasterSignal(opened.signedAt ?: srvModified)
                 }
 
-            // Client: hot state doc - the active scene and runtime flags only. Kept apart from the
+            // Client: hot state doc - the active scene only. Kept apart from the
             // cold branch so this can never clear a running scene.
             config.AAPSCLIENT && identifier == SettingsIdentifiers.STATE                                  ->
                 masterDocVerifier().open(identifier, doc)?.let { opened ->
@@ -323,9 +329,27 @@ class NsFrameHandler(
      * socket.io listener, which is neither visible nor safe. Silence would be no better: a stream of
      * unreadable frames must not look the same as no frames at all.
      */
-    private fun drop(what: String, raw: String) {
-        aapsLogger.error(LTag.NSCLIENT, "Dropping unreadable $what frame: ${raw.take(200)}")
+    private fun drop(what: String, raw: String, reason: String? = null) {
+        val because = reason?.let { " ($it)" } ?: ""
+        aapsLogger.error(LTag.NSCLIENT, "Dropping unreadable $what frame$because: ${raw.take(200)}")
     }
+
+    /**
+     * Turns a document into its model, or drops the frame when that fails.
+     *
+     * Any uploader can write to Nightscout, so a document in a shape this version does not expect is
+     * normal, not a fault in AAPS. Thrown here, it escaped the socket.io listener and crashed the app,
+     * and again for every such document: a device status with `"uploader":"GG-Host"` did that every
+     * few minutes on 4.0.0-dev-e. Only the decoding is guarded. A failure while processing a document
+     * that did decode is a real fault and still surfaces.
+     */
+    private inline fun <T> decode(collection: String, raw: String, read: () -> T): T? =
+        try {
+            read()
+        } catch (e: Exception) {
+            drop(collection, raw, e.message)
+            null
+        }
 
     // Frame reading lives in NsWsPayload, which is tested on its own.
     private fun parse(raw: String): JsonObject? = NsWsPayload.parse(raw)

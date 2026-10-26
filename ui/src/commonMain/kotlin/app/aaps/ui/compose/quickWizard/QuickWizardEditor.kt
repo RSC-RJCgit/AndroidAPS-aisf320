@@ -30,7 +30,7 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.IntKey
-import app.aaps.core.objects.wizard.CarbsType
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.objects.wizard.QuickWizardMode
 import app.aaps.core.objects.wizard.mealExtra
 import app.aaps.core.ui.CoreUiStrings

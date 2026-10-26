@@ -75,6 +75,11 @@ enum class StringNonKey(
      * another phone's "currently active" is meaningless here.
      */
     ActiveScene(key = "active_scene", defaultValue = "", exportable = false),
+    /**
+     * The running "time to eat" timer (`EatReminder`), as JSON, or empty. Runtime state like [ActiveScene]: kept
+     * so the timer survives a restart, published on the hot channel so clients show it, never exported.
+     */
+    EatReminder(key = "eat_reminder", defaultValue = "", exportable = false),
 
     // Whole local profile list as one JSON document: {"lastChange": <ms>, "profiles": [ … ]}.
     // One key means one atomic apply and one last-writer-wins unit, which is what makes the profile
@@ -96,6 +101,8 @@ enum class StringNonKey(
     QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"bolus_wizard\"},{\"type\":\"plugin\",\"id\":\"NSClientSourcePlugin\"},{\"type\":\"quick_launch_config\"}]"),
     InsulinConfiguration("insulin_configuration", "{}", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     ComposeGraphConfig("compose_graphconfig", ""),
+    // The tab the Statistics screen opens on: the last one used (per-device UI state, not a user-facing preference)
+    StatsTab(key = "stats_tab", defaultValue = "", exportable = false),
 
     // Synthetic mirror of the active plugin per single-select category (value = plugin pluginId, defaults to
     // javaClass.simpleName). Bidirectional for APS/SENSITIVITY/SMOOTHING/CALIBRATION (a client may switch the

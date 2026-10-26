@@ -280,6 +280,7 @@ class PrepareGraphDataRunner(
                     dominantIsf = dominantFor(bg.timestamp, autoIsfRows),
                     rawValue = bg.noise?.takeIf { it > 10.0 }?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
                     ukfValue = ukfByTime[bg.timestamp]?.let { profileUtil.fromMgdlToUnits(it) } ?: 0.0,
+                    utcOffset = bg.utcOffset
                 )
             }
 

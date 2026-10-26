@@ -27,6 +27,13 @@ class OverviewLayoutTest {
     }
 
     @Test
+    fun aTabletWithoutRoomForTwoColumnsIsWide() {
+        // A nearly square tablet window (upstream, 2026-10): two columns there were narrower than any phone
+        assertEquals(OverviewLayout.WIDE, overviewLayout("auto", landscape = true, tabletScreen = true, splitFits = false, wideDesktopWindow = false))
+        assertEquals(OverviewLayout.WIDE, overviewLayout("split", landscape = true, tabletScreen = true, splitFits = false, wideDesktopWindow = false))
+    }
+
+    @Test
     fun wideForcesWide() {
         assertEquals(OverviewLayout.WIDE, overviewLayout("wide", landscape = true, tabletScreen = true, splitFits = true, wideDesktopWindow = false))
     }

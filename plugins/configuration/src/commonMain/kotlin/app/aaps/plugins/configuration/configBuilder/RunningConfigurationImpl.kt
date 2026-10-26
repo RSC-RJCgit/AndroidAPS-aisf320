@@ -2,6 +2,8 @@ package app.aaps.plugins.configuration.configBuilder
 
 import app.aaps.core.data.model.SceneLifecycle
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.alerts.EatReminder
+import app.aaps.core.interfaces.alerts.EatReminderState
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.RunningConfigurationKeys
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -33,6 +35,7 @@ import app.aaps.core.keys.interfaces.SyncChannel
 import app.aaps.core.keys.interfaces.UnitDoublePreferenceKey
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.nssdk.localmodel.configuration.NSActiveScene
+import app.aaps.core.nssdk.localmodel.configuration.NSEatReminder
 import app.aaps.core.nssdk.localmodel.configuration.NSRunningConfiguration
 import app.aaps.plugins.configuration.ConfigurationStrings
 import dev.zacsweers.metro.AppScope
@@ -62,7 +65,8 @@ class RunningConfigurationImpl(
     private val notificationManager: NotificationManager,
     private val nsClientRepository: NSClientRepository,
     private val constraintsChecker: ConstraintsChecker,
-    private val dateUtil: DateUtil
+    private val dateUtil: DateUtil,
+    private val eatReminder: EatReminder
 ) : RunningConfiguration, RunningConfigurationKeys {
 
     // Omit null fields so the frequently-published hot doc stays small.
@@ -89,12 +93,15 @@ class RunningConfigurationImpl(
             // activePumpInternal because a client only has VirtualPump (not the PumpWithConcentration wrapper).
             // Stays a real JSON boolean, as it was with org.json - everything under syncedPrefs is a string, this is not.
             put("isFakingTempsByExtendedBoluses", pumpInterface.isFakingTempsByExtendedBoluses)
+            // Computed from cold settings (the autosens and dynamic ISF switches, the APS plugin), so it goes in the cold
+            // doc, which is sent when they change. The hot doc is sent only when the scene changes.
+            put("usedAutosensOnMainPhone", constraintsChecker.isAutosensModeEnabled().value())
             put("version", config.VERSION_NAME)
         }
     }
 
-    // called in AAPS mode only — the small "hot" doc: active scene (if any) + computed runtime flags.
-    override fun activeSceneConfiguration(): JsonObject = buildJsonObject {
+    // called in AAPS mode only — the small "hot" doc: the active scene and the "time to eat" timer, if any.
+    override fun hotConfiguration(): JsonObject = buildJsonObject {
         activeSceneSync.activeSceneSnapshot()?.let { snapshot ->
             // Serialize from the wire DTO so the field set stays in lockstep with
             // [NSActiveScene] (no hand-maintained put() list to drift). explicitNulls=false
@@ -113,7 +120,10 @@ class RunningConfigurationImpl(
             // could not read a kotlinx tree.
             put("activeScene", wireJson.encodeToJsonElement(NSActiveScene.serializer(), wire))
         }
-        put("usedAutosensOnMainPhone", constraintsChecker.isAutosensModeEnabled().value())
+        eatReminder.state.value?.let {
+            val wire = NSEatReminder(startedAt = it.startedAt, endsAt = it.endsAt, durationMs = it.durationMs)
+            put("eatReminder", wireJson.encodeToJsonElement(NSEatReminder.serializer(), wire))
+        }
     }
 
     // All cold-synced values (plugin selection, plugin settings, scene/quick-wizard/automation/insulin
@@ -188,9 +198,9 @@ class RunningConfigurationImpl(
     }
 
     // Runtime state — published to the separate "hot" doc, not the cold config doc.
-    override fun hotKeys(): List<NonPreferenceKey> = listOf(StringNonKey.ActiveScene)
+    override fun hotKeys(): List<NonPreferenceKey> = listOf(StringNonKey.ActiveScene, StringNonKey.EatReminder)
 
-    // called in NSClient mode only — apply the cold config doc (everything except the active scene).
+    // called in NSClient mode only — apply the cold config doc (everything except the hot state).
     override fun applyCold(configuration: NSRunningConfiguration) {
         if (!config.AAPSCLIENT) {
             aapsLogger.error(LTag.CORE, "applyCold called on non-client build — ignored")
@@ -222,11 +232,11 @@ class RunningConfigurationImpl(
         // (incl. false, so turning it off on the master propagates); null = older master → leave the client flag as-is.
         // activePumpInternal (the real plugin) — NOT activePump, which is a PumpWithConcentration wrapper that isn't a VirtualPump.
         configuration.isFakingTempsByExtendedBoluses?.let { (activePlugin.activePumpInternal as? VirtualPump)?.fakeDataDetected = it }
+        configuration.usedAutosensOnMainPhone?.let { preferences.put(BooleanNonKey.AutosensUsedOnMainPhone, it) }
     }
 
-    // called in NSClient mode only — apply the hot doc (active scene + computed runtime flags).
-    // Kept separate from [applyCold] so a cold-doc apply (which carries no activeScene) never
-    // clears a running scene.
+    // called in NSClient mode only — apply the hot doc (the active scene and the "time to eat" timer).
+    // Kept separate from [applyCold] so a cold-doc apply (which carries neither) never clears them.
     override fun applyHot(configuration: NSRunningConfiguration) {
         if (!config.AAPSCLIENT) {
             aapsLogger.error(LTag.CORE, "applyHot called on non-client build — ignored")
@@ -235,7 +245,8 @@ class RunningConfigurationImpl(
         // activeScene: null on the wire means "no scene active" — clear locally.
         // Always pass through (even null) so master-side dismissal propagates.
         activeSceneSync.applyActiveScene(configuration.activeScene?.toSnapshot())
-        configuration.usedAutosensOnMainPhone?.let { preferences.put(BooleanNonKey.AutosensUsedOnMainPhone, it) }
+        // Same for the timer: null means none (or an older master that does not send it).
+        eatReminder.applyRemote(configuration.eatReminder?.let { EatReminderState(startedAt = it.startedAt, endsAt = it.endsAt, durationMs = it.durationMs) })
     }
 
     private fun NSActiveScene.toSnapshot() =

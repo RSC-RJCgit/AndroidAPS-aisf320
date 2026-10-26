@@ -58,12 +58,18 @@ fun VersionOverlay(
             text = patientName.trim().let { if (it.isEmpty()) version else "$version · $it" },
             modifier = Modifier.weight(1f).padding(end = 8.dp),
             color = versionColor,
-            fontSize = 10.sp
+            fontSize = 10.sp,
+            // Own line height: the inherited one (24 sp) made the box of this one line as tall as a
+            // chip, so where it is placed is where its text is.
+            lineHeight = 12.sp,
+            maxLines = 1
         )
         Text(
             text = if (site.isEmpty()) label else stringResource(UiStrings.overview_app_site, label, site),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 10.sp
+            fontSize = 10.sp,
+            lineHeight = 12.sp,
+            maxLines = 1
         )
     }
 }

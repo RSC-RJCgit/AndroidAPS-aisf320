@@ -44,4 +44,6 @@ class WizardExecutorImpl(
         roleBranch.commit(label, ClientControlActionDispatcher.Command.BolusCommit(bolusId, asAdvisor, correctionU = correctionU)) { onError ->
             masterActionExecutor.confirm(bolusId, source, onError, asAdvisor, correctionU)
         }
+
+    override fun discard(bolusId: Long) = roleBranch.discard { masterActionExecutor.discard(bolusId) }
 }

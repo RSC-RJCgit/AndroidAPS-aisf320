@@ -1,6 +1,6 @@
 package app.aaps.ui.compose.quickWizard.viewmodels
 
-import app.aaps.core.objects.wizard.CarbsType
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.QuickWizardMode
 import app.aaps.core.ui.compose.ScreenMode

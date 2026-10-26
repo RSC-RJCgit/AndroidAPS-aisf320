@@ -90,7 +90,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
     fun `entries document is processed as glucose and queued for storage`() = runTest {
         sut.onDataCreateUpdate(envelope("entries", sgvDoc()))
 
-        verify(nsIncomingDataProcessor).processSgvs(any(), eq(false), eq(false))
+        verify(nsIncomingDataProcessor).processSgvs(any(), eq(false), eq(false), eq(false))
         verify(storeDataForDb).requestStoreGlucoseValues()
     }
 
@@ -103,6 +103,31 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
         verify(storeDataForDb).requestStoreTreatments(fullSync = false)
     }
 
+    /**
+     * A live frame must never ask for the first-load cursor to be advanced.
+     *
+     * The record carries the time of "now". During a first load, letting it move the cursor makes
+     * the REST load ask for "treatments since now" instead of since now minus 100 days, so the
+     * whole history behind it is never read - and because the profile switch lives in that history,
+     * the client ends up with no active profile. The same frame also reaches the high-water mark,
+     * which is already guarded for this reason; this cursor was missed.
+     */
+    @Test
+    fun `a live entries frame does not advance the first load cursor`() = runTest {
+        sut.onDataCreateUpdate(envelope("entries", sgvDoc()))
+
+        verify(nsIncomingDataProcessor).processSgvs(any(), eq(false), eq(false), eq(false))
+    }
+
+    @Test
+    fun `a live treatments frame does not advance the first load cursor`() = runTest {
+        val doc = """{"identifier":"t1","srvModified":1000,"date":1000,"eventType":"Note","notes":"x"}"""
+
+        sut.onDataCreateUpdate(envelope("treatments", doc))
+
+        verify(nsIncomingDataProcessor).processTreatments(any(), eq(false), eq(false))
+    }
+
     @Test
     fun `devicestatus document goes to the device status handler`() = runTest {
         val doc = """{"identifier":"d1","srvModified":1000,"created_at":"2024-01-01T00:00:00Z"}"""
@@ -110,6 +135,38 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
         sut.onDataCreateUpdate(envelope("devicestatus", doc))
 
         verify(nsDeviceStatusHandler).handleNewData(any())
+    }
+
+    /**
+     * Seen on 4.0.0-dev-e: an uploader that writes `"uploader":"GG-Host"`, a name where an object is
+     * expected. Every such document crashed the app. It is now read, with no uploader battery.
+     */
+    @Test
+    fun `devicestatus with the uploader written as a string is still handled`() = runTest {
+        val doc = """{"identifier":"d1","srvModified":1000,"uploaderBattery":100,"uploader":"GG-Host"}"""
+
+        sut.onDataCreateUpdate(envelope("devicestatus", doc))
+
+        verify(nsDeviceStatusHandler).handleNewData(any(), eq(true))
+    }
+
+    /**
+     * Any uploader can write to Nightscout, so a document AAPS cannot decode is dropped. It used to
+     * throw out of the socket.io listener and crash the app.
+     */
+    @Test
+    fun `a devicestatus that cannot be decoded is dropped, not thrown`() = runTest {
+        sut.onDataCreateUpdate(envelope("devicestatus", """{"identifier":"d1","srvModified":1000,"pump":"broken"}"""))
+
+        verify(nsDeviceStatusHandler, never()).handleNewData(any(), any())
+    }
+
+    /** The same for every collection that is decoded into a model, not only device status. */
+    @Test
+    fun `a treatment that cannot be decoded is dropped, not thrown`() = runTest {
+        sut.onDataCreateUpdate(envelope("treatments", """{"identifier":"t1","srvModified":1000,"date":{"x":1},"eventType":"Note"}"""))
+
+        verify(storeDataForDb, never()).requestStoreTreatments(any())
     }
 
     /** Not covered on the Android side; pinned here so the merged version keeps it. */
@@ -135,7 +192,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
 
         sut.onDataCreateUpdate(envelope("entries", """{"identifier":"abc","date":1000,"sgv":100}"""))
 
-        verify(nsIncomingDataProcessor, never()).processSgvs(any(), any(), any())
+        verify(nsIncomingDataProcessor, never()).processSgvs(any(), any(), any(), any())
         verify(nsClientV3Plugin, never()).storeLastLoadedSrvModified()
         assertThat(lastModified.collections.entries).isEqualTo(0L)
     }

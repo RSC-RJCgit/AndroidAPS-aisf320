@@ -3,6 +3,8 @@ package app.aaps.plugins.sync.nsclientV3.clientcontrol
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
 import app.aaps.core.data.ui.ConfirmationRole
+import app.aaps.core.interfaces.alerts.EatReminder
+import app.aaps.core.interfaces.alerts.EatReminderAction
 import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import app.aaps.core.interfaces.bolus.RemoteCaller
 import app.aaps.core.interfaces.clientcontrol.FailureReason
@@ -100,6 +102,7 @@ internal class ClientControlReceiverTest {
     @Mock private lateinit var bolusProgressData: BolusProgressData
     @Mock private lateinit var commandQueue: CommandQueue
     @Mock private lateinit var masterSigningKey: MasterSigningKey
+    @Mock private lateinit var eatReminder: EatReminder
 
     // Same deterministic fake as the repository tests — encrypt/decrypt round-trip via reverse,
     // so the persisted form does not contain the original plaintext.
@@ -188,7 +191,8 @@ internal class ClientControlReceiverTest {
             aapsLogger,
             appScope,
             clientTokens,
-            masterSigningKey
+            masterSigningKey,
+            eatReminder
         )
     }
 
@@ -1224,6 +1228,69 @@ internal class ClientControlReceiverTest {
         assertThat(acks.last().status.name).isEqualTo("Ok")
     }
 
+    // -- the client's own Nightscout token ------------------------------------------------------
+
+    /** [message] from [clientId], written to Nightscout with the token [subject] (Nightscout puts its name in `subject`). */
+    private suspend fun sendWith(clientId: String, secret: ByteArray, message: ClientControlMessage, subject: String, counter: Long) {
+        val type = if (message is ClientControlMessage.Ping) "ping" else "dismiss_alarm"
+        sut.onSettingsDocChanged(
+            "${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}${type}_$clientId",
+            JsonObject(wrap(envelope(clientId, secret, message = message, counter = counter, wantsAck = true)) + ("subject" to JsonPrimitive(subject)))
+        )
+    }
+
+    /** Once a client has used its own token, a command written with another one is refused, even with a valid signature. */
+    @Test
+    fun aClientThatUsedItsOwnTokenIsRefusedACommandWrittenWithAnother() = runTest {
+        val (clientId, secret) = activeClient(ClientRole.Admin)
+        val acks = captureAcks(clientId)
+        sendWith(clientId, secret, ClientControlMessage.Ping, subject = "aaps-phone", counter = 2L)
+        assertThat(authorizedRepository.current(now).single().ownToken).isEqualTo("aaps-phone")
+
+        sendWith(clientId, secret, ClientControlMessage.DismissAlarm, subject = "mujtelefon", counter = 3L)
+
+        assertThat(acks.last().reason).isEqualTo(FailureReason.OtherToken.name)
+        verify(notificationManager, never()).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+    }
+
+    @Test
+    fun aClientWithItsOwnTokenIsServed() = runTest {
+        val (clientId, secret) = activeClient(ClientRole.Admin)
+        captureAcks(clientId)
+        sendWith(clientId, secret, ClientControlMessage.Ping, subject = "aaps-phone", counter = 2L)
+
+        sendWith(clientId, secret, ClientControlMessage.DismissAlarm, subject = "aaps-phone", counter = 3L)
+
+        verify(notificationManager).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+    }
+
+    /** The ping still passes with another token: the phone stays online and can show why its commands are refused. */
+    @Test
+    fun aBoundClientStillAnswersLivenessWithAnotherToken() = runTest {
+        val (clientId, secret) = activeClient(ClientRole.Admin)
+        val acks = captureAcks(clientId)
+        sendWith(clientId, secret, ClientControlMessage.Ping, subject = "aaps-phone", counter = 2L)
+
+        sendWith(clientId, secret, ClientControlMessage.Ping, subject = "mujtelefon", counter = 3L)
+
+        assertThat(acks.last().status.name).isEqualTo("Ok")
+    }
+
+    /**
+     * A client that never used its own token (the master could not make one, or the phone kept the token it had) is
+     * served as before: before the key exchange a PIN client writes with the user's token too.
+     */
+    @Test
+    fun aClientThatNeverUsedItsOwnTokenIsServedWithAnyToken() = runTest {
+        val (clientId, secret) = activeClient(ClientRole.Admin)
+        captureAcks(clientId)
+
+        sendWith(clientId, secret, ClientControlMessage.DismissAlarm, subject = "mujtelefon", counter = 2L)
+
+        verify(notificationManager).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+        assertThat(authorizedRepository.current(now).single().ownToken).isNull()
+    }
+
     @Test
     fun mealAssistantMayPrepareABolusAndItIsParkedForThatClient() = runTest {
         val (clientId, secret) = activeClient(ClientRole.MealAssistant)
@@ -1292,6 +1359,51 @@ internal class ClientControlReceiverTest {
         )
 
         verify(commandQueue).cancelAllBoluses(anyOrNull())
+    }
+
+    @Test
+    fun mealAssistantMayStopAndExtendTheEatReminder() = runTest {
+        val (clientId, secret) = activeClient(ClientRole.MealAssistant)
+        captureAcks(clientId)
+
+        sut.onSettingsDocChanged(
+            "${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}eat_reminder_$clientId",
+            wrap(envelope(clientId, secret, message = ClientControlMessage.EatReminderControl(EatReminderAction.EXTEND.name), counter = 5L))
+        )
+        sut.onSettingsDocChanged(
+            "${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}eat_reminder_$clientId",
+            wrap(envelope(clientId, secret, message = ClientControlMessage.EatReminderControl(EatReminderAction.STOP.name), counter = 6L))
+        )
+
+        verify(eatReminder).extend()
+        verify(eatReminder).stop()
+    }
+
+    @Test
+    fun readOnlyClientCannotTouchTheEatReminder() = runTest {
+        val (clientId, secret) = activeClient(ClientRole.ReadOnly)
+        captureAcks(clientId)
+
+        sut.onSettingsDocChanged(
+            "${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}eat_reminder_$clientId",
+            wrap(envelope(clientId, secret, message = ClientControlMessage.EatReminderControl(EatReminderAction.STOP.name), counter = 5L))
+        )
+
+        verify(eatReminder, never()).stop()
+    }
+
+    @Test
+    fun anUnknownEatReminderActionChangesNothing() = runTest {
+        val (clientId, secret) = activeClient(ClientRole.Admin)
+        captureAcks(clientId)
+
+        sut.onSettingsDocChanged(
+            "${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}eat_reminder_$clientId",
+            wrap(envelope(clientId, secret, message = ClientControlMessage.EatReminderControl("SNOOZE_FOREVER"), counter = 5L))
+        )
+
+        verify(eatReminder, never()).stop()
+        verify(eatReminder, never()).extend()
     }
 
     @Test

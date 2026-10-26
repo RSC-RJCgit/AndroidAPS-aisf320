@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -37,7 +38,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
-/** The QR code ways of adding a client and the client tokens, with the coroutines run at once. */
+/** The ways of adding a client and the client tokens, with the coroutines run at once. */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class AuthorizedClientsViewModelTokensTest {
 
@@ -142,6 +143,35 @@ internal class AuthorizedClientsViewModelTokensTest {
         verify(clientTokens, never()).tokenFor(any())
     }
 
+    /** The PIN way had no such check, so a second "Tablet" got the token of the first one at its key exchange. */
+    @Test
+    fun `the PIN way refuses a name that a client has already`() = runTest {
+        val sut = newSut()
+        whenever(repository.current(now)).thenReturn(listOf(AuthorizedClient(clientId = "c0", name = "tablet", encryptedSecret = "enc", state = ClientState.Active, createdAt = 0L)))
+
+        sut.confirmAdd("Tablet ", ClientRole.Admin, AuthorizedClientsViewModel.AddMethod.Pin)
+
+        assertThat(sut.qrDialog.value).isEqualTo(AuthorizedClientsViewModel.QrDialog.Problem(AuthorizedClientsViewModel.TokenProblem.NameInUse))
+        assertThat(sut.pairingOffer.value).isNull()
+        verify(repository, never()).addPending(any(), any(), any(), any(), anyOrNull())
+        verify(offerPublisher, never()).publishOffer(any(), any())
+    }
+
+    @Test
+    fun `the PIN way adds a client with a name of its own and shows the PIN`() = runTest {
+        val sut = newSut()
+        val entry = AuthorizedClient(clientId = "client-1", name = "Tablet", encryptedSecret = "enc", state = ClientState.Pending, createdAt = now, pairExpiresAt = now + 120_000L)
+        whenever(repository.addPending("Tablet", ClientRole.MealAssistant, AuthorizedClientsViewModel.PAIR_TTL_MS, now, null))
+            .thenReturn(AuthorizedClientsRepository.PendingResult(entry, "ab".repeat(32)))
+        whenever(offerPublisher.publishOffer(any(), any())).thenReturn(true)
+
+        sut.confirmAdd(" Tablet ", ClientRole.MealAssistant, AuthorizedClientsViewModel.AddMethod.Pin)
+
+        assertThat(sut.pairingOffer.value?.clientId).isEqualTo("client-1")
+        assertThat(sut.pairingOffer.value?.publishStatus).isEqualTo(AuthorizedClientsViewModel.PublishStatus.Published)
+        assertThat(sut.qrDialog.value).isNull()
+    }
+
     @Test
     fun `a client token that no client writes with is listed as not paired`() = runTest {
         val sut = newSut()
@@ -162,6 +192,30 @@ internal class AuthorizedClientsViewModelTokensTest {
 
         verify(repository).delete("c1")
         verify(clientTokens).deleteByName("aaps-Tablet")
+    }
+
+    /** It writes with another token now, but its own token is still its own: removing the client deletes that too. */
+    @Test
+    fun `removing a client that switched tokens deletes its own token too`() = runTest {
+        val sut = newSut()
+        val client = AuthorizedClient(clientId = "c1", name = "Tablet", encryptedSecret = "enc", state = ClientState.Active, createdAt = 0L, nsSubject = "mujtelefon", ownToken = "aaps-Tablet")
+        whenever(clientTokens.deleteByName(any())).thenReturn(ClientTokens.Result.Ok(1))
+
+        sut.requestDelete(client)
+        sut.confirmDelete()
+
+        verify(clientTokens).deleteByName("aaps-Tablet")
+    }
+
+    /** Its own token is not a token without a client because the client writes with another one for now. */
+    @Test
+    fun `the own token of a client that switched is not listed as not paired`() = runTest {
+        val client = AuthorizedClient(clientId = "c1", name = "Tablet", encryptedSecret = "enc", state = ClientState.Active, createdAt = 0L, nsSubject = "mujtelefon", ownToken = "aaps-Tablet")
+        whenever(repository.observe()).thenReturn(flowOf(listOf(client)))
+        val sut = newSut()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { sut.unpairedTokens.collect {} }
+
+        assertThat(sut.unpairedTokens.value).isEmpty()
     }
 
     @Test

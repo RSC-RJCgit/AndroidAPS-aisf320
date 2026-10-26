@@ -57,6 +57,7 @@ data class BgDataPoint(
     val rawValue: Double = 0.0,
     /** UKF-smoothed raw glucose in the user's units. 0 means this point has none. */
     val ukfValue: Double = 0.0,
+    val utcOffset: Long? = null,   // Stored offset in milliseconds; null for synthetic points.
 )
 
 // ============================================================================

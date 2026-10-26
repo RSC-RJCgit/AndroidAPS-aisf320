@@ -263,7 +263,7 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
-        verify(nsIncomingDataProcessor).processSgvs(listOf(reading), false, false)
+        verify(nsIncomingDataProcessor).processSgvs(listOf(reading), false, false, true)
         // The mark moves to the newest reading time, so the next question starts after it
         assertThat(nsClientV3Plugin.lastLoadedSrvModified.collections.entries).isEqualTo(now - 500)
     }

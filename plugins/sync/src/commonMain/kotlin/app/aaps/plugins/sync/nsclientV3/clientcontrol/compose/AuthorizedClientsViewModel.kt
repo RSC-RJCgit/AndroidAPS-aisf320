@@ -118,7 +118,7 @@ class AuthorizedClientsViewModel(
     /** Client tokens that no client in the list writes with: phones set up to read Nightscout, not paired. */
     val unpairedTokens: StateFlow<List<NSAuthSubject>> = combine(clients, _tokens) { list, state ->
         if (state !is TokensState.Ready) emptyList()
-        else state.subjects.filter { subject -> clientTokens.isClientToken(subject) && list.none { it.nsSubject == subject.name } }
+        else state.subjects.filter { subject -> clientTokens.isClientToken(subject) && list.none { it.nsSubject == subject.name || it.ownToken == subject.name } }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
 
     /** For each client id: is the token it writes with a client token, another (stronger) token, or not known yet. */
@@ -126,7 +126,10 @@ class AuthorizedClientsViewModel(
         list.associate { client -> client.clientId to tokenKind(client, state) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyMap())
 
-    /** The QR code for a new client, or the step before it (making the token) or what stopped it. */
+    /**
+     * The QR code for a new client, or the step before it (making the token) or what stopped it. The PIN way uses it
+     * only to say that the name is in use.
+     */
     private val _qrDialog = MutableStateFlow<QrDialog?>(null)
     val qrDialog: StateFlow<QrDialog?> = _qrDialog.asStateFlow()
 
@@ -171,7 +174,11 @@ class AuthorizedClientsViewModel(
         _dialogState.value = DialogState.EnterName
     }
 
-    /** True when a client with this name is in the list already; a QR code needs a name of its own for its token. */
+    /**
+     * True when a client with this name is in the list already. Every way of adding a client checks this: the master
+     * gives a client its Nightscout token by name (`ClientControlReceiver.ownTokenFor`), so two clients of one name
+     * would share one token, and removing one would cut off the other.
+     */
     private suspend fun nameInUse(name: String): Boolean =
         repository.current(dateUtil.now()).any { it.name.trim().equals(name.trim(), ignoreCase = true) }
 
@@ -293,6 +300,10 @@ class AuthorizedClientsViewModel(
         // click handler, and viewModelScope is Main.immediate, so the state writes below still land
         // on this frame unless the mutex is actually contended.
         publishJob = viewModelScope.launch {
+            if (nameInUse(name)) {
+                _qrDialog.value = QrDialog.Problem(TokenProblem.NameInUse)
+                return@launch
+            }
             val now = dateUtil.now()
             val result = repository.addPending(name.trim(), role, PAIR_TTL_MS, now)
             val payload = PairingPayload(
@@ -404,8 +415,8 @@ class AuthorizedClientsViewModel(
             offerPublisher.deleteKeyExchange(client.clientId)
             // Its token goes too, so the phone cannot read Nightscout any more. Only a client token: a token with
             // other roles is the user's own. If Nightscout cannot be reached now, the token stays and is listed as a
-            // token without a client, to delete later.
-            client.nsSubject?.let { clientTokens.deleteByName(it) }
+            // token without a client, to delete later. Its own token as well, when it writes with another one now.
+            listOfNotNull(client.nsSubject, client.ownToken).distinct().forEach { clientTokens.deleteByName(it) }
             refreshTokens()
         }
     }
@@ -460,6 +471,8 @@ class AuthorizedClientsViewModel(
 
     private fun tokenKind(client: AuthorizedClient, state: TokensState): TokenKind {
         val name = client.nsSubject ?: return TokenKind.Unknown
+        // Bound to its own token and now writing with another: its commands are refused. Known without Nightscout.
+        if (client.ownToken != null && name != client.ownToken) return TokenKind.NotItsOwn
         if (state !is TokensState.Ready) return TokenKind.Unknown
         val sameName = state.subjects.filter { it.name == name }
         return when {
@@ -527,7 +540,10 @@ class AuthorizedClientsViewModel(
         ClientToken,
 
         /** A token with more rights than a client needs, for example the user's admin token. */
-        OtherToken
+        OtherToken,
+
+        /** Not the client's own token, which it used before: the master refuses its commands. */
+        NotItsOwn
     }
 
     sealed interface QrDialog {

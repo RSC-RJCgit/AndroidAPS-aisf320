@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.QuickWizardMode
@@ -30,6 +31,8 @@ import app.aaps.core.ui.compose.icons.IcBolus
 import app.aaps.core.ui.compose.icons.IcCarbs
 import app.aaps.core.ui.compose.navigation.color
 import app.aaps.core.ui.compose.navigation.icon
+import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 
 /**
  * Carousel card displaying a QuickWizard entry.
@@ -132,7 +135,7 @@ fun QuickWizardCarouselCard(
                 val fromTime = dateUtil.timeString(dateUtil.secondsOfTheDayToMillisecondsOfHoursAndMinutes(entry.validFrom()))
                 val toTime = dateUtil.timeString(dateUtil.secondsOfTheDayToMillisecondsOfHoursAndMinutes(entry.validTo()))
                 Text(
-                    text = "$fromTime - $toTime",
+                    text = stringResource(InterfacesStrings.values_with_dash, fromTime, toTime),
                     style = MaterialTheme.typography.bodyMedium,
                     color = contentColor.copy(alpha = 0.7f),
                     textAlign = TextAlign.Center
@@ -145,16 +148,17 @@ fun QuickWizardCarouselCard(
 /**
  * Build detail text based on mode
  */
+@Composable
 private fun buildCarbsText(entry: QuickWizardEntry): String = when (entry.mode()) {
-    QuickWizardMode.INSULIN -> "${entry.insulin()} U"
+    QuickWizardMode.INSULIN -> stringResource(InterfacesStrings.format_insulin_units, entry.insulin())
     QuickWizardMode.CARBS, QuickWizardMode.WIZARD -> {
         // Carbs now and the extended carbs the button really gives (meal type or its own), as the confirmation shows them
-        val carbs = entry.carbsNow()
+        val carbs = stringResource(InterfacesStrings.format_carbs, entry.carbsNow())
         val carbs2 = entry.eCarbsGrams()
         if (carbs2 > 0) {
-            "${carbs}g + ${carbs2}g / ${entry.eCarbsDurationHours()}h → ${entry.eCarbsDelayMinutes()}min"
+            stringResource(UiStrings.values_with_plus, carbs, stringResource(InterfacesStrings.wizard_ecarbs, carbs2, entry.eCarbsDurationHours(), entry.eCarbsDelayMinutes()))
         } else {
-            "${carbs}g"
+            carbs
         }
     }
 }

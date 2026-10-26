@@ -19,8 +19,10 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
@@ -33,6 +35,7 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -70,7 +73,9 @@ internal class WizardDialogViewModelTest {
     @Mock private lateinit var automation: Automation
     @Mock private lateinit var wizardExecutor: WizardExecutor
     @Mock private lateinit var rxBus: RxBus
+    @Mock private lateinit var commandQueue: CommandQueue
 
+    private val smbBeingDelivered = MutableStateFlow(false)
     private val bolusWizardProvider: () -> BolusWizard = mock()
 
     private lateinit var sut: WizardDialogViewModel
@@ -91,14 +96,58 @@ internal class WizardDialogViewModelTest {
         // that store always exists; here an empty one stands in, so "no glucose" is the case these tests run.
         val ads = mock<AutosensDataStore>()
         whenever(iobCobCalculator.ads).thenReturn(ads)
+        whenever(commandQueue.smbBeingDelivered).thenReturn(smbBeingDelivered)
+        whenever(rxBus.toFlow(EventAutosensCalculationFinished::class)).thenReturn(MutableSharedFlow())
         Dispatchers.setMain(mainDispatcher)
         sut = WizardDialogViewModel(
             SavedStateHandle(), bolusWizardProvider, constraintChecker, profileFunction, profileUtil,
             profileRepository, activePlugin, ch, iobCobCalculator, persistenceLayer, preferences, config,
             rh, dateUtil, decimalFormatter, aapsLogger, runningModeGuard, automation, wizardExecutor, rxBus,
             glucoseStatusProvider,
-            CoroutineScope(UnconfinedTestDispatcher())
+            CoroutineScope(UnconfinedTestDispatcher()), commandQueue
         )
+    }
+
+    // The BG field is sent to the master with the other inputs. Filled once when the wizard opened, it dosed on a BG
+    // from minutes ago when the user came back to the wizard later.
+    @Test
+    fun `the BG field follows new readings until the user edits it`() {
+        val opened = WizardDialogUiState(bg = 6.1, bgAgeMinutes = 4, hasBgData = true)
+
+        val followed = opened.withNewReading(bg = 7.3, ageMinutes = 0)
+        assertThat(followed.bg).isEqualTo(7.3)
+        assertThat(followed.bgAgeMinutes).isEqualTo(0)
+
+        val edited = opened.copy(bg = 5.0, bgEdited = true)
+        assertThat(edited.withNewReading(bg = 7.3, ageMinutes = 0)).isEqualTo(edited)
+    }
+
+    @Test
+    fun `only a changed BG counts as edited`() {
+        val shown = sut.uiState.value.bg
+        sut.updateBg(shown)
+        assertThat(sut.uiState.value.bgEdited).isFalse()
+
+        sut.updateBg(shown + 1.0)
+        assertThat(sut.uiState.value.bgEdited).isTrue()
+    }
+
+    // #5381: the master calculates the dose only after the SMB has finished, with the SMB in IOB.
+    @Test
+    fun `OK waits while an SMB is being delivered`() {
+        mainDispatcher.scheduler.advanceUntilIdle()
+        smbBeingDelivered.value = true
+        mainDispatcher.scheduler.advanceUntilIdle()
+        assertThat(sut.uiState.value.smbBeingDelivered).isTrue()
+
+        val withInsulin = sut.uiState.value.copy(totalInsulin = 1.5)
+        assertThat(withInsulin.waitsForSmb).isTrue()
+        assertThat(withInsulin.copy(forcedRecordOnly = true).waitsForSmb).isFalse()
+        assertThat(withInsulin.copy(totalInsulin = 0.0).waitsForSmb).isFalse()
+
+        smbBeingDelivered.value = false
+        mainDispatcher.scheduler.advanceUntilIdle()
+        assertThat(sut.uiState.value.smbBeingDelivered).isFalse()
     }
 
     @AfterEach
@@ -111,6 +160,31 @@ internal class WizardDialogViewModelTest {
 
         assertThat(sut.uiState.value.notes).isEqualTo("wizard note")
         assertThat(sut.uiState.value.alarmChecked).isTrue()
+    }
+
+    // #5327: eating later turns the "time to eat" alarm on, as in 3.x. A manual untick is kept while the minutes change.
+    @Test
+    fun `eating later ticks the alarm, and an untick stays while the time changes`() {
+        assertThat(sut.uiState.value.alarmChecked).isFalse()
+
+        sut.updateCarbTime(15)
+        assertThat(sut.uiState.value.alarmChecked).isTrue()
+
+        sut.toggleAlarm(false)
+        sut.updateCarbTime(20)
+        assertThat(sut.uiState.value.alarmChecked).isFalse()
+
+        // Back to now and later again: a new decision, so it is ticked again.
+        sut.updateCarbTime(0)
+        sut.updateCarbTime(10)
+        assertThat(sut.uiState.value.alarmChecked).isTrue()
+    }
+
+    @Test
+    fun `eating earlier does not tick the alarm`() {
+        sut.updateCarbTime(-15)
+
+        assertThat(sut.uiState.value.alarmChecked).isFalse()
     }
 
     /**

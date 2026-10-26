@@ -1,5 +1,6 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.objects.wizard.QuickWizardEntryData.Companion.DEVICE_ALL
 import app.aaps.core.objects.wizard.QuickWizardEntryData.Companion.fromJsonObject
 import app.aaps.core.utils.lenientBoolean

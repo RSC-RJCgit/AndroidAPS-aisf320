@@ -10,13 +10,12 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.desktop.shell.appIconResource
 import app.aaps.desktop.shell.config.DesktopClientConfig
 import app.aaps.desktop.shell.loadAwtAppIcon
-import app.aaps.desktop.shell.platform.DesktopHistoryScope
 import app.aaps.desktop.shell.platform.DesktopSystemNotificationPlatform
-import app.aaps.desktop.shell.prefs.DesktopSp
+import app.aaps.desktop.shell.secure.DesktopStorage
+import app.aaps.desktop.shell.secure.KeyVault
 import app.aaps.implementation.logging.AAPSLoggerDesktop
 import app.aaps.shared.impl.utils.DateUtilImpl
 import app.aaps.shared.impl.utils.JvmDateFormatPlatform
-import app.aaps.ui.compose.history.HistoryScope
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ContributesTo
@@ -45,11 +44,18 @@ object DesktopPlatformBindings {
     // `L` is deferred: it reads Preferences, which needs a logger. See IosPlatformBindings.
     fun logger(logConfig: () -> L): AAPSLogger = AAPSLoggerDesktop(logConfig = logConfig)
 
-    /** A properties file next to the database, which `PreferencesImpl` sits on unchanged. */
+    /**
+     * The encrypted settings store next to the database, which `PreferencesImpl` sits on unchanged.
+     * Opened by `main` before the graph (see [DesktopStorage]), so this hands out that same store.
+     */
     @Provides
     @SingleIn(AppScope::class)
-    // The logger is passed as a function for the same reason as `L` above: it reads Preferences.
-    fun keyValueStore(logger: () -> AAPSLogger): KeyValueStore = DesktopSp(logger = logger)
+    fun keyValueStore(): KeyValueStore = DesktopStorage.open().store
+
+    /** Where the keys are: the OS key store, or files where there is none. */
+    @Provides
+    @SingleIn(AppScope::class)
+    fun keyVault(): KeyVault = DesktopStorage.open().vault
 
     @Provides
     @SingleIn(AppScope::class)
@@ -63,15 +69,5 @@ object DesktopPlatformBindings {
     @SingleIn(AppScope::class)
     fun systemNotificationPlatform(logger: AAPSLogger, config: Config, rh: TextResolver): SystemNotificationPlatform =
         DesktopSystemNotificationPlatform(logger, rh.gs(config.appName), loadAwtAppIcon(appIconResource(config)))
-
-    /**
-     * One history browsing window, app-scoped so every injection point sees the same one. Unscoped would hand out a fresh
-     * window per injection point: two windows calculating over different ranges, with the screen reading one and writing
-     * the other.
-     */
-    @Provides
-    @SingleIn(AppScope::class)
-    fun historyScope(windowFactory: DesktopHistoryWindowGraph.Factory): HistoryScope =
-        DesktopHistoryScope(windowFactory.create())
 
 }
