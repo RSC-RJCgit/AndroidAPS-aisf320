@@ -333,13 +333,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = value.paintStyle
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, value.size * scaledPxSize, mPaint)
-                    // The newest BG value, in the dot's colour, 1.3 x the SMB number size (those are 0.5 x). Right of the
+                    // The newest BG value, in the dot's colour, 1.6 x the SMB number size (those are 0.5 x). Right of the
                     // dot at its height, so it does not cover the SMB numbers above it; left of it when there is no room.
                     if (value.shape == Shape.BG && value.x == newestBgX && value is GlucoseValueDataPoint) {
                         val text = value.valueText
                         val oldAlign = mPaint.textAlign
                         mPaint.style = Paint.Style.FILL
-                        mPaint.textSize = scaledTextSize * 0.65f
+                        mPaint.textSize = scaledTextSize * 0.8f
                         mPaint.isFakeBoldText = true
                         mPaint.textAlign = Paint.Align.LEFT
                         val gap = scaledPxSize * 2f
