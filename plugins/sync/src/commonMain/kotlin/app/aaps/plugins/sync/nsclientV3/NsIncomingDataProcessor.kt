@@ -30,6 +30,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.calibratedLibre
 import app.aaps.core.utils.libreSpecial
@@ -135,8 +136,9 @@ class NsIncomingDataProcessor(
 
         if (sgvs is List<*>) { // V3 client
 
+            val fallbackRaw = config.platform == AppPlatform.Ios
             for (i in 0 until sgvs.size) {
-                val sgv = (sgvs[i] as NSSgvV3).toGV()
+                val sgv = (sgvs[i] as NSSgvV3).toGV(fallbackRawToSgv = fallbackRaw)
                 // The id on a live-site reading belongs to that other Nightscout.
                 // The uploader skips any glucose that already has an id, so the
                 // main site never receives it. Drop the other id here. A later
