@@ -724,6 +724,14 @@ class NSClientV3Plugin(
         preferences.put(NsclientBooleanKey.NsPaused, newState)
     }
 
+    fun startConnection(reason: String) {
+        nsConnection.start(reason)
+    }
+
+    fun stopConnection() {
+        nsConnection.stop()
+    }
+
     override fun detectedNsVersion(): String? = nsAndroidClient?.lastStatus?.version
 
     override val address: String get() = preferences.get(StringKey.NsClientUrl)

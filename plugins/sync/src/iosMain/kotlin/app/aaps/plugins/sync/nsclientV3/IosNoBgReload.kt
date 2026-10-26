@@ -6,6 +6,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.plugins.sync.nsclientV3.ws.IosForegroundWatcher
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -36,9 +37,22 @@ class IosNoBgReload(
     private val rule = NoBgReloadRule()
     private var started = false
 
+    private val foregroundWatcher = IosForegroundWatcher(
+        aapsLogger = aapsLogger,
+        onForeground = {
+            aapsLogger.debug(LTag.NSCLIENT, "iOS foreground: starting WS connection")
+            nsClient.startConnection("foreground")
+        },
+        onBackground = {
+            aapsLogger.debug(LTag.NSCLIENT, "iOS background: stopping WS connection")
+            nsClient.stopConnection()
+        }
+    )
+
     fun start() {
         if (started) return
         started = true
+        foregroundWatcher.start()
         scope.launch {
             while (isActive) {
                 delay(30_000L)
