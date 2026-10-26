@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -700,8 +701,14 @@ fun SecondaryGraphCompose(
         )
     }
 
+    // The normalizer comes first, here and in the model below (upstream #5376, ported 2026-10-27). Vico pairs lines and
+    // series by index, and when the series of this graph change it draws the new lines with the old model until the new
+    // model is built. With the normalizer at index 0 it is still paired with itself then, so the point spacing stays the
+    // same as in the other graphs. When it came last, the spacing shrank for that moment, Vico cut the scroll down to the
+    // new end, and the graph stayed shifted sideways.
     val lines = remember(primarySeries, seriesColors, iobLineStyle, cobLineStyle, normalizerLine, smbDoseLine) {
         buildList {
+            add(normalizerLine)
             for (spec in primarySeries) {
                 add(
                     when (val slot = spec.slot) {
@@ -726,7 +733,6 @@ fun SecondaryGraphCompose(
                     }
                 )
             }
-            add(normalizerLine)
         }
     }
 
@@ -1117,6 +1123,8 @@ fun SecondaryGraphCompose(
     }
     val secondaryAxisLines = remember(secondaryAxisLine, rightOverlays, seriesColors, normalizerLine) {
         buildList {
+            // The normalizer first, as in `lines` above
+            add(normalizerLine)
             add(secondaryAxisLine)
             rightOverlays.forEach { spec ->
                 add(
@@ -1128,7 +1136,6 @@ fun SecondaryGraphCompose(
                     }
                 )
             }
-            add(normalizerLine)
         }
     }
     // Secondary range: zero-aligned counterpart to primary when available, otherwise auto-range.
@@ -1160,7 +1167,11 @@ fun SecondaryGraphCompose(
 
     // Rebuilt only when the data or the axes change, not on every scroll step
     val axisScale = AxisScale(primaryRangeProvider, secondaryRangeProvider, basalRangeProvider, startAxisItemPlacer)
-    LaunchedEffect(
+    // One transaction after the other, and none is cancelled half-way (upstream #5376, ported 2026-10-27). An effect keyed
+    // on these inputs cancelled the running transaction instead. When that came just after Vico had stopped the animation
+    // of the one before, the lines stayed part-way between the old and the new scale while the labels showed the new one.
+    // Now the newest input waits for the running transaction, and the inputs in between are skipped.
+    val modelInputs = listOf<Any?>(
         processedSimpleSeries,
         processedDevSlopeMin,
         processedDeviationLines,
@@ -1180,7 +1191,9 @@ fun SecondaryGraphCompose(
         rightOverlays,
         maxX,
         axisScale
-    ) {
+    )
+    val latestModelInputs by rememberUpdatedState(modelInputs)
+    val latestSubmit by rememberUpdatedState<suspend () -> Unit>({
         // Always populate the model — even with no data / no real time range — so the chart frame
         // (axes, grid, now-line) renders the empty-state normalizer series instead of staying blank.
         // (Matches TreatmentBeltGraphCompose.) When data is absent the processed* lists are empty,
@@ -1189,9 +1202,9 @@ fun SecondaryGraphCompose(
             // Primary line layer — emit in the exact order of `primarySeries` so the line styles
             // (built from the same list) map 1:1 to the series.
             lineModel {
-                primarySeries.forEach { spec -> series(x = spec.x, y = spec.y) }
-                // Normalizer — ensures identical maxPointSize across all charts
+                // Normalizer first — ensures identical maxPointSize across all charts, see `lines`
                 series(x = normalizerX(maxX), y = NORMALIZER_Y)
+                primarySeries.forEach { spec -> series(x = spec.x, y = spec.y) }
             }
 
             // Block 2 → Basal layer (end axis, flipped) OR secondary series layer (end axis)
@@ -1219,6 +1232,8 @@ fun SecondaryGraphCompose(
                 }
             } else if (isDualAxis) {
                 lineModel {
+                    // Normalizer for end axis layer, first as in secondaryAxisLines
+                    series(x = normalizerX(maxX), y = NORMALIZER_Y)
                     if (processedSecondary.isNotEmpty()) {
                         series(x = processedSecondary.map { it.first }, y = processedSecondary.map { it.second })
                     } else {
@@ -1226,8 +1241,6 @@ fun SecondaryGraphCompose(
                     }
                     // Fork: SMB delivery / acce weight / pp weight on the right axis, in the order of secondaryAxisLines.
                     rightOverlays.forEach { spec -> series(x = spec.x, y = spec.y) }
-                    // Normalizer for end axis layer
-                    series(x = normalizerX(maxX), y = NORMALIZER_Y)
                 }
             }
 
@@ -1237,6 +1250,9 @@ fun SecondaryGraphCompose(
             // updated primaryRangeProvider.
             extras { it[AXIS_SCALE_KEY] = axisScale }
         }
+    })
+    LaunchedEffect(modelProducer) {
+        snapshotFlow { latestModelInputs }.collect { latestSubmit() }
     }
 
     val startAxis = VerticalAxis.rememberStart(

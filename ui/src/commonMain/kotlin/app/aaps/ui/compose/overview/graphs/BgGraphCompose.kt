@@ -23,6 +23,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -638,7 +640,18 @@ fun BgGraphCompose(
     } else emptyList()
     var epsLabelAnchors by remember { mutableStateOf(emptyList<SmbStackItem>()) }
 
-    LaunchedEffect(bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity, showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData, topBandLines, topBandLines5) {
+    // One rebuild after the other, and none is cancelled half-way (upstream #5376, ported 2026-10-27). An effect keyed on
+    // these inputs cancelled the running transaction on every scroll, zoom or new reading. When that came just after Vico
+    // had stopped the animation of the one before, the lines stayed part-way between the old and the new scale while the
+    // labels showed the new one. Now one collector lives as long as the graph: the newest input waits for the running
+    // rebuild, and the inputs in between are skipped.
+    val rebuildInputs = listOf<Any?>(
+        bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity,
+        showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData,
+        topBandLines, topBandLines5
+    )
+    val latestRebuildInputs by rememberUpdatedState(rebuildInputs)
+    val latestRebuild by rememberUpdatedState<suspend () -> Unit>({
         seriesRegistry[SERIES_REGULAR] = bgReadings
         seriesRegistry[SERIES_BUCKETED] = bucketedData
         seriesRegistry[SERIES_RAW] = rawPoints
@@ -733,6 +746,9 @@ fun BgGraphCompose(
             basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, markers, visibleTimeRange,
             bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max
         )
+    })
+    LaunchedEffect(modelProducer) {
+        snapshotFlow { latestRebuildInputs }.collect { latestRebuild() }
     }
 
     // Build lookup map for BUCKETED points: x-value -> BgDataPoint (for PointProvider)
