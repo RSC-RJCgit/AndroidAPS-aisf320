@@ -111,6 +111,9 @@ enum class BooleanKey(
     // hypoprediction line is always shown. True (default) = shown. List 3 "Clean graph, no text" (TT 5.244) turns it off; switched back
     // on here, in Settings. Local to the phone, like the other graph display switches.
     ApsAutoIsfShowGraphText("show_graph_text_lines", true, defaultedBySM = true),
+    // Mcap (2026-10-26, per explicit request): normal boluses of the last 30 minutes count in determine_basal's 2.1 U per
+    // 30 min SMB cap. On by default. smbSum30Min itself stays SMB only (see its own comment for why).
+    ApsAutoIsfMealBolusInSmbCap("autoisf_meal_bolus_in_smb_cap", true),
     // 2026-10-24, per explicit request: this phone sends a Bluetooth heartbeat that an iPhone AAPS client can use as a backup
     // when its RileyLink is not there (IphoneHeartbeatSender). Off by default. This phone's own choice, so not exported.
     IphoneHeartbeatSender("iphone_heartbeat_sender", false, exportable = false),

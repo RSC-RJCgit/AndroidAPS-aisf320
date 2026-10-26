@@ -2710,6 +2710,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // DetermineBasalAutoISF.kt) -- reverted to SMB-only (was briefly changed to include normal boluses
     // too, which turned out to affect that always-on dosing math, not what was actually being asked for
     // -- see the SMB_STACK_TOTAL yellow-label reconstruction in PrepareTreatmentsDataWorker.kt instead).
+    // Meal and correction boluses (not SMB) of the last 30 minutes, for the 30 min SMB cap only (Mcap, 2026-10-26).
+    private fun normalBolusSum30Min(): Double {
+        val now = dateUtil.now()
+        return persistenceLayer.getBolusesFromTimeToTime(now - 30 * 60_000L, now, ascending = false)
+            .filter { it.type == BS.Type.NORMAL }
+            .sumOf { it.amount }
+    }
+
     private fun smbSum30Min(): Double {
         val now = dateUtil.now()
         return persistenceLayer.getBolusesFromTimeToTime(now - 30 * 60_000L, now, ascending = false)
@@ -4978,6 +4986,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         } else duraFlatSince = 0L
         val duraCapActive = autoIsfMode && duraFlatCapApplies(glucoseStatus.glucose, iobData.iob, mealData.mealCOB, dateUtil.now())
         determineBasalAutoISF.duraFlatCapActive = duraCapActive
+        // Rule A (2026-10-26): no SMB while HP2 is below the setting, see DetermineBasalAutoISF.hp2NoSmbBelowMmol
+        determineBasalAutoISF.hp2NowMmol = liveHp2
+        determineBasalAutoISF.hp2NoSmbBelowMmol = preferences.get(DoubleKey.ApsAutoIsfHp2NoSmbBelow)
+        // Mcap (2026-10-26): boluses count in the 30 min SMB cap, see DetermineBasalAutoISF.bolusSum30ForCap
+        determineBasalAutoISF.bolusSum30ForCap = if (preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)) normalBolusSum30Min() else 0.0
         if (duraCapActive && !duraCapWasActive) addCarePortalNote("DuraCap")
         duraCapWasActive = duraCapActive
         val lastAppStart = preferences.get(LongKey.AppStart)
@@ -11814,6 +11827,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMin, dialogMessage = R.string.openapsama_autoISF_min_summary, title = R.string.openapsama_autoISF_min))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMax, dialogMessage = R.string.openapsama_autoISF_max_summary, title = R.string.openapsama_autoISF_max))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfMaxLow, dialogMessage = R.string.openapsama_autoISF_max_low_summary, title = R.string.openapsama_autoISF_max_low))
+                addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfHp2NoSmbBelow, dialogMessage = R.string.hp2_no_smb_below_summary, title = R.string.hp2_no_smb_below_title))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfMealBolusInSmbCap, summary = R.string.meal_bolus_in_smb_cap_summary, title = R.string.meal_bolus_in_smb_cap_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeight, dialogMessage = R.string.openapsama_bgAccel_ISF_weight_summary, title = R.string.openapsama_bgAccel_ISF_weight))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeightNormal, dialogMessage = R.string.autoisf_bgaccel_isf_weight_normal_summary, title = R.string.autoisf_bgaccel_isf_weight_normal_title))
                 addPreference(AdaptiveDoublePreference(ctx = context, doubleKey = DoubleKey.ApsAutoIsfBgAccelWeightHigh, dialogMessage = R.string.autoisf_bgaccel_isf_weight_high_summary, title = R.string.autoisf_bgaccel_isf_weight_high_title))

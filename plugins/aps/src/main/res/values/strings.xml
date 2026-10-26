@@ -223,6 +223,10 @@
     <string name="openapsama_lower_ISFrange_weight_summary">This is the weight applied while glucose is below target and which weakens ISF thereby potentially reducing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>
     <string name="openapsama_higher_ISFrange_weight_summary">This is the weight applied while glucose is above target and which strengthens ISF thereby potentially increasing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>
     <string name="openapsama_pp_ISF_weight_summary">This is the weight applied while glucose is rising and which strengthens ISF thereby potentially increasing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>
+    <string name="meal_bolus_in_smb_cap_title">Count boluses in the 30 min SMB cap</string>
+    <string name="meal_bolus_in_smb_cap_summary">A meal or correction bolus of the last 30 minutes counts in the 2.1 U per 30 minutes SMB cap, so SMBs pause after a large bolus.</string>
+    <string name="hp2_no_smb_below_title">No SMB while hypoprediction is below (mmol/L)</string>
+    <string name="hp2_no_smb_below_summary">No SMB while the hypoprediction HP2 (BG minus IOB, plus the deltas and COB/12) is below this value. Temp basal still works. 0 turns it off.</string>
     <string name="openapsama_bgAccel_ISF_weight_summary">This is the weight applied while glucose accelerates and which strengthens ISF thereby potentially increasing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>
     <string name="openapsama_bgBrake_ISF_weight_summary">This is the weight applied while glucose decelerates and which weakens ISF thereby potentially reducing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>
     <string name="openapsama_autoISF_max">Max autoISF ratio\n(autoISF_max)</string>

@@ -89,6 +89,19 @@ class DetermineBasalAutoISF @Inject constructor(
     // flat 6.4 built IOB to 1.46 U, and BG fell to 3.5 by 09:46. See duraFlatCapApplies in the plugin.
     var duraFlatCapActive: Boolean = false
 
+    // Rule A (2026-10-26, per explicit request): set by the plugin each cycle. No SMB while the live hypoprediction HP2
+    // ([hp2NowMmol], (BG - IOB) + 0.25 SDelta + 0.25 UKF delta5 + COB/12) is below [hp2NoSmbBelowMmol]; temp basal still
+    // works. A limit of 0 turns it off, and an HP2 that cannot be worked out (no UKF delta) never blocks. 26 Oct: HP2 was
+    // 3.9-5.1 while 3.15 U of SMBs followed a 2.2 U meal bolus, and BG fell from 10.9 to 3.8.
+    var hp2NowMmol: Double? = null
+    var hp2NoSmbBelowMmol: Double = 5.0
+
+    // Mcap (2026-10-26, per explicit request): set by the plugin each cycle. The normal (meal and correction) boluses of the
+    // last 30 minutes, counted in the 30 min SMB cap below only -- smbSum30Min stays SMB only, because the late-FastRise trim
+    // and other rules read it (including normal boluses in it was tried once and reverted for that reason). 0 when the
+    // setting is off. Replayed over 5-26 Oct: 0.87 U a day held back, incl. 2.05 U after the 26 Oct, 1.95 U after the 12 Oct and 1.95 U after the 22 Oct meal boluses that were followed by a low, and none before a BG above 12 within 4 hours.
+    var bolusSum30ForCap: Double = 0.0
+
     // Switch for the recent-low rebound guard ("LoReb": trims SMB after a recent low), from the setting
     // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
     // 2026-09-20 "for now" and became this toggle the same day). While off it never fires, so no LoReb note
@@ -1341,6 +1354,12 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("DuraCap: SMB disabled; ")
             enableSMB = false
         }
+        val hp2 = hp2NowMmol
+        if (enableSMB && hp2 != null && hp2NoSmbBelowMmol > 0.0 && hp2 < hp2NoSmbBelowMmol) {
+            consoleError.add("Rule A: HP2 ${round(hp2, 1)} < ${round(hp2NoSmbBelowMmol, 1)} - disabling SMB")
+            rT.reason.append("HP2 ${round(hp2, 1)} < ${round(hp2NoSmbBelowMmol, 1)}: SMB disabled; ")
+            enableSMB = false
+        }
 
         consoleError.add("BG projected to remain above ${convert_bg(min_bg)} for $minutesAboveMinBG minutes")
         if (minutesAboveThreshold < 240 || minutesAboveMinBG < 60) {
@@ -2489,12 +2508,13 @@ class DetermineBasalAutoISF @Inject constructor(
                 // rise flattened for two cycles while SMB continued, precisely when accumulated insulin
                 // still needed protection. Trim to the remaining budget rather than always zeroing.
                 val smbCap30Min = 2.1
-                val smbAllowance30Min = (smbCap30Min - smbSum30Min).coerceAtLeast(0.0)
+                val smbAllowance30Min = (smbCap30Min - smbSum30Min - bolusSum30ForCap).coerceAtLeast(0.0)
                 if (microBolus > smbAllowance30Min) {
                     val before30MinCap = microBolus
                     microBolus = smbAllowance30Min
-                    rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 2)} -> ${round(microBolus, 2)} (last30min ${round(smbSum30Min, 2)}U of ${round(smbCap30Min, 2)}U cap) ")
-                    consoleError.add("Cumulative SMB cap: ${round(smbSum30Min, 2)}U already delivered in last 30min vs ${round(smbCap30Min, 2)}U cap -> microBolus ${round(before30MinCap, 2)} trimmed to ${round(microBolus, 2)} ")
+                    val bolusText = if (bolusSum30ForCap > 0.0) " + ${round(bolusSum30ForCap, 2)}U bolus" else ""
+                    rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 2)} -> ${round(microBolus, 2)} (last30min ${round(smbSum30Min, 2)}U$bolusText of ${round(smbCap30Min, 2)}U cap) ")
+                    consoleError.add("Cumulative SMB cap: ${round(smbSum30Min, 2)}U$bolusText already delivered in last 30min vs ${round(smbCap30Min, 2)}U cap -> microBolus ${round(before30MinCap, 2)} trimmed to ${round(microBolus, 2)} ")
                 }
 // =====================================================
 // CUMULATIVE SMB CAP (rolling 10 min)

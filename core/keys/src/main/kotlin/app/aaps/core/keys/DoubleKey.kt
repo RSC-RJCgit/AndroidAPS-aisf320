@@ -43,6 +43,9 @@ enum class DoubleKey(
     // Low-BG counterpart to ApsAutoIsfMax above — added as a plain settings-only value for now, not
     // yet wired into any calculation (no low-BG branch exists yet to pick this over autoISF_max).
     ApsAutoIsfMaxLow("autoISF_max_low", 1.0, 1.0, 3.0, defaultedBySM = true),
+    // Rule A (2026-10-26, per explicit request): no SMB while the live hypoprediction HP2 is below this, in mmol. 0 = off.
+    // Replayed over 5-26 Oct Client data: 1.3 U a day held back, incl. all SMBs before the 12 Oct low and most before 26 Oct's.
+    ApsAutoIsfHp2NoSmbBelow("hp2_no_smb_below", 5.0, 0.0, 8.0),
     ApsAutoIsfBgAccelWeight("bgAccel_ISF_weight", 0.0, 0.0, 1.0, defaultedBySM = true),
     // The user's own configured "normal" bgAccel_ISF_weight (currently 0.70) — what AcceUp0.5/
     // RecentPodOff restore ApsAutoIsfBgAccelWeight to once their own conditions clear.
