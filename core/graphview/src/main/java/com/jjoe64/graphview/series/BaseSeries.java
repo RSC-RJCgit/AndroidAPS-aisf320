@@ -292,6 +292,16 @@ public abstract class BaseSeries<E extends DataPointInterface> implements Series
         }
     }
 
+    @Override
+    public double getTapDistance(float x, float y) {
+        if (mOnDataPointTapListener == null) return Double.POSITIVE_INFINITY;
+        double shortest = Double.POSITIVE_INFINITY;
+        for (PointF point : mDataPoints.keySet()) {
+            shortest = Math.min(shortest, Math.hypot(point.x - x, point.y - y));
+        }
+        return shortest < 120 ? shortest : Double.POSITIVE_INFINITY;
+    }
+
     /**
      * find the data point which is next to the
      * coordinates

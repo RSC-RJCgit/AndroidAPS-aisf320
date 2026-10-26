@@ -377,4 +377,11 @@ public class BarGraphSeries<E extends DataPointInterface> extends BaseSeries<E> 
         }
         return null;
     }
+
+    @Override
+    public double getTapDistance(float x, float y) {
+        // A tap inside a bar is a direct hit; keep the existing rectangle hit test.
+        return mOnDataPointTapListener != null && findDataPoint(x, y) != null
+                ? 0 : Double.POSITIVE_INFINITY;
+    }
 }

@@ -111,6 +111,11 @@ public interface Series<E extends DataPointInterface> {
      */
     void onTap(float x, float y);
 
+    /** Distance in pixels to a tappable point, or infinity when this series has no hit. */
+    default double getTapDistance(float x, float y) {
+        return Double.POSITIVE_INFINITY;
+    }
+
     /**
      * called when the series was added to a graph
      *

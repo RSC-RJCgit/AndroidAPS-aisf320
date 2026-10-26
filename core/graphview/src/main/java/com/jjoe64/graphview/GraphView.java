@@ -419,14 +419,22 @@ public class GraphView extends View {
 
         // is it a click?
         if (mTapDetector.onTouchEvent(event)) {
-            for (Series s : mSeries) {
-                s.onTap(event.getX(), event.getY());
-            }
+            // Choose across both scales before calling a listener. Sending the tap to every
+            // series let a nearby UKF raw point replace the popup for the glucose point touched.
+            List<Series> candidates = new ArrayList<>(mSeries);
             if (mSecondScale != null) {
-                for (Series s : mSecondScale.getSeries()) {
-                    s.onTap(event.getX(), event.getY());
+                candidates.addAll(mSecondScale.getSeries());
+            }
+            Series nearest = null;
+            double distance = Double.POSITIVE_INFINITY;
+            for (Series candidate : candidates) {
+                double candidateDistance = candidate.getTapDistance(event.getX(), event.getY());
+                if (candidateDistance < distance) {
+                    distance = candidateDistance;
+                    nearest = candidate;
                 }
             }
+            if (nearest != null) nearest.onTap(event.getX(), event.getY());
         }
 
         return b || a;
