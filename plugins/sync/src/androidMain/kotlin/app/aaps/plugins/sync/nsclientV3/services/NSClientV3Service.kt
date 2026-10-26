@@ -1,10 +1,8 @@
 package app.aaps.plugins.sync.nsclientV3.services
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
-import android.os.PowerManager
 import androidx.annotation.OpenForTesting
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.di.ApplicationScope
@@ -53,29 +51,23 @@ class NSClientV3Service : MetroService() {
     @Inject @ApplicationScope lateinit var appScope: CoroutineScope
 
     // The sockets are made here rather than handed in, so they are created, driven and closed on
-    // this service, while it holds the wake lock.
+    // this service.
     @Inject lateinit var nsSocketFactory: NsSocketFactory
 
     // The concrete type, not the NsConnection interface: the service reports its own websocket
     // state into it, which is not something every implementation of the port offers.
     @Inject lateinit var nsConnection: ServiceNsConnection
 
-
-    private var wakeLock: PowerManager.WakeLock? = null
     private val binder: IBinder = LocalBinder(this)
 
-    @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
-        wakeLock = (getSystemService(POWER_SERVICE) as PowerManager).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AndroidAPS:NSClientService")
-        wakeLock?.acquire()
         initializeWebSockets("onCreate")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         shutdownWebsockets()
-        if (wakeLock?.isHeld == true) wakeLock?.release()
     }
 
     class LocalBinder(service: NSClientV3Service) : Binder() {
