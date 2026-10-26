@@ -104,6 +104,7 @@ class IosRileyLinkHeartbeat(
     private var lastBackupValueAt = 0L
     private var backupConnected = false
     private var operationStatus = ""
+    private val syncGate = HeartbeatSyncGate()
 
     // Found while scanning: identifier -> (device, signal strength)
     private val found = mutableMapOf<String, Pair<CBPeripheral, Int>>()
@@ -237,6 +238,13 @@ class IosRileyLinkHeartbeat(
         val inactive = backups().map { it.second }.filter { it !in receivingNames }.distinct()
         if (inactive.isNotEmpty()) lines.add(rh.gs(ImplementationStrings.ios_heartbeat_verified_inactive, inactive.joinToString(", ")))
         if (preferences.get(StringNonKey.IosHeartbeatSeen).isNotBlank()) lines.add(rh.gs(ImplementationStrings.ios_heartbeat_detected_only))
+        lines.add(rh.gs(if (keepAlive.silentAudioPlaying) ImplementationStrings.ios_heartbeat_audio_playing else ImplementationStrings.ios_heartbeat_audio_stopped))
+        if (enabled) {
+            lines.add(rh.gs(ImplementationStrings.ios_heartbeat_sync_interval))
+            syncGate.lastRequestAt?.let { last ->
+                lines.add(rh.gs(ImplementationStrings.ios_heartbeat_sync_last, dateUtil.dateAndTimeAndSecondsString(last)))
+            }
+        }
         val text = lines.distinct().joinToString("\n")
         if (preferences.get(StringKey.IosRileyLinkStatus) != text) preferences.put(StringKey.IosRileyLinkStatus, text)
     }
@@ -322,7 +330,17 @@ class IosRileyLinkHeartbeat(
 
     // What each heartbeat does while iOS lets the app run for a few seconds
     private fun wake(reason: String) {
-        nsClient.resend(reason)
+        // Keep per-tick heartbeat handling and alarm checks. Only the extra sync request is throttled.
+        if (syncGate.shouldRequestSync(dateUtil.now())) {
+            try {
+                nsClient.resend(reason)
+                aapsLogger.debug(LTag.CORE, "Heartbeat sync requested: $reason (five-minute interval)")
+            } catch (e: Exception) {
+                // A failed network request must not skip this heartbeat's local alarm checks.
+                aapsLogger.error(LTag.CORE, "Heartbeat sync request failed", e)
+            }
+            refreshStatus()
+        }
         scope.launch {
             try {
                 periodicMaintenance.runOnce()

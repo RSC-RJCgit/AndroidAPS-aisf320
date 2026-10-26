@@ -151,6 +151,10 @@
     <string name="ios_heartbeat_test_not_started" comment="%1$s=selected device label">Selected for testing: %1$s. Test not running. Enable the heartbeat switch and Bluetooth, then select the device again.</string>
     <string name="ios_heartbeat_verified_inactive" comment="%1$s=names of verified backups">Verified backups, not currently providing recent heartbeats: %1$s</string>
     <string name="ios_heartbeat_detected_only">The device list contains detections only, not proof of a working heartbeat.</string>
+    <string name="ios_heartbeat_audio_playing">Silent audio: PLAYING</string>
+    <string name="ios_heartbeat_audio_stopped">Silent audio: STOPPED</string>
+    <string name="ios_heartbeat_sync_interval">Heartbeat-triggered Nightscout sync: every 5 minutes. Heartbeat reception and alarm checks continue on each tick.</string>
+    <string name="ios_heartbeat_sync_last" comment="%1$s=date/time of the last heartbeat-triggered sync request">Last heartbeat-triggered sync request: %1$s</string>
     <string name="ios_background_stopped">AAPS has stopped running in the background. Open it to start it again.</string>
     <string name="ios_battery_falling" comment="iOS phone battery alarm. %1$d=battery percent now, %2$d=how many percent it fell in the last 30 minutes. Example: Phone battery 45% and falling fast: 6% in the last 30 minutes.">Phone battery %1$d%% and falling fast: %2$d%% in the last 30 minutes.</string>
 </resources>

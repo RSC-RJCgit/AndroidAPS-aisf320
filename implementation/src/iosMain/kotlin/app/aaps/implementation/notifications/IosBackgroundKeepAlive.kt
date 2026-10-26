@@ -82,6 +82,9 @@ class IosBackgroundKeepAlive(
 
     private val scope = CoroutineScope(Dispatchers.Main)
     private var player: AVAudioPlayer? = null
+    /** Actual silent-loop playback, not the setting or the shared audio-session state. Read on the main thread. */
+    val silentAudioPlaying: Boolean
+        get() = player?.playing == true
     private var started = false
     private var stoppedNoticeJob: Job? = null
 
