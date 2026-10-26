@@ -20,6 +20,8 @@ import platform.UserNotifications.UNNotificationInterruptionLevel.UNNotification
 import platform.UserNotifications.UNNotificationInterruptionLevel.UNNotificationInterruptionLevelTimeSensitive
 import platform.UserNotifications.UNNotificationRequest
 import platform.UserNotifications.UNUserNotificationCenter
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * The system tray half of notifications on iOS.
@@ -109,8 +111,10 @@ class IosSystemNotificationPlatform(
             content = content,
             trigger = null
         )
-        center.addNotificationRequest(request) { error ->
-            if (error != null) aapsLogger.error(LTag.NOTIFICATION, "Cannot post notification: $error")
+        dispatch_async(dispatch_get_main_queue()) {
+            center.addNotificationRequest(request) { error ->
+                if (error != null) aapsLogger.error(LTag.NOTIFICATION, "Cannot post notification: $error")
+            }
         }
     }
 

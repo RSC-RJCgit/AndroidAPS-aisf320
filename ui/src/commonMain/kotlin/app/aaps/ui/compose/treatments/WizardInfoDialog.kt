@@ -2,6 +2,8 @@ package app.aaps.ui.compose.treatments
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -46,14 +48,16 @@ internal fun WizardInfoDialog(
             )
         },
         text = {
-            WizardInfoDialogContent(
-                bcr = bcr,
-                bgString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseValue),
-                isfInUnits = profileUtil.fromMgdlToUnits(bcr.isf),
-                trendString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseTrend * 3),
-                decimalFormatter = decimalFormatter,
-                timeString = dateUtil.dateAndTimeAndSecondsString(bcr.timestamp)
-            )
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                WizardInfoDialogContent(
+                    bcr = bcr,
+                    bgString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseValue),
+                    isfInUnits = profileUtil.fromMgdlToUnits(bcr.isf),
+                    trendString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseTrend * 3),
+                    decimalFormatter = decimalFormatter,
+                    timeString = dateUtil.dateAndTimeAndSecondsString(bcr.timestamp)
+                )
+            }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
