@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -165,8 +168,12 @@ internal fun ManageBottomSheetContent(
     // True on a master / reachable client; false on a client whose master is unreachable or has control disabled.
     // Drives the banner AND the per-button disabled state (relayed buttons grey out, only Pair-with-master stays live).
     val editingEnabled = masterEditingEnabled()
+    // The iOS sheet can offer unbounded height during rotation. Bound the scroll viewport
+    // using the current window, leaving room for the sheet handle and screen edges.
+    val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
     Column(
         modifier = Modifier
+            .heightIn(max = (windowHeight * 0.85f).coerceAtLeast(1.dp))
             .consumeOverscroll()
             .verticalScroll(rememberScrollState())
             .padding(bottom = 24.dp)

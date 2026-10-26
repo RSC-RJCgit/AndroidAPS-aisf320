@@ -48,8 +48,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -404,14 +402,16 @@ fun GraphsSection(
 
     // Set just before this code moves the main graph, so that move is not counted as a finger drag.
     val skipInteractionUntilMs = remember { longArrayOf(0L) }
-    // When a finger last touched the graphs area. A lower graph that moves on its own at startup (its saved or
-    // first-layout position) is not a drag: only a move within GRAPH_TOUCH_WINDOW_MS of a real touch is.
+    // Only horizontal drags and pinches permit a lower graph to drive the shared timeline.
+    // A page scroll must not turn a lower graph's layout change into time navigation.
     val lastTouchMs = remember { longArrayOf(0L) }
+    val pageScrolling = remember { booleanArrayOf(false) }
     // When a move was last copied to the other graphs. A fling keeps going after the finger lifts, on iOS for more
     // than GRAPH_TOUCH_WINDOW_MS. It then counted as "moved by itself" and the other graphs were pulled back while the
     // flung one kept going (2026-10-20). Each copy keeps the move counted as the user's for GRAPH_FLING_CHAIN_MS more.
     val lastShareMs = remember { longArrayOf(0L) }
     fun recentTouch(): Boolean {
+        if (pageScrolling[0]) return false
         val now = dateUtil.now()
         return now - lastTouchMs[0] < GRAPH_TOUCH_WINDOW_MS ||
             (lastTouchMs[0] != 0L && now - lastShareMs[0] < GRAPH_FLING_CHAIN_MS)
@@ -907,14 +907,12 @@ fun GraphsSection(
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
             .graphZoomControls(zoomStep, panStep)
-            // Passive: sees every touch before the graphs do and consumes nothing.
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        awaitPointerEvent(PointerEventPass.Initial)
-                        lastTouchMs[0] = dateUtil.now()
-                    }
-                }
+            .onScrollOrZoomGesture(onVerticalScroll = {
+                // Cancel any recent horizontal drag/fling permission as soon as a page scroll starts.
+                pageScrolling[0] = true
+            }) {
+                pageScrolling[0] = false
+                lastTouchMs[0] = dateUtil.now()
             }
     ) {
         if (showZoomButtons) {

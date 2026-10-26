@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
@@ -219,9 +220,8 @@ const val STARTUP_GUARD_INTERVAL_MS = 5_000L
 const val STARTUP_GUARD_GAP_MINUTES = 12.0
 
 /**
- * Calls [onGesture] when the user scrolls or zooms the chart with a pointer: when a finger moves past the
- * touch slop or a second finger comes down, again when the gesture ends (so the [INTERACTION_GRACE_MS]
- * window counts from the last touch), and on a mouse wheel event.
+ * Calls [onGesture] during a horizontal drag or pinch, again when it ends, and on a
+ * horizontal or modified mouse wheel event. Vertical page scrolling does not count.
  *
  * Taps do not count. Scroll or zoom changes made by code do not reach here, which is the point: the
  * "use scroll or zoom on BG chart" objective must only be completed by the user.
@@ -229,28 +229,55 @@ const val STARTUP_GUARD_GAP_MINUTES = 12.0
  * Events are observed in the [PointerEventPass.Initial] pass and never consumed, so the chart still
  * gets every event.
  */
-fun Modifier.onScrollOrZoomGesture(onGesture: () -> Unit): Modifier = pointerInput(onGesture) {
+fun Modifier.onScrollOrZoomGesture(
+    onVerticalScroll: () -> Unit = {},
+    onGesture: () -> Unit
+): Modifier = pointerInput(onGesture, onVerticalScroll) {
     awaitPointerEventScope {
         var downPosition: Offset? = null
         var moved = false
+        var verticalDrag = false
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
             val pressed = event.changes.filter { it.pressed }
             val start = downPosition
             when {
-                event.type == PointerEventType.Scroll -> if (!event.keyboardModifiers.isCtrlPressed) onGesture()
+                event.type == PointerEventType.Scroll -> {
+                    if (event.keyboardModifiers.isCtrlPressed || event.keyboardModifiers.isShiftPressed ||
+                        event.changes.any { abs(it.scrollDelta.x) > abs(it.scrollDelta.y) }
+                    ) onGesture() else onVerticalScroll()
+                }
 
                 pressed.isEmpty()                     -> {
                     if (moved) onGesture()
                     downPosition = null
                     moved = false
+                    verticalDrag = false
                 }
 
                 start == null                         -> downPosition = pressed.first().position
 
-                !moved && (pressed.size > 1 || (pressed.first().position - start).getDistance() > viewConfiguration.touchSlop) -> {
+                pressed.size > 1 -> {
                     moved = true
                     onGesture()
+                }
+
+                moved -> onGesture()
+
+                verticalDrag -> onVerticalScroll()
+
+                !verticalDrag -> {
+                    val distance = pressed.first().position - start
+                    if (distance.getDistance() > viewConfiguration.touchSlop) {
+                        if (abs(distance.x) > abs(distance.y)) {
+                            moved = true
+                            onGesture()
+                        } else {
+                            // Keep this page scroll vertical even if the finger later drifts sideways.
+                            verticalDrag = true
+                            onVerticalScroll()
+                        }
+                    }
                 }
             }
         }
