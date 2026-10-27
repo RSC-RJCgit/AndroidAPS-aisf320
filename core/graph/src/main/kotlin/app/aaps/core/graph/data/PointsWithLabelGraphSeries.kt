@@ -334,7 +334,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         val bglOnly = if (parts.size > 1) parts.last() else value.label
                         val py = endY - scaledPxSize
                         canvas.withRotation(-45f, endX, py) {
-                            mPaint.textSize = (scaledTextSize * 0.6f * 0.8f).toFloat()
+                            mPaint.textSize = scaledTextSize * 0.8f
                             mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))
                             mPaint.isFakeBoldText = true
                             drawText(bglOnly, endX + scaledPxSize, py, mPaint)

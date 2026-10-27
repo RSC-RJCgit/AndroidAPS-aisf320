@@ -18,6 +18,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.util.TypedValue
 import android.view.LayoutInflater
@@ -3589,6 +3591,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val secondaryGraphsData: ArrayList<GraphData> = ArrayList()
 
         val now = System.currentTimeMillis()
+        val labelBg = lastBgData.lastBg()?.takeIf { historicalStartTime == null }
+        val labelBgText = labelBg?.let { profileUtil.fromMgdlToStringInUnits(it.recalculated) }
+        val labelBgColor = lastBgData.lastBgColor(context)
+        val labelBgIsActual = lastBgData.isActualBg()
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
             val secondGraphData = graphDataProvider.get().with(secondaryGraphs[g], overviewData)
             var useABSForScale = false
@@ -3752,9 +3758,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 3    -> if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) listOf(rh.gs(R.string.graph_label_notes)) else emptyList()
                 else -> emptyList()
             }
-            secondaryGraphsLabel[g].text = SpannableStringBuilder(rh.gs(R.string.graph_short_number, g + 1)).append(" ")
+            val graphLabel = SpannableStringBuilder(rh.gs(R.string.graph_short_number, g + 1)).append(" ")
                 .append(stepsLinesLabel(overviewMenus.enabledTypes(g + 1), rh, context))
                 .append(extras.joinToString(" "))
+            if (g < 4 && labelBgText != null) {
+                graphLabel.append("  ")
+                val valueStart = graphLabel.length
+                graphLabel.append(labelBgText)
+                graphLabel.setSpan(ForegroundColorSpan(labelBgColor), valueStart, graphLabel.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                if (!labelBgIsActual)
+                    graphLabel.setSpan(StrikethroughSpan(), valueStart, graphLabel.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            secondaryGraphsLabel[g].text = graphLabel
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal) ||
