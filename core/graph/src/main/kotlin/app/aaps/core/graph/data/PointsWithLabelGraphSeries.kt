@@ -329,7 +329,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = value.paintStyle
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, value.size * scaledPxSize, mPaint)
-                    if (value == points.lastOrNull() && value.label.isNotEmpty()) {
+                    if (value == values.lastOrNull() && value.label.isNotEmpty()) {
                         drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
                     }
                 } else if (value.shape == Shape.IOB_PREDICTION || value.shape == Shape.BUCKETED_BG) {
