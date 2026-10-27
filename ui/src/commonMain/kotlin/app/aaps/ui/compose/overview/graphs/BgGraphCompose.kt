@@ -714,7 +714,7 @@ fun BgGraphCompose(
             bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
         val markDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
         // A zero bolus gets a small arrow (zeroBolusArrows), not the big mark
-        val bolusPoints = if (automaticCleanGraph) emptyList() else treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 }.mapNotNull { bolus ->
+        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 }.mapNotNull { bolus ->
             nearest(bolus.timestamp)?.let { bolus.timestamp to it }
         }
         val carbPoints = treatments.carbs.mapNotNull { carb ->
