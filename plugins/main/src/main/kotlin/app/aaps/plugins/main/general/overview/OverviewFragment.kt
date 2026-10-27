@@ -294,14 +294,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         binding.graphsLayout.bgGraph.gridLabelRenderer?.gridColor = rh.gac(context, app.aaps.core.ui.R.attr.graphGrid)
         binding.graphsLayout.bgGraph.gridLabelRenderer?.reloadStyles()
         binding.graphsLayout.bgGraph.gridLabelRenderer?.labelVerticalWidth = axisWidth
-        binding.graphsLayout.bgGraph.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
+        binding.graphsLayout.bgGraph.layoutParams?.height = overviewGraphHeightPx(skinProvider.activeSkin().mainGraphHeight)
 
         // Graph5 sized the same as the main graph (skin's mainGraphHeight, not secondaryGraphHeight) —
         // it's a main-graph-like panel, not one of the small secondary graphs.
         binding.graphsLayout.graph5.gridLabelRenderer?.gridColor = rh.gac(context, app.aaps.core.ui.R.attr.graphGrid)
         binding.graphsLayout.graph5.gridLabelRenderer?.reloadStyles()
         binding.graphsLayout.graph5.gridLabelRenderer?.labelVerticalWidth = axisWidth
-        binding.graphsLayout.graph5.layoutParams?.height = rh.dpToPx(skinProvider.activeSkin().mainGraphHeight)
+        binding.graphsLayout.graph5.layoutParams?.height = overviewGraphHeightPx(skinProvider.activeSkin().mainGraphHeight)
 
         carbAnimation = binding.infoLayout.carbsIcon.background as AnimationDrawable?
         carbAnimation?.setEnterFadeDuration(1200)
@@ -1533,6 +1533,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         activity?.let { OKDialog.show(it, rh.gs(R.string.openaps), details) }
     }
 
+    private fun overviewGraphHeightPx(portraitHeightDp: Int): Int {
+        val portraitHeightPx = rh.dpToPx(portraitHeightDp)
+        // Change only the displayed height, leaving the skin's portrait sizes unchanged.
+        return if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE)
+            portraitHeightPx * 2 / 3
+        else portraitHeightPx
+    }
+
     private fun prepareGraphsIfNeeded(numOfGraphs: Int) {
         if (numOfGraphs != secondaryGraphs.size - 1) {
             //aapsLogger.debug("New secondary graph count ${numOfGraphs-1}")
@@ -1546,7 +1554,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
                 val graph = GraphViewWithCleanup(requireContext())
                 graph.layoutParams =
-                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rh.dpToPx(skinProvider.activeSkin().secondaryGraphHeight)).also { it.setMargins(0, rh.dpToPx(0), 0, rh.dpToPx(0)) }
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, overviewGraphHeightPx(skinProvider.activeSkin().secondaryGraphHeight)).also { it.setMargins(0, rh.dpToPx(0), 0, rh.dpToPx(0)) }
                     //LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rh.dpToPx(skinProvider.activeSkin().secondaryGraphHeight)).also { it.setMargins(0, rh.dpToPx(15), 0, rh.dpToPx(10)) }
                 graph.gridLabelRenderer?.gridColor = rh.gac(context, app.aaps.core.ui.R.attr.graphGrid)
                 graph.gridLabelRenderer?.reloadStyles()
