@@ -38,7 +38,7 @@ internal fun receivedAutoIsfRow(
     val delta = firstNumber(deltaRegex, reason)
     val shortDelta = firstNumber(sDeltaRegex, reason)
     val longDelta = firstNumber(lDeltaRegex, reason)
-    val bgAcce = firstNumber(bgAcceRegex, reason)
+    val bgAcce = firstNumber(bgAcceRegex, reason) ?: rt.autoIsfBgAcceleration
     if (!hasFactors && delta == null && shortDelta == null && longDelta == null && bgAcce == null) return null
     return AIV(
         timestamp = timestamp,
@@ -55,10 +55,10 @@ internal fun receivedAutoIsfRow(
         iob = rt.IOB ?: 0.0,
         smbDelivered = rt.units ?: 0.0,
         ukfRawBgl = rt.autoIsfUkfRawBgl ?: 0.0,
-        iobThEffective = firstNumber(iobThEffectiveRegex, reason) ?: 0.0,
+        iobThEffective = firstNumber(iobThEffectiveRegex, reason) ?: rt.autoIsfIobThEffective ?: 0.0,
         targetMgdl = firstNumber(targetMgdlRegex, reason) ?: rt.targetBG ?: 0.0,
         uamCarbImpact = firstNumber(uamCarbImpactRegex, reason) ?: rt.autoIsfUamCarbImpact ?: 0.0,
-        smbDeliveryRatio = firstNumber(smbDeliveryRatioRegex, reason) ?: 0.0,
+        smbDeliveryRatio = firstNumber(smbDeliveryRatioRegex, reason) ?: rt.autoIsfSmbDeliveryRatio ?: 0.0,
         acceIsfWeight = firstNumber(acceIsfWeightRegex, reason) ?: 0.0,
         ppIsfWeight = firstNumber(ppIsfWeightRegex, reason) ?: 0.0,
         fslCalSlope = firstNumber(fslCalSlopeRegex, reason) ?: 0.0,

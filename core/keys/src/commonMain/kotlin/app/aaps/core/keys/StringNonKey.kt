@@ -149,6 +149,9 @@ enum class StringNonKey(
     NsClientControlMasterSigningKey(key = "nsclient_control_master_signing_key", defaultValue = "", exportable = false),
     NsClientControlMasterSigningKeyUrl(key = "nsclient_control_master_signing_key_url", defaultValue = "", exportable = false),
 
+    // Source profile units for Trio status conversion, scoped to its Nightscout URL and profile start time.
+    NsClientTrioProfileUnits(key = "nsclient_trio_profile_units", defaultValue = "", exportable = false),
+
     // Role names saved before a stuck-high tier C escalation. Local only.
     ApsAutoIsfStuckHighPrevLow(key = "autoisf_stuck_high_prev_low", defaultValue = "", exportable = false),
     ApsAutoIsfStuckHighPrevStandard(key = "autoisf_stuck_high_prev_standard", defaultValue = "", exportable = false),

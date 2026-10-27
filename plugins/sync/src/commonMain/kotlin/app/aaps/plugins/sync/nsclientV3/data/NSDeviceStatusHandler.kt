@@ -22,6 +22,7 @@ import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.utils.safeGetString
@@ -34,6 +35,7 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 
 /*
@@ -200,6 +202,21 @@ class NSDeviceStatusHandler(
         }
     }
 
+    private var requestedTrioProfileForSite: String? = null
+
+    private fun readLoopResult(status: NSDeviceStatus, data: JsonObject, clock: Long): RT {
+        if (status.device != "Trio") return RT.deserialize(data.toString()).apply { timestamp = clock }
+        val site = preferences.get(StringKey.NsClientUrl)
+        val units = trioSourceUnits(preferences.get(StringNonKey.NsClientTrioProfileUnits), site, clock)
+        if (units == null && requestedTrioProfileForSite != site) {
+            // Fetch the source profile again even when a previous build already imported it.
+            requestedTrioProfileForSite = site
+            nsClientV3Plugin().lastLoadedSrvModified.collections.profile = 0L
+            aapsLogger.debug(LTag.NSCLIENT, "Trio target units are not known; source profile refresh requested")
+        }
+        return receivedLoopResult(status.device, data, units).apply { timestamp = clock }
+    }
+
     private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus) {
         nsDeviceStatus.openaps?.suggested?.let {
             it.safeGetString("timestamp")?.let { timestamp ->
@@ -207,9 +224,9 @@ class NSDeviceStatusHandler(
                 // check if this is new data
                 if (clock > processedDeviceStatusData.openAPSData.clockSuggested) {
                     try {
-                        val suggested = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        val suggested = readLoopResult(nsDeviceStatus, it, clock)
                         processedDeviceStatusData.openAPSData.suggested = suggested
-                        val enactedRate = nsDeviceStatus.openaps?.enacted?.let { e -> runCatching { RT.deserialize(e.toString()).rate }.getOrNull() }
+                        val enactedRate = nsDeviceStatus.openaps?.enacted?.let { e -> runCatching { readLoopResult(nsDeviceStatus, e, clock).rate }.getOrNull() }
                         storeReceivedAutoIsf(suggested, clock, enactedRate)
                         mirrorAutomationStates(suggested)
                         // 2026-10-21, per explicit request: a client keeps the loop phone's step counts too, for the
@@ -236,7 +253,7 @@ class NSDeviceStatusHandler(
                 // check if this is new data
                 if (clock > processedDeviceStatusData.openAPSData.clockEnacted) {
                     try {
-                        processedDeviceStatusData.openAPSData.enacted = RT.deserialize(it.toString()).apply { this.timestamp = clock }
+                        processedDeviceStatusData.openAPSData.enacted = readLoopResult(nsDeviceStatus, it, clock)
                     } catch (e: Exception) {
                         aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
                     }
@@ -255,17 +272,17 @@ class NSDeviceStatusHandler(
         if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return
         val device = deviceStatus.device ?: return
         val own = "openaps://${config.deviceModelForUpload}"
-        if (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true)) return
+        if (device != "Trio" && (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true))) return
         val suggested = deviceStatus.openaps?.suggested ?: return
         val timestamp = suggested.safeGetString("timestamp") ?: return
         val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: return
         val now = dateUtil.now()
         if (clock <= 0L || clock > now) return
-        val rt = runCatching { RT.deserialize(suggested.toString()).apply { this.timestamp = clock } }.getOrElse { error ->
+        val rt = runCatching { readLoopResult(deviceStatus, suggested, clock) }.getOrElse { error ->
             aapsLogger.error(LTag.NSCLIENT, "Live loop result was not stored: ${error.message}")
             return
         }
-        val enactedRate = deviceStatus.openaps?.enacted?.let { e -> runCatching { RT.deserialize(e.toString()).rate }.getOrNull() }
+        val enactedRate = deviceStatus.openaps?.enacted?.let { e -> runCatching { readLoopResult(deviceStatus, e, clock).rate }.getOrNull() }
         storeReceivedAutoIsf(rt, clock, enactedRate)
         if (stepsFromPrimarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled)) &&
             preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual) &&

@@ -30,16 +30,19 @@ class LoadProfileStoreRunner(
 ) {
 
     suspend fun run(): WorkOutcome {
-        if (preferences.get(BooleanKey.NsClientSecondaryEnabled)) {
+        val isFirstLoad = nsClientV3Plugin.isFirstLoad(NsClient.Collection.PROFILE)
+        if (preferences.get(BooleanKey.NsClientSecondaryEnabled) && !isFirstLoad) {
             nsClientRepository.addLog("◄ RCV PROFILE END", "Profile store comes from the secondary Nightscout")
             return WorkOutcome.Skipped("secondary")
         }
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return WorkOutcome.Failure("AndroidClient is null")
 
         try {
-            val isFirstLoad = nsClientV3Plugin.isFirstLoad(NsClient.Collection.PROFILE)
+            // On first load, read primary source units even when the secondary site supplies the imported profiles.
+            // processProfile keeps the existing secondary-only import rule.
             val lastLoaded = max(nsClientV3Plugin.lastLoadedSrvModified.collections.profile, dateUtil.now() - nsClientV3Plugin.maxAge)
-            if ((nsClientV3Plugin.newestDataOnServer?.collections?.profile ?: Long.MAX_VALUE) > lastLoaded) {
+            // A current profile can be older than the history download window and still be needed for source units.
+            if (isFirstLoad || (nsClientV3Plugin.newestDataOnServer?.collections?.profile ?: Long.MAX_VALUE) > lastLoaded) {
                 val response: NSAndroidClient.ReadResponse<List<JsonObject>> =
                     if (isFirstLoad) nsAndroidClient.getLastProfileStore()
                     else nsAndroidClient.getProfileModifiedSince(lastLoaded)

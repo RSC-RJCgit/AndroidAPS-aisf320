@@ -49,6 +49,9 @@ data class RT(
     var autoIsfPp: Double? = null,
     var autoIsfDura: Double? = null,
     var autoIsfFinal: Double? = null,
+    var autoIsfBgAcceleration: Double? = null,
+    var autoIsfSmbDeliveryRatio: Double? = null,
+    var autoIsfIobThEffective: Double? = null,
     /** UKF-smoothed raw glucose, mg/dL, from the phone that ran the loop. */
     var autoIsfUkfRawBgl: Double? = null,
     /** UAM carb impact the 3426 loop phone sends as its own field (it writes no `uamCarbImpact:` text line). */

@@ -32,6 +32,9 @@ import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
+import app.aaps.plugins.sync.nsclientV3.data.trioProfileUnitsRecord
 import app.aaps.core.utils.calibratedLibre
 import app.aaps.core.utils.libreSpecial
 import app.aaps.core.nssdk.localmodel.entry.NSMbgV3
@@ -357,6 +360,11 @@ class NsIncomingDataProcessor(
      * While a secondary Nightscout is on, the profile store comes from that site only.
      */
     suspend fun processProfile(profileJson: JsonObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
+        if (!fromSecondary) {
+            val units = trioProfileUnitsRecord(profileJson, preferences.get(StringKey.NsClientUrl)).orEmpty()
+            if (preferences.get(StringNonKey.NsClientTrioProfileUnits) != units)
+                preferences.put(StringNonKey.NsClientTrioProfileUnits, units)
+        }
         val accept = when {
             fromSecondary -> true
             preferences.get(BooleanKey.NsClientSecondaryEnabled) -> false
