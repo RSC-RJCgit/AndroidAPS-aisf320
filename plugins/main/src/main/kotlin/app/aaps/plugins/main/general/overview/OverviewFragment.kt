@@ -2249,6 +2249,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (!isActualBg) binding.infoLayout.bg.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 else binding.infoLayout.bg.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
 
+            // The same value under the hours drop-down on the graph, so it never scrolls away (2026-10-27, per explicit
+            // request). Same colour and strike-through as the big BG; not shown while an older window is on screen.
+            binding.graphsLayout.graphBgValue.text = binding.infoLayout.bg.text
+            binding.graphsLayout.graphBgValue.setTextColor(lastBgColor)
+            binding.graphsLayout.graphBgValue.paintFlags =
+                if (!isActualBg) binding.graphsLayout.graphBgValue.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+                else binding.graphsLayout.graphBgValue.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
+            binding.graphsLayout.graphBgValue.visibility = if (lastBg != null && historicalStartTime == null) View.VISIBLE else View.GONE
+
             val outDate = (if (!isActualBg) rh.gs(R.string.a11y_bg_outdated) else "")
             binding.infoLayout.bg.contentDescription = rh.gs(R.string.a11y_blood_glucose) + " " + binding.infoLayout.bg.text.toString() + " " + lastBgDescription + " " + outDate
 
@@ -3397,6 +3406,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val pump = activePlugin.activePump
         binding.graphsLayout.historyDate.text = historicalStartTime?.let { dateUtil.dateAndTimeString(it) } ?: ""
         binding.graphsLayout.historyDate.visibility = if (historicalStartTime != null) View.VISIBLE else View.GONE
+        // An older window shows no current BG under the hours drop-down (2026-10-27); back on now it shows again
+        binding.graphsLayout.graphBgValue.visibility =
+            if (historicalStartTime == null && binding.graphsLayout.graphBgValue.text.isNotEmpty()) View.VISIBLE else View.GONE
         val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData)
         val menuChartSettings = overviewMenus.setting
         if (menuChartSettings.isEmpty()) return

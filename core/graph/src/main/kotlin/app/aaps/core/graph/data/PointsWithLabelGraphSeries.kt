@@ -171,10 +171,6 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             minY = graphView.viewport.getMinY(false)
         }
         val values = getValues(minX, maxX).asSequence().filterNotNull().toList()
-        // The newest BG gets its value written next to its dot (2026-10-27, per explicit request). Only when it is from the
-        // last 15 minutes, so an older day in the history browser gets no label.
-        val newestBgX = values.filter { it.shape == Shape.BG }.maxOfOrNull { it.x }
-            ?.takeIf { it >= System.currentTimeMillis() - 15 * 60_000L }
 
         // draw background
         // draw data
@@ -333,22 +329,6 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = value.paintStyle
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, value.size * scaledPxSize, mPaint)
-                    // The newest BG value, in the dot's colour, 1.6 x the SMB number size (those are 0.5 x). Right of the
-                    // dot at its height, so it does not cover the SMB numbers above it; left of it when there is no room.
-                    if (value.shape == Shape.BG && value.x == newestBgX && value is GlucoseValueDataPoint) {
-                        val text = value.valueText
-                        val oldAlign = mPaint.textAlign
-                        mPaint.style = Paint.Style.FILL
-                        mPaint.textSize = scaledTextSize * 0.8f
-                        mPaint.isFakeBoldText = true
-                        mPaint.textAlign = Paint.Align.LEFT
-                        val gap = scaledPxSize * 2f
-                        val width = mPaint.measureText(text)
-                        val textX = if (endX + gap + width <= graphLeft + graphWidth) endX + gap else endX - gap - width
-                        canvas.drawText(text, textX, endY + mPaint.textSize / 3f, mPaint)
-                        mPaint.isFakeBoldText = false
-                        mPaint.textAlign = oldAlign
-                    }
                 } else if (value.shape == Shape.IOB_PREDICTION || value.shape == Shape.BUCKETED_BG) {
                     mPaint.color = value.color(graphView.context)
                     mPaint.style = value.paintStyle

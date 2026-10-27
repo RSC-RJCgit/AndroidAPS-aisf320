@@ -29,6 +29,20 @@
             android:padding="0dp"
             android:textAllCaps="false" />
 
+        <!-- The current BG, fixed under the hours drop-down so it stays in place while the graph scrolls (2026-10-27).
+             Filled by OverviewFragment.updateBg; hidden while an older window is shown. -->
+        <TextView
+            android:id="@+id/graph_bg_value"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/scale_button"
+            android:layout_alignStart="@id/scale_button"
+            android:layout_marginStart="4dp"
+            android:importantForAccessibility="no"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/history_previous"
             android:layout_width="35dp"
