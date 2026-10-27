@@ -180,6 +180,38 @@ class ProfileSealedTest : TestBase() {
     }
 
     @Test
+    fun zeroBasalRequiresExplicitFollowerValidation() {
+        val json = JSONObject(okProfile)
+        json.getJSONArray("basal").getJSONObject(0).put("value", 0.0)
+        val profile = ProfileSealed.Pure(pureProfileFromJson(json, dateUtil)!!, activePlugin)
+        assertThat(profile.validateSemantic(text, hardLimits).isValid).isFalse()
+        assertThat(profile.validateSemantic(text, hardLimits, allowZeroBasal = true).isValid).isTrue()
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        assertThat(profile.isValid("Test", testPumpPlugin, config, text, notificationManager, hardLimits, false).isValid).isFalse()
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        assertThat(profile.isValid("Test", testPumpPlugin, config, text, notificationManager, hardLimits, false).isValid).isTrue()
+    }
+
+    @Test
+    fun followerZeroBasalExceptionDoesNotAllowNegativeOrTinyPositiveRates() {
+        for (rate in listOf(-0.1, 0.005)) {
+            val json = JSONObject(okProfile)
+            json.getJSONArray("basal").getJSONObject(0).put("value", rate)
+            val profile = ProfileSealed.Pure(pureProfileFromJson(json, dateUtil)!!, activePlugin)
+            assertThat(profile.validateSemantic(text, hardLimits, allowZeroBasal = true).isValid).isFalse()
+        }
+    }
+
+    @Test
+    fun followerZeroBasalExceptionPreservesOtherProfileLimits() {
+        val json = JSONObject(okProfile)
+        json.getJSONArray("basal").getJSONObject(0).put("value", 0.0)
+        json.getJSONArray("carbratio").getJSONObject(0).put("value", 0.0)
+        val profile = ProfileSealed.Pure(pureProfileFromJson(json, dateUtil)!!, activePlugin)
+        assertThat(profile.validateSemantic(text, hardLimits, allowZeroBasal = true).isValid).isFalse()
+    }
+
+    @Test
     fun thirtyMinAlignmentIsPumpOnly() {
         // A 30-min basal segment on a pump that only supports full-hour rates is a pump-compat
         // problem, not a semantic one. Uses okProfile's (semantically valid) IC/ISF/targets with a

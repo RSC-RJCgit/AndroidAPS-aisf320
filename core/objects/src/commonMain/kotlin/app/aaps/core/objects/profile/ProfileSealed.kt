@@ -169,7 +169,10 @@ sealed class ProfileSealed(
         // on the pump requires both; editing, local storage and Nightscout sync only require
         // [validateSemantic] (a profile that's merely incompatible with the *current* pump is still
         // valid data worth keeping and uploading).
-        val semantic = validateSemantic(rh, hardLimits)
+        val semantic = validateSemantic(rh, hardLimits, allowZeroBasal = config.AAPSCLIENT)
+        // A follower displays the source's zero-basal profile; it has no local pump to activate it on.
+        // Master and pump-control builds still use the unchanged semantic and pump limits below.
+        if (config.AAPSCLIENT && basalBlocks.any { it.amount == 0.0 }) return semantic
         val pumpCheck = validatePump(from, pump, config, rh, notificationManager, sendNotifications)
         return Profile.ValidityCheck(semantic.isValid && pumpCheck.isValid).also {
             it.reasons.addAll(semantic.reasons)
@@ -181,12 +184,14 @@ sealed class ProfileSealed(
      * Pump-independent ("semantic") validity: every value within the global hard limits. This is
      * the gate for editing, local storage and Nightscout sync — independent of the active pump, so
      * switching pumps never silently blocks profile sync.
+     * [allowZeroBasal] is reserved for Client display/import. It permits exactly zero, while all
+     * other limits and the default validation used by Master builds remain unchanged.
      */
-    fun validateSemantic(rh: TextResolver, hardLimits: HardLimits): Profile.ValidityCheck {
+    fun validateSemantic(rh: TextResolver, hardLimits: HardLimits, allowZeroBasal: Boolean = false): Profile.ValidityCheck {
         val validityCheck = Profile.ValidityCheck()
         for (basal in basalBlocks) {
             val basalAmount = basal.amount * percentage / 100.0
-            if (basalAmount !in 0.01..hardLimits.maxBasal()) {
+            if (!(allowZeroBasal && basalAmount == 0.0) && basalAmount !in 0.01..hardLimits.maxBasal()) {
                 validityCheck.isValid = false
                 validityCheck.reasons.add(rh.gs(InterfacesStrings.value_out_of_hard_limits, rh.gs(InterfacesStrings.basal_value), basalAmount))
                 break

@@ -334,7 +334,7 @@ class ProfileRepositoryImpl(
             if (invalid(isf) { asMgdl(it) in HardLimits.LIMIT_ISF }) {
                 errors.add(ProfileValidationError(ProfileErrorType.ISF, rh.gs(CoreUiStrings.error_in_isf_values)))
             }
-            if (invalid(basal) { it in 0.01..hardLimits.maxBasal() }) {
+            if (invalid(basal) { (config.AAPSCLIENT && it == 0.0) || it in 0.01..hardLimits.maxBasal() }) {
                 errors.add(ProfileValidationError(ProfileErrorType.BASAL, rh.gs(CoreUiStrings.error_in_basal_values)))
             }
             if (target.isEmpty() || target.any { asMgdl(it.lowTarget) !in HardLimits.LIMIT_MIN_BG }) errors.add(targetError())
@@ -638,7 +638,7 @@ class ProfileRepositoryImpl(
                 val validityCheck = pureProfile?.let {
                     // Accept by semantic validity only — a profile that's merely incompatible with the
                     // current pump is still valid data to store; pump compatibility is enforced at activation.
-                    ProfileSealed.Pure(it, activePlugin).validateSemantic(rh, hardLimits)
+                    ProfileSealed.Pure(it, activePlugin).validateSemantic(rh, hardLimits, allowZeroBasal = config.AAPSCLIENT)
                 } ?: Profile.ValidityCheck()
                 if (pureProfile != null && validityCheck.isValid) {
                     // copyFrom would timestamp-suffix the name if it collides with the
