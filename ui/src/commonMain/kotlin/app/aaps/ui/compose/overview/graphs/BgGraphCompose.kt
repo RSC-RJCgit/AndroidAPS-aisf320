@@ -1285,8 +1285,8 @@ fun BgGraphCompose(
     )
     Column(modifier = Modifier.fillMaxWidth()) {
     // 2026-10-18: the automatic clean graph hides these rows but keeps their space (alpha 0), so the graphs below do not jump
-    // up when a zoom crosses the clean-graph limit. Only the user's own switch (savedGraphDisplay) removes them.
-    if (savedGraphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
+    // up when a zoom crosses the clean-graph limit. Landscape removes the rows and their space entirely.
+    if (!isLandscape() && savedGraphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
             autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
     ) {
         Column(
