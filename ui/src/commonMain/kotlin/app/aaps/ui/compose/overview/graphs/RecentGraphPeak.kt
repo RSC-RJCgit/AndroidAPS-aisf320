@@ -98,3 +98,32 @@ internal class RecentPeakLabels(
         }
     }
 }
+
+/** Decoration for the last BG reading at the end of the BGL curve, rendered without strict boundary culling. */
+internal class LastBgLabelDecoration(
+    private val x: Double,
+    private val y: Double,
+    private val label: String,
+    private val color: Color,
+    private val textMeasurer: TextMeasurer,
+) : Decoration {
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            if (ranges.xStep == 0.0) return
+            val range = ranges.getYRange(Axis.Position.Vertical.Start)
+            if (range.length <= 0.0) return
+            val style = TextStyle(color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            val px = layerBounds.left + layerDimensions.startPadding +
+                layerDimensions.xSpacing * ((x - ranges.minX) / ranges.xStep).toFloat() - scroll
+            if (px < layerBounds.left || px > layerBounds.right + 40f) return
+            if (y !in range.minY..range.maxY) return
+            val py = layerBounds.bottom - layerBounds.height * ((y - range.minY) / range.length).toFloat()
+            val layout = textMeasurer.measure(label, style)
+            val left = px + 4f
+            val top = (py - layout.size.height / 2f).coerceIn(layerBounds.top, maxOf(layerBounds.top, layerBounds.bottom - layout.size.height))
+            with(mutableDrawScope) {
+                drawText(layout, topLeft = Offset(left, top))
+            }
+        }
+    }
+}

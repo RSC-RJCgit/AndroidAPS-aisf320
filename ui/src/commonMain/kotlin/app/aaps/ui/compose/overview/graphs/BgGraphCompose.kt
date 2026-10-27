@@ -1242,9 +1242,9 @@ fun BgGraphCompose(
                 BgRange.LOW -> generalColors.bgLow
                 else -> generalColors.bgInRange
             }
-            RecentPeakLabels(
-                listOf(PeakMark(timestampToX(last.timestamp, minTimestamp), last.value, text)),
-                color, smbText, endAxis = false, pinToTop = false
+            LastBgLabelDecoration(
+                timestampToX(last.timestamp, minTimestamp), last.value, text,
+                color, smbText
             )
         }
     }
