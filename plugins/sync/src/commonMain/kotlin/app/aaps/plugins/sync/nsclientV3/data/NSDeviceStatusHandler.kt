@@ -33,6 +33,7 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
@@ -112,40 +113,90 @@ class NSDeviceStatusHandler(
 
     /** A live push and a downloaded batch both count. The status time is what the 9-minute check uses. */
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
+        val accepted = mutableListOf<ParsedDeviceStatus>()
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]
-            if (config.AAPSCLIENT) {
-                updatePumpData(nsDeviceStatus)
-                updateDeviceData(nsDeviceStatus)
-                updateOpenApsData(nsDeviceStatus)
-                updateUploaderData(nsDeviceStatus)
-            }
-            if (config.APS) {
-                nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
-                receiveLiveLoop(nsDeviceStatus)
+            try {
+                // Decode before updating any display: a bad nested result must not replace good pump or loop data.
+                val parsed = parseDeviceStatus(nsDeviceStatus)
+                if (config.AAPSCLIENT) {
+                    updatePumpData(nsDeviceStatus, parsed.pumpClock)
+                    updateDeviceData(nsDeviceStatus, parsed.createdAt)
+                    updateOpenApsData(nsDeviceStatus, parsed.suggested, parsed.enacted)
+                    updateUploaderData(nsDeviceStatus, parsed.createdAt)
+                }
+                if (config.APS) {
+                    nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
+                    receiveLiveLoop(nsDeviceStatus)
+                }
+                accepted += parsed
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                aapsLogger.error(LTag.NSCLIENT, "Device status skipped; keeping last valid values: ${error.message}")
             }
         }
-        if (config.AAPSCLIENT && deviceStatuses.isNotEmpty()) {
+        if (config.AAPSCLIENT && accepted.isNotEmpty()) {
             // One missed live push must not end the link. A downloaded status counts too.
             // The time on the status is used, not the time it was received. A status with no
             // time is skipped. A time older than 9 minutes does not keep the master reachable.
-            val newestCreatedAt = deviceStatuses
-                .mapNotNull { ds -> ds.createdAt?.let { runCatching { dateUtil.fromISODateString(it) }.getOrNull() } ?: ds.date }
+            val newestCreatedAt = accepted
+                .mapNotNull { it.createdAt }
                 .maxOrNull() ?: 0L
             if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
-            mirrorMasterAps(deviceStatuses)
+            mirrorMasterAps(accepted.map { it.status }.toTypedArray())
             // Rebuild predictions once for the newest data in this batch.
-            appScope.launch { calculationWorkflow.runOnReceivedPredictions(overviewData) }
+            launchReceivedStatusWork("predictions") { calculationWorkflow.runOnReceivedPredictions(overviewData) }
             rxBus.send(EventNsClientStatusUpdated())
         }
     }
 
-    /**
-     * 2026-10-16, per explicit request: a read-only client follows the APS choice (AMA, SMB or AutoISF) of its master, an AAPS
-     * 3.x master that sends it as `configuration.aps` in its device status. A KMP master sends no such field; its choice comes
-     * with the synced settings instead. Written as a remote value, so it is not sent back; ConfigBuilder's key observer does the
-     * switch, the same way as for a choice pushed by a KMP master.
-     */
+    private data class ParsedDeviceStatus(
+        val status: NSDeviceStatus,
+        val createdAt: Long?,
+        val pumpClock: Long?,
+        val suggested: RT?,
+        val enacted: RT?
+    )
+
+    private fun parseDeviceStatus(status: NSDeviceStatus): ParsedDeviceStatus {
+        fun timestamp(value: String?, field: String): Long? = value?.let {
+            val parsed = try {
+                dateUtil.fromISODateString(it)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            require(parsed != null && parsed > 0L) { "Invalid $field timestamp" }
+            parsed
+        }
+        val createdAt = timestamp(status.createdAt, "created_at") ?: status.date?.also {
+            require(it > 0L) { "Invalid date timestamp" }
+        }
+        val pumpClock = timestamp(status.pump?.clock, "pump.clock")
+        val suggestedClock = timestamp(status.openaps?.suggested?.safeGetString("timestamp"), "suggested.timestamp")
+        val enactedClock = timestamp(status.openaps?.enacted?.safeGetString("timestamp"), "enacted.timestamp")
+        val suggested = if (config.AAPSCLIENT && suggestedClock != null)
+            status.openaps?.suggested?.let { readLoopResult(status, it, suggestedClock) } else null
+        val enacted = if (config.AAPSCLIENT && enactedClock != null)
+            status.openaps?.enacted?.let { readLoopResult(status, it, enactedClock) } else null
+        return ParsedDeviceStatus(status, createdAt, pumpClock, suggested, enacted)
+    }
+
+    private fun launchReceivedStatusWork(label: String, work: suspend () -> Unit) {
+        appScope.launch {
+            try {
+                work()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                aapsLogger.error(LTag.NSCLIENT, "Received device status $label failed: ${error.message}")
+            }
+        }
+    }
+
+    /** A read-only client follows the APS choice explicitly supplied by its AAPS master. */
     private fun mirrorMasterAps(deviceStatuses: Array<NSDeviceStatus>) {
         if (!preferences.get(BooleanKey.NsClientReadOnlyClient)) return
         val aps = (deviceStatuses.filter { it.configuration != null }.maxByOrNull { it.date ?: 0L }
@@ -160,17 +211,17 @@ class NSDeviceStatusHandler(
         aapsLogger.info(LTag.NSCLIENT, "Read-only client: APS set to ${plugin.pluginId}, as on the master ($aps)")
     }
 
-    private fun updateDeviceData(deviceStatus: NSDeviceStatus) {
-        val createdAt = deviceStatus.createdAt?.let { dateUtil.fromISODateString(it) } ?: return
+    private fun updateDeviceData(deviceStatus: NSDeviceStatus, createdAt: Long?) {
+        createdAt ?: return
         processedDeviceStatusData.device?.let { if (createdAt < it.createdAt) return } // take only newer record
         deviceStatusDisplayName(deviceStatus.device)?.let {
             processedDeviceStatusData.device = ProcessedDeviceStatusData.Device(createdAt, it)
         }
     }
 
-    private fun updatePumpData(nsDeviceStatus: NSDeviceStatus) {
+    private fun updatePumpData(nsDeviceStatus: NSDeviceStatus, clock: Long?) {
         val pump = nsDeviceStatus.pump ?: return
-        val clock = pump.clock?.let { dateUtil.fromISODateString(it) } ?: return
+        clock ?: return
         processedDeviceStatusData.pumpData?.let { if (clock < it.clock) return } // take only newer record
 
         // create new status and process data
@@ -217,48 +268,29 @@ class NSDeviceStatusHandler(
         return receivedLoopResult(status.device, data, units).apply { timestamp = clock }
     }
 
-    private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus) {
-        nsDeviceStatus.openaps?.suggested?.let {
-            it.safeGetString("timestamp")?.let { timestamp ->
-                val clock = dateUtil.fromISODateString(timestamp)
-                // check if this is new data
-                if (clock > processedDeviceStatusData.openAPSData.clockSuggested) {
-                    try {
-                        val suggested = readLoopResult(nsDeviceStatus, it, clock)
-                        processedDeviceStatusData.openAPSData.suggested = suggested
-                        val enactedRate = nsDeviceStatus.openaps?.enacted?.let { e -> runCatching { readLoopResult(nsDeviceStatus, e, clock).rate }.getOrNull() }
-                        storeReceivedAutoIsf(suggested, clock, enactedRate)
-                        mirrorAutomationStates(suggested)
-                        // 2026-10-21, per explicit request: a client keeps the loop phone's step counts too, for the
-                        // S5-S180 columns of the AutoISF table (the virtual phone already did)
-                        if (config.AAPSCLIENT) nsDeviceStatus.device?.let { storeReceivedSteps(it, clock, suggested.reason.toString()) }
-                    } catch (e: Exception) {
-                        aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
-                    }
-                    processedDeviceStatusData.openAPSData.clockSuggested = clock
-                    processedDeviceStatusData.getAPSResult()?.let { apsResult ->
-                        // A result that does not say which algorithm made it cannot be stored: `toDb` throws,
-                        // and in this scope that would end the app. It is still shown from the data above.
-                        if (apsResult.algorithm == APSResult.Algorithm.UNKNOWN)
-                            aapsLogger.debug(LTag.NSCLIENT, "APS result without algorithm from ${nsDeviceStatus.device}, not stored")
-                        else
-                            appScope.launch { persistenceLayer.insertOrUpdateApsResult(apsResult) }
-                    }
+    private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus, suggested: RT?, enacted: RT?) {
+        if (suggested != null) {
+            val clock = suggested.timestamp
+            if (clock != null && clock > processedDeviceStatusData.openAPSData.clockSuggested) {
+                processedDeviceStatusData.openAPSData.suggested = suggested
+                storeReceivedAutoIsf(suggested, clock, enacted?.rate)
+                mirrorAutomationStates(suggested)
+                nsDeviceStatus.device?.let { storeReceivedSteps(it, clock, suggested.reason.toString()) }
+                processedDeviceStatusData.getAPSResult()?.let { apsResult ->
+                    // Missing algorithms may be displayed, but cannot be stored as ordinary APS results.
+                    if (apsResult.algorithm == APSResult.Algorithm.UNKNOWN)
+                        aapsLogger.debug(LTag.NSCLIENT, "APS result without algorithm from ${nsDeviceStatus.device}, not stored")
+                    else
+                        launchReceivedStatusWork("APS history") { persistenceLayer.insertOrUpdateApsResult(apsResult) }
                 }
+                processedDeviceStatusData.openAPSData.clockSuggested = clock
             }
         }
-        nsDeviceStatus.openaps?.enacted?.let {
-            it.safeGetString("timestamp")?.let { timestamp ->
-                val clock = dateUtil.fromISODateString(timestamp)
-                // check if this is new data
-                if (clock > processedDeviceStatusData.openAPSData.clockEnacted) {
-                    try {
-                        processedDeviceStatusData.openAPSData.enacted = readLoopResult(nsDeviceStatus, it, clock)
-                    } catch (e: Exception) {
-                        aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
-                    }
-                    processedDeviceStatusData.openAPSData.clockEnacted = clock
-                }
+        if (enacted != null) {
+            val clock = enacted.timestamp
+            if (clock != null && clock > processedDeviceStatusData.openAPSData.clockEnacted) {
+                processedDeviceStatusData.openAPSData.enacted = enacted
+                processedDeviceStatusData.openAPSData.clockEnacted = clock
             }
         }
     }
@@ -351,9 +383,9 @@ class NSDeviceStatusHandler(
     private fun storeReceivedSteps(device: String, clock: Long, reason: String): Boolean {
         val buckets = LiveSteps.buckets(reason)
         if (!LiveSteps.hasDosingBuckets(buckets)) return false
-        appScope.launch {
+        launchReceivedStatusWork("steps") {
             val already = persistenceLayer.getStepsCountFromTimeToTime(clock, clock)
-            if (already.any { it.timestamp == clock && it.device.equals(device, ignoreCase = true) }) return@launch
+            if (already.any { it.timestamp == clock && it.device.equals(device, ignoreCase = true) }) return@launchReceivedStatusWork
             persistenceLayer.insertOrUpdateStepsCounts(
                 listOf(
                     SC(
@@ -395,15 +427,15 @@ class NSDeviceStatusHandler(
     private fun storeReceivedAutoIsf(rt: RT, clock: Long, enactedRate: Double?) {
         if (!keepsReceivedAutoIsf()) return
         val row = receivedAutoIsfRow(clock, rt, enactedRate) { profileUtil.convertToMgdl(it, profileUtil.units) } ?: return
-        appScope.launch {
+        launchReceivedStatusWork("AutoISF history") {
             val already = persistenceLayer.getAutoIsfValuesFromTimeToTime(clock, clock)
-            if (already.any { it.timestamp == clock }) return@launch
+            if (already.any { it.timestamp == clock }) return@launchReceivedStatusWork
             persistenceLayer.insertAutoIsfValue(row)
         }
     }
 
-    private fun updateUploaderData(nsDeviceStatus: NSDeviceStatus) {
-        val clock = nsDeviceStatus.createdAt?.let { dateUtil.fromISODateString(it) } ?: return
+    private fun updateUploaderData(nsDeviceStatus: NSDeviceStatus, clock: Long?) {
+        clock ?: return
         val device = nsDeviceStatus.device ?: return
         val battery = nsDeviceStatus.uploaderBattery ?: nsDeviceStatus.uploader?.battery ?: return
         val isCharging = nsDeviceStatus.isCharging

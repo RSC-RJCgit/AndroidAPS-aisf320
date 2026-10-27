@@ -3,12 +3,14 @@ package app.aaps.plugins.sync.nsclientV3.data
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -21,7 +23,9 @@ import app.aaps.core.keys.interfaces.StringNonPreferenceKey
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.jupiter.api.BeforeEach
@@ -34,6 +38,9 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyBlocking
 import org.mockito.kotlin.whenever
+import kotlin.test.assertEquals
+import kotlin.test.assertSame
+import kotlin.test.assertFailsWith
 
 internal class NSDeviceStatusHandlerTest {
 
@@ -111,7 +118,7 @@ internal class NSDeviceStatusHandlerTest {
         verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(any())
     }
 
-    /** created_at absent/unparseable but the numeric `date` (ms) is set → fall back to it. */
+    /** When created_at is absent, use the numeric date (ms). Malformed timestamps are rejected separately. */
     @Test
     fun bumpsWithDateWhenCreatedAtAbsent() {
         sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = null, date = 7_000L)))
@@ -123,6 +130,112 @@ internal class NSDeviceStatusHandlerTest {
     fun doesNotBumpWhenNoTimestamp() {
         sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = null, date = null)))
         verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(any())
+    }
+
+    @Test
+    fun badCreatedAtOnALiveRecordKeepsTheLastDisplayAndHeartbeat() {
+        val previous = ProcessedDeviceStatusData.Device(1_000L, "last good phone")
+        whenever(processedDeviceStatusData.device).thenReturn(previous)
+        whenever(dateUtil.fromISODateString("bad")).thenThrow(IllegalArgumentException("bad date"))
+
+        sut.handleNewData(arrayOf(NSDeviceStatus(device = "Trio", createdAt = "bad")))
+
+        assertSame(previous, processedDeviceStatusData.device)
+        verify(processedDeviceStatusData, never()).device = any()
+        verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(any())
+        verifyBlocking(calculationWorkflow, never()) { runOnReceivedPredictions(any()) }
+    }
+
+    @Test
+    fun badPumpClockIsRejectedBeforeAnyPumpValuesChange() {
+        val previous = ProcessedDeviceStatusData.PumpData().apply { reservoir = 23.0; clock = 1_000L }
+        whenever(processedDeviceStatusData.pumpData).thenReturn(previous)
+        whenever(dateUtil.fromISODateString("bad")).thenReturn(0L)
+
+        sut.handleNewData(arrayOf(NSDeviceStatus(pump = NSDeviceStatus.Pump(clock = "bad", reservoir = 99.0))))
+
+        assertSame(previous, processedDeviceStatusData.pumpData)
+        verify(processedDeviceStatusData, never()).pumpData = any()
+        assertEquals(23.0, previous.reservoir)
+    }
+
+    @Test
+    fun badSuggestedTimestampDoesNotChangeLoopValuesOrAdvanceItsClock() {
+        val previous = RT(bg = 100.0)
+        val loop = ProcessedDeviceStatusData.OpenAPSData().apply { suggested = previous; clockSuggested = 1_000L }
+        whenever(processedDeviceStatusData.openAPSData).thenReturn(loop)
+        whenever(dateUtil.fromISODateString("bad")).thenThrow(IllegalArgumentException("bad date"))
+
+        sut.handleNewData(arrayOf(NSDeviceStatus(openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
+            put("timestamp", "bad")
+            put("bg", 150)
+        }))))
+
+        assertSame(previous, loop.suggested)
+        assertEquals(1_000L, loop.clockSuggested)
+    }
+
+    @Test
+    fun downloadedBatchContinuesAfterABadRecord() {
+        whenever(dateUtil.fromISODateString("bad")).thenThrow(IllegalArgumentException("bad date"))
+        whenever(dateUtil.fromISODateString("new")).thenReturn(5_000L)
+
+        sut.handleNewData(arrayOf(
+            NSDeviceStatus(device = "openaps://good", createdAt = "new"),
+            NSDeviceStatus(device = "Trio", createdAt = "bad")
+        ))
+
+        verify(processedDeviceStatusData).device = ProcessedDeviceStatusData.Device(5_000L, "good")
+        verify(nsClientV3Plugin).bumpDevicestatusHeartbeat(5_000L)
+        verifyBlocking(calculationWorkflow) { runOnReceivedPredictions(overviewData) }
+    }
+
+    @Test
+    fun correctedResultAtTheSameTimestampCanBeRetried() {
+        val previous = RT(bg = 100.0)
+        val loop = ProcessedDeviceStatusData.OpenAPSData().apply { suggested = previous; clockSuggested = 1_000L }
+        whenever(processedDeviceStatusData.openAPSData).thenReturn(loop)
+        whenever(dateUtil.fromISODateString(SUGGESTED_TIME)).thenReturn(5_000L)
+        val malformed = NSDeviceStatus(
+            device = "openaps://test",
+            pump = NSDeviceStatus.Pump(clock = SUGGESTED_TIME, reservoir = 99.0),
+            openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
+                put("timestamp", SUGGESTED_TIME)
+                put("bg", "not a number")
+            })
+        )
+        sut.handleNewData(arrayOf(malformed))
+        assertSame(previous, loop.suggested)
+        assertEquals(1_000L, loop.clockSuggested)
+        verify(processedDeviceStatusData, never()).pumpData = any()
+
+        val corrected = malformed.copy(pump = null, openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
+            put("timestamp", SUGGESTED_TIME)
+            put("bg", 123)
+        }))
+        sut.handleNewData(arrayOf(corrected))
+        assertEquals(123.0, loop.suggested?.bg)
+        assertEquals(5_000L, loop.clockSuggested)
+    }
+
+    @Test
+    fun cancellationIsNotReportedAsABadRecord() {
+        whenever(dateUtil.fromISODateString("cancelled")).thenThrow(CancellationException("cancelled"))
+        assertFailsWith<CancellationException> {
+            sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "cancelled")))
+        }
+        verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(any())
+    }
+
+    @Test
+    fun backgroundPredictionFailureIsLoggedWithoutEscaping() = runBlocking {
+        whenever(dateUtil.fromISODateString("new")).thenReturn(5_000L)
+        whenever(calculationWorkflow.runOnReceivedPredictions(overviewData)).thenThrow(IllegalStateException("broken prediction"))
+
+        sut.handleNewData(arrayOf(NSDeviceStatus(createdAt = "new")))
+
+        verify(aapsLogger).error(LTag.NSCLIENT, "Received device status predictions failed: broken prediction")
+        verify(nsClientV3Plugin).bumpDevicestatusHeartbeat(5_000L)
     }
 
     /** `toDb` throws for a result without an algorithm, and an error in the app scope ends the app. */
