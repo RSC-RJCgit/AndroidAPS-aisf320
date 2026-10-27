@@ -35,5 +35,9 @@ data class Carbs(
     override var utcOffset: Long = defaultUtcOffset(timestamp),
     override var duration: Long, // in milliseconds
     var amount: Double,
-    var notes: String? = null
+    var notes: String? = null,
+    var fatGrams: Double? = null,
+    var proteinGrams: Double? = null,
+    var sourceId: String? = null,
+    var fpuId: String? = null
 ) : TraceableDBEntry, DBEntryWithTimeAndDuration

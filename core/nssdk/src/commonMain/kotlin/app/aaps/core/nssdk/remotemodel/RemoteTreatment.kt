@@ -48,8 +48,10 @@ internal data class RemoteTreatment(
     @SerialName("glucoseType") val glucoseType: String? = null,    // string example: "Sensor", "Finger", "Manual"
     @SerialName("units") val units: String? = null,                // string The units for the glucose value, mg/dl or mmol/l. It is strongly recommended to fill in this field.
     @SerialName("carbs") val carbs: Double? = null,                // number... Amount of carbs given.
-    @SerialName("protein") val protein: Int? = null,               // number... Amount of protein given.
-    @SerialName("fat") val fat: Int? = null,                       // number... Amount of fat given.
+    @SerialName("protein") val protein: Double? = null,            // grams
+    @SerialName("fat") val fat: Double? = null,                    // grams
+    @SerialName("id") val sourceId: String? = null,
+    @SerialName("fpuID") val fpuId: String? = null,
     @SerialName("insulin") val insulin: Double? = null,            // number... Amount of insulin, if any.
     /** Duration in minutes */
     @SerialName("duration") val duration: Long? = null,             // number... Duration in minutes.

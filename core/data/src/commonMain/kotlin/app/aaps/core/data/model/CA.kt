@@ -16,7 +16,11 @@ data class CA(
     /** Duration in milliseconds */
     var duration: Long,
     var amount: Double,
-    var notes: String? = null
+    var notes: String? = null,
+    var fatGrams: Double? = null,
+    var proteinGrams: Double? = null,
+    var sourceId: String? = null,
+    var fpuId: String? = null
 ) : HasIDs, TimeStamped {
 
     init {
@@ -30,6 +34,10 @@ data class CA(
             utcOffset == other.utcOffset &&
             amount == other.amount &&
             notes == other.notes &&
+            fatGrams == other.fatGrams &&
+            proteinGrams == other.proteinGrams &&
+            sourceId == other.sourceId &&
+            fpuId == other.fpuId &&
             duration == other.duration
 
     fun onlyNsIdAdded(previous: CA): Boolean =

@@ -26,5 +26,9 @@ data class NSCarbs(
     override var app: String? = null,
     val carbs: Double,
     /** Duration in milliseconds */
-    val duration: Long?
+    val duration: Long?,
+    val fatGrams: Double? = null,
+    val proteinGrams: Double? = null,
+    val sourceId: String? = null,
+    val fpuId: String? = null
 ) : NSTreatment

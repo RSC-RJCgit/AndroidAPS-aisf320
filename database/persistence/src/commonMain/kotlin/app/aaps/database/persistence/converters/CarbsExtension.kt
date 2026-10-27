@@ -15,6 +15,10 @@ fun Carbs.fromDb(): CA =
         duration = this.duration,
         amount = this.amount,
         notes = this.notes,
+        fatGrams = this.fatGrams,
+        proteinGrams = this.proteinGrams,
+        sourceId = this.sourceId,
+        fpuId = this.fpuId,
         ids = this.interfaceIDs.fromDb()
     )
 
@@ -30,5 +34,9 @@ fun CA.toDb(): Carbs =
         duration = this.duration,
         amount = this.amount,
         notes = this.notes,
+        fatGrams = this.fatGrams,
+        proteinGrams = this.proteinGrams,
+        sourceId = this.sourceId,
+        fpuId = this.fpuId,
         interfaceIDs_backing = this.ids.toDb()
     )

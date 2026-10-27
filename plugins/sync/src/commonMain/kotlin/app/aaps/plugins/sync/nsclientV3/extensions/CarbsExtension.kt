@@ -16,6 +16,10 @@ fun NSCarbs.toCarbs(): CA =
         utcOffset = T.mins(utcOffset ?: 0L).msecs(),
         amount = min(carbs, HardLimits.MAX_CARBS.toDouble()),
         notes = notes,
+        fatGrams = fatGrams,
+        proteinGrams = proteinGrams,
+        sourceId = sourceId,
+        fpuId = fpuId,
         duration = min(duration ?: 0L, T.hours(HardLimits.MAX_CARBS_DURATION_HOURS).msecs()),
         ids = IDs(nightscoutId = identifier, pumpId = pumpId, pumpType = PumpType.fromString(pumpType), pumpSerial = pumpSerial, endId = endId)
     )
@@ -28,6 +32,10 @@ fun CA.toNSCarbs(): NSCarbs =
         utcOffset = T.msecs(utcOffset).mins(),
         carbs = amount,
         notes = notes,
+        fatGrams = fatGrams,
+        proteinGrams = proteinGrams,
+        sourceId = sourceId,
+        fpuId = fpuId,
         duration = if (duration != 0L) duration else null,
         identifier = ids.nightscoutId,
         pumpId = ids.pumpId,

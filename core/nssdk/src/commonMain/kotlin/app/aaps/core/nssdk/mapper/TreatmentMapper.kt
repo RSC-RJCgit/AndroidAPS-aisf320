@@ -80,7 +80,11 @@ internal fun RemoteTreatment.toTreatment(): NSTreatment? {
                 pumpType = this.pumpType,
                 pumpSerial = this.pumpSerial,
                 carbs = this.carbs,
-                duration = durationInMilliseconds
+                duration = durationInMilliseconds,
+                fatGrams = this.fat,
+                proteinGrams = this.protein,
+                sourceId = this.sourceId,
+                fpuId = this.fpuId
             )
         }
 
@@ -437,7 +441,11 @@ internal fun NSTreatment.toRemoteTreatment(): RemoteTreatment? =
             pumpSerial = pumpSerial,
             carbs = carbs,
             duration = duration?.let { it.milliseconds.inWholeMinutes },
-            durationInMilliseconds = duration
+            durationInMilliseconds = duration,
+            fat = fatGrams,
+            protein = proteinGrams,
+            sourceId = sourceId,
+            fpuId = fpuId
         )
 
         is NSTemporaryTarget        -> RemoteTreatment(

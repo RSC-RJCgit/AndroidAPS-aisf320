@@ -9,6 +9,7 @@ import app.aaps.database.migration37to38
 import app.aaps.database.migration38to39
 import app.aaps.database.entities.TABLE_APS_RESULTS
 import app.aaps.database.entities.TABLE_BOLUSES
+import app.aaps.database.entities.TABLE_CARBS
 import app.aaps.database.entities.TABLE_CALIBRATION_ENTRIES
 import app.aaps.database.entities.TABLE_EFFECTIVE_PROFILE_SWITCHES
 import app.aaps.database.entities.TABLE_GLUCOSE_VALUES
@@ -382,6 +383,16 @@ private val migration39to40 = object : Migration(39, 40) {
     }
 }
 
+private val migration40to41 = object : Migration(40, 41) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("ALTER TABLE `$TABLE_CARBS` ADD COLUMN `fatGrams` REAL")
+        connection.execSQL("ALTER TABLE `$TABLE_CARBS` ADD COLUMN `proteinGrams` REAL")
+        connection.execSQL("ALTER TABLE `$TABLE_CARBS` ADD COLUMN `sourceId` TEXT")
+        connection.execSQL("ALTER TABLE `$TABLE_CARBS` ADD COLUMN `fpuId` TEXT")
+        dropCustomIndexes(connection)
+    }
+}
+
 /** Every migration, in order. Passed to the Room builder by each platform. */
 internal val databaseMigrations: Array<Migration> = arrayOf(
     migration22to23,
@@ -404,4 +415,5 @@ internal val databaseMigrations: Array<Migration> = arrayOf(
     migration38to39,
     // Upstream's 35 to 36, renumbered: it rewrites glucose source sensor names and changes no table.
     migration39to40,
+    migration40to41,
 )

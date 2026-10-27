@@ -2,10 +2,26 @@ package app.aaps.core.nssdk.mapper
 
 import app.aaps.core.nssdk.localmodel.treatment.EventType
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
+import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
 class TrioCompatibilityTest {
+
+    @Test
+    fun `Trio carb nutrition and FPU links survive a wire round trip`() {
+        val carbs = """{"eventType":"Carb Correction","carbs":7.5,"fat":12.5,"protein":18.25,
+            "created_at":"2026-08-06T04:56:19.555Z","id":"source-carb","fpuID":"meal-group",
+            "identifier":"server-carb","notes":"Meal"}""".toNSTreatment() as NSCarbs
+        val copy = carbs.convertToRemoteAndBack() as NSCarbs
+        assertThat(copy.carbs).isEqualTo(7.5)
+        assertThat(copy.fatGrams).isEqualTo(12.5)
+        assertThat(copy.proteinGrams).isEqualTo(18.25)
+        assertThat(copy.sourceId).isEqualTo("source-carb")
+        assertThat(copy.fpuId).isEqualTo("meal-group")
+        assertThat(copy.identifier).isEqualTo("server-carb")
+        assertThat(copy.notes).isEqualTo("Meal")
+    }
 
     @Test
     fun `Trio SMB keeps amount time and server identity and becomes an SMB`() {

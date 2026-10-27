@@ -18,18 +18,19 @@ class SyncNsCarbsTransaction(private val carbs: List<Carbs>, private val nsClien
                 }
 
             if (current != null) {
-                // nsId exists, allow only invalidation
-                if (current.isValid && !carb.isValid) {
-                    current.isValid = false
-                    database.carbsDao.updateExistingEntry(current)
-                    result.invalidated.add(current)
-                }
-                // and change duration to shorter only
-                if (current.duration != carb.duration && nsClientMode && carb.duration < current.duration) {
+                val invalidated = current.isValid && !carb.isValid
+                val shortened = current.duration != carb.duration && nsClientMode && carb.duration < current.duration
+                val metadataChanged = current.mergeImportedMetadata(carb)
+                if (invalidated) current.isValid = false
+                // Keep the existing amount and duration rules; metadata does not change dosing.
+                if (shortened) {
                     current.amount = carb.amount
                     current.duration = carb.duration
+                }
+                if (invalidated || shortened || metadataChanged) {
                     database.carbsDao.updateExistingEntry(current)
-                    result.updated.add(current)
+                    if (invalidated) result.invalidated.add(current)
+                    if (shortened || metadataChanged) result.updated.add(current)
                 }
                 continue
             }
@@ -47,6 +48,7 @@ class SyncNsCarbsTransaction(private val carbs: List<Carbs>, private val nsClien
                 if (existingByPumpId.interfaceIDs.nightscoutId == null) {
                     existingByPumpId.interfaceIDs.nightscoutId = carb.interfaceIDs.nightscoutId
                     existingByPumpId.isValid = carb.isValid
+                    existingByPumpId.mergeImportedMetadata(carb)
                     database.carbsDao.updateExistingEntry(existingByPumpId)
                     result.updatedNsId.add(existingByPumpId)
                 }
@@ -60,6 +62,7 @@ class SyncNsCarbsTransaction(private val carbs: List<Carbs>, private val nsClien
                 // the same record, update nsId only
                 existing.interfaceIDs.nightscoutId = carb.interfaceIDs.nightscoutId
                 existing.isValid = carb.isValid
+                existing.mergeImportedMetadata(carb)
                 database.carbsDao.updateExistingEntry(existing)
                 result.updatedNsId.add(existing)
             } else {
@@ -77,4 +80,18 @@ class SyncNsCarbsTransaction(private val carbs: List<Carbs>, private val nsClien
         val inserted = mutableListOf<Carbs>()
         val invalidated = mutableListOf<Carbs>()
     }
+}
+
+/** Keep imported metadata when another sender omits it on a later sync. */
+internal fun Carbs.mergeImportedMetadata(incoming: Carbs): Boolean {
+    val fat = incoming.fatGrams ?: fatGrams
+    val protein = incoming.proteinGrams ?: proteinGrams
+    val source = incoming.sourceId ?: sourceId
+    val fpu = incoming.fpuId ?: fpuId
+    val changed = fat != fatGrams || protein != proteinGrams || source != sourceId || fpu != fpuId
+    fatGrams = fat
+    proteinGrams = protein
+    sourceId = source
+    fpuId = fpu
+    return changed
 }
