@@ -161,8 +161,8 @@ class NSDeviceStatusHandler(
     private fun updateDeviceData(deviceStatus: NSDeviceStatus) {
         val createdAt = deviceStatus.createdAt?.let { dateUtil.fromISODateString(it) } ?: return
         processedDeviceStatusData.device?.let { if (createdAt < it.createdAt) return } // take only newer record
-        deviceStatus.device?.let {
-            if (it.startsWith("openaps://")) processedDeviceStatusData.device = ProcessedDeviceStatusData.Device(createdAt, it.substring(10))
+        deviceStatusDisplayName(deviceStatus.device)?.let {
+            processedDeviceStatusData.device = ProcessedDeviceStatusData.Device(createdAt, it)
         }
     }
 
@@ -402,6 +402,14 @@ class NSDeviceStatusHandler(
         }
     }
 }
+
+/** Known loop uploaders use different device-name formats. */
+internal fun deviceStatusDisplayName(device: String?): String? = when {
+    device == "Trio" -> device
+    device?.startsWith("openaps://") == true -> device.removePrefix("openaps://")
+    else -> null
+}
+
 /**
  * Flattens any markup a foreign uploader put in a device-status value.
  *

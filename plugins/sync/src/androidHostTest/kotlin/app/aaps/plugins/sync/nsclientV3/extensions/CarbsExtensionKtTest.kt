@@ -13,6 +13,29 @@ import org.junit.jupiter.api.Test
 internal class CarbsExtensionKtTest {
 
     @Test
+    fun nutritionAndSourceLinksSurviveSyncConversion() {
+        val carbs = CA(
+            timestamp = 1785992179555L,
+            utcOffset = 0L,
+            amount = 7.5,
+            duration = 60000L,
+            notes = "Meal",
+            fatGrams = 12.5,
+            proteinGrams = 18.25,
+            sourceId = "source-carb",
+            fpuId = "meal-group",
+            ids = IDs(nightscoutId = "server-carb")
+        )
+
+        val copy = (carbs.toNSCarbs().convertToRemoteAndBack() as NSCarbs).toCarbs()
+
+        assertThat(copy).isEqualTo(carbs)
+        assertThat(copy.ids.nightscoutId).isEqualTo("server-carb")
+        assertThat(copy.sourceId).isEqualTo("source-carb")
+        assertThat(copy.fpuId).isEqualTo("meal-group")
+    }
+
+    @Test
     fun toCarbs() {
         var carbs = CA(
             timestamp = 10000,
