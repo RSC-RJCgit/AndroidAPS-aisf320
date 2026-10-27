@@ -2,6 +2,10 @@ package app.aaps.core.nssdk.remotemodel
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonTransformingSerializer
 
 /*
 * Depending on the type, different other fields are present.
@@ -22,7 +26,7 @@ internal data class RemoteEntry(
     @SerialName("type") val type: String = "", // sgv, mbg, cal, etc;  Bolus type NORMAL, SMB, PRIMING
     @SerialName("sgv") val sgv: Double? = null, // number The glucose reading. (only available for sgv types)
     @SerialName("dateString") val dateString: String? = null,
-    @SerialName("date") var date: Long? = null, // required ? TODO: date and dateString are redundant - are both needed? how to handle inconsistency then? Only expose one to clients?
+    @SerialName("date") @Serializable(with = EntryDateSerializer::class) var date: Long? = null,
     @SerialName("device") val device: String? = null, // The device from which the data originated (including serial number of the device, if it is relevant and safe).
     @SerialName("direction") val direction: String? = null, // TODO: what implicit convention for the directions exists?
     @SerialName("identifier") val identifier: String? = null,
@@ -45,3 +49,15 @@ internal data class RemoteEntry(
     @SerialName("sensorMgdlAtPairing") val sensorMgdlAtPairing: Double? = null, // sensor value at the moment the fingerstick was entered
     @SerialName("isCalibration") val isCalibration: Boolean? = null // marker: true when this mbg is an AAPS calibration pair (vs a foreign manual BG)
 )
+
+/** Trio can send fractional milliseconds. Keep whole milliseconds without changing integer dates or IDs. */
+internal object EntryDateSerializer : JsonTransformingSerializer<Long>(Long.serializer()) {
+    override fun transformDeserialize(element: JsonElement): JsonElement {
+        val text = (element as? JsonPrimitive)?.content ?: return element
+        if (text.toLongOrNull() != null) return element
+        val number = text.toDoubleOrNull() ?: return element
+        // Leave invalid or overflowing input to the normal decoder instead of clamping it to a date.
+        if (!number.isFinite() || number < Long.MIN_VALUE.toDouble() || number >= Long.MAX_VALUE.toDouble()) return element
+        return JsonPrimitive(number.toLong())
+    }
+}
