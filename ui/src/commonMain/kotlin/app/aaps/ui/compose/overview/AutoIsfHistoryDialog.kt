@@ -5,8 +5,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -26,8 +26,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.aaps.core.objects.autoisf.AutoIsfFactor
@@ -50,10 +52,13 @@ fun AutoIsfHistoryDialog(
     var smbOnly by remember { mutableStateOf(false) }
     val shown = if (smbOnly) rows.filter { it.hasSmb } else rows
     val horizontal = rememberScrollState()
+    val windowSize = LocalWindowInfo.current.containerSize
+    val dialogWidth = with(LocalDensity.current) { windowSize.width.toDp() * 0.98f }.coerceAtLeast(1.dp)
+    val dialogHeight = with(LocalDensity.current) { windowSize.height.toDp() * 0.95f }.coerceAtLeast(1.dp)
     // Full screen width like the 3426 dialog: the platform default width is about a portrait phone, which in landscape
     // leaves room for only the time column and 4-5 others.
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxWidth(0.98f).fillMaxHeight(0.95f)) {
+        Surface(modifier = Modifier.width(dialogWidth).height(dialogHeight)) {
             Column(
                 modifier = Modifier.padding(AapsTheme.spacing.large),
                 verticalArrangement = Arrangement.spacedBy(AapsTheme.spacing.medium)
@@ -100,28 +105,30 @@ fun AutoIsfHistoryDialog(
                         }
                     }
                     // Header row stays fixed above the vertical scroll; it shares the horizontal scroll with the data rows.
-                    Column(modifier = Modifier.weight(1f).horizontalWheelScroll(horizontal)) {
-                        Row {
+                    Column(modifier = Modifier.fillMaxWidth().weight(1f).horizontalWheelScroll(horizontal)) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
                             HistoryCell(timeHeader, headerColor, bold = true, width = widths.first())
                             HistoryLine(
                                 values = headers,
                                 colors = List(headers.size) { headerColor },
                                 bold = true,
                                 scroll = horizontal,
-                                widths = widths.drop(1)
+                                widths = widths.drop(1),
+                                modifier = Modifier.weight(1f)
                             )
                         }
-                        Column(modifier = Modifier.weight(1f).verticalScroll(vertical)) {
+                        Column(modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(vertical)) {
                             shown.forEach { row ->
                                 val colors = rowColors(row)
-                                Row {
+                                Row(modifier = Modifier.fillMaxWidth()) {
                                     HistoryCell(row.time, colors.first(), bold = false, width = widths.first())
                                     HistoryLine(
                                         values = row.scrollingCells(),
                                         colors = colors.drop(1),
                                         bold = false,
                                         scroll = horizontal,
-                                        widths = widths.drop(1)
+                                        widths = widths.drop(1),
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
@@ -242,9 +249,10 @@ private fun HistoryLine(
     colors: List<Color>,
     bold: Boolean,
     scroll: ScrollState,
-    widths: List<Dp>
+    widths: List<Dp>,
+    modifier: Modifier = Modifier
 ) {
-    Row(modifier = Modifier.horizontalScroll(scroll)) {
+    Row(modifier = modifier.horizontalScroll(scroll)) {
         values.forEachIndexed { index, value ->
             Text(
                 text = value,
