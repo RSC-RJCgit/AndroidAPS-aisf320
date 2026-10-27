@@ -818,7 +818,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
                 val bolusSize = value.size * scaledPxSize * 1.2f
-                if ((value as? BolusDataPoint)?.data?.amount == 0.0 || automaticCleanGraph) {
+                if ((value as? BolusDataPoint)?.data?.amount == 0.0) {
                     // A 0.00 bolus (real, or a "Wizard: 0U calculated" point): the slim SMB arrow under the BG
                     // dot, ZERO_BOLUS_ARROW_SCALE times larger, not the big triangle a real bolus gets.
                     // 2026-10-23, per explicit request: in the automatic clean graph every bolus is this slim arrow.
