@@ -901,6 +901,8 @@ fun GraphsSection(
 
     // 2026-10-18, per explicit request: on phones and tablets too (was desktop only), next to pinch zoom.
     val showZoomButtons = !LocalInspectionMode.current
+    // Scale only the displayed height; keep the saved portrait heights for the graph editor.
+    val graphHeightScale = if (isLandscape()) 2f / 3f else 1f
     val zoomEndPadding = 32.dp + if (isLandscape()) AapsTheme.spacing.extraLarge else 0.dp
     // Set by the BG graph, read by every graph
     val inspect = remember { GraphInspectState() }
@@ -1011,7 +1013,7 @@ fun GraphsSection(
                 inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(graphConfig.bgHeight.dp)
+                    .height(graphConfig.bgHeight.dp * graphHeightScale)
                     .onScrollOrZoomGesture {
                         graphViewModel.onGraphInteraction()
                         followNow = false
@@ -1138,7 +1140,7 @@ fun GraphsSection(
                 inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(graphConfig.iobHeight.dp)
+                    .height(graphConfig.iobHeight.dp * graphHeightScale)
             )
             // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates").
             // It sits at the bottom left, because the hourly basal peak numbers use the top line of this graph.
@@ -1203,7 +1205,7 @@ fun GraphsSection(
                     nowTimestamp = nowTimestamp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(secondary.height.dp)
+                        .height(secondary.height.dp * graphHeightScale)
                 )
                 // Name at the top left and the pencil at the top right, as before the merge: the bottom is the time labels.
                 // 2026-10-24, per explicit request: numbered (G2 is the first of these), full strength instead of 60%, and
@@ -1253,7 +1255,7 @@ fun GraphsSection(
                     topBandLines = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(graphConfig.graph5Height.dp)
+                        .height(graphConfig.graph5Height.dp * graphHeightScale)
                 )
                 if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
                 if (!isSimpleMode) {
