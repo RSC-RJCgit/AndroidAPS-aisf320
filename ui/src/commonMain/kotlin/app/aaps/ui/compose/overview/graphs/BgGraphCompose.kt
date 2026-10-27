@@ -1233,13 +1233,14 @@ fun BgGraphCompose(
             )
         }
     }
-    val lastBgMark = remember(bgReadings, minTimestamp, smbText, profileUtil) {
+    val generalColors = AapsTheme.generalColors
+    val lastBgMark = remember(bgReadings, minTimestamp, smbText, profileUtil, generalColors) {
         bgReadings.lastOrNull()?.let { last ->
             val text = profileUtil.fromMgdlToStringWithUnits(last.value)
             val color = when (last.range) {
-                BgRange.HIGH -> AapsTheme.generalColors.bgHigh
-                BgRange.LOW -> AapsTheme.generalColors.bgLow
-                else -> AapsTheme.generalColors.bgInRange
+                BgRange.HIGH -> generalColors.bgHigh
+                BgRange.LOW -> generalColors.bgLow
+                else -> generalColors.bgInRange
             }
             RecentPeakLabels(
                 listOf(PeakMark(timestampToX(last.timestamp, minTimestamp), last.value, text)),
