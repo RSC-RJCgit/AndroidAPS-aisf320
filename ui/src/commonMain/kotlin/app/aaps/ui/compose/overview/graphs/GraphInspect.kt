@@ -310,15 +310,21 @@ fun rememberInspectLine(state: GraphInspectState?, dotOnReading: Boolean = false
  * Inspecting ends in the Final pass, after Vico has seen the lift. Otherwise Vico keeps the marker.
  */
 fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInput(state) {
-    awaitPointerEventScope {
-        while (true) {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            state.pointerDown = event.changes.any { it.pressed }
-            if (state.fingerDown && event.type == PointerEventType.Move) event.changes.forEach { it.consume() }
-            // Same event, after Vico. Also covers a lift that Vico did not get.
-            awaitPointerEvent(PointerEventPass.Final)
-            if (!state.pointerDown) state.fingerDown = false
+    try {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                state.pointerDown = event.changes.any { it.pressed }
+                if (state.fingerDown && event.type == PointerEventType.Move) event.changes.forEach { it.consume() }
+                // Same event, after Vico. Also covers a lift that Vico did not get.
+                awaitPointerEvent(PointerEventPass.Final)
+                if (!state.pointerDown) state.fingerDown = false
+            }
         }
+    } finally {
+        // Rotation or removal of the graph can cancel this handler without a finger-lift event.
+        state.pointerDown = false
+        state.fingerDown = false
     }
 }
 
