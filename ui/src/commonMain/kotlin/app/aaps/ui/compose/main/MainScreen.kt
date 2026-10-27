@@ -30,6 +30,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -76,6 +77,8 @@ import app.aaps.ui.compose.overview.EatReminderBanner
 import app.aaps.ui.compose.overview.OverviewScreen
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
+import app.aaps.ui.compose.overview.graphs.TopBarPillHost
+import app.aaps.ui.compose.overview.graphs.LocalTopBarPillHost
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
 import app.aaps.ui.compose.quickLaunch.QuickLaunchToolbar
@@ -243,6 +246,8 @@ fun MainScreen(
             // and navigation-bar protection scrims rely on this: they read raw
             // WindowInsets.statusBars / navigationBars, which would be consumed
             // (returning zero height) if those Scaffold slots were populated.
+            // Where the graphs' press-and-hold pill is drawn: over the top bar (see TopBarPillHost)
+            val topBarPillHost = remember { TopBarPillHost() }
             Scaffold { scaffoldPadding ->
                 val hasToolbar = quickLaunchItems.isNotEmpty()
 
@@ -266,7 +271,8 @@ fun MainScreen(
                 // (Probe-while-offline is now global — see ComposeMainActivity. This screen still reads
                 // masterReachable for its own gating.)
                 Box(modifier = Modifier.fillMaxSize()) {
-                    // Main content
+                    // Main content. The graphs hand their press-and-hold pill to the top bar below (2026-10-27).
+                    CompositionLocalProvider(LocalTopBarPillHost provides topBarPillHost) {
                     OverviewScreen(
                         profileName = uiState.profileName,
                         profilePsId = uiState.profilePsId,
@@ -324,6 +330,7 @@ fun MainScreen(
                         isPumpCommunicating = isPumpCommunicating,
                         onStopBolus = onStopBolus
                     )
+                    }
 
                     // Search results overlay
                     if (searchUiState.isSearchActive) {
@@ -424,6 +431,19 @@ fun MainScreen(
                                 if (it.height > 0 && it.height != topBarHeightPx) topBarHeightPx = it.height
                             }
                         )
+                    }
+
+                    // The press-and-hold pill of the graphs, over the top bar while a finger is down (2026-10-27, per explicit
+                    // request). The bar does not scroll, so the pill is always in view; it draws nothing while no graph is held.
+                    Box(
+                        contentAlignment = Alignment.TopCenter,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = scaffoldPadding.calculateTopPadding())
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        topBarPillHost.content?.invoke()
                     }
 
                     // Landscape uses a rail with space reserved beside the graphs.

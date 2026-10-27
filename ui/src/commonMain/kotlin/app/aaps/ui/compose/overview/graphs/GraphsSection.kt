@@ -1042,17 +1042,37 @@ fun GraphsSection(
                         .padding(end = 4.dp, top = 2.dp)
                 )
             }
-            // Own composable, so a finger move does not recompose this section
-            GraphInspectOverlay(
-                inspect = inspect,
-                graphViewModel = graphViewModel,
-                bgReadings = bgReadings,
-                minTimestamp = derivedTimeRange?.first,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(y = INSPECT_PILL_OFFSET)
-                    .padding(top = 2.dp, start = 36.dp, end = 36.dp)
-            )
+            // Own composable, so a finger move does not recompose this section. On the main screen it is drawn over the
+            // top bar (TopBarPillHost, 2026-10-27, per explicit request); elsewhere, as before, over the top of BG.
+            val pillHost = LocalTopBarPillHost.current
+            if (pillHost == null) {
+                GraphInspectOverlay(
+                    inspect = inspect,
+                    graphViewModel = graphViewModel,
+                    bgReadings = bgReadings,
+                    minTimestamp = derivedTimeRange?.first,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = INSPECT_PILL_OFFSET)
+                        .padding(top = 2.dp, start = 36.dp, end = 36.dp)
+                )
+            } else {
+                // Read through states, so the pill drawn by the host follows the newest readings and time range
+                val latestBgReadings by rememberUpdatedState(bgReadings)
+                val latestMinTimestamp by rememberUpdatedState(derivedTimeRange?.first)
+                DisposableEffect(pillHost, inspect, graphViewModel) {
+                    val pill: @Composable () -> Unit = {
+                        GraphInspectOverlay(
+                            inspect = inspect,
+                            graphViewModel = graphViewModel,
+                            bgReadings = latestBgReadings,
+                            minTimestamp = latestMinTimestamp
+                        )
+                    }
+                    pillHost.content = pill
+                    onDispose { if (pillHost.content === pill) pillHost.content = null }
+                }
+            }
         }
         // A node of its own rather than more text on the graph above, so a listener reaches the
         // readings first and swipes once to decide whether she wants the forecast, instead of having
