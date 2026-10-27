@@ -330,7 +330,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.strokeWidth = 0f
                     canvas.drawCircle(endX, endY, value.size * scaledPxSize, mPaint)
                     if (value == values.lastOrNull() && value.label.isNotEmpty()) {
-                        drawLabel45Right(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.6f)
+                        val parts = value.label.split(" ")
+                        val bglOnly = if (parts.size > 1) parts.last() else value.label
+                        val proxyValue = object : DataPointWithLabelInterface by value {
+                            override val label: String = bglOnly
+                        }
+                        drawLabel45Right(endX, endY, proxyValue, canvas, scaledPxSize, scaledTextSize * 0.6f)
                     }
                 } else if (value.shape == Shape.IOB_PREDICTION || value.shape == Shape.BUCKETED_BG) {
                     mPaint.color = value.color(graphView.context)
