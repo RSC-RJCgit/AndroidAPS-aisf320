@@ -99,7 +99,7 @@ internal class RecentPeakLabels(
     }
 }
 
-/** Decoration for the last BG reading at the end of the BGL curve, rendered without strict boundary culling. */
+/** Label beside the last BG reading, kept inside the graph at its right edge. */
 internal class LastBgLabelDecoration(
     private val x: Double,
     private val y: Double,
@@ -119,7 +119,10 @@ internal class LastBgLabelDecoration(
             if (y !in range.minY..range.maxY) return
             val py = layerBounds.bottom - layerBounds.height * ((y - range.minY) / range.length).toFloat()
             val layout = textMeasurer.measure(label, style)
-            val left = px + 4f
+            // Put the label before the point when it would run past the right edge.
+            val preferredLeft = if (px + 4f + layout.size.width <= layerBounds.right) px + 4f
+            else px - 4f - layout.size.width
+            val left = preferredLeft.coerceIn(layerBounds.left, maxOf(layerBounds.left, layerBounds.right - layout.size.width))
             val top = (py - layout.size.height / 2f).coerceIn(layerBounds.top, maxOf(layerBounds.top, layerBounds.bottom - layout.size.height))
             with(mutableDrawScope) {
                 drawText(layout, topLeft = Offset(left, top))
