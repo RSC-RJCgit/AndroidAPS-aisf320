@@ -15,12 +15,13 @@ data class LastModified(
     @Serializable
     data class Collections(
 
-        @SerialName("devicestatus") var devicestatus: Long = 0, // devicestatus collection
-        @SerialName("entries") var entries: Long = 0,           // entries collection
-        @SerialName("profile") var profile: Long = 0,           // profile collection
-        @SerialName("treatments") var treatments: Long = 0,     // treatments collection
-        @SerialName("foods") var foods: Long = 0,               // foods collection
-        @SerialName("settings") var settings: Long = 0          // settings collection
+        // Nightscout can propagate a fractional entry date into these collection timestamps.
+        @SerialName("devicestatus") @Serializable(with = EntryDateSerializer::class) var devicestatus: Long = 0,
+        @SerialName("entries") @Serializable(with = EntryDateSerializer::class) var entries: Long = 0,
+        @SerialName("profile") @Serializable(with = EntryDateSerializer::class) var profile: Long = 0,
+        @SerialName("treatments") @Serializable(with = EntryDateSerializer::class) var treatments: Long = 0,
+        @SerialName("foods") @Serializable(with = EntryDateSerializer::class) var foods: Long = 0,
+        @SerialName("settings") @Serializable(with = EntryDateSerializer::class) var settings: Long = 0
     )
 
     fun set(colName: String, value: Long) {
