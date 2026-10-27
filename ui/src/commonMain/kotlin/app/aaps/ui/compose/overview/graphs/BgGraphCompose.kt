@@ -68,7 +68,6 @@ import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
-import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
@@ -1086,27 +1085,6 @@ fun BgGraphCompose(
         }
     }
     val smbLabelSize = rememberSmbLabelSize()
-    // The newest BG value next to its dot (2026-10-27, per explicit request), 1.6 x the SMB number size. Only when it is
-    // from the last 15 minutes, so an older day in the history browser gets no label.
-    val lastBgText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
-    val lastBgLabel = remember(bgReadings, minTimestamp, nowTimestamp, lastBgText, smbLabelSize, lowColor, inRangeColor, highColor) {
-        bgReadings.filter { it.type == BgType.REGULAR || it.type == BgType.BUCKETED }.maxByOrNull { it.timestamp }
-            ?.takeIf { nowTimestamp - it.timestamp <= 15 * 60_000L }?.let { bg ->
-            val mgdl = if (profileUtil.units == GlucoseUnit.MGDL) bg.value else bg.value * Constants.MMOLL_TO_MGDL
-            LastBgLabel(
-                x = timestampToX(bg.timestamp, minTimestamp),
-                bg = bg.value,
-                text = profileUtil.fromMgdlToStringInUnits(mgdl),
-                color = when (bg.range) {
-                    BgRange.HIGH     -> highColor
-                    BgRange.IN_RANGE -> inRangeColor
-                    BgRange.LOW      -> lowColor
-                },
-                textMeasurer = lastBgText,
-                labelSize = smbLabelSize * 1.6f,
-            )
-        }
-    }
     val smbNumbers = remember(smbStack, smbText, smbLabelSize, treatments) {
         SmbStackLabels(smbStack, smbText, pinToBottom = false, labelSize = smbLabelSize, onBounds = { bounds ->
             tapTargets.smbLabels = bounds.mapNotNull { (item, rect) ->
@@ -1257,8 +1235,8 @@ fun BgGraphCompose(
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
     // Upstream's clock change mark (2026-10-27 merge): a dashed line and a clock where the UTC offset of the readings changes
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true)
-    val decorations = remember(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgLabel, inspectLine, geometryReporter) {
-        listOf(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, lastBgLabel, inspectLine, geometryReporter)
+    val decorations = remember(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine, geometryReporter) {
+        listOf(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine, geometryReporter)
     }
 
     // =========================================================================

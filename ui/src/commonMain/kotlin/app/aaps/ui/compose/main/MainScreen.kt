@@ -248,6 +248,7 @@ fun MainScreen(
             // (returning zero height) if those Scaffold slots were populated.
             // Where the graphs' press-and-hold pill is drawn: over the top bar (see TopBarPillHost)
             val topBarPillHost = remember { TopBarPillHost() }
+            val topBarBgInfo by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
             Scaffold { scaffoldPadding ->
                 val hasToolbar = quickLaunchItems.isNotEmpty()
 
@@ -424,6 +425,8 @@ fun MainScreen(
                             onSearchActiveChange = onSearchActiveChange,
                             isSimpleMode = uiState.isSimpleMode,
                             compact = landscapeNavigation,
+                            // The current BG beside the search field, so it never scrolls away (2026-10-27)
+                            bgInfo = topBarBgInfo.bgInfo,
                             // Guard against transient 0 heights during AnimatedVisibility exit:
                             // the resulting contentPadding invalidation can schedule a remeasure
                             // on a node that's losing its owner — crashes in dispatchDraw.
