@@ -5,6 +5,7 @@ import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.entry.NsUnits
 import app.aaps.core.nssdk.nsSdkJson
 import app.aaps.core.nssdk.remotemodel.RemoteEntry
+import kotlin.time.Instant
 
 fun NSSgvV3.convertToRemoteAndBack(): NSSgvV3? =
     toRemoteEntry().toSgv()
@@ -16,9 +17,13 @@ internal fun RemoteEntry.toSgv(): NSSgvV3? {
 
     this.sgv ?: return null
     if (this.type != "sgv") return null
+    // Older uploads may have only dateString. Do not replace the sensor's numeric date when present.
+    val readingDate = this.date ?: this.dateString?.let {
+        runCatching { Instant.parse(it.trim()).toEpochMilliseconds() }.getOrNull()
+    } ?: return null
 
     return NSSgvV3(
-        date = this.date ?: 0L,
+        date = readingDate,
         device = this.device,
         identifier = this.identifier,
         srvModified = this.srvModified,

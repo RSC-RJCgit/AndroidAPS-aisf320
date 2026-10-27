@@ -27,6 +27,7 @@ enum class EventType(val text: String) {
     @SerialName("Carb Correction") CARBS_CORRECTION("Carb Correction"),
     @SerialName("Bolus Wizard") BOLUS_WIZARD("Bolus Wizard"),
     @SerialName("Correction Bolus") CORRECTION_BOLUS("Correction Bolus"),
+    @SerialName("SMB") TRIO_SMB("SMB"),
     @SerialName("Meal Bolus") MEAL_BOLUS("Meal Bolus"),
     @SerialName("Combo Bolus") COMBO_BOLUS("Combo Bolus"),
     @SerialName("Temporary Target") TEMPORARY_TARGET("Temporary Target"),

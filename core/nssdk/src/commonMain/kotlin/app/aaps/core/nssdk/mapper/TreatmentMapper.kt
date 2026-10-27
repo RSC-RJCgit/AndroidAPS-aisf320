@@ -48,14 +48,14 @@ internal fun RemoteTreatment.toTreatment(): NSTreatment? {
                 subject = this.subject,
                 isReadOnly = this.isReadOnly == true,
                 isValid = this.isValid != false,
-                eventType = this.eventType ?: EventType.MEAL_BOLUS,
+                eventType = if (this.eventType == EventType.TRIO_SMB) EventType.CORRECTION_BOLUS else this.eventType ?: EventType.MEAL_BOLUS,
                 notes = this.notes,
                 pumpId = this.pumpId,
                 endId = this.endId,
                 pumpType = this.pumpType,
                 pumpSerial = this.pumpSerial,
                 insulin = this.insulin,
-                type = NSBolus.BolusType.fromString(this.type),
+                type = if (this.type == null && this.eventType == EventType.TRIO_SMB) NSBolus.BolusType.SMB else NSBolus.BolusType.fromString(this.type),
                 isBasalInsulin = isBasalInsulin == true,
                 iCfg = this.iCfg.toNSICfg()
             )

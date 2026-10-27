@@ -66,7 +66,8 @@ internal data class RemoteDeviceStatus(
 
     @Serializable
     data class Uploader(
-        @SerialName("battery") val battery: Int? = null
+        @SerialName("battery") val battery: Int? = null,
+        @SerialName("isCharging") val isCharging: Boolean? = null
     )
 }
 
@@ -75,7 +76,7 @@ internal data class RemoteDeviceStatus(
  * an array - reads as an uploader with no battery. Writing is not changed.
  *
  * Not every uploader writes an object here: one in the field writes `"uploader":"GG-Host"`, a plain
- * name. AAPS only takes the battery from this field, so a different shape must not make the whole
+ * name. AAPS reads battery and charging status from this field, so a different shape must not make the whole
  * device status unreadable. It did: on the websocket the exception crashed the app every time such a
  * document arrived (4.0.0-dev-e), and on the REST load one such document fails the whole list it is
  * in.
