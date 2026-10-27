@@ -47,7 +47,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -62,7 +61,6 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
-import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.GraphConfig
@@ -1033,24 +1031,6 @@ fun GraphsSection(
                     )
             )
             if (!isSimpleMode) {
-                bgReadings.lastOrNull()?.let { last ->
-                    val profileUtil = LocalProfileUtil.current
-                    val text = profileUtil.fromMgdlToStringWithUnits(last.value)
-                    val color = when (last.range) {
-                        BgRange.HIGH -> AapsTheme.generalColors.bgHigh
-                        BgRange.LOW -> AapsTheme.generalColors.bgLow
-                        else -> AapsTheme.generalColors.bgInRange
-                    }
-                    Text(
-                        text = text,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = color,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(start = 8.dp, top = 4.dp)
-                    )
-                }
                 GraphEditButton(
                     onClick = { editingBgOverlays = true },
                     graphName = stringResource(CoreUiStrings.glucose),
