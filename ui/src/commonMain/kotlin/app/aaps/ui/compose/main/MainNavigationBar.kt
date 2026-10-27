@@ -2,6 +2,7 @@ package app.aaps.ui.compose.main
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -359,7 +360,7 @@ private fun MainNavigationContainer(vertical: Boolean, modifier: Modifier, conte
         ) { MainNavigationScope().content() }
     } else {
         NavigationBar(
-            modifier = modifier,
+            modifier = modifier.height(56.dp),
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
             windowInsets = WindowInsets(0)
