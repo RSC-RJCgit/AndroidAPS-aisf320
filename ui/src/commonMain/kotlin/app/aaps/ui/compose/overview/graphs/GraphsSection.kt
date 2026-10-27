@@ -901,6 +901,7 @@ fun GraphsSection(
 
     // 2026-10-18, per explicit request: on phones and tablets too (was desktop only), next to pinch zoom.
     val showZoomButtons = !LocalInspectionMode.current
+    val zoomEndPadding = 32.dp + if (isLandscape()) AapsTheme.spacing.extraLarge else 0.dp
     // Set by the BG graph, read by every graph
     val inspect = remember { GraphInspectState() }
 
@@ -921,14 +922,7 @@ fun GraphsSection(
             .closesInspectPillOnTouch(inspect)
     ) {
         if (showZoomButtons) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                IconButton(onClick = { zoomStep(-1) }, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Filled.Remove, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
-                IconButton(onClick = { zoomStep(1) }, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                }
-            }
+            GraphZoomButtons(zoomStep, Modifier.align(Alignment.End))
         }
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
@@ -1158,7 +1152,7 @@ fun GraphsSection(
                     .align(Alignment.BottomStart)
                     .padding(start = 36.dp, bottom = 18.dp)
             )
-            if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = 32.dp))
+            if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
             if (!isSimpleMode) {
                 GraphEditButton(
                     onClick = { editingIobOverlays = true },
@@ -1227,7 +1221,7 @@ fun GraphsSection(
                         .align(Alignment.TopStart)
                         .padding(start = 36.dp, top = 2.dp)
                 )
-                if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = 32.dp))
+                if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
                 if (!isSimpleMode) {
                     GraphEditButton(
                         onClick = { editingGraphIndex = i },
@@ -1261,7 +1255,7 @@ fun GraphsSection(
                         .fillMaxWidth()
                         .height(graphConfig.graph5Height.dp)
                 )
-                if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = 32.dp))
+                if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
                 if (!isSimpleMode) {
                     GraphEditButton(
                         onClick = { editingGraph5 = true },
@@ -1467,12 +1461,19 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
  */
 @Composable
 private fun GraphZoomButtons(zoomStep: (Int) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier = modifier) {
-        IconButton(onClick = { zoomStep(-1) }, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.Filled.Remove, contentDescription = null, modifier = Modifier.size(18.dp))
+    val landscape = isLandscape()
+    // Let Material provide full touch targets in landscape instead of squeezing them into 28 dp.
+    val buttonModifier = if (landscape) Modifier else Modifier.size(28.dp)
+    val iconSize = if (landscape) AapsTheme.spacing.chipIconSize else 18.dp
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(if (landscape) AapsTheme.spacing.small else 0.dp)
+    ) {
+        IconButton(onClick = { zoomStep(-1) }, modifier = buttonModifier) {
+            Icon(Icons.Filled.Remove, contentDescription = null, modifier = Modifier.size(iconSize))
         }
-        IconButton(onClick = { zoomStep(1) }, modifier = Modifier.size(28.dp)) {
-            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+        IconButton(onClick = { zoomStep(1) }, modifier = buttonModifier) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(iconSize))
         }
     }
 }
