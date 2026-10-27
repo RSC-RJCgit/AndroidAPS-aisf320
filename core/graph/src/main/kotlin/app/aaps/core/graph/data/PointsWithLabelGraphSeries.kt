@@ -332,10 +332,13 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     if (value == values.lastOrNull() && value.label.isNotEmpty()) {
                         val parts = value.label.split(" ")
                         val bglOnly = if (parts.size > 1) parts.last() else value.label
-                        val proxyValue = object : DataPointWithLabelInterface by value {
-                            override val label: String = bglOnly
+                        val py = endY - scaledPxSize
+                        canvas.withRotation(-45f, endX, py) {
+                            mPaint.textSize = (scaledTextSize * 0.6f * 0.8f).toFloat()
+                            mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))
+                            mPaint.isFakeBoldText = true
+                            drawText(bglOnly, endX + scaledPxSize, py, mPaint)
                         }
-                        drawLabel45Right(endX, endY, proxyValue, canvas, scaledPxSize, scaledTextSize * 0.6f)
                     }
                 } else if (value.shape == Shape.IOB_PREDICTION || value.shape == Shape.BUCKETED_BG) {
                     mPaint.color = value.color(graphView.context)
