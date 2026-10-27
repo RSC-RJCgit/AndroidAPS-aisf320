@@ -58,6 +58,8 @@ import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
+import app.aaps.core.interfaces.overview.graph.BgRange
+import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalProfileUtil
@@ -76,7 +78,6 @@ import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.interfaces.overview.graph.TherapyEventType
-import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.icons.IcBgCheck
@@ -1232,11 +1233,25 @@ fun BgGraphCompose(
             )
         }
     }
+    val lastBgMark = remember(bgReadings, minTimestamp, smbText, profileUtil) {
+        bgReadings.lastOrNull()?.let { last ->
+            val text = profileUtil.fromMgdlToStringWithUnits(last.value)
+            val color = when (last.range) {
+                BgRange.HIGH -> AapsTheme.generalColors.bgHigh
+                BgRange.LOW -> AapsTheme.generalColors.bgLow
+                else -> AapsTheme.generalColors.bgInRange
+            }
+            RecentPeakLabels(
+                listOf(PeakMark(timestampToX(last.timestamp, minTimestamp), last.value, text)),
+                color, smbText, endAxis = false, pinToTop = false
+            )
+        }
+    }
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
     // Upstream's clock change mark (2026-10-27 merge): a dashed line and a clock where the UTC offset of the readings changes
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true)
-    val decorations = remember(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, inspectLine, geometryReporter) {
-        listOf(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, inspectLine, geometryReporter)
+    val decorations = remember(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter) {
+        listOf(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, lastBgMark, inspectLine, geometryReporter)
     }
 
     // =========================================================================
