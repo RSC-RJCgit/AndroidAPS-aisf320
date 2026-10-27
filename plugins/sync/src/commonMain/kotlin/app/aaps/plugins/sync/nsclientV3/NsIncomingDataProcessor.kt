@@ -131,7 +131,9 @@ class NsIncomingDataProcessor(
         if (!fromLiveSite && !acceptsGlucose(doFullSync)) return false
 
         var latestDateInReceivedData: Long = 0
-        aapsLogger.debug(LTag.NSCLIENT, "Received NS Data: $sgvs")
+        // Counts only (2026-10-27, per explicit request): the whole page made lines of up to 160 KB, so during a first load
+        // the 5 MB log rolled over every 30 seconds and a crash was gone before it could be read
+        aapsLogger.debug(LTag.NSCLIENT, "Received NS Data: ${if (sgvs is List<*>) batchSpan(sgvs.size, sgvs.mapNotNull { (it as? NSSgvV3)?.date }) else sgvs::class.simpleName}")
         val glucoseValues = mutableListOf<GV>()
 
         if (sgvs is List<*>) { // V3 client
@@ -229,8 +231,13 @@ class NsIncomingDataProcessor(
     fun processTreatments(treatments: List<NSTreatment>, doFullSync: Boolean, advanceInitialLoadCursor: Boolean = false): Boolean {
         try {
             var latestDateInReceivedData: Long = 0
+            // One line per page, counts per kind (2026-10-27, per explicit request), not one full line per treatment
+            aapsLogger.debug(
+                LTag.NSCLIENT,
+                "Received NS treatments: ${batchSpan(treatments.size, treatments.mapNotNull { it.date })} " +
+                    treatments.groupingBy { it::class.simpleName }.eachCount()
+            )
             for (treatment in treatments) {
-                aapsLogger.debug(LTag.NSCLIENT, "Received NS treatment: $treatment")
                 val date = treatment.date ?: continue
                 if (date > latestDateInReceivedData) latestDateInReceivedData = date
 
@@ -375,4 +382,9 @@ class NsIncomingDataProcessor(
             }
         }
     }
+
+    /** "500 from 05/09 06:27:15 to 06/09 02:53:19" for the log: how many records and the time they span. */
+    private fun batchSpan(count: Int, dates: List<Long>): String =
+        if (dates.isEmpty()) "$count"
+        else "$count from ${dateUtil.dateAndTimeAndSecondsString(dates.min())} to ${dateUtil.dateAndTimeAndSecondsString(dates.max())}"
 }

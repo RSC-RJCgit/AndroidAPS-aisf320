@@ -147,6 +147,9 @@ import kotlinx.coroutines.withContext
 import kotlin.reflect.KClass
 import kotlin.time.Duration.Companion.milliseconds
 
+/** Up to this many readings in one save are logged one by one; more (a sync page) as one line with count and span. */
+private const val GLUCOSE_LOG_EACH_UP_TO = 5
+
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
 @Inject
@@ -858,14 +861,14 @@ class PersistenceLayerImpl(
             val result = repository.runTransactionForResultSuspend(CgmSourceTransaction(glucoseValues.asSequence().map { it.toDb() }.toList(), calibrations.asSequence().map { it.toDb() }.toList(), sensorInsertionTime))
             val transactionResult = PersistenceLayer.TransactionResult<GV>()
             val ueValues = mutableListOf<UE>()
-            result.inserted.forEach {
-                aapsLogger.debug(LTag.DATABASE, "Inserted GlucoseValue from ${caller.name} $it")
-                transactionResult.inserted.add(it.fromDb())
-            }
-            result.updated.forEach {
-                aapsLogger.debug(LTag.DATABASE, "Updated GlucoseValue from ${caller.name} $it")
-                transactionResult.updated.add(it.fromDb())
-            }
+            // A few readings are logged one by one as before; a page from a sync is one line with the count and the time
+            // span (2026-10-27, per explicit request: one line per reading pushed the crash out of the log within minutes)
+            if (result.inserted.size <= GLUCOSE_LOG_EACH_UP_TO) result.inserted.forEach { aapsLogger.debug(LTag.DATABASE, "Inserted GlucoseValue from ${caller.name} $it") }
+            else aapsLogger.debug(LTag.DATABASE, "Inserted ${result.inserted.size} GlucoseValues from ${caller.name}, ${result.inserted.minOf { it.timestamp }} to ${result.inserted.maxOf { it.timestamp }}")
+            result.inserted.forEach { transactionResult.inserted.add(it.fromDb()) }
+            if (result.updated.size <= GLUCOSE_LOG_EACH_UP_TO) result.updated.forEach { aapsLogger.debug(LTag.DATABASE, "Updated GlucoseValue from ${caller.name} $it") }
+            else aapsLogger.debug(LTag.DATABASE, "Updated ${result.updated.size} GlucoseValues from ${caller.name}, ${result.updated.minOf { it.timestamp }} to ${result.updated.maxOf { it.timestamp }}")
+            result.updated.forEach { transactionResult.updated.add(it.fromDb()) }
             result.sensorInsertionsInserted.forEach {
                 ueValues.add(
                     UE(

@@ -116,7 +116,8 @@ class LoadBgRunner(
                         nsClientRepository.addLog("◄ RCV", "${response.calibrations.size} calibrations from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
                         nsIncomingDataProcessor.processCalibrations(response.calibrations, nsClientV3Plugin.doingFullSync)
                     }
-                    aapsLogger.debug(LTag.NSCLIENT, "SGVS: $sgvs")
+                    // Count only (2026-10-27): the page itself is summed up by processSgvs
+                    aapsLogger.debug(LTag.NSCLIENT, "SGVS: ${sgvs.size}")
                     if (sgvs.isNotEmpty()) {
                         val action = if (isFirstLoad) "RCV-F" else "RCV"
                         nsClientRepository.addLog("◄ $action", "${sgvs.size} SVGs from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
