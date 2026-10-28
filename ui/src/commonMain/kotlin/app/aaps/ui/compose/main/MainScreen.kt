@@ -37,6 +37,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +84,7 @@ import app.aaps.ui.compose.manageSheet.ManageViewModel
 import app.aaps.ui.compose.overview.EatReminderBanner
 import app.aaps.ui.compose.overview.OverviewScreen
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
+import app.aaps.ui.compose.overview.graphs.GraphInspectPillOf
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.graphs.TopBarPillHost
 import app.aaps.ui.compose.overview.graphs.LocalTopBarPillHost
@@ -459,13 +461,15 @@ fun MainScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        // Logs where the pill is drawn and how big, once per change (2026-10-29). After the wide / split toggle
-                        // in landscape the top bar draws the right pill ("drawn here=true") but it cannot be seen on the phones.
+                        // Logs where the pill is drawn and how big, once per change (2026-10-29). It showed that after the wide /
+                        // split toggle the top bar never measured a pill again, see TopBarPillHost.current.
                         val windowSize = LocalWindowInfo.current.containerSize
                         var lastPillPlace by remember { mutableStateOf("") }
+                        val summary = topBarPillHost.summaryContent
+                        val graphs = topBarPillHost.current
                         Box(
                             modifier = Modifier.onGloballyPositioned { coordinates ->
-                                if (topBarPillHost.content == null && topBarPillHost.summaryContent == null) return@onGloballyPositioned
+                                if (graphs == null && summary == null) return@onGloballyPositioned
                                 val bounds = coordinates.boundsInWindow()
                                 val place = "at ${bounds.left.roundToInt()},${bounds.top.roundToInt()} size ${coordinates.size.width}x${coordinates.size.height}, " +
                                     "window ${windowSize.width}x${windowSize.height}"
@@ -475,7 +479,11 @@ fun MainScreen(
                                 }
                             }
                         ) {
-                            (topBarPillHost.summaryContent ?: topBarPillHost.content)?.invoke()
+                            when {
+                                summary != null -> summary()
+                                // A group of its own for each graph section, so new graphs never reuse the old graphs' pill
+                                graphs != null  -> key(graphs) { GraphInspectPillOf(inspect = graphs.inspect, graphViewModel = graphs.graphViewModel) }
+                            }
                         }
                     }
 

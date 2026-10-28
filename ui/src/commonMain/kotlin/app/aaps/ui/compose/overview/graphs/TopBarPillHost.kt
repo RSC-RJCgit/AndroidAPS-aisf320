@@ -13,44 +13,44 @@ import androidx.compose.runtime.staticCompositionLocalOf
  *
  * The top bar does not scroll, so the pill is always in view while a finger is down, also when the graphs are scrolled
  * up, and it no longer covers the top of the BG graph. Search and settings are not needed while a graph is held, and
- * they are back as soon as the finger is lifted. [GraphsSection] adds its pill with [add]; the main screen draws [content].
- * Where no host is given (the History browser), the pill stays on the graph as before.
+ * they are back as soon as the finger is lifted. [GraphsSection] adds its graphs with [add]; the main screen draws the pill
+ * of [current] with [GraphInspectPillOf]. Where no host is given (the History browser), the pill stays on the graph as before.
  */
 @Stable
 class TopBarPillHost {
 
     /**
-     * The pills of the graphs on screen, newest last (2026-10-28). A list rather than one value: when the landscape
-     * toggle swaps the wide and the split layout, the new graphs can be added before the old ones are removed. Each
-     * removes only its own entry, so the order cannot leave the top bar drawing the pill of graphs that are gone.
+     * The graphs on screen, newest last (2026-10-28). A list rather than one value: when the landscape toggle swaps the
+     * wide and the split layout, the new graphs can be added before the old ones are removed. Each removes only its own
+     * entry, so the order cannot leave the top bar with graphs that are gone.
      */
     private val pills = mutableStateListOf<Pill>()
 
     /**
-     * The pill of the graphs that show one now, else of the newest graphs. Not simply the newest (2026-10-28): in 24db,
-     * after the split layout in landscape, a hold drew the line but the top bar showed no pill until portrait, so the
-     * newest entry was not the held one.
+     * The graphs that show a pill now, else the newest graphs. Data, not a stored composable (2026-10-29): the stored
+     * composables of the old and the new graphs came from the same lambda, so when the toggle swapped them in one frame
+     * Compose kept running the old one. The 29 Oct Windows log showed it: "drawn here=true" for every hold after the
+     * toggle, and the top bar never measured a pill again until a rotation rebuilt the screen.
      */
-    val content: (@Composable () -> Unit)? get() = (pills.lastOrNull { it.isShowing() } ?: pills.lastOrNull())?.draw
+    val current: Pill? get() = pills.lastOrNull { it.inspect.pill != null } ?: pills.lastOrNull()
 
     /** A summary opened by a chip stays above graph inspection until it is closed. */
     var summaryContent by mutableStateOf<(@Composable () -> Unit)?>(null)
 
-    /** How many graph sections have a pill here, for the log */
+    /** How many graph sections are here, for the log */
     val size: Int get() = pills.size
 
-    /** True when [pill] is the one that [content] draws, for the log */
-    fun isDrawn(pill: Pill): Boolean = content === pill.draw
+    /** True when [pill] is the one that [current] gives, for the log */
+    fun isDrawn(pill: Pill): Boolean = current === pill
 
-    /** [isShowing] must read snapshot state, so the main screen draws again when it changes. */
-    fun add(isShowing: () -> Boolean, draw: @Composable () -> Unit): Pill = Pill(isShowing, draw).also { pills.add(it) }
+    fun add(inspect: GraphInspectState, graphViewModel: GraphViewModel): Pill = Pill(inspect, graphViewModel).also { pills.add(it) }
 
     fun remove(pill: Pill) {
         pills.remove(pill)
     }
 
-    /** One graph section's pill. A plain class, so [remove] finds this entry and no other. */
-    class Pill(val isShowing: () -> Boolean, val draw: @Composable () -> Unit)
+    /** One graph section. A plain class, so [remove] finds this entry and no other, and so the main screen can key on it. */
+    class Pill(val inspect: GraphInspectState, val graphViewModel: GraphViewModel)
 }
 
 /** The host of the screen, or null where the pill stays on the graph. */

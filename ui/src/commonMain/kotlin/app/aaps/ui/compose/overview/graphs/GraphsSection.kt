@@ -1069,7 +1069,7 @@ fun GraphsSection(
                 )
                 var pill by remember { mutableStateOf<TopBarPillHost.Pill?>(null) }
                 DisposableEffect(pillHost, inspect, graphViewModel) {
-                    val added = pillHost.add(isShowing = { inspect.pill != null }) { GraphInspectPillOf(inspect = inspect, graphViewModel = graphViewModel) }
+                    val added = pillHost.add(inspect = inspect, graphViewModel = graphViewModel)
                     pill = added
                     graphViewModel.logInspect("Graph inspect: graphs added to the top bar, now ${pillHost.size}")
                     onDispose {
