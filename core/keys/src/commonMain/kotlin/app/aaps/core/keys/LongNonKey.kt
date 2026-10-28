@@ -62,6 +62,8 @@ enum class LongNonKey(
 
     // Epoch millis when a mild rise with no SMB started. 0 means it is not holding. Local only.
     ApsAutoIsfPersistentRiseStartedAt("autoisf_persistent_rise_started_at", 0L, exportable = false),
+    // When the newest raw Libre spike peaked (2026-10-29). Opens the 6 h raw-spike window: see findRawSpike in SensorNotes.kt.
+    ApsAutoIsfRawSpikeAt("autoisf_raw_spike_at", 0L, exportable = false),
 
     // Epoch millis of the temp target HiBrkTwilight wrote. 0 means none. Local only.
     ApsAutoIsfHiBrkTwilightTtAt("autoisf_hibrk_twilight_tt_at", 0L, exportable = false),

@@ -1390,6 +1390,19 @@ open class OpenAPSAutoISFPlugin(
             consoleError.add("acce boost capped: meal $mealAgeForBoost min ago (acce ${round(acce_ISF, 2)} -> 1.0)")
             acce_ISF = 1.0
         }
+        // 2026-10-29, per explicit request: in the 6 h after a raw spike, no acce boost while raw rises more than twice as fast
+        // as BG. 28 Oct Live (sensor day 4): acce gave Final 3.12 at 21:15 (raw +1.39 against BG +0.74) and acce 4.38 at
+        // 22:51 (raw 12.0, then 9.5 at 22:56); with 3.5 U on board BG went from 9.7 to 4.6. Braking (acce below 1) stays.
+        val rawSpikeNow = dateUtil.now()
+        val rawSpikeRaw = recentRawLibre(rawSpikeNow)
+        if (updateRawSpikeWindow(rawSpikeRaw, rawSpikeNow) && acce_ISF > 1.0 && rawRisingTooFast(rawSpikeRaw, glucose_status?.delta ?: 0.0)) {
+            consoleError.add("acce boost capped: raw rising too fast after a raw spike (acce ${round(acce_ISF, 2)} -> 1.0)")
+            if (runMarks.ready(RunMark.SA_SPIKE_CAP, 30, rawSpikeNow)) {
+                carePortalNote("SaSpkCap")
+                runMarks.mark(RunMark.SA_SPIKE_CAP, rawSpikeNow)
+            }
+            acce_ISF = 1.0
+        }
 
         val bg_ISF = 1 + interpolate(100 - bg_off)
         consoleError.add("bg_ISF adaptation is ${round(bg_ISF, 2)}")
@@ -3540,6 +3553,25 @@ open class OpenAPSAutoISFPlugin(
         return if (index < 0) null else readings[index].timestamp
     }
 
+    /** Raw Libre readings of the last 20 min, oldest first, as time to mg/dL */
+    private suspend fun recentRawLibre(now: Long): List<Pair<Long, Double>> =
+        persistenceLayer.getBgReadingsDataFromTimeToTime(now - 20 * 60_000L, now, ascending = true)
+            .filter { (it.noise ?: 0.0) > 10.0 }
+            .map { it.timestamp to it.noise!! }
+
+    /** Remembers a new raw spike in [raw] (not one right after a shower) and says whether the 6 h raw-spike window is open. */
+    private suspend fun updateRawSpikeWindow(raw: List<Pair<Long, Double>>, now: Long): Boolean {
+        findRawSpike(raw)?.let { spike ->
+            if (rawSpikeCounts(spike.peakAt, now, runMarks.minutesAgo(RunMark.SHOWER12, now)) &&
+                spike.peakAt > preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt)
+            ) {
+                preferences.put(LongNonKey.ApsAutoIsfRawSpikeAt, spike.peakAt)
+                carePortalNote("SaSpike +${round(spike.jumpMgdl / 18.016, 2)}/${round(spike.fallMgdl / 18.016, 2)}")
+            }
+        }
+        return rawSpikeWindowOpen(preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt), now)
+    }
+
     // Writes the Libre slope and offset. Incoming glucose reads them when Apply Libre slope is on.
     private fun applyOldSensorSlope(
         now: Long,
@@ -3571,7 +3603,9 @@ open class OpenAPSAutoISFPlugin(
         // Libre value above 12.0 mmol in the last 24 hours. The LibreOver12Ts latch is still written elsewhere.
         val tier = oldSensorTier(sensorDays, podHours, slopeBase, offsetBase)
         if (!preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)) return
-        if (tier != null) {
+        // 2026-10-29, per explicit request: and a raw spike in the last 6 h (see findRawSpike). Age alone was no good check that
+        // the sensor reads wrong, so the code was left off.
+        if (tier != null && rawSpikeWindowOpen(preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt), now)) {
             if (!active) {
                 preferences.put(DoubleNonKey.ApsAutoIsfFslCalSlopeNormal, currentSlope)
                 preferences.put(DoubleNonKey.ApsAutoIsfFslCalOffsetNormal, currentOffset)
@@ -3583,9 +3617,17 @@ open class OpenAPSAutoISFPlugin(
                 aapsLogger.debug(LTag.APS, "Old sensor tier ${tier.name}")
             }
         } else {
-            if (slopesDiffer(currentSlope, slopeBase) || slopesDiffer(currentOffset, offsetBase)) {
+            val mismatch = slopesDiffer(currentSlope, slopeBase) || slopesDiffer(currentOffset, offsetBase)
+            // 2026-10-29: the raw-spike window now ends a tier on any day, so the restore waits while BG is low or falling, as
+            // the code-off restore above does.
+            if (mismatch && slopeRestoreDeferred(bg, delta, shortDelta)) {
+                aapsLogger.debug(LTag.APS, "Old sensor tier restore deferred")
+                return
+            }
+            if (mismatch) {
                 preferences.put(DoubleKey.FslCalSlope, slopeBase)
                 preferences.put(DoubleKey.FslCalOffset, offsetBase)
+                aapsLogger.debug(LTag.APS, "Old sensor tier ended")
             }
             preferences.put(BooleanNonKey.ApsAutoIsfOldSensorAdjActive, false)
         }

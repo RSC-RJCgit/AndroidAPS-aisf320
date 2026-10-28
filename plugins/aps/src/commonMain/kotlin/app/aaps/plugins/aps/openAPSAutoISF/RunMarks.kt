@@ -37,6 +37,7 @@ internal object RunMark {
     const val POD1 = "Pod1"
     const val POD2 = "Pod2"
     const val SHOWER12 = "Shower12"
+    const val SA_SPIKE_CAP = "SaSpikeCap"
     const val BOLUS2 = "Bolus2"
     const val CONNECT_POD = "ConnectPod"
     const val GENTLE_HYPO_RISK = "GentleHypoRisk"
