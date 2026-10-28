@@ -548,10 +548,8 @@ internal fun ImportReviewContent(
             // File details card
             FileDetailsCard(file = state.file, source = state.fileSource, rxBus = rxBus)
 
-            // Master password (shown only if user has a local master password — we try it first
-            // as a shortcut for "importing your own backup". No local master pw → skip straight
-            // to the decryption password field below.)
-            if (!state.needsDecryptionPassword) {
+            // Older installs may have only a hash, so they need the master once to retain it.
+            if (state.needsMasterPassword && state.decryptResult == null) {
                 OutlinedTextField(
                     value = state.masterPassword,
                     onValueChange = onMasterPasswordChanged,
@@ -587,6 +585,10 @@ internal fun ImportReviewContent(
                         Text(stringResource(CoreUiStrings.import_decrypt_review))
                     }
                 }
+            }
+
+            if (state.isProcessing && !state.needsMasterPassword && !state.needsDecryptionPassword) {
+                CircularProgressIndicator()
             }
 
             // Decryption password (progressive disclosure)

@@ -53,8 +53,7 @@ class PrefsTransfer(
         try {
             val prefs = codec.decode(contents, password)
             val importOk = prefs.metadata.values.none { it.status == PrefsStatusImpl.ERROR }
-            val encryptionFailed = prefs.metadata[PrefsMetadataKeyImpl.ENCRYPTION]?.status == PrefsStatusImpl.ERROR
-            if (!importOk && encryptionFailed) ImportDecryptResult.WrongPassword
+            if (prefs.passwordRejected) ImportDecryptResult.WrongPassword
             else ImportDecryptResult.Success(prefs, importOk, (importOk || engineeringMode) && prefs.values.isNotEmpty())
         } catch (e: Throwable) {
             ImportDecryptResult.Error(e.message ?: "Unknown error")

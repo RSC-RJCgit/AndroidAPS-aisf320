@@ -67,6 +67,9 @@ interface ImportExportPrefs {
     /** Verify a candidate password against the configured master password (settings are encrypted with it). */
     fun isMasterPasswordCorrect(password: String): Boolean
 
+    /** The retained, verified master password, or null on an older hash-only installation. */
+    fun getMasterPassword(): String?
+
     /** Prepare export file and check for cached password. Returns null if file creation fails. */
     fun prepareExport(): ExportPreparation?
 

@@ -131,6 +131,7 @@ class PrefsFormatCodec(
     fun decode(contents: String, masterPassword: String?): Prefs {
         val entries = mutableMapOf<String, String>()
         val issues = mutableListOf<String>()
+        var passwordRejected = false
 
         val blanked = contents.replace(STORED_HASH_REGEX, "$1$HASH_PLACEHOLDER$3")
         val calculatedFileHash = crypto.hmac256(blanked, KEY_CONSCIENCE)
@@ -181,6 +182,7 @@ class PrefsFormatCodec(
                         // exports were safe; anything hand-edited or written by another tool was not.
                         val decrypted = masterPassword?.let { decryptContent(it, salt.hexStringToByteArray(), cipherText) }
                         if (decrypted == null) {
+                            passwordRejected = secure == PrefsStatusImpl.OK
                             secure = PrefsStatusImpl.ERROR
                             issues.add(gs(ImplementationStrings.prefdecrypt_issue_wrong_pass))
                             insecurityReason = gs(ImplementationStrings.prefdecrypt_wrong_password)
@@ -228,7 +230,7 @@ class PrefsFormatCodec(
                 PrefMetadata(encryptionDescription, secure, issues.takeIf { it.isNotEmpty() }?.joinToString("\n"))
         }
 
-        return Prefs(entries, metadata)
+        return Prefs(entries, metadata, passwordRejected = passwordRejected)
     }
 
     /** The metadata alone, for listing files without decrypting any of them. */

@@ -9,6 +9,7 @@ import app.aaps.core.interfaces.protection.SecureEncrypt
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
@@ -59,6 +60,35 @@ class ExportPasswordDataStoreImpl(
     private var storeIsEnabled = false
     private var validityWindow = DEFAULT_VALIDITY_WINDOW
     private var expiryGracePeriod = DEFAULT_GRACE_PERIOD
+
+    override fun rememberMasterPassword(password: String) {
+        if (password.isEmpty()) {
+            preferences.remove(StringNonKey.SettingsMasterPasswordSecret)
+            return
+        }
+        val hash = preferences.getIfExists(StringKey.ProtectionMasterPassword) ?: return
+        if (!passwordHasher.checkPassword(password, hash)) return
+        val secret = secureEncrypt.encrypt(password, MASTER_SETTINGS_ALIAS)
+        if (secret.isNotEmpty()) preferences.put(StringNonKey.SettingsMasterPasswordSecret, secret)
+    }
+
+    override fun getMasterPassword(): String? {
+        val hash = preferences.getIfExists(StringKey.ProtectionMasterPassword)
+        val saved = preferences.getIfExists(StringNonKey.SettingsMasterPasswordSecret)
+        if (!hash.isNullOrEmpty() && !saved.isNullOrEmpty()) {
+            val plain = secureEncrypt.decrypt(saved)
+            if (plain.isNotEmpty() && passwordHasher.checkPassword(plain, hash)) return plain
+        }
+        if (!saved.isNullOrEmpty()) preferences.remove(StringNonKey.SettingsMasterPasswordSecret)
+        if (hash.isNullOrEmpty()) return null
+        // Reuse a verified existing export secret, even if manual transfers no longer use its expiry.
+        val old = platform.read()?.secret ?: return null
+        if (old.split(":").getOrNull(1) != KEYSTORE_ALIAS) return null
+        val plain = secureEncrypt.decrypt(old)
+        if (plain.isEmpty() || !passwordHasher.checkPassword(plain, hash)) return null
+        rememberMasterPassword(plain)
+        return plain
+    }
 
     /**
      * Whether the user has turned this on, and the window it runs with.
@@ -172,6 +202,7 @@ class ExportPasswordDataStoreImpl(
          * an existing user moves to the hardened one - StrongBox backed where the device has it.
          */
         const val KEYSTORE_ALIAS = "UnattendedExportAliasV2"
+        private const val MASTER_SETTINGS_ALIAS = "SettingsMasterPasswordV1"
 
         /** Five weeks, the grace period included. */
         private const val DEFAULT_VALIDITY_WINDOW = 35 * 24 * 3600 * 1000L

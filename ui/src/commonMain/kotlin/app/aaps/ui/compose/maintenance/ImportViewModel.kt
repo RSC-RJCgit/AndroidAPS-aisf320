@@ -67,6 +67,7 @@ sealed interface ImportStep {
         val passwordFieldError: Boolean = false,
         val decryptionPassword: String = "",
         val needsDecryptionPassword: Boolean = false,
+        val needsMasterPassword: Boolean = true,
         val decryptResult: ImportDecryptResult? = null,
         val isProcessing: Boolean = false,
         val enableAutomationStates: Boolean = false,
@@ -340,13 +341,15 @@ class ImportViewModel(
     }
 
     fun selectFile(item: ImportFileItem) {
+        val password = importExportPrefs.getMasterPassword()
+        val hasMasterPassword = importExportPrefs.isMasterPasswordSet()
         _importStep.value = ImportStep.Review(
             file = item.prefsFile,
             fileSource = item.source,
-            // No local master password → skip the "try master password first" optimization
-            // and ask for the file's decryption password directly.
-            needsDecryptionPassword = !importExportPrefs.isMasterPasswordSet()
+            needsDecryptionPassword = password == null && !hasMasterPassword,
+            needsMasterPassword = password == null && hasMasterPassword
         )
+        if (password != null) decryptWithPassword(password)
     }
 
     fun onMasterPasswordChanged(pw: String) {
@@ -382,14 +385,29 @@ class ImportViewModel(
             return
         }
 
+        // Remember only a verified local master, never a different backup password.
+        if (!current.needsDecryptionPassword) importExportPrefs.isMasterPasswordCorrect(password)
+        decryptWithPassword(password)
+    }
+
+    private fun decryptWithPassword(password: String) {
+        val current = importStep.value as? ImportStep.Review ?: return
         _importStep.value = current.copy(isProcessing = true)
 
         viewModelScope.launch {
-            val result = withContext(applyDispatcher) {
-                importExportPrefs.decryptImportFile(current.file, password)
+            val result = try {
+                withContext(applyDispatcher) {
+                    importExportPrefs.decryptImportFile(current.file, password)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.CORE, "Failed to read settings backup", e)
+                ImportDecryptResult.Error(e.message ?: "Failed to read settings backup")
             }
 
             val prev = importStep.value as? ImportStep.Review ?: return@launch
+            if (prev.file != current.file) return@launch
 
             when (result) {
                 is ImportDecryptResult.WrongPassword -> {
@@ -397,6 +415,7 @@ class ImportViewModel(
                         // Master password didn't decrypt → show decryption password field
                         _importStep.value = prev.copy(
                             isProcessing = false,
+                            needsMasterPassword = false,
                             needsDecryptionPassword = true,
                             decryptResult = null
                         )
@@ -413,6 +432,8 @@ class ImportViewModel(
                     val offer = importExportPrefs.importKeepOffer(result.prefs)
                     _importStep.value = prev.copy(
                         isProcessing = false,
+                        needsMasterPassword = false,
+                        needsDecryptionPassword = false,
                         decryptResult = result,
                         showKeepPump = offer.showKeepPump,
                         keepPump = offer.keepPumpChecked,

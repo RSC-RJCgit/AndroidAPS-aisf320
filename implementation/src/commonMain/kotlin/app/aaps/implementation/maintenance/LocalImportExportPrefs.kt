@@ -96,8 +96,12 @@ class LocalImportExportPrefs(
 
     override fun isMasterPasswordCorrect(password: String): Boolean {
         val masterHash = preferences.getIfExists(StringKey.ProtectionMasterPassword)
-        return !masterHash.isNullOrEmpty() && passwordHasher.checkPassword(password, masterHash)
+        val correct = !masterHash.isNullOrEmpty() && passwordHasher.checkPassword(password, masterHash)
+        if (correct) exportPasswordDataStore.rememberMasterPassword(password)
+        return correct
     }
+
+    override fun getMasterPassword(): String? = exportPasswordDataStore.getMasterPassword()
 
     /**
      * Keeps the export password so a scheduled export can run without asking for it.
@@ -158,7 +162,7 @@ class LocalImportExportPrefs(
      * that did not match the one on disk - the names carry a timestamp to the second.
      */
     override fun prepareExport(): ExportPreparation =
-        ExportPreparation(fileName = files.newExportName(config.FLAVOR), cachedPassword = null)
+        ExportPreparation(fileName = files.newExportName(config.FLAVOR), cachedPassword = getMasterPassword())
 
     /**
      * Writes the export to wherever the user chose, which may be both places.

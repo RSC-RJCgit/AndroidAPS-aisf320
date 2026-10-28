@@ -134,8 +134,12 @@ class ImportExportPrefsImpl(
     // master hash. The Compose export path previously accepted (and cached, for unattended exports) any password.
     override fun isMasterPasswordCorrect(password: String): Boolean {
         val masterHash = preferences.getIfExists(StringKey.ProtectionMasterPassword)
-        return !masterHash.isNullOrEmpty() && cryptoUtil.checkPassword(password, masterHash)
+        val correct = !masterHash.isNullOrEmpty() && cryptoUtil.checkPassword(password, masterHash)
+        if (correct) exportPasswordDataStore.rememberMasterPassword(password)
+        return correct
     }
+
+    override fun getMasterPassword(): String? = exportPasswordDataStore.getMasterPassword()
 
     override fun getExportConfig(): ExportConfig {
         val isCloudActive = cloudStorageManager.isCloudStorageActive()
@@ -223,11 +227,7 @@ class ImportExportPrefsImpl(
             pendingExportFile = newFile
         }
 
-        val (password, isExpired, isAboutToExpire) = exportPasswordDataStore.getPasswordFromDataStore()
-        val cachedPassword = if (password.isNotEmpty() && !(isExpired || isAboutToExpire)) password else {
-            exportPasswordDataStore.clearPasswordDataStore()
-            null
-        }
+        val cachedPassword = getMasterPassword()
 
         val displayFileName = when (destination) {
             ExportDestination.CLOUD -> config.cloudDisplayName ?: "Cloud"
@@ -607,8 +607,8 @@ class ImportExportPrefsImpl(
 
             val importOk = checkIfImportIsOk(prefs)
 
-            // Check if encryption metadata has ERROR → wrong password
-            if (!importOk && prefs.metadata[PrefsMetadataKeyImpl.ENCRYPTION]?.status == PrefsStatusImpl.ERROR) {
+            // A damaged file must not ask the user to keep retrying passwords.
+            if (prefs.passwordRejected) {
                 return ImportDecryptResult.WrongPassword
             }
 
