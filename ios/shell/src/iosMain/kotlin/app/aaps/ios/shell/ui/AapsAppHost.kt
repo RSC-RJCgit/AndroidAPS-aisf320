@@ -1,6 +1,8 @@
 package app.aaps.ios.shell.ui
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -14,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.window.ComposeUIViewController
@@ -128,6 +131,20 @@ fun aapsAppViewController(nsSocketFactory: NsSocketFactory, liveActivity: LiveAc
         // State, because "Start fresh" and "Try again" on the failure screen start the app a second time
         // in place. iOS gives an app no way to restart itself.
         var current by remember { mutableStateOf(startup) }
+        // The first frame is left empty, and the app is built from the next frame on (2026-10-29). iOS kills an app whose first
+        // frame takes more than 20 seconds. On the first start after a TestFlight install the phone is busy and its font caches
+        // are empty, and the 29 Oct crash showed the full first screen taking longer than that. A frame with nothing in it is
+        // drawn at once, and iOS does not watch the frames after it in the same way.
+        var firstFrameShown by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            firstFrameShown = true
+            startup.getOrNull()?.graph?.logger?.debug(LTag.CORE, "First frame shown, building the screen")
+        }
+        if (!firstFrameShown) {
+            Box(Modifier.fillMaxSize())
+            return@ComposeUIViewController
+        }
         current.fold(
             onSuccess = { AapsApp(it) },
             onFailure = { error ->
