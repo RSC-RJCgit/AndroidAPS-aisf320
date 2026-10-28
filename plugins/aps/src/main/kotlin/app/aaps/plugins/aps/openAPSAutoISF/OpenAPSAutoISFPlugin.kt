@@ -149,6 +149,9 @@ import org.json.JSONArray
 /** What AlarmHypo1 ("_____H4") and AlarmHypo2 ("__________A4", "H4") write as graph announcements. */
 private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
 
+/** For this long after a carb entry, autoISF() keeps acce_ISF and pp_ISF at 1.0 or below (2026-10-28, per explicit request). */
+private const val MEAL_BOOST_CAP_MINUTES = 45
+
 // Which delta test StuckRisingSlowly uses (2026-10-06, per explicit request): it used to ask "was a delayed bolus delivered
 // in the last hour", which is not a meal event at all. It now reads the same meal-event age as every other "bolus ago"
 // test (minutesSinceLastMealEvent(): carb age, or the last manual bolus age while extended carbs are active; delayed, split
@@ -11351,6 +11354,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sens_modified = true
             }
         }
+        // 2026-10-28, per explicit request: no acce boost for 45 min after a carb entry. The rise from the meal is expected and
+        // the wizard has already paid for it. 28 Oct Live: 20 g at 18:54/18:56 with a full wizard dose, then acce gave Final
+        // 2.6-3.1 at 11-23 min and parabola + acce gave about 1.05 U of SMB at 31-35 min. BG fell from 8.9 to 3.7. Braking
+        // (acce below 1) stays. The pp boost is capped the same way further down.
+        val mealAgeForBoost = minutesSinceLastMealEvent()
+        val mealBoostCap = mealAgeForBoost != null && mealAgeForBoost < MEAL_BOOST_CAP_MINUTES
+        if (mealBoostCap && acce_ISF > 1.0) {
+            consoleError.add("acce boost capped: meal $mealAgeForBoost min ago (acce ${round(acce_ISF, 2)} -> 1.0)")
+            acce_ISF = 1.0
+        }
         autoIsfValues.acceIsf = acce_ISF
         lastAcceIsf = acce_ISF  // carried forward for next cycle's determine_basal() call -- see its own doc comment
 
@@ -11398,6 +11411,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             else                             -> {
                 pp_ISF = 1.0 + max(0.0, bg_delta * pp_ISF_weight)
                 consoleError.add("pp_ISF adaptation is ${round(pp_ISF, 2)}")
+                if (mealBoostCap && pp_ISF > 1.0) {
+                    consoleError.add("pp boost capped: meal $mealAgeForBoost min ago (pp ${round(pp_ISF, 2)} -> 1.0)")
+                    pp_ISF = 1.0
+                }
                 if (pp_ISF != 1.0) {
                     sens_modified = true
                 }
