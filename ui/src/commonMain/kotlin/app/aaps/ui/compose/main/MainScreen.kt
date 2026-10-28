@@ -14,14 +14,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.DrawerValue
@@ -212,7 +216,12 @@ fun MainScreen(
         gesturesEnabled = true,
         modifier = modifier
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Protect both the overview and its overlaid controls from side navigation bars/cutouts.
+        // Consume horizontal insets here so Scaffold does not reserve the same space a second time.
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+        ) {
             val density = LocalDensity.current
             val layoutDirection = LocalLayoutDirection.current
             val landscapeNavigation = maxWidth > maxHeight

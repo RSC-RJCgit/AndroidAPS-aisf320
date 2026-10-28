@@ -28,7 +28,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -1284,14 +1283,12 @@ fun BgGraphCompose(
         )
     )
     Column(modifier = Modifier.fillMaxWidth()) {
-    // 2026-10-18: the automatic clean graph hides these rows but keeps their space (alpha 0), so the graphs below do not jump
-    // up when a zoom crosses the clean-graph limit. Landscape removes the rows and their space entirely.
-    if (!isLandscape() && savedGraphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
+    // Hidden rows must not reserve a blank band above the graph. Landscape always omits them.
+    if (!isLandscape() && graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
             autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 40.dp, top = 2.dp, bottom = 2.dp)
-                .alpha(if (graphDisplay.showTextLines) 1f else 0f)
         ) {
             // The last item of the first three lines (smb=, HP=, IOd5=) is left off the strip. It is still in the data, so the
             // AutoISF detail dialog shows the whole line.

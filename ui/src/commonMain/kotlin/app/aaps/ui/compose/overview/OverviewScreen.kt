@@ -3,8 +3,10 @@ package app.aaps.ui.compose.overview
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,8 +46,7 @@ import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.keys.interfaces.AppPlatform
-import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
@@ -190,17 +191,20 @@ fun OverviewScreen(
         ?.let { it == profilePsId && it > 0 } == true
 
     val isLandscape = isLandscape()
-    // A wide desktop window gets the full-width layout (BG header on top, graphs across the whole window, the page
-    // scrolls) instead of the split with a fixed left panel. Only desktop: a tablet keeps the split at any width.
-    val windowWidthDp = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp().value }
-    val wideDesktopWindow = LocalConfig.current.platform == AppPlatform.Desktop && windowWidthDp >= DESKTOP_FULL_WIDTH_MIN_DP
-    val tabletScreen = smallestScreenWidthDp() >= TABLET_MIN_SW_DP
-    val splitFits = windowWidthDp >= SPLIT_LAYOUT_MIN_WIDTH_DP
-    val preferences = LocalPreferences.current
-    val layoutChoice by preferences.observe(StringKey.OverviewLandscapeLayout).collectAsState()
-    val layout = overviewLayout(layoutChoice, isLandscape, tabletScreen, splitFits, wideDesktopWindow)
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        // A wide desktop window gets the full-width layout (BG header on top, graphs across the whole window, the page
+        // scrolls) instead of the split with a fixed left panel. A tablet keeps the split when there is room for it.
+        // Use the content's usable width, including split-screen resizing and the reserved navigation rail.
+        val layoutDirection = LocalLayoutDirection.current
+        val windowWidthDp = (maxWidth - paddingValues.calculateStartPadding(layoutDirection) -
+            paddingValues.calculateEndPadding(layoutDirection)).value.coerceAtLeast(0f)
+        val wideDesktopWindow = LocalConfig.current.platform == AppPlatform.Desktop && windowWidthDp >= DESKTOP_FULL_WIDTH_MIN_DP
+        val tabletScreen = smallestScreenWidthDp() >= TABLET_MIN_SW_DP
+        val splitFits = windowWidthDp >= SPLIT_LAYOUT_MIN_WIDTH_DP
+        val preferences = LocalPreferences.current
+        val layoutChoice by preferences.observe(StringKey.OverviewLandscapeLayout).collectAsState()
+        val layout = overviewLayout(layoutChoice, isLandscape, tabletScreen, splitFits, wideDesktopWindow)
 
-    Box(modifier = modifier.fillMaxSize()) {
         if (layout == OverviewLayout.TABLET) {
             OverviewScreenTablet(
                 profileName = profileName,
