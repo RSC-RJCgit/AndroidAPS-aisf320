@@ -9,6 +9,7 @@ import app.aaps.core.interfaces.maintenance.CloudDirectoryManager
 import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.maintenance.Maintenance
+import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -168,6 +169,18 @@ internal class MaintenanceViewModelTest {
         sut.sendLogs()
 
         assertThat(event.await()).isEqualTo(MaintenanceEvent.Error("This function is not ready on this platform yet"))
+    }
+
+    @Test
+    fun failedExtraExportDoesNotTurnAnOpenedLogEmailIntoAnError() = runBlocking {
+        runEagerly()
+        whenever(maintenance.executeSendLogs()).thenReturn(ExportResult(localSuccess = true))
+        whenever(maintenance.exportCoordinated("MANUAL", withLogs = false)).thenAnswer { throw IllegalStateException("Cloud unavailable") }
+        val event = expectEvent()
+
+        sut.sendLogs()
+
+        assertThat(event.await()).isInstanceOf(MaintenanceEvent.Snackbar::class.java)
     }
 
     @Test

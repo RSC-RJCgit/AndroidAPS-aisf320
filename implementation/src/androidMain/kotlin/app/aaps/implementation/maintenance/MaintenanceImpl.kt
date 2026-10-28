@@ -3,6 +3,7 @@ package app.aaps.implementation.maintenance
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -25,15 +26,10 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.io.IOException
 import java.util.Arrays
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
+import kotlinx.coroutines.CancellationException
 
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
@@ -54,9 +50,13 @@ class MaintenanceImpl(
     override suspend fun executeSendLogs(): ExportResult {
         val amount = preferences.get(IntKey.MaintenanceLogsAmount)
         val logs = getLogFiles(amount)
-        val zipFile = fileListProvider.ensureTempDirExists()?.createFile("application/zip", constructName())
-            ?: return ExportResult(localSuccess = false)
-        val zip = zipLogs(zipFile, logs)
+        if (logs.isEmpty()) return ExportResult(localSuccess = false)
+        val zipFile = try {
+            createLogZip(context.cacheDir, constructName(), logs)
+        } catch (e: Exception) {
+            aapsLogger.error("Failed to prepare log ZIP", e)
+            return ExportResult(localSuccess = false)
+        }
 
         val logEmail = preferences.get(BooleanNonKey.ExportLogEmailEnabled)
         val logCloud = preferences.get(BooleanNonKey.ExportLogCloudEnabled)
@@ -69,9 +69,12 @@ class MaintenanceImpl(
         if (logEmail || !cloudEnabled) {
             emailSuccess = try {
                 val recipient = preferences.get(StringKey.MaintenanceEmail)
-                val emailIntent = sendMail(zip.uri, recipient, "Log Export")
+                val uri = FileProvider.getUriForFile(context, context.packageName + ".fileprovider", zipFile)
+                val emailIntent = sendMail(uri, recipient, "Log Export")
                 context.startActivity(emailIntent)
                 true
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 aapsLogger.error("Failed to launch email intent", e)
                 false
@@ -79,7 +82,7 @@ class MaintenanceImpl(
         }
 
         if (cloudEnabled) {
-            cloudSuccess = performCloudLogUpload(zip)
+            cloudSuccess = performCloudLogUpload(DocumentFile.fromFile(zipFile))
         }
 
         return ExportResult(localSuccess = emailSuccess, cloudSuccess = cloudSuccess)
@@ -195,22 +198,8 @@ class MaintenanceImpl(
         "AndroidAPS_LOG_" + System.currentTimeMillis() + loggerUtils.suffix
 
     private fun zip(zipFile: DocumentFile, files: List<File>) {
-        val bufferSize = 2048
-        val out = ZipOutputStream(BufferedOutputStream(FileOutputStream(context.contentResolver.openFileDescriptor(zipFile.uri, "w")?.fileDescriptor)))
-        for (file in files) {
-            val data = ByteArray(bufferSize)
-            FileInputStream(file).use { fileInputStream ->
-                BufferedInputStream(fileInputStream, bufferSize).use { origin ->
-                    val entry = ZipEntry(file.name)
-                    out.putNextEntry(entry)
-                    var count: Int
-                    while (origin.read(data, 0, bufferSize).also { count = it } != -1) {
-                        out.write(data, 0, count)
-                    }
-                }
-            }
-        }
-        out.close()
+        val output = context.contentResolver.openOutputStream(zipFile.uri, "w") ?: throw IOException("Cannot open log ZIP")
+        writeLogZip(output, files)
     }
 
     @Suppress("SameParameterValue")
@@ -232,13 +221,6 @@ class MaintenanceImpl(
         if (config.isEngineeringMode()) builder.append(rh.gs(CoreUiStrings.engineering_mode_enabled))
         val body = builder.toString()
         aapsLogger.debug("sending email to $recipient with subject $subject")
-        val emailIntent = Intent(Intent.ACTION_SEND)
-        emailIntent.type = "text/plain"
-        emailIntent.putExtra(Intent.EXTRA_EMAIL, arrayOf(recipient))
-        emailIntent.putExtra(Intent.EXTRA_SUBJECT, subject)
-        emailIntent.putExtra(Intent.EXTRA_TEXT, body)
-        emailIntent.putExtra(Intent.EXTRA_STREAM, attachmentUri)
-        emailIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        return emailIntent
+        return logEmailIntent(context.packageManager, attachmentUri, recipient, subject, body)
     }
 }

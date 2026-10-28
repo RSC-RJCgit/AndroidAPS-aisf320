@@ -37,11 +37,13 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.model.GlucoseUnit
@@ -127,6 +129,7 @@ class GraphInspectState {
     var pointerDown = false
 
     private var windowFocused = true
+    private var layoutSize: IntSize? = null
 
     /** One owner watches the whole graph area, including mouse exit and button release. */
     internal fun onPointerState(pressed: Boolean, startsPress: Boolean = false) {
@@ -134,7 +137,7 @@ class GraphInspectState {
         pointerDown = pressed && windowFocused && (wasPressed || startsPress)
         if (!pointerDown) {
             fingerDown = false
-        } else if (!wasPressed) {
+        } else if (startsPress || !wasPressed) {
             // A new click must not inherit a hold whose release was lost outside the window.
             fingerDown = false
             onTouchDown()
@@ -145,10 +148,23 @@ class GraphInspectState {
     fun onWindowFocusChanged(focused: Boolean) {
         windowFocused = focused
         if (focused) return
+        clearInspection()
+    }
+
+    /** Rotation and split layout can replace a chart without a mouse-up or focus change. */
+    internal fun onLayoutSizeChanged(size: IntSize) {
+        if (layoutSize == size) return
+        layoutSize = size
+        clearInspection()
+    }
+
+    internal fun clearInspection() {
         pointerDown = false
         fingerDown = false
         tapX = null
         pill = null
+        targetX = null
+        shownX = null
     }
 
     /**
@@ -355,7 +371,7 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
  * Closes the pill that stays after a lift or a tap as soon as the graphs are touched again. Only
  * watches, in the Initial pass, and consumes nothing, so the touch still scrolls, holds and taps.
  */
-fun Modifier.closesInspectPillOnTouch(state: GraphInspectState): Modifier = pointerInput(state) {
+fun Modifier.closesInspectPillOnTouch(state: GraphInspectState): Modifier = onSizeChanged(state::onLayoutSizeChanged).pointerInput(state) {
     try {
         awaitPointerEventScope {
             while (true) {
@@ -368,7 +384,7 @@ fun Modifier.closesInspectPillOnTouch(state: GraphInspectState): Modifier = poin
             }
         }
     } finally {
-        state.onPointerState(false)
+        state.clearInspection()
     }
 }
 

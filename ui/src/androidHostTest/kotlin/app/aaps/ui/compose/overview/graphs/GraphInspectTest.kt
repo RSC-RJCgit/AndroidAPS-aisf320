@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
+import androidx.compose.ui.unit.IntSize
 import app.aaps.core.data.model.RM
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgRange
@@ -445,6 +446,64 @@ class GraphInspectTest {
 
         state.onPointerState(true)
 
+        assertThat(state.fingerDown).isTrue()
+        assertThat(state.pill).isEqualTo(pillData)
+    }
+
+    @Test
+    fun `a fresh press recovers when the previous release was lost`() {
+        val state = GraphInspectState()
+        state.onPointerState(true, startsPress = true)
+        state.controller.shouldShowMarker(Interaction.LongPress(Point(60f, 10f)), emptyList())
+        state.pill = pillData
+
+        // No release arrived, but a new physical press always starts a new gesture.
+        state.onPointerState(true, startsPress = true)
+
+        assertThat(state.pointerDown).isTrue()
+        assertThat(state.fingerDown).isFalse()
+        assertThat(state.pill).isNull()
+        assertThat(state.controller.shouldAcceptInteraction(Interaction.Move(Point(70f, 10f)), emptyList())).isFalse()
+    }
+
+    @Test
+    fun `changing graph size clears the old hold and rejects callbacks until another press`() {
+        val state = GraphInspectState()
+        state.onLayoutSizeChanged(IntSize(1000, 600))
+        state.onPointerState(true, startsPress = true)
+        val hold = Interaction.LongPress(Point(60f, 10f))
+        state.controller.shouldShowMarker(hold, emptyList())
+        state.pill = pillData
+        state.tapX = 30.0
+        state.shownX = 30.0
+
+        state.onLayoutSizeChanged(IntSize(500, 600))
+
+        assertThat(state.pointerDown).isFalse()
+        assertThat(state.fingerDown).isFalse()
+        assertThat(state.pill).isNull()
+        assertThat(state.tapX).isNull()
+        assertThat(state.lineX).isNull()
+        assertThat(state.targetX).isNull()
+        assertThat(state.controller.shouldShowMarker(hold, emptyList())).isFalse()
+        state.onPointerState(true)
+        assertThat(state.controller.shouldAcceptInteraction(hold, emptyList())).isFalse()
+        state.onPointerState(true, startsPress = true)
+        assertThat(state.controller.shouldShowMarker(hold, emptyList())).isTrue()
+    }
+
+    @Test
+    fun `measuring the same graph size does not interrupt a hold`() {
+        val state = GraphInspectState()
+        val size = IntSize(1000, 600)
+        state.onLayoutSizeChanged(size)
+        state.onPointerState(true, startsPress = true)
+        state.controller.shouldShowMarker(Interaction.LongPress(Point(60f, 10f)), emptyList())
+        state.pill = pillData
+
+        state.onLayoutSizeChanged(size)
+
+        assertThat(state.pointerDown).isTrue()
         assertThat(state.fingerDown).isTrue()
         assertThat(state.pill).isEqualTo(pillData)
     }

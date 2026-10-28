@@ -202,8 +202,15 @@ class MaintenanceViewModel(
         maintenanceAction("sending logs") {
             val result = withContext(aapsIoDispatcher) {
                 // The logs go once, with executeSendLogs below
-                maintenance.exportCoordinated("MANUAL", withLogs = false)
-                maintenance.executeSendLogs()
+                val logResult = maintenance.executeSendLogs()
+                try {
+                    maintenance.exportCoordinated("MANUAL", withLogs = false)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    aapsLogger.error("Additional export failed after preparing log email", error)
+                }
+                logResult
             }
             val message = buildResultMessage(
                 result,
