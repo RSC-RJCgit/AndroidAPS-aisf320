@@ -112,6 +112,9 @@ class GraphViewModel(
     /** Max IOB setting. The profile basal line on Graph 5 uses 0 to 30% of it as its scale. */
     val smbMaxIob: Double get() = preferences.get(DoubleKey.ApsSmbMaxIob)
 
+    /** End of the window being browsed. Null while the overview follows now. */
+    var aivHistoryEndTime: Long? = null
+
     /**
      * Desktop only: true after a long press while the automatic clean graph was shown. The graph then shows the
      * normal display again. The graphs clear it when the zoom changes.

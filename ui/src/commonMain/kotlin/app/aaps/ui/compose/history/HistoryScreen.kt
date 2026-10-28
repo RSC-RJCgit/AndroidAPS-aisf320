@@ -30,6 +30,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +54,8 @@ import app.aaps.core.ui.compose.dialogs.DatePickerModal
 import app.aaps.core.ui.compose.metroViewModel
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.overview.AutoIsfHistoryDialog
+import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.graphs.GraphsSection
 
@@ -77,6 +80,9 @@ fun HistoryScreen(
     )
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val chipsViewModel: ChipsViewModel = viewModel(
+        factory = remember { viewModelFactory { initializer { viewModel.createChipsViewModel() } } }
+    )
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
@@ -120,6 +126,11 @@ fun HistoryScreen(
                 onPickDate = { showDatePicker = true },
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
+            TextButton(onClick = {
+                chipsViewModel.openAutoIsfHistory(viewModel.aivWindowEnd(graphViewModel.aivHistoryEndTime))
+            }) {
+                Text(stringResource(UiStrings.client_aiv_chip))
+            }
 
             AnimatedVisibility(
                 visible = progress < 100,
@@ -143,6 +154,14 @@ fun HistoryScreen(
                 fitWholeWindow = true
             )
         }
+    }
+
+    if (chipsViewModel.autoIsfHistoryOpen) {
+        AutoIsfHistoryDialog(
+            rows = chipsViewModel.autoIsfHistoryRows,
+            endTime = chipsViewModel.autoIsfHistoryEndTime,
+            onDismiss = chipsViewModel::closeAutoIsfHistory
+        )
     }
 
     if (showDatePicker) {

@@ -423,6 +423,11 @@ fun GraphsSection(
     val latestTimeRange = rememberUpdatedState(derivedTimeRange)
     val latestNow = rememberUpdatedState(nowTimestamp)
 
+    SideEffect {
+        graphViewModel.aivHistoryEndTime = if (followNow) null
+        else (bgVisibleTimeRange?.second ?: derivedTimeRange?.second)?.coerceAtMost(nowTimestamp)
+    }
+
     // A drag on any graph is copied to every graph, including the main one. Until that lands,
     // do not treat the old position as a new drag.
     val pendingScroll = remember { floatArrayOf(Float.NaN) }

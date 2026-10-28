@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
+import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
@@ -27,7 +28,8 @@ class HistoryViewModel(
     private val historyScope: HistoryScope,
     private val calculationWorkflow: CalculationWorkflow,
     private val dateUtil: DateUtil,
-    private val graphViewModelFactory: GraphViewModel.Factory
+    private val graphViewModelFactory: GraphViewModel.Factory,
+    private val chipsViewModelFactory: ChipsViewModel.Factory
 ) : ViewModel() {
 
     val progress: StateFlow<Int> = historyScope.signals.progress
@@ -46,6 +48,12 @@ class HistoryViewModel(
     /** Creates the per-scope graph VM. Called by [HistoryScreen] via `viewModel(factory = …)`. */
     fun createGraphViewModel(): GraphViewModel =
         graphViewModelFactory.create(historyScope.cache, fullWindow = true)
+
+    fun createChipsViewModel(): ChipsViewModel = chipsViewModelFactory.create(historyScope.cache)
+
+    /** Before the graph has drawn, use the end of the selected day, without its layout nudge. */
+    fun aivWindowEnd(graphTime: Long?): Long =
+        (graphTime ?: (historyScope.overviewData.toTime - WINDOW_NUDGE_MS)).coerceAtMost(dateUtil.now())
 
     // One calendar day from the window's midnight, not WINDOW_MS from `fromTime`. `fromTime` carries
     // the nudge below, so stepping from it added the nudge again on every tap and the window drifted

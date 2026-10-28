@@ -214,22 +214,31 @@ class ChipsViewModel(
         private set
 
     /** Opens the history table. Kept here so turning the phone does not close it. */
-    fun openAutoIsfHistory() {
-        viewModelScope.launch {
-            autoIsfHistoryRows = loadAutoIsfHistory()
+    var autoIsfHistoryEndTime by mutableStateOf(0L)
+        private set
+    private var autoIsfHistoryJob: Job? = null
+
+    fun openAutoIsfHistory(endTime: Long? = null) {
+        autoIsfHistoryJob?.cancel()
+        val selectedEnd = (endTime ?: dateUtil.now()).coerceAtMost(dateUtil.now())
+        autoIsfHistoryJob = viewModelScope.launch {
+            autoIsfHistoryRows = loadAutoIsfHistory(selectedEnd)
+            autoIsfHistoryEndTime = selectedEnd
             autoIsfHistoryOpen = true
             // The table is already open. A slow cloud upload must not hold it back.
-            runCatching { maintenance.exportCoordinated("ISF_LONG_PRESS") }
+            // Browsing an old window reads stored rows only; it must not export today's data.
+            if (endTime == null) runCatching { maintenance.exportCoordinated("ISF_LONG_PRESS") }
         }
     }
 
     fun closeAutoIsfHistory() {
+        autoIsfHistoryJob?.cancel()
         autoIsfHistoryOpen = false
     }
 
     /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
-    suspend fun loadAutoIsfHistory(): List<AutoIsfHistoryRow> =
-        loadAutoIsfHistoryRows(dateUtil.now(), persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin)
+    suspend fun loadAutoIsfHistory(endTime: Long = dateUtil.now()): List<AutoIsfHistoryRow> =
+        loadAutoIsfHistoryRows(endTime, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin)
 
     var list1Open by mutableStateOf(false)
         private set

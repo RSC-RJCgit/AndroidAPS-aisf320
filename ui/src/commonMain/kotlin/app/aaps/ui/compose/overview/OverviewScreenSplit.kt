@@ -212,7 +212,7 @@ fun OverviewScreenSplit(
                         onOpenList1 = chipsViewModel::openList1,
                         onOpenList2 = chipsViewModel::openList2,
                         onOpenList3 = chipsViewModel::openList3,
-                        onOpenAutoIsfHistory = chipsViewModel::openAutoIsfHistory
+                        onOpenAutoIsfHistory = { chipsViewModel.openAutoIsfHistory(graphViewModel.aivHistoryEndTime) }
                     )
                 }
                 // The QuickLaunch toolbar is centred over both columns, so this one needs space at its end too,

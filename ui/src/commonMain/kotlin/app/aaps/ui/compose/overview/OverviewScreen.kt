@@ -349,6 +349,7 @@ fun OverviewScreen(
         if (chipsViewModel.autoIsfHistoryOpen) {
             AutoIsfHistoryDialog(
                 rows = chipsViewModel.autoIsfHistoryRows,
+                endTime = chipsViewModel.autoIsfHistoryEndTime,
                 onDismiss = chipsViewModel::closeAutoIsfHistory
             )
         }

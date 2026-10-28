@@ -25,12 +25,14 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.clearInvocations
 import org.mockito.kotlin.inOrder
+import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyBlocking
 import org.mockito.kotlin.whenever
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.TimeZone
+import kotlin.test.assertEquals
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class HistoryViewModelTest {
@@ -39,6 +41,7 @@ internal class HistoryViewModelTest {
     @Mock private lateinit var calculationWorkflow: CalculationWorkflow
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var graphViewModelFactory: GraphViewModel.Factory
+    @Mock private lateinit var chipsViewModelFactory: ChipsViewModel.Factory
     @Mock private lateinit var signals: CalculationSignalsEmitter
     @Mock private lateinit var overviewData: OverviewData
     @Mock private lateinit var cache: OverviewDataCache
@@ -58,7 +61,7 @@ internal class HistoryViewModelTest {
         whenever(historyScope.overviewData).thenReturn(overviewData)
         // runCalculation() clears the cache first, so the old window is not drawn under the new date.
         whenever(historyScope.cache).thenReturn(cache)
-        sut = HistoryViewModel(historyScope, calculationWorkflow, dateUtil, graphViewModelFactory)
+        sut = HistoryViewModel(historyScope, calculationWorkflow, dateUtil, graphViewModelFactory, chipsViewModelFactory)
     }
 
     // Some tests below pin a zone with daylight saving time. MidnightTime reads the JVM default.
@@ -82,7 +85,7 @@ internal class HistoryViewModelTest {
         whenever(historyScope.overviewData).thenReturn(window)
         whenever(dateUtil.now()).thenReturn(now)
         whenever(dateUtil.dateString(any())).thenReturn("date")
-        return HistoryViewModel(historyScope, calculationWorkflow, dateUtil, graphViewModelFactory)
+        return HistoryViewModel(historyScope, calculationWorkflow, dateUtil, graphViewModelFactory, chipsViewModelFactory)
     }
 
     /** Where a window for [date] must start: its local midnight plus the nudge. */
@@ -192,6 +195,23 @@ internal class HistoryViewModelTest {
         advanceUntilIdle()
 
         verify(cache).reset()
+    }
+
+    @Test
+    fun aivUsesTheBrowsedGraphTimeRatherThanToday() {
+        whenever(dateUtil.now()).thenReturn(1_800_000_000_000L)
+        whenever(overviewData.toTime).thenReturn(1_700_086_500_000L)
+
+        assertEquals(1_700_010_000_000L, sut.aivWindowEnd(1_700_010_000_000L))
+        // The day fallback removes the 100 second graph nudge.
+        assertEquals(1_700_086_400_000L, sut.aivWindowEnd(null))
+    }
+
+    @Test
+    fun aivDoesNotUseTheFuturePredictionArea() {
+        whenever(dateUtil.now()).thenReturn(1_800_000_000_000L)
+
+        assertEquals(1_800_000_000_000L, sut.aivWindowEnd(1_800_000_600_000L))
     }
 
     private companion object {

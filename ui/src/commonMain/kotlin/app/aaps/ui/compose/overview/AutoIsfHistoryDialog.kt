@@ -33,21 +33,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.aaps.core.objects.autoisf.AutoIsfFactor
+import app.aaps.core.objects.autoisf.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
 import app.aaps.core.objects.autoisf.scrollingCells
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 
 /**
- * Last 6 hours of AutoISF loop rows. A long press on the sensitivity chip opens this.
+ * Six hours of stored AutoISF loop rows ending at the chosen graph time.
  * Only columns that this app stores are shown.
  */
 @Composable
 fun AutoIsfHistoryDialog(
     rows: List<AutoIsfHistoryRow>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    endTime: Long? = null
 ) {
     var smbOnly by remember { mutableStateOf(false) }
     val shown = if (smbOnly) rows.filter { it.hasSmb } else rows
@@ -67,6 +70,13 @@ fun AutoIsfHistoryDialog(
                     text = stringResource(UiStrings.autoisf_history_title),
                     style = MaterialTheme.typography.titleLarge
                 )
+                endTime?.let { end ->
+                    val dateUtil = LocalDateUtil.current
+                    Text(
+                        text = dateUtil.dateAndTimeString(end - AUTO_ISF_HISTORY_WINDOW_MS) + " – " + dateUtil.dateAndTimeString(end),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     TextButton(onClick = { smbOnly = !smbOnly }) {
                         Text(
