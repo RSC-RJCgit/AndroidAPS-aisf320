@@ -20,6 +20,8 @@ data class ManageUiState(
     val showFill: Boolean = false,
     val showAuthorizedClients: Boolean = false,
     val showPairWithMaster: Boolean = false,
+    /** Trio remote control is switched on (2026-10-29) */
+    val showTrioRemote: Boolean = false,
     // True on a master; on a client true only once paired. Gates EVERY Client-Control grid action — the mutating
     // editors (profile/TT/insulin/quick-wizard/scene/automation/food management), fill, temp basal/extended bolus,
     // AND the whole device + careportal sections (sensor/battery insert, BG check, note, exercise, …) now that

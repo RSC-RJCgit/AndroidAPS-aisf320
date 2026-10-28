@@ -129,6 +129,7 @@ class ElementNavigator(
             ElementType.TEMP_TARGET_MANAGEMENT  -> navController.navigate(AppRoute.TempTargetManagement.createRoute(mode))
             ElementType.QUICK_WIZARD_MANAGEMENT -> navController.navigate(AppRoute.QuickWizardManagement.createRoute(mode))
             ElementType.FOOD_MANAGEMENT         -> navController.navigate(AppRoute.FoodManagement.route)
+            ElementType.TRIO_REMOTE             -> navController.navigate(AppRoute.TrioRemote.route)
             ElementType.RUNNING_MODE            -> navController.navigate(AppRoute.RunningMode.route)
             ElementType.SCENE_MANAGEMENT        -> navController.navigate(AppRoute.SceneList.route)
             ElementType.AUTOMATION_MANAGEMENT   -> navController.navigate(AppRoute.AutomationList.route)

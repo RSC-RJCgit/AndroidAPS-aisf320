@@ -499,4 +499,50 @@
     <string name="import_save_restore_baseline">Save this file as the restore baseline? It will fill missing settings in future imports. Current settings will stay unchanged.</string>
     <string name="import_restore_baseline_saved">Restore baseline saved. Missing settings in future imports will be filled from it. Current settings were not changed.</string>
     <string name="client_stats_chip" comment="Short button on the overview opening glucose statistics">ST</string>
+    <!-- Trio remote control (2026-10-29) -->
+    <string name="trio_remote_off">Trio remote control is off. Turn it on in the Nightscout client settings, under Trio remote control.</string>
+    <string name="trio_remote_missing_title">Still missing:</string>
+    <string name="trio_remote_missing_user">User: your name</string>
+    <string name="trio_remote_missing_shared_secret">Shared secret</string>
+    <string name="trio_remote_missing_key_id">APNS Key ID: 10 capital letters or digits</string>
+    <string name="trio_remote_missing_apns_key">APNS Key: the text of the .p8 key file</string>
+    <string name="trio_remote_missing_trio_profile">Details of Trio: no Trio profile has been read from this Nightscout site yet</string>
+    <string name="trio_remote_missing_team_id">Team ID: the Trio profile has none</string>
+    <string name="trio_remote_trio_app" comment="%1$s=the Trio app id, for example org.nightscout.ABC.trio">Trio: %1$s</string>
+    <string name="trio_remote_server_production">Apple server: production (TestFlight or browser build)</string>
+    <string name="trio_remote_server_development">Apple server: development (Xcode build)</string>
+    <string name="trio_remote_temp_target">Temp target</string>
+    <string name="trio_remote_meal">Carbs</string>
+    <string name="trio_remote_bolus">Bolus</string>
+    <string name="trio_remote_override">Override</string>
+    <string name="trio_remote_target" comment="%1$s=glucose unit, mg/dL or mmol/L">Target (%1$s)</string>
+    <string name="trio_remote_duration">Duration (min)</string>
+    <string name="trio_remote_carbs">Carbs (g)</string>
+    <string name="trio_remote_fat">Fat (g)</string>
+    <string name="trio_remote_protein">Protein (g)</string>
+    <string name="trio_remote_minutes_ago">Eaten minutes ago</string>
+    <string name="trio_remote_insulin">Insulin (U)</string>
+    <string name="trio_remote_send">Send</string>
+    <string name="trio_remote_start">Start</string>
+    <string name="trio_remote_cancel_temp_target">Cancel temp target</string>
+    <string name="trio_remote_cancel_override">Cancel override</string>
+    <string name="trio_remote_no_presets">Trio has uploaded no override presets.</string>
+    <string name="trio_remote_problem_target" comment="%1$s=lowest target, %2$s=highest target, each with its unit. Example: 4.0 mmol/L, 11.1 mmol/L">The target must be from %1$s to %2$s.</string>
+    <string name="trio_remote_problem_duration" comment="%1$d=fewest minutes, %2$d=most minutes">The duration must be from %1$d to %2$d minutes.</string>
+    <string name="trio_remote_problem_carbs" comment="%1$d=most grams, the max carbs setting">Carbs, fat and protein must each be from 0 to %1$d g, and not all 0.</string>
+    <string name="trio_remote_problem_minutes_ago" comment="%1$d=most minutes">Minutes ago must be from 0 to %1$d.</string>
+    <string name="trio_remote_problem_bolus" comment="%1$s=the max bolus setting with its unit. Example: 3.00 U">The bolus must be more than 0 and at most %1$s.</string>
+    <string name="trio_remote_confirm_title">Send to Trio?</string>
+    <string name="trio_remote_confirm_note">Trio checks it again with its own limits before it acts.</string>
+    <string name="trio_remote_command_temp_target" comment="%1$s=target with unit, %2$d=minutes. Example: Temp target 8.0 mmol/L for 60 min">Temp target %1$s for %2$d min</string>
+    <string name="trio_remote_command_cancel_temp_target">Cancel the temp target</string>
+    <string name="trio_remote_command_meal" comment="%1$d=carbs, %2$d=fat, %3$d=protein, all in grams">Carbs %1$d g, fat %2$d g, protein %3$d g</string>
+    <string name="trio_remote_command_meal_earlier" comment="%1$d=carbs, %2$d=fat, %3$d=protein, all in grams, %4$d=minutes ago">Carbs %1$d g, fat %2$d g, protein %3$d g, eaten %4$d min ago</string>
+    <string name="trio_remote_command_bolus" comment="%1$s=insulin with its unit. Example: Bolus 1.50 U">Bolus %1$s</string>
+    <string name="trio_remote_command_start_override" comment="%1$s=name of an override saved in Trio">Start override %1$s</string>
+    <string name="trio_remote_command_cancel_override">Cancel the override</string>
+    <string name="trio_remote_insulin_value" comment="%1$s=insulin amount. Example: 1.50 U">%1$s U</string>
+    <string name="trio_remote_sending">Sending…</string>
+    <string name="trio_remote_sent" comment="%1$s=the command, for example Bolus 1.50 U">Sent: %1$s. Trio shows the result in Nightscout a little later.</string>
+    <string name="trio_remote_failed" comment="%1$s=the command, %2$s=the reason, often a word from Apple such as BadDeviceToken">Not sent: %1$s. %2$s</string>
 </resources>

@@ -37,6 +37,7 @@ import app.aaps.core.ui.compose.icons.IcPluginConfigBuilder
 import app.aaps.core.ui.compose.icons.IcPluginFood
 import app.aaps.core.ui.compose.icons.IcPluginInsulin
 import app.aaps.core.ui.compose.icons.IcPluginMaintenance
+import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.icons.IcProfile
 import app.aaps.core.ui.compose.icons.IcPumpBattery
 import app.aaps.core.ui.compose.icons.IcPumpCartridge
@@ -90,6 +91,7 @@ fun ElementType.color(): Color = when (this) {
     ElementType.CANNULA_CHANGE          -> AapsTheme.elementColors.deviceMaintenance
 
     ElementType.SITE_ROTATION           -> AapsTheme.elementColors.siteRotation
+    ElementType.TRIO_REMOTE             -> AapsTheme.elementColors.loop
     ElementType.TEMP_BASAL              -> AapsTheme.elementColors.tempBasal
     ElementType.EXTENDED_BOLUS          -> AapsTheme.elementColors.extendedBolus
     ElementType.AUTOMATION,
@@ -156,6 +158,7 @@ fun ElementType.icon(): ImageVector = when (this) {
     ElementType.CANNULA_CHANGE          -> IcCannulaChange
     ElementType.FILL                    -> IcPumpCartridge
     ElementType.SITE_ROTATION           -> IcSiteRotation
+    ElementType.TRIO_REMOTE             -> IcPluginNsClient
     ElementType.TEMP_BASAL              -> IcTbrHigh
     ElementType.EXTENDED_BOLUS          -> IcExtendedBolus
     ElementType.AUTOMATION,
@@ -225,6 +228,7 @@ fun ElementType.label(): TextRef? = when (this) {
     ElementType.CANNULA_CHANGE          -> CoreUiStrings.careportal_pump_site_change
     ElementType.FILL                    -> CoreUiStrings.prime_fill
     ElementType.SITE_ROTATION           -> CoreUiStrings.site_rotation
+    ElementType.TRIO_REMOTE             -> CoreUiStrings.trio_remote
     ElementType.TEMP_BASAL              -> CoreUiStrings.temp_basal
     ElementType.EXTENDED_BOLUS          -> CoreUiStrings.extended_bolus
     ElementType.AUTOMATION              -> null // dynamic label
@@ -269,6 +273,7 @@ fun ElementType.description(): TextRef? = when (this) {
     ElementType.TEMP_BASAL              -> CoreUiStrings.manage_temp_basal_desc
     ElementType.EXTENDED_BOLUS          -> CoreUiStrings.manage_extended_bolus_desc
     ElementType.SITE_ROTATION           -> CoreUiStrings.manage_site_rotation_desc
+    ElementType.TRIO_REMOTE             -> CoreUiStrings.manage_trio_remote_desc
     ElementType.NOTE                    -> CoreUiStrings.treatment_note_desc
     ElementType.QUESTION                -> CoreUiStrings.treatment_question_desc
     ElementType.CGM_XDRIP,

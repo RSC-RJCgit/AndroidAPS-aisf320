@@ -69,6 +69,10 @@ enum class ElementType(
     FILL(category = ElementCategory.DEVICE, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT, role = ClientRole.Caregiver),
     SITE_ROTATION(category = ElementCategory.DEVICE, searchable = true, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT, role = ClientRole.Caregiver),
 
+    // Commands to a Trio phone, as LoopFollow sends them (2026-10-29). They go to Trio, not to the master, so any client
+    // may have it. Shown only when switched on in the settings; a bolus asks for the bolus protection on the screen itself.
+    TRIO_REMOTE(category = ElementCategory.MANAGEMENT),
+
     // Basal — both ride Client-Control → CLIENT_PAIRED.
     TEMP_BASAL(category = ElementCategory.BASAL, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT, role = ClientRole.Caregiver),
     EXTENDED_BOLUS(category = ElementCategory.BASAL, searchable = true, protection = ProtectionCheck.Protection.BOLUS, visibility = ElementVisibility.MASTER_PAIRED_OR_READ_ONLY_CLIENT, role = ClientRole.Caregiver),

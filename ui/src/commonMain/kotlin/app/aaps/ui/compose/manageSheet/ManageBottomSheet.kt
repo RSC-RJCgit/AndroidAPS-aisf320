@@ -88,6 +88,7 @@ fun ManageBottomSheet(
     showFill: Boolean,
     showAuthorizedClients: Boolean,
     showPairWithMaster: Boolean,
+    showTrioRemote: Boolean,
     showMutatingActions: Boolean,
     showPump: Boolean,
     // Cancel text strings
@@ -121,6 +122,7 @@ fun ManageBottomSheet(
             showFill = showFill,
             showAuthorizedClients = showAuthorizedClients,
             showPairWithMaster = showPairWithMaster,
+            showTrioRemote = showTrioRemote,
             showMutatingActions = showMutatingActions,
             showPump = showPump,
             cancelTempBasalText = cancelTempBasalText,
@@ -152,6 +154,7 @@ internal fun ManageBottomSheetContent(
     showFill: Boolean = false,
     showAuthorizedClients: Boolean = false,
     showPairWithMaster: Boolean = false,
+    showTrioRemote: Boolean = false,
     showMutatingActions: Boolean = true,
     showPump: Boolean = true,
     cancelTempBasalText: String,
@@ -271,6 +274,17 @@ internal fun ManageBottomSheetContent(
                         onDismiss = onDismiss,
                         onClick = { onNavigate(NavigationRequest.Element(ElementType.PUMP)) },
                         description = pumpPlugin.name,
+                        modifier = modifier
+                    )
+                }
+            }
+            // Commands go to Trio, not to the master, so it is not one of the gated editors above (2026-10-29)
+            if (showTrioRemote) {
+                add(ElementType.TRIO_REMOTE) { modifier ->
+                    ManageGridItem(
+                        elementType = ElementType.TRIO_REMOTE,
+                        onDismiss = onDismiss,
+                        onNavigate = onNavigate,
                         modifier = modifier
                     )
                 }

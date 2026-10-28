@@ -523,6 +523,8 @@
     <string name="manage_temp_basal_desc">Start temporary basal</string>
     <string name="manage_extended_bolus_desc">Start extended bolus delivery</string>
     <string name="manage_site_rotation_desc">Track and rotate infusion sites</string>
+    <string name="trio_remote">Trio remote</string>
+    <string name="manage_trio_remote_desc">Send a temp target, carbs, a bolus or an override to Trio</string>
     <string name="manage_quickwizard_desc">Manage quick wizard presets</string>
     <string name="treatment_note_desc">Add a note to your records</string>
     <string name="treatment_question_desc">Log a question for your care team</string>

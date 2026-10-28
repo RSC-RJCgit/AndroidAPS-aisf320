@@ -117,6 +117,8 @@ import app.aaps.ui.compose.tempTarget.TempTargetManagementViewModel
 import app.aaps.ui.compose.treatmentDialog.TreatmentDialogScreen
 import app.aaps.ui.compose.treatments.TreatmentsScreen
 import app.aaps.ui.compose.treatments.viewmodels.TreatmentsViewModel
+import app.aaps.ui.compose.trioRemote.TrioRemoteScreen
+import app.aaps.ui.compose.trioRemote.TrioRemoteViewModel
 import app.aaps.ui.compose.wizardDialog.WizardDialogScreen
 import app.aaps.ui.search.BuiltInSearchables
 import kotlinx.coroutines.launch
@@ -791,6 +793,16 @@ fun NavGraphBuilder.appNavGraph(
                     navController.navigate(AppRoute.WizardDialog.createRoute(carbs = carbs, notes = name))
                 }
             }
+        )
+    }
+
+    // Commands to a Trio phone (2026-10-29). The bolus asks for the bolus protection before it is sent.
+    composable(AppRoute.TrioRemote.route) {
+        val trioRemoteViewModel: TrioRemoteViewModel = metroViewModel()
+        TrioRemoteScreen(
+            viewModel = trioRemoteViewModel,
+            onNavigateBack = { navController.safePopBackStack() },
+            requestBolusProtection = { onGranted -> withProtection(ProtectionCheck.Protection.BOLUS, onGranted) }
         )
     }
 
