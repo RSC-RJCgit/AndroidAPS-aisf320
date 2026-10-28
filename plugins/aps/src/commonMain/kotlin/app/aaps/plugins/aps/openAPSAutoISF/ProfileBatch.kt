@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.data.configuration.Constants
+
 // True when [series] (oldest first) stays under [maxMgdl] for [sustainedMinutes]
 // with no gap over [maxGapMinutes], and no step sample in that stretch is over [maxSteps60].
 internal fun sustainedLowEpisode(
@@ -116,13 +118,30 @@ internal fun heldSince(now: Long, high: Boolean, previous: Long): Long =
 internal fun heldForHours(now: Long, since: Long, hours: Int): Boolean =
     since != 0L && now - since >= hours * 3_600_000L
 
+// Null is a battery level the phone has not reported yet. It read as 0% before (2026-10-28), so the safety profile could
+// start right after an app start or an install.
+internal fun batteryAtOnePercent(batteryPercent: Int?): Boolean = batteryPercent != null && batteryPercent <= 1
+
+// The first loop of a low battery episode: the SMS, the note and the notification go out once, whatever the glucose.
+internal fun battery1ShouldWarn(warned: Boolean, livePump: Boolean, batteryPercent: Int?): Boolean =
+    !warned && livePump && batteryAtOnePercent(batteryPercent)
+
+// 2026-10-28, per explicit request: half basal for the hours after the phone dies is safe only when BG is under 7.0 mmol/L
+// and not rising (delta and short delta at most +0.1 mmol/L). Otherwise the switch waits, and is tried again every loop.
+internal fun battery1GlucoseAllows(bg: Double, delta: Double, shortDelta: Double): Boolean =
+    bg < 7.0 * Constants.MMOLL_TO_MGDL && delta <= 0.1 * Constants.MMOLL_TO_MGDL && shortDelta <= 0.1 * Constants.MMOLL_TO_MGDL
+
 internal fun battery1ShouldFire(
     ready: Boolean,
     running: String,
     safetyName: String,
-    batteryPercent: Int,
+    batteryPercent: Int?,
     livePump: Boolean,
-): Boolean = ready && livePump && safetyName.isNotBlank() && running != safetyName && batteryPercent <= 1
+    bg: Double,
+    delta: Double,
+    shortDelta: Double,
+): Boolean = ready && livePump && safetyName.isNotBlank() && running != safetyName && batteryAtOnePercent(batteryPercent) &&
+    battery1GlucoseAllows(bg, delta, shortDelta)
 
 internal fun missingProfileRoles(standardFound: Boolean, lowFound: Boolean, safetyFound: Boolean): List<String> =
     listOfNotNull(

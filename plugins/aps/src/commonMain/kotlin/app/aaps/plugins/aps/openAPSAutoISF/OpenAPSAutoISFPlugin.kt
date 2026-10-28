@@ -883,7 +883,7 @@ open class OpenAPSAutoISFPlugin(
                 targetBg = targetBg,
                 statesOn = statesOn,
             )
-            applyProfileBatch(now = now, bg = glucoseStatus.glucose)
+            applyProfileBatch(now = now, bg = glucoseStatus.glucose, delta = glucoseStatus.delta, shortDelta = glucoseStatus.shortAvgDelta)
             applyTtExits(
                 now = now,
                 minuteOfDay = minuteOfDay,
@@ -2946,7 +2946,10 @@ open class OpenAPSAutoISFPlugin(
 
     // Battery and the profile-name check run first. The batch step sees this loop's poor-response mark.
     // The low-glucose tier A reset is last, so it can undo a step from the same loop.
-    private suspend fun applyProfileBatch(now: Long, bg: Double) {
+    // True from the low battery SMS until the battery is reported above 1% again, so the SMS goes out once per episode
+    private var lowBatteryWarned = false
+
+    private suspend fun applyProfileBatch(now: Long, bg: Double, delta: Double, shortDelta: Double) {
         // The three hypo-driven drops to a lower tier below (gentle-hypo step down, alarm role revert, low-glucose reset)
         // do not run when the event was between 01:00 and 07:00, or 60 minute steps are over 1000.
         // The alarm uses its own saved time. The other two use this moment.
@@ -2956,26 +2959,36 @@ open class OpenAPSAutoISFPlugin(
             steps60Now,
         )
         val safety = preferences.get(StringNonKey.ApsAutoIsfSafetyProfileName).trim()
-        if (battery1ShouldFire(
-                ready = runMarks.ready(RunMark.BATTERY_1, 20, now),
-                running = profileFunction.getOriginalProfileName(),
-                safetyName = safety,
-                batteryPercent = receiverStatusStore.batteryLevel,
-                livePump = activePlugin.activePump !is VirtualPump,
-            )
-        ) {
-            switchToStandardFor(safety, 0, now, "AutoISF: battery 1%")
-            runMarks.mark(RunMark.BATTERY_1, now)
+        // Null until the phone has reported its battery once; receiverStatusStore.batteryLevel reads that as 0%
+        val battery = receiverStatusStore.chargingStatusFlow.value?.batteryLevel
+        val livePump = activePlugin.activePump !is VirtualPump
+        if (battery != null && battery > 1) lowBatteryWarned = false
+        if (battery1ShouldWarn(lowBatteryWarned, livePump, battery)) {
+            lowBatteryWarned = true
             phoneAlert("Batt1%")
             sendAutoSms("LowBattery")
             sendAutoSmsToNumbers("LowBattery", StringKey.SmsBattAlertNumbers)
             carePortalNote("Bt<1%")
         }
+        if (battery1ShouldFire(
+                ready = runMarks.ready(RunMark.BATTERY_1, 20, now),
+                running = profileFunction.getOriginalProfileName(),
+                safetyName = safety,
+                batteryPercent = battery,
+                livePump = livePump,
+                bg = bg,
+                delta = delta,
+                shortDelta = shortDelta,
+            )
+        ) {
+            switchToStandardFor(safety, 0, now, "AutoISF: battery 1%")
+            runMarks.mark(RunMark.BATTERY_1, now)
+        }
         if (batteryOver1ShouldFire(
                 ready = runMarks.ready(RunMark.BATTERY_OVER_1, 5, now),
                 running = profileFunction.getOriginalProfileName(),
                 safetyName = safety,
-                batteryPercent = receiverStatusStore.batteryLevel,
+                batteryPercent = battery,
             )
         ) {
             switchToStandardAtSharedTier(now, 0)

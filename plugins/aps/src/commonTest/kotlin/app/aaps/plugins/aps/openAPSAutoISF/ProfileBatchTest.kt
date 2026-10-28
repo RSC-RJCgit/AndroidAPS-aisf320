@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.data.configuration.Constants
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -73,10 +74,39 @@ class ProfileBatchTest {
         assertEquals(BatchChoice.BOTH_HOLDS, profileBatchChoice(true, true, true, true, true, true, true, 2))
     }
 
+    private fun battery1(batteryPercent: Int? = 1, livePump: Boolean = true, bgMmol: Double = 6.0, deltaMmol: Double = 0.0, shortDeltaMmol: Double = 0.0) =
+        battery1ShouldFire(
+            ready = true, running = "Profile100", safetyName = "Current Profile50", batteryPercent = batteryPercent, livePump = livePump,
+            bg = bgMmol * Constants.MMOLL_TO_MGDL, delta = deltaMmol * Constants.MMOLL_TO_MGDL, shortDelta = shortDeltaMmol * Constants.MMOLL_TO_MGDL
+        )
+
     @Test
     fun batteryFiresAtOnePercentOnALivePump() {
-        assertTrue(battery1ShouldFire(ready = true, running = "Profile100", safetyName = "Current Profile50", batteryPercent = 1, livePump = true))
-        assertFalse(battery1ShouldFire(ready = true, running = "Profile100", safetyName = "Current Profile50", batteryPercent = 1, livePump = false))
+        assertTrue(battery1())
+        assertFalse(battery1(livePump = false))
+    }
+
+    @Test
+    fun anUnreportedBatteryIsNotLow() {
+        assertFalse(battery1(batteryPercent = null))
+        assertFalse(battery1ShouldWarn(warned = false, livePump = true, batteryPercent = null))
+    }
+
+    @Test
+    fun batterySwitchWaitsForALowSteadyGlucose() {
+        assertFalse(battery1(bgMmol = 7.0))
+        assertFalse(battery1(deltaMmol = 0.2))
+        assertFalse(battery1(shortDeltaMmol = 0.2))
+        assertTrue(battery1(bgMmol = 6.9, deltaMmol = 0.1, shortDeltaMmol = 0.1))
+        assertTrue(battery1(deltaMmol = -0.5, shortDeltaMmol = -0.5))
+    }
+
+    @Test
+    fun batteryWarningGoesOutOncePerEpisode() {
+        assertTrue(battery1ShouldWarn(warned = false, livePump = true, batteryPercent = 1))
+        assertFalse(battery1ShouldWarn(warned = true, livePump = true, batteryPercent = 1))
+        assertFalse(battery1ShouldWarn(warned = false, livePump = false, batteryPercent = 1))
+        assertFalse(battery1ShouldWarn(warned = false, livePump = true, batteryPercent = 2))
     }
 
     @Test

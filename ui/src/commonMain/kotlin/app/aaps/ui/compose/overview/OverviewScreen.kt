@@ -75,6 +75,13 @@ private const val DESKTOP_FULL_WIDTH_MIN_DP = 1400
  */
 private const val SPLIT_LAYOUT_MIN_WIDTH_DP = 2f * PHONE_COLUMN_MIN_WIDTH_DP
 
+/**
+ * The same for a phone (2026-10-28, per explicit request): two columns of 320 dp. An iPhone without a Dynamic Island has
+ * about 670 dp in landscape once the notch areas and the navigation rail are taken off, too little for 2 x 360. The split
+ * is only used there when the Landscape layout setting asks for it; "auto" keeps a phone wide.
+ */
+private const val PHONE_SPLIT_LAYOUT_MIN_WIDTH_DP = 2f * 320
+
 internal enum class OverviewLayout { WIDE, SPLIT, TABLET }
 
 /**
@@ -198,9 +205,11 @@ fun OverviewScreen(
         val layoutDirection = LocalLayoutDirection.current
         val windowWidthDp = (maxWidth - paddingValues.calculateStartPadding(layoutDirection) -
             paddingValues.calculateEndPadding(layoutDirection)).value.coerceAtLeast(0f)
-        val wideDesktopWindow = LocalConfig.current.platform == AppPlatform.Desktop && windowWidthDp >= DESKTOP_FULL_WIDTH_MIN_DP
+        val desktop = LocalConfig.current.platform == AppPlatform.Desktop
+        val wideDesktopWindow = desktop && windowWidthDp >= DESKTOP_FULL_WIDTH_MIN_DP
         val tabletScreen = smallestScreenWidthDp() >= TABLET_MIN_SW_DP
-        val splitFits = windowWidthDp >= SPLIT_LAYOUT_MIN_WIDTH_DP
+        val phone = !tabletScreen && !desktop
+        val splitFits = windowWidthDp >= if (phone) PHONE_SPLIT_LAYOUT_MIN_WIDTH_DP else SPLIT_LAYOUT_MIN_WIDTH_DP
         val preferences = LocalPreferences.current
         val layoutChoice by preferences.observe(StringKey.OverviewLandscapeLayout).collectAsState()
         val layout = overviewLayout(layoutChoice, isLandscape, tabletScreen, splitFits, wideDesktopWindow)
@@ -325,8 +334,8 @@ fun OverviewScreen(
         }
 
         // 2026-10-24, per explicit request: one tap switches between the wide and the split layout and keeps the choice
-        // (the Landscape layout setting). Only in landscape, and only where split fits. A phone in landscape hides the top
-        // bar, so the button sits in the corner of the screen itself.
+        // (the Landscape layout setting). Only in landscape, and only where split fits. It sits in the top corner of the
+        // content, under the top bar.
         if (isLandscape && splitFits) {
             val toSplit = layout == OverviewLayout.WIDE
             IconButton(

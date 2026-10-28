@@ -13,9 +13,10 @@ internal fun ttNear(ttMgdl: Double, targetMmol: Double, toleranceMmol: Double): 
     abs(ttMgdl - targetMmol * MMOL_TO_MGDL) <= toleranceMmol * MMOL_TO_MGDL ||
         abs(ttMgdl - targetMmol * MMOL_TO_MGDL_3426) <= toleranceMmol * MMOL_TO_MGDL_3426
 
-// The running profile is the safety name and the phone battery is back above 1%.
-internal fun batteryOver1ShouldFire(ready: Boolean, running: String, safetyName: String, batteryPercent: Int): Boolean =
-    ready && safetyName.isNotBlank() && running == safetyName && batteryPercent > 1
+// The running profile is the safety name and the phone battery is back above 1%. Null is a battery level the phone has
+// not reported yet (2026-10-28): it is not taken as "back above 1%".
+internal fun batteryOver1ShouldFire(ready: Boolean, running: String, safetyName: String, batteryPercent: Int?): Boolean =
+    ready && safetyName.isNotBlank() && running == safetyName && batteryPercent != null && batteryPercent > 1
 
 // Full recovery from the 5.7 mmol temp target. off2 is checked first.
 // A missing UKF delta must be passed as -9999 so off3 stays closed.

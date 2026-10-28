@@ -16,6 +16,11 @@ class ExitsTest {
     }
 
     @Test
+    fun anUnreportedBatteryIsNotARecovery() {
+        assertFalse(batteryOver1ShouldFire(ready = true, running = "Current Profile50", safetyName = "Current Profile50", batteryPercent = null))
+    }
+
+    @Test
     fun tt57Off2IsTheFirstFullExit() {
         assertEquals("off2", tt57FullExit(
             ready = true,
