@@ -98,7 +98,9 @@ class GraphInspectTest {
             actualBasal = emptyList(),
             profileBasal = emptyList(),
             boluses = emptyList(),
-            carbs = emptyList()
+            carbs = emptyList(),
+            calibrations = emptyList(),
+            therapyEvents = emptyList()
         )
 
         assertThat(data.timestamp).isEqualTo(t0 + 20 * minute)
@@ -162,6 +164,7 @@ class GraphInspectTest {
         val data = inspectDataAt(
             timestamp = t0 + 7 * minute,
             bgReadings = readings,
+            predictions = emptyList(),
             iob = emptyList(),
             cob = emptyList(),
             actualBasal = emptyList(),
