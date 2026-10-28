@@ -88,6 +88,7 @@ import com.patrykandpatrick.vico.compose.cartesian.VicoZoomState
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianChartModelProducer
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianLayerRangeProvider
 import com.patrykandpatrick.vico.compose.cartesian.data.lineModel
@@ -1358,6 +1359,7 @@ fun BgGraphCompose(
             ),
             startAxis = VerticalAxis.rememberStart(
                 itemPlacer = VerticalAxis.ItemPlacer.step({ startAxisRangeProvider.yStep }),
+                valueFormatter = CartesianValueFormatter { _, value, _ -> decimalFormatter.to0Decimal(value) },
                 label = rememberTextComponent(
                     style = TextStyle(color = MaterialTheme.colorScheme.onSurface),
                     minWidth = TextComponent.MinWidth.fixed(30.dp)

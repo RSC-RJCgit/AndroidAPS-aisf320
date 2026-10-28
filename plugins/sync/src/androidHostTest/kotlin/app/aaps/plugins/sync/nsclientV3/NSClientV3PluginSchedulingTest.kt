@@ -1,8 +1,12 @@
 package app.aaps.plugins.sync.nsclientV3
 
+import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.SourceSensor
+import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.L
 import app.aaps.core.interfaces.nsclient.NSClientRepository
+import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.keys.BooleanKey
 import app.aaps.plugins.sync.SyncStringsValues
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
@@ -44,6 +48,7 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
     @Mock lateinit var dataSyncSelectorV3: DataSyncSelectorV3
     @Mock lateinit var nsClientRepository: NSClientRepository
     @Mock lateinit var persistenceLayer: PersistenceLayer
+    @Mock lateinit var nsClientSource: NSClientSource
     @Mock lateinit var l: L
 
     private lateinit var sut: NSClientV3Plugin
@@ -63,7 +68,7 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
         sut = NSClientV3Plugin(
             aapsLogger, text, preferences, rxBus,
             receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
-            mock(), mock(), decimalFormatter, l, nsClientRepository, mock(),
+            nsClientSource, mock(), decimalFormatter, l, nsClientRepository, mock(),
             mock(), mock(), mock(), mock(), mock(), mock(), mock(), nsConnection, nsLoadExecutor, mock()
         )
     }
@@ -175,6 +180,111 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
         sut.executeLoop("TEST")
 
         verify(nsLoadExecutor).enqueueSecondaryTreatments(false)
+        verify(nsLoadExecutor, never()).runChain(any())
+    }
+
+    private fun connectedPrimaryGlucose() {
+        whenever(preferences.get(BooleanKey.NsClient3UseWs)).thenReturn(true)
+        whenever(nsConnection.supportsWebsocket).thenReturn(true)
+        whenever(nsClientSource.isEnabled()).thenReturn(true)
+        socketConnected.value = true
+        sut.initialLoadFinished = true
+    }
+
+    private fun glucose(ageMs: Long) = GV(
+        timestamp = dateUtil.now() - ageMs, raw = null, value = 100.0,
+        trendArrow = TrendArrow.FLAT, noise = null, sourceSensor = SourceSensor.UNKNOWN
+    )
+
+    @Test
+    fun `stale glucose starts catch-up despite connected websocket`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(persistenceLayer.getLastGlucoseValue()).thenReturn(glucose(321_000L))
+
+        assertThat(sut.pollStaleGlucose()).isTrue()
+
+        verify(nsLoadExecutor).runChain(any())
+    }
+
+    @Test
+    fun `fresh glucose leaves connected websocket without polling`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(persistenceLayer.getLastGlucoseValue()).thenReturn(glucose(300_000L))
+
+        assertThat(sut.pollStaleGlucose()).isFalse()
+        sut.executeLoop("TEST")
+
+        verify(nsLoadExecutor, never()).runChain(any())
+    }
+
+    @Test
+    fun `missing glucose requests catch-up`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(persistenceLayer.getLastGlucoseValue()).thenReturn(null)
+
+        assertThat(sut.pollStaleGlucose()).isTrue()
+
+        verify(nsLoadExecutor).runChain(any())
+    }
+
+    @Test
+    fun `stale catch-up stays queued while another round is running`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(persistenceLayer.getLastGlucoseValue()).thenReturn(glucose(600_000L))
+        whenever(nsLoadExecutor.isRunning).thenReturn(true)
+        sut.pollStaleGlucose()
+        verify(nsLoadExecutor, never()).runChain(any())
+
+        whenever(nsLoadExecutor.isRunning).thenReturn(false)
+        sut.executeLoop("PENDING_RERUN")
+        verify(nsLoadExecutor).runChain(any())
+        // The request is consumed once; unrelated events must not keep bypassing the websocket gate.
+        sut.executeLoop("TEST")
+        verify(nsLoadExecutor).runChain(any())
+    }
+
+    @Test
+    fun `stale glucose does not bypass pause`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(persistenceLayer.getLastGlucoseValue()).thenReturn(glucose(600_000L))
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(true)
+
+        sut.pollStaleGlucose()
+
+        verify(nsLoadExecutor, never()).runChain(any())
+    }
+
+    @Test
+    fun `stale glucose does not bypass connection restrictions`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(persistenceLayer.getLastGlucoseValue()).thenReturn(glucose(600_000L))
+        whenever(receiverDelegate.allowed).thenReturn(false)
+
+        sut.pollStaleGlucose()
+
+        verify(nsLoadExecutor, never()).runChain(any())
+    }
+
+    @Test
+    fun `fallback does not fetch primary glucose when secondary supplies it`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(preferences.get(BooleanKey.NsClientSecondaryEnabled)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientBgFromLiveSite)).thenReturn(true)
+
+        assertThat(sut.pollStaleGlucose()).isFalse()
+
+        verify(nsLoadExecutor, never()).runChain(any())
+        verify(persistenceLayer, never()).getLastGlucoseValue()
+    }
+
+    @Test
+    fun `fallback respects disabled Nightscout glucose reception`() = runTest {
+        connectedPrimaryGlucose()
+        whenever(nsClientSource.isEnabled()).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientAcceptCgmData)).thenReturn(false)
+
+        assertThat(sut.pollStaleGlucose()).isFalse()
+
         verify(nsLoadExecutor, never()).runChain(any())
     }
 }

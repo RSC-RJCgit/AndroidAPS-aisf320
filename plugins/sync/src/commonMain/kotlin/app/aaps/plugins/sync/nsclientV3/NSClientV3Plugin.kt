@@ -401,11 +401,14 @@ class NSClientV3Plugin(
                 // The secondary site has its own address. A dead token on this phone's Nightscout,
                 // or a websocket that never calls the load round, must not stop carbs and boluses.
                 enqueueSecondaryTreatments()
-                // Polls when websockets are off, when the platform has none (desktop), or while the websocket is down.
+                // A connected socket does not prove that glucose pushes are arriving.
                 if (needsPolling())
                     executeLoop("MAIN_LOOP")
-                else
-                    nsClientRepository.addLog("● TICK", "")
+                else {
+                    // A local freshness check each minute; fresh data does not cause a network request.
+                    if (followsPrimaryGlucose()) refreshInterval = T.mins(1).msecs()
+                    if (!pollStaleGlucose()) nsClientRepository.addLog("● TICK", "")
+                }
                 delay(refreshInterval)
             }
         }
@@ -446,6 +449,27 @@ class NSClientV3Plugin(
     @VisibleForTesting
     internal fun needsPolling(): Boolean =
         !preferences.get(BooleanKey.NsClient3UseWs) || !nsConnection.supportsWebsocket || !nsConnection.connected.value
+
+    private val staleGlucosePollRequested = AtomicBoolean(false)
+
+    private fun followsPrimaryGlucose(): Boolean =
+        (nsClientSource.isEnabled() || preferences.get(BooleanKey.NsClientAcceptCgmData)) &&
+            !glucoseFromSecondarySite(
+                preferences.get(BooleanKey.NsClientSecondaryEnabled),
+                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+            )
+
+    /** Request one catch-up round when a connected socket has not supplied timely glucose. */
+    @VisibleForTesting
+    internal suspend fun pollStaleGlucose(): Boolean {
+        if (!followsPrimaryGlucose()) return false
+        val lastGlucose = persistenceLayer.getLastGlucoseValue()
+        if (lastGlucose != null && lastGlucose.timestamp >= dateUtil.now() - T.mins(5).plus(T.secs(20)).msecs()) return false
+        // Keep this request until a round can start, including when another load currently owns the executor.
+        staleGlucosePollRequested.store(true)
+        executeLoop("STALE_BG")
+        return true
+    }
 
     /**
      * WS-push entry for client-control envelopes. NSClientV3Service routes settings-collection
@@ -544,6 +568,7 @@ class NSClientV3Plugin(
         }
         nsConnection.stop()
         nsLoadExecutor.cancel()
+        staleGlucosePollRequested.store(false)
         super.onStop()
     }
 
@@ -1219,8 +1244,8 @@ class NSClientV3Plugin(
         // this download all morning, so the virtual pump never saw carbs or boluses.
         // A full sync replaces a download that is already queued, so the 2-year site is read now.
         enqueueSecondaryTreatments(force = fullSync)
-        // After the first load, data comes over the websocket while it is up; the loop is needed only without it.
-        if (initialLoadFinished && !needsPolling()) return
+        // A stale-glucose catch-up must pass this gate even while the socket reports connected.
+        if (initialLoadFinished && !fullSync && !needsPolling() && !staleGlucosePollRequested.load()) return
         if (preferences.get(NsclientBooleanKey.NsPaused)) {
             nsClientRepository.addLog("● RUN", "paused  $origin")
             return
@@ -1235,6 +1260,8 @@ class NSClientV3Plugin(
             nsClientRepository.addLog("● RUN", "Already running $origin (queued loop)")
             return
         }
+        if (staleGlucosePollRequested.compareAndSet(true, false))
+            nsClientRepository.addLog("● POLL", "Glucose missing or older than 5 min 20 sec; fetching catch-up data")
         nsClientRepository.addLog("● RUN", "Starting next round $origin")
         // compareAndSet, not a lock: the same test-and-clear the pending flags above use. It is what
         // makes "was a full sync requested" and "claim it" one step.
