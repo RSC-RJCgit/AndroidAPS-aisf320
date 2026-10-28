@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.26.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.27.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -61,13 +61,27 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .26, 2026-10-23)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .27, 2026-10-29)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.26.patch
-  git apply bolus-calculator-on-3426-aisf321.26.patch
+  git apply --check bolus-calculator-on-3426-aisf321.27.patch
+  git apply bolus-calculator-on-3426-aisf321.27.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .27 (2026-10-29):
+- Walking soon is ticked by itself in more cases. Hard walking (S30 1000 or more, with S15 or S5 above 0) ticks it
+  up to BG 10.0 mmol/L; light walking (S15 200 or more) ticks it below BG 8.0. It is never ticked while BG rises
+  faster than +0.05 mmol/L per 5 min. Before, it needed "moving" (S30 100 / S5 20) and BG under 6.0, so a walk at
+  BG 7.5 (S30 1375) left it off. A manual tick or untick still wins for the rest of the dialog.
+- The insulinReq cap on later doses (delayed bolus, carb split parts, protein/fat parts) takes off only half of
+  what it would cut. Example: a 1.00 U part where insulinReq allows 0.40 U now gives 0.70 U, rounded to the
+  pump step and never more than planned. A part the cap would stop fully (0 U) is still not given.
+- Protein/fat parts: the calculation record and the cancel notes no longer show an IOB rise ("FPU: no IOB-rise
+  correction"). Since patch .23 an IOB rise did not change these doses; now the notes say so.
+- Bolus wizard boxes: "Small meal" is now "Fast carbs, if fat/protein auto on, half amounts" and is ticked at the
+  start; "Auto fat/protein from carbs" starts unticked.
+- Retains all patch .26 changes below.
 
 Changes in patch .26 (2026-10-23):
 - Delayed bolus no longer gives the part over MaxBolus twice. "Needed" (without walking soon, the 50% profile,
@@ -411,6 +425,33 @@ def revert_steps_source(staging: Path) -> None:
         "return stillMovingNow(sample.steps5min, sample.steps30min, sample.steps15min)",
         "WAS persisted",
     )
+    # Patch .27 (fork aisf321UK_1074next, 2026-10-24): the Walking soon auto-tick has its own rule now, read here from
+    # the newest step record like stillMovingNow. The fork reads it from StepCountSource, which the base does not have.
+    old = must_replace(
+        old,
+        """    fun walkingSoonImmediatePercent(""",
+        """    // The Walking soon auto-tick of the wizard dialog. Never while BG is rising fast (more than +0.05 mmol per 5 min).
+    // Hard walking (S30 >= 1000, with S15 or S5 above 0 because S30 lingers) ticks it up to BG 10.0. Light walking
+    // (S15 >= 200) ticks it only below BG 8.0.
+    const val HARD_WALK_S30 = 1000
+    const val LIGHT_WALK_S15 = 200
+
+    fun walkingSoonDefault(steps5: Int?, steps15: Int?, steps30: Int?, bgMgdl: Double, deltaMgdl: Double): Boolean {
+        if (deltaMgdl > 0.9) return false
+        val hardWalking = steps30 != null && steps30 >= HARD_WALK_S30 && (steps15 == null || steps15 > 0 || (steps5 ?: 0) > 0)
+        val lightWalking = (steps15 ?: 0) >= LIGHT_WALK_S15
+        return (hardWalking && bgMgdl <= 180.2 /* 10.0 mmol */) || (lightWalking && bgMgdl < 144.1 /* 8.0 mmol */)
+    }
+
+    /** [walkingSoonDefault] from the newest step record of the last 15 minutes. Without one the box stays off. */
+    fun walkingSoonDefault(persistenceLayer: PersistenceLayer, now: Long, bgMgdl: Double, deltaMgdl: Double): Boolean {
+        val sample = latestStepsSample(persistenceLayer, now) ?: return false
+        return walkingSoonDefault(sample.steps5min, sample.steps15min, sample.steps30min, bgMgdl, deltaMgdl)
+    }
+
+    fun walkingSoonImmediatePercent(""",
+        "WAS walking soon default",
+    )
     write(staging, p, old)
 
     p = "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/DelayedBolusWorker.kt"
@@ -452,8 +493,8 @@ def revert_steps_source(staging: Path) -> None:
     t = must_replace(t, "bgInput: Double): Boolean? {", "bgInput: Double): Boolean {", "WD sig")
     t = must_replace(
         t,
-        "WizardActivitySteps.stillMovingNow(stepCountSource, dateUtil.now()) ?: return null",
-        "WizardActivitySteps.stillMovingNow(persistenceLayer, dateUtil.now())",
+        "WizardActivitySteps.walkingSoonDefault(stepCountSource, dateUtil.now(), bgMgdl, gs?.delta ?: 0.0)",
+        "WizardActivitySteps.walkingSoonDefault(persistenceLayer, dateUtil.now(), bgMgdl, gs?.delta ?: 0.0)",
         "WD moving",
     )
     t = must_replace(

@@ -24,5 +24,7 @@ enum class LongNonKey(
     // "delta >= +0.10mmol && no SMB this cycle" condition first becomes continuously true, not a
     // user-facing setting. 0L means "not currently tracking a persistent rise".
     ApsAutoIsfPersistentRiseStartedAt("autoisf_persistent_rise_started_at", 0L, exportable = false),
+    // When the newest raw Libre spike peaked (2026-10-29). Opens the 6 h raw-spike window: see findRawSpike in OpenAPSAutoISFPlugin.
+    ApsAutoIsfRawSpikeAt("autoisf_raw_spike_at", 0L, exportable = false),
 }
 

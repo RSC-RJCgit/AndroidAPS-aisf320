@@ -153,6 +153,49 @@ private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
  *  not fire (2026-10-28, per explicit request). */
 private const val MEAL_BOOST_CAP_MINUTES = 45
 
+/**
+ * The raw-spike check (2026-10-29, per explicit request). A raw Libre reading that jumps 0.9 mmol or more in 5 min and falls
+ * back 1.5 mmol or more within the next 10 min is a sensor fault: real glucose does not do that. 28 Oct Live (sensor day 4)
+ * had three: 07:39 (a shower), 16:45 and 22:51 (raw 11.1 -> 12.0 -> 9.5). In the 7 weeks before there were about 20.
+ *
+ * A spike opens a window of [RAW_SPIKE_WINDOW_HOURS]. In it, an acce boost is capped at 1.0 while raw rises more than twice
+ * as fast as BG ([rawRisingTooFast]; calibration alone explains 1.33x), and the sensor-age Libre slope tier may apply.
+ */
+private const val RAW_SPIKE_WINDOW_HOURS = 6L
+private const val RAW_SPIKE_JUMP_MGDL = 16.2 /* 0.9 mmol */
+private const val RAW_SPIKE_FALL_MGDL = 27.0 /* 1.5 mmol */
+
+/** A raw spike: when it peaked, how much it jumped in 5 min and how far it fell after (negative), in mg/dL */
+internal data class RawSpike(val peakAt: Long, val jumpMgdl: Double, val fallMgdl: Double)
+
+/**
+ * The newest raw spike in [raw] (time to raw mg/dL, oldest first), or null. The jump is measured from the reading 4-7 min
+ * before the peak; the fall to the lowest reading in the 10 min after it.
+ */
+internal fun findRawSpike(raw: List<Pair<Long, Double>>): RawSpike? {
+    for (i in raw.indices.reversed()) {
+        val (peakAt, peak) = raw[i]
+        val base = raw.subList(0, i).lastOrNull { peakAt - it.first in 4 * 60_000L..7 * 60_000L } ?: continue
+        val jump = peak - base.second
+        if (jump < RAW_SPIKE_JUMP_MGDL) continue
+        val after = raw.subList(i + 1, raw.size).filter { it.first - peakAt <= 10 * 60_000L }
+        val fall = (after.minOfOrNull { it.second } ?: continue) - peak
+        if (fall <= -RAW_SPIKE_FALL_MGDL) return RawSpike(peakAt, jump, fall)
+    }
+    return null
+}
+
+/**
+ * Raw rising more than twice as fast as BG: the newest raw minus the raw 4-7 min before is 0.9 mmol or more, BG is rising,
+ * and the raw rise is more than twice the BG [bgDeltaMgdl]. Calibration alone (slope 0.75) makes raw rise 1.33x as fast.
+ */
+internal fun rawRisingTooFast(raw: List<Pair<Long, Double>>, bgDeltaMgdl: Double): Boolean {
+    val (now, latest) = raw.lastOrNull() ?: return false
+    val before = raw.lastOrNull { now - it.first in 4 * 60_000L..7 * 60_000L } ?: return false
+    val rawDelta = latest - before.second
+    return bgDeltaMgdl > 0.0 && rawDelta >= RAW_SPIKE_JUMP_MGDL && rawDelta > 2.0 * bgDeltaMgdl
+}
+
 // Which delta test StuckRisingSlowly uses (2026-10-06, per explicit request): it used to ask "was a delayed bolus delivered
 // in the last hour", which is not a meal event at all. It now reads the same meal-event age as every other "bolus ago"
 // test (minutesSinceLastMealEvent(): carb age, or the last manual bolus age while extended carbs are active; delayed, split
@@ -3646,6 +3689,35 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         } == true ||
             (lastRunTimestamps[key] ?: 0L) <= dateUtil.now() - T.mins(minIntervalMinutes.toLong()).msecs()
 
+    /** Raw Libre readings of the last 20 min, oldest first, as time to mg/dL */
+    private fun recentRawLibre(): List<Pair<Long, Double>> {
+        val now = dateUtil.now()
+        return persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(20).msecs(), now, ascending = true)
+            .filter { it.noise != null && it.noise!! > 10.0 }
+            .map { it.timestamp to it.noise!! }
+    }
+
+    /**
+     * Remembers a new raw spike in [raw] and says whether the 6 h raw-spike window is open. A spike in the 2 h after Shower12
+     * (shower steam on the sensor, 05:30-08:30) does not count. Shower12's time is kept only while the app runs.
+     */
+    private fun updateRawSpikeWindow(raw: List<Pair<Long, Double>>): Boolean {
+        findRawSpike(raw)?.let { spike ->
+            val showerAt = lastRunTimestamps["Shower12"] ?: 0L
+            val afterShower = showerAt != 0L && spike.peakAt - showerAt in 0L..T.hours(2).msecs()
+            if (!afterShower && spike.peakAt > preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt)) {
+                preferences.put(LongNonKey.ApsAutoIsfRawSpikeAt, spike.peakAt)
+                addCarePortalNote("SaSpike +${round(spike.jumpMgdl / 18.016, 2)}/${round(spike.fallMgdl / 18.016, 2)}")
+            }
+        }
+        return rawSpikeWindowOpen()
+    }
+
+    private fun rawSpikeWindowOpen(): Boolean {
+        val lastSpike = preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt)
+        return lastSpike != 0L && dateUtil.now() - lastSpike < T.hours(RAW_SPIKE_WINDOW_HOURS).msecs()
+    }
+
     private fun markRun(key: String) {
         if (directTtCodeMatchActive) {
             pendingDirectTtCode = null
@@ -5956,7 +6028,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 sensorAgeDays != null && sensorAgeDays < 1.0                           -> Triple("NewDay1", libreSlopeOrig - 0.07, libreOffsetOrig + 0.15)
                 (sensorAgeDays != null && sensorAgeDays >= 1.0 && sensorAgeDays < 2.0)
                     || newDay2ByPodAge                                                 -> Triple("NewDay2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
-                sensorAgeDays != null && sensorAgeDays >= 2.0 && sensorAgeDays < 3.0    -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
+                // 2026-10-29, per explicit request: NewDay3 runs to the end of day 4 (was < 3.0). 28 Oct was day 4.
+                sensorAgeDays != null && sensorAgeDays >= 2.0 && sensorAgeDays < 4.0    -> Triple("NewDay3", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
                 // Start calendar day 10 after 9 full days (was day 12 / 11.0); same mild adjustment as day 13.
                 sensorAgeDays != null && sensorAgeDays >= 9.0 && sensorAgeDays < 13.0   -> Triple("1", libreSlopeOrig - 0.02, libreOffsetOrig + 0.05)
                 sensorAgeDays != null && sensorAgeDays >= 13.0 && sensorAgeDays < 14.0  -> Triple("2", libreSlopeOrig - 0.04, libreOffsetOrig + 0.10)
@@ -5982,7 +6055,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // protections remain in their own pod automations.
             // 2026-10-08, per explicit request: the tier now needs only the sensor age (or the pod age for NewDay2), no longer a
             // UKF raw Libre value above 12.0 mmol in the last 24 hours.
-            if (oldSensorEnabled && oldSensorTier != null) {
+            // 2026-10-29, per explicit request: and a raw spike in the last 6 h (see findRawSpike). Age alone was no good check
+            // that the sensor reads wrong, so the code was left off.
+            val rawSpikeWindow = rawSpikeWindowOpen()
+            if (oldSensorEnabled && oldSensorTier != null && rawSpikeWindow) {
                 if (!oldSensorActiveNow) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))
                     preferences.put(DoubleKey.ApsAutoIsfFslCalOffsetNormal, preferences.get(DoubleKey.FslCalOffset))
@@ -6002,12 +6078,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val baselineMismatch =
                     !fuzzyEquals(preferences.get(DoubleKey.FslCalSlope), libreSlopeOrig) ||
                         !fuzzyEquals(preferences.get(DoubleKey.FslCalOffset), libreOffsetOrig)
-                if (baselineMismatch) {
-                    preferences.put(DoubleKey.FslCalSlope, libreSlopeOrig)
-                    preferences.put(DoubleKey.FslCalOffset, libreOffsetOrig)
+                // 2026-10-29: the raw-spike window now ends a tier on any day, so the restore waits while BG is low (< 6.0) or
+                // falling, as the code-off restore above does. A slope change during a fall changes the dosing picture.
+                val restoreWaits = baselineMismatch && (glucoseStatus.glucose < 108.1 /* 6.0 mmol */ ||
+                    glucoseStatus.delta < 0.0 || glucoseStatus.shortAvgDelta < 0.0)
+                if (!restoreWaits) {
+                    if (baselineMismatch) {
+                        preferences.put(DoubleKey.FslCalSlope, libreSlopeOrig)
+                        preferences.put(DoubleKey.FslCalOffset, libreOffsetOrig)
+                    }
+                    preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
+                    if (oldSensorActiveNow || baselineMismatch) addCarePortalNote(if (rawSpikeWindow) "OldSensorOff" else "OldSensorOff spike end")
                 }
-                preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjActive, false)
-                if (oldSensorActiveNow || baselineMismatch) addCarePortalNote("OldSensorOff")
             }
             // else (oldSensorEnabled == false): fully hands-off by design, reworked 2026-08-25 after
             // a real case where Virtual's live slope kept reverting to the configured 0.68 baseline
@@ -11367,6 +11449,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val mealBoostCap = mealAgeForBoost != null && mealAgeForBoost < MEAL_BOOST_CAP_MINUTES
         if (mealBoostCap && acce_ISF > 1.0) {
             consoleError.add("acce boost capped: meal $mealAgeForBoost min ago (acce ${round(acce_ISF, 2)} -> 1.0)")
+            acce_ISF = 1.0
+        }
+        // 2026-10-29, per explicit request: in the 6 h after a raw spike, no acce boost while raw rises more than twice as fast
+        // as BG. 28 Oct Live (sensor day 4): acce gave Final 3.12 at 21:15 (raw +1.39 against BG +0.74) and acce 4.38 at
+        // 22:51 (raw 12.0, then 9.5 at 22:56); with 3.5 U on board BG went from 9.7 to 4.6. Braking (acce below 1) stays.
+        val rawSpikeRaw = recentRawLibre()
+        if (updateRawSpikeWindow(rawSpikeRaw) && acce_ISF > 1.0 && rawRisingTooFast(rawSpikeRaw, glucose_status?.delta ?: 0.0)) {
+            consoleError.add("acce boost capped: raw rising too fast after a raw spike (acce ${round(acce_ISF, 2)} -> 1.0)")
+            if (readyToRun("SaSpikeCap", 30)) {
+                addCarePortalNote("SaSpkCap")
+                markRun("SaSpikeCap")
+            }
             acce_ISF = 1.0
         }
         autoIsfValues.acceIsf = acce_ISF
