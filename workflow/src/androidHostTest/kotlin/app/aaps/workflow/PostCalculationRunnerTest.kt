@@ -4,6 +4,8 @@ import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
+import app.aaps.core.interfaces.overview.graph.IobGraphData
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.scenes.SceneExpiryCheck
@@ -60,6 +62,20 @@ class PostCalculationRunnerTest : TestBaseWithProfile() {
     @BeforeEach
     fun setup() {
         whenever(config.APS).thenReturn(false)
+    }
+
+    @Test
+    fun `received Trio IOB refreshes the graph without a local profile`() = runTest {
+        val data = dataWith(runLoopAndWidgetPhase = false)
+        val point = GraphDataPoint(1000L, 1.2)
+        whenever(workflowChainData.postFor(any(), any())).thenReturn(data)
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(processedDeviceStatusData.trioIobHistory(any(), any(), any())).thenReturn(listOf(point))
+
+        assertIs<WorkOutcome.Success>(run())
+
+        verify(data.cache).updateIobGraph(IobGraphData(listOf(point), emptyList()))
+        verify(loop, never()).invoke(any(), any(), any())
     }
 
     @Test

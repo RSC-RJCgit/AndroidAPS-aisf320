@@ -389,6 +389,80 @@ class GraphInspectTest {
         assertThat(state.controller.shouldShowMarker(press, emptyList())).isTrue()
     }
 
+    @Test
+    fun `physical release ends a hold even if the chart never sends Release`() {
+        val state = GraphInspectState().apply { shownX = 30.0 }
+        state.onPointerState(true, startsPress = true)
+        state.controller.shouldShowMarker(Interaction.LongPress(Point(60f, 10f)), emptyList())
+        state.pill = pillData
+
+        state.onPointerState(false)
+
+        assertThat(state.pointerDown).isFalse()
+        assertThat(state.fingerDown).isFalse()
+        assertThat(state.lineX).isNull()
+        assertThat(state.pill).isEqualTo(pillData)
+        assertThat(state.controller.shouldShowMarker(Interaction.Move(Point(70f, 10f)), emptyList())).isFalse()
+    }
+
+    @Test
+    fun `chart still accepts release and exit after the physical state has cleared`() {
+        val state = GraphInspectState()
+        val release = Interaction.Release(Point(60f, 10f))
+        val exit = Interaction.Exit(Point(60f, 10f), isInBounds = false)
+
+        assertThat(state.controller.shouldAcceptInteraction(release, emptyList())).isTrue()
+        assertThat(state.controller.shouldShowMarker(release, emptyList())).isFalse()
+        assertThat(state.controller.shouldAcceptInteraction(exit, emptyList())).isTrue()
+        assertThat(state.controller.shouldShowMarker(exit, emptyList())).isFalse()
+    }
+
+    @Test
+    fun `a new click clears stale inspection before another hold starts`() {
+        val state = GraphInspectState().apply {
+            fingerDown = true
+            shownX = 30.0
+            tapX = 30.0
+            pill = pillData
+        }
+
+        state.onPointerState(true, startsPress = true)
+
+        assertThat(state.pointerDown).isTrue()
+        assertThat(state.fingerDown).isFalse()
+        assertThat(state.pill).isNull()
+        assertThat(state.tapX).isNull()
+        assertThat(state.lineX).isNull()
+        assertThat(state.controller.shouldAcceptInteraction(Interaction.Move(Point(70f, 10f)), emptyList())).isFalse()
+    }
+
+    @Test
+    fun `continued movement with the button down keeps the current hold`() {
+        val state = GraphInspectState()
+        state.onPointerState(true, startsPress = true)
+        state.controller.shouldShowMarker(Interaction.LongPress(Point(60f, 10f)), emptyList())
+        state.pill = pillData
+
+        state.onPointerState(true)
+
+        assertThat(state.fingerDown).isTrue()
+        assertThat(state.pill).isEqualTo(pillData)
+    }
+
+    @Test
+    fun `mouse movement after exit cannot restart the old hold`() {
+        val state = GraphInspectState()
+        state.onPointerState(true, startsPress = true)
+        state.controller.shouldShowMarker(Interaction.LongPress(Point(60f, 10f)), emptyList())
+        state.onPointerState(false)
+
+        state.onPointerState(true)
+
+        assertThat(state.pointerDown).isFalse()
+        assertThat(state.fingerDown).isFalse()
+        assertThat(state.controller.shouldAcceptInteraction(Interaction.LongPress(Point(60f, 10f)), emptyList())).isFalse()
+    }
+
     private val pillData = InspectData(
         timestamp = t0, bg = null, iob = null, cob = null, basal = null, tbrState = TbrState.NONE,
         boluses = emptyList(), carbs = emptyList(), measured = emptyList()

@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNsClientStatusUpdated
 import app.aaps.core.interfaces.utils.DateUtil
@@ -137,6 +138,22 @@ class NSDeviceStatusHandler(
             }
         }
         if (config.AAPSCLIENT && accepted.isNotEmpty()) {
+            val trioStatuses = accepted.filter { it.status.device == "Trio" }
+            if (trioStatuses.isNotEmpty()) {
+                val points = trioStatuses.mapNotNull { parsed ->
+                    val result = parsed.suggested ?: return@mapNotNull null
+                    val timestamp = result.timestamp ?: return@mapNotNull null
+                    val value = result.IOB?.takeIf { it.isFinite() } ?: return@mapNotNull null
+                    GraphDataPoint(timestamp, value)
+                }
+                try {
+                    processedDeviceStatusData.storeTrioIob(preferences.get(StringKey.NsClientUrl), points, dateUtil.now())
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    aapsLogger.error(LTag.NSCLIENT, "Could not save reported Trio IOB", error)
+                }
+            }
             // One missed live push must not end the link. A downloaded status counts too.
             // The time on the status is used, not the time it was received. A status with no
             // time is skipped. A time older than 9 minutes does not keep the master reachable.

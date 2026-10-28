@@ -1,10 +1,9 @@
 package app.aaps.ui.compose.overview.graphs
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -35,6 +34,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -127,6 +128,19 @@ class GraphInspectState {
 
     private var windowFocused = true
 
+    /** One owner watches the whole graph area, including mouse exit and button release. */
+    internal fun onPointerState(pressed: Boolean, startsPress: Boolean = false) {
+        val wasPressed = pointerDown
+        pointerDown = pressed && windowFocused && (wasPressed || startsPress)
+        if (!pointerDown) {
+            fingerDown = false
+        } else if (!wasPressed) {
+            // A new click must not inherit a hold whose release was lost outside the window.
+            fingerDown = false
+            onTouchDown()
+        }
+    }
+
     /** Desktop focus changes can lose the mouse-up event; discard the held inspection explicitly. */
     fun onWindowFocusChanged(focused: Boolean) {
         windowFocused = focused
@@ -178,7 +192,9 @@ class GraphInspectState {
             when (interaction) {
                 is Interaction.LongPress -> pointerDown && windowFocused
                 is Interaction.Move -> pointerDown && windowFocused && fingerDown
-                is Interaction.Release, is Interaction.Zoom -> fingerDown
+                // The parent may already have cleared fingerDown. Vico still needs the closing
+                // interaction; rejecting it keeps Vico's previous marker position active.
+                is Interaction.Release, is Interaction.Zoom, is Interaction.Exit -> true
                 else                                                              -> false
             }
 
@@ -324,24 +340,14 @@ fun rememberInspectLine(state: GraphInspectState?, dotOnReading: Boolean = false
 /**
  * While inspecting, consumes moves so the graph does not scroll. Vico still uses consumed moves
  * for the marker, but not for scrolling.
- * Inspecting ends in the Final pass, after Vico has seen the lift. Otherwise Vico keeps the marker.
+ * The parent watches release for every graph, so moving between graphs cannot leave a held state.
  */
 fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInput(state) {
-    try {
-        awaitPointerEventScope {
-            while (true) {
-                val event = awaitPointerEvent(PointerEventPass.Initial)
-                state.pointerDown = event.changes.any { it.pressed }
-                if (state.fingerDown && event.type == PointerEventType.Move) event.changes.forEach { it.consume() }
-                // Same event, after Vico. Also covers a lift that Vico did not get.
-                awaitPointerEvent(PointerEventPass.Final)
-                if (!state.pointerDown) state.fingerDown = false
-            }
+    awaitPointerEventScope {
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            if (state.fingerDown && event.type == PointerEventType.Move) event.changes.forEach { it.consume() }
         }
-    } finally {
-        // Rotation or removal of the graph can cancel this handler without a finger-lift event.
-        state.pointerDown = false
-        state.fingerDown = false
     }
 }
 
@@ -350,9 +356,19 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
  * watches, in the Initial pass, and consumes nothing, so the touch still scrolls, holds and taps.
  */
 fun Modifier.closesInspectPillOnTouch(state: GraphInspectState): Modifier = pointerInput(state) {
-    awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        state.onTouchDown()
+    try {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val pressed = event.type != PointerEventType.Exit && event.changes.any { change ->
+                    if (change.type == PointerType.Mouse) event.buttons.isPrimaryPressed else change.pressed
+                }
+                // Desktop may keep a mouse pointer in the event after its button is released.
+                state.onPointerState(pressed, startsPress = event.type == PointerEventType.Press)
+            }
+        }
+    } finally {
+        state.onPointerState(false)
     }
 }
 
@@ -376,6 +392,8 @@ fun GraphInspectOverlay(
     val treatmentGraph by graphViewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
     val runningModeGraph by graphViewModel.runningModeGraphFlow.collectAsStateWithLifecycle()
     val predictions by graphViewModel.predictionsFlow.collectAsStateWithLifecycle()
+    val autoIsfGraph by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
+    val stepsGraph by graphViewModel.stepsGraphFlow.collectAsStateWithLifecycle()
     val currentBgReadings by rememberUpdatedState(bgReadings)
     val currentMinTimestamp by rememberUpdatedState(minTimestamp)
     val haptic = LocalHapticFeedback.current
@@ -428,7 +446,12 @@ fun GraphInspectOverlay(
     val data = inspect.pill
     val dotColor = data?.bg?.range?.inspectColor() ?: Color.Unspecified
     SideEffect { inspect.dotColor = dotColor }
-    if (data != null) GraphInspectPill(data = data, modifier = modifier)
+    if (data != null) GraphInspectPill(
+        data = data,
+        modifier = modifier,
+        statusLines = inspectStatusLines(autoIsfGraph),
+        stepSamples = inspectStepSamples(stepsGraph, data.timestamp)
+    )
 }
 
 /** The values at one reading. Null means no data near that time. */
@@ -554,19 +577,21 @@ internal fun BgRange.inspectColor(): Color = when (this) {
 @Composable
 fun GraphInspectPill(
     data: InspectData,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    statusLines: List<String> = emptyList(),
+    stepSamples: List<Pair<Int, GraphDataPoint>> = emptyList()
 ) {
     val dateUtil = LocalDateUtil.current
     val profileUtil = LocalProfileUtil.current
     val decimalFormatter = LocalDecimalFormatter.current
     Surface(
-        shape = RoundedCornerShape(percent = 50),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.95f),
         shadowElevation = 2.dp,
         modifier = modifier
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            verticalArrangement = Arrangement.spacedBy(AapsSpacing.extraSmall),
             modifier = Modifier.padding(horizontal = AapsSpacing.large)
         ) {
             FlowRow(
@@ -614,6 +639,17 @@ fun GraphInspectPill(
                         maxLines = PILL_EVENT_MAX_LINES
                     )
                 }
+            }
+            val stepLabels = listOf(CoreUiStrings.graph_steps_s5, CoreUiStrings.graph_steps_s15, CoreUiStrings.graph_steps_s30, CoreUiStrings.graph_steps_s60)
+            stepSamples.forEach { (index, sample) ->
+                PillText(
+                    stringResource(CoreUiStrings.graph_steps_sample, stringResource(stepLabels[index]), sample.value.roundToInt(), dateUtil.dateAndTimeString(sample.timestamp)),
+                    MaterialTheme.colorScheme.onSurface
+                )
+            }
+            if (statusLines.isNotEmpty()) {
+                PillText(stringResource(UiStrings.inspect_current_status), MaterialTheme.colorScheme.onSurfaceVariant)
+                statusLines.forEach { PillText(it, MaterialTheme.colorScheme.onSurface) }
             }
         }
     }

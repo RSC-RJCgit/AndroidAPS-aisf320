@@ -498,4 +498,5 @@
     <string name="overview_app_site" translatable="false">%1$s · %2$s</string>
     <string name="import_save_restore_baseline">Save this file as the restore baseline? It will fill missing settings in future imports. Current settings will stay unchanged.</string>
     <string name="import_restore_baseline_saved">Restore baseline saved. Missing settings in future imports will be filled from it. Current settings were not changed.</string>
+    <string name="inspect_current_status">Current status</string>
 </resources>

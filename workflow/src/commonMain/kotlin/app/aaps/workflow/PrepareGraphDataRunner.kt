@@ -52,6 +52,7 @@ import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.autoisf.mjStateFromNote
@@ -850,7 +851,13 @@ class PrepareGraphDataRunner(
         val varSensListCompose = persistenceLayer.getVariableSensitivities(fromTime, endTime)
             .map { GraphDataPoint(it.timestamp, profileUtil.fromMgdlToUnits(it.valueMgdl)) }
 
-        data.cache.updateIobGraph(IobGraphData(iob = iobListCompose, predictions = iobPredictionsListCompose, insulinByMinute = insulinByMinute(data.iobCobCalculator, fromTime, endTime)))
+        val reportedIob = if (config.AAPSCLIENT)
+            processedDeviceStatusData.trioIobHistory(preferences.get(StringKey.NsClientUrl), fromTime, min(endTime, now.toLong()))
+        else null
+        data.cache.updateIobGraph(
+            if (reportedIob != null) IobGraphData(iob = reportedIob, predictions = emptyList())
+            else IobGraphData(iob = iobListCompose, predictions = iobPredictionsListCompose, insulinByMinute = insulinByMinute(data.iobCobCalculator, fromTime, endTime))
+        )
         data.cache.updateAbsIobGraph(AbsIobGraphData(absIob = absIobListCompose))
         data.cache.updateCobGraph(CobGraphData(cob = cobListCompose, failOverPoints = cobFailOverListCompose))
         data.cache.updateActivityGraph(

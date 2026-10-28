@@ -151,6 +151,7 @@ enum class StringNonKey(
 
     // Source profile units for Trio status conversion, scoped to its Nightscout URL and profile start time.
     NsClientTrioProfileUnits(key = "nsclient_trio_profile_units", defaultValue = "", exportable = false),
+    NsClientTrioIobHistory(key = "nsclient_trio_iob_history", defaultValue = "", exportable = false),
 
     // Role names saved before a stuck-high tier C escalation. Local only.
     ApsAutoIsfStuckHighPrevLow(key = "autoisf_stuck_high_prev_low", defaultValue = "", exportable = false),

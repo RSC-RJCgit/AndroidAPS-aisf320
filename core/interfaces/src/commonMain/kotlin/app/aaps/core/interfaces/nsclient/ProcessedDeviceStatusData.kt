@@ -2,6 +2,7 @@ package app.aaps.core.interfaces.nsclient
 
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.RT
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 
 interface ProcessedDeviceStatusData {
 
@@ -52,6 +53,10 @@ interface ProcessedDeviceStatusData {
     }
 
     var openAPSData: OpenAPSData
+
+    /** Display-only IOB reported by Trio. Null means this site has not supplied Trio status. */
+    fun trioIobHistory(site: String, fromTime: Long, toTime: Long): List<GraphDataPoint>?
+    fun storeTrioIob(site: String, points: List<GraphDataPoint>, now: Long)
 
     val openApsTimestamp: Long
     fun getAPSResult(): APSResult?

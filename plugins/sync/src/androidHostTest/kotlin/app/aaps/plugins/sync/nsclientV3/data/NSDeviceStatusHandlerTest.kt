@@ -13,11 +13,13 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.StringNonPreferenceKey
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
@@ -86,6 +88,22 @@ internal class NSDeviceStatusHandlerTest {
 
         verify(nsClientV3Plugin).bumpDevicestatusHeartbeat(5_000L)
         verify(nsClientV3Plugin, never()).bumpDevicestatusHeartbeat(9_999L)
+    }
+
+    @Test
+    fun storesEachTrioIobSampleIncludingZeroWithoutUsingReceiptTime() {
+        val sampleTime = "2026-10-28T00:00:00Z"
+        whenever(dateUtil.fromISODateString(sampleTime)).thenReturn(5000L)
+        whenever(dateUtil.now()).thenReturn(9000L)
+        whenever(preferences.get(StringKey.NsClientUrl)).thenReturn("one")
+        whenever(preferences.get(StringNonKey.NsClientTrioProfileUnits))
+            .thenReturn("""{"site":"one","start":0,"units":"MGDL"}""")
+        whenever(processedDeviceStatusData.openAPSData).thenReturn(ProcessedDeviceStatusData.OpenAPSData())
+        val suggested = buildJsonObject { put("timestamp", sampleTime); put("IOB", 0.0) }
+
+        sut.handleNewData(arrayOf(NSDeviceStatus(device = "Trio", date = 5000L, openaps = NSDeviceStatus.OpenAps(suggested = suggested))))
+
+        verify(processedDeviceStatusData).storeTrioIob("one", listOf(GraphDataPoint(5000L, 0.0)), 9000L)
     }
 
     /**

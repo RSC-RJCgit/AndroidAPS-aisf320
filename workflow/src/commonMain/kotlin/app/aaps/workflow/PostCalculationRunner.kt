@@ -12,11 +12,13 @@ import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
+import app.aaps.core.interfaces.overview.graph.IobGraphData
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.scenes.SceneExpiryCheck
 import app.aaps.core.interfaces.widget.WidgetUpdater
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.workflow.WorkOutcome
 import dev.zacsweers.metro.Inject
@@ -65,6 +67,13 @@ class PostCalculationRunner(
         }
 
         preparePredictions(data)
+        // Received statuses also refresh IOB when no local profile or calculation is available.
+        if (config.AAPSCLIENT) {
+            val now = Clock.System.now().toEpochMilliseconds()
+            processedDeviceStatusData.trioIobHistory(
+                preferences.get(StringKey.NsClientUrl), data.overviewData.fromTime, min(data.overviewData.toTime, now)
+            )?.let { data.cache.updateIobGraph(IobGraphData(iob = it, predictions = emptyList())) }
+        }
         if (isStopped()) return WorkOutcome.Stopped
 
         data.signals.emitProgress(CalculationWorkflow.ProgressData.DRAW_FINAL, 100)

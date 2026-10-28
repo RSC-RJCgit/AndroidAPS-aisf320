@@ -1284,8 +1284,8 @@ fun BgGraphCompose(
         )
     )
     Column(modifier = Modifier.fillMaxWidth()) {
-    // Hidden rows must not reserve a blank band above the graph. Landscape always omits them.
-    if (!isLandscape() && graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
+    // The overview shows these rows in the fixed inspect popup. Hidden rows reserve no band.
+    if (LocalTopBarPillHost.current == null && !isLandscape() && graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
             autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
     ) {
         Column(
@@ -1481,7 +1481,7 @@ fun BgGraphCompose(
             }
         }
     }
-    if (graphDisplay.showTextLines && topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null)) {
+    if (LocalTopBarPillHost.current == null && graphDisplay.showTextLines && topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null)) {
         val lineSp = 11.sp
         val threeLinesDown = with(LocalDensity.current) { (lineSp * 3).toDp() }
         val linesUp = with(LocalDensity.current) { (lineSp * 1.0f).toDp() }
