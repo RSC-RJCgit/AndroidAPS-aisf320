@@ -25,6 +25,12 @@
 		AA4000400000000000000 /* AapsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000300000000000000 /* AapsLiveActivity.swift */; };
 		AA5000300000000000000 /* AapsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000100000000000000 /* AapsActivityAttributes.swift */; };
 		AA5000400000000000000 /* AapsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000300000000000000 /* AapsLiveActivity.swift */; };
+		AA2009D00000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
+		AA3009D00000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
+		AA4000500000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
+		AA5000500000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
+		AA4000900000000000000 /* AapsBgWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000600000000000000 /* AapsBgWidget.swift */; };
+		AA5000900000000000000 /* AapsBgWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000600000000000000 /* AapsBgWidget.swift */; };
 		D32B0F773048851500FAFE85 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = AA00SP02000000000000001 /* SocketIO */; };
 		D32B0F783048851500FAFE85 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = AA00SP02000000000000002 /* SocketIO */; };
 /* End PBXBuildFile section */
@@ -86,6 +92,8 @@
 		AA6000200000000000000 /* LiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityBridge.swift; path = Shared/LiveActivityBridge.swift; sourceTree = "<group>"; };
 		AA6000300000000000000 /* AapsLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AapsLiveActivity.swift; path = LiveActivity/AapsLiveActivity.swift; sourceTree = "<group>"; };
 		AA6000400000000000000 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = Info.plist; path = LiveActivity/Info.plist; sourceTree = "<group>"; };
+		AA6000500000000000000 /* WidgetBgStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = WidgetBgStore.swift; path = Shared/WidgetBgStore.swift; sourceTree = "<group>"; };
+		AA6000600000000000000 /* AapsBgWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AapsBgWidget.swift; path = LiveActivity/AapsBgWidget.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -131,6 +139,7 @@
 				AA1009900000000000000 /* NsSocketBridge.swift */,
 				AA6000100000000000000 /* AapsActivityAttributes.swift */,
 				AA6000200000000000000 /* LiveActivityBridge.swift */,
+				AA6000500000000000000 /* WidgetBgStore.swift */,
 				AA6001200000000000000 /* LiveActivity */,
 				AA2001200000000000000 /* AAPSClient */,
 				AA3001200000000000000 /* AAPSClient2 */,
@@ -171,6 +180,7 @@
 			isa = PBXGroup;
 			children = (
 				AA6000300000000000000 /* AapsLiveActivity.swift */,
+				AA6000600000000000000 /* AapsBgWidget.swift */,
 				AA6000400000000000000 /* Info.plist */,
 			);
 			name = LiveActivity;
@@ -366,6 +376,7 @@
 				AA2009900000000000000 /* NsSocketBridge.swift in Sources */,
 				AA2009A00000000000000 /* AapsActivityAttributes.swift in Sources */,
 				AA2009B00000000000000 /* LiveActivityBridge.swift in Sources */,
+				AA2009D00000000000000 /* WidgetBgStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -377,6 +388,7 @@
 				AA3009900000000000000 /* NsSocketBridge.swift in Sources */,
 				AA3009A00000000000000 /* AapsActivityAttributes.swift in Sources */,
 				AA3009B00000000000000 /* LiveActivityBridge.swift in Sources */,
+				AA3009D00000000000000 /* WidgetBgStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -386,6 +398,8 @@
 			files = (
 				AA4000300000000000000 /* AapsActivityAttributes.swift in Sources */,
 				AA4000400000000000000 /* AapsLiveActivity.swift in Sources */,
+				AA4000500000000000000 /* WidgetBgStore.swift in Sources */,
+				AA4000900000000000000 /* AapsBgWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -395,6 +409,8 @@
 			files = (
 				AA5000300000000000000 /* AapsActivityAttributes.swift in Sources */,
 				AA5000400000000000000 /* AapsLiveActivity.swift in Sources */,
+				AA5000500000000000000 /* WidgetBgStore.swift in Sources */,
+				AA5000900000000000000 /* AapsBgWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

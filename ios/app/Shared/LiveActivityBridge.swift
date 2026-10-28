@@ -1,6 +1,7 @@
 import ActivityKit
 import Foundation
 import UIKit
+import WidgetKit
 import AapsShared
 
 /// The Swift side of the Live Activity (2026-10-24, per explicit request). Kotlin's `IosLiveActivityUpdater` calls
@@ -15,6 +16,8 @@ final class SwiftLiveActivity: NSObject, LiveActivityBridge {
     private var latest: AapsActivityAttributes.ContentState?
     private var retryTask: Task<Void, Never>?
     private var statusReporter: LiveActivityStatusReporter?
+    private var widgetBgDate: Date?
+    private var widgetReloadTask: Task<Void, Never>?
 
     override init() {
         super.init()
@@ -44,7 +47,23 @@ final class SwiftLiveActivity: NSObject, LiveActivityBridge {
             bgDate: Date(timeIntervalSince1970: TimeInterval(bgTimeMillis) / 1000.0),
             range: Int(range)
         )
+        updateWidget(state)
         Task { @MainActor in await self.push(state) }
+    }
+
+    /// Stores the state for the home screen widget, also when Live Activities are turned off. iOS allows a widget only a
+    /// limited number of redraws a day, so a redraw is asked for once per new reading, not on every update. It waits a
+    /// few seconds, because IOB and COB follow the glucose value in a second update. Kotlin calls this on the main thread.
+    private func updateWidget(_ state: AapsActivityAttributes.ContentState) {
+        WidgetBgStore.save(state)
+        guard state.bgDate != widgetBgDate else { return }
+        widgetBgDate = state.bgDate
+        widgetReloadTask?.cancel()
+        widgetReloadTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            guard !Task.isCancelled else { return }
+            WidgetCenter.shared.reloadTimelines(ofKind: WidgetBgStore.kind)
+        }
     }
 
     @MainActor private func push(_ state: AapsActivityAttributes.ContentState) async {

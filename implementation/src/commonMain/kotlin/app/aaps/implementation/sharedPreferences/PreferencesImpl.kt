@@ -28,6 +28,7 @@ import app.aaps.core.keys.ProfileIntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.BooleanComposedNonPreferenceKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
 import app.aaps.core.keys.interfaces.BooleanPreferenceKey
@@ -504,7 +505,8 @@ class PreferencesImpl(
     private fun calculatedDefaultValue(key: BooleanPreferenceKey): Boolean =
         if (key.calculatedDefaultValue)
             when (key) {
-                BooleanKey.OverviewKeepScreenOn                    -> config.AAPSCLIENT
+                // Off on iOS clients (2026-10-28, per explicit request): the screen kept on cost too much battery there
+                BooleanKey.OverviewKeepScreenOn                    -> config.AAPSCLIENT && config.platform != AppPlatform.Ios
                 BooleanKey.NsClientNotificationsFromAlarms         -> config.AAPSCLIENT
                 BooleanKey.NsClientNotificationsFromAnnouncements  -> config.AAPSCLIENT
                 BooleanKey.NsClientLogAppStart                     -> config.APS

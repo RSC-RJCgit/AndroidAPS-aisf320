@@ -5,12 +5,14 @@ import WidgetKit
 /// The LiveActivity extension (2026-10-24, per explicit request): draws the BG Live Activity on the lock screen, in the
 /// Dynamic Island and, from iOS 18, in the Apple Watch Smart Stack and CarPlay (the `.small` family). The same file builds
 /// AAPSLiveActivity (inside AAPSClient) and AAPSLiveActivity2 (inside AAPSClient2). It does not link the Kotlin framework:
-/// everything it shows arrives as text in `AapsActivityAttributes.ContentState`.
+/// everything it shows arrives as text in `AapsActivityAttributes.ContentState`. Since 2026-10-28 it also carries the
+/// home screen and lock screen BG widget (`AapsBgWidget`).
 @main
 struct AapsLiveActivityBundle: WidgetBundle {
 
     var body: some Widget {
         AapsLiveActivity()
+        AapsBgWidget()
     }
 }
 
