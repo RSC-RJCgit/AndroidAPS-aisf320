@@ -46,10 +46,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -94,6 +97,7 @@ import app.aaps.ui.compose.treatmentsSheet.TreatmentViewModel
 import app.aaps.ui.search.SearchIndexEntry
 import app.aaps.ui.search.SearchResults
 import app.aaps.ui.search.SearchUiState
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -455,7 +459,24 @@ fun MainScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        (topBarPillHost.summaryContent ?: topBarPillHost.content)?.invoke()
+                        // Logs where the pill is drawn and how big, once per change (2026-10-29). After the wide / split toggle
+                        // in landscape the top bar draws the right pill ("drawn here=true") but it cannot be seen on the phones.
+                        val windowSize = LocalWindowInfo.current.containerSize
+                        var lastPillPlace by remember { mutableStateOf("") }
+                        Box(
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                if (topBarPillHost.content == null && topBarPillHost.summaryContent == null) return@onGloballyPositioned
+                                val bounds = coordinates.boundsInWindow()
+                                val place = "at ${bounds.left.roundToInt()},${bounds.top.roundToInt()} size ${coordinates.size.width}x${coordinates.size.height}, " +
+                                    "window ${windowSize.width}x${windowSize.height}"
+                                if (place != lastPillPlace) {
+                                    lastPillPlace = place
+                                    graphViewModel.logInspect("Graph inspect: top bar pill $place")
+                                }
+                            }
+                        ) {
+                            (topBarPillHost.summaryContent ?: topBarPillHost.content)?.invoke()
+                        }
                     }
 
                     // Landscape uses a rail with space reserved beside the graphs.

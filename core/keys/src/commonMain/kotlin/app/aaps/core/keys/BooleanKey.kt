@@ -30,7 +30,9 @@ enum class BooleanKey(
     override val defaultedByHardenedMode: Boolean = false
 ) : BooleanPreferenceKey {
 
-    GeneralSimpleMode(key = "simple_mode", defaultValue = true, title = KeysStrings.pref_title_simple_mode, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // Not synced (2026-10-29, per explicit request): it only changes how one screen looks, so each device keeps its own.
+    // Synced, the default "on" of a new install or an old Nightscout copy switched it on everywhere and hid the graph pencils.
+    GeneralSimpleMode(key = "simple_mode", defaultValue = true, title = KeysStrings.pref_title_simple_mode),
     GeneralInsulinConcentration(
         key = "insulin_concentration_enabled", defaultValue = false, title = KeysStrings.pref_title_insulin_concentration, summary = KeysStrings.pref_summary_insulin_concentration,
         defaultedBySM = true,
