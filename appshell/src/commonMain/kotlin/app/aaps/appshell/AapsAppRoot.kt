@@ -73,6 +73,7 @@ import app.aaps.core.ui.compose.dialogs.GlobalSnackbarHost
 import app.aaps.core.ui.compose.dialogs.PasswordCheckHost
 import app.aaps.core.ui.compose.preference.LocalCheckPassword
 import app.aaps.core.ui.compose.preference.LocalClearExportPasswordStore
+import app.aaps.core.ui.compose.preference.LocalRememberMasterPassword
 import app.aaps.core.ui.compose.preference.LocalHashPassword
 import app.aaps.core.ui.compose.preference.LocalVisibilityContext
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
@@ -163,6 +164,14 @@ fun AapsAppRoot(
         }
     }
 
+    val checkAndRememberPassword: (String, String) -> Boolean = remember(passwordHasher, exportPasswordDataStore) {
+        { password, hash ->
+            passwordHasher.checkPassword(password, hash).also { correct ->
+                if (correct) exportPasswordDataStore.rememberMasterPassword(password)
+            }
+        }
+    }
+
     CompositionLocalProvider(
         LocalPreferences provides preferences,
         LocalDateUtil provides dateUtil,
@@ -177,9 +186,10 @@ fun AapsAppRoot(
         LocalReadOnlyClient provides (config.AAPSCLIENT && readOnlyClientSetting),
         LocalClientRole provides clientRole,
         LocalProfileUtil provides profileUtil,
-        LocalCheckPassword provides passwordHasher::checkPassword,
+        LocalCheckPassword provides checkAndRememberPassword,
         LocalHashPassword provides passwordHasher::hashPassword,
         LocalClearExportPasswordStore provides { exportPasswordDataStore.clearPasswordDataStore() },
+        LocalRememberMasterPassword provides exportPasswordDataStore::rememberMasterPassword,
         LocalVisibilityContext provides visibilityContext
     ) {
         AapsTheme {
@@ -268,7 +278,7 @@ fun AapsAppRoot(
                     ProtectionHost(
                         protectionCheck = protectionCheck,
                         preferences = preferences,
-                        checkPassword = passwordHasher::checkPassword,
+                        checkPassword = checkAndRememberPassword,
                         showBiometric = showBiometric,
                         showBiometricSimple = showBiometricSimple
                     )

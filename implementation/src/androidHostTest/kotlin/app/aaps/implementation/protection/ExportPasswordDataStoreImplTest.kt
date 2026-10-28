@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.protection.SecureEncrypt
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -83,6 +84,45 @@ class ExportPasswordDataStoreImplTest {
         whenever(preferences.getIfExists(StringKey.ProtectionMasterPassword)).thenReturn("masterHash")
         whenever(secureEncrypt.decrypt(any())).thenReturn("plain")
         whenever(passwordHasher.checkPassword("plain", "masterHash")).thenReturn(matches)
+    }
+
+    @Test
+    fun `manual transfers retain only an encrypted verified master password`() {
+        masterPasswordMatches(true)
+        whenever(secureEncrypt.encrypt("plain", "SettingsMasterPasswordV1")).thenReturn("encrypted-master")
+
+        sut.rememberMasterPassword("plain")
+
+        verify(preferences).put(StringNonKey.SettingsMasterPasswordSecret, "encrypted-master")
+        verify(preferences, never()).put(StringNonKey.SettingsMasterPasswordSecret, "plain")
+    }
+
+    @Test
+    fun `manual transfers reuse master when scheduled export caching is off`() {
+        masterPasswordMatches(true)
+        whenever(preferences.get(BooleanKey.MaintenanceEnableExportSettingsAutomation)).thenReturn(false)
+        whenever(preferences.getIfExists(StringNonKey.SettingsMasterPasswordSecret)).thenReturn("encrypted-master")
+
+        assertEquals("plain", sut.getMasterPassword())
+    }
+
+    @Test
+    fun `changed master rejects and removes the old retained secret`() {
+        masterPasswordMatches(false)
+        whenever(preferences.getIfExists(StringNonKey.SettingsMasterPasswordSecret)).thenReturn("encrypted-master")
+
+        assertNull(sut.getMasterPassword())
+        verify(preferences).remove(StringNonKey.SettingsMasterPasswordSecret)
+    }
+
+    @Test
+    fun `existing verified export secret migrates without another prompt`() {
+        masterPasswordMatches(true)
+        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - fiveWeeks)
+        whenever(secureEncrypt.encrypt("plain", "SettingsMasterPasswordV1")).thenReturn("encrypted-master")
+
+        assertEquals("plain", sut.getMasterPassword())
+        verify(preferences).put(StringNonKey.SettingsMasterPasswordSecret, "encrypted-master")
     }
 
     @Test

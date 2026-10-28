@@ -16,6 +16,13 @@ class InspectStatusTest {
     }
 
     @Test
+    fun `hiding step text keeps the other status rows`() {
+        val data = AutoIsfGraphData(statusIsf = "ISF=90", statusSteps = "S5=12", statusRatio = "DR=0.5")
+        assertThat(inspectStatusLines(data, showSteps = false)).containsExactly("ISF=90", "DR=0.5").inOrder()
+        assertThat(inspectStatusLines(data, showSteps = true)).contains("S5=12")
+    }
+
+    @Test
     fun `steps keep their own times and do not fill gaps with old counts`() {
         val minute = 60_000L
         val near = GraphDataPoint(9 * minute, 12.0)

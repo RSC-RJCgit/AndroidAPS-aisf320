@@ -7,7 +7,6 @@ import app.aaps.core.interfaces.maintenance.PrefsMetadataKey
 import app.aaps.core.interfaces.sharedPreferences.KeyValueStore
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
-import app.aaps.implementation.maintenance.PrefsMetadataKeyImpl
 import app.aaps.implementation.maintenance.data.PrefsStatusImpl
 
 /**

@@ -575,6 +575,14 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    VirtualShowStepText(
+        "virtual_show_step_text",
+        true,
+        TextRef.Named("keys", "pref_title_virtual_step_text"),
+        TextRef.Named("keys", "pref_summary_virtual_step_text"),
+        showInNsClientMode = false,
+        showInPumpControlMode = false
+    ),
     // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     AutomationCodedLocationsEnabled(
         "automation_coded_locations",

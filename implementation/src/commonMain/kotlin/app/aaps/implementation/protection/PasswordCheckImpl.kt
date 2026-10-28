@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.StringPreferenceKey
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
@@ -73,6 +74,7 @@ class PasswordCheckImpl(
             pinInput = pinInput,
             onConfirm = { enteredPassword ->
                 if (passwordHasher.checkPassword(enteredPassword, password)) {
+                    if (preference == StringKey.ProtectionMasterPassword) exportPasswordDataStore.rememberMasterPassword(enteredPassword)
                     dismiss()
                     ok?.invoke(enteredPassword)
                 } else {
@@ -110,6 +112,7 @@ class PasswordCheckImpl(
                     enteredPassword.isNotEmpty()        -> {
                         preferences.put(preference, passwordHasher.hashPassword(enteredPassword))
                         exportPasswordDataStore.clearPasswordDataStore()
+                        if (preference == StringKey.ProtectionMasterPassword) exportPasswordDataStore.rememberMasterPassword(enteredPassword)
                         snack(if (pinInput) CoreUiStrings.pin_set else CoreUiStrings.password_set, EventShowSnackbar.Type.Success)
                         dismiss()
                         ok?.invoke(enteredPassword)
@@ -118,6 +121,7 @@ class PasswordCheckImpl(
                     // Empty entry means "clear it", but only if there was one to clear.
                     preferences.getIfExists(preference) != null -> {
                         preferences.remove(preference)
+                        if (preference == StringKey.ProtectionMasterPassword) exportPasswordDataStore.rememberMasterPassword("")
                         snack(if (pinInput) CoreUiStrings.pin_cleared else CoreUiStrings.password_cleared, EventShowSnackbar.Type.Success)
                         dismiss()
                         clear?.invoke()

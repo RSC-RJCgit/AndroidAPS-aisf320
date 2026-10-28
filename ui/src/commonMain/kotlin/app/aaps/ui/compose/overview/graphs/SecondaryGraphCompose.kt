@@ -1283,9 +1283,11 @@ fun SecondaryGraphCompose(
     )
 
     val latestStepsData by rememberUpdatedState(stepsData)
+    val display by viewModel.graphDisplay.collectAsStateWithLifecycle()
+    val showStepText = viewModel.showStepText(display)
     val latestMinTimestamp by rememberUpdatedState(minTimestamp)
     var selectedStepSamples by remember { mutableStateOf(emptyList<Pair<Int, GraphDataPoint>>()) }
-    if (selectedStepSamples.isNotEmpty()) {
+    if (showStepText && selectedStepSamples.isNotEmpty()) {
         val stepLabels = listOf(CoreUiStrings.graph_steps_s5, CoreUiStrings.graph_steps_s15, CoreUiStrings.graph_steps_s30, CoreUiStrings.graph_steps_s60)
         AlertDialog(
             onDismissRequest = { selectedStepSamples = emptyList() },
@@ -1367,7 +1369,7 @@ fun SecondaryGraphCompose(
             }
         }
         val chartModifier = Modifier.fillMaxWidth().weight(1f).then(
-            if (stepsData == null) Modifier else Modifier.pointerInput(Unit) {
+            if (stepsData == null || !showStepText) Modifier else Modifier.pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                     var moved = false

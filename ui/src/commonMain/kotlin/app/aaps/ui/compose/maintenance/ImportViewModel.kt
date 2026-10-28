@@ -434,6 +434,8 @@ class ImportViewModel(
                         isProcessing = false,
                         needsMasterPassword = false,
                         needsDecryptionPassword = false,
+                        masterPassword = "",
+                        decryptionPassword = "",
                         decryptResult = result,
                         showKeepPump = offer.showKeepPump,
                         keepPump = offer.keepPumpChecked,

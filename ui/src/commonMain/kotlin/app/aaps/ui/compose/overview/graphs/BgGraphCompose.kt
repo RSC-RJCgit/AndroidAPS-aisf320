@@ -312,7 +312,8 @@ fun BgGraphCompose(
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
-    val autoIsfGraph = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
+    val savedAutoIsfGraph = viewModel.autoIsfGraphFlow.collectAsStateWithLifecycle().value
+    val autoIsfGraph = if (viewModel.showStepText(graphDisplay)) savedAutoIsfGraph else savedAutoIsfGraph.copy(statusSteps = null)
 
     // Graph 5 top band lines (lowest to highest lane: SMBdel, aISFwt, ppISFwt, profBasal). Each is scaled to its own lowest
     // and highest value over the last 24 hours, so the lines always use the full lane. Profile basal is read at each loop's time.

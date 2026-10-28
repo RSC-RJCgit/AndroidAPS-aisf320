@@ -1,6 +1,11 @@
 package app.aaps.ui.compose.overview.graphs
 
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.Pump
+import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BgRange
@@ -31,6 +36,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.mock
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class GraphViewModelTest {
@@ -42,6 +48,8 @@ internal class GraphViewModelTest {
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var persistenceLayer: PersistenceLayer
+    @Mock private lateinit var config: Config
+    @Mock private lateinit var activePlugin: ActivePlugin
 
     private lateinit var sut: GraphViewModel
 
@@ -62,11 +70,34 @@ internal class GraphViewModelTest {
         whenever(preferences.observe(BooleanNonKey.ApsAutoIsfCleanGraphRequested)).thenReturn(MutableStateFlow(false))
         whenever(preferences.observe(BooleanNonKey.ApsAutoIsfGraphResetRequested)).thenReturn(MutableStateFlow(false))
         // fullWindow = false: the overview behaviour, where the axis hugs the data.
-        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer)
+        whenever(preferences.observe(BooleanKey.VirtualShowStepText)).thenReturn(MutableStateFlow(true))
+        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin)
     }
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
+
+    private abstract class TestVirtualPump : Pump, VirtualPump
+
+    @Test
+    fun stepTextSettingAffectsOnlyTheFullVirtualPumpApp() {
+        val virtual = mock<TestVirtualPump>()
+        val wrapper = mock<PumpWithConcentration>()
+        whenever(config.APS).thenReturn(true)
+        whenever(activePlugin.activePump).thenReturn(wrapper)
+        whenever(wrapper.selectedActivePump()).thenReturn(virtual)
+
+        assertThat(sut.showStepText(GraphDisplay(showStepText = false))).isFalse()
+        assertThat(sut.showStepText(GraphDisplay(showStepText = true))).isTrue()
+
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        assertThat(sut.showStepText(GraphDisplay(showStepText = false))).isTrue()
+
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        val physical = mock<Pump>()
+        whenever(wrapper.selectedActivePump()).thenReturn(physical)
+        assertThat(sut.showStepText(GraphDisplay(showStepText = false))).isTrue()
+    }
 
     /**
      * A prediction must never set the left edge of the axis - issue #5111.
@@ -95,7 +126,7 @@ internal class GraphViewModelTest {
         whenever(cache.predictionsFlow).thenReturn(MutableStateFlow(predictions))
         whenever(cache.timeRangeFlow).thenReturn(MutableStateFlow(TimeRange(fromTime = windowStart, toTime = now, endTime = now + 2 * 3600_000L)))
         whenever(graphConfigRepository.graphConfigFlow).thenReturn(MutableStateFlow(GraphConfig()))
-        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer)
+        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin)
 
         val range = vm.derivedTimeRange.filterNotNull().first()
 

@@ -175,6 +175,72 @@ internal class ImportViewModelTest {
         assertThat(sut.importStep.value).isEqualTo(ImportStep.Idle)
     }
 
+    @Test
+    fun storedMasterDecryptsBeforeAnyPasswordFieldIsShown() = runTest(testDispatcher) {
+        val file = PrefsFile("backup.json", "contents", emptyMap())
+        val prefs = Prefs(mapOf("units" to "mmol"), emptyMap())
+        whenever(importExportPrefs.getMasterPassword()).thenReturn("master")
+        whenever(importExportPrefs.decryptImportFile(file, "master")).thenReturn(ImportDecryptResult.Success(prefs, true, true))
+
+        sut.selectFile(ImportFileItem(file, ImportSource.LOCAL))
+        assertThat((sut.importStep.value as ImportStep.Review).needsMasterPassword).isFalse()
+        advanceUntilIdle()
+
+        val review = sut.importStep.value as ImportStep.Review
+        assertThat(review.decryptResult).isInstanceOf(ImportDecryptResult.Success::class.java)
+        assertThat(review.needsMasterPassword).isFalse()
+        assertThat(review.needsDecryptionPassword).isFalse()
+        assertThat(review.masterPassword).isEmpty()
+    }
+
+    @Test
+    fun rejectedStoredMasterOffersBackupPassword() = runTest(testDispatcher) {
+        val file = PrefsFile("backup.json", "contents", emptyMap())
+        whenever(importExportPrefs.getMasterPassword()).thenReturn("master")
+        whenever(importExportPrefs.decryptImportFile(file, "master")).thenReturn(ImportDecryptResult.WrongPassword)
+
+        sut.selectFile(ImportFileItem(file, ImportSource.LOCAL))
+        advanceUntilIdle()
+
+        val review = sut.importStep.value as ImportStep.Review
+        assertThat(review.needsMasterPassword).isFalse()
+        assertThat(review.needsDecryptionPassword).isTrue()
+    }
+
+    @Test
+    fun damagedBackupDoesNotRequestAnotherPassword() = runTest(testDispatcher) {
+        val file = PrefsFile("backup.json", "bad contents", emptyMap())
+        whenever(importExportPrefs.getMasterPassword()).thenReturn("master")
+        whenever(importExportPrefs.decryptImportFile(file, "master")).thenReturn(ImportDecryptResult.Error("Damaged file"))
+
+        sut.selectFile(ImportFileItem(file, ImportSource.LOCAL))
+        advanceUntilIdle()
+
+        val review = sut.importStep.value as ImportStep.Review
+        assertThat(review.decryptResult).isEqualTo(ImportDecryptResult.Error("Damaged file"))
+        assertThat(review.needsMasterPassword).isFalse()
+        assertThat(review.needsDecryptionPassword).isFalse()
+    }
+
+    @Test
+    fun passwordFromAnotherBackupIsNotRetainedAsLocalMaster() = runTest(testDispatcher) {
+        val file = PrefsFile("backup.json", "contents", emptyMap())
+        whenever(importExportPrefs.getMasterPassword()).thenReturn("master")
+        whenever(importExportPrefs.decryptImportFile(file, "master")).thenReturn(ImportDecryptResult.WrongPassword)
+        val prefs = Prefs(mapOf("units" to "mmol"), emptyMap())
+        whenever(importExportPrefs.decryptImportFile(file, "other")).thenReturn(ImportDecryptResult.Success(prefs, true, true))
+        sut.selectFile(ImportFileItem(file, ImportSource.LOCAL))
+        advanceUntilIdle()
+
+        sut.onDecryptionPasswordChanged("other")
+        sut.decrypt()
+        advanceUntilIdle()
+
+        assertThat((sut.importStep.value as ImportStep.Review).decryptResult).isInstanceOf(ImportDecryptResult.Success::class.java)
+        verify(importExportPrefs, never()).isMasterPasswordCorrect("other")
+        verify(importExportPrefs, never()).cacheExportPassword("other")
+    }
+
     // ---- Applying the imported settings ----
 
     /**

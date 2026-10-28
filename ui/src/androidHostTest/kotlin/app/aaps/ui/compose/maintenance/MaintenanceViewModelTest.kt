@@ -10,6 +10,7 @@ import app.aaps.core.interfaces.maintenance.FileListProvider
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.maintenance.ExportResult
+import app.aaps.core.interfaces.maintenance.ExportPreparation
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -115,6 +116,21 @@ internal class MaintenanceViewModelTest {
         sut.onExportConfirmed()
 
         assertThat(sut.exportState.value).isEqualTo(MaintenanceViewModel.ExportState.AskPassword())
+    }
+
+    @Test
+    fun settingsExportUsesRetainedMasterWithoutAPasswordDialog() = runBlocking {
+        runEagerly()
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        whenever(importExportPrefs.prepareExport()).thenReturn(ExportPreparation("settings.json", "master"))
+        whenever(importExportPrefs.executeExport("master")).thenReturn(ExportResult(localSuccess = true))
+        val event = expectEvent()
+
+        sut.startExport()
+
+        assertThat(event.await()).isInstanceOf(MaintenanceEvent.Snackbar::class.java)
+        assertThat(sut.exportState.value).isEqualTo(MaintenanceViewModel.ExportState.Idle)
+        verify(importExportPrefs).executeExport("master")
     }
 
     @Test

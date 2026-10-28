@@ -410,6 +410,8 @@ fun GraphInspectOverlay(
     val predictions by graphViewModel.predictionsFlow.collectAsStateWithLifecycle()
     val autoIsfGraph by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
     val stepsGraph by graphViewModel.stepsGraphFlow.collectAsStateWithLifecycle()
+    val display by graphViewModel.graphDisplay.collectAsStateWithLifecycle()
+    val showSteps = graphViewModel.showStepText(display)
     val currentBgReadings by rememberUpdatedState(bgReadings)
     val currentMinTimestamp by rememberUpdatedState(minTimestamp)
     val haptic = LocalHapticFeedback.current
@@ -465,8 +467,8 @@ fun GraphInspectOverlay(
     if (data != null) GraphInspectPill(
         data = data,
         modifier = modifier,
-        statusLines = inspectStatusLines(autoIsfGraph),
-        stepSamples = inspectStepSamples(stepsGraph, data.timestamp)
+        statusLines = inspectStatusLines(autoIsfGraph, showSteps),
+        stepSamples = if (showSteps) inspectStepSamples(stepsGraph, data.timestamp) else emptyList()
     )
 }
 

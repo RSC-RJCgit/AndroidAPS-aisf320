@@ -42,6 +42,7 @@ import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.UnitDoubleKey
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.ui.R
@@ -153,6 +154,7 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
         whenever(screen.preferences.get(UnitDoubleKey.OverviewLowMark)).thenReturn(72.0)
         whenever(screen.preferences.observe(UnitDoubleKey.OverviewHighMark)).thenReturn(MutableStateFlow(180.0))
         whenever(screen.preferences.observe(UnitDoubleKey.OverviewLowMark)).thenReturn(MutableStateFlow(72.0))
+        whenever(screen.preferences.observe(BooleanKey.VirtualShowStepText)).thenReturn(MutableStateFlow(true))
         whenever(graphConfigRepository.graphConfigFlow).thenReturn(MutableStateFlow(GraphConfig()))
 
         // ----- ChipsViewModel: the three chip flows evaluate as soon as a composable collects them,
@@ -192,7 +194,7 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
     }
 
     val graphViewModel: GraphViewModel by lazy {
-        GraphViewModel(cache, false, graphConfigRepository, aapsLogger, screen.preferences, screen.dateUtil, rh, persistenceLayer)
+        GraphViewModel(cache, false, graphConfigRepository, aapsLogger, screen.preferences, screen.dateUtil, rh, persistenceLayer, screen.config, activePlugin)
     }
 
     val chipsViewModel: ChipsViewModel by lazy {

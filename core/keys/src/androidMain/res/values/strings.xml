@@ -623,4 +623,6 @@
 
     <!--    Appearance preferences-->
 
+    <string name="pref_title_virtual_step_text">Show step text and popup values on Virtual pump</string>
+    <string name="pref_summary_virtual_step_text">Local display only. Step graphs, AIV columns, collection and automation stay enabled. Applies only to full AAPS using the Virtual pump.</string>
 </resources>

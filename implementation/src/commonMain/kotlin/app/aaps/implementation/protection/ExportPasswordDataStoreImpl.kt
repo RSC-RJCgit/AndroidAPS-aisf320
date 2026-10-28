@@ -68,7 +68,12 @@ class ExportPasswordDataStoreImpl(
         }
         val hash = preferences.getIfExists(StringKey.ProtectionMasterPassword) ?: return
         if (!passwordHasher.checkPassword(password, hash)) return
-        val secret = secureEncrypt.encrypt(password, MASTER_SETTINGS_ALIAS)
+        val secret = try {
+            secureEncrypt.encrypt(password, MASTER_SETTINGS_ALIAS)
+        } catch (_: Exception) {
+            aapsLogger.error(LTag.CORE, "Could not retain the master password for settings transfers")
+            return
+        }
         if (secret.isNotEmpty()) preferences.put(StringNonKey.SettingsMasterPasswordSecret, secret)
     }
 
@@ -76,7 +81,7 @@ class ExportPasswordDataStoreImpl(
         val hash = preferences.getIfExists(StringKey.ProtectionMasterPassword)
         val saved = preferences.getIfExists(StringNonKey.SettingsMasterPasswordSecret)
         if (!hash.isNullOrEmpty() && !saved.isNullOrEmpty()) {
-            val plain = secureEncrypt.decrypt(saved)
+            val plain = decryptMaster(saved)
             if (plain.isNotEmpty() && passwordHasher.checkPassword(plain, hash)) return plain
         }
         if (!saved.isNullOrEmpty()) preferences.remove(StringNonKey.SettingsMasterPasswordSecret)
@@ -84,10 +89,17 @@ class ExportPasswordDataStoreImpl(
         // Reuse a verified existing export secret, even if manual transfers no longer use its expiry.
         val old = platform.read()?.secret ?: return null
         if (old.split(":").getOrNull(1) != KEYSTORE_ALIAS) return null
-        val plain = secureEncrypt.decrypt(old)
+        val plain = decryptMaster(old)
         if (plain.isEmpty() || !passwordHasher.checkPassword(plain, hash)) return null
         rememberMasterPassword(plain)
         return plain
+    }
+
+    private fun decryptMaster(secret: String): String = try {
+        secureEncrypt.decrypt(secret)
+    } catch (_: Exception) {
+        aapsLogger.error(LTag.CORE, "Could not read the retained master password")
+        ""
     }
 
     /**

@@ -30,6 +30,9 @@ val LocalHashPassword = compositionLocalOf<((String) -> String)?> { null }
  */
 val LocalClearExportPasswordStore = compositionLocalOf<(() -> Unit)?> { null }
 
+/** Retain a verified master password encrypted for settings imports and exports. */
+val LocalRememberMasterPassword = compositionLocalOf<((String) -> Unit)?> { null }
+
 /**
  * CompositionLocal for highlighting a specific preference key.
  * Used when navigating from search to highlight the found preference.

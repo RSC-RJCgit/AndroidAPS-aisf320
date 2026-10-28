@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BCR
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
@@ -46,6 +49,7 @@ data class GraphDisplay(
     val showSmbLabels: Boolean = true,
     /** False hides the text lines on the main graph and graph 5 (the hypoprediction line stays). Settings > AutoISF, or List 3. */
     val showTextLines: Boolean = true,
+    val showStepText: Boolean = true,
 ) {
     val showSmbArrows: Boolean get() = basalToggleIndex == 0
     val uniformGreenBg: Boolean get() = basalToggleIndex == 2
@@ -77,6 +81,8 @@ class GraphViewModel(
     private val dateUtil: DateUtil,
     private val rh: TextResolver,
     private val persistenceLayer: PersistenceLayer,
+    private val config: Config,
+    private val activePlugin: ActivePlugin,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -114,6 +120,9 @@ class GraphViewModel(
 
     /** End of the window being browsed. Null while the overview follows now. */
     var aivHistoryEndTime: Long? = null
+
+    fun showStepText(display: GraphDisplay): Boolean =
+        !config.APS || config.AAPSCLIENT || activePlugin.activePump.selectedActivePump() !is VirtualPump || display.showStepText
 
     /**
      * Desktop only: true after a long press while the automatic clean graph was shown. The graph then shows the
@@ -192,6 +201,9 @@ class GraphViewModel(
         // 2026-10-10: the graph text lines follow Settings > AutoISF "Show the text lines" (List 3 turns it off).
         preferences.observe(BooleanKey.ApsAutoIsfShowGraphText)
             .onEach { show -> _graphDisplay.update { it.copy(showTextLines = show) } }
+            .launchIn(viewModelScope)
+        preferences.observe(BooleanKey.VirtualShowStepText)
+            .onEach { show -> _graphDisplay.update { it.copy(showStepText = show) } }
             .launchIn(viewModelScope)
     }
 

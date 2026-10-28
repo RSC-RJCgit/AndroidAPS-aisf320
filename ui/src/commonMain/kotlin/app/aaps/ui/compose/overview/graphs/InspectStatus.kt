@@ -6,8 +6,8 @@ import app.aaps.core.interfaces.overview.graph.StepsGraphData
 import kotlin.math.abs
 
 /** These rows describe the latest loop, even when the graph is held at an older time. */
-internal fun inspectStatusLines(data: AutoIsfGraphData): List<String> =
-    listOfNotNull(data.statusIsf, data.statusSteps, data.statusRatio, data.statusTarget)
+internal fun inspectStatusLines(data: AutoIsfGraphData, showSteps: Boolean = true): List<String> =
+    listOfNotNull(data.statusIsf, data.statusSteps.takeIf { showSteps }, data.statusRatio, data.statusTarget)
         .filter { it.isNotBlank() }
 
 /** Keep each sample's own time: step counts need not have the same time as glucose. */

@@ -1720,6 +1720,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfShowInsulinTotals,
             BooleanKey.ApsAutoIsfLoopEveryMinute,
             BooleanKey.ApsAutoIsfShowGraphText,
+            BooleanKey.VirtualShowStepText,
             BooleanKey.ApsAutoIsfAutoCleanGraph,
             BooleanKey.ApsUseSmbWithHighTt,
             BooleanKey.ApsUseSmbAlways,

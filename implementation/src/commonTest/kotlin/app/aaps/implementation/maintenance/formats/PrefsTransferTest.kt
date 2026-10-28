@@ -126,6 +126,20 @@ class PrefsTransferTest {
     }
 
     @Test
+    fun `damaged encrypted file is not mistaken for a wrong password`() {
+        store.putString("units", "mmol")
+        val file = sut.exportContents(metadata, "password").replace("\"algorithm\": \"v1\"", "\"algorithm\": \"broken\"")
+            .replace("\"algorithm\":\"v1\"", "\"algorithm\":\"broken\"")
+        assertTrue(file.contains("broken"))
+
+        val result = assertIs<ImportDecryptResult.Success>(sut.importResult(file, "wrong", false))
+
+        assertFalse(result.importOk)
+        assertFalse(result.importPossible)
+        assertFalse(result.prefs.passwordRejected)
+    }
+
+    @Test
     fun `the metadata the import list shows is carried in the file`() {
         store.putString("units", "mmol")
 
