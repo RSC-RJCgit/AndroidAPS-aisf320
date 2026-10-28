@@ -48,6 +48,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -89,6 +91,7 @@ import com.patrykandpatrick.vico.compose.cartesian.VicoZoomState
 import com.patrykandpatrick.vico.compose.cartesian.Zoom
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoScrollState
 import com.patrykandpatrick.vico.compose.cartesian.rememberVicoZoomState
+import kotlin.math.roundToInt
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -124,6 +127,9 @@ private val SIMPLE_MODE_CONFIG = GraphConfig(
  * turning the description into a list nobody will sit through.
  */
 private const val RECENT_VALUES_SPOKEN = 5
+
+/** Gives each graph section a number for the log (2026-10-29), to see whether a hold after the landscape toggle reaches a section that is gone */
+private var nextGraphSectionId = 1
 
 /** Moves the pill up over the treatment belt (48 dp, of which 16 dp overlap the BG graph). */
 private val INSPECT_PILL_OFFSET = (-32).dp
@@ -910,6 +916,9 @@ fun GraphsSection(
     val zoomEndPadding = 32.dp + if (isLandscape()) AapsTheme.spacing.extraLarge else 0.dp
     // Set by the BG graph, read by every graph
     val inspect = remember { GraphInspectState() }
+    // For the log only (2026-10-29): this section's number and where its BG graph is on screen. Not state, so a move does not recompose.
+    val sectionId = remember { nextGraphSectionId++ }
+    val bgGraphPlace = remember { arrayOf("not placed") }
 
     Column(
         modifier = modifier
@@ -1002,7 +1011,15 @@ fun GraphsSection(
 
         // Upstream's touch-to-inspect (2026-10-16 merge), without its 16 dp shift up: that shift sat the graph under the
         // treatment belt strip, which this fork removed on 2026-09-26.
-        Box(modifier = Modifier.graphInspectTouch(inspect)) {
+        Box(
+            modifier = Modifier
+                .onGloballyPositioned { coordinates ->
+                    val b = coordinates.boundsInWindow()
+                    bgGraphPlace[0] = "at ${b.left.roundToInt()},${b.top.roundToInt()} size ${coordinates.size.width}x${coordinates.size.height}" +
+                        if (coordinates.isAttached) "" else " (detached)"
+                }
+                .graphInspectTouch(inspect)
+        ) {
             BgGraphCompose(
                 viewModel = graphViewModel,
                 automaticCleanGraph = automaticCleanGraph,
@@ -1071,18 +1088,18 @@ fun GraphsSection(
                 DisposableEffect(pillHost, inspect, graphViewModel) {
                     val added = pillHost.add(inspect = inspect, graphViewModel = graphViewModel)
                     pill = added
-                    graphViewModel.logInspect("Graph inspect: graphs added to the top bar, now ${pillHost.size}")
+                    graphViewModel.logInspect("Graph inspect: section $sectionId added to the top bar, now ${pillHost.size}")
                     onDispose {
                         pillHost.remove(added)
-                        graphViewModel.logInspect("Graph inspect: graphs removed from the top bar, now ${pillHost.size}")
+                        graphViewModel.logInspect("Graph inspect: section $sectionId removed from the top bar, now ${pillHost.size}")
                     }
                 }
                 // Says, once per hold, whether the top bar draws this pill (2026-10-28), to find the 24db split problem
-                LaunchedEffect(pillHost, inspect) {
+                LaunchedEffect(pillHost, inspect, sectionId) {
                     snapshotFlow { inspect.pill != null }.collect { shown ->
                         if (shown) pill?.let {
                             graphViewModel.logInspect(
-                                "Graph inspect: pill shown, ${pillHost.size} in the top bar, drawn here=${pillHost.isDrawn(it)}, summary open=${pillHost.summaryContent != null}"
+                                "Graph inspect: pill shown by section $sectionId, BG graph ${bgGraphPlace[0]}, ${pillHost.size} in the top bar, drawn here=${pillHost.isDrawn(it)}, summary open=${pillHost.summaryContent != null}"
                             )
                         }
                     }

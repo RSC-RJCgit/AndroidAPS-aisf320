@@ -11,12 +11,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,6 +43,13 @@ import app.aaps.ui.compose.overview.graphs.GraphsSection
 import app.aaps.ui.compose.overview.graphs.pageWheelScroll
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.scenes.ActiveSceneBanner
+import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+
+/** How long the landscape start waits for the page to become long enough to scroll to the status card */
+private const val START_SCROLL_WAIT_MS = 2_000L
 
 @Composable
 fun OverviewScreenStacked(
@@ -91,6 +103,19 @@ fun OverviewScreenStacked(
     var statusExpanded by rememberSaveable { mutableStateOf(false) }
     val pageScroll = rememberScrollState()
     val pageOverscroll = rememberOverscrollEffect()
+    val landscape = isLandscape()
+
+    // 2026-10-29, per explicit request: in landscape the page opens at the coloured client status card, so the graphs
+    // are in view at once. Once each time this layout opens (the toggle to wide, a rotation, the start of the app);
+    // after that the page scrolls freely. Portrait still opens at the top.
+    var statusCardTop by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(landscape) {
+        if (!landscape) return@LaunchedEffect
+        val top = snapshotFlow { statusCardTop }.filterNotNull().first()
+        // The graphs below may still be measuring, and until they are the page cannot scroll that far
+        withTimeoutOrNull(START_SCROLL_WAIT_MS) { snapshotFlow { pageScroll.maxValue }.first { it >= top } }
+        pageScroll.scrollTo(top)
+    }
 
     Column(
         modifier = modifier
@@ -99,7 +124,7 @@ fun OverviewScreenStacked(
             .pageWheelScroll(pageScroll)
             .verticalScroll(
                 pageScroll,
-                overscrollEffect = if (isLandscape()) null else pageOverscroll,
+                overscrollEffect = if (landscape) null else pageOverscroll,
             )
     ) {
         ActiveSceneBanner(
@@ -194,7 +219,11 @@ fun OverviewScreenStacked(
                 onOpenList2 = chipsViewModel::openList2,
                 onOpenList3 = chipsViewModel::openList3,
                 onOpenAutoIsfHistory = { chipsViewModel.openAutoIsfHistory(graphViewModel.aivHistoryEndTime) },
-                onOpenStats = { graphViewModel.openStatsSummary() }
+                onOpenStats = { graphViewModel.openStatsSummary() },
+                modifier = Modifier.onGloballyPositioned { coordinates ->
+                    val top = coordinates.positionInParent().y.roundToInt()
+                    if (statusCardTop != top) statusCardTop = top
+                }
             )
         }
 
