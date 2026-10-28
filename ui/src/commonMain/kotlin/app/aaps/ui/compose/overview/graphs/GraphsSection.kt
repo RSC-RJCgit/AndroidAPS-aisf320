@@ -1067,12 +1067,24 @@ fun GraphsSection(
                     bgReadings = bgReadings,
                     minTimestamp = derivedTimeRange?.first
                 )
+                var pill by remember { mutableStateOf<TopBarPillHost.Pill?>(null) }
                 DisposableEffect(pillHost, inspect, graphViewModel) {
-                    val pill = pillHost.add { GraphInspectPillOf(inspect = inspect, graphViewModel = graphViewModel) }
+                    val added = pillHost.add(isShowing = { inspect.pill != null }) { GraphInspectPillOf(inspect = inspect, graphViewModel = graphViewModel) }
+                    pill = added
                     graphViewModel.logInspect("Graph inspect: graphs added to the top bar, now ${pillHost.size}")
                     onDispose {
-                        pillHost.remove(pill)
+                        pillHost.remove(added)
                         graphViewModel.logInspect("Graph inspect: graphs removed from the top bar, now ${pillHost.size}")
+                    }
+                }
+                // Says, once per hold, whether the top bar draws this pill (2026-10-28), to find the 24db split problem
+                LaunchedEffect(pillHost, inspect) {
+                    snapshotFlow { inspect.pill != null }.collect { shown ->
+                        if (shown) pill?.let {
+                            graphViewModel.logInspect(
+                                "Graph inspect: pill shown, ${pillHost.size} in the top bar, drawn here=${pillHost.isDrawn(it)}, summary open=${pillHost.summaryContent != null}"
+                            )
+                        }
                     }
                 }
             }

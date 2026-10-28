@@ -26,8 +26,12 @@ class TopBarPillHost {
      */
     private val pills = mutableStateListOf<Pill>()
 
-    /** The pill of the newest graphs. It draws nothing while no graph is held. */
-    val content: (@Composable () -> Unit)? get() = pills.lastOrNull()?.draw
+    /**
+     * The pill of the graphs that show one now, else of the newest graphs. Not simply the newest (2026-10-28): in 24db,
+     * after the split layout in landscape, a hold drew the line but the top bar showed no pill until portrait, so the
+     * newest entry was not the held one.
+     */
+    val content: (@Composable () -> Unit)? get() = (pills.lastOrNull { it.isShowing() } ?: pills.lastOrNull())?.draw
 
     /** A summary opened by a chip stays above graph inspection until it is closed. */
     var summaryContent by mutableStateOf<(@Composable () -> Unit)?>(null)
@@ -35,14 +39,18 @@ class TopBarPillHost {
     /** How many graph sections have a pill here, for the log */
     val size: Int get() = pills.size
 
-    fun add(draw: @Composable () -> Unit): Pill = Pill(draw).also { pills.add(it) }
+    /** True when [pill] is the one that [content] draws, for the log */
+    fun isDrawn(pill: Pill): Boolean = content === pill.draw
+
+    /** [isShowing] must read snapshot state, so the main screen draws again when it changes. */
+    fun add(isShowing: () -> Boolean, draw: @Composable () -> Unit): Pill = Pill(isShowing, draw).also { pills.add(it) }
 
     fun remove(pill: Pill) {
         pills.remove(pill)
     }
 
     /** One graph section's pill. A plain class, so [remove] finds this entry and no other. */
-    class Pill(val draw: @Composable () -> Unit)
+    class Pill(val isShowing: () -> Boolean, val draw: @Composable () -> Unit)
 }
 
 /** The host of the screen, or null where the pill stays on the graph. */

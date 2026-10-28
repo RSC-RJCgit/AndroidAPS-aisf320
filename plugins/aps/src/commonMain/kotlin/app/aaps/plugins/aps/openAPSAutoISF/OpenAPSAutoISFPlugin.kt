@@ -132,6 +132,10 @@ import kotlin.math.roundToLong
 /** What AlarmHypo1 ("_____H4") and AlarmHypo2 ("__________A4", "H4") write as graph announcements. */
 private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
 
+/** For this long after a carb entry, autoISF() keeps acce_ISF and pp_ISF at 1.0 or below and PersistentRiseRelease does
+ *  not fire (2026-10-28, per explicit request). */
+private const val MEAL_BOOST_CAP_MINUTES = 45
+
 @SingleIn(AppScope::class)
 @Inject
 open class OpenAPSAutoISFPlugin(
@@ -1376,6 +1380,16 @@ open class OpenAPSAutoISFPlugin(
                 sens_modified = true
             }
         }
+        // 2026-10-28, per explicit request: no acce boost for 45 min after a carb entry. The rise from the meal is expected and
+        // the wizard has already paid for it. 28 Oct Live: 20 g at 18:54/18:56 with a full wizard dose, then acce gave Final
+        // 2.6-3.1 at 11-23 min and parabola + acce gave about 1.05 U of SMB at 31-35 min. BG fell from 8.9 to 3.7. Braking
+        // (acce below 1) stays. The pp boost is capped the same way further down.
+        val mealAgeForBoost = minutesSinceLastMealEvent(dateUtil.now())
+        val mealBoostCap = mealAgeForBoost < MEAL_BOOST_CAP_MINUTES
+        if (mealBoostCap && acce_ISF > 1.0) {
+            consoleError.add("acce boost capped: meal $mealAgeForBoost min ago (acce ${round(acce_ISF, 2)} -> 1.0)")
+            acce_ISF = 1.0
+        }
 
         val bg_ISF = 1 + interpolate(100 - bg_off)
         consoleError.add("bg_ISF adaptation is ${round(bg_ISF, 2)}")
@@ -1408,6 +1422,10 @@ open class OpenAPSAutoISFPlugin(
             else                             -> {
                 pp_ISF = 1.0 + max(0.0, bg_delta * pp_ISF_weight)
                 consoleError.add("pp_ISF adaptation is ${round(pp_ISF, 2)}")
+                if (mealBoostCap && pp_ISF > 1.0) {
+                    consoleError.add("pp boost capped: meal $mealAgeForBoost min ago (pp ${round(pp_ISF, 2)} -> 1.0)")
+                    pp_ISF = 1.0
+                }
                 if (pp_ISF != 1.0) {
                     sens_modified = true
                 }
@@ -2554,6 +2572,10 @@ open class OpenAPSAutoISFPlugin(
         if (clock.startedAt != startedAt) {
             preferences.put(LongNonKey.ApsAutoIsfPersistentRiseStartedAt, clock.startedAt)
         }
+        // 2026-10-28, per explicit request: not while a carb entry is under 45 min old. Right after a meal that the wizard
+        // covered, no SMB is expected, not a stuck loop. 28 Oct Live: PstRs at 30 min, then about 1.05 U of SMB in 4 min,
+        // then BG fell from 8.9 to 3.7.
+        if (minutesSinceLastMealEvent(now) < MEAL_BOOST_CAP_MINUTES) return
         val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
         if (!persistentRiseShouldFire(
                 ready = runMarks.ready(RunMark.PERSISTENT_RISE, 5, now),

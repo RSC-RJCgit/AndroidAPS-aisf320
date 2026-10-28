@@ -1236,8 +1236,10 @@ fun BgGraphCompose(
     }
     val generalColors = AapsTheme.generalColors
     val lastBgMark = remember(bgReadings, minTimestamp, smbText, profileUtil, generalColors) {
-        bgReadings.lastOrNull()?.let { last ->
-            val text = profileUtil.fromMgdlToStringWithUnits(last.value)
+        // The newest reading: the list is newest first, so lastOrNull() was the oldest, off screen on the left (2026-10-28).
+        // The value is already in the user's units, so it is not converted from mg/dL again.
+        bgReadings.maxByOrNull { it.timestamp }?.let { last ->
+            val text = profileUtil.stringInCurrentUnitsDetect(last.value)
             val color = when (last.range) {
                 BgRange.HIGH -> generalColors.bgHigh
                 BgRange.LOW -> generalColors.bgLow
