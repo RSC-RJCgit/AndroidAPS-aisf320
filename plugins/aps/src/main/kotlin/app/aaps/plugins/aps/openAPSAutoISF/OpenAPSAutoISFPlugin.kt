@@ -149,7 +149,8 @@ import org.json.JSONArray
 /** What AlarmHypo1 ("_____H4") and AlarmHypo2 ("__________A4", "H4") write as graph announcements. */
 private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
 
-/** For this long after a carb entry, autoISF() keeps acce_ISF and pp_ISF at 1.0 or below (2026-10-28, per explicit request). */
+/** For this long after a carb entry, autoISF() keeps acce_ISF and pp_ISF at 1.0 or below and PersistentRiseRelease does
+ *  not fire (2026-10-28, per explicit request). */
 private const val MEAL_BOOST_CAP_MINUTES = 45
 
 // Which delta test StuckRisingSlowly uses (2026-10-06, per explicit request): it used to ask "was a delayed bolus delivered
@@ -7852,6 +7853,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled) &&
                 (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(glucoseStatus.glucose)) &&
                 holding && persistentMinutes >= 10.0 &&
+                // 2026-10-28, per explicit request: not while a carb entry is under 45 min old. Right after a meal that the
+                // wizard covered, no SMB is expected, not a stuck loop. 28 Oct Live: PstRs at 30 min, then about 1.05 U of
+                // SMB in 4 min, then BG fell from 8.9 to 3.7.
+                (minutesSinceLastMealEvent() ?: Int.MAX_VALUE) >= MEAL_BOOST_CAP_MINUTES &&
                 // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
                 profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfLowProfileName) &&
                 !mjActive() &&
