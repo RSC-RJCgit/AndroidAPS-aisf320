@@ -44,6 +44,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.ClientRole
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.ui.R
 import app.aaps.ui.UiStrings
@@ -129,7 +130,7 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
         // The status ages are this module's own strings, and the shared stub knows only five other
         // modules, so it would throw. Answered from the real resources, like everything else here.
         doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short)).whenever(rh).gs(UiStrings.status_age_short)
-        doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short_hours)).whenever(rh).gs(UiStrings.status_age_short_hours)
+        doReturn(RuntimeEnvironment.getApplication().getString(R.string.status_age_short_hours)).whenever(rh).gs(TextRef.Named("ui", "status_age_short_hours"))
 
         // ----- shared ambient -----
         whenever(screen.dateUtil.now()).thenReturn(NOW)

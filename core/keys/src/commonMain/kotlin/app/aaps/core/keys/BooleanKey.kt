@@ -93,7 +93,9 @@ enum class BooleanKey(
     IosRileyLinkHeartbeat("ios_rileylink_heartbeat", false, KeysStrings.pref_title_ios_rileylink_heartbeat, KeysStrings.pref_summary_ios_rileylink_heartbeat, platforms = setOf(AppPlatform.Ios)),
     /** iOS only (2026-10-27, per explicit request): the heartbeat and silent audio note at the top of the overview. */
     IosHeartbeatShowOnOverview(
-        "ios_heartbeat_show_on_overview", true, KeysStrings.pref_title_ios_heartbeat_show_on_overview, KeysStrings.pref_summary_ios_heartbeat_show_on_overview,
+        "ios_heartbeat_show_on_overview", true,
+        TextRef.Named("keys", "pref_title_ios_heartbeat_show_on_overview"),
+        TextRef.Named("keys", "pref_summary_ios_heartbeat_show_on_overview"),
         platforms = setOf(AppPlatform.Ios), dependency = IosRileyLinkHeartbeat
     ),
     /** iOS only (2026-10-24, per explicit request): while on, look for other devices that can be a backup heartbeat. */

@@ -119,7 +119,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun settingsExportUsesRetainedMasterWithoutAPasswordDialog() = runBlocking {
+    fun settingsExportUsesRetainedMasterWithoutAPasswordDialog() = runBlocking<Unit> {
         runEagerly()
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         whenever(importExportPrefs.prepareExport()).thenReturn(ExportPreparation("settings.json", "master"))

@@ -24,6 +24,7 @@ import app.aaps.core.keys.interfaces.IntPreferenceKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.ui.UiStrings
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.StatusLevel
 import app.aaps.core.ui.compose.icons.IcCannulaChange
 import app.aaps.core.ui.compose.icons.IcCgmInsert
@@ -299,7 +300,7 @@ class StatusViewModel(
     // The days part is left out while there is none, so a fresh sensor reads "4h" and not "0d4h".
     private fun formatAge(timestamp: Long): String {
         val diff = dateUtil.computeDiff(timestamp, dateUtil.now())
-        return if (diff.days == 0L) rh.gs(UiStrings.status_age_short_hours, diff.hours)
+        return if (diff.days == 0L) rh.gs(TextRef.Named("ui", "status_age_short_hours"), diff.hours)
         else rh.gs(UiStrings.status_age_short, diff.days, diff.hours)
     }
 
