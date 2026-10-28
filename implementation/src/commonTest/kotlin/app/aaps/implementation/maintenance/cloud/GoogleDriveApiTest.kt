@@ -42,6 +42,31 @@ class GoogleDriveApiTest {
         return GoogleDriveApi(HttpClient(engine), accessToken = { _ -> token })
     }
 
+    // ----- A lost connection -----
+
+    /** iOS gives -1005 when it reuses a connection that died while the app slept. A new try opens a new connection. */
+    @Test
+    fun `a lost connection is tried once more`() = runTest {
+        var call = 0
+        val engine = MockEngine { _ ->
+            if (call++ == 0) throw IllegalStateException("The network connection was lost.")
+            respond(ByteReadChannel("""{"user":{}}"""), HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val api = GoogleDriveApi(HttpClient(engine), accessToken = { _ -> Result.success("access-1") })
+
+        assertTrue(api.testConnection().isSuccess)
+        assertEquals(2, call)
+    }
+
+    /** Drive answered and said no. Asking again at once would get the same answer. */
+    @Test
+    fun `a refused request is not tried again`() = runTest {
+        val api = apiReplying(HttpStatusCode.ServiceUnavailable to "")
+
+        assertTrue(api.testConnection().isFailure)
+        assertEquals(1, requests.size)
+    }
+
     // ----- Listing -----
 
     @Test

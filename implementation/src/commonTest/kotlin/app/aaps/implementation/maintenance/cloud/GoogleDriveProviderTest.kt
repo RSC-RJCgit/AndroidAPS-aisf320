@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.objects.crypto.platformCryptoPrimitives
 import app.aaps.implementation.maintenance.formats.FakeKeyValueStore
@@ -261,6 +262,19 @@ class GoogleDriveProviderTest {
 
         assertTrue(provider.testConnection())
         assertFalse(provider.hasConnectionError())
+    }
+
+    /** On 29 Oct the card stayed for an hour after the next export had worked. */
+    @Test
+    fun `a working call removes the Drive error card`() = runTest {
+        tokens.refreshToken = "r"
+        tokens.accessToken = "a"
+        tokens.expiresAt = clock + 3_600_000
+        val provider = providerReplying(HttpStatusCode.OK to """{"user":{}}""")
+
+        provider.testConnection()
+
+        assertTrue(NotificationId.GOOGLE_DRIVE_ERROR in notifications.dismissed)
     }
 
     @Test

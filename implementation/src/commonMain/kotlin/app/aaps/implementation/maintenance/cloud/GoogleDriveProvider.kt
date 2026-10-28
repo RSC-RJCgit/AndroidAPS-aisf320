@@ -141,37 +141,34 @@ class GoogleDriveProvider(
 
     // ----- Using it -----
 
-    override suspend fun testConnection(): Boolean = api.testConnection().fold(
-        onSuccess = { clearConnectionError(); true },
-        onFailure = { noteFailure(it); false }
-    )
+    override suspend fun testConnection(): Boolean = api.testConnection().noted().isSuccess
 
     override suspend fun getOrCreateFolderPath(path: String): String? =
-        api.folderIdForPath(path).onFailure { noteFailure(it) }.getOrNull()
+        api.folderIdForPath(path).noted().getOrNull()
 
     override suspend fun createFolder(name: String, parentId: String): String? =
-        api.createFolder(name, parentId).onFailure { noteFailure(it) }.getOrNull()
+        api.createFolder(name, parentId).noted().getOrNull()
 
     override suspend fun listFolders(parentId: String): List<CloudFolder> =
         api.listFolders(parentId)
-            .onFailure { noteFailure(it) }
+            .noted()
             .getOrDefault(emptyList())
             .map { CloudFolder(id = it.id, name = it.name) }
 
     override suspend fun uploadFileToPath(fileName: String, content: ByteArray, mimeType: String, path: String): String? {
         val folderId = getOrCreateFolderPath(path) ?: return null
-        return api.uploadFile(fileName, content, folderId, mimeType).onFailure { noteFailure(it) }.getOrNull()
+        return api.uploadFile(fileName, content, folderId, mimeType).noted().getOrNull()
     }
 
     override suspend fun uploadFile(fileName: String, content: ByteArray, mimeType: String): String? =
-        api.uploadFile(fileName, content, getSelectedFolderId(), mimeType).onFailure { noteFailure(it) }.getOrNull()
+        api.uploadFile(fileName, content, getSelectedFolderId(), mimeType).noted().getOrNull()
 
     override suspend fun downloadFile(fileId: String): ByteArray? =
-        api.downloadFile(fileId).onFailure { noteFailure(it) }.getOrNull()
+        api.downloadFile(fileId).noted().getOrNull()
 
     override suspend fun listSettingsFiles(pageSize: Int, pageToken: String?): CloudFileListResult {
         val page = api.listSettingsFiles(getSelectedFolderId(), pageToken, pageSize)
-            .onFailure { noteFailure(it) }
+            .noted()
             .getOrNull() ?: return CloudFileListResult(files = emptyList())
         return CloudFileListResult(
             files = page.files.map { CloudFile(id = it.id, name = it.name, mimeType = SETTINGS_MIME) },
@@ -234,6 +231,17 @@ class GoogleDriveProvider(
      * One notification id and a sixty minute validity, matching what Android already posts: a
      * failing sync retries often, and each attempt must not leave its own card behind.
      */
+    private fun <T> Result<T>.noted(): Result<T> = onSuccess { noteSuccess() }.onFailure { noteFailure(it) }
+
+    /**
+     * Drive answered, so an error card from an earlier try is out of date (2026-10-29). It stayed for its full sixty
+     * minutes before, also when the next export worked. A sign in that expired cannot answer, so its card stays.
+     */
+    private fun noteSuccess() {
+        storeConnectionError(false)
+        notificationManager.dismiss(NotificationId.GOOGLE_DRIVE_ERROR)
+    }
+
     private fun noteFailure(error: Throwable) {
         val expired = (error as? DriveException)?.failure is DriveFailure.SignInExpired ||
             (error as? TokenException)?.failure is TokenFailure.SignInExpired

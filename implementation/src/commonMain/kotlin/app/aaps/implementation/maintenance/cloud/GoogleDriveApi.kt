@@ -21,6 +21,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.coroutines.cancellation.CancellationException
 
 /** One file as Drive describes it, with only the fields the settings screens read. */
 data class DriveFile(val id: String, val name: String, val modifiedTime: String?)
@@ -190,7 +191,7 @@ class GoogleDriveApi(
         retrying(request) { it.bodyAsBytes() }
 
     /**
-     * Runs a call, and runs it a second time on a 401 with a forced refresh first.
+     * Runs a call, and runs it a second time on a 401 with a forced refresh first, or once more on a lost connection.
      *
      * Whether the stored access token is still good is worked out from this device's clock, so a
      * phone a few minutes fast - or a token Google dropped early - sends one Drive believes is
@@ -198,14 +199,22 @@ class GoogleDriveApi(
      * user revoked, and the caller answers a revoked sign in by throwing the refresh token away. One
      * forced refresh tells the two apart: if a token minted seconds ago is also refused, the second
      * 401 is the honest one and is passed on.
+     *
+     * A lost connection is tried once more (2026-10-29). iOS keeps a connection open while the app sleeps and gives
+     * "The network connection was lost" (-1005) when it is used again after it died. The second try opens a new one. On
+     * 29 Oct this left a Drive error on the iPhone for an hour, while the next export worked.
      */
     private suspend fun <T> retrying(
         request: suspend (String) -> HttpResponse,
         read: suspend (HttpResponse) -> T
     ): Result<T> {
         val first = attempt(request, read, forceRefresh = false)
-        val failure = (first.exceptionOrNull() as? DriveException)?.failure
-        if (failure !is DriveFailure.SignInExpired) return first
+        val error = first.exceptionOrNull() ?: return first
+        if (error is CancellationException) throw error
+        // A token that could not be had is not a lost connection, and its own client has already retried
+        if (error is TokenException) return first
+        if (error !is DriveException) return attempt(request, read, forceRefresh = false)
+        if (error.failure !is DriveFailure.SignInExpired) return first
         return attempt(request, read, forceRefresh = true)
     }
 

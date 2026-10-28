@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 class RecordingNotificationManager : NotificationManager {
 
     val posted = mutableListOf<Pair<NotificationId, TextRef?>>()
+    val dismissed = mutableListOf<NotificationId>()
 
     override val notifications: StateFlow<List<AapsNotification>> = MutableStateFlow(emptyList())
 
@@ -68,7 +69,9 @@ class RecordingNotificationManager : NotificationManager {
         return NotificationHandle(posted.size)
     }
 
-    override fun dismiss(id: NotificationId) = Unit
+    override fun dismiss(id: NotificationId) {
+        dismissed += id
+    }
     override fun dismiss(handle: NotificationHandle) = Unit
     override fun muteAllAlarms() = Unit
 }
