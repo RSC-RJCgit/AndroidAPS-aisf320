@@ -19,8 +19,6 @@ enum class StringNonKey(
     IosRileyLinkId("ios_rileylink_id", "", exportable = false),
     /** Current heartbeat reception and audio state for this iPhone's overview. */
     IosHeartbeatOverviewStatus("ios_heartbeat_overview_status", "", exportable = false),
-    /** iOS: encrypted Trio remote-control shared secret. Local to this install and never exported. */
-    IosRemoteControlSecret("ios_remote_control_secret", "", exportable = false),
     /**
      * iOS (2026-10-24): devices found by the last look for other heartbeat devices, one per line as "identifier<TAB>label",
      * strongest signal first. Filled by `IosRileyLinkHeartbeat`, shown in [StringKey.IosHeartbeatCheckDevice].
@@ -152,6 +150,11 @@ enum class StringNonKey(
     // Source profile units for Trio status conversion, scoped to its Nightscout URL and profile start time.
     NsClientTrioProfileUnits(key = "nsclient_trio_profile_units", defaultValue = "", exportable = false),
     NsClientTrioIobHistory(key = "nsclient_trio_iob_history", defaultValue = "", exportable = false),
+    /**
+     * What Trio uploads so it can be reached by a remote command (2026-10-29): device token, app, team and its override
+     * presets, scoped to the Nightscout URL it came from. Read again with each Trio profile, so not exported.
+     */
+    NsClientTrioPushInfo(key = "nsclient_trio_push_info", defaultValue = "", exportable = false),
     SettingsMasterPasswordSecret(key = "settings_master_password_secret", defaultValue = "", exportable = false),
 
     // Role names saved before a stuck-high tier C escalation. Local only.

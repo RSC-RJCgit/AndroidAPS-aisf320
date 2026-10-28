@@ -348,6 +348,38 @@ enum class StringKey(
         dependency = BooleanKey.NsClientSecondaryEnabled,
         validator = StringValidator.httpsUrl()
     ),
+    // Trio remote control (2026-10-29, per explicit request): the same four values LoopFollow asks for. The APNs key is the
+    // .p8 file of the Apple developer account that built Trio. Not synced: they belong to this phone's setup.
+    TrioRemoteUser(
+        key = "trio_remote_user",
+        defaultValue = "",
+        title = KeysStrings.trio_remote_user,
+        summary = KeysStrings.trio_remote_user_summary,
+        dependency = BooleanKey.TrioRemoteEnabled
+    ),
+    TrioRemoteSharedSecret(
+        key = "trio_remote_shared_secret",
+        defaultValue = "",
+        title = KeysStrings.trio_remote_shared_secret,
+        summary = KeysStrings.trio_remote_shared_secret_summary,
+        isPassword = true,
+        dependency = BooleanKey.TrioRemoteEnabled
+    ),
+    TrioRemoteApnsKeyId(
+        key = "trio_remote_apns_key_id",
+        defaultValue = "",
+        title = KeysStrings.trio_remote_apns_key_id,
+        summary = KeysStrings.trio_remote_apns_key_id_summary,
+        dependency = BooleanKey.TrioRemoteEnabled
+    ),
+    TrioRemoteApnsKey(
+        key = "trio_remote_apns_key",
+        defaultValue = "",
+        title = KeysStrings.trio_remote_apns_key,
+        summary = KeysStrings.trio_remote_apns_key_summary,
+        isPassword = true,
+        dependency = BooleanKey.TrioRemoteEnabled
+    ),
     NsClientSecondaryAccessToken(
         key = "nsclient_secondary_token",
         defaultValue = "",

@@ -59,6 +59,9 @@ kotlin {
         getByName("commonTest") {
             dependencies {
                 implementation(kotlin("test"))
+                // The Trio remote push tests (2026-10-29): Apple's server answered by Ktor's mock engine
+                implementation(libs.io.ktor.client.mock)
+                implementation(libs.kotlinx.coroutines.test)
             }
         }
         getByName("jvmTest") {

@@ -35,6 +35,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.plugins.sync.nsclientV3.data.trioProfileUnitsRecord
+import app.aaps.plugins.sync.nsclientV3.data.trioPushInfoRecord
 import app.aaps.core.utils.calibratedLibre
 import app.aaps.core.utils.libreSpecial
 import app.aaps.core.nssdk.localmodel.entry.NSMbgV3
@@ -364,6 +365,10 @@ class NsIncomingDataProcessor(
             val units = trioProfileUnitsRecord(profileJson, preferences.get(StringKey.NsClientUrl)).orEmpty()
             if (preferences.get(StringNonKey.NsClientTrioProfileUnits) != units)
                 preferences.put(StringNonKey.NsClientTrioProfileUnits, units)
+            // How to reach this Trio by a remote command (2026-10-29). Emptied by a profile that is not Trio's.
+            val pushInfo = trioPushInfoRecord(profileJson, preferences.get(StringKey.NsClientUrl)).orEmpty()
+            if (preferences.get(StringNonKey.NsClientTrioPushInfo) != pushInfo)
+                preferences.put(StringNonKey.NsClientTrioPushInfo, pushInfo)
         }
         val accept = when {
             fromSecondary -> true

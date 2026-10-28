@@ -1353,6 +1353,19 @@ class NSClientV3Plugin(
                     StringKey.NsClientSecondaryAccessToken
                 )
             ),
+            // Trio remote control as in LoopFollow (2026-10-29, per explicit request). Trio's device token is read from
+            // its profile on this site, so only these are asked for.
+            PreferenceSubScreenDef(
+                key = "ns_trio_remote_settings",
+                title = KeysStrings.trio_remote_settings,
+                items = listOf(
+                    BooleanKey.TrioRemoteEnabled,
+                    StringKey.TrioRemoteUser,
+                    StringKey.TrioRemoteSharedSecret,
+                    StringKey.TrioRemoteApnsKeyId,
+                    StringKey.TrioRemoteApnsKey
+                )
+            ),
             PreferenceSubScreenDef(
                 key = "ns_client_alarm_options",
                 title = SyncStrings.ns_alarm_options,

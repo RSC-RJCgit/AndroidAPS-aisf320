@@ -491,6 +491,17 @@
     <string name="ns_secondary_url_summary" comment="Example of a Nightscout address.">Nightscout URL to download bolus and carbs from (for example https://mymainns.herokuapp.com)</string>
     <string name="ns_secondary_token">Secondary NS access token</string>
     <string name="ns_secondary_token_summary">Access token for the secondary Nightscout site. Leave blank if that site does not use one.</string>
+    <string name="trio_remote_settings">Trio remote control</string>
+    <string name="trio_remote_enabled">Trio remote control</string>
+    <string name="trio_remote_enabled_summary">Send temp targets, carbs, boluses and overrides to the Trio that uploads to this Nightscout site, as LoopFollow does. Remote control must be on in Trio, with the same shared secret.</string>
+    <string name="trio_remote_user">User</string>
+    <string name="trio_remote_user_summary">Your name, as Trio shows it for each command.</string>
+    <string name="trio_remote_shared_secret">Shared secret</string>
+    <string name="trio_remote_shared_secret_summary">The same shared secret as in the remote control settings of Trio.</string>
+    <string name="trio_remote_apns_key_id">APNS Key ID</string>
+    <string name="trio_remote_apns_key_id_summary">The 10 character Key ID of your APNs key, from the Apple developer account that built Trio.</string>
+    <string name="trio_remote_apns_key">APNS Key</string>
+    <string name="trio_remote_apns_key_summary">The text of the .p8 key file, from BEGIN PRIVATE KEY to END PRIVATE KEY.</string>
     <string name="ns_wifi_ssids">WiFi SSID</string>
     <string name="ns_wifi_ssids_summary">Allowed SSIDs (semicolon separated)</string>
 
