@@ -648,7 +648,7 @@ fun GraphInspectPill(
                 )
             }
             if (statusLines.isNotEmpty()) {
-                PillText(stringResource(UiStrings.inspect_current_status), MaterialTheme.colorScheme.onSurfaceVariant)
+                PillText(stringResource(CoreUiStrings.carb_time_now), MaterialTheme.colorScheme.onSurfaceVariant)
                 statusLines.forEach { PillText(it, MaterialTheme.colorScheme.onSurface) }
             }
         }

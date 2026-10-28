@@ -1,9 +1,9 @@
 package app.aaps.plugins.sync.nsclientV3.data
 
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
-import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TrioIobHistoryTest {
@@ -31,7 +31,17 @@ class TrioIobHistoryTest {
     @Test
     fun storedHistoryKeepsSourceAndSampleTimesAfterReload() {
         val original = TrioIobHistory("source-one").merge(listOf(GraphDataPoint(now, 0.0)), now)
-        val encoded = Json.encodeToString(TrioIobHistory.serializer(), original)
-        assertEquals(original, Json.decodeFromString<TrioIobHistory>(encoded))
+        val encoded = original.encode()
+        assertEquals(original, TrioIobHistory.decode(encoded))
+    }
+
+    @Test
+    fun malformedCacheDoesNotCrashAndBadSamplesDoNotReplaceGoodOnes() {
+        assertNull(TrioIobHistory.decode("broken"))
+        assertNull(TrioIobHistory.decode("{}"))
+        val decoded = TrioIobHistory.decode(
+            """{"site":"one","samples":[{"timestamp":10,"value":0},{"timestamp":"bad","value":2},{"timestamp":11,"value":"NaN"}]}"""
+        )
+        assertEquals(listOf(TrioIobSample(10L, 0.0)), decoded?.samples)
     }
 }

@@ -11,7 +11,6 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import kotlinx.serialization.json.Json
 
 @ContributesBinding(AppScope::class)
 @SingleIn(AppScope::class)
@@ -31,9 +30,8 @@ class ProcessedDeviceStatusDataImpl(
 
     private val iobLock = AapsLock()
 
-    private fun readTrioIob(): TrioIobHistory? = runCatching {
-        Json.decodeFromString<TrioIobHistory>(preferences.get(StringNonKey.NsClientTrioIobHistory))
-    }.getOrNull()
+    private fun readTrioIob(): TrioIobHistory? =
+        TrioIobHistory.decode(preferences.get(StringNonKey.NsClientTrioIobHistory))
 
     override fun trioIobHistory(site: String, fromTime: Long, toTime: Long): List<GraphDataPoint>? = iobLock.withLock {
         readTrioIob()?.takeIf { site.isNotBlank() && it.site == site }?.samples
@@ -47,7 +45,7 @@ class ProcessedDeviceStatusDataImpl(
         val old = saved?.takeIf { it.site == site } ?: TrioIobHistory(site)
         val updated = old.merge(points, now)
         if (updated != old || saved?.site != site)
-            preferences.put(StringNonKey.NsClientTrioIobHistory, Json.encodeToString(TrioIobHistory.serializer(), updated))
+            preferences.put(StringNonKey.NsClientTrioIobHistory, updated.encode())
     }
 
     override val openApsTimestamp: Long
