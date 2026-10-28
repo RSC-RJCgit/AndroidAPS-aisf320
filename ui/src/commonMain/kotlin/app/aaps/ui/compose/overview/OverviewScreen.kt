@@ -343,6 +343,7 @@ fun OverviewScreen(
             }
         }
 
+        OverviewStatsPopupHost(graphViewModel)
         List1Dialog(chipsViewModel)
         List2Dialog(chipsViewModel)
         List3Dialog(chipsViewModel)

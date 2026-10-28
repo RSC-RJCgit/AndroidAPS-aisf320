@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.overview.graph.AapsClientStatusData
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsCard
 import app.aaps.core.ui.compose.rememberBringIntoViewOnExpand
@@ -51,7 +52,8 @@ fun AapsClientStatusCard(
     onOpenList1: () -> Unit = {},
     onOpenList2: () -> Unit = {},
     onOpenList3: () -> Unit = {},
-    onOpenAutoIsfHistory: () -> Unit = {}
+    onOpenAutoIsfHistory: () -> Unit = {},
+    onOpenStats: () -> Unit = {}
 ) {
     val items = listOfNotNull(statusData.pump, statusData.openAps, statusData.autoIsf, statusData.uploader)
     if (items.isEmpty()) return
@@ -94,6 +96,11 @@ fun AapsClientStatusCard(
                     statusData.openAps?.let { item ->
                         AapsClientStatusChip(item = item)
                     }
+                    Text(
+                        text = stringResource(TextRef.Named("ui", "client_stats_chip")),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.clickable(onClick = onOpenStats)
+                    )
                     // Direct actions are all AutoISF codes: not offered when the master runs AMA or SMB
                     if (statusData.autoIsfLists)
                         Text(

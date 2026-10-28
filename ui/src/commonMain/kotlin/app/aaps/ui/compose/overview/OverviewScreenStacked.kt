@@ -193,7 +193,8 @@ fun OverviewScreenStacked(
                 onOpenList1 = chipsViewModel::openList1,
                 onOpenList2 = chipsViewModel::openList2,
                 onOpenList3 = chipsViewModel::openList3,
-                onOpenAutoIsfHistory = { chipsViewModel.openAutoIsfHistory(graphViewModel.aivHistoryEndTime) }
+                onOpenAutoIsfHistory = { chipsViewModel.openAutoIsfHistory(graphViewModel.aivHistoryEndTime) },
+                onOpenStats = { graphViewModel.openStatsSummary() }
             )
         }
 

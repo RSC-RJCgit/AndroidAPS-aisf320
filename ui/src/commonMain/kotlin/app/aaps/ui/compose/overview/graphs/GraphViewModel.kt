@@ -8,6 +8,8 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.BCR
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -24,11 +26,16 @@ import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.ui.compose.overview.OverviewStatsSummary
+import app.aaps.ui.compose.stats.calculateAgpStatsData
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -83,6 +90,7 @@ class GraphViewModel(
     private val persistenceLayer: PersistenceLayer,
     private val config: Config,
     private val activePlugin: ActivePlugin,
+    private val profileUtil: ProfileUtil,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -120,6 +128,42 @@ class GraphViewModel(
 
     /** End of the window being browsed. Null while the overview follows now. */
     var aivHistoryEndTime: Long? = null
+
+    private val _statsSummary = MutableStateFlow<OverviewStatsSummary?>(null)
+    val statsSummary: StateFlow<OverviewStatsSummary?> = _statsSummary.asStateFlow()
+    private var statsSummaryJob: Job? = null
+
+    /** Read only when opened or when its period changes; no background statistics timer. */
+    fun openStatsSummary(days: Int = 7) {
+        val period = days.takeIf { it in listOf(7, 30) } ?: 7
+        val end = (_statsSummary.value?.endTime ?: aivHistoryEndTime ?: dateUtil.now()).coerceAtMost(dateUtil.now())
+        val start = end - period * 24 * 60 * 60_000L
+        statsSummaryJob?.cancel()
+        _statsSummary.value = OverviewStatsSummary(endTime = end, days = period)
+        statsSummaryJob = viewModelScope.launch {
+            try {
+                val result = withContext(aapsIoDispatcher) {
+                    val rows = persistenceLayer.getBgReadingsDataFromTimeToTime(start, end, true)
+                    calculateAgpStatsData(
+                        rows.filter { it.timestamp in start..end && it.value.isFinite() },
+                        profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
+                        profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
+                    )
+                }
+                _statsSummary.value = OverviewStatsSummary(endTime = end, days = period, data = result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                aapsLogger.error(LTag.UI, "Could not load overview glucose statistics", error)
+                _statsSummary.value = OverviewStatsSummary(endTime = end, days = period, failed = true)
+            }
+        }
+    }
+
+    fun closeStatsSummary() {
+        statsSummaryJob?.cancel()
+        _statsSummary.value = null
+    }
 
     fun showStepText(display: GraphDisplay): Boolean =
         !config.APS || config.AAPSCLIENT || activePlugin.activePump.selectedActivePump() !is VirtualPump || display.showStepText

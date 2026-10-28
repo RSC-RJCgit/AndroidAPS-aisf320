@@ -20,6 +20,9 @@ class TopBarPillHost {
 
     /** The pill, set by the graphs while they are on screen. It draws nothing while no graph is held. */
     var content by mutableStateOf<(@Composable () -> Unit)?>(null)
+
+    /** A summary opened by a chip stays above graph inspection until it is closed. */
+    var summaryContent by mutableStateOf<(@Composable () -> Unit)?>(null)
 }
 
 /** The host of the screen, or null where the pill stays on the graph. */

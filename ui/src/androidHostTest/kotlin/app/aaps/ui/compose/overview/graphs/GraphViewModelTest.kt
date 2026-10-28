@@ -2,6 +2,7 @@ package app.aaps.ui.compose.overview.graphs
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.Pump
 import app.aaps.core.interfaces.pump.VirtualPump
@@ -15,6 +16,9 @@ import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.overview.graph.TimeRange
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.data.model.GV
+import app.aaps.core.data.model.SourceSensor
+import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
@@ -22,11 +26,15 @@ import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -37,6 +45,9 @@ import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.whenever
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.any
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class GraphViewModelTest {
@@ -50,6 +61,7 @@ internal class GraphViewModelTest {
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var config: Config
     @Mock private lateinit var activePlugin: ActivePlugin
+    @Mock private lateinit var profileUtil: ProfileUtil
 
     private lateinit var sut: GraphViewModel
 
@@ -71,13 +83,49 @@ internal class GraphViewModelTest {
         whenever(preferences.observe(BooleanNonKey.ApsAutoIsfGraphResetRequested)).thenReturn(MutableStateFlow(false))
         // fullWindow = false: the overview behaviour, where the axis hugs the data.
         whenever(preferences.observe(BooleanKey.VirtualShowStepText)).thenReturn(MutableStateFlow(true))
-        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin)
+        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin, profileUtil)
     }
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
     private abstract class TestVirtualPump : Pump, VirtualPump
+
+    @Test
+    fun summaryUsesTheBrowsedWindowAndStoredGlucose() = runBlocking {
+        // This read uses the real IO dispatcher, so its timeout must use real time too.
+        Dispatchers.setMain(UnconfinedTestDispatcher())
+        val end = 1_800_000_000_000L
+        val start = end - 7 * 24 * 60 * 60_000L
+        whenever(dateUtil.now()).thenReturn(end + 24 * 60 * 60_000L)
+        whenever(profileUtil.convertToMgdlDetect(72.0)).thenReturn(72.0)
+        whenever(profileUtil.convertToMgdlDetect(180.0)).thenReturn(180.0)
+        val reading = GV(timestamp = end, raw = null, value = 120.0, trendArrow = TrendArrow.NONE, noise = null, sourceSensor = SourceSensor.UNKNOWN)
+        whenever(persistenceLayer.getBgReadingsDataFromTimeToTime(start, end, true)).thenReturn(listOf(reading))
+        sut.aivHistoryEndTime = end
+
+        sut.openStatsSummary(7)
+
+        val result = withTimeout(10_000) { sut.statsSummary.filterNotNull().first { it.data != null || it.failed } }
+        assertThat(result.failed).isFalse()
+        assertThat(result.endTime).isEqualTo(end)
+        assertThat(result.days).isEqualTo(7)
+        assertThat(result.data?.readingCount).isEqualTo(1)
+        assertThat(result.data?.averageMgdl).isEqualTo(120.0)
+        assertThat(result.data?.tir?.inRange).isEqualTo(100.0)
+    }
+
+    @Test
+    fun closingSummaryCancelsItsPendingReadAndDoesNotReopenIt() = runTest {
+        whenever(dateUtil.now()).thenReturn(1_800_000_000_000L)
+        sut.openStatsSummary()
+
+        sut.closeStatsSummary()
+        runCurrent()
+
+        assertThat(sut.statsSummary.value).isNull()
+        verify(persistenceLayer, never()).getBgReadingsDataFromTimeToTime(any(), any(), any())
+    }
 
     @Test
     fun stepTextSettingAffectsOnlyTheFullVirtualPumpApp() {
@@ -126,7 +174,7 @@ internal class GraphViewModelTest {
         whenever(cache.predictionsFlow).thenReturn(MutableStateFlow(predictions))
         whenever(cache.timeRangeFlow).thenReturn(MutableStateFlow(TimeRange(fromTime = windowStart, toTime = now, endTime = now + 2 * 3600_000L)))
         whenever(graphConfigRepository.graphConfigFlow).thenReturn(MutableStateFlow(GraphConfig()))
-        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin)
+        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin, profileUtil)
 
         val range = vm.derivedTimeRange.filterNotNull().first()
 
