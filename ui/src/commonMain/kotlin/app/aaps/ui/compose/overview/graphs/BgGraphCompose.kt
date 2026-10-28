@@ -1285,8 +1285,9 @@ fun BgGraphCompose(
         )
     )
     Column(modifier = Modifier.fillMaxWidth()) {
-    // The overview shows these rows in the fixed inspect popup. Hidden rows reserve no band.
-    if (LocalTopBarPillHost.current == null && !isLandscape() && graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
+    // The press-and-hold pill shows these rows, on the overview and in the History browser (2026-10-28), so a graph with a
+    // pill does not draw them. Hidden rows reserve no band.
+    if (inspect == null && !isLandscape() && graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
             autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
     ) {
         Column(

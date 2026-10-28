@@ -91,7 +91,7 @@ enum class BooleanKey(
     IosReloadWhenNoBg("ios_reload_when_no_bg", true, KeysStrings.pref_title_ios_reload_when_no_bg, KeysStrings.pref_summary_ios_reload_when_no_bg, platforms = setOf(AppPlatform.Ios)),
     /** iOS only (2026-10-23): a RileyLink's timer tick wakes the app about once a minute, instead of silent sound. Off by default. */
     IosRileyLinkHeartbeat("ios_rileylink_heartbeat", false, KeysStrings.pref_title_ios_rileylink_heartbeat, KeysStrings.pref_summary_ios_rileylink_heartbeat, platforms = setOf(AppPlatform.Ios)),
-    /** iOS only (2026-10-27, per explicit request): the heartbeat and silent audio note at the top of the overview. */
+    /** iOS only (2026-10-27, per explicit request): the heartbeat and silent audio lines, in the graph pill since 2026-10-28. */
     IosHeartbeatShowOnOverview(
         "ios_heartbeat_show_on_overview", true,
         TextRef.Named("keys", "pref_title_ios_heartbeat_show_on_overview"),

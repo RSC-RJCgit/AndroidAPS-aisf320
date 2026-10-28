@@ -64,7 +64,12 @@ import app.aaps.core.interfaces.overview.graph.TherapyEventGraphPoint
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.AppPlatform
+import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.icons.IcBgCheck
@@ -402,16 +407,29 @@ fun GraphInspectOverlay(
     minTimestamp: Long?,
     modifier: Modifier = Modifier
 ) {
+    GraphInspectEffects(inspect, graphViewModel, bgReadings, minTimestamp)
+    GraphInspectPillOf(inspect, graphViewModel, modifier)
+}
+
+/**
+ * The working part of [GraphInspectOverlay]: snaps the finger to a reading, vibrates and hides the pill after the lift.
+ * Called by the graphs themselves, which are always on screen (2026-10-28). It used to run inside the pill that the top
+ * bar draws, so when the top bar drew the pill of graphs that had gone (after the wide / split toggle in landscape), the
+ * graphs on screen got no pill and no vibration until the app was restarted.
+ */
+@Composable
+fun GraphInspectEffects(
+    inspect: GraphInspectState,
+    graphViewModel: GraphViewModel,
+    bgReadings: List<BgDataPoint>,
+    minTimestamp: Long?
+) {
     val iobGraph by graphViewModel.iobGraphFlow.collectAsStateWithLifecycle()
     val cobGraph by graphViewModel.cobGraphFlow.collectAsStateWithLifecycle()
     val basalGraph by graphViewModel.basalGraphFlow.collectAsStateWithLifecycle()
     val treatmentGraph by graphViewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
     val runningModeGraph by graphViewModel.runningModeGraphFlow.collectAsStateWithLifecycle()
     val predictions by graphViewModel.predictionsFlow.collectAsStateWithLifecycle()
-    val autoIsfGraph by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
-    val stepsGraph by graphViewModel.stepsGraphFlow.collectAsStateWithLifecycle()
-    val display by graphViewModel.graphDisplay.collectAsStateWithLifecycle()
-    val showSteps = graphViewModel.showStepText(display)
     val currentBgReadings by rememberUpdatedState(bgReadings)
     val currentMinTimestamp by rememberUpdatedState(minTimestamp)
     val haptic = LocalHapticFeedback.current
@@ -449,7 +467,12 @@ fun GraphInspectOverlay(
         }
     }
     LaunchedEffect(inspect, haptic) {
-        snapshotFlow { inspect.fingerDown }.collect { if (it) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
+        snapshotFlow { inspect.fingerDown }.collect {
+            if (it) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                graphViewModel.logInspect("Graph inspect: hold started")
+            }
+        }
     }
     LaunchedEffect(inspect) {
         snapshotFlow { Triple(inspect.fingerDown, inspect.pill, inspect.tapX) }.collectLatest { (fingerDown, pill, tapX) ->
@@ -461,15 +484,40 @@ fun GraphInspectOverlay(
         }
     }
 
-    val data = inspect.pill
-    val dotColor = data?.bg?.range?.inspectColor() ?: Color.Unspecified
+    val dotColor = inspect.pill?.bg?.range?.inspectColor() ?: Color.Unspecified
     SideEffect { inspect.dotColor = dotColor }
+}
+
+/** The drawing part of [GraphInspectOverlay]: the pill for [inspect], or nothing while no reading is shown. */
+@Composable
+fun GraphInspectPillOf(inspect: GraphInspectState, graphViewModel: GraphViewModel, modifier: Modifier = Modifier) {
+    val autoIsfGraph by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
+    val stepsGraph by graphViewModel.stepsGraphFlow.collectAsStateWithLifecycle()
+    val display by graphViewModel.graphDisplay.collectAsStateWithLifecycle()
+    val showSteps = graphViewModel.showStepText(display)
+    val heartbeatLines = heartbeatStatusLines()
+    val data = inspect.pill
     if (data != null) GraphInspectPill(
         data = data,
         modifier = modifier,
-        statusLines = inspectStatusLines(autoIsfGraph, showSteps),
+        statusLines = inspectStatusLines(autoIsfGraph, showSteps) + heartbeatLines,
         stepSamples = if (showSteps) inspectStepSamples(stepsGraph, data.timestamp) else emptyList()
     )
+}
+
+/**
+ * iOS only: the heartbeat line and the silent audio line, written by `IosRileyLinkHeartbeat` (2026-10-28, per explicit
+ * request). They were at the top of the overview; now only the press-and-hold pill shows them. Empty with the heartbeat
+ * off, or with its "Show heartbeat status" switch off.
+ */
+@Composable
+private fun heartbeatStatusLines(): List<String> {
+    if (LocalConfig.current.platform != AppPlatform.Ios) return emptyList()
+    val preferences = LocalPreferences.current
+    val status by preferences.observe(StringNonKey.IosHeartbeatOverviewStatus).collectAsStateWithLifecycle()
+    val heartbeatOn by preferences.observe(BooleanKey.IosRileyLinkHeartbeat).collectAsStateWithLifecycle()
+    val showStatus by preferences.observe(BooleanKey.IosHeartbeatShowOnOverview).collectAsStateWithLifecycle()
+    return if (heartbeatOn && showStatus) status.lines().filter { it.isNotBlank() } else emptyList()
 }
 
 /** The values at one reading. Null means no data near that time. */

@@ -120,6 +120,9 @@ class GraphViewModel(
 
     val graphDisplay: StateFlow<GraphDisplay> = _graphDisplay.asStateFlow()
 
+    /** For the press-and-hold pill, which is drawn in composables that have no logger of their own */
+    fun logInspect(message: String) = aapsLogger.debug(LTag.UI, message)
+
     /** Second copy of the main glucose graph. Off until the Graph 5 switch is turned on. */
     val showGraph5: StateFlow<Boolean> = preferences.observe(BooleanKey.ApsAutoIsfShowGraph5)
 

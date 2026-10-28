@@ -5,18 +5,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.StringNonKey
-import app.aaps.core.keys.interfaces.AppPlatform
-import app.aaps.core.ui.compose.LocalConfig
-import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.navigation.ElementType
@@ -78,19 +69,7 @@ fun OverviewChipsColumn(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        if (LocalConfig.current.platform == AppPlatform.Ios) {
-            val preferences = LocalPreferences.current
-            val status by preferences.observe(StringNonKey.IosHeartbeatOverviewStatus).collectAsStateWithLifecycle()
-            // Hidden with the heartbeat off, or by its own switch (2026-10-27, per explicit request)
-            val heartbeatOn by preferences.observe(BooleanKey.IosRileyLinkHeartbeat).collectAsStateWithLifecycle()
-            val showStatus by preferences.observe(BooleanKey.IosHeartbeatShowOnOverview).collectAsStateWithLifecycle()
-            if (heartbeatOn && showStatus && status.isNotBlank()) Text(
-                text = status,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        // The iOS heartbeat status is shown in the graphs' press-and-hold pill since 2026-10-28, see GraphInspectPillOf
         if (actionButtons.isNotEmpty()) {
             OverviewActionButtons(actions = actionButtons, onAction = onAction)
         }

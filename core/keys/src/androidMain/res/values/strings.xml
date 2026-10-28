@@ -40,8 +40,8 @@
     <string name="pref_title_ios_rileylink_heartbeat">RileyLink heartbeat</string>
     <string name="pref_summary_ios_rileylink_heartbeat">Instead of silent sound, a RileyLink or OrangeLink wakes the app about once a minute, so it loads from Nightscout and checks the alarms. Keep the device near the phone and charged. The nearest one is used; turn this off and on to pick another. When it is lost, silent sound takes over if Keep running in background is on.</string>
     <string name="pref_title_ios_rileylink_status">Bluetooth heartbeat status</string>
-    <string name="pref_title_ios_heartbeat_show_on_overview">Show heartbeat status on the overview</string>
-    <string name="pref_summary_ios_heartbeat_show_on_overview">The line at the top of the main screen with the last heartbeat and whether the silent audio is playing.</string>
+    <string name="pref_title_ios_heartbeat_show_on_overview">Show heartbeat status in the graph pill</string>
+    <string name="pref_summary_ios_heartbeat_show_on_overview">When you press and hold a graph, the pill also shows the last heartbeat and whether the silent audio is playing.</string>
     <string name="pref_title_ios_heartbeat_check_others">Check other Bluetooth devices</string>
     <string name="pref_summary_ios_heartbeat_check_others">Looks for nearby devices for 30 seconds. Being listed or selected only means detected or chosen for a test; it does not confirm heartbeats. Pick a device for a 5-minute test and watch Bluetooth heartbeat status above for progress and the last received heartbeat. A device that passes is saved as a backup for when the RileyLink is unavailable.</string>
     <string name="pref_title_ios_heartbeat_check_device">Device to check</string>

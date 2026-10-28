@@ -56,6 +56,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
@@ -1059,20 +1060,20 @@ fun GraphsSection(
                         .padding(top = 2.dp, start = 36.dp, end = 36.dp)
                 )
             } else {
-                // Read through states, so the pill drawn by the host follows the newest readings and time range
-                val latestBgReadings by rememberUpdatedState(bgReadings)
-                val latestMinTimestamp by rememberUpdatedState(derivedTimeRange?.first)
+                // The finger, the vibration and the linger run here, with the graphs; the host only draws the pill (2026-10-28)
+                GraphInspectEffects(
+                    inspect = inspect,
+                    graphViewModel = graphViewModel,
+                    bgReadings = bgReadings,
+                    minTimestamp = derivedTimeRange?.first
+                )
                 DisposableEffect(pillHost, inspect, graphViewModel) {
-                    val pill: @Composable () -> Unit = {
-                        GraphInspectOverlay(
-                            inspect = inspect,
-                            graphViewModel = graphViewModel,
-                            bgReadings = latestBgReadings,
-                            minTimestamp = latestMinTimestamp
-                        )
+                    val pill = pillHost.add { GraphInspectPillOf(inspect = inspect, graphViewModel = graphViewModel) }
+                    graphViewModel.logInspect("Graph inspect: graphs added to the top bar, now ${pillHost.size}")
+                    onDispose {
+                        pillHost.remove(pill)
+                        graphViewModel.logInspect("Graph inspect: graphs removed from the top bar, now ${pillHost.size}")
                     }
-                    pillHost.content = pill
-                    onDispose { if (pillHost.content === pill) pillHost.content = null }
                 }
             }
         }
@@ -1129,6 +1130,9 @@ fun GraphsSection(
             )
             // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates").
             // It sits at the bottom left, because the hourly basal peak numbers use the top line of this graph.
+            // Above the time labels: they are text in sp, so a larger system font made them taller than a fixed 18 dp and
+            // the label covered them (2026-10-28). 22 sp is the same 18 dp plus room at the normal font size.
+            val timeLabelsHeight = with(LocalDensity.current) { 22.sp.toDp() }
             GraphLabel(
                 number = 1,
                 names = graphConfig.iobOverlays.let { overlays ->
@@ -1137,7 +1141,7 @@ fun GraphsSection(
                 },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(start = 36.dp, bottom = 18.dp)
+                    .padding(start = 36.dp, bottom = timeLabelsHeight)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
             if (!isSimpleMode) {
