@@ -37,6 +37,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -124,6 +125,18 @@ class GraphInspectState {
     /** Set by the touch layer. Not a state: only read in callbacks. */
     var pointerDown = false
 
+    private var windowFocused = true
+
+    /** Desktop focus changes can lose the mouse-up event; discard the held inspection explicitly. */
+    fun onWindowFocusChanged(focused: Boolean) {
+        windowFocused = focused
+        if (focused) return
+        pointerDown = false
+        fingerDown = false
+        tapX = null
+        pill = null
+    }
+
     /**
      * How the graphs map x to pixels, set by [InspectLine] on every draw and read only in
      * [fingerX] and [xAtPx]. Not state. The graphs share one x axis, so the last graph drawn speaks
@@ -163,13 +176,16 @@ class GraphInspectState {
         // Only a long press starts it; it ends on lift or zoom
         override fun shouldAcceptInteraction(interaction: Interaction, targets: List<CartesianMarker.Target>): Boolean =
             when (interaction) {
-                is Interaction.LongPress                                          -> true
-                is Interaction.Move, is Interaction.Release, is Interaction.Zoom -> fingerDown
+                is Interaction.LongPress -> pointerDown && windowFocused
+                is Interaction.Move -> pointerDown && windowFocused && fingerDown
+                is Interaction.Release, is Interaction.Zoom -> fingerDown
                 else                                                              -> false
             }
 
         override fun shouldShowMarker(interaction: Interaction, targets: List<CartesianMarker.Target>): Boolean {
-            val show = interaction is Interaction.LongPress || interaction is Interaction.Move
+            // Vico can deliver a queued callback after the touch layer has already seen release.
+            val show = pointerDown && windowFocused &&
+                (interaction is Interaction.LongPress || interaction is Interaction.Move && fingerDown)
             fingerDown = show
             if (show) targetX = fingerX(interaction.point.x, targets.firstOrNull())
             return show
@@ -194,6 +210,7 @@ class GraphInspectState {
 
         override fun shouldShowMarker(interaction: Interaction, targets: List<CartesianMarker.Target>): Boolean {
             if (interaction !is Interaction.Tap) return controller.shouldShowMarker(interaction, targets)
+            if (!windowFocused) return false
             tapRadiusX = if (pxPerX > 0f) (iconRadiusPx / pxPerX).toDouble() else 0.0
             tapX = xAtPx(interaction.point.x)
             return false
@@ -362,6 +379,11 @@ fun GraphInspectOverlay(
     val currentBgReadings by rememberUpdatedState(bgReadings)
     val currentMinTimestamp by rememberUpdatedState(minTimestamp)
     val haptic = LocalHapticFeedback.current
+    val windowFocused = LocalWindowInfo.current.isWindowFocused
+
+    LaunchedEffect(inspect, windowFocused) {
+        inspect.onWindowFocusChanged(windowFocused)
+    }
 
     LaunchedEffect(inspect, haptic) {
         snapshotFlow { Triple(inspect.fingerDown, inspect.targetX, inspect.tapX) }.collect { (fingerDown, targetX, tapX) ->

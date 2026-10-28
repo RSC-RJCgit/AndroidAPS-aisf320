@@ -45,6 +45,9 @@ interface NSAndroidClient {
     suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse
     suspend fun getDeviceStatusModifiedSince(from: Long): List<NSDeviceStatus>
 
+    /** Bounded, read-only fallback for Trio sites whose history endpoint omits current records. */
+    suspend fun getRecentTrioDeviceStatus(from: Long): List<NSDeviceStatus>
+
     suspend fun createProfileStore(remoteProfileStore: JsonObject): CreateUpdateResponse
     suspend fun getProfileModifiedSince(from: Long): ReadResponse<List<JsonObject>>
     suspend fun getLastProfileStore(): ReadResponse<List<JsonObject>>

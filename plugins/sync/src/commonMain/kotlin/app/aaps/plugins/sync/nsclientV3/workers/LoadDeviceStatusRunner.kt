@@ -30,7 +30,12 @@ class LoadDeviceStatusRunner(
             nsClientV3Plugin.initialLoadFinished = true
 
             val from = dateUtil.now() - T.mins(7).msecs()
-            val deviceStatuses = nsAndroidClient.getDeviceStatusModifiedSince(from)
+            var deviceStatuses = nsAndroidClient.getDeviceStatusModifiedSince(from)
+            if (deviceStatuses.isEmpty() && nsClientV3Plugin.hasTrioSourceProfile()) {
+                deviceStatuses = nsAndroidClient.getRecentTrioDeviceStatus(from)
+                if (deviceStatuses.isNotEmpty())
+                    nsClientRepository.addLog("◄ RCV", "${deviceStatuses.size} recent Trio device statuses; history returned none")
+            }
             aapsLogger.debug("DEVICESTATUSES: $deviceStatuses")
             if (deviceStatuses.isNotEmpty()) {
                 nsClientRepository.addLog("◄ RCV", "${deviceStatuses.size} DSs from ${dateUtil.dateAndTimeAndSecondsString(from)}")

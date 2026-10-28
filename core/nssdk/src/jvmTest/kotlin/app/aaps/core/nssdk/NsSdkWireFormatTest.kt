@@ -64,7 +64,7 @@ class NsSdkWireFormatTest {
                 isValid = true,
                 isReadOnly = false,      // false, not absent
                 utcOffset = 0,           // zero, not absent
-                duration = 0             // zero, not absent
+                duration = 0.0           // zero, not absent
             )
         )
 

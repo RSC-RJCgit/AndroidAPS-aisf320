@@ -43,6 +43,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.time.Clock
+import kotlin.time.Instant
 
 /**
  * This client uses suspend functions and therefore is only visible in Kotlin (@JvmSynthetic).
@@ -390,6 +392,24 @@ class NSAndroidClientImpl(
             throw InvalidParameterNightscoutException(response.errorBody() ?: response.message())
         else
             throw UnsuccessfulNightscoutException("Unsuccessful")
+    }
+
+    override suspend fun getRecentTrioDeviceStatus(from: Long): List<NSDeviceStatus> = callWrapper(dispatcher) {
+        val response = api.getRecentDeviceStatus()
+        if (!response.isSuccessful) {
+            if (response.code in 400..499)
+                throw InvalidParameterNightscoutException(response.errorBody() ?: response.message())
+            throw UnsuccessfulNightscoutException("Recent device status request failed")
+        }
+        val records = response.body()?.result ?: throw InvalidFormatNightscoutException("Recent device status response could not be decoded")
+        val latestAllowed = Clock.System.now().toEpochMilliseconds() + 60_000L
+        records.mapNotNull { record ->
+            if (record.device != "Trio") return@mapNotNull null
+            val timestamp = record.createdAt?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() }
+                ?: return@mapNotNull null
+            if (timestamp < from || timestamp > latestAllowed) return@mapNotNull null
+            timestamp to record.toNSDeviceStatus()
+        }.sortedBy { it.first }.map { it.second }
     }
 
     override suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse = callWrapper(dispatcher) {

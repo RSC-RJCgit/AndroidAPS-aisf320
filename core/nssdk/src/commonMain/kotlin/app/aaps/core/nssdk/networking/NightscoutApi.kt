@@ -195,6 +195,14 @@ internal class NightscoutApi(
             nsUrl("v3", "devicestatus", "history", from.toString())
         }
 
+    suspend fun getRecentDeviceStatus() =
+        call(HttpMethod.Get, NSResponse.serializer(ListSerializer(RemoteDeviceStatus.serializer()))) {
+            nsUrl("v3", "devicestatus") {
+                encodedParameters.append("sort\$desc", "created_at")
+                encodedParameters.append("limit", "20")
+            }
+        }
+
     // ---------------------------------------------------------------- food
 
     suspend fun getFoods(limit: Int) =

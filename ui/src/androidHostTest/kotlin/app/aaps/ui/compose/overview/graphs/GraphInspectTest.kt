@@ -317,7 +317,7 @@ class GraphInspectTest {
 
     @Test
     fun `a hold on the belt works as on every graph and a touch does not close its pill`() {
-        val state = GraphInspectState()
+        val state = GraphInspectState().apply { pointerDown = true }
         val target = object : CartesianMarker.Target {
             override val x = 30.0
             override val canvasX = 60f
@@ -333,6 +333,57 @@ class GraphInspectTest {
         state.pill = pillData
         state.onTouchDown()
         assertThat(state.pill).isEqualTo(pillData)
+    }
+
+    @Test
+    fun `a late long press cannot restart inspection after release`() {
+        val state = GraphInspectState().apply {
+            pointerDown = true
+            fingerDown = true
+            pill = pillData
+        }
+        state.pointerDown = false
+        val latePress = Interaction.LongPress(Point(60f, 10f))
+
+        assertThat(state.controller.shouldAcceptInteraction(latePress, emptyList())).isFalse()
+        assertThat(state.controller.shouldShowMarker(latePress, emptyList())).isFalse()
+        assertThat(state.fingerDown).isFalse()
+        // Normal release keeps the pill for the existing timeout, rather than clearing it immediately.
+        assertThat(state.pill).isEqualTo(pillData)
+    }
+
+    @Test
+    fun `losing window focus clears inspection and rejects queued chart callbacks`() {
+        val state = GraphInspectState().apply {
+            pointerDown = true
+            fingerDown = true
+            shownX = 30.0
+            tapX = 30.0
+            pill = pillData
+        }
+        state.onWindowFocusChanged(false)
+
+        assertThat(state.pointerDown).isFalse()
+        assertThat(state.fingerDown).isFalse()
+        assertThat(state.pill).isNull()
+        assertThat(state.tapX).isNull()
+        assertThat(state.lineX).isNull()
+        val latePress = Interaction.LongPress(Point(60f, 10f))
+        assertThat(state.controller.shouldShowMarker(latePress, emptyList())).isFalse()
+        state.beltController(20f).shouldShowMarker(Interaction.Tap(Point(60f, 10f)), emptyList())
+        assertThat(state.tapX).isNull()
+    }
+
+    @Test
+    fun `returning focus requires a new physical press before inspection can start`() {
+        val state = GraphInspectState()
+        val press = Interaction.LongPress(Point(60f, 10f))
+        state.onWindowFocusChanged(false)
+        state.onWindowFocusChanged(true)
+        assertThat(state.controller.shouldAcceptInteraction(press, emptyList())).isFalse()
+        state.pointerDown = true
+        assertThat(state.controller.shouldAcceptInteraction(press, emptyList())).isTrue()
+        assertThat(state.controller.shouldShowMarker(press, emptyList())).isTrue()
     }
 
     private val pillData = InspectData(

@@ -54,7 +54,7 @@ internal data class RemoteTreatment(
     @SerialName("fpuID") val fpuId: String? = null,
     @SerialName("insulin") val insulin: Double? = null,            // number... Amount of insulin, if any.
     /** Duration in minutes */
-    @SerialName("duration") val duration: Long? = null,             // number... Duration in minutes.
+    @SerialName("duration") @Serializable(with = TreatmentMinutesSerializer::class) val duration: Double? = null, // Duration in minutes, including fractions.
     /** Duration in milliseconds */
     @SerialName("durationInMilliseconds") val durationInMilliseconds: Long? = null, // number... Duration in milliseconds.
     @SerialName("preBolus") val preBolus: Int? = null,             // number... How many minutes the bolus was given before the meal started.

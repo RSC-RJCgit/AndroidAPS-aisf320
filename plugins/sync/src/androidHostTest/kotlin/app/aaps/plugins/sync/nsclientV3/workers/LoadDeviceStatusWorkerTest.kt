@@ -17,6 +17,9 @@ import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.ui.UiInteraction
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.objects.workflow.WorkOutcome
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.nssdk.remotemodel.LastModified
@@ -147,6 +150,47 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
 
         assertIs<ListenableWorker.Result.Success>(result)
         verify(nsDeviceStatusHandler, never()).handleNewData(any())
+        verify(nsAndroidClient, never()).getRecentTrioDeviceStatus(anyLong())
+    }
+
+    @Test
+    fun `empty history on a known Trio source uses recent device status`() = runTest {
+        val site = "https://trio.example"
+        whenever(preferences.get(StringKey.NsClientUrl)).thenReturn(site)
+        whenever(preferences.get(StringNonKey.NsClientTrioProfileUnits))
+            .thenReturn("""{"site":"$site","units":"MGDL","start":0}""")
+        nsClientV3Plugin.nsAndroidClient = nsAndroidClient
+        whenever(nsAndroidClient.getDeviceStatusModifiedSince(anyLong())).thenReturn(emptyList())
+        val status = NSDeviceStatus(
+            date = dateUtil.now() - 1000, device = "Trio", uploaderBattery = null, isCharging = null,
+            uploader = null, pump = null, openaps = null
+        )
+        whenever(nsAndroidClient.getRecentTrioDeviceStatus(anyLong())).thenReturn(listOf(status))
+
+        val result = LoadDeviceStatusRunner(aapsLogger, nsClientV3Plugin, dateUtil, nsDeviceStatusHandler, nsClientRepository).run()
+
+        assertIs<WorkOutcome.Success>(result)
+        verify(nsAndroidClient).getRecentTrioDeviceStatus(anyLong())
+        verify(nsDeviceStatusHandler).handleNewData(argThat { size == 1 && first().device == "Trio" })
+    }
+
+    @Test
+    fun `nonempty history does not also fetch recent Trio status`() = runTest {
+        whenever(preferences.get(StringKey.NsClientUrl)).thenReturn("https://trio.example")
+        whenever(preferences.get(StringNonKey.NsClientTrioProfileUnits))
+            .thenReturn("""{"site":"https://trio.example","units":"MGDL","start":0}""")
+        nsClientV3Plugin.nsAndroidClient = nsAndroidClient
+        val status = NSDeviceStatus(
+            date = dateUtil.now() - 1000, device = "Trio", uploaderBattery = null, isCharging = null,
+            uploader = null, pump = null, openaps = null
+        )
+        whenever(nsAndroidClient.getDeviceStatusModifiedSince(anyLong())).thenReturn(listOf(status))
+
+        val result = LoadDeviceStatusRunner(aapsLogger, nsClientV3Plugin, dateUtil, nsDeviceStatusHandler, nsClientRepository).run()
+
+        assertIs<WorkOutcome.Success>(result)
+        verify(nsAndroidClient, never()).getRecentTrioDeviceStatus(anyLong())
+        verify(nsDeviceStatusHandler).handleNewData(any())
     }
 
     @Test

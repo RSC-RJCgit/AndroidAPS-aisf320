@@ -84,6 +84,7 @@ import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadStep
 import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
+import app.aaps.plugins.sync.nsclientV3.data.trioSourceUnits
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.ContributesIntoMap
@@ -449,6 +450,9 @@ class NSClientV3Plugin(
     @VisibleForTesting
     internal fun needsPolling(): Boolean =
         !preferences.get(BooleanKey.NsClient3UseWs) || !nsConnection.supportsWebsocket || !nsConnection.connected.value
+
+    internal fun hasTrioSourceProfile(): Boolean =
+        trioSourceUnits(preferences.get(StringNonKey.NsClientTrioProfileUnits), preferences.get(StringKey.NsClientUrl), dateUtil.now()) != null
 
     private val staleGlucosePollRequested = AtomicBoolean(false)
 
