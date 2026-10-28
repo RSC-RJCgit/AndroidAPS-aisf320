@@ -225,6 +225,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 ), APS, PluginConstraints, ProfileRoleSynchronizer {
 
     private var bgAcce: Double = 0.0  // <-- here
+    // True from the low battery SMS until the battery is reported above 1% again, so the SMS goes out once per episode
+    private var lowBatteryWarned = false
     // Added 2026-08-24: same one-cycle-stale carry pattern as bgAcce just above -- acce_ISF (autoIsfValues.acceIsf)
     // is only computed AFTER determine_basal() runs each cycle (it depends on this cycle's own fit_corr/
     // bgAccel_ISF_weight, computed later in invoke()), so the determine_basal() call site reads last
@@ -7069,17 +7071,33 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // no configurability -- the one coded profile role that wasn't a preference like Standard/Low,
         // and wasn't covered by ProfileRoleSanityCheck below until now. Now ApsAutoIsfSafetyProfileName,
         // defaulting to that same literal so existing installs see no behavior change.
-        if (readyToRun("Battery1pc", 20)
-            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
-            && profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
-            && receiverStatusStore.batteryLevel <= 1
-            && activePlugin.activePump !is VirtualPump) {
-            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSafetyProfileName), 0)
+        // 2026-10-28, per explicit request:
+        // - The battery level is null until the phone has reported it once. receiverStatusStore.batteryLevel reads that
+        //   as 0%, so the safety profile could start right after an app start or an install.
+        // - The warning (notification, note, SMS) goes out once per low battery episode, whatever the glucose.
+        // - The switch itself needs BG < 7.0 mmol/L and delta and short delta at most +0.1 mmol/L: half basal for the
+        //   hours after the phone dies is wrong for a high or rising BG. Otherwise it is tried again every loop.
+        val knownBattery = receiverStatusStore.lastChargingEvent?.batteryLevel
+        val batteryAt1 = knownBattery != null && knownBattery <= 1
+        val livePump = activePlugin.activePump !is VirtualPump
+        if (knownBattery != null && knownBattery > 1) lowBatteryWarned = false
+        if (batteryAt1 && livePump && !lowBatteryWarned) {
+            lowBatteryWarned = true
             uiInteraction.addNotification(Notification.PERMISSION_BATTERY, "Batt1%", Notification.URGENT)
             addGraphAnnouncement("Batt1%")
             addCarePortalNote("Bt<1%")
             sendSms("LowBattery")
             sendSmsToNumbers("LowBattery", StringKey.SmsBattAlertNumbers)   // additionally targets SmsBattAlertNumbers
+        }
+        if (readyToRun("Battery1pc", 20)
+            // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
+            && profileFunction.getOriginalProfileName() != preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
+            && batteryAt1
+            && livePump
+            && glucoseStatus.glucose < 7.0 * 18.0
+            && glucoseStatus.delta <= 0.1 * 18.0
+            && glucoseStatus.shortAvgDelta <= 0.1 * 18.0) {
+            switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSafetyProfileName), 0)
             markRun("Battery1pc")
         }
 
