@@ -264,6 +264,8 @@ internal data class ShowerTwilightResult(
     val reason: String,
     // True when a morning gate matched, even if the SMB did not change.
     val matched: Boolean,
+    /** Insulin the step-gated cap took off, for the steps arrow (see [stepCutUnits]). */
+    val stepCut: Double = 0.0,
 )
 
 // Morning SMB cap from 3.2.1, hours 5 to 9. The quieter step gate is checked first.
@@ -301,12 +303,14 @@ internal fun showerTwilightSmb(input: ShowerTwilightInput): ShowerTwilightResult
         reason.append("Shower IOB ceiling ${twoDecimals(smb)}. ")
     }
     if (!quietSteps) reason.append("Shower time. ")
-    return ShowerTwilightResult(smb, reason.toString(), matched = true)
+    return ShowerTwilightResult(smb, reason.toString(), matched = true, stepCut = (input.microBolus - smb.coerceAtLeast(0.0)).coerceAtLeast(0.0))
 }
 
 internal data class MorningThenGlitchResult(
     val microBolus: Double,
     val reason: String,
+    /** See [ShowerTwilightResult.stepCut]. */
+    val stepCut: Double = 0.0,
 )
 
 // Morning cap first. A match, even one that leaves the SMB unchanged, skips the glitch cuts.
@@ -315,7 +319,7 @@ internal fun morningThenGlitch(
     glitchInput: SensorGlitchInput,
 ): MorningThenGlitchResult {
     val shower = showerTwilightSmb(showerInput)
-    if (shower.matched) return MorningThenGlitchResult(shower.microBolus, shower.reason)
+    if (shower.matched) return MorningThenGlitchResult(shower.microBolus, shower.reason, shower.stepCut)
     val glitch = sensorGlitchSmb(glitchInput.copy(microBolus = shower.microBolus))
     return MorningThenGlitchResult(glitch.microBolus, shower.reason + glitch.reason)
 }
@@ -413,7 +417,20 @@ internal data class SmbStepResult(
     val reason: String,
     /** Extra lines for the script debug, one per line. Empty when the step had nothing to add. */
     val console: String = "",
+    /** Insulin a step-count rule took off the SMB, for the steps arrow (see [stepCutUnits]). 0 for every other rule. */
+    val stepCut: Double = 0.0,
 )
+
+/**
+ * The insulin steps took off a delivered SMB, for the red steps arrow on the main graph (2026-10-29, per explicit request):
+ * the direct step cuts plus the SMB scaled by [multiplier] (the step activity ratio and the dura boost halved while walking,
+ * see `stepInsulinMultiplier`). The second part is an estimate: once caps apply, the SMB does not follow insulinReq exactly.
+ * Null below 0.01 U, so the reason gets no StepCut token.
+ */
+internal fun stepCutUnits(microBolus: Double, direct: Double, multiplier: Double): Double? {
+    val cut = direct + microBolus * (multiplier - 1.0).coerceAtLeast(0.0)
+    return if (cut >= 0.01) twoDecimals(cut) else null
+}
 
 // Early-morning and twilight run only when the FastRise size cascade did not take a branch,
 // and only for Libre with no temp target. The test switch and an active LoReb window skip the
@@ -475,7 +492,7 @@ internal fun earlyMorningThenTwilight(input: EarlyMorningTwilightInput): SmbStep
             reason.append("Twilight IOB ceiling ${twoDecimals(smb)}. ")
         }
         reason.append("Twilight hours. ")
-        return SmbStepResult(smb, reason.toString())
+        return SmbStepResult(smb, reason.toString(), stepCut = (input.microBolus - smb.coerceAtLeast(0.0)).coerceAtLeast(0.0))
     }
     return SmbStepResult(input.microBolus, "")
 }
@@ -490,7 +507,7 @@ internal fun highStepsSmbCut(
 ): SmbStepResult {
     if (microBolus > threshold && (steps30 > 1500 || steps60 > 800 || steps180 > 1500)) {
         val cut = microBolus * 0.70
-        return SmbStepResult(cut, "High steps x0.7 SMB ${twoDecimals(cut)}. ")
+        return SmbStepResult(cut, "High steps x0.7 SMB ${twoDecimals(cut)}. ", stepCut = microBolus - cut)
     }
     return SmbStepResult(microBolus, "")
 }
@@ -571,7 +588,7 @@ internal fun littleWalkingSmbCut(
     val lowAhead = hypoPrediction2 != null && hypoPrediction2 <= 6.5
     if (microBolus != uncappedMicroBolus && daytime && moving && lowAhead) {
         val cut = microBolus * 0.75
-        return SmbStepResult(cut, "Little walking x0.75 SMB ${twoDecimals(cut)}. ")
+        return SmbStepResult(cut, "Little walking x0.75 SMB ${twoDecimals(cut)}. ", stepCut = microBolus - cut)
     }
     return SmbStepResult(microBolus, "")
 }
@@ -776,6 +793,8 @@ internal data class AfterFastRiseInput(
     /** The 30 min cap in U (Mcap: smaller for a strong profile and while walking) and a note for the reason. */
     val cap30: Double = 2.1,
     val cap30Note: String = "",
+    /** True when [cap30] is the halved walking cap, so the steps arrow counts what the half held back. */
+    val cap30Walking: Boolean = false,
     val smbSum10: Double,
     val minuteOfDay: Int,
     val bg: Double,
@@ -797,14 +816,17 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     val reason = StringBuilder()
     val console = StringBuilder()
     var smb = input.microBolus
+    var stepCut = 0.0
     if (earlyMorningFollowOnAllowed(input.tier, input.libreActive, input.tempTargetSet)) {
         val early = earlyMorningThenTwilight(input.earlyMorning.copy(microBolus = smb))
         smb = early.microBolus
         reason.append(early.reason)
+        stepCut += early.stepCut
     }
     val steps = highStepsSmbCut(smb, input.threshold, input.steps30, input.steps60, input.steps180)
     smb = steps.microBolus
     reason.append(steps.reason)
+    stepCut += steps.stepCut
     val walking = littleWalkingSmbCut(
         microBolus = smb,
         uncappedMicroBolus = input.uncappedMicroBolus,
@@ -817,6 +839,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     )
     smb = walking.microBolus
     reason.append(walking.reason)
+    stepCut += walking.stepCut
     val restored = fastRiseBoostRestore(
         microBolus = smb,
         uncappedMicroBolus = input.uncappedMicroBolus,
@@ -840,6 +863,11 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     smb = taper.microBolus
     reason.append(taper.reason)
     val cap30 = smbCap30Min(smb, input.smbSum30, input.bolusSum30, input.cap30, input.cap30Note)
+    if (input.cap30Walking) {
+        // The same cap without the walking half: the difference is what walking alone held back
+        val unhalved = smbCap30Min(smb, input.smbSum30, input.bolusSum30, input.cap30 * 2.0, input.cap30Note)
+        stepCut += (unhalved.microBolus - cap30.microBolus).coerceAtLeast(0.0)
+    }
     smb = cap30.microBolus
     reason.append(cap30.reason)
     if (cap30.console.isNotEmpty()) console.append(cap30.console).append('\n')
@@ -852,7 +880,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     reason.append(sub75.reason)
     if (input.roundSmbTo > 0.0 && smb.isFinite()) smb = floor(smb * input.roundSmbTo) / input.roundSmbTo
     if (!smb.isFinite() || smb <= 0.0) smb = 0.0
-    return SmbStepResult(smb, reason.toString(), console.toString())
+    return SmbStepResult(smb, reason.toString(), console.toString(), stepCut)
 }
 
 internal data class BlendedTdd(
@@ -922,6 +950,14 @@ class DetermineBasalAutoISF(
     // Mcap (2026-10-26): the 30 min SMB cap in U (see mcapSmbCap30Min; 2.1 when its setting is off) and a note for the reason
     var smbCap30ForCap: Double = 2.1
     var smbCap30Note: String = ""
+    // True when smbCap30ForCap is the halved walking cap (for the steps arrow)
+    var smbCap30Walking: Boolean = false
+
+    // Steps arrow (2026-10-29, per explicit request): how much more insulin the loop would have asked for without steps, from
+    // the step activity ratio and the dura boost halved while walking (1.0 = no step effect), and 0.5 when walking halved the
+    // Tier 3 UAM boost scale (else 1.0). Set by the plugin each loop; see stepCutUnits.
+    var stepInsulinMultiplier: Double = 1.0
+    var tier3WalkingFactor: Double = 1.0
 
     private fun Double.toFixed2(): String = NumberFormat.DECIMAL_2_UP_TO_3.format(round(this, 2))
 
@@ -2094,6 +2130,8 @@ class DetermineBasalAutoISF(
                 val roundSMBTo = 1 / profile.bolus_increment
                 //var microBolus: Double
                 var microBolus = kotlin.math.floor(kotlin.math.min(insulinReq / 2, maxBolus) * roundSMBTo) / roundSMBTo
+                // Insulin step-count rules took off this SMB, for the steps arrow (see stepCutUnits)
+                var stepCutDirect = 0.0
                 if (autoIsfMode) {
                     val ratioHour = if (hour in 0..23) hour
                     else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
@@ -2141,7 +2179,7 @@ class DetermineBasalAutoISF(
                 )
                 val tier3Hour = if (hour in 0..23) hour
                 else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
-                val tier3 = tier3BoostMicroBolus(
+                fun tier3At(scale: Double) = tier3BoostMicroBolus(
                     enabled = uamBoostEnabled,
                     hour = tier3Hour,
                     daytimeBypass = daytimeGateBypass,
@@ -2156,7 +2194,7 @@ class DetermineBasalAutoISF(
                     maxBolusSetting = uamBoostMaxBolus,
                     maxIob = profile.max_iob,
                     maxIobPercent = uamBoostMaxIobPercent,
-                    scaleSetting = uamBoostScale,
+                    scaleSetting = scale,
                     profilePercent = profile_percentage,
                     bg = bg,
                     targetBg = target_bg,
@@ -2170,6 +2208,12 @@ class DetermineBasalAutoISF(
                     roundSmbTo = roundSMBTo,
                     riseHold = riseHold,
                 )
+                val tier3 = tier3At(uamBoostScale)
+                if (tier3WalkingFactor > 0.0 && tier3WalkingFactor < 1.0) {
+                    // The same boost at the scale before walking halved it
+                    val unwalked = tier3At(uamBoostScale / tier3WalkingFactor)
+                    if (unwalked.enhanced) stepCutDirect += (unwalked.microBolus - tier3.microBolus).coerceAtLeast(0.0)
+                }
                 microBolus = tier3.microBolus
                 val tier3Enhanced = tier3.enhanced
                 val tier3Allowance = tier3.finalIobAllowance
@@ -2230,6 +2274,7 @@ class DetermineBasalAutoISF(
                         ),
                     )
                     microBolus = morningAndGlitch.microBolus
+                    stepCutDirect += morningAndGlitch.stepCut
                     if (morningAndGlitch.reason.isNotEmpty()) rT.reason.append(morningAndGlitch.reason)
                     val adjusted = fastRiseAdjustedMicroBolus(
                         microBolus = microBolus,
@@ -2301,6 +2346,7 @@ class DetermineBasalAutoISF(
                             bolusSum30 = bolusSum30ForCap,
                             cap30 = smbCap30ForCap,
                             cap30Note = smbCap30Note,
+                            cap30Walking = smbCap30Walking,
                             smbSum10 = smbSum10Min,
                             minuteOfDay = minuteOfDay,
                             bg = bg,
@@ -2317,6 +2363,7 @@ class DetermineBasalAutoISF(
                         )
                     )
                     microBolus = after.microBolus
+                    stepCutDirect += after.stepCut
                     if (after.reason.isNotEmpty()) rT.reason.append(after.reason)
                     after.console.lines().filter { it.isNotBlank() }.forEach { consoleError.add(it) }
                 }
@@ -2405,6 +2452,8 @@ class DetermineBasalAutoISF(
                             rT.reason.append("Tier 3 UAM Boost survived final safety modifiers and reached delivery output. ")
                         }
                         rT.reason.append("Microbolusing ${microBolus}U. ")
+                        // Steps arrow (2026-10-29): read back from the loop result by the main graph
+                        stepCutUnits(microBolus, stepCutDirect, stepInsulinMultiplier)?.let { rT.reason.append("StepCut=$it ") }
                     }
                 } else {
                     val nextBolusMins = (SMBInterval - lastBolusAge) / 60.0

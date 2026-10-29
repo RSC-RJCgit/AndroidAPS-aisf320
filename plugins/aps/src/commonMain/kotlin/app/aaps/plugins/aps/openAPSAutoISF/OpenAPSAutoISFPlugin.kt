@@ -232,6 +232,10 @@ open class OpenAPSAutoISFPlugin(
     // In memory only: after a restart the cap needs 15 flat minutes again before it acts, which is the safe direction.
     private var duraFlatSince: Long = 0L
     private var duraCapWasActive: Boolean = false
+
+    // Steps arrow (2026-10-29, per explicit request): set by autoISF() each loop, handed to determine_basal in updateSmbGuards.
+    // How much more insulin the loop would have asked for without the step activity ratio and the dura walking half.
+    private var stepInsulinMultiplier: Double = 1.0
     private var automationStates: AutomationStateStore? = null
 
     // The two stored texts the copy above was built from (2026-10-19). A change made elsewhere (the States dialog, a
@@ -1163,6 +1167,7 @@ open class OpenAPSAutoISFPlugin(
         if (profile.out_units == "mmol/L") value * Constants.MGDL_TO_MMOLL else value
 
     suspend fun autoISF(profile: Profile, factors: AutoIsfFactors? = null, iob: Double = 0.0, hpMmol: Double? = null): Double {
+        stepInsulinMultiplier = 1.0
         val sens = profile.getProfileIsfMgdl()
         val glucose_status = applyUkf1DosingOverride(glucoseStatusCalculatorAutoIsf.getGlucoseStatusData(allowOldData = false))
 
@@ -1239,6 +1244,17 @@ open class OpenAPSAutoISFPlugin(
             tddSensitivityOn = preferences.get(BooleanKey.ApsAutoIsfTddSensitivity),
             tddRatio = tddRatio,
         )
+        // Steps arrow: the same ratio without a walking activity ratio. Insulin follows the ratio (ISF is divided by it).
+        val sensitivityRatioNoSteps = if (activityRatio >= 1.0) sensitivityRatio else loopSensitivityRatio(
+            tempTargetActive = exerciseModeActive || resistanceModeActive,
+            tempTargetRatio = tempTargetRatio,
+            activityRatio = 1.0,
+            autosensOn = autosensOn,
+            autosensRatio = autosensRatio,
+            tddSensitivityOn = preferences.get(BooleanKey.ApsAutoIsfTddSensitivity),
+            tddRatio = tddRatio,
+        )
+        if (sensitivityRatio > 0.0) stepInsulinMultiplier = sensitivityRatioNoSteps / sensitivityRatio
         if (!usingDynamicIsf() || !autoIsfWeights || glucose_status == null) {
             consoleError.add("autoISF weights disabled in Preferences")
             consoleError.add("----------------------------------")
@@ -1348,6 +1364,9 @@ open class OpenAPSAutoISFPlugin(
                 consoleError.add("bg_ISF adaptation lifted to ${round(liftISF, 2)} as bg accelerates already")
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg)
+            stepInsulinMultiplier = finalIsfFactor(
+                liftISF, autoISF_min, maxISFReduction, sensitivityRatioNoSteps, isTempTarget, high_temptarget_raises_sensitivity, target_bg
+            ) / final_ISF
             factors?.record(acce_ISF, bg_ISF, pp_ISF, 1.0, final_ISF, glucose_status)
             return min(720.0, round(sens / final_ISF, 1))         // observe ISF maximum of 720(?)
         } else if (bg_ISF > 1.0) {
@@ -1380,6 +1399,8 @@ open class OpenAPSAutoISFPlugin(
         }
 
         var dura_ISF = 1.0
+        // The part of the dura boost the walking half took away, for the steps arrow
+        var duraWalkCut = 0.0
         val weightISF: Double = dura_ISF_weight
         when {
             dura05 < 10.0      -> {
@@ -1407,6 +1428,7 @@ open class OpenAPSAutoISFPlugin(
                 val walking = duraWalkingFactor(steps5(stepsNow), steps30(stepsNow), steps60(stepsNow))
                 if (walking < 1.0) {
                     consoleError.add("dura_ISF walking: boost ${round(duraBoost, 2)} -> ${round(duraBoost * walking, 2)}")
+                    duraWalkCut = duraBoost * (1.0 - walking)
                     duraBoost *= walking
                 }
                 dura_ISF += duraBoost
@@ -1421,6 +1443,12 @@ open class OpenAPSAutoISFPlugin(
                 liftISF = liftISF * acce_ISF
             }
             final_ISF = withinISFlimits(liftISF, autoISF_min, maxISFReduction, sensitivityRatio, origin_sens, isTempTarget, high_temptarget_raises_sensitivity, target_bg)
+            // Steps arrow: the same final factor with the whole dura boost and no walking activity ratio
+            var liftNoSteps = max(dura_ISF + duraWalkCut, max(bg_ISF, max(acce_ISF, pp_ISF)))
+            if (acce_ISF < 1.0) liftNoSteps *= acce_ISF
+            stepInsulinMultiplier = finalIsfFactor(
+                liftNoSteps, autoISF_min, maxISFReduction, sensitivityRatioNoSteps, isTempTarget, high_temptarget_raises_sensitivity, target_bg
+            ) / final_ISF
             factors?.record(acce_ISF, bg_ISF, pp_ISF, dura_ISF, final_ISF, glucose_status)
             return round(sens / final_ISF, 1)
         }
@@ -1495,6 +1523,19 @@ open class OpenAPSAutoISFPlugin(
             newVal * lower_ISFrange_weight
         }
         return newVal
+    }
+
+    /** The factor [withinISFlimits] returns, without its log lines. For the steps arrow's what-if (stepInsulinMultiplier). */
+    private fun finalIsfFactor(
+        liftISF: Double, minISFReduction: Double, maxISFReduction: Double, sensitivityRatio: Double, temptargetSet: Boolean,
+        high_temptarget_raises_sensitivity: Boolean, target_bg: Double
+    ): Double {
+        val limited = if (liftISF < minISFReduction) minISFReduction else if (liftISF > maxISFReduction) maxISFReduction else liftISF
+        return when {
+            high_temptarget_raises_sensitivity && temptargetSet && Constants.isAboveNormalTarget(target_bg) -> limited * sensitivityRatio
+            limited >= 1                                                                                   -> max(limited, sensitivityRatio)
+            else                                                                                           -> min(limited, sensitivityRatio)
+        }
     }
 
     fun withinISFlimits(
@@ -4737,6 +4778,8 @@ open class OpenAPSAutoISFPlugin(
         val walking = isWalking(steps5(now), steps30(now), steps60(now))
         val duraCapActive = autoIsfMode && duraFlatCapRule(factors, bgMgdl, iob, cob, duraFlatSince, now, walking)
         determineBasalAutoISF.duraFlatCapActive = duraCapActive
+        // Steps arrow: only a cut counts, so an inactivity ratio above 1 (more insulin) gives 1
+        determineBasalAutoISF.stepInsulinMultiplier = if (autoIsfMode) stepInsulinMultiplier.coerceAtLeast(1.0) else 1.0
         if (duraCapActive && !duraCapWasActive) carePortalNote("DuraCap")
         duraCapWasActive = duraCapActive
         determineBasalAutoISF.hp2NoSmbBelowMmol = preferences.get(DoubleKey.ApsAutoIsfHp2NoSmbBelow)
@@ -4746,9 +4789,11 @@ open class OpenAPSAutoISFPlugin(
             val strength = profileStrengthNow()
             determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walking)
             determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walking) ", walking" else ""
+            determineBasalAutoISF.smbCap30Walking = walking
         } else {
             determineBasalAutoISF.smbCap30ForCap = 2.1
             determineBasalAutoISF.smbCap30Note = ""
+            determineBasalAutoISF.smbCap30Walking = false
         }
     }
 
@@ -4769,6 +4814,8 @@ open class OpenAPSAutoISFPlugin(
 
     private suspend fun tier3ActivityFactor(now: Long, iob: Double, maxIob: Double): Double {
         val factor = activityFactor(iob, maxIob, steps5(now), steps30(now), steps60(now))
+        // Steps arrow: 0.5 comes only from walking (0 is high IOB, not steps)
+        determineBasalAutoISF.tier3WalkingFactor = if (factor > 0.0 && factor < 1.0) factor else 1.0
         if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && runMarks.ready(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, 15, now)) {
             activityFactorNote(factor)?.let {
                 carePortalNote(it)

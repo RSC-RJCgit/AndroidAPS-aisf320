@@ -708,6 +708,8 @@ data class SmbStackItem(
     val subLabel: String? = null,
     val subColor: Color = Color(0xFF64C8FF),
     val tapTimestamp: Long? = null,
+    /** Baseline arrow only: drawn upside down, pointing down at the low mark with its shaft rising into the green band. */
+    val mirrored: Boolean = false,
 )
 
 /**
@@ -857,8 +859,10 @@ class SmbArrows(
                             // 3426: the baseline arrow's tip sits on the bottom of the green band (the low mark), its shaft
                             // runs down from the head by dose units. (It used to sit on the bottom edge of the whole graph.)
                             tip = layerBounds.bottom - layerBounds.height * ((markAnchor - yRange.minY) / yLength).toFloat()
-                            base = tip + 5f * d
-                            foot = base + unit * units
+                            // A mirrored arrow (the red steps arrow, 2026-10-29) meets the SMB arrow tip to tip and rises instead
+                            val dir = if (item.mirrored) -1f else 1f
+                            base = tip + dir * 5f * d
+                            foot = base + dir * unit * units
                         } else {
                             foot = layerBounds.bottom - 2f
                             base = foot - unit * units

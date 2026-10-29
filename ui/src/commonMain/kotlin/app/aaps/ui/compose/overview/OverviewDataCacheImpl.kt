@@ -156,6 +156,13 @@ private const val URGENT_BATTERY_PERCENT = 20.0
 private const val WARN_BATTERY_VOLTAGE = 1.35
 private const val URGENT_BATTERY_VOLTAGE = 1.3
 
+/** How far before an SMB its own loop result can be: the loop runs, then the pump delivers. */
+private const val STEP_CUT_MATCH_MS = 3 * 60_000L
+private val STEP_CUT_REGEX = Regex("""\bStepCut=([0-9]+(?:\.[0-9]+)?)""")
+
+/** The insulin the loop wrote as taken off its SMB by step counts ("StepCut=0.12", see DetermineBasalAutoISF.stepCutUnits), or 0. */
+internal fun stepCutFrom(reason: String): Double = STEP_CUT_REGEX.find(reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+
 /**
  * What a tap on a therapy event in the graph shows.
  *
@@ -959,13 +966,22 @@ class OverviewDataCacheImpl(
         rebuild()
     }
 
+    /** The newest loop result from [STEP_CUT_MATCH_MS] before the SMB to 30 s after it: its StepCut, or 0. */
+    private fun stepCutForSmb(results: List<Pair<Long, Double>>, smbTime: Long): Double =
+        results.lastOrNull { it.first in (smbTime - STEP_CUT_MATCH_MS)..(smbTime + 30_000L) }?.second ?: 0.0
+
     private suspend fun rebuildTreatmentGraph() {
         val (fromTime, toTime) = graphTimeRange() ?: return
         val bolusStep = activePlugin.activePump.pumpDescription.bolusStep
 
         // Boluses and SMBs
-        val bolusPoints = persistenceLayer.getBolusesFromTimeToTime(fromTime, toTime, true)
+        val boluses = persistenceLayer.getBolusesFromTimeToTime(fromTime, toTime, true)
             .filter { it.type == BS.Type.NORMAL || it.type == BS.Type.SMB }
+        // Steps arrow (2026-10-29, per explicit request): each SMB's own loop result, the newest one up to 30 s after it, says
+        // in "StepCut=" how much step counts took off it. A client has the master's results, so it shows the same.
+        val loopResults = if (boluses.none { it.type == BS.Type.SMB }) emptyList()
+        else persistenceLayer.getApsResults(fromTime - STEP_CUT_MATCH_MS, toTime).map { it.date to stepCutFrom(it.reason) }.sortedBy { it.first }
+        val bolusPoints = boluses
             .map { bs ->
                 BolusGraphPoint(
                     timestamp = bs.timestamp,
@@ -974,7 +990,8 @@ class OverviewDataCacheImpl(
                     isValid = bs.isValid,
                     label = decimalFormatter.toPumpSupportedBolusWithUnits(bs.amount, bolusStep),
                     // A zero bolus is just "0" on the graphs (2026-10-27, per explicit request), not "0.00"
-                    number = if (bs.amount == 0.0) "0" else decimalFormatter.toPumpSupportedBolus(bs.amount, bolusStep)
+                    number = if (bs.amount == 0.0) "0" else decimalFormatter.toPumpSupportedBolus(bs.amount, bolusStep),
+                    stepCut = if (bs.type == BS.Type.SMB) stepCutForSmb(loopResults, bs.timestamp) else 0.0
                 )
             }
 

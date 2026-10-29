@@ -1244,6 +1244,7 @@
     <string name="raw_bg_shortname" comment="Short label for the raw glucose line on the main graph">RAW</string>
     <string name="ukf_bg_shortname" comment="Short label for the UKF glucose line on the main graph">UKF</string>
     <string name="graph_point_line_value" comment="Popup after tapping a dot of a glucose line on the main graph. %1$s=line name, %2$s=glucose with unit. Example: UKF: 7.2 mmol/L">%1$s: %2$s</string>
+    <string name="graph_smb_step_cut" comment="Line in the popup after tapping an SMB on the main graph, shown when step counts made the SMB smaller (red arrow). %1$s=insulin with unit. Example: Steps took off 0.12 U (estimated)">Steps took off %1$s (estimated)</string>
     <string name="bgi_shortname" comment="Short label for Blood Glucose Impact graph series">-BGI</string>
     <string name="abs_insulin_shortname" comment="Short label for Absolute Insulin graph series">ABS</string>
     <string name="devslope_shortname" comment="Short label for Deviation Slope graph series">DEVSLOPE</string>

@@ -171,6 +171,9 @@ private const val BG_TOP_BAND_FRACTION = 0.28
  * orange), so neither can be mistaken for the blue acce weight or the green pp weight, which keep their ISF colours.
  */
 private val SMB_BAND_COLOR = Color(0xFFFF40C0)
+
+/** The steps arrow (2026-10-29): what step counts took off an SMB, mirrored on the SMB's baseline arrow. */
+private val STEP_CUT_ARROW_COLOR = Color(0xFFFF2020)
 private val PROFILE_BASAL_BAND_COLOR = Color(0xFFFFA040)
 // Top strip of the main graph: the ISF line has a colour per field, the steps line is orange, so the DR line and the target offset line get their own.
 private val STATUS_RATIO_COLOR = Color(0xFF4FC3F7)
@@ -1095,7 +1098,8 @@ fun BgGraphCompose(
         })
     }
     val smbBaseArrows = remember(treatments, bgReadings, minTimestamp, lowMark) {
-        treatments.boluses.filter { it.bolusType == BolusType.SMB }.map { smb ->
+        val smbs = treatments.boluses.filter { it.bolusType == BolusType.SMB }
+        smbs.map { smb ->
             val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
             SmbStackItem(
                 x = timestampToX(smb.timestamp, minTimestamp),
@@ -1104,6 +1108,18 @@ fun BgGraphCompose(
                 anchorY = lowMark,
                 color = isfColor(dot?.dominantIsf),
                 stemUnits = 1 + (((smb.amount - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0)),
+            )
+        } + smbs.filter { it.stepCut >= 0.01 }.map { smb ->
+            // Steps arrow (2026-10-29, per explicit request): red, tip to tip with the SMB arrow, rising into the green band.
+            // Its shaft is the insulin step counts took off this SMB, on the SMB arrow's scale.
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smb.label,
+                stackIndex = 0,
+                anchorY = lowMark,
+                color = STEP_CUT_ARROW_COLOR,
+                stemUnits = 1 + (((smb.stepCut - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0)),
+                mirrored = true,
             )
         }
     }
@@ -1442,6 +1458,9 @@ fun BgGraphCompose(
                 Column {
                     Text(stringResource(CoreUiStrings.graph_point_line_value, stringResource(CoreUiStrings.smb_shortname), stringResource(InterfacesStrings.format_insulin_units, smb.amount)))
                     Text(dateUtil.dateAndTimeAndSecondsString(smb.timestamp))
+                    if (smb.stepCut >= 0.01) {
+                        Text(stringResource(CoreUiStrings.graph_smb_step_cut, stringResource(InterfacesStrings.format_insulin_units, smb.stepCut)), color = STEP_CUT_ARROW_COLOR)
+                    }
                 }
                 TextButton(onClick = { selectedSmb = null }) { Text(stringResource(CoreUiStrings.close)) }
             }
