@@ -12,7 +12,6 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
-import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
@@ -101,7 +100,6 @@ object CoreObjectsGraph {
         eatReminder: EatReminder,
         glucose: GlucoseStatusProvider,
         persistence: PersistenceLayer,
-        deviceStatus: ProcessedDeviceStatusData,
         guard: RunningModeGuard,
         ch: ConcentrationHelper,
         executor: MasterActionExecutor,
@@ -109,6 +107,6 @@ object CoreObjectsGraph {
         scope: CoroutineScope
     ): BolusWizard = BolusWizard(
         logger, text, bus, prefs, profile, profileU, constraints, loopRef, iobCob, dates, cfg,
-        entryLogger, automationRef, eatReminder, glucose, persistence, deviceStatus, guard, ch, executor, plugins, scope
+        entryLogger, automationRef, eatReminder, glucose, persistence, guard, ch, executor, plugins, scope
     )
 }

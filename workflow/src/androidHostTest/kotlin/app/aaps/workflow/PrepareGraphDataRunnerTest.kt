@@ -11,7 +11,6 @@ import app.aaps.core.interfaces.aps.Sensitivity
 import app.aaps.core.interfaces.concurrent.AapsLock
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
-import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.ActivityGraphData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
@@ -46,7 +45,6 @@ class PrepareGraphDataRunnerTest : TestBaseWithProfile() {
     @Mock lateinit var workflowChainData: WorkflowChainData
     @Mock lateinit var persistenceLayer: PersistenceLayer
     @Mock lateinit var profiler: Profiler
-    @Mock lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
     @Mock lateinit var mockedRxBus: RxBus
     @Mock lateinit var sensitivity: Sensitivity
     @Mock lateinit var dataAds: AutosensDataStore

@@ -43,7 +43,8 @@ interface NSAndroidClient {
     suspend fun getLatestProfileSwitch(): ReadResponse<List<NSTreatment>>
 
     suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse
-    suspend fun getDeviceStatusModifiedSince(from: Long): List<NSDeviceStatus>
+    /** Device statuses the server stored or changed after [from], oldest change first, at most [limit] of them */
+    suspend fun getDeviceStatusModifiedSince(from: Long, limit: Int): List<NSDeviceStatus>
 
     /** Bounded, read-only fallback for Trio sites whose history endpoint omits current records. */
     suspend fun getRecentTrioDeviceStatus(from: Long): List<NSDeviceStatus>

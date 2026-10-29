@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
@@ -39,6 +40,10 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.math.max
+import kotlin.math.min
 
 /*
 {
@@ -110,11 +115,19 @@ class NSDeviceStatusHandler(
     private val nsClientV3Plugin: () -> NSClientV3Plugin,
     private val activePlugin: ActivePlugin,
     private val profileUtil: ProfileUtil,
+    private val apsResultProvider: () -> APSResult,
+    // Deferred: the calculation reaches the plugins, and this handler belongs to one of them
+    private val iobCobCalculator: () -> IobCobCalculator
 ) {
+
+    /** One batch is stored at a time, so the check for results already stored sees the batch before. */
+    private val storeLock = Mutex()
 
     /** A live push and a downloaded batch both count. The status time is what the 9-minute check uses. */
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
         val accepted = mutableListOf<ParsedDeviceStatus>()
+        val apsResults = mutableListOf<ReceivedResult>()
+        val unreadable = Unreadable()
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]
             try {
@@ -123,7 +136,7 @@ class NSDeviceStatusHandler(
                 if (config.AAPSCLIENT) {
                     updatePumpData(nsDeviceStatus, parsed.pumpClock)
                     updateDeviceData(nsDeviceStatus, parsed.createdAt)
-                    updateOpenApsData(nsDeviceStatus, parsed.suggested, parsed.enacted)
+                    updateOpenApsData(nsDeviceStatus, parsed.suggested, parsed.enacted, apsResults)
                     updateUploaderData(nsDeviceStatus, parsed.createdAt)
                 }
                 if (config.APS) {
@@ -134,9 +147,11 @@ class NSDeviceStatusHandler(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                aapsLogger.error(LTag.NSCLIENT, "Device status skipped; keeping last valid values: ${error.message}")
+                unreadable.add("${nsDeviceStatus.device}: ${error.message ?: error::class.simpleName}")
             }
         }
+        if (unreadable.count > 0)
+            aapsLogger.warn(LTag.NSCLIENT, "Device statuses, parts skipped because they could not be read: ${unreadable.count}. The first: ${unreadable.first}")
         if (config.AAPSCLIENT && accepted.isNotEmpty()) {
             val trioStatuses = accepted.filter { it.status.device == "Trio" }
             if (trioStatuses.isNotEmpty()) {
@@ -164,6 +179,7 @@ class NSDeviceStatusHandler(
             mirrorMasterAps(accepted.map { it.status }.toTypedArray())
             // Rebuild predictions once for the newest data in this batch.
             launchReceivedStatusWork("predictions") { calculationWorkflow.runOnReceivedPredictions(overviewData) }
+            if (apsResults.isNotEmpty()) launchReceivedStatusWork("APS history") { storeApsResults(apsResults) }
             rxBus.send(EventNsClientStatusUpdated())
         }
     }
@@ -228,6 +244,48 @@ class NSDeviceStatusHandler(
         aapsLogger.info(LTag.NSCLIENT, "Read-only client: APS set to ${plugin.pluginId}, as on the master ($aps)")
     }
 
+    /**
+     * A loop result as it came with a device status. Older clients stored it with [deviceStatusTime], not
+     * with the master's own time, so a result stored by them is found by that time.
+     */
+    private class ReceivedResult(val apsResult: APSResult, val deviceStatusTime: Long)
+
+    /**
+     * Stores the master's loop results that are not stored yet, then tells the calculation about them.
+     *
+     * The ISF for carbs is worked out from these, on the master from its own (`IsfForCarbs`), so the client
+     * needs every one of them, older ones too: those that come with the 48 hours loaded after a start, and
+     * those the master sent while this phone was offline. A result already stored comes again with every
+     * load after a start and is skipped by its time.
+     */
+    private suspend fun storeApsResults(received: List<ReceivedResult>) = storeLock.withLock {
+        val from = received.minOf { min(it.apsResult.date, it.deviceStatusTime) }
+        val to = received.maxOf { max(it.apsResult.date, it.deviceStatusTime) }
+        val stored = persistenceLayer.getLoopSensitivities(from, to).map { it.timestamp }.toSet()
+        val newResults = received
+            .filter { it.apsResult.date !in stored && it.deviceStatusTime !in stored }
+            .map { it.apsResult }
+            .distinctBy { it.date }
+        newResults.forEach { persistenceLayer.insertOrUpdateApsResult(it) }
+        newResults.minOfOrNull { it.date }?.let { iobCobCalculator().apsResultsStored(it) }
+    }
+
+    /**
+     * What could not be read in one batch. Logged once at its end, not once for each document: a client loads
+     * the last 48 hours after every start, and one kind of bad data is then in hundreds of them (#5414).
+     */
+    private class Unreadable {
+
+        var count = 0
+            private set
+        var first: String? = null
+            private set
+
+        fun add(what: String) {
+            if (count++ == 0) first = what
+        }
+    }
+
     private fun updateDeviceData(deviceStatus: NSDeviceStatus, createdAt: Long?) {
         createdAt ?: return
         processedDeviceStatusData.device?.let { if (createdAt < it.createdAt) return } // take only newer record
@@ -285,7 +343,8 @@ class NSDeviceStatusHandler(
         return receivedLoopResult(status.device, data, units).apply { timestamp = clock }
     }
 
-    private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus, suggested: RT?, enacted: RT?) {
+    /** @param apsResults collects the loop result of this device status, to be stored with the batch */
+    private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus, suggested: RT?, enacted: RT?, apsResults: MutableList<ReceivedResult>) {
         if (suggested != null) {
             val clock = suggested.timestamp
             if (clock != null && clock > processedDeviceStatusData.openAPSData.clockSuggested) {
@@ -293,14 +352,25 @@ class NSDeviceStatusHandler(
                 storeReceivedAutoIsf(suggested, clock, enacted?.rate)
                 mirrorAutomationStates(suggested)
                 nsDeviceStatus.device?.let { storeReceivedSteps(it, clock, suggested.reason.toString()) }
-                processedDeviceStatusData.getAPSResult()?.let { apsResult ->
-                    // Missing algorithms may be displayed, but cannot be stored as ordinary APS results.
-                    if (apsResult.algorithm == APSResult.Algorithm.UNKNOWN)
-                        aapsLogger.debug(LTag.NSCLIENT, "APS result without algorithm from ${nsDeviceStatus.device}, not stored")
-                    else
-                        launchReceivedStatusWork("APS history") { persistenceLayer.insertOrUpdateApsResult(apsResult) }
-                }
                 processedDeviceStatusData.openAPSData.clockSuggested = clock
+            }
+            // Stored also when older than the newest one, see storeApsResults
+            if (clock != null) {
+                val apsResult = apsResultProvider().with(suggested).apply {
+                    // The time the master stored it with. The device status carries the time the loop
+                    // finished, up to a few seconds later. The ISF for carbs puts every result into a
+                    // 5 minute slot and a 24 hour window, and only the same time puts it into the same one.
+                    suggested.deliverAt?.let { date = it }
+                }
+                when {
+                    // A result that does not say which algorithm made it cannot be stored: `toDb` throws.
+                    // It is still shown from the data above.
+                    apsResult.algorithm == APSResult.Algorithm.UNKNOWN ->
+                        aapsLogger.debug(LTag.NSCLIENT, "APS result without algorithm from ${nsDeviceStatus.device}, not stored")
+                    // Calculated nothing, and the master did not store it either. Also shown from the data above.
+                    apsResult.stoppedEarly -> Unit
+                    else -> apsResults.add(ReceivedResult(apsResult, clock))
+                }
             }
         }
         if (enacted != null) {

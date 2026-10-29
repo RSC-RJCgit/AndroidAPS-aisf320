@@ -1,7 +1,5 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
-import androidx.collection.LongSparseArray
-import androidx.collection.forEach
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
@@ -50,7 +48,6 @@ import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.EnforcedState
@@ -63,7 +60,6 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.smoothing.DisplayRawSmoothing
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.stats.TddCalculator
-import app.aaps.core.interfaces.profiling.Profiler
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAPSCalculationFinished
@@ -86,7 +82,6 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.asAnnouncement
 import app.aaps.core.objects.extensions.asSettingsExport
@@ -118,7 +113,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.floor
@@ -158,7 +152,6 @@ open class OpenAPSAutoISFPlugin(
     private val bgQualityCheck: BgQualityCheck,
     notificationManager: NotificationManager,
     private val determineBasalAutoISF: DetermineBasalAutoISF,
-    private val profiler: Profiler,
     private val glucoseStatusCalculatorAutoIsf: GlucoseStatusCalculatorAutoIsf,
     private val apsResultProvider: () -> APSResult,
     private val ch: ConcentrationHelper,
@@ -232,7 +225,6 @@ open class OpenAPSAutoISFPlugin(
     private val exerciseMode; get() = SMBDefaults.exercise_mode
     private val highTemptargetRaisesSensitivity; get() = preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens)
     val normalTarget = Constants.NORMAL_TARGET_MGDL
-    private val minutesClass; get() = if (preferences.get(IntKey.ApsMaxSmbFrequency) == 1) 6L else 30L  // ga-zelle: later get correct 1 min CGM flag from glucoseStatus ? ... or from apsResults?
     private val runMarks = RunMarks()
     private var processStartedAtMs: Long = 0L
 
@@ -308,17 +300,6 @@ open class OpenAPSAutoISFPlugin(
         requiredAutomationStates.forEach { (name, required) ->
             states().ensureDeclared(name, required.values, required.defaultValue)
         }
-        var count = 0
-        val apsResults = persistenceLayer.getApsResults(dateUtil.now() - T.days(1).msecs(), dateUtil.now())
-        apsResults.forEach {
-            val glucose = it.glucoseStatus?.glucose ?: return@forEach
-            val variableSens = it.variableSens ?: return@forEach
-            val timestamp = it.date
-            val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
-            if (variableSens > 0) isfCacheLock.withLock { autoIsfCache.put(key, variableSens) }
-            count++
-        }
-        aapsLogger.debug(LTag.APS, "Loaded $count variable sensitivity values from database")
         if (list1Job == null) {
             list1Job = pluginScope.launch {
                 rxBus.toFlow(EventAutoIsfDirectTtCode::class).collect { event ->
@@ -338,67 +319,18 @@ open class OpenAPSAutoISFPlugin(
 
     override fun usingDynamicIsf() = true //: Boolean = preferences.get(BooleanKey.ApsUseAutoIsf)
 
-    override fun getIsfMgdl(profile: Profile, caller: String): Double? {
-        val start = dateUtil.now()
-        val multiplier = (profile as ProfileSealed.EPS).value.originalPercentage / 100.0
-        val sensitivity = runBlocking { calculateVariableIsf(start) }
-        if (sensitivity.second == null && caller == "OpenAPSSMBPlugin")
-            notificationManager.post(
-                NotificationId.DYN_ISF_FALLBACK,
-                ApsStrings.fallback_to_isf_no_tdd.withArgs(sensitivity.first),
-                level = NotificationLevel.INFO,
-                date = start,
-                validTo = dateUtil.now() + T.mins(1).msecs())
-        else
-            notificationManager.dismiss(NotificationId.DYN_ISF_FALLBACK)
-        profiler.log(LTag.APS, "getIsfMgdl() ${sensitivity.first} ${sensitivity.second} ${dateUtil.dateAndTimeAndSecondsString(start)} $caller", start)
-        return sensitivity.second?.let { it * multiplier }
-    }
-
-    override fun getAverageIsfMgdl(timestamp: Long, caller: String): Double? {
-        var count = 0
-        var sum = 0.0
-        val start = timestamp - T.hours(24).msecs()
-        isfCacheLock.withLock {
-            autoIsfCache.forEach { key, value ->
-                if (key in start..timestamp) {
-                    count++
-                    sum += value
-                }
-            }
-        }
-        val sensitivity = if (count == 0) null else sum / count
-        aapsLogger.debug(LTag.APS, "getAverageIsfMgdl() $sensitivity from $count values ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $caller")
-        return sensitivity
-    }
+    /**
+     * AutoISF works out its ISF inside its own run, as variable_sens. Every other caller gets the profile ISF,
+     * so this must answer null. It used to run autoISF() here as well, only to fill a cache for the old
+     * average ISF for carbs. That average is now worked out from the stored results, see `IsfForCarbs`.
+     */
+    override fun getIsfMgdl(profile: Profile, caller: String): Double? = null
 
     override fun getSensitivityOverviewString(): String? = null // placeholder for Auto ISF Detailed information for overview
 
-    private val autoIsfCache = LongSparseArray<Double>()
-
-    /** Guards [autoIsfCache]. Was `synchronized(autoIsfCache)`, which is JVM only. */
-    private val isfCacheLock = AapsLock()
     private val metricDeltaCalculator = DeltaCalculator(aapsLogger)
     private val accelerationCalculator = AccelerationCalculator()
 
-    private suspend fun calculateVariableIsf(timestamp: Long): Pair<String, Double?> {
-        val profile = profileFunction.getProfile(timestamp) ?: return Pair("OFF", null)
-        val glucose = glucoseStatusProvider.glucoseStatusData?.glucose ?: return Pair("GLUC", null)
-        // Round down to minutesClass min and use it as a key for caching
-        // Add BG to key as it affects calculation
-        val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
-        val sensitivity = autoISF(profile)
-        if (sensitivity > 0) {
-            // can default to 0, e.g. for the first 2-3 loops in a virgin setup
-            aapsLogger.debug("calculateVariableIsf CALC ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $sensitivity")
-            isfCacheLock.withLock {
-                autoIsfCache.put(key, sensitivity)
-                if (autoIsfCache.size() > 1000) autoIsfCache.clear()
-            }
-        }
-        // this return is mandatory, otherwise it messed up the AutoISF algo.
-        return Pair("OFF", null)
-    }
 
     override suspend fun invoke(initiator: String, tempBasalFallback: Boolean) = withContext(Dispatchers.Default) {
         cycleNotes.setLength(0)

@@ -449,8 +449,11 @@ class WizardDialogViewModel(
         recalculate()
     }
 
+    // The note and the alarm recalculate too: the confirmation and the record-only path read them from the
+    // wizard of the last calculation, so a change made last was lost (#5415).
     fun updateNotes(value: String) {
         _uiState.update { it.copy(notes = value) }
+        recalculate()
     }
 
     fun selectProfile(index: Int) {
@@ -514,6 +517,7 @@ class WizardDialogViewModel(
 
     fun toggleAlarm(checked: Boolean) {
         _uiState.update { it.copy(alarmChecked = checked) }
+        recalculate()
     }
 
     fun toggleCalculationExpanded() {
@@ -556,7 +560,15 @@ class WizardDialogViewModel(
         viewModelScope.launch { recalculateSuspend() }
     }
 
+    /**
+     * Counts the calculations. Each one reads the inputs when it starts, and they can end in another order:
+     * typing a note starts one for every letter. Only the newest may keep its result. Else an older one that
+     * ends last leaves a wizard with old inputs, and the confirmation and the record-only path use it (#5415).
+     */
+    private var calculations = 0
+
     private suspend fun recalculateSuspend() {
+        val calculation = ++calculations
         var state = uiState.value
         if (!maxBolusTouched) {
             val suggested = suggestedMaxBolus()
@@ -656,6 +668,8 @@ class WizardDialogViewModel(
         )
 
         w.warsawRetryLater = state.delayFpuInsteadOfCancel
+        // A newer calculation started meanwhile: its result counts, not this one
+        if (calculation != calculations) return
         wizard = w
         if (state.giveRestLater && extra.percentage > percentForCalc) {
             val scaled = w.insulinFromBG + w.insulinFromTrend + w.insulinFromCarbs + w.insulinFromCOB

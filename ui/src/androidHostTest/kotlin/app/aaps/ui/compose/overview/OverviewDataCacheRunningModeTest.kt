@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.ui.UiRestartImpl
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Translator
@@ -88,6 +89,7 @@ internal class OverviewDataCacheRunningModeTest {
             pumpStatusProvider = mock<PumpStatusProvider>(),
             receiverStatusStore = mock<ReceiverStatusStore>(),
             backgroundWorkPause = mock<BackgroundWorkPause>(),
+            uiRestart = UiRestartImpl(),
             signals = signals,
             // No database observers: the refresh below is the only reader under test.
             observeDatabase = false
