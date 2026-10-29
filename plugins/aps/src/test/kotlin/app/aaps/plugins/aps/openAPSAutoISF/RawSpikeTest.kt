@@ -44,19 +44,34 @@ class RawSpikeTest {
         assertThat(rawRisingTooFast(series(0 to 6.2, 5 to 7.6), bgDeltaMgdl = 0.0)).isFalse()
     }
 
-    /** Already falling, a drop of 1.0 in 5 min, then back up 1.6 */
-    @Test fun `a drop during a fall that bounces back is a dip`() {
-        val dip = findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.6))
+    /** minute, BG and raw in mmol/L */
+    private fun readings(vararg rows: Triple<Int, Double, Double>) = rows.map { (minute, bg, raw) -> Triple(minute * min, bg * 18.016, raw * 18.016) }
+
+    // BG already falling, raw drops 1.8 in 5 min to 2.1 under BG, and stays there for 10 min
+    private val dipRows = arrayOf(Triple(0, 7.8, 7.5), Triple(5, 7.6, 7.0), Triple(10, 7.3, 5.2), Triple(15, 7.0, 5.4), Triple(20, 6.8, 5.5))
+    private fun dipWith(index: Int, row: Triple<Int, Double, Double>) = dipRows.copyOf().also { it[index] = row }
+
+    @Test fun `too low too quickly and staying there is a dip`() {
+        val dip = findRawDip(readings(*dipRows))
         assertThat(dip).isNotNull()
         assertThat(dip!!.bottomAt).isEqualTo(10 * min)
+        assertThat(dip.underBgMgdl / 18.016).isWithin(0.01).of(2.1)
     }
 
-    @Test fun `a drop out of a flat or rising stretch is not a dip`() {
-        assertThat(findRawDip(series(0 to 6.9, 5 to 7.0, 10 to 6.0, 15 to 7.6))).isNull()
+    @Test fun `a drop that comes back up is not a dip`() {
+        assertThat(findRawDip(readings(*dipWith(3, Triple(15, 7.0, 6.5))))).isNull()
     }
 
-    @Test fun `a drop that does not bounce back is not a dip`() {
-        assertThat(findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.0))).isNull()
+    @Test fun `a drop that stays near BG is not a dip`() {
+        assertThat(findRawDip(readings(*dipWith(2, Triple(10, 5.8, 5.2))))).isNull()
+    }
+
+    @Test fun `a drop while BG was not falling is not a dip`() {
+        assertThat(findRawDip(readings(*dipWith(0, Triple(0, 7.4, 7.5))))).isNull()
+    }
+
+    @Test fun `a dip needs the full 10 minutes after it`() {
+        assertThat(findRawDip(readings(*dipRows.copyOfRange(0, 4)))).isNull()
     }
 
     @Test fun `22_30 to 07_30 are compression hours`() {
