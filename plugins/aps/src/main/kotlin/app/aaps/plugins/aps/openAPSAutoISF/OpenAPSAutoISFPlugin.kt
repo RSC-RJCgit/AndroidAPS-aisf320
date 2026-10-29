@@ -189,6 +189,39 @@ internal fun findRawSpike(raw: List<Pair<Long, Double>>): RawSpike? {
  * Raw rising more than twice as fast as BG: the newest raw minus the raw 4-7 min before is 0.9 mmol or more, BG is rising,
  * and the raw rise is more than twice the BG [bgDeltaMgdl]. Calibration alone (slope 0.75) makes raw rise 1.33x as fast.
  */
+/**
+ * The raw-dip check (2026-10-29, per explicit request), the mirror of [findRawSpike], for the sensor-age Libre slope tier only.
+ * It changes no automation and no insulin delivery. While raw is already falling, it drops 0.9 mmol or more in 5 min and climbs
+ * back 1.5 mmol or more within the next 10 min. In the 7 weeks of Client uploads to 29 Oct there were 12, on 10 days.
+ * Dips between 22:30 and 07:30 are taken as compression lows (lying on the sensor), which say nothing about its calibration, so
+ * they do not count ([inCompressionHours]).
+ */
+internal data class RawDip(val bottomAt: Long, val dropMgdl: Double, val reboundMgdl: Double)
+
+/** A fall before the drop: the raw 4-12 min before the drop started was at least this much (0.1 mmol) higher */
+private const val RAW_DIP_FALLING_MGDL = 1.8
+
+/** The newest raw dip in [raw] (time to raw mg/dL, oldest first), or null */
+internal fun findRawDip(raw: List<Pair<Long, Double>>): RawDip? {
+    for (i in raw.indices.reversed()) {
+        val (bottomAt, bottom) = raw[i]
+        val startIndex = raw.subList(0, i).indexOfLast { bottomAt - it.first in 4 * 60_000L..7 * 60_000L }
+        if (startIndex < 0) continue
+        val (startAt, start) = raw[startIndex]
+        val drop = start - bottom
+        if (drop < RAW_SPIKE_JUMP_MGDL) continue
+        val earlier = raw.subList(0, startIndex).lastOrNull { startAt - it.first in 4 * 60_000L..12 * 60_000L } ?: continue
+        if (earlier.second - start < RAW_DIP_FALLING_MGDL) continue
+        val after = raw.subList(i + 1, raw.size).filter { it.first - bottomAt <= 10 * 60_000L }
+        val rebound = (after.maxOfOrNull { it.second } ?: continue) - bottom
+        if (rebound >= RAW_SPIKE_FALL_MGDL) return RawDip(bottomAt, drop, rebound)
+    }
+    return null
+}
+
+/** 22:30 to 07:30, when a dip that bounces back is most likely a compression low. [minuteOfDay] is local time. */
+internal fun inCompressionHours(minuteOfDay: Int): Boolean = minuteOfDay >= 22 * 60 + 30 || minuteOfDay < 7 * 60 + 30
+
 internal fun rawRisingTooFast(raw: List<Pair<Long, Double>>, bgDeltaMgdl: Double): Boolean {
     val (now, latest) = raw.lastOrNull() ?: return false
     val before = raw.lastOrNull { now - it.first in 4 * 60_000L..7 * 60_000L } ?: return false
@@ -3689,10 +3722,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         } == true ||
             (lastRunTimestamps[key] ?: 0L) <= dateUtil.now() - T.mins(minIntervalMinutes.toLong()).msecs()
 
-    /** Raw Libre readings of the last 20 min, oldest first, as time to mg/dL */
+    /** Raw Libre readings of the last 30 min (a dip needs the fall before it), oldest first, as time to mg/dL */
     private fun recentRawLibre(): List<Pair<Long, Double>> {
         val now = dateUtil.now()
-        return persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(20).msecs(), now, ascending = true)
+        return persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(30).msecs(), now, ascending = true)
             .filter { it.noise != null && it.noise!! > 10.0 }
             .map { it.timestamp to it.noise!! }
     }
@@ -3710,7 +3743,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("SaSpike +${round(spike.jumpMgdl / 18.016, 2)}/${round(spike.fallMgdl / 18.016, 2)}")
             }
         }
+        // A dip only opens the sensor-age slope tier (rawDipWindowOpen), never the acce cap this returns
+        findRawDip(raw)?.let { dip ->
+            val showerAt = lastRunTimestamps["Shower12"] ?: 0L
+            val afterShower = showerAt != 0L && dip.bottomAt - showerAt in 0L..T.hours(2).msecs()
+            val minuteOfDay = Calendar.getInstance().apply { timeInMillis = dip.bottomAt }.let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
+            if (!afterShower && !inCompressionHours(minuteOfDay) && dip.bottomAt > preferences.get(LongNonKey.ApsAutoIsfRawDipAt)) {
+                preferences.put(LongNonKey.ApsAutoIsfRawDipAt, dip.bottomAt)
+                addCarePortalNote("SaDip -${round(dip.dropMgdl / 18.016, 2)}/+${round(dip.reboundMgdl / 18.016, 2)}")
+            }
+        }
         return rawSpikeWindowOpen()
+    }
+
+    private fun rawDipWindowOpen(): Boolean {
+        val lastDip = preferences.get(LongNonKey.ApsAutoIsfRawDipAt)
+        return lastDip != 0L && dateUtil.now() - lastDip < T.hours(RAW_SPIKE_WINDOW_HOURS).msecs()
     }
 
     private fun rawSpikeWindowOpen(): Boolean {
@@ -6055,9 +6103,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // protections remain in their own pod automations.
             // 2026-10-08, per explicit request: the tier now needs only the sensor age (or the pod age for NewDay2), no longer a
             // UKF raw Libre value above 12.0 mmol in the last 24 hours.
-            // 2026-10-29, per explicit request: and a raw spike in the last 6 h (see findRawSpike). Age alone was no good check
-            // that the sensor reads wrong, so the code was left off.
-            val rawSpikeWindow = rawSpikeWindowOpen()
+            // 2026-10-29, per explicit request: and a raw spike or a raw dip in the last 6 h (see findRawSpike, findRawDip). Age
+            // alone was no good check that the sensor reads wrong, so the code was left off.
+            val rawSpikeWindow = rawSpikeWindowOpen() || rawDipWindowOpen()
             if (oldSensorEnabled && oldSensorTier != null && rawSpikeWindow) {
                 if (!oldSensorActiveNow) {
                     preferences.put(DoubleKey.ApsAutoIsfFslCalSlopeNormal, preferences.get(DoubleKey.FslCalSlope))

@@ -43,4 +43,26 @@ class RawSpikeTest {
     @Test fun `nothing while BG is not rising`() {
         assertThat(rawRisingTooFast(series(0 to 6.2, 5 to 7.6), bgDeltaMgdl = 0.0)).isFalse()
     }
+
+    /** Already falling, a drop of 1.0 in 5 min, then back up 1.6 */
+    @Test fun `a drop during a fall that bounces back is a dip`() {
+        val dip = findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.6))
+        assertThat(dip).isNotNull()
+        assertThat(dip!!.bottomAt).isEqualTo(10 * min)
+    }
+
+    @Test fun `a drop out of a flat or rising stretch is not a dip`() {
+        assertThat(findRawDip(series(0 to 6.9, 5 to 7.0, 10 to 6.0, 15 to 7.6))).isNull()
+    }
+
+    @Test fun `a drop that does not bounce back is not a dip`() {
+        assertThat(findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.0))).isNull()
+    }
+
+    @Test fun `22_30 to 07_30 are compression hours`() {
+        assertThat(inCompressionHours(23 * 60)).isTrue()
+        assertThat(inCompressionHours(7 * 60 + 29)).isTrue()
+        assertThat(inCompressionHours(7 * 60 + 30)).isFalse()
+        assertThat(inCompressionHours(22 * 60 + 29)).isFalse()
+    }
 }

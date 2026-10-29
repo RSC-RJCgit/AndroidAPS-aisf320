@@ -26,5 +26,7 @@ enum class LongNonKey(
     ApsAutoIsfPersistentRiseStartedAt("autoisf_persistent_rise_started_at", 0L, exportable = false),
     // When the newest raw Libre spike peaked (2026-10-29). Opens the 6 h raw-spike window: see findRawSpike in OpenAPSAutoISFPlugin.
     ApsAutoIsfRawSpikeAt("autoisf_raw_spike_at", 0L, exportable = false),
+    // When the newest raw Libre dip (outside 22:30-07:30) bottomed (2026-10-29). Only opens the sensor-age slope tier for 6 h.
+    ApsAutoIsfRawDipAt("autoisf_raw_dip_at", 0L, exportable = false),
 }
 
