@@ -1394,8 +1394,9 @@ open class OpenAPSAutoISFPlugin(
         // as BG. 28 Oct Live (sensor day 4): acce gave Final 3.12 at 21:15 (raw +1.39 against BG +0.74) and acce 4.38 at
         // 22:51 (raw 12.0, then 9.5 at 22:56); with 3.5 U on board BG went from 9.7 to 4.6. Braking (acce below 1) stays.
         val rawSpikeNow = dateUtil.now()
-        val rawSpikeRaw = recentRawLibre(rawSpikeNow)
-        if (updateRawSpikeWindow(rawSpikeRaw, rawSpikeNow) && acce_ISF > 1.0 && rawRisingTooFast(rawSpikeRaw, glucose_status?.delta ?: 0.0)) {
+        val rawSpikeReadings = recentRawLibre(rawSpikeNow)
+        val rawSpikeRaw = rawSpikeReadings.map { it.first to it.third }
+        if (updateRawSpikeWindow(rawSpikeReadings, rawSpikeNow) && acce_ISF > 1.0 && rawRisingTooFast(rawSpikeRaw, glucose_status?.delta ?: 0.0)) {
             consoleError.add("acce boost capped: raw rising too fast after a raw spike (acce ${round(acce_ISF, 2)} -> 1.0)")
             if (runMarks.ready(RunMark.SA_SPIKE_CAP, 30, rawSpikeNow)) {
                 carePortalNote("SaSpkCap")
@@ -3553,15 +3554,15 @@ open class OpenAPSAutoISFPlugin(
         return if (index < 0) null else readings[index].timestamp
     }
 
-    /** Raw Libre readings of the last 30 min (a dip needs the fall before it), oldest first, as time to mg/dL */
-    private suspend fun recentRawLibre(now: Long): List<Pair<Long, Double>> =
-        persistenceLayer.getBgReadingsDataFromTimeToTime(now - 30 * 60_000L, now, ascending = true)
+    /** Readings of the last 35 min (a dip needs the fall before it and 10 min after), oldest first: time, BG and raw, mg/dL */
+    private suspend fun recentRawLibre(now: Long): List<Triple<Long, Double, Double>> =
+        persistenceLayer.getBgReadingsDataFromTimeToTime(now - 35 * 60_000L, now, ascending = true)
             .filter { (it.noise ?: 0.0) > 10.0 }
-            .map { it.timestamp to it.noise!! }
+            .map { Triple(it.timestamp, it.value, it.noise!!) }
 
-    /** Remembers a new raw spike in [raw] (not one right after a shower) and says whether the 6 h raw-spike window is open. */
-    private suspend fun updateRawSpikeWindow(raw: List<Pair<Long, Double>>, now: Long): Boolean {
-        findRawSpike(raw)?.let { spike ->
+    /** Remembers a new raw spike or dip in [readings] (not one right after a shower) and says whether the 6 h raw-spike window is open. */
+    private suspend fun updateRawSpikeWindow(readings: List<Triple<Long, Double, Double>>, now: Long): Boolean {
+        findRawSpike(readings.map { it.first to it.third })?.let { spike ->
             if (rawSpikeCounts(spike.peakAt, now, runMarks.minutesAgo(RunMark.SHOWER12, now)) &&
                 spike.peakAt > preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt)
             ) {
@@ -3570,13 +3571,13 @@ open class OpenAPSAutoISFPlugin(
             }
         }
         // A dip only opens the sensor-age slope tier, never the acce cap this returns
-        findRawDip(raw)?.let { dip ->
+        findRawDip(readings)?.let { dip ->
             val minuteOfDay = Instant.fromEpochMilliseconds(dip.bottomAt).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
             if (rawSpikeCounts(dip.bottomAt, now, runMarks.minutesAgo(RunMark.SHOWER12, now)) && !inCompressionHours(minuteOfDay) &&
                 dip.bottomAt > preferences.get(LongNonKey.ApsAutoIsfRawDipAt)
             ) {
                 preferences.put(LongNonKey.ApsAutoIsfRawDipAt, dip.bottomAt)
-                carePortalNote("SaDip -${round(dip.dropMgdl / 18.016, 2)}/+${round(dip.reboundMgdl / 18.016, 2)}")
+                carePortalNote("SaDip -${round(dip.dropMgdl / 18.016, 2)} (${round(dip.underBgMgdl / 18.016, 2)} under BG)")
             }
         }
         return rawSpikeWindowOpen(preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt), now)

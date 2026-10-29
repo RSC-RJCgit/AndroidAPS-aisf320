@@ -97,9 +97,12 @@ fun Modifier.horizontalWheelScroll(scroll: ScrollState): Modifier {
  *
  * The drag is only seen, never consumed, so taps and the chart's own touch handling are not disturbed. The
  * keys work while the graphs have focus, which a click on them gives.
+ *
+ * [isHolding] is true while a press and hold shows the values (2026-10-29): the mouse then moves the line, not the graph.
+ * This handler sees the move before the graphs do, so the graphs consuming it did not stop the pan on Windows.
  */
 @Composable
-fun Modifier.graphZoomControls(onZoom: (Int) -> Unit, onPan: (Float) -> Unit): Modifier {
+fun Modifier.graphZoomControls(onZoom: (Int) -> Unit, onPan: (Float) -> Unit, isHolding: () -> Boolean = { false }): Modifier {
     val focusRequester = remember { FocusRequester() }
     return this
         .focusRequester(focusRequester)
@@ -134,9 +137,13 @@ fun Modifier.graphZoomControls(onZoom: (Int) -> Unit, onPan: (Float) -> Unit): M
                         PointerEventType.Move    -> {
                             if (change.type == PointerType.Mouse && event.buttons.isPrimaryPressed) {
                                 val x = change.position.x
-                                if (!dragging && kotlin.math.abs(x - downX) > DRAG_START_PX) dragging = true
-                                if (dragging) {
-                                    onPan(lastX - x)
+                                if (isHolding()) {
+                                    dragging = false
+                                } else {
+                                    if (!dragging && kotlin.math.abs(x - downX) > DRAG_START_PX) dragging = true
+                                    if (dragging) {
+                                        onPan(lastX - x)
+                                    }
                                 }
                                 lastX = x
                             }

@@ -13,6 +13,10 @@ import urllib.request
 
 DRIVE = "https://www.googleapis.com/drive/v3/files"
 CHUNK_SIZE = 8 * 1024 * 1024
+# Drive sometimes answers a piece of a large upload with a 5xx (HTTP 502 on 28 Oct, four times in a row for one DMG). Then the
+# upload goes on from what Drive already has, as Google advises for resumable uploads, instead of failing the whole job.
+RETRYABLE_CODES = {500, 502, 503, 504}
+CHUNK_RETRIES = 6
 # The installer types, and the words used for them in the job summary.
 INSTALLER_LABELS = {".msi": "Windows installer", ".dmg": "macOS installer"}
 
@@ -74,6 +78,37 @@ def get_folder(token, name, parent=None, wait_seconds=5):
     return find_file(token, name, parent, folder=True) or created
 
 
+def received_bytes(headers):
+    """How many bytes Drive has, from its Range header ("bytes=0-N" means N + 1). None when it sends none."""
+    value = headers.get("Range") if headers else None
+    if not value or not value.startswith("bytes=0-"):
+        return None
+    try:
+        return int(value[len("bytes=0-"):]) + 1
+    except ValueError:
+        return None
+
+
+def resume_point(session, token, size, offset):
+    """Asks Drive how far the upload got. Gives (file id, size) when it is complete, else (None, next byte to send).
+
+    When the question itself fails, the same piece is sent again.
+    """
+    request = urllib.request.Request(session, b"", {
+        "Authorization": f"Bearer {token}",
+        "Content-Range": f"bytes */{size}",
+    }, method="PUT")
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            return json.load(response)["id"], size
+    except urllib.error.HTTPError as error:
+        if error.code == 308:
+            return None, received_bytes(error.headers) or 0
+        return None, offset
+    except (urllib.error.URLError, TimeoutError, ConnectionError):
+        return None, offset
+
+
 def upload(token, file, parent):
     existing = find_file(token, file.name, parent)
     suffix = f"/{urllib.parse.quote(existing, safe='')}" if existing else ""
@@ -96,7 +131,10 @@ def upload(token, file, parent):
         raise ValueError("Drive returned an unexpected upload address")
     with file.open("rb") as stream:
         offset = 0
-        while chunk := stream.read(CHUNK_SIZE):
+        failures = 0
+        while offset < size:
+            stream.seek(offset)
+            chunk = stream.read(CHUNK_SIZE)
             end = offset + len(chunk) - 1
             request = urllib.request.Request(session, chunk, {
                 "Authorization": f"Bearer {token}",
@@ -110,9 +148,24 @@ def upload(token, file, parent):
                     raise ValueError("Drive finished the upload before the whole file was sent")
                 return result["id"]
             except urllib.error.HTTPError as error:
-                if error.code != 308 or error.headers.get("Range") != f"bytes=0-{end}" or end + 1 == size:
+                if error.code == 308:
+                    received = received_bytes(error.headers)
+                    if received is None or received <= offset or received > end + 1 or end + 1 == size:
+                        raise
+                    offset = received
+                    failures = 0
+                    continue
+                if error.code not in RETRYABLE_CODES or failures >= CHUNK_RETRIES:
                     raise
-            offset = end + 1
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                if failures >= CHUNK_RETRIES:
+                    raise
+            failures += 1
+            print(f"Drive did not take bytes {offset}-{end} (try {failures} of {CHUNK_RETRIES}); asking what it has")
+            time.sleep(min(60, 5 * 2 ** (failures - 1)))
+            done, offset = resume_point(session, token, size, offset)
+            if done:
+                return done
     raise ValueError("Installer is empty or its upload did not finish")
 
 

@@ -114,31 +114,37 @@ internal fun rawRisingTooFast(raw: List<Pair<Long, Double>>, bgDeltaMgdl: Double
 }
 
 /**
- * The raw-dip check (2026-10-29, per explicit request), the mirror of [findRawSpike], for the sensor-age Libre slope tier only.
- * It changes no automation and no insulin delivery. While raw is already falling, it drops 0.9 mmol or more in 5 min and climbs
- * back 1.5 mmol or more within the next 10 min. In the 7 weeks of Client uploads to 29 Oct there were 12, on 10 days.
+ * The raw-dip check (2026-10-29, per explicit request), for the sensor-age Libre slope tier only. It changes no automation and
+ * no insulin delivery. While BG is already falling, raw drops 1.5 mmol or more in 5 min, ends 0.8 mmol or more below BG, and
+ * stays down for the next 10 min (no more than 0.5 mmol back up): it goes too low too quickly and stays there. Calibration alone
+ * puts BG only about 0.2 above raw at raw 4.7. In the 7 weeks of Client uploads to 29 Oct this was 11 times on 7 days, among
+ * them 28 Oct 19:58 (day 4: BG 7.0, raw 4.9, -2.0 in 5 min). A drop of 0.9 without the other two was 193 times on 45 days.
  * Dips between 22:30 and 07:30 are taken as compression lows (lying on the sensor), which say nothing about its calibration, so
  * they do not count ([inCompressionHours]).
  */
-internal data class RawDip(val bottomAt: Long, val dropMgdl: Double, val reboundMgdl: Double)
+internal data class RawDip(val bottomAt: Long, val dropMgdl: Double, val underBgMgdl: Double)
 
-/** A fall before the drop: the raw 4-12 min before the drop started was at least this much (0.1 mmol) higher */
-private const val RAW_DIP_FALLING_MGDL = 1.8
+private const val RAW_DIP_DROP_MGDL = 27.0 /* 1.5 mmol */
+private const val RAW_DIP_UNDER_BG_MGDL = 14.4 /* 0.8 mmol */
+private const val RAW_DIP_STAYS_MGDL = 9.0 /* 0.5 mmol */
 
-/** The newest raw dip in [raw] (time to raw mg/dL, oldest first), or null */
-internal fun findRawDip(raw: List<Pair<Long, Double>>): RawDip? {
-    for (i in raw.indices.reversed()) {
-        val (bottomAt, bottom) = raw[i]
-        val startIndex = raw.subList(0, i).indexOfLast { bottomAt - it.first in 4 * 60_000L..7 * 60_000L }
+/** The newest raw dip in [readings] (time, BG mg/dL, raw mg/dL; oldest first), or null */
+internal fun findRawDip(readings: List<Triple<Long, Double, Double>>): RawDip? {
+    for (i in readings.indices.reversed()) {
+        val (bottomAt, bottomBg, bottom) = readings[i]
+        // The 10 min after must be there in full, and none of it more than 0.5 mmol back up
+        val after = readings.subList(i + 1, readings.size).filter { it.first - bottomAt <= 10 * 60_000L }
+        if (after.isEmpty() || after.last().first - bottomAt < 9 * 60_000L) continue
+        if (after.maxOf { it.third } > bottom + RAW_DIP_STAYS_MGDL) continue
+        val startIndex = readings.subList(0, i).indexOfLast { bottomAt - it.first in 4 * 60_000L..7 * 60_000L }
         if (startIndex < 0) continue
-        val (startAt, start) = raw[startIndex]
+        val (startAt, startBg, start) = readings[startIndex]
         val drop = start - bottom
-        if (drop < RAW_SPIKE_JUMP_MGDL) continue
-        val earlier = raw.subList(0, startIndex).lastOrNull { startAt - it.first in 4 * 60_000L..12 * 60_000L } ?: continue
-        if (earlier.second - start < RAW_DIP_FALLING_MGDL) continue
-        val after = raw.subList(i + 1, raw.size).filter { it.first - bottomAt <= 10 * 60_000L }
-        val rebound = (after.maxOfOrNull { it.second } ?: continue) - bottom
-        if (rebound >= RAW_SPIKE_FALL_MGDL) return RawDip(bottomAt, drop, rebound)
+        if (drop < RAW_DIP_DROP_MGDL || bottomBg - bottom < RAW_DIP_UNDER_BG_MGDL) continue
+        // BG already falling before the drop
+        val earlier = readings.subList(0, startIndex).lastOrNull { startAt - it.first in 4 * 60_000L..12 * 60_000L } ?: continue
+        if (earlier.second <= startBg) continue
+        return RawDip(bottomAt, drop, bottomBg - bottom)
     }
     return null
 }

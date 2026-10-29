@@ -119,14 +119,14 @@ jobs:
   # macOS installers (2026-10-16): a DMG can only be made on a Mac, so each one is built on a Mac runner. Apple Silicon
   # (arm64) and Intel (x64) each get their own DMG; the architecture is added to the file name so both fit in one Drive
   # folder. The DMGs are not signed: the first time, macOS asks to allow the app in System Settings > Privacy & Security.
-  # After the Windows job, and one at a time, so two jobs never create the same Drive folder at once.
+  # After the Windows job. Since 2026-10-29 the four run at the same time: the uploader finds an existing Drive folder and,
+  # when two jobs create one at once, they all end in the oldest (get_folder, 2026-10-20). One at a time took about 1.5 h.
   mac:
     name: Build and upload macOS installer (Client${{ matrix.client }}, ${{ matrix.arch }})
     needs: package
     if: ${{ !cancelled() }}
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         client: ${{ fromJSON(github.event_name == 'push' && '["2","1"]' || inputs.client == 'both' && '["2","1"]' || format('["{0}"]', inputs.client || '2')) }}
         arch: [arm64, x64]

@@ -66,17 +66,30 @@ class RawSpikeTest {
         assertNull(oldSensorTier(sensorDays = 4.1, podHours = 20.0, slopeBase = 0.75, offsetBase = 1.4))
     }
 
-    /** Already falling, a drop of 1.0 in 5 min, then back up 1.6 */
+    /** minute, BG and raw in mmol/L */
+    private fun readings(vararg rows: Triple<Int, Double, Double>) = rows.map { (minute, bg, raw) -> Triple(minute * min, bg * 18.016, raw * 18.016) }
+
+    // BG already falling, raw drops 1.8 in 5 min to 2.1 under BG, and stays there for 10 min
+    private val dipRows = arrayOf(Triple(0, 7.8, 7.5), Triple(5, 7.6, 7.0), Triple(10, 7.3, 5.2), Triple(15, 7.0, 5.4), Triple(20, 6.8, 5.5))
+    private fun dipWith(index: Int, row: Triple<Int, Double, Double>) = dipRows.copyOf().also { it[index] = row }
+
     @Test
-    fun aDropDuringAFallThatBouncesBackIsADip() {
-        val dip = assertNotNull(findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.6)))
+    fun tooLowTooQuicklyAndStayingThereIsADip() {
+        val dip = assertNotNull(findRawDip(readings(*dipRows)))
         assertEquals(10 * min, dip.bottomAt)
+        assertEquals(2.1, dip.underBgMgdl / 18.016, 0.01)
     }
 
     @Test
-    fun aDropOutOfAFlatStretchOrWithoutABounceIsNotADip() {
-        assertNull(findRawDip(series(0 to 6.9, 5 to 7.0, 10 to 6.0, 15 to 7.6)))
-        assertNull(findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.0)))
+    fun aDropThatComesBackUpOrStaysNearBgIsNotADip() {
+        assertNull(findRawDip(readings(*dipWith(3, Triple(15, 7.0, 6.5)))))
+        assertNull(findRawDip(readings(*dipWith(2, Triple(10, 5.8, 5.2)))))
+    }
+
+    @Test
+    fun aDipNeedsBgFallingAndTheFullTenMinutesAfter() {
+        assertNull(findRawDip(readings(*dipWith(0, Triple(0, 7.4, 7.5)))))
+        assertNull(findRawDip(readings(*dipRows.copyOfRange(0, 4))))
     }
 
     @Test

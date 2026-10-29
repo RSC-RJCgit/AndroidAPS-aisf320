@@ -97,6 +97,46 @@ class UploadWindowsMsiTest(unittest.TestCase):
                 self.assertEqual(last.data, b"efgh")
                 self.assertEqual(json.loads(send.call_args_list[0].args[0].data)["parents"], ["folder"])
 
+    def test_a_server_error_resumes_from_what_drive_has(self):
+        # 28 Oct: Drive answered a DMG piece with HTTP 502. The upload asks how far it got and goes on from there.
+        failed = urllib.error.HTTPError("https://www.googleapis.com/upload/session", 502, "Bad Gateway", Message(), None)
+        has_first = Message()
+        has_first["Range"] = "bytes=0-3"
+        status = urllib.error.HTTPError("https://www.googleapis.com/upload/session", 308, "Continue", has_first, None)
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "client.dmg"
+            file.write_bytes(b"abcdefgh")
+            with patch.object(uploader, "CHUNK_SIZE", 4), patch.object(uploader, "find_file", return_value=None), patch.object(
+                uploader.time, "sleep"
+            ), patch.object(
+                uploader.urllib.request, "urlopen", side_effect=[
+                    Response({}, {"Location": "https://www.googleapis.com/upload/session"}),
+                    failed,
+                    status,
+                    Response({"id": "new-file"}),
+                ]
+            ) as send:
+                self.assertEqual(uploader.upload("token", file, "folder"), "new-file")
+                asked, last = [call.args[0] for call in send.call_args_list[2:]]
+                self.assertEqual(asked.get_header("Content-range"), "bytes */8")
+                self.assertEqual(last.get_header("Content-range"), "bytes 4-7/8")
+                self.assertEqual(last.data, b"efgh")
+
+    def test_a_request_drive_refuses_is_not_retried(self):
+        refused = urllib.error.HTTPError("https://www.googleapis.com/upload/session", 403, "Forbidden", Message(), None)
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "client.dmg"
+            file.write_bytes(b"abcd")
+            with patch.object(uploader, "find_file", return_value=None), patch.object(uploader.time, "sleep"), patch.object(
+                uploader.urllib.request, "urlopen", side_effect=[
+                    Response({}, {"Location": "https://www.googleapis.com/upload/session"}),
+                    refused,
+                ]
+            ) as send:
+                with self.assertRaises(urllib.error.HTTPError):
+                    uploader.upload("token", file, "folder")
+                self.assertEqual(send.call_count, 2)
+
     def test_unexpected_upload_host_never_receives_credentials(self):
         with tempfile.TemporaryDirectory() as directory:
             file = Path(directory) / "client.msi"

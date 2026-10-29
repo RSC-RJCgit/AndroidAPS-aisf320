@@ -925,7 +925,7 @@ fun GraphsSection(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
-            .graphZoomControls(zoomStep, panStep)
+            .graphZoomControls(zoomStep, panStep, isHolding = { inspect.fingerDown })
             .onScrollOrZoomGesture(onVerticalScroll = {
                 // Cancel any recent horizontal drag/fling permission as soon as a page scroll starts.
                 pageScrolling[0] = true

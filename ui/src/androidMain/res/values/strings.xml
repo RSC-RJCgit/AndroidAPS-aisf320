@@ -498,7 +498,6 @@
     <string name="overview_app_site" translatable="false">%1$s · %2$s</string>
     <string name="import_save_restore_baseline">Save this file as the restore baseline? It will fill missing settings in future imports. Current settings will stay unchanged.</string>
     <string name="import_restore_baseline_saved">Restore baseline saved. Missing settings in future imports will be filled from it. Current settings were not changed.</string>
-    <string name="client_stats_chip" comment="Short button on the overview opening glucose statistics">ST</string>
     <!-- Trio remote control (2026-10-29) -->
     <string name="trio_remote_off">Trio remote control is off. Turn it on in the Nightscout client settings, under Trio remote control.</string>
     <string name="trio_remote_missing_title">Still missing:</string>
