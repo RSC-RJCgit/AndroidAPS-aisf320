@@ -1,0 +1,1256 @@
+diff --git a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt
+index f1d2ae7d81..97e957d22f 100644
+--- a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt
++++ b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt
+@@ -587,6 +587,16 @@ fun NavGraphBuilder.appNavGraph(
+         )
+     }
+ 
++    composable(AppRoute.AutomationStates.route) {
++        // The same Automation screen, opened with its states dialog showing. Closing the dialog leaves the rule list.
++        val automationContent = remember { automationRuntime.composeContent(startOnStates = true) }
++        AutomationContentRoute(
++            navController = navController,
++            composeContent = automationContent,
++            withProtection = withProtection,
++        )
++    }
++
+     composable(AppRoute.SceneList.route) {
+         SceneListScreen(
+             onNavigateToWizard = {
+diff --git a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppRoute.kt b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppRoute.kt
+index 151c6ab16c..ebefacd3d1 100644
+--- a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppRoute.kt
++++ b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppRoute.kt
+@@ -97,6 +97,7 @@ sealed class AppRoute(val route: String) {
+     }
+ 
+     data object AutomationList : AppRoute("automation_list")
++    data object AutomationStates : AppRoute("automation_states")
+     data object SceneList : AppRoute("scene_list")
+     data object SceneWizard : AppRoute("scene_wizard?sceneId={sceneId}") {
+ 
+diff --git a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/ElementNavigation.kt b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/ElementNavigation.kt
+index db2a7ccdae..7da05668f3 100644
+--- a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/ElementNavigation.kt
++++ b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/ElementNavigation.kt
+@@ -132,6 +132,7 @@ class ElementNavigator(
+             ElementType.RUNNING_MODE            -> navController.navigate(AppRoute.RunningMode.route)
+             ElementType.SCENE_MANAGEMENT        -> navController.navigate(AppRoute.SceneList.route)
+             ElementType.AUTOMATION_MANAGEMENT   -> navController.navigate(AppRoute.AutomationList.route)
++            ElementType.AUTOMATION_STATES       -> navController.navigate(AppRoute.AutomationStates.route)
+             ElementType.AUTHORIZED_CLIENTS      -> navController.navigate(AppRoute.AuthorizedClients.route)
+             ElementType.PAIR_WITH_MASTER        -> navController.navigate(AppRoute.PairWithMaster.route)
+             ElementType.QUICK_LAUNCH_CONFIG     -> navController.navigate(AppRoute.QuickLaunchConfig.route)
+diff --git a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/navigation/ElementType.kt b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/navigation/ElementType.kt
+index 6a77c120a9..0db9cdb58e 100644
+--- a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/navigation/ElementType.kt
++++ b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/navigation/ElementType.kt
+@@ -70,6 +70,8 @@ enum class ElementType(
+ 
+     // System
+     AUTOMATION(category = ElementCategory.SYSTEM),
++    // The Automation screen opened with its states dialog showing, so search can reach the states
++    AUTOMATION_STATES(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.PREFERENCES),
+     AUTOMATION_MANAGEMENT(category = ElementCategory.MANAGEMENT, searchable = true, protection = ProtectionCheck.Protection.PREFERENCES, visibility = ElementVisibility.MASTER_OR_PAIRED_CLIENT),
+ 
+     // Pump management — only where the build drives a real pump: full + pumpcontrol (i.e. !isClient).
+diff --git a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/StringNonKey.kt b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/StringNonKey.kt
+index ebd76667ee..e584ca6688 100644
+--- a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/StringNonKey.kt
++++ b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/StringNonKey.kt
+@@ -67,6 +67,11 @@ enum class StringNonKey(
+     // Standalone Automation runtime. In core/keys (not the automation module) so the client→master
+     // sync publisher/receiver in :plugins:sync can observe it without an inter-module dependency.
+     AutomationEvents(key = "AUTOMATION_EVENTS", defaultValue = "", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
++    // Named automation states: the value each one holds now, and the values each one may hold (both JSON objects).
++    // Set from the Automation states dialog and by the "Set state" action, read by the "State" trigger. Exported with
++    // the settings, so a restore brings them back. Not synced: they belong to the phone that runs the rules.
++    AutomationCurrentStates(key = "automation_state_service", defaultValue = "{}"),
++    AutomationStateValues(key = "automation_state_values", defaultValue = "{}"),
+     QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"wizard\"},{\"type\":\"quick_launch_config\"}]"),
+     InsulinConfiguration("insulin_configuration", "{}", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+     ComposeGraphConfig("compose_graphconfig", ""),
+diff --git a/core/ui/src/androidMain/res/values/strings.xml b/core/ui/src/androidMain/res/values/strings.xml
+index 4a2945fd5d..18d73288f2 100644
+--- a/core/ui/src/androidMain/res/values/strings.xml
++++ b/core/ui/src/androidMain/res/values/strings.xml
+@@ -520,6 +520,8 @@
+     <string name="activity">Activity</string>
+     <string name="wear">Wear</string>
+     <string name="automation">Automation</string>
++    <string name="search_automation_states">Automation states</string>
++    <string name="search_automation_states_desc">See and set the current value of each automation state</string>
+     <string name="automation_management_desc">Create rules that run actions automatically based on triggers</string>
+     <string name="settingsexport">Settings Export</string>
+     <string name="custom">Custom</string>
+diff --git a/core/ui/src/commonMain/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt b/core/ui/src/commonMain/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
+index c64db1e658..bb06bbd491 100644
+--- a/core/ui/src/commonMain/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
++++ b/core/ui/src/commonMain/kotlin/app/aaps/core/ui/compose/navigation/ElementTypeStyle.kt
+@@ -93,6 +93,7 @@ fun ElementType.color(): Color = when (this) {
+     ElementType.TEMP_BASAL              -> AapsTheme.elementColors.tempBasal
+     ElementType.EXTENDED_BOLUS          -> AapsTheme.elementColors.extendedBolus
+     ElementType.AUTOMATION,
++    ElementType.AUTOMATION_STATES,
+     ElementType.AUTOMATION_MANAGEMENT   -> AapsTheme.elementColors.automation
+ 
+     ElementType.PUMP                    -> AapsTheme.elementColors.pump
+@@ -158,6 +159,7 @@ fun ElementType.icon(): ImageVector = when (this) {
+     ElementType.TEMP_BASAL              -> IcTbrHigh
+     ElementType.EXTENDED_BOLUS          -> IcExtendedBolus
+     ElementType.AUTOMATION,
++    ElementType.AUTOMATION_STATES,
+     ElementType.AUTOMATION_MANAGEMENT   -> IcPluginAutomation
+ 
+     ElementType.PUMP                    -> Pump
+@@ -227,6 +229,7 @@ fun ElementType.label(): TextRef? = when (this) {
+     ElementType.EXTENDED_BOLUS          -> CoreUiStrings.extended_bolus
+     ElementType.AUTOMATION              -> null // dynamic label
+     ElementType.AUTOMATION_MANAGEMENT   -> CoreUiStrings.automation
++    ElementType.AUTOMATION_STATES       -> CoreUiStrings.search_automation_states
+     ElementType.PUMP                    -> CoreUiStrings.pump
+     ElementType.SETTINGS                -> CoreUiStrings.settings
+     ElementType.QUICK_LAUNCH_CONFIG     -> CoreUiStrings.quick_launch_configure
+@@ -292,6 +295,7 @@ fun ElementType.description(): TextRef? = when (this) {
+     ElementType.SCENE                   -> CoreUiStrings.scene_desc
+     ElementType.SCENE_MANAGEMENT        -> CoreUiStrings.scene_management_desc
+     ElementType.AUTOMATION_MANAGEMENT   -> CoreUiStrings.automation_management_desc
++    ElementType.AUTOMATION_STATES       -> CoreUiStrings.search_automation_states_desc
+     ElementType.AUTHORIZED_CLIENTS      -> CoreUiStrings.authorized_clients_manage_desc
+     ElementType.PAIR_WITH_MASTER        -> CoreUiStrings.pair_with_master_manage_desc
+     ElementType.RUNNING_MODE            -> CoreUiStrings.running_mode_desc
+diff --git a/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/AutomationStateListTest.kt b/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/AutomationStateListTest.kt
+new file mode 100644
+index 0000000000..85e05fec5a
+--- /dev/null
++++ b/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/AutomationStateListTest.kt
+@@ -0,0 +1,64 @@
++package app.aaps.plugins.automation
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertNull
++
++class AutomationStateListTest {
++
++    private val values = """{"Steroids":["Steroids Off","SteroidsON"],"MJ":["NOMJremains","MJ active"],"Sleeping":["True"]}"""
++
++    @Test
++    fun declaredStatesShowTheCurrentValueInNameOrder() {
++        val rows = automationStateEntries(currentJson = """{"MJ":"MJ active","Steroids":"Steroids Off"}""", valuesJson = values)
++        assertEquals(
++            listOf(
++                AutomationStateEntry("MJ", "MJ active", listOf("NOMJremains", "MJ active")),
++                AutomationStateEntry("Sleeping", "", listOf("True")),
++                AutomationStateEntry("Steroids", "Steroids Off", listOf("Steroids Off", "SteroidsON"))
++            ),
++            rows
++        )
++    }
++
++    @Test
++    fun aValueThatWasNeverDeclaredIsLeftOut() {
++        val rows = automationStateEntries(currentJson = """{"Extra":"yes"}""", valuesJson = """{"MJ":["NOMJremains"]}""")
++        assertEquals(listOf(AutomationStateEntry("MJ", "", listOf("NOMJremains"))), rows)
++    }
++
++    @Test
++    fun brokenTextIsAnEmptyList() {
++        assertEquals(emptyList(), automationStateEntries(currentJson = "nope", valuesJson = "{}"))
++        assertEquals(emptyList(), automationStateEntries(currentJson = "{}", valuesJson = ""))
++    }
++
++    @Test
++    fun currentValueMustBeDeclared() {
++        val changed = setAutomationStateCurrent("""{"MJ":"NOMJremains"}""", values, "MJ", "MJ active")!!
++        assertEquals("MJ active", automationStateEntries(changed.currentJson, changed.valuesJson).first { it.name == "MJ" }.current)
++        assertNull(setAutomationStateCurrent("{}", values, "MJ", "MJ3"))
++        assertNull(setAutomationStateCurrent("{}", values, "Unknown", "x"))
++    }
++
++    @Test
++    fun newValuesDropACurrentValueThatIsNoLongerAllowed() {
++        val changed = setAutomationStateValues("""{"MJ":"MJ active","Sleeping":"True"}""", values, "MJ", listOf("NOMJremains", "MJ2"))
++        val rows = automationStateEntries(changed.currentJson, changed.valuesJson)
++        assertEquals(AutomationStateEntry("MJ", "", listOf("NOMJremains", "MJ2")), rows.first { it.name == "MJ" })
++        assertEquals("True", rows.first { it.name == "Sleeping" }.current)
++    }
++
++    @Test
++    fun aNewStateIsAdded() {
++        val changed = setAutomationStateValues("{}", "{}", "Sleeping", listOf("True", "False"))
++        assertEquals(listOf(AutomationStateEntry("Sleeping", "", listOf("True", "False"))), automationStateEntries(changed.currentJson, changed.valuesJson))
++    }
++
++    @Test
++    fun deleteRemovesNameAndValue() {
++        val changed = deleteAutomationState("""{"MJ":"MJ active"}""", values, "MJ")
++        assertEquals(listOf("Sleeping", "Steroids"), automationStateEntries(changed.currentJson, changed.valuesJson).map { it.name })
++        assertEquals("{}", changed.currentJson)
++    }
++}
+diff --git a/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/AutomationStatesTest.kt b/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/AutomationStatesTest.kt
+new file mode 100644
+index 0000000000..5b5fc771e9
+--- /dev/null
++++ b/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/AutomationStatesTest.kt
+@@ -0,0 +1,62 @@
++package app.aaps.plugins.automation
++
++import app.aaps.core.keys.interfaces.Preferences
++import app.aaps.core.keys.interfaces.StringNonPreferenceKey
++import org.mockito.kotlin.any
++import org.mockito.kotlin.doAnswer
++import org.mockito.kotlin.mock
++import org.mockito.kotlin.whenever
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++
++/** The store as the action, the trigger and the dialog use it, over settings kept in a map */
++class AutomationStatesTest {
++
++    private val saved = mutableMapOf<String, String>()
++    private val preferences = mock<Preferences>().also { prefs ->
++        whenever(prefs.get(any<StringNonPreferenceKey>())).thenAnswer { saved[(it.arguments[0] as StringNonPreferenceKey).key] ?: "{}" }
++        doAnswer { saved[(it.arguments[0] as StringNonPreferenceKey).key] = it.arguments[1] as String }
++            .whenever(prefs).put(any<StringNonPreferenceKey>(), any<String>())
++    }
++    private val states = AutomationStates(preferences)
++
++    /** A rule must work without the state being set up in the dialog first */
++    @Test
++    fun aRuleDeclaresANewStateAndValue() {
++        states.setFromRule(" Sport ", " On ")
++
++        assertEquals(listOf(AutomationStateEntry("Sport", "On", listOf("On"))), states.entries())
++        assertEquals("On", states.current("Sport"))
++    }
++
++    @Test
++    fun aRuleAddsANewValueToAKnownState() {
++        states.setValues("Sport", listOf("On", "Off"))
++        states.setFromRule("Sport", "Paused")
++
++        assertEquals(listOf("On", "Off", "Paused"), states.entries().single().values)
++        assertEquals("Paused", states.current("Sport"))
++    }
++
++    @Test
++    fun anEmptyNameOrValueChangesNothing() {
++        states.setFromRule("Sport", " ")
++        states.setFromRule("", "On")
++
++        assertEquals(emptyList(), states.entries())
++    }
++
++    @Test
++    fun theDialogCanOnlyPickADeclaredValue() {
++        states.setValues("Sport", listOf("On", "Off"))
++
++        assertFalse(states.setCurrent("Sport", "Maybe"))
++        assertEquals("", states.current("Sport"))
++    }
++
++    @Test
++    fun anUnknownStateHoldsNoValue() {
++        assertEquals("", states.current("Nothing"))
++    }
++}
+diff --git a/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationStateTest.kt b/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationStateTest.kt
+new file mode 100644
+index 0000000000..c8a9fddd41
+--- /dev/null
++++ b/plugins/automation/src/androidHostTest/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationStateTest.kt
+@@ -0,0 +1,58 @@
++package app.aaps.plugins.automation.triggers
++
++import app.aaps.core.keys.StringNonKey
++import app.aaps.plugins.automation.AutomationStrings
++import app.aaps.plugins.automation.asJsonObject
++import app.aaps.plugins.automation.elements.Comparator
++import com.google.common.truth.Truth.assertThat
++import kotlinx.coroutines.test.runTest
++import org.junit.jupiter.api.Test
++import org.mockito.kotlin.whenever
++import org.skyscreamer.jsonassert.JSONAssert
++
++class TriggerAutomationStateTest : TriggerTestBase() {
++
++    private fun holds(current: String) {
++        whenever(preferences.get(StringNonKey.AutomationCurrentStates)).thenReturn(current)
++        whenever(preferences.get(StringNonKey.AutomationStateValues)).thenReturn("""{"Sport":["On","Off"]}""")
++    }
++
++    private fun trigger(compare: Comparator.Compare) = TriggerAutomationState(triggerDeps).setState("Sport", "On").comparator(compare)
++
++    @Test fun isEqualRunsOnlyOnTheSameValue() = runTest {
++        holds("""{"Sport":"On"}""")
++        assertThat(trigger(Comparator.Compare.IS_EQUAL).shouldRun()).isTrue()
++        holds("""{"Sport":"Off"}""")
++        assertThat(trigger(Comparator.Compare.IS_EQUAL).shouldRun()).isFalse()
++    }
++
++    /** A state with no value is "not available", and matches nothing else */
++    @Test fun aStateWithNoValueIsNotAvailable() = runTest {
++        holds("{}")
++        assertThat(trigger(Comparator.Compare.IS_NOT_AVAILABLE).shouldRun()).isTrue()
++        assertThat(trigger(Comparator.Compare.IS_EQUAL).shouldRun()).isFalse()
++    }
++
++    private val json = """{"data":{"name":"Sport","value":"On","comparator":"IS_EQUAL"},"type":"TriggerAutomationState"}"""
++
++    @Test fun toJSONTest() {
++        JSONAssert.assertEquals(json, trigger(Comparator.Compare.IS_EQUAL).toJSON(), true)
++    }
++
++    @Test fun fromJSONTest() {
++        val t = triggerFactory.instantiate(trigger(Comparator.Compare.IS_NOT_AVAILABLE).toJSON().asJsonObject()) as TriggerAutomationState
++        assertThat(t.name.value).isEqualTo("Sport")
++        assertThat(t.value.value).isEqualTo("On")
++        assertThat(t.comparator.value).isEqualTo(Comparator.Compare.IS_NOT_AVAILABLE)
++    }
++
++    @Test fun copyKeepsTheValues() {
++        val t = trigger(Comparator.Compare.IS_NOT_AVAILABLE).duplicate() as TriggerAutomationState
++        assertThat(t.name.value).isEqualTo("Sport")
++        assertThat(t.comparator.value).isEqualTo(Comparator.Compare.IS_NOT_AVAILABLE)
++    }
++
++    @Test fun friendlyNameTest() {
++        assertThat(TriggerAutomationState(triggerDeps).friendlyName()).isEqualTo(AutomationStrings.automation_state_trigger)
++    }
++}
+diff --git a/plugins/automation/src/androidMain/res/values/strings.xml b/plugins/automation/src/androidMain/res/values/strings.xml
+index 26d197599b..3a74b11a11 100644
+--- a/plugins/automation/src/androidMain/res/values/strings.xml
++++ b/plugins/automation/src/androidMain/res/values/strings.xml
+@@ -173,4 +173,16 @@
+     <string name="permission_location_description">Needed for location-based automation triggers and WiFi network identification</string>
+     <string name="permission_background_location_description">Needed for automation triggers to work when the app is in the background</string>
+ 
++    <string name="automation_states">Automation states</string>
++    <string name="automation_states_empty">No states yet. Add one here, or let a rule set one with the action Set state.</string>
++    <string name="add_automation_state">Add state</string>
++    <string name="state_name_label">State name</string>
++    <string name="state_value_label">Value</string>
++    <string name="automation_state_values_title" comment="%1$s=name of the state">Values of %1$s</string>
++    <string name="enter_state_value">New value</string>
++    <string name="delete_automation_state">Delete this state</string>
++    <string name="set_automation_state">Set state</string>
++    <string name="set_automation_state_description" comment="%1$s=name of the state, %2$s=its new value. Example: Set state Sport to On">Set state %1$s to %2$s</string>
++    <string name="automation_state_trigger">State</string>
++    <string name="automation_state_compared" comment="%1$s=name of the state, %2$s=comparison such as is equal, %3$s=value. Example: State Sport is equal On">State %1$s %2$s %3$s</string>
+ </resources>
+\ No newline at end of file
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/AutomationRuntime.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/AutomationRuntime.kt
+index 3176379bfd..07ccaee93d 100644
+--- a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/AutomationRuntime.kt
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/AutomationRuntime.kt
+@@ -49,6 +49,7 @@ import app.aaps.plugins.automation.elements.InputDelta
+ import app.aaps.plugins.automation.events.EventAutomationUpdateGui
+ import app.aaps.plugins.automation.events.EventLocationChange
+ import app.aaps.plugins.automation.triggers.Trigger
++import app.aaps.plugins.automation.triggers.TriggerAutomationState
+ import app.aaps.plugins.automation.triggers.TriggerAutosensValue
+ import app.aaps.plugins.automation.triggers.TriggerBg
+ import app.aaps.plugins.automation.triggers.TriggerBolusAgo
+@@ -157,12 +158,21 @@ class AutomationRuntime(
+ 
+     override val executionEnabled: Boolean get() = config.APS
+ 
++    private val states by lazy { AutomationStates(preferences) }
++
++    /** The automation states, with the value each one holds now and the values it may hold, in name order */
++    fun automationStates(): List<AutomationStateEntry> = states.entries()
++    fun setAutomationStateCurrent(name: String, value: String) = states.setCurrent(name, value)
++    fun setAutomationStateValues(name: String, values: List<String>) = states.setValues(name, values)
++    fun deleteAutomationState(name: String) = states.delete(name)
++
+     /**
+      * Build the Compose screen content. Replaces the old plugin-descriptor `composeContent` lambda;
+      * called from the standalone `AutomationList` nav route.
+      */
+-    fun composeContent(): ComposablePluginContent =
++    fun composeContent(startOnStates: Boolean = false): ComposablePluginContent =
+         AutomationComposeContent(
++            startOnStates = startOnStates,
+             plugin = this,
+             rxBus = rxBus,
+             aapsLogger = aapsLogger,
+@@ -758,7 +768,8 @@ class AutomationRuntime(
+             TriggerSensorAge(triggerDeps),
+             TriggerCannulaAge(triggerDeps),
+             TriggerReservoirLevel(triggerDeps),
+-            TriggerStepsCount(triggerDeps)
++            TriggerStepsCount(triggerDeps),
++            TriggerAutomationState(triggerDeps)
+         )
+ 
+         val pump = activePlugin.activePump
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/AutomationStateList.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/AutomationStateList.kt
+new file mode 100644
+index 0000000000..955f995698
+--- /dev/null
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/AutomationStateList.kt
+@@ -0,0 +1,137 @@
++package app.aaps.plugins.automation
++
++import app.aaps.core.keys.StringNonKey
++import app.aaps.core.keys.interfaces.Preferences
++import kotlinx.serialization.json.Json
++import kotlinx.serialization.json.JsonArray
++import kotlinx.serialization.json.JsonObject
++import kotlinx.serialization.json.JsonPrimitive
++
++/** One declared automation state: its name, the value it holds now (empty when none) and the values it may hold. */
++data class AutomationStateEntry(val name: String, val current: String, val values: List<String>)
++
++/** The two stored texts after a change: the current values and the declared values. */
++data class AutomationStateTexts(val currentJson: String, val valuesJson: String)
++
++/**
++ * The declared states, in name order, with the value each one holds now and the values it may hold.
++ * A name with no current value is still listed, and its value is empty. Broken saved text becomes an empty list.
++ */
++fun automationStateEntries(currentJson: String, valuesJson: String): List<AutomationStateEntry> {
++    val current = decodeStringMap(currentJson)
++    val allowed = decodeStringLists(valuesJson)
++    return allowed.keys.sorted().map { name -> AutomationStateEntry(name, current[name].orEmpty(), allowed.getValue(name)) }
++}
++
++/**
++ * Makes [value] the current value of [name]. Null when [name] is not declared
++ * or [value] is not one of its values, so nothing is saved.
++ */
++fun setAutomationStateCurrent(currentJson: String, valuesJson: String, name: String, value: String): AutomationStateTexts? {
++    val allowed = decodeStringLists(valuesJson)
++    if (value !in allowed[name].orEmpty()) return null
++    val current = decodeStringMap(currentJson) + (name to value)
++    return AutomationStateTexts(encodeStringMap(current), valuesJson)
++}
++
++/**
++ * Declares [name] with [values], or changes its values. A current value that is not in the new list is removed.
++ */
++fun setAutomationStateValues(currentJson: String, valuesJson: String, name: String, values: List<String>): AutomationStateTexts {
++    val allowed = decodeStringLists(valuesJson) + (name to values)
++    val current = decodeStringMap(currentJson).filterNot { (key, value) -> key == name && value !in values }
++    return AutomationStateTexts(encodeStringMap(current), encodeStringLists(allowed))
++}
++
++/** Removes [name] and its current value. */
++fun deleteAutomationState(currentJson: String, valuesJson: String, name: String): AutomationStateTexts =
++    AutomationStateTexts(
++        encodeStringMap(decodeStringMap(currentJson) - name),
++        encodeStringLists(decodeStringLists(valuesJson) - name)
++    )
++
++private fun encodeStringMap(map: Map<String, String>): String =
++    JsonObject(map.mapValues { (_, value) -> JsonPrimitive(value) }).toString()
++
++private fun encodeStringLists(map: Map<String, List<String>>): String =
++    JsonObject(map.mapValues { (_, values) -> JsonArray(values.map { JsonPrimitive(it) }) }).toString()
++
++private fun decodeStringMap(raw: String): Map<String, String> {
++    val element = runCatching { Json.parseToJsonElement(raw) }.getOrNull() as? JsonObject ?: return emptyMap()
++    return buildMap {
++        for ((key, value) in element) {
++            val text = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
++            put(key, text)
++        }
++    }
++}
++
++private fun decodeStringLists(raw: String): Map<String, List<String>> {
++    val element = runCatching { Json.parseToJsonElement(raw) }.getOrNull() as? JsonObject ?: return emptyMap()
++    return buildMap {
++        for ((key, value) in element) {
++            val items = value as? JsonArray ?: continue
++            val texts = ArrayList<String>(items.size)
++            var valid = true
++            for (item in items) {
++                val text = (item as? JsonPrimitive)?.takeIf { it.isString }?.content
++                if (text == null) {
++                    valid = false
++                    break
++                }
++                texts.add(text)
++            }
++            if (valid) put(key, texts)
++        }
++    }
++}
++
++/**
++ * The automation states of this phone, kept in [StringNonKey.AutomationCurrentStates] and [StringNonKey.AutomationStateValues].
++ * Used by the Automation states dialog, the "Set state" action and the "State" trigger.
++ */
++class AutomationStates(private val preferences: Preferences) {
++
++    private fun texts() = AutomationStateTexts(preferences.get(StringNonKey.AutomationCurrentStates), preferences.get(StringNonKey.AutomationStateValues))
++
++    private fun save(texts: AutomationStateTexts) {
++        preferences.put(StringNonKey.AutomationCurrentStates, texts.currentJson)
++        preferences.put(StringNonKey.AutomationStateValues, texts.valuesJson)
++    }
++
++    fun entries(): List<AutomationStateEntry> = texts().let { automationStateEntries(it.currentJson, it.valuesJson) }
++
++    /** The value [name] holds now, or empty when it holds none or is not declared */
++    fun current(name: String): String = entries().firstOrNull { it.name == name.trim() }?.current.orEmpty()
++
++    /** False when [value] is not one of the values of [name], and then nothing is saved */
++    fun setCurrent(name: String, value: String): Boolean {
++        val texts = texts()
++        val changed = setAutomationStateCurrent(texts.currentJson, texts.valuesJson, name, value) ?: return false
++        save(changed)
++        return true
++    }
++
++    fun setValues(name: String, values: List<String>) {
++        val texts = texts()
++        save(setAutomationStateValues(texts.currentJson, texts.valuesJson, name, values))
++    }
++
++    fun delete(name: String) {
++        val texts = texts()
++        save(deleteAutomationState(texts.currentJson, texts.valuesJson, name))
++    }
++
++    /**
++     * What the "Set state" action does: [value] becomes the current value of [name]. A state or a value that is not
++     * declared yet is declared first, so a rule works without setting the state up in the dialog before.
++     */
++    fun setFromRule(name: String, value: String) {
++        val stateName = name.trim()
++        val stateValue = value.trim()
++        if (stateName.isEmpty() || stateValue.isEmpty()) return
++        val known = entries().firstOrNull { it.name == stateName }?.values.orEmpty()
++        if (stateValue !in known) setValues(stateName, known + stateValue)
++        setCurrent(stateName, stateValue)
++    }
++}
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/actions/ActionFactory.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/actions/ActionFactory.kt
+index 75f5d622fd..15244ad095 100644
+--- a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/actions/ActionFactory.kt
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/actions/ActionFactory.kt
+@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
+ import app.aaps.core.interfaces.utils.DateUtil
+ import app.aaps.core.keys.interfaces.Preferences
+ import app.aaps.core.utils.lenientString
++import app.aaps.plugins.automation.AutomationStates
+ import app.aaps.plugins.automation.triggers.TriggerDeps
+ import dev.zacsweers.metro.AppScope
+ import dev.zacsweers.metro.Inject
+@@ -67,7 +68,7 @@ class ActionFactory(
+     fun allActions(): List<Action> = listOf(
+         actionAlarm(), actionCarePortalEvent(), actionDisableScene(), actionEnableScene(),
+         actionNotification(), actionProfileSwitch(), actionProfileSwitchPercent(), actionRunAutotune(),
+-        actionRunScene(), actionSendSMS(), actionSettingsExport(), actionSMBChange(), actionSmoothingChange(),
++        actionRunScene(), actionSendSMS(), actionSetAutomationState(), actionSettingsExport(), actionSMBChange(), actionSmoothingChange(),
+         actionStartTempTarget(), actionStopProcessing(), actionStopTempTarget()
+     )
+ 
+@@ -83,6 +84,7 @@ class ActionFactory(
+     fun actionRunAutotune() = ActionRunAutotune(aapsLogger, rh, pumpEnactResultProvider, rh, autotunePlugin, profileFunction, activePlugin, preferences)
+     fun actionRunScene() = ActionRunScene(aapsLogger, rh, pumpEnactResultProvider, sceneApi, sceneIconResolver, triggerDeps)
+     fun actionSendSMS() = ActionSendSMS(aapsLogger, rh, pumpEnactResultProvider, smsCommunicator)
++    fun actionSetAutomationState() = ActionSetAutomationState(aapsLogger, rh, pumpEnactResultProvider, AutomationStates(preferences))
+     fun actionSettingsExport() =
+         ActionSettingsExport(
+             aapsLogger, rh, pumpEnactResultProvider, rxBus, notificationManager, dateUtil, config,
+@@ -115,6 +117,7 @@ class ActionFactory(
+             ActionRunAutotune::class.simpleName          -> actionRunAutotune()
+             ActionRunScene::class.simpleName             -> actionRunScene()
+             ActionSendSMS::class.simpleName              -> actionSendSMS()
++            ActionSetAutomationState::class.simpleName   -> actionSetAutomationState()
+             ActionStartTempTarget::class.simpleName      -> actionStartTempTarget()
+             ActionStopProcessing::class.simpleName       -> actionStopProcessing()
+             ActionStopTempTarget::class.simpleName       -> actionStopTempTarget()
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+new file mode 100644
+index 0000000000..d3289a4f77
+--- /dev/null
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/actions/ActionSetAutomationState.kt
+@@ -0,0 +1,61 @@
++package app.aaps.plugins.automation.actions
++
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.Flag
++import app.aaps.core.interfaces.logging.AAPSLogger
++import app.aaps.core.interfaces.navigation.ElementType
++import app.aaps.core.interfaces.pump.PumpEnactResult
++import app.aaps.core.interfaces.resources.TextResolver
++import app.aaps.core.keys.interfaces.TextRef
++import app.aaps.core.ui.CoreUiStrings
++import app.aaps.core.utils.lenientString
++import app.aaps.plugins.automation.AutomationStates
++import app.aaps.plugins.automation.AutomationStrings
++import app.aaps.plugins.automation.elements.InputString
++import kotlinx.serialization.json.buildJsonObject
++import kotlinx.serialization.json.put
++
++/**
++ * Gives an automation state a value. A state or value that is not declared yet is declared by this, so the rule works at
++ * once; the "State" trigger and the Automation states dialog then see it.
++ */
++class ActionSetAutomationState(
++    aapsLogger: AAPSLogger,
++    rh: TextResolver,
++    pumpEnactResultProvider: () -> PumpEnactResult,
++    private val states: AutomationStates
++) : Action(aapsLogger, rh, pumpEnactResultProvider) {
++
++    var name = InputString()
++    var value = InputString()
++
++    override fun friendlyName(): TextRef = AutomationStrings.set_automation_state
++    override fun shortDescription(): String = rh.gs(AutomationStrings.set_automation_state_description, name.value, value.value)
++    override fun composeIcon() = Icons.Filled.Flag
++    override fun elementType() = ElementType.AUTOMATION
++
++    override suspend fun doAction(): PumpEnactResult {
++        states.setFromRule(name.value, value.value)
++        return pumpEnactResultProvider().success(true).comment(CoreUiStrings.ok)
++    }
++
++    override fun toJSON(): String =
++        buildJsonObject {
++            put("type", this@ActionSetAutomationState::class.simpleName)
++            put("data", buildJsonObject {
++                put("name", name.value)
++                put("value", value.value)
++            })
++        }.toString()
++
++    override fun fromJSON(data: String): Action {
++        val o = jsonOf(data)
++        name.value = o.lenientString("name", "")
++        value.value = o.lenientString("value", "")
++        return this
++    }
++
++    override fun hasDialog(): Boolean = true
++
++    override fun isValid(): Boolean = name.value.isNotBlank() && value.value.isNotBlank()
++}
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/AutomationComposeContent.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/AutomationComposeContent.kt
+index 48d7be8cff..0bf2671550 100644
+--- a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/AutomationComposeContent.kt
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/AutomationComposeContent.kt
+@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Row
+ import androidx.compose.material.icons.Icons
+ import androidx.compose.material.icons.automirrored.filled.ArrowBack
+ import androidx.compose.material.icons.filled.Check
++import androidx.compose.material.icons.filled.Flag
+ import androidx.compose.material.icons.filled.MoreVert
+ import androidx.compose.material.icons.filled.Save
+ import androidx.compose.material.icons.filled.Settings
+@@ -57,6 +58,8 @@ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.launch
+ 
+ class AutomationComposeContent(
++    /** Opens the screen with the Automation states dialog showing, for the search entry */
++    private val startOnStates: Boolean = false,
+     private val plugin: AutomationRuntime,
+     private val rxBus: RxBus,
+     private val aapsLogger: AAPSLogger,
+@@ -126,8 +129,11 @@ class AutomationComposeContent(
+     ) {
+         val state by holder.state.collectAsStateWithLifecycle()
+         var deleteTarget by remember { mutableStateOf<Int?>(null) }
++        var showStates by remember { mutableStateOf(startOnStates) }
++        var stateRows by remember { mutableStateOf(if (startOnStates) plugin.automationStates() else emptyList()) }
+ 
+         val title = stringResource(AutomationStrings.automation)
++        val statesDesc = stringResource(AutomationStrings.automation_states)
+         val backDesc = stringResource(CoreUiStrings.back)
+         val settingsDesc = stringResource(CoreUiStrings.nav_plugin_preferences)
+ 
+@@ -139,6 +145,11 @@ class AutomationComposeContent(
+                     settingsDesc = settingsDesc,
+                     onBack = onNavigateBack,
+                     onRun = onRun,
++                    statesDesc = statesDesc,
++                    onStates = {
++                        stateRows = plugin.automationStates()
++                        showStates = true
++                    },
+                     // Run stays master-only (automation executes only on the master). Settings is shown on
+                     // the client too: its sole pref (location-provider mode) is now a Bidirectional synced
+                     // setting the client can change, and the screen resolves on a client (see BuiltInSearchables).
+@@ -164,6 +175,20 @@ class AutomationComposeContent(
+             editingEnabled = editingEnabled
+         )
+ 
++        if (showStates) {
++            // Only the phone that runs the rules changes the states. Elsewhere the dialog is read only.
++            val editor = if (plugin.executionEnabled) AutomationStatesEditor(
++                setCurrent = { name, value -> plugin.setAutomationStateCurrent(name, value); stateRows = plugin.automationStates() },
++                setValues = { name, values -> plugin.setAutomationStateValues(name, values); stateRows = plugin.automationStates() },
++                delete = { name -> plugin.deleteAutomationState(name); stateRows = plugin.automationStates() }
++            ) else null
++            AutomationStatesDialog(
++                rows = stateRows,
++                editor = editor,
++                onClose = { showStates = false }
++            )
++        }
++
+         deleteTarget?.let { pos ->
+             val target = holder.eventAt(pos)
+             val message = stringResource(CoreUiStrings.removerecord) +
+@@ -482,6 +507,8 @@ private fun buildListToolbar(
+     settingsDesc: String,
+     onBack: () -> Unit,
+     onRun: () -> Unit,
++    statesDesc: String,
++    onStates: () -> Unit,
+     onSettings: (() -> Unit)?,
+     showRun: Boolean
+ ): ToolbarConfig = ToolbarConfig(
+@@ -492,6 +519,9 @@ private fun buildListToolbar(
+         }
+     },
+     actions = {
++        IconButton(onClick = onStates) {
++            Icon(Icons.Default.Flag, contentDescription = statesDesc)
++        }
+         if (onSettings != null) {
+             IconButton(onClick = onSettings) {
+                 Icon(Icons.Default.Settings, contentDescription = settingsDesc)
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/AutomationStatesDialog.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/AutomationStatesDialog.kt
+new file mode 100644
+index 0000000000..d52fcb35e5
+--- /dev/null
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/AutomationStatesDialog.kt
+@@ -0,0 +1,231 @@
++package app.aaps.plugins.automation.compose
++
++import androidx.compose.foundation.clickable
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.ExperimentalLayoutApi
++import androidx.compose.foundation.layout.FlowRow
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.foundation.verticalScroll
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.Close
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.FilterChip
++import androidx.compose.material3.FilterChipDefaults
++import androidx.compose.material3.Icon
++import androidx.compose.material3.IconButton
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.OutlinedTextField
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateListOf
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.remember
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.Alignment
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.text.font.FontWeight
++import app.aaps.core.ui.CoreUiStrings
++import app.aaps.core.ui.compose.AapsSpacing
++import app.aaps.core.ui.compose.AapsTheme
++import app.aaps.core.ui.compose.stringResource
++import app.aaps.plugins.automation.AutomationStateEntry
++import app.aaps.plugins.automation.AutomationStrings
++
++/** What the States dialog may change. Null makes the dialog read only, as on a phone that does not run the rules. */
++class AutomationStatesEditor(
++    val setCurrent: (name: String, value: String) -> Unit,
++    val setValues: (name: String, values: List<String>) -> Unit,
++    val delete: (name: String) -> Unit
++)
++
++/**
++ * The automation states. Each state shows its name and its values; the current value is selected.
++ *
++ * With an [editor]: tap a value to make it the current one, tap the name to change its values or delete it, and "Add"
++ * declares a new state. Without one it is read only.
++ */
++@OptIn(ExperimentalLayoutApi::class)
++@Composable
++fun AutomationStatesDialog(
++    rows: List<AutomationStateEntry>,
++    editor: AutomationStatesEditor?,
++    onClose: () -> Unit
++) {
++    var editing by remember { mutableStateOf<AutomationStateEntry?>(null) }
++    var adding by remember { mutableStateOf(false) }
++
++    AlertDialog(
++        onDismissRequest = onClose,
++        title = { Text(stringResource(AutomationStrings.automation_states)) },
++        text = {
++            if (rows.isEmpty()) {
++                Text(stringResource(AutomationStrings.automation_states_empty))
++            } else {
++                Column(
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .verticalScroll(rememberScrollState()),
++                    verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)
++                ) {
++                    for (row in rows) {
++                        Text(
++                            text = row.name,
++                            style = MaterialTheme.typography.titleSmall,
++                            modifier = Modifier.fillMaxWidth().clickable(enabled = editor != null) { editing = row }
++                        )
++                        if (row.values.isEmpty()) {
++                            // A state with no list of values: the current one only
++                            Text(if (row.current.isEmpty()) "--" else row.current)
++                        } else {
++                            FlowRow(horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
++                                for (value in row.values) {
++                                    val selected = value == row.current
++                                    FilterChip(
++                                        selected = selected,
++                                        // Not disabled when read only: a disabled chip loses the green that shows the current value
++                                        onClick = { editor?.setCurrent(row.name, value) },
++                                        label = { Text(value, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal) },
++                                        // The current value solid green, the others plain grey. The default chip only tints the
++                                        // selected one, which is hard to see.
++                                        colors = FilterChipDefaults.filterChipColors(
++                                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
++                                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
++                                            selectedContainerColor = AapsTheme.generalColors.statusNormal,
++                                            // Black on the green, the same as the green badges in the navigation bar
++                                            selectedLabelColor = Color.Black,
++                                            selectedLeadingIconColor = Color.Black
++                                        )
++                                    )
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        },
++        confirmButton = {
++            TextButton(onClick = onClose) {
++                Text(stringResource(CoreUiStrings.close))
++            }
++        },
++        dismissButton = if (editor != null) {
++            { TextButton(onClick = { adding = true }) { Text(stringResource(AutomationStrings.add_automation_state)) } }
++        } else null
++    )
++
++    val setValues = editor?.setValues ?: return
++    val delete = editor.delete
++
++    if (adding) {
++        AddStateDialog(
++            existing = rows.map { it.name },
++            onDismiss = { adding = false },
++            onConfirm = { name ->
++                adding = false
++                editing = AutomationStateEntry(name, "", emptyList())
++            }
++        )
++    }
++
++    editing?.let { entry ->
++        StateValuesDialog(
++            entry = entry,
++            isNew = rows.none { it.name == entry.name },
++            onDismiss = { editing = null },
++            onSave = { values ->
++                setValues(entry.name, values)
++                editing = null
++            },
++            onDelete = {
++                delete(entry.name)
++                editing = null
++            }
++        )
++    }
++}
++
++@Composable
++private fun AddStateDialog(existing: List<String>, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
++    var name by remember { mutableStateOf("") }
++    val trimmed = name.trim()
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text(stringResource(AutomationStrings.add_automation_state)) },
++        text = {
++            OutlinedTextField(
++                value = name,
++                onValueChange = { name = it },
++                label = { Text(stringResource(AutomationStrings.state_name_label)) },
++                singleLine = true
++            )
++        },
++        confirmButton = {
++            TextButton(onClick = { onConfirm(trimmed) }, enabled = trimmed.isNotEmpty() && trimmed !in existing) {
++                Text(stringResource(CoreUiStrings.ok))
++            }
++        },
++        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(CoreUiStrings.cancel)) } }
++    )
++}
++
++@Composable
++private fun StateValuesDialog(
++    entry: AutomationStateEntry,
++    isNew: Boolean,
++    onDismiss: () -> Unit,
++    onSave: (List<String>) -> Unit,
++    onDelete: () -> Unit
++) {
++    val values = remember(entry.name) { mutableStateListOf<String>().apply { addAll(entry.values) } }
++    var newValue by remember { mutableStateOf("") }
++    AlertDialog(
++        onDismissRequest = onDismiss,
++        title = { Text(stringResource(AutomationStrings.automation_state_values_title, entry.name)) },
++        text = {
++            Column(verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
++                values.forEachIndexed { index, value ->
++                    Row(verticalAlignment = Alignment.CenterVertically) {
++                        Text(value, modifier = Modifier.weight(1f))
++                        IconButton(onClick = { values.removeAt(index) }) {
++                            Icon(Icons.Filled.Close, contentDescription = stringResource(CoreUiStrings.remove))
++                        }
++                    }
++                }
++                Row(verticalAlignment = Alignment.CenterVertically) {
++                    OutlinedTextField(
++                        value = newValue,
++                        onValueChange = { newValue = it },
++                        label = { Text(stringResource(AutomationStrings.enter_state_value)) },
++                        singleLine = true,
++                        modifier = Modifier.weight(1f)
++                    )
++                    TextButton(
++                        onClick = {
++                            val v = newValue.trim()
++                            if (v.isNotEmpty() && v !in values) values.add(v)
++                            newValue = ""
++                        },
++                        enabled = newValue.isNotBlank()
++                    ) { Text(stringResource(CoreUiStrings.add)) }
++                }
++                if (!isNew) {
++                    TextButton(onClick = onDelete) {
++                        Text(stringResource(AutomationStrings.delete_automation_state), color = MaterialTheme.colorScheme.error)
++                    }
++                }
++            }
++        },
++        confirmButton = {
++            TextButton(onClick = { onSave(values.toList()) }, enabled = values.isNotEmpty()) {
++                Text(stringResource(CoreUiStrings.save))
++            }
++        },
++        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(CoreUiStrings.cancel)) } }
++    )
++}
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
+index 1c39984476..85d9a62b8f 100644
+--- a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ActionEditors.kt
+@@ -27,6 +27,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
+ import app.aaps.plugins.automation.actions.ActionRunScene
+ import app.aaps.plugins.automation.actions.ActionSMBChange
+ import app.aaps.plugins.automation.actions.ActionSendSMS
++import app.aaps.plugins.automation.actions.ActionSetAutomationState
+ import app.aaps.plugins.automation.actions.ActionSettingsExport
+ import app.aaps.plugins.automation.actions.ActionSmoothingChange
+ import app.aaps.plugins.automation.actions.ActionStartTempTarget
+@@ -65,6 +66,7 @@ fun ActionEditor(
+             is ActionAlarm                -> ActionAlarmEditor(action, onChange)
+             is ActionNotification         -> ActionNotificationEditor(action, onChange)
+             is ActionSendSMS              -> ActionSendSMSEditor(action, onChange)
++            is ActionSetAutomationState   -> ActionSetAutomationStateEditor(action, onChange)
+             is ActionSettingsExport       -> ActionSettingsExportEditor(action, onChange)
+             is ActionCarePortalEvent      -> ActionCarePortalEventEditor(action, tick, onChange)
+             is ActionSMBChange            -> ActionSMBChangeEditor(action, tick, onChange)
+@@ -104,6 +106,20 @@ fun ActionNotificationEditor(a: ActionNotification, onChange: () -> Unit) {
+     )
+ }
+ 
++@Composable
++fun ActionSetAutomationStateEditor(a: ActionSetAutomationState, onChange: () -> Unit) {
++    InputStringEditor(
++        value = a.name.value,
++        onValueChange = { a.name.value = it; onChange() },
++        label = stringResource(AutomationStrings.state_name_label)
++    )
++    InputStringEditor(
++        value = a.value.value,
++        onValueChange = { a.value.value = it; onChange() },
++        label = stringResource(AutomationStrings.state_value_label)
++    )
++}
++
+ @Composable
+ fun ActionSendSMSEditor(a: ActionSendSMS, onChange: () -> Unit) {
+     InputStringEditor(
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ChooseActionSheet.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ChooseActionSheet.kt
+index da1f2712a9..131ece574a 100644
+--- a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ChooseActionSheet.kt
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/actions/ChooseActionSheet.kt
+@@ -38,6 +38,7 @@ import app.aaps.plugins.automation.actions.ActionRunAutotune
+ import app.aaps.plugins.automation.actions.ActionRunScene
+ import app.aaps.plugins.automation.actions.ActionSMBChange
+ import app.aaps.plugins.automation.actions.ActionSendSMS
++import app.aaps.plugins.automation.actions.ActionSetAutomationState
+ import app.aaps.plugins.automation.actions.ActionSettingsExport
+ import app.aaps.plugins.automation.actions.ActionSmoothingChange
+ import app.aaps.plugins.automation.actions.ActionStartTempTarget
+@@ -66,6 +67,7 @@ private fun actionCategoryOf(cls: KClass<*>): ActionCategory = when (cls) {
+     ActionSMBChange::class,
+     ActionSmoothingChange::class,
+     ActionStopProcessing::class,
++    ActionSetAutomationState::class,
+     ActionRunAutotune::class -> ActionCategory.Loop
+ 
+     ActionRunScene::class,
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
+index 7bb0484d11..57cee81082 100644
+--- a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/compose/triggers/TriggerEditors.kt
+@@ -31,6 +31,7 @@ import app.aaps.plugins.automation.elements.InputBg
+ import app.aaps.plugins.automation.elements.InputDelta.DeltaType
+ import app.aaps.plugins.automation.elements.InputPercent
+ import app.aaps.plugins.automation.triggers.Trigger
++import app.aaps.plugins.automation.triggers.TriggerAutomationState
+ import app.aaps.plugins.automation.triggers.TriggerAutosensValue
+ import app.aaps.plugins.automation.triggers.TriggerBTDevice
+ import app.aaps.plugins.automation.triggers.TriggerBg
+@@ -99,6 +100,7 @@ fun TriggerEditor(
+             is TriggerRecurringTime      -> TriggerRecurringTimeEditor(trigger, onChange)
+             is TriggerTimeRange          -> TriggerTimeRangeEditor(trigger, onChange)
+             is TriggerWifiSsid           -> TriggerWifiSsidEditor(trigger, onChange)
++            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange)
+             is TriggerBTDevice           -> TriggerBTDeviceEditor(trigger, bondedDevices, onChange)
+             is TriggerLocation           -> TriggerLocationEditor(trigger, onChange, tick, onUseCurrentLocation, onPickLocationFromMap)
+             is TriggerConnector          -> Text("Connector")
+@@ -518,6 +520,22 @@ fun TriggerTimeRangeEditor(t: TriggerTimeRange, onChange: () -> Unit) {
+     )
+ }
+ 
++@Composable
++fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit) {
++    InputStringEditor(
++        value = t.name.value,
++        onValueChange = { t.name.value = it; onChange() },
++        label = stringResource(AutomationStrings.state_name_label)
++    )
++    CompareRow(
++        comparator = t.comparator.value,
++        onComparatorChange = { t.comparator.value = it; onChange() },
++        label = ""
++    ) {
++        InputStringEditor(value = t.value.value, onValueChange = { t.value.value = it; onChange() }, label = stringResource(AutomationStrings.state_value_label))
++    }
++}
++
+ @Composable
+ fun TriggerWifiSsidEditor(t: TriggerWifiSsid, onChange: () -> Unit) = CompareRow(
+     comparator = t.comparator.value,
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+new file mode 100644
+index 0000000000..635bda93da
+--- /dev/null
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/triggers/TriggerAutomationState.kt
+@@ -0,0 +1,80 @@
++package app.aaps.plugins.automation.triggers
++
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.Flag
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.interfaces.navigation.ElementType
++import app.aaps.core.keys.interfaces.TextRef
++import app.aaps.core.utils.lenientStringOrNull
++import app.aaps.plugins.automation.AutomationStates
++import app.aaps.plugins.automation.AutomationStrings
++import app.aaps.plugins.automation.elements.Comparator
++import app.aaps.plugins.automation.elements.InputString
++import kotlinx.serialization.json.JsonObject
++import kotlinx.serialization.json.buildJsonObject
++import kotlinx.serialization.json.put
++
++/**
++ * True when an automation state holds [value] ("is equal"), or holds no value at all ("is not available"). The comparator
++ * has no "is not equal": for "Sport is not On", test the other value ("Sport is equal Off"). The other comparisons compare
++ * the text alphabetically. A state that holds no value matches nothing but "is not available".
++ */
++class TriggerAutomationState(deps: TriggerDeps) : Trigger(deps) {
++
++    var name = InputString()
++    var value = InputString()
++    var comparator = Comparator(rh, Comparator.Compare.IS_EQUAL)
++
++    private val states get() = AutomationStates(preferences)
++
++    constructor(deps: TriggerDeps, triggerAutomationState: TriggerAutomationState) : this(deps) {
++        name = InputString(triggerAutomationState.name.value)
++        value = InputString(triggerAutomationState.value.value)
++        comparator = Comparator(rh, triggerAutomationState.comparator.value)
++    }
++
++    fun setState(name: String, value: String): TriggerAutomationState {
++        this.name.value = name
++        this.value.value = value
++        return this
++    }
++
++    fun comparator(comparator: Comparator.Compare): TriggerAutomationState {
++        this.comparator.value = comparator
++        return this
++    }
++
++    override suspend fun shouldRun(): Boolean {
++        val current = states.current(name.value)
++        val ready =
++            if (comparator.value == Comparator.Compare.IS_NOT_AVAILABLE) current.isEmpty()
++            else current.isNotEmpty() && comparator.value.check(current, value.value.trim())
++        aapsLogger.debug(LTag.AUTOMATION, (if (ready) "Ready for execution: " else "NOT ready for execution: ") + friendlyDescription())
++        return ready
++    }
++
++    override fun dataJSON(): JsonObject =
++        buildJsonObject {
++            put("name", name.value)
++            put("value", value.value)
++            put("comparator", comparator.value.toString())
++        }
++
++    override fun fromJSON(data: String): Trigger {
++        val d = jsonOf(data)
++        name.value = d.lenientStringOrNull("name").orEmpty()
++        value.value = d.lenientStringOrNull("value").orEmpty()
++        comparator.value = d.lenientStringOrNull("comparator")?.let { Comparator.Compare.valueOf(it) } ?: Comparator.Compare.IS_EQUAL
++        return this
++    }
++
++    override fun friendlyName(): TextRef = AutomationStrings.automation_state_trigger
++
++    override fun friendlyDescription(): String =
++        rh.gs(AutomationStrings.automation_state_compared, name.value, rh.gs(comparator.value.stringRes), value.value)
++
++    override fun composeIcon() = Icons.Filled.Flag
++    override fun elementType() = ElementType.AUTOMATION
++
++    override fun duplicate(): Trigger = TriggerAutomationState(deps, this)
++}
+diff --git a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/triggers/TriggerFactory.kt b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/triggers/TriggerFactory.kt
+index 58271ec0fc..b6070d327d 100644
+--- a/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/triggers/TriggerFactory.kt
++++ b/plugins/automation/src/commonMain/kotlin/app/aaps/plugins/automation/triggers/TriggerFactory.kt
+@@ -41,6 +41,7 @@ class TriggerFactory(
+      * returning null at runtime.
+      */
+     private fun empty(type: String): Trigger? = when (type.substringAfterLast('.')) {
++        TriggerAutomationState::class.simpleName    -> TriggerAutomationState(deps)
+         TriggerAutosensValue::class.simpleName      -> TriggerAutosensValue(deps)
+         TriggerBg::class.simpleName                 -> TriggerBg(deps)
+         TriggerBolusAgo::class.simpleName           -> TriggerBolusAgo(deps)
+diff --git a/ui/src/androidMain/res/values/strings.xml b/ui/src/androidMain/res/values/strings.xml
+index 246d7c1ffa..62482f6319 100644
+--- a/ui/src/androidMain/res/values/strings.xml
++++ b/ui/src/androidMain/res/values/strings.xml
+@@ -361,4 +361,5 @@
+     <string name="cal_precheck_mark_sensor_change">Mark sensor change</string>
+     <string name="graph_therapy_event_bg_with_note" comment="Shown when the user taps a BG check in the overview graph. %1$s = glucose with its unit, %2$s = the note the user wrote. Example: 6.1 mmol/L, before lunch">%1$s, %2$s</string>
+ 
++    <string name="overview_automation_state" comment="%1$s=name of an automation state, %2$s=the value it holds now. Example: Sport: On">%1$s: %2$s</string>
+ </resources>
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/AutomationStatesChips.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/AutomationStatesChips.kt
+new file mode 100644
+index 0000000000..f61253270a
+--- /dev/null
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/AutomationStatesChips.kt
+@@ -0,0 +1,65 @@
++package app.aaps.ui.compose.overview
++
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.ExperimentalLayoutApi
++import androidx.compose.foundation.layout.FlowRow
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.material.icons.Icons
++import androidx.compose.material.icons.filled.Flag
++import androidx.compose.material3.AssistChip
++import androidx.compose.material3.Icon
++import androidx.compose.material3.Text
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.produceState
++import androidx.compose.ui.Modifier
++import app.aaps.core.interfaces.navigation.ElementType
++import app.aaps.core.keys.StringNonKey
++import app.aaps.core.ui.compose.AapsSpacing
++import app.aaps.core.ui.compose.LocalPreferences
++import app.aaps.core.ui.compose.navigation.NavigationRequest
++import app.aaps.core.ui.compose.stringResource
++import app.aaps.ui.UiStrings
++import kotlinx.coroutines.delay
++import kotlinx.serialization.json.Json
++import kotlinx.serialization.json.JsonObject
++import kotlinx.serialization.json.JsonPrimitive
++
++/** How often the chips read the states again while the overview is open */
++private const val STATES_REFRESH_MS = 30_000L
++
++/**
++ * One chip for each automation state that holds a value, as "name: value". A tap opens the Automation states dialog.
++ * Nothing is shown while no state holds a value.
++ *
++ * Read again every 30 seconds, and when the overview opens again, so a change made by a rule or in the dialog shows.
++ */
++@OptIn(ExperimentalLayoutApi::class)
++@Composable
++fun AutomationStatesChips(onNavigate: (NavigationRequest) -> Unit, modifier: Modifier = Modifier) {
++    val preferences = LocalPreferences.current
++    val states by produceState(initialValue = emptyList<Pair<String, String>>(), preferences) {
++        while (true) {
++            value = automationStatesWithValue(preferences.get(StringNonKey.AutomationCurrentStates))
++            delay(STATES_REFRESH_MS)
++        }
++    }
++    if (states.isEmpty()) return
++    FlowRow(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
++        for ((name, value) in states) {
++            AssistChip(
++                onClick = { onNavigate(NavigationRequest.Element(ElementType.AUTOMATION_STATES)) },
++                label = { Text(stringResource(UiStrings.overview_automation_state, name, value)) },
++                leadingIcon = { Icon(Icons.Filled.Flag, contentDescription = null) }
++            )
++        }
++    }
++}
++
++/** The states that hold a value, in name order. Broken saved text gives none. */
++internal fun automationStatesWithValue(currentJson: String): List<Pair<String, String>> {
++    val json = runCatching { Json.parseToJsonElement(currentJson) as? JsonObject }.getOrNull() ?: return emptyList()
++    return json.mapNotNull { (name, value) ->
++        (value as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotEmpty() }?.let { name to it }
++    }.sortedBy { it.first }
++}
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewChipsColumn.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewChipsColumn.kt
+index 2584a173c3..39b7bedb86 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewChipsColumn.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewChipsColumn.kt
+@@ -134,6 +134,7 @@ fun OverviewChipsColumn(
+             state = sensitivityUiState,
+             modifier = Modifier.fillMaxWidth()
+         )
++        AutomationStatesChips(onNavigate = onNavigate)
+     }
+ }
+ 
