@@ -458,6 +458,9 @@ fun MainScreen(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = scaffoldPadding.calculateTopPadding())
+                            // Beside the landscape rail, as the content is: the rail is drawn on top, and it hid the left of the
+                            // stats summary (its ring) (2026-10-29)
+                            .padding(start = if (landscapeNavigation) AapsSpacing.navigationRailWidth else 0.dp)
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {

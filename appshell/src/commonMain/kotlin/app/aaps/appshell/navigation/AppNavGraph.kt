@@ -109,6 +109,7 @@ import app.aaps.ui.compose.scenes.SceneListScreen
 import app.aaps.ui.compose.scenes.wizard.SceneWizardScreen
 import app.aaps.ui.compose.siteRotationDialog.SiteRotationManagementScreen
 import app.aaps.ui.compose.siteRotationDialog.viewModels.SiteRotationManagementViewModel
+import app.aaps.ui.compose.stats.AgpStatsRange
 import app.aaps.ui.compose.stats.StatsScreen
 import app.aaps.ui.compose.stats.viewmodels.StatsViewModel
 import app.aaps.ui.compose.tempBasalDialog.TempBasalDialogScreen
@@ -531,6 +532,20 @@ fun NavGraphBuilder.appNavGraph(
     }
 
     composable(AppRoute.Stats.route) {
+        StatsScreen(
+            viewModel = statsViewModel,
+            onNavigateBack = { navController.safePopBackStack() }
+        )
+    }
+
+    // From the overview stats summary (2026-10-29): the same screen, opened on the Glucose tab for the summary's days. The other
+    // tabs are a swipe or a tap away.
+    composable(
+        route = AppRoute.StatsGlucose.route,
+        arguments = listOf(navArgument("days") { type = NavType.IntType })
+    ) { entry ->
+        val days = entry.intArg("days", 7)
+        remember(entry) { statsViewModel.showGlucose(if (days >= 30) AgpStatsRange.DAYS_30 else AgpStatsRange.DAYS_7) }
         StatsScreen(
             viewModel = statsViewModel,
             onNavigateBack = { navController.safePopBackStack() }

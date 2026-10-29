@@ -8,6 +8,9 @@ sealed class NavigationRequest {
     data class QuickWizard(val guid: String) : NavigationRequest()
     data class Plugin(val className: String) : NavigationRequest()
     data class PluginPreferences(val pluginKey: String) : NavigationRequest()
+
+    /** Statistics opened on its Glucose tab for [days] (7 or 30), from the overview stats summary (2026-10-29) */
+    data class StatsGlucose(val days: Int) : NavigationRequest()
 }
 
 /**

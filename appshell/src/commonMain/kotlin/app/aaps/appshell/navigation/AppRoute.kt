@@ -43,6 +43,11 @@ sealed class AppRoute(val route: String) {
     }
 
     data object Stats : AppRoute("stats")
+    /** Statistics on the Glucose tab, for 7 or 30 days: what a tap on the overview stats summary opens */
+    data object StatsGlucose : AppRoute("stats_glucose/{days}") {
+
+        fun createRoute(days: Int) = "stats_glucose/$days"
+    }
     data object ProfileHelper : AppRoute("profile_helper")
     data object HistoryBrowser : AppRoute("history_browser")
     data object Preferences : AppRoute("preferences")

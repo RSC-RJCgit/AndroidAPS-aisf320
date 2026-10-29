@@ -1,12 +1,14 @@
 package app.aaps.ui.compose.overview
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -18,7 +20,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,15 +46,22 @@ data class OverviewStatsSummary(
     val failed: Boolean = false
 )
 
-/** Installs only this overview's open summary and removes it when the overview leaves the screen. */
+/**
+ * Installs only this overview's open summary and removes it when the overview leaves the screen.
+ *
+ * @param onOpenStats a tap on the ring: Statistics on its Glucose tab for these days, as LoopFollow does
+ */
 @Composable
-fun OverviewStatsPopupHost(graphViewModel: GraphViewModel) {
+fun OverviewStatsPopupHost(graphViewModel: GraphViewModel, onOpenStats: (days: Int) -> Unit) {
     val host = LocalTopBarPillHost.current ?: return
     val summary by graphViewModel.statsSummary.collectAsStateWithLifecycle()
     summary?.let { current ->
         DisposableEffect(host, current, graphViewModel) {
             val content: @Composable () -> Unit = {
-                OverviewStatsPopup(current, graphViewModel::openStatsSummary, graphViewModel::closeStatsSummary)
+                OverviewStatsPopup(current, graphViewModel::openStatsSummary, graphViewModel::closeStatsSummary) {
+                    graphViewModel.closeStatsSummary()
+                    onOpenStats(current.days)
+                }
             }
             host.summaryContent = content
             onDispose { if (host.summaryContent === content) host.summaryContent = null }
@@ -59,7 +70,7 @@ fun OverviewStatsPopupHost(graphViewModel: GraphViewModel) {
 }
 
 @Composable
-private fun OverviewStatsPopup(summary: OverviewStatsSummary, onSelectDays: (Int) -> Unit, onClose: () -> Unit) {
+private fun OverviewStatsPopup(summary: OverviewStatsSummary, onSelectDays: (Int) -> Unit, onClose: () -> Unit, onOpenStats: () -> Unit) {
     val dateUtil = LocalDateUtil.current
     Surface(
         shape = RoundedCornerShape(AapsSpacing.extraLarge),
@@ -89,22 +100,29 @@ private fun OverviewStatsPopup(summary: OverviewStatsSummary, onSelectDays: (Int
                 summary.failed -> Text(stringResource(UiStrings.agp_load_failed), color = MaterialTheme.colorScheme.error)
                 data == null -> CircularProgressIndicator(modifier = Modifier.size(AapsSpacing.chipIconSize))
                 data.readingCount == 0 -> Text(stringResource(UiStrings.agp_no_data), style = MaterialTheme.typography.bodySmall)
-                else -> OverviewStatsValues(data)
+                else -> OverviewStatsValues(data, onOpenStats)
             }
         }
     }
 }
 
 @Composable
-private fun OverviewStatsValues(data: AgpStatsData) {
+private fun OverviewStatsValues(data: AgpStatsData, onOpenStats: () -> Unit) {
     val profileUtil = LocalProfileUtil.current
     val colors = AapsTheme.generalColors
     val low = data.tir.veryLow + data.tir.low
     val high = data.tir.high + data.tir.veryHigh
     val unit = stringResource(if (profileUtil.units == GlucoseUnit.MGDL) CoreUiStrings.mgdl else CoreUiStrings.mmol)
     val description = stringResource(UiStrings.agp_tir_chart)
+    val openLabel = stringResource(CoreUiStrings.statistics)
     Row(horizontalArrangement = Arrangement.spacedBy(AapsSpacing.medium), verticalAlignment = Alignment.CenterVertically) {
-        Canvas(modifier = Modifier.size(AapsSpacing.navigationRailWidth).semantics { contentDescription = description }) {
+        Canvas(
+            modifier = Modifier
+                .size(AapsSpacing.navigationRailWidth)
+                .clip(CircleShape)
+                .clickable(onClickLabel = openLabel, role = Role.Button, onClick = onOpenStats)
+                .semantics { contentDescription = description }
+        ) {
             var start = -90f
             listOf(low to colors.bgLow, data.tir.inRange to colors.bgInRange, high to colors.bgHigh).forEach { (percentage, color) ->
                 val sweep = (percentage.coerceIn(0.0, 100.0) * 3.6).toFloat()

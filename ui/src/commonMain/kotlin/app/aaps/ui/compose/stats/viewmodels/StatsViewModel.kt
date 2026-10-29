@@ -132,6 +132,16 @@ class StatsViewModel(
         loadTab(uiState.value.selectedTab)
     }
 
+    /**
+     * Opens on the Glucose tab for [range], before the screen is shown (2026-10-29, from the overview stats summary). The
+     * numbers are calculated when the screen starts, as for any tab.
+     */
+    fun showGlucose(range: AgpStatsRange) {
+        preferences.put(StringNonKey.StatsTab, StatsTab.GLUCOSE.name)
+        _uiState.update { it.copy(selectedTab = StatsTab.GLUCOSE, agpRange = range) }
+        loadedTabs.remove(StatsTab.GLUCOSE)
+    }
+
     /** The user opened [tab]. It is remembered, so the screen opens on it next time. */
     fun selectTab(tab: StatsTab) {
         if (tab != uiState.value.selectedTab) {
