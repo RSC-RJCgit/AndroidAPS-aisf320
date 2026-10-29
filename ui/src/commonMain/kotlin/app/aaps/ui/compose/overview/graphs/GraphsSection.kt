@@ -1258,7 +1258,8 @@ fun GraphsSection(
         // last entry of the shared list above.
         if (showGraph5) {
             var editingGraph5 by remember { mutableStateOf(false) }
-            Box {
+            // Press and hold shows the same pill and time line as the other graphs (2026-10-29, per explicit request)
+            Box(modifier = Modifier.graphInspectTouch(inspect)) {
                 BgGraphCompose(
                     viewModel = graphViewModel,
                     automaticCleanGraph = automaticCleanGraph,
@@ -1270,6 +1271,7 @@ fun GraphsSection(
                     derivedTimeRange = derivedTimeRange,
                     nowTimestamp = nowTimestamp,
                     visibleTimeRange = bgVisibleTimeRange,
+                    inspect = inspect,
                     topBandLines = true,
                     modifier = Modifier
                         .fillMaxWidth()

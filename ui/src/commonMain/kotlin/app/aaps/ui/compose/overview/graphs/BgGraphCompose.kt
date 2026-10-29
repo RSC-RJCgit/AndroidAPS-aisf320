@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Size
@@ -175,6 +176,36 @@ private val SMB_BAND_COLOR = Color(0xFFFF40C0)
 /** The steps arrow (2026-10-29): what step counts took off an SMB, mirrored on the SMB's baseline arrow. */
 private val STEP_CUT_ARROW_COLOR = Color(0xFFFF2020)
 private val PROFILE_BASAL_BAND_COLOR = Color(0xFFFFA040)
+
+/** Graph 5 top band tap (2026-10-29): a line further than this from the tapped time is left out of the popup. */
+private const val TOP_BAND_TAP_MAX_MS = 5 * 60_000L
+
+/** Graph 5 (2026-10-29): updated while drawing, so a tap in the top band can be turned into a time on the current scroll and zoom. */
+private class TopBandTapTarget : Decoration {
+    private var bounds: Rect? = null
+    private var bandBottom = 0f
+    private var originX = 0f
+    private var minX = 0.0
+    private var minutesPerPixel = 0.0
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            bounds = layerBounds
+            // The band is the top BG_TOP_BAND_FRACTION of the BG axis
+            bandBottom = layerBounds.top + layerBounds.height * BG_TOP_BAND_FRACTION.toFloat()
+            originX = layerBounds.left + layerDimensions.startPadding - scroll
+            minX = ranges.minX
+            minutesPerPixel = if (layerDimensions.xSpacing > 0f) ranges.xStep / layerDimensions.xSpacing else 0.0
+        }
+    }
+
+    /** The time under [position], or null when it is not in the top band. */
+    fun timestampAt(position: Offset, minTimestamp: Long): Long? {
+        val plot = bounds ?: return null
+        if (position !in plot || position.y > bandBottom || minutesPerPixel <= 0.0) return null
+        return minTimestamp + ((minX + (position.x - originX) * minutesPerPixel) * 60_000.0).toLong()
+    }
+}
 // Top strip of the main graph: the ISF line has a colour per field, the steps line is orange, so the DR line and the target offset line get their own.
 private val STATUS_RATIO_COLOR = Color(0xFF4FC3F7)
 private val STATUS_TARGET_COLOR = Color(0xFF66BB6A)
@@ -260,6 +291,9 @@ fun BgGraphCompose(
     var selectedBg by remember { mutableStateOf<BgDataPoint?>(null) }
     var selectedBolus by remember { mutableStateOf<BolusGraphPoint?>(null) }
     var selectedSmb by remember { mutableStateOf<BolusGraphPoint?>(null) }
+    // Graph 5: the time tapped in the top band, for the popup with the four lines' values
+    var selectedBandTime by remember { mutableStateOf<Long?>(null) }
+    val topBandTap = remember { TopBandTapTarget() }
     var selectedCalculation by remember { mutableStateOf<BCR?>(null) }
     var calculationLoaded by remember { mutableStateOf(false) }
     LaunchedEffect(selectedBolus) {
@@ -1232,6 +1266,8 @@ fun BgGraphCompose(
     val tapReadings = bgReadings + bucketedData +
         (if (showRaw) seriesRegistry[SERIES_RAW].orEmpty() else emptyList()) +
         (if (showUkf) seriesRegistry[SERIES_UKF].orEmpty() else emptyList())
+    // The tap handler is set up once, so it reads the current time range through this
+    val latestMinTimestamp by rememberUpdatedState(minTimestamp)
     val tapReporter = remember(tapReadings, bgReadings, treatments, minTimestamp, lowMark) {
         GraphPointTapReporter(
             tapTargets, tapReadings, bgReadings, treatments.boluses.filter { it.bolusType == BolusType.NORMAL }, minTimestamp,
@@ -1270,8 +1306,9 @@ fun BgGraphCompose(
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
     // Upstream's clock change mark (2026-10-27 merge): a dashed line and a clock where the UTC offset of the readings changes
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true)
-    val decorations = remember(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter) {
-        listOf(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) + listOfNotNull(basalPeakLabel, lastBgMark, inspectLine, geometryReporter)
+    val decorations = remember(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
+        listOf(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) +
+            listOfNotNull(basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
 
     // =========================================================================
@@ -1401,7 +1438,7 @@ fun BgGraphCompose(
             markerController = inspect?.controller ?: defaultMarkerController
         ),
         modelProducer = modelProducer,
-        modifier = Modifier.fillMaxSize().pointerInput(tapTargets) {
+        modifier = Modifier.fillMaxSize().pointerInput(tapTargets, topBandLines) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                 var moved = false
@@ -1411,6 +1448,7 @@ fun BgGraphCompose(
                         moved = true
                         selectedBg = null
                         selectedSmb = null
+                        selectedBandTime = null
                     }
                     if (event.changes.none { it.pressed }) {
                         val up = event.changes.firstOrNull { it.id == down.id }
@@ -1422,7 +1460,10 @@ fun BgGraphCompose(
                                 calculationLoaded = false
                                 selectedBolus = bolus
                             }
-                            if (hit != null) up.consume()
+                            // Graph 5: a tap in the top band that hit nothing else shows the four lines at that time
+                            val bandTime = if (hit == null && topBandLines) topBandTap.timestampAt(up.position, latestMinTimestamp) else null
+                            selectedBandTime = bandTime
+                            if (hit != null || bandTime != null) up.consume()
                         }
                         break
                     }
@@ -1490,6 +1531,23 @@ fun BgGraphCompose(
                 val range = line.range
                 if (line.points.size >= 2 && range != null) add("$name ${range.label()}" to color)
             }
+        }
+        // Tap on the top band (2026-10-29, per explicit request): each line's value and time at the loop nearest the tap,
+        // in the line's colour. The real value, not the lane position. A line with no loop within 5 minutes is left out.
+        selectedBandTime?.let { time ->
+            val bandNames = listOf("SMBdel" to SMB_BAND_COLOR, "aISFwt" to acceColor, "ppISFwt" to ppColor, "profBasal" to PROFILE_BASAL_BAND_COLOR)
+            val rows = bandNames.mapIndexedNotNull { lane, (name, color) ->
+                topBandLines5[lane].points.minByOrNull { abs(it.first - time) }?.takeIf { abs(it.first - time) <= TOP_BAND_TAP_MAX_MS }?.let { (at, value) ->
+                    val shown = if (lane == 3) stringResource(CoreUiStrings.pump_base_basal_rate, value) else decimalFormatter.to2Decimal(value)
+                    "$name $shown  ${dateUtil.dateAndTimeString(at)}" to color
+                }
+            }
+            if (rows.isNotEmpty()) AlertDialog(
+                onDismissRequest = { selectedBandTime = null },
+                title = { Text(stringResource(CoreUiStrings.graph_number, 5)) },
+                text = { Column { rows.forEach { (text, color) -> Text(text, color = color) } } },
+                confirmButton = { TextButton(onClick = { selectedBandTime = null }) { Text(stringResource(CoreUiStrings.close)) } },
+            )
         }
         // Two rows of two (with the ranges the names no longer fit on one row of a phone).
         Column(modifier = Modifier.align(Alignment.TopStart).padding(start = 36.dp, top = 2.dp)) {
