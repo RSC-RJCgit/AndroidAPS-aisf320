@@ -26,6 +26,7 @@ import app.aaps.core.nssdk.localmodel.treatment.NSProfileSwitch
 import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryBasal
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.WorkOutcome
+import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import app.aaps.plugins.sync.nsclientV3.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsclientV3.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
@@ -239,7 +240,7 @@ class LoadSecondaryTreatmentsRunner(
         if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) return
         try {
             val from = dateUtil.now() - LiveSteps.MAX_AGE_MS
-            val statuses = client.getDeviceStatusModifiedSince(from)
+            val statuses = client.getDeviceStatusModifiedSince(from, NSClientV3Plugin.RECORDS_TO_LOAD)
             val outcome = nsDeviceStatusHandler.takeLiveSteps(statuses)
             // Always logged (also when nothing came back), so a missing step import can be traced to the step that fails.
             nsClientRepository.addLog("◄ SEC-NS", "Step import: ${statuses.size} device status rows in the last 20 min; $outcome")
