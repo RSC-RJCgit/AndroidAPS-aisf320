@@ -147,7 +147,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
 
         sut.onDataCreateUpdate(envelope("devicestatus", doc))
 
-        verify(nsDeviceStatusHandler).handleNewData(any(), eq(true))
+        verify(nsDeviceStatusHandler).handleNewData(any())
     }
 
     /**
@@ -158,7 +158,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
     fun `a devicestatus that cannot be decoded is dropped, not thrown`() = runTest {
         sut.onDataCreateUpdate(envelope("devicestatus", """{"identifier":"d1","srvModified":1000,"pump":"broken"}"""))
 
-        verify(nsDeviceStatusHandler, never()).handleNewData(any(), any())
+        verify(nsDeviceStatusHandler, never()).handleNewData(any())
     }
 
     /** The same for every collection that is decoded into a model, not only device status. */
