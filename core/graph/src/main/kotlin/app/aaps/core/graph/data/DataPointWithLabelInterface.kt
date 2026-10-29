@@ -28,6 +28,11 @@ interface DataPointWithLabelInterface : DataPointInterface {
     // overrides this, drawn at the bottom of the baseline arrowhead's shaft when non-empty.
     val fastRiseLabel: String get() = ""
 
+    // Shape.SMB steps arrow (2026-10-29): 0 = none. Otherwise the shaft length, in the same units as
+    // shaftLengthMultiplier, of a red arrow mirrored tip to tip on the baseline arrowhead: the insulin step
+    // counts took off this SMB. Only BolusDataPoint overrides this.
+    val stepCutShaftMultiplier: Int get() = 0
+
     // Shape.BOLUS only: true when this bolus has a paired delayed/extended portion (dual-wave/combo,
     // e.g. a 50% now / 50% extended split) — drawn yellow instead of the normal bolus color.
     val hasDelayedComponent: Boolean get() = false

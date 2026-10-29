@@ -106,6 +106,15 @@ class DetermineBasalAutoISF @Inject constructor(
     // note for the reason, set by the plugin each cycle
     var smbCap30ForCap: Double = 2.1
     var smbCap30Note: String = ""
+    // True when smbCap30ForCap is the halved walking cap (for the steps arrow)
+    var smbCap30Walking: Boolean = false
+
+    // Steps arrow (2026-10-29, per explicit request): how much more insulin the loop would have asked for without steps, from
+    // the step activity ratio and the dura boost halved while walking (1.0 = no step effect), and 0.5 when steps halved the
+    // Tier 3 UAM boost scale (else 1.0). Set by the plugin each cycle. determine_basal adds the direct step cuts and writes
+    // the total as "StepCut=0.12" after "Microbolusing"; the main graph draws it as a red arrow under the SMB.
+    var stepInsulinMultiplier: Double = 1.0
+    var tier3WalkingFactor: Double = 1.0
 
     // Switch for the recent-low rebound guard ("LoReb": trims SMB after a recent low), from the setting
     // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
@@ -1547,6 +1556,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 }
                 val roundSMBTo = 1 / profile.bolus_increment
                 var microBolus = Math.floor(Math.min(insulinReq / 2, maxBolus) * roundSMBTo) / roundSMBTo
+                // Insulin step-count rules took off this SMB, for the steps arrow (see stepInsulinMultiplier)
+                var stepCutDirect = 0.0
                 if (autoIsfMode) {
                     // Overnight delivery brake: from 00:00 inclusive until 08:00 exclusive, reduce
                     // the effective SMB delivery ratio by 0.03. This is a ratio adjustment, not a
@@ -1813,6 +1824,17 @@ class DetermineBasalAutoISF @Inject constructor(
                             consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
                             rT.reason.append("UAM Boost candidate ${round(preBoostMicroBolus, 2)} -> ${round(microBolus, 2)}U; IOB ceiling ${round(boostMaxIOBPercent, 1)}%=${round(boostMaxIOB, 2)}U; ")
                         }
+                        if (tier3WalkingFactor > 0.0 && tier3WalkingFactor < 1.0) {
+                            // Steps arrow: the same candidate at the scale before steps halved it
+                            val stepFreeScale = boost_scale / tier3WalkingFactor
+                            val altBoostReq = min(stepFreeScale * basal, boost_max)
+                            val altBoostedUsual = min(preBoostMicroBolus * stepFreeScale, boost_max)
+                            val altBasalScale = if (includeMultipliedUsual) min(1.2 * altBoostReq, boost_max) else altBoostReq
+                            val altUncapped = if (includeMultipliedUsual) max(altBasalScale, max(altBoostedUsual, baselineRatioCandidate))
+                            else max(altBasalScale, baselineRatioCandidate)
+                            val altCandidate = Math.floor((if (t3Unrestricted) altUncapped else min(altUncapped, boostIobAllowance)) * roundSMBTo) / roundSMBTo
+                            stepCutDirect += (altCandidate - max(roundedTier3Candidate, preBoostMicroBolus)).coerceAtLeast(0.0)
+                        }
                         // Fast-carb rebound protection (ported 2026-08-24 from tier3BoostReferenceComparison(),
                         // recomputed here since fastCarbRebound/fastCarbScale are locals of that function).
                         // Was observation-only until Level 1 was activated 2026-09-08 at explicit request:
@@ -2023,6 +2045,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${round(IOB, 2)} ")
                         rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.714 shower = ${round(microBolus - microBolus1, 2)} diff = ")
                     }
+                    stepCutDirect += (microBolus1 - microBolus.coerceAtLeast(0.0)).coerceAtLeast(0.0)
                 } else if (((nowHour >= 5) && (nowHour < 10)) &&
                     bg <= 8.0 * 18 &&
                     (Steps60M ?: 0) < 100 &&
@@ -2043,6 +2066,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; iobThUser ${iobThUser} IOB ${round(IOB, 2)} ")
                         rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.716 shower = ${round(microBolus - microBolus1, 2)} diff  ")
                     }
+                    stepCutDirect += (microBolus1 - microBolus.coerceAtLeast(0.0)).coerceAtLeast(0.0)
                     rT.reason.append(" CHANGED SIZE for shower time ")
 // =====================================================
 // LOW IOB ACCELERATION GLITCH THROTTLE
@@ -2304,6 +2328,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         (Steps60M ?: 0) < 10 &&
                         COB <= 25
                     ) {
+                        val twilightBefore = microBolus
                         if (microBolus > 0.02 * profile.max_iob) {
                             microBolus = 0.02 * profile.max_iob
                             rT.reason.append("nowHour ${nowHour} ")
@@ -2315,6 +2340,7 @@ class DetermineBasalAutoISF @Inject constructor(
                             rT.reason.append("microBolus = iobTHvirtualHARDshower - IOB ; ${round(iobTHvirtualHARDshower, 2)} IOB ${round(IOB, 2)} ")
                             rT.reason.append("CHANGED SIZE 0.7512 fast rise 0.7512 microBolus + IOB ov shower hard cap microBolus = ${round(microBolus, 2)} ")
                         }
+                        stepCutDirect += (twilightBefore - microBolus.coerceAtLeast(0.0)).coerceAtLeast(0.0)
                         rT.reason.append(" CHANGED SIZE SMB other hours ")
 // =====================================================
 // DEFAULT: NO SMB SIZE CHANGE
@@ -2331,6 +2357,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         (Steps60M ?: 0) > 800 ||
                         (Steps180M ?: 0) > 1500)
                 ) {
+                    stepCutDirect += microBolus * 0.30
                     microBolus = microBolus * 0.70
                     rT.reason.append("microBolus = microBolus * 0.7 extra; microBolus = ${round(microBolus, 2)} ")
                 }
@@ -2360,6 +2387,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 ) {
                     val hp2Now = profile.hypo_prediction_2
                     if (hp2Now != null && hp2Now <= 6.5) {
+                        stepCutDirect += microBolus * 0.25
                         microBolus = microBolus * 0.75
                         rT.reason.append("microBolus = microBolus * 0.75 low-steps fast-rise extra cut (HP2=${round(hp2Now, 2)}); microBolus = ${round(microBolus, 2)} ")
                     }
@@ -2517,6 +2545,11 @@ class DetermineBasalAutoISF @Inject constructor(
                 if (microBolus > smbAllowance30Min) {
                     val before30MinCap = microBolus
                     microBolus = smbAllowance30Min
+                    if (smbCap30Walking) {
+                        // Steps arrow: what the walking half of the cap held back
+                        val unhalvedAllowance = (smbCap30Min * 2.0 - smbSum30Min - bolusSum30ForCap).coerceAtLeast(0.0)
+                        stepCutDirect += (min(before30MinCap, unhalvedAllowance) - microBolus).coerceAtLeast(0.0)
+                    }
                     val bolusText = if (bolusSum30ForCap > 0.0) " + ${round(bolusSum30ForCap, 2)}U bolus" else ""
                     rT.reason.append(" 30min SMB cap: ${round(before30MinCap, 2)} -> ${round(microBolus, 2)} (last30min ${round(smbSum30Min, 2)}U$bolusText of ${round(smbCap30Min, 2)}U cap$smbCap30Note) ")
                     consoleError.add("Cumulative SMB cap: ${round(smbSum30Min, 2)}U$bolusText already delivered in last 30min vs ${round(smbCap30Min, 2)}U cap -> microBolus ${round(before30MinCap, 2)} trimmed to ${round(microBolus, 2)} ")
@@ -2654,6 +2687,10 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (microBolus > 0) {
                         rT.units = microBolus
                         rT.reason.append("Microbolusing ${round(microBolus, 2)}U. ")
+                        // Steps arrow (2026-10-29): read back from the loop result by the main graph. The multiplier part
+                        // is an estimate: once caps apply, the SMB does not follow insulinReq exactly.
+                        val stepCut = stepCutDirect + microBolus * (stepInsulinMultiplier - 1.0).coerceAtLeast(0.0)
+                        if (stepCut >= 0.01) rT.reason.append("StepCut=${round(stepCut, 2)} ")
                         if (uamBoostEnhancedCandidateThisCycle) {
                             uamBoostFiredThisCycle = true
                             rT.reason.append("Tier 3 UAM Boost survived final safety modifiers and reached delivery output. ")

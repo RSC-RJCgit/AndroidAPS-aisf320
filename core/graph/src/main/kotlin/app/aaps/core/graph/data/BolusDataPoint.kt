@@ -23,6 +23,10 @@ class BolusDataPoint(
     // branch fired for this SMB in DetermineBasalAutoISF; empty otherwise.
     override var fastRiseLabel: String = ""
 
+    // Set externally (see PrepareTreatmentsDataWorker.kt) from the "StepCut=" the loop wrote for this SMB
+    // (DetermineBasalAutoISF, 2026-10-29): the insulin step counts took off it. 0 when none.
+    var stepCut: Double = 0.0
+
     // Set externally (see PrepareTreatmentsDataWorker.kt) when a matching ExtendedBolus was found near
     // this bolus's timestamp (dual-wave/combo split).
     override var hasDelayedComponent: Boolean = false
@@ -50,6 +54,11 @@ class BolusDataPoint(
     override val shaftLengthMultiplier: Int
         get() = if (data.type == BS.Type.SMB) 1 + (((data.amount - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0))
         else 1
+
+    // Same scale as shaftLengthMultiplier; 0 (no red arrow) under 0.01U.
+    override val stepCutShaftMultiplier: Int
+        get() = if (data.type == BS.Type.SMB && stepCut >= 0.01) 1 + (((stepCut - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0))
+        else 0
 
     override fun color(context: Context?): Int =
         if (data.type == BS.Type.SMB && colorOverride != 0) colorOverride

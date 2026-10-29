@@ -104,6 +104,8 @@ class PrepareTreatmentsDataWorker(
         // Actual reason text is "<threshold>  = microBolus  * <factor> ; microBolus = <result>"
         // (the token before "=" is a threshold number, not the word "microBolus" again).
         val fastRiseRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
+        // Steps arrow (2026-10-29): "StepCut=0.12" after "Microbolusing" in the SMB's own loop result
+        val stepCutRegex = Regex("""\bStepCut=([0-9]+(?:\.[0-9]+)?)""")
         val bolusDataPoints = persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
@@ -140,6 +142,12 @@ class PrepareTreatmentsDataWorker(
                         if (factor != null) dp.fastRiseLabel = Math.round(factor * 10).toString()
                     }
                 }
+                // Its own loop result only: the newest one from 3 min before the SMB to 30 s after it, so a neighbouring
+                // loop's StepCut is never borrowed (the 15 min nearest above is too wide for that).
+                val ownResult = apsResultsList
+                    .filter { r -> r.date in (dp.x.toLong() - T.mins(3).msecs())..(dp.x.toLong() + 30_000L) }
+                    .maxByOrNull { r -> r.date }
+                dp.stepCut = ownResult?.let { r -> stepCutRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull() } ?: 0.0
             }
             filteredTreatments.add(dp)
         }

@@ -24,6 +24,9 @@ import java.util.Locale
 /** A 0.00 bolus arrow is this much larger than the SMB arrow at the BG dot. */
 private const val ZERO_BOLUS_ARROW_SCALE = 1.5f
 
+/** The steps arrow (2026-10-29): what step counts took off an SMB, mirrored on its baseline arrowhead. */
+private val STEP_CUT_ARROW_COLOR = Color.rgb(255, 32, 32)
+
 /**
  * Series that plots the data as points.
  * The points can be different shapes or a
@@ -399,6 +402,26 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     val baseShaftEnd = baseTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier
                     canvas.drawLine(endX, baseTriBase, endX, baseShaftEnd, mPaint)
+                    // Steps arrow (2026-10-29, per explicit request): red, mirrored tip to tip on the baseline arrowhead,
+                    // rising into the green band. Its shaft is the insulin step counts took off this SMB, same scale.
+                    val stepCutUnits = value.stepCutShaftMultiplier
+                    if (stepCutUnits > 0) {
+                        val savedColor = mPaint.color
+                        mPaint.color = STEP_CUT_ARROW_COLOR
+                        mPaint.strokeWidth = 0f
+                        mPaint.style = Paint.Style.FILL_AND_STROKE
+                        val stepTip = endY - scaledPxSize
+                        val stepBase = stepTip - scaledPxSize * 1.67f
+                        drawArrows(arrayOf(
+                            Point(endX.toInt(), stepTip.toInt()),
+                            Point((endX + scaledPxSize).toInt(), stepBase.toInt()),
+                            Point((endX - scaledPxSize).toInt(), stepBase.toInt())
+                        ), canvas, mPaint)
+                        mPaint.strokeWidth = if (stepCutUnits >= 4) 4f else 2f
+                        mPaint.style = Paint.Style.STROKE
+                        canvas.drawLine(endX, stepBase, endX, stepBase - scaledTextSize * 0.25f * stepCutUnits, mPaint)
+                        mPaint.color = savedColor
+                    }
                     // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
                     // Shaft here is the original fixed (non-dose-scaled) length; dose scaling lives on the
                     // baseline arrowhead's shaft above instead. Toggled by showBglArrowheads (long-press
