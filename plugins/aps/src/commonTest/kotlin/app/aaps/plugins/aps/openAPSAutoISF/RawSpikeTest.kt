@@ -65,4 +65,25 @@ class RawSpikeTest {
         assertEquals("NewDay3", oldSensorTier(sensorDays = 3.4, podHours = 20.0, slopeBase = 0.75, offsetBase = 1.4)?.name)
         assertNull(oldSensorTier(sensorDays = 4.1, podHours = 20.0, slopeBase = 0.75, offsetBase = 1.4))
     }
+
+    /** Already falling, a drop of 1.0 in 5 min, then back up 1.6 */
+    @Test
+    fun aDropDuringAFallThatBouncesBackIsADip() {
+        val dip = assertNotNull(findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.6)))
+        assertEquals(10 * min, dip.bottomAt)
+    }
+
+    @Test
+    fun aDropOutOfAFlatStretchOrWithoutABounceIsNotADip() {
+        assertNull(findRawDip(series(0 to 6.9, 5 to 7.0, 10 to 6.0, 15 to 7.6)))
+        assertNull(findRawDip(series(0 to 7.2, 5 to 7.0, 10 to 6.0, 15 to 7.0)))
+    }
+
+    @Test
+    fun theCompressionHoursAre2230To0730() {
+        assertTrue(inCompressionHours(23 * 60))
+        assertTrue(inCompressionHours(7 * 60 + 29))
+        assertFalse(inCompressionHours(7 * 60 + 30))
+        assertFalse(inCompressionHours(22 * 60 + 29))
+    }
 }

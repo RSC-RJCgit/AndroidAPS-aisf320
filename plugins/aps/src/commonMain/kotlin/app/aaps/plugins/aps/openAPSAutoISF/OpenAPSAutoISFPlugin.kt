@@ -3553,9 +3553,9 @@ open class OpenAPSAutoISFPlugin(
         return if (index < 0) null else readings[index].timestamp
     }
 
-    /** Raw Libre readings of the last 20 min, oldest first, as time to mg/dL */
+    /** Raw Libre readings of the last 30 min (a dip needs the fall before it), oldest first, as time to mg/dL */
     private suspend fun recentRawLibre(now: Long): List<Pair<Long, Double>> =
-        persistenceLayer.getBgReadingsDataFromTimeToTime(now - 20 * 60_000L, now, ascending = true)
+        persistenceLayer.getBgReadingsDataFromTimeToTime(now - 30 * 60_000L, now, ascending = true)
             .filter { (it.noise ?: 0.0) > 10.0 }
             .map { it.timestamp to it.noise!! }
 
@@ -3567,6 +3567,16 @@ open class OpenAPSAutoISFPlugin(
             ) {
                 preferences.put(LongNonKey.ApsAutoIsfRawSpikeAt, spike.peakAt)
                 carePortalNote("SaSpike +${round(spike.jumpMgdl / 18.016, 2)}/${round(spike.fallMgdl / 18.016, 2)}")
+            }
+        }
+        // A dip only opens the sensor-age slope tier, never the acce cap this returns
+        findRawDip(raw)?.let { dip ->
+            val minuteOfDay = Instant.fromEpochMilliseconds(dip.bottomAt).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
+            if (rawSpikeCounts(dip.bottomAt, now, runMarks.minutesAgo(RunMark.SHOWER12, now)) && !inCompressionHours(minuteOfDay) &&
+                dip.bottomAt > preferences.get(LongNonKey.ApsAutoIsfRawDipAt)
+            ) {
+                preferences.put(LongNonKey.ApsAutoIsfRawDipAt, dip.bottomAt)
+                carePortalNote("SaDip -${round(dip.dropMgdl / 18.016, 2)}/+${round(dip.reboundMgdl / 18.016, 2)}")
             }
         }
         return rawSpikeWindowOpen(preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt), now)
@@ -3603,9 +3613,11 @@ open class OpenAPSAutoISFPlugin(
         // Libre value above 12.0 mmol in the last 24 hours. The LibreOver12Ts latch is still written elsewhere.
         val tier = oldSensorTier(sensorDays, podHours, slopeBase, offsetBase)
         if (!preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)) return
-        // 2026-10-29, per explicit request: and a raw spike in the last 6 h (see findRawSpike). Age alone was no good check that
-        // the sensor reads wrong, so the code was left off.
-        if (tier != null && rawSpikeWindowOpen(preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt), now)) {
+        // 2026-10-29, per explicit request: and a raw spike or a raw dip in the last 6 h (see findRawSpike, findRawDip). Age alone
+        // was no good check that the sensor reads wrong, so the code was left off.
+        val rawFault = rawSpikeWindowOpen(preferences.get(LongNonKey.ApsAutoIsfRawSpikeAt), now) ||
+            rawSpikeWindowOpen(preferences.get(LongNonKey.ApsAutoIsfRawDipAt), now)
+        if (tier != null && rawFault) {
             if (!active) {
                 preferences.put(DoubleNonKey.ApsAutoIsfFslCalSlopeNormal, currentSlope)
                 preferences.put(DoubleNonKey.ApsAutoIsfFslCalOffsetNormal, currentOffset)

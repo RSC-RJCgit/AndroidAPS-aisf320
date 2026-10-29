@@ -113,6 +113,39 @@ internal fun rawRisingTooFast(raw: List<Pair<Long, Double>>, bgDeltaMgdl: Double
     return bgDeltaMgdl > 0.0 && rawDelta >= RAW_SPIKE_JUMP_MGDL && rawDelta > 2.0 * bgDeltaMgdl
 }
 
+/**
+ * The raw-dip check (2026-10-29, per explicit request), the mirror of [findRawSpike], for the sensor-age Libre slope tier only.
+ * It changes no automation and no insulin delivery. While raw is already falling, it drops 0.9 mmol or more in 5 min and climbs
+ * back 1.5 mmol or more within the next 10 min. In the 7 weeks of Client uploads to 29 Oct there were 12, on 10 days.
+ * Dips between 22:30 and 07:30 are taken as compression lows (lying on the sensor), which say nothing about its calibration, so
+ * they do not count ([inCompressionHours]).
+ */
+internal data class RawDip(val bottomAt: Long, val dropMgdl: Double, val reboundMgdl: Double)
+
+/** A fall before the drop: the raw 4-12 min before the drop started was at least this much (0.1 mmol) higher */
+private const val RAW_DIP_FALLING_MGDL = 1.8
+
+/** The newest raw dip in [raw] (time to raw mg/dL, oldest first), or null */
+internal fun findRawDip(raw: List<Pair<Long, Double>>): RawDip? {
+    for (i in raw.indices.reversed()) {
+        val (bottomAt, bottom) = raw[i]
+        val startIndex = raw.subList(0, i).indexOfLast { bottomAt - it.first in 4 * 60_000L..7 * 60_000L }
+        if (startIndex < 0) continue
+        val (startAt, start) = raw[startIndex]
+        val drop = start - bottom
+        if (drop < RAW_SPIKE_JUMP_MGDL) continue
+        val earlier = raw.subList(0, startIndex).lastOrNull { startAt - it.first in 4 * 60_000L..12 * 60_000L } ?: continue
+        if (earlier.second - start < RAW_DIP_FALLING_MGDL) continue
+        val after = raw.subList(i + 1, raw.size).filter { it.first - bottomAt <= 10 * 60_000L }
+        val rebound = (after.maxOfOrNull { it.second } ?: continue) - bottom
+        if (rebound >= RAW_SPIKE_FALL_MGDL) return RawDip(bottomAt, drop, rebound)
+    }
+    return null
+}
+
+/** 22:30 to 07:30, when a dip that bounces back is most likely a compression low. [minuteOfDay] is local time. */
+internal fun inCompressionHours(minuteOfDay: Int): Boolean = minuteOfDay >= 22 * 60 + 30 || minuteOfDay < 7 * 60 + 30
+
 /** A spike counts unless it came in the 2 h after Shower12 (shower steam on the sensor). [showerMinutesAgo] is null when none. */
 internal fun rawSpikeCounts(spikeAt: Long, now: Long, showerMinutesAgo: Int?): Boolean {
     if (showerMinutesAgo == null) return true
