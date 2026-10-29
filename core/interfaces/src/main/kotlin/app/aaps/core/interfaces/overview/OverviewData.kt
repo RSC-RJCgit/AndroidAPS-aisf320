@@ -230,6 +230,8 @@ interface OverviewData {
     var bottomProfileBasalSeries: SeriesData
     /** Last-24-hour "lowest-highest" text of the four top band lines (SMBdel, aISFwt, ppISFwt, profBasal), for graph5's legend. "" when a line has no data. */
     var topBandRangeLabels: List<String>
+    /** The real (unscaled) time-value points of the same four lines, same order, for graph5's band tap popup. */
+    var topBandRawValues: List<List<Pair<Long, Double>>>
     var maxAcceIsfValueFound: Double
     var minAcceIsfValueFound: Double
     val acceIsfScale: Scale

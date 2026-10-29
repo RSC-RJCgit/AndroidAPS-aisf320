@@ -31,6 +31,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.R as CoreUiR
@@ -47,6 +48,8 @@ import kotlin.math.max
 
 // Share of graph5's height, from the top, used by the SMB / acce weight / pp weight / profile basal lines. See addTopBandLines().
 private const val TOP_BAND_FRACTION = 0.28
+// Graph5 band tap: a line further than this from the tapped time is left out of the popup
+private const val TOP_BAND_TAP_MAX_MS = 5 * 60_000L
 
 /**
  * Short average change per 5 min at [at], the way AAPS works out its short average delta: the mean of (now - then) / minutes * 5
@@ -439,17 +442,40 @@ class GraphData @Inject constructor(
         addSeries(overviewData.bottomAcceWtSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.bottomPpWtSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.bottomProfileBasalSeries as LineGraphSeries<ScaledDataPoint>)
+        // 2026-10-30, per explicit request (same popup as v4): a tap on any of the four lines shows each line's real value
+        // at the loop nearest the tap, in its colour. Switch: BooleanKey.ApsAutoIsfGraph5BandTap, on by default.
+        if (preferences.get(BooleanKey.ApsAutoIsfGraph5BandTap))
+            topBandSeries().forEach { (_, series, _) ->
+                onTap { (series as LineGraphSeries<ScaledDataPoint>).setOnDataPointTapListener { _, dataPoint -> showTopBandTap(dataPoint.x.toLong()) } }
+            }
+    }
+
+    private fun topBandSeries() = listOf(
+        Triple("SMBdel", overviewData.bottomSmbSeries as Series<*>, app.aaps.core.ui.R.attr.smbDelColor),
+        Triple("aISFwt", overviewData.bottomAcceWtSeries as Series<*>, app.aaps.core.ui.R.attr.acceIsfColor),
+        Triple("ppISFwt", overviewData.bottomPpWtSeries as Series<*>, app.aaps.core.ui.R.attr.ppIsfColor),
+        Triple("profBasal", overviewData.bottomProfileBasalSeries as Series<*>, app.aaps.core.ui.R.attr.profileBasalColor)
+    )
+
+    // "SMBdel 0.45  09:46" per line; a line with no loop within 5 minutes of the tap is left out.
+    private fun showTopBandTap(time: Long) {
+        val text = SpannableStringBuilder()
+        for ((lane, entry) in topBandSeries().withIndex()) {
+            val (name, _, colorAttr) = entry
+            val (at, value) = overviewData.topBandRawValues.getOrNull(lane)?.minByOrNull { abs(it.first - time) } ?: continue
+            if (abs(at - time) > TOP_BAND_TAP_MAX_MS) continue
+            if (text.isNotEmpty()) text.append("\n")
+            val start = text.length
+            text.append("$name ${decimalFormatter.to2Decimal(value)}  ${dateUtil.timeString(at)}")
+            text.setSpan(ForegroundColorSpan(rh.gac(graph.context, colorAttr)), start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        if (text.isNotEmpty()) OKDialog.show(graph.context, rh.gs(R.string.overview_graph5_title), text)
     }
 
     // Legend text for those four lines, each name in its own line colour, lowest lane first. Only lines that actually have
     // data are named, so an empty legend also tells which line is missing.
     fun topBandLegend(): CharSequence {
-        val entries = listOf(
-            Triple("SMBdel", overviewData.bottomSmbSeries as Series<*>, app.aaps.core.ui.R.attr.smbDelColor),
-            Triple("aISFwt", overviewData.bottomAcceWtSeries as Series<*>, app.aaps.core.ui.R.attr.acceIsfColor),
-            Triple("ppISFwt", overviewData.bottomPpWtSeries as Series<*>, app.aaps.core.ui.R.attr.ppIsfColor),
-            Triple("profBasal", overviewData.bottomProfileBasalSeries as Series<*>, app.aaps.core.ui.R.attr.profileBasalColor)
-        )
+        val entries = topBandSeries()
         val text = SpannableStringBuilder()
         // Each name is followed by that line's last-24-hour lowest-highest range (lowest on the lane bottom, highest on its top).
         for ((index, entry) in entries.withIndex()) {

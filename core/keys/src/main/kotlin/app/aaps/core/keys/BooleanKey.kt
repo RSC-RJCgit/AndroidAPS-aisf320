@@ -105,6 +105,9 @@ enum class BooleanKey(
     // Graph5ToggleTT remote TT-signal (OpenAPSAutoISFPlugin.kt, TT=5.142, same pattern as
     // ApsAutoIsfShowCarbModelCurve/Graph2ToggleTT above). See OverviewFragment.updateGraph().
     ApsAutoIsfShowGraph5("show_graph5", false, defaultedBySM = true),
+    // 2026-10-30, per explicit request: a tap on one of graph5's four top band lines shows all four values at that time
+    // (GraphData.addTopBandLines). On by default. Local to the phone, like the other graph display switches.
+    ApsAutoIsfGraph5BandTap("graph5_band_tap_popup", true, defaultedBySM = true),
     // 2026-09-26, per explicit request: the row of 12 insulin-delivered totals on the IOB graph (default off).
     ApsAutoIsfShowInsulinTotals("show_insulin_totals_row", false, defaultedBySM = true),
     // 2026-10-10, per explicit request: the text lines on the graphs (steps, extra row, ISF indices, target offset, pp/acce row). The

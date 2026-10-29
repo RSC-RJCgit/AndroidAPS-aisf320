@@ -873,6 +873,7 @@ class PrepareIobAutosensGraphDataWorker(
             val ppWtArr = lane(2, ppRaw)
             val profileBasalArr = lane(3, basalRaw)
             data.overviewData.topBandRangeLabels = rangeLabels
+            data.overviewData.topBandRawValues = listOf(smbRaw, acceRaw, ppRaw, basalRaw)
             data.overviewData.bottomSmbSeries = LineGraphSeries(Array(smbArr.size) { i -> smbArr[i] }).also {
                 it.color = rh.gac(ctx, app.aaps.core.ui.R.attr.smbDelColor)
                 it.thickness = 3
