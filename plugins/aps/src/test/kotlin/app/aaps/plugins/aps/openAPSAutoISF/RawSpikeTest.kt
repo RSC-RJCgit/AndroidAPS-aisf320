@@ -80,4 +80,15 @@ class RawSpikeTest {
         assertThat(inCompressionHours(7 * 60 + 30)).isFalse()
         assertThat(inCompressionHours(22 * 60 + 29)).isFalse()
     }
+
+    // Shower12's fallback (2026-10-30): the jump without the fall after it, in the last 5 min only
+    @Test fun `a raw jump of 0_9 or more counts before it falls back`() {
+        // 9 Sep 08:12 kind: raw +1.7 in 5 min, nothing after it yet
+        assertThat(findRawJump(series(0 to 6.0, 5 to 7.7), now = 5 * min)!! / 18.016).isWithin(0.01).of(1.7)
+    }
+
+    @Test fun `a raw jump under 0_9 or older than 5 min does not count`() {
+        assertThat(findRawJump(series(0 to 6.0, 5 to 6.8), now = 5 * min)).isNull()
+        assertThat(findRawJump(series(0 to 6.0, 5 to 7.7), now = 11 * min)).isNull()
+    }
 }
