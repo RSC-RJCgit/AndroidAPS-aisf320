@@ -141,6 +141,17 @@ android {
             manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
             manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
         }
+        // 2026-10-30: a master that runs the loop on the Virtual pump only. It gets none of the
+        // fullImplementation pump modules below and ConfigImpl keeps PUMPDRIVERS false, so no real
+        // pump can be chosen. Its own id, so it installs beside the real AAPS.
+        create("virtual") {
+            applicationId = "info.nightscout.aapsvirtual"
+            dimension = "standard"
+            resValue("string", "app_name", "AAPS Virtual")
+            versionName = Versions.appVersion + "-virtual"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+            manifestPlaceholders["appIconRound"] = "@mipmap/ic_launcher_round"
+        }
         create("pumpcontrol") {
             applicationId = "info.nightscout.aapspumpcontrol"
             dimension = "standard"
@@ -193,6 +204,10 @@ android {
         }
         getByName("aapsclient3") {
             kotlin.directories.add("src/aapsclient/kotlin")
+            manifest.srcFile("src/aapsclient/AndroidManifest.xml")
+        }
+        // The Virtual master too (2026-10-30), for the same reason: it installs beside the real AAPS.
+        getByName("virtual") {
             manifest.srcFile("src/aapsclient/AndroidManifest.xml")
         }
 

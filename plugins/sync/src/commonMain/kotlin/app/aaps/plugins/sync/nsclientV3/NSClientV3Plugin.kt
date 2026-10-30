@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.L
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.nsclient.NSAlarm
 import app.aaps.core.interfaces.nsclient.NSClientRepository
@@ -210,6 +211,7 @@ class NSClientV3Plugin(
         get() = withVirtualUploadWarning(
             when {
                 preferences.get(NsclientBooleanKey.NsPaused)                                          -> rh.gs(CoreUiStrings.paused)
+                dataSyncSelectorV3.uploadToBgSiteBlocked                                              -> rh.gs(SyncStrings.ns_upload_stopped_bg_site)
                 isAllowed.not()                                                                       -> blockingReason
                 preferences.get(BooleanKey.NsClient3UseWs) && nsConnection.socketConnected == true  -> rh.gs(InterfacesStrings.confirmation_line, "WS", rh.gs(InterfacesStrings.connected))
                 preferences.get(BooleanKey.NsClient3UseWs) && nsConnection.socketConnected == false -> rh.gs(InterfacesStrings.confirmation_line, "WS", rh.gs(SyncStrings.not_connected))
@@ -729,12 +731,15 @@ class NSClientV3Plugin(
         if (nsAndroidClient == null) {
             val url = preferences.get(StringKey.NsClientUrl)
             val accessToken = preferences.get(StringKey.NsClientAccessToken)
-            nsAndroidClient = NSAndroidClientImpl(
-                baseUrl = nsClientBaseUrl(url),
-                accessToken = accessToken,
-                logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
-                logger = { msg -> aapsLogger.debug(LTag.HTTP, msg) }
-            )
+            // Wrapped so a Virtual-pump master never writes to the site it reads BG from (2026-10-30), see BgSiteWriteGuard
+            nsAndroidClient = BgSiteWriteGuard(
+                NSAndroidClientImpl(
+                    baseUrl = nsClientBaseUrl(url),
+                    accessToken = accessToken,
+                    logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
+                    logger = { msg -> aapsLogger.debug(LTag.HTTP, msg) }
+                )
+            ) { dataSyncSelectorV3.uploadToBgSiteBlocked }
             clientUrl = url
             clientAccessToken = accessToken
         }
@@ -810,6 +815,10 @@ class NSClientV3Plugin(
         if (!isEnabled()) return
         if (!preferences.get(BooleanKey.NsClientUploadData)) {
             aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
+            return
+        }
+        if (dataSyncSelectorV3.uploadToBgSiteBlocked) {
+            aapsLogger.debug(LTag.NSCLIENT, "Main site is the BG source. Message dropped")
             return
         }
         nsConnection.acknowledgeAlarm(originalAlarm, silenceTimeInMilliseconds)
@@ -1305,6 +1314,24 @@ class NSClientV3Plugin(
 
     fun endFullSync() {
         doingFullSync = false
+    }
+
+    @Volatile private var uploadToBgSiteNotified = false
+
+    /**
+     * Shows or clears the lasting notification for [DataSyncSelectorV3.uploadToBgSiteBlocked] and returns [blocked], so the
+     * upload pass can stop with one call (2026-10-30). Posted only when it changes, not on every pass.
+     */
+    internal fun reportUploadToBgSite(blocked: Boolean): Boolean {
+        if (blocked && !uploadToBgSiteNotified) {
+            aapsLogger.warn(LTag.NSCLIENT, "Upload stopped: the main Nightscout site is the BG source")
+            nsClientRepository.addLog("● STOP", "Upload stopped: the main Nightscout site is the BG source")
+            notificationManager.post(NotificationId.NSCLIENT_UPLOAD_TO_BG_SITE, rh.gs(SyncStrings.ns_upload_stopped_bg_site_notification))
+        } else if (!blocked && uploadToBgSiteNotified) {
+            notificationManager.dismiss(NotificationId.NSCLIENT_UPLOAD_TO_BG_SITE)
+        }
+        uploadToBgSiteNotified = blocked
+        return blocked
     }
 
     internal fun executeUpload(origin: String) {

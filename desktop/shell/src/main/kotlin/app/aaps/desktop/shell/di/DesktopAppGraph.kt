@@ -4,6 +4,7 @@ import app.aaps.core.interfaces.alerts.EatReminder
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.di.APS
 import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.constraints.Objectives
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -137,6 +138,10 @@ interface DesktopAppGraph : MetroViewModelMultibindings {
     val logger: AAPSLogger
     val pluginStore: PluginStore
     val contributedPlugins: Map<Int, PluginBase>
+
+    /** Plugins that only belong in a build that runs the loop (Objectives). Merged only under `config.APS`, the Virtual master (2026-10-30). */
+    @APS
+    val contributedApsPlugins: Map<Int, PluginBase>
     val automationRuntime: AutomationRuntime
     val swDefinition: SWDefinition
     val builtInSearchables: BuiltInSearchables

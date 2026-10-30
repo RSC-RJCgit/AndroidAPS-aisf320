@@ -36,7 +36,8 @@ class ConfigImpl(
 ) : Config {
 
     override val SUPPORTED_NS_VERSION = 150000 // 15.0.0
-    override val APS = BuildConfig.FLAVOR == "full"
+    // "virtual" (2026-10-30) runs the loop like "full", but only on the Virtual pump: PUMPDRIVERS below stays false for it
+    override val APS = BuildConfig.FLAVOR == "full" || BuildConfig.FLAVOR == "virtual"
     override val AAPSCLIENT = BuildConfig.FLAVOR == "aapsclient" || BuildConfig.FLAVOR == "aapsclient2" || BuildConfig.FLAVOR == "aapsclient3"
     override val AAPSCLIENT1 = BuildConfig.FLAVOR == "aapsclient"
     override val AAPSCLIENT2 = BuildConfig.FLAVOR == "aapsclient2"

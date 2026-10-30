@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
     inputs:
       client:
-        description: Desktop client to package
+        description: Desktop client to package (0 = the AAPS Virtual master, Virtual pump only)
         type: choice
         default: '2'
-        options: ['1', '2', '3', 'both']
+        options: ['0', '1', '2', '3', 'both']
 
 permissions:
   contents: read

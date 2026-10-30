@@ -91,7 +91,7 @@ object DesktopFolders {
     val root: File get() = File(System.getProperty("user.home") ?: ".", "AAPS")
 
     /**
-     * Which client is running: 1, 2 or 3. Set once by `Main.kt` before anything reads [data].
+     * Which client is running: 1, 2 or 3, or 0 for the Virtual master (2026-10-30). Set once by `Main.kt` before anything reads [data].
      *
      * A variable rather than an argument because [data] is read before the graph exists - the
      * single-instance lock and the start up logger both need it - so there is nothing to inject it

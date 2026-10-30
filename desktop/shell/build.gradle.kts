@@ -85,10 +85,13 @@ val copyAppIcon = tasks.register<Copy>("copyDesktopAppIcon") {
  * Each client gets its own data directory, so two of them run side by side against two Nightscout
  * sites, exactly as two Android clients do. The user-visible `AAPS` folder is *not* per client -
  * exports and option markers are shared, which is also what a phone does.
+ *
+ * `-Pclient=0` (2026-10-30) is not a client: it is the "AAPS Virtual" master, Android's `virtual` flavour,
+ * which runs the loop on the Virtual pump only. It gets its own data directory (`~/.aaps0`) the same way.
  */
 val desktopClient: Int = (project.findProperty("client") as String?)?.toIntOrNull() ?: 1
 
-require(desktopClient in 1..3) { "client must be 1, 2 or 3, but was $desktopClient" }
+require(desktopClient in 0..3) { "client must be 0 (the Virtual master), 1, 2 or 3, but was $desktopClient" }
 
 /**
  * The macOS launcher icon, built from the same PNG the window uses.
@@ -105,6 +108,7 @@ require(desktopClient in 1..3) { "client must be 1, 2 or 3, but was $desktopClie
  * package is being built anyway.
  */
 val desktopIconName = when (desktopClient) {
+    0    -> "ic_launcher"
     2    -> "ic_blueowl"
     3    -> "ic_greenowl"
     else -> "ic_yellowowl"
@@ -116,7 +120,11 @@ val desktopIconName = when (desktopClient) {
  * Numbered from the second, the way Android names AAPSClient2 and AAPSClient3, so two installed
  * clients are told apart in the start menu rather than overwriting each other.
  */
-val desktopPackageName = if (desktopClient == 1) "AAPSClient" else "AAPSClient$desktopClient"
+val desktopPackageName = when (desktopClient) {
+    0    -> "AAPSVirtual"
+    1    -> "AAPSClient"
+    else -> "AAPSClient$desktopClient"
+}
 
 // Named after the package rather than a fixed "AAPSClient", so building client 2 cannot leave an
 // icon called AAPSClient.icns holding the blue owl, and two clients built in one tree do not

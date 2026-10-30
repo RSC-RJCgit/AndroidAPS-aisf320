@@ -74,4 +74,32 @@ class SecondaryTreatmentFilterTest {
         assertFalse(sameNsSite("https://a.example", "https://b.example"))
         assertFalse(sameNsSite("", ""))
     }
+
+    @Test
+    fun sameSiteIgnoresAToken() {
+        assertTrue(sameNsSite("https://a.example/?token=abc", "https://a.example"))
+    }
+
+    // 2026-10-30: a Virtual-pump master never uploads to the site it reads BG from
+    @Test
+    fun virtualMasterMustNotUploadToItsBgSite() {
+        fun blocked(
+            virtual: Boolean = true, nsSource: Boolean = true, secondary: Boolean = true, bgFromSecondary: Boolean = true,
+            rawOnly: Boolean = false, main: String = "https://upload.example", second: String = "https://live.example"
+        ) = uploadSiteIsBgSite(virtual, nsSource, secondary, bgFromSecondary, rawOnly, main, second)
+
+        // The intended setup: BG from the second site, uploads to a separate main site
+        assertFalse(blocked())
+        // BG read from the main site
+        assertTrue(blocked(secondary = false))
+        assertTrue(blocked(bgFromSecondary = false))
+        assertTrue(blocked(rawOnly = true))
+        // The second site is the main site
+        assertTrue(blocked(second = "https://UPLOAD.example/"))
+        assertTrue(blocked(nsSource = false, second = "https://upload.example"))
+        // A BG source on the phone itself, no second site
+        assertFalse(blocked(nsSource = false, secondary = false))
+        // A real master or a client is never stopped
+        assertFalse(blocked(virtual = false, secondary = false))
+    }
 }

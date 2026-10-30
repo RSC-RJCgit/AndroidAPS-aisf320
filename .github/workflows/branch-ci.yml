@@ -22,6 +22,8 @@ on:
           - aapsclient2Debug
           - pumpcontrolRelease
           - pumpcontrolDebug
+          - virtualRelease
+          - virtualDebug
 
   # Every push to any branch builds fullRelease, then aapsclientRelease, then aapsclient2Release (in that order, one
   # after another, all uploaded to the same Google Drive folder). Pushes that only touch the workflows are ignored.

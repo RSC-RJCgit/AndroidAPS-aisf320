@@ -22,6 +22,7 @@ import app.aaps.plugins.sync.nsclientV3.extensions.onlyNsIdAdded
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.workers.bgUploadAllowed
 import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
+import app.aaps.plugins.sync.nsclientV3.workers.uploadSiteIsBgSite
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -104,6 +105,21 @@ class DataSyncSelectorV3(
         }
 
     /**
+     * True on a Virtual-pump master whose main site is the one it reads BG from, see [uploadSiteIsBgSite] (2026-10-30).
+     * Nothing is uploaded then. Before a BG source is elected the source counts as Nightscout, so nothing goes out early.
+     */
+    val uploadToBgSiteBlocked: Boolean
+        get() = config.APS && !config.PUMPDRIVERS && uploadSiteIsBgSite(
+            virtualOnlyMaster = true,
+            nsClientBgSource = runCatching { activePlugin.activeBgSource is NSClientSource }.getOrDefault(true),
+            secondaryEnabled = preferences.get(BooleanKey.NsClientSecondaryEnabled),
+            bgFromSecondarySwitch = preferences.get(BooleanKey.NsClientBgFromLiveSite),
+            rawFromSecondary = preferences.get(BooleanKey.NsClientRawFromSecondary),
+            primaryUrl = preferences.get(StringKey.NsClientUrl),
+            secondaryUrl = preferences.get(StringKey.NsClientSecondaryUrl)
+        )
+
+    /**
      * True on a full phone whose pump is the virtual pump.
      * Upload is allowed. The Nightscout screen warns to check the site.
      *
@@ -143,7 +159,8 @@ class DataSyncSelectorV3(
         // Fork: a read-only client (for a master without client control, such as 3.4) still uploads. Its temp targets,
         // profile switches and notes reach that master only through Nightscout.
         val uploadOn = !isPaused &&
-            (if (config.AAPSCLIENT) preferences.get(BooleanKey.NsClientReadOnlyClient) else preferences.get(BooleanKey.NsClientUploadData))
+            (if (config.AAPSCLIENT) preferences.get(BooleanKey.NsClientReadOnlyClient) else preferences.get(BooleanKey.NsClientUploadData)) &&
+            !nsClientV3Plugin().reportUploadToBgSite(uploadToBgSiteBlocked)
         if (uploadOn && virtualPumpSelected()) {
             aapsLogger.warn(LTag.NSCLIENT, "Virtual pump: check this Nightscout is not the live upload site")
             nsClientRepository.addLog("● WARN", "Virtual pump: check this Nightscout is not the live upload site")

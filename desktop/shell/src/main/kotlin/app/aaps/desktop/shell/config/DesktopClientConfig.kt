@@ -22,6 +22,9 @@ import java.io.File
  * builds only the client, so the answers are fixed rather than generated - it has no pump drivers and
  * does not run the loop, which is exactly what `AAPSCLIENT` means.
  *
+ * Except client 0 (2026-10-30, `-Pclient=0`): the "AAPS Virtual" master, Android's `virtual` flavour. It runs
+ * the loop, on the Virtual pump only - [PUMPDRIVERS] stays false, so no real pump can be chosen.
+ *
  * This is a real implementation, not a stand-in. Getting [APS] or [PUMPDRIVERS] wrong here would make
  * shared code offer features the app cannot perform.
  */
@@ -40,6 +43,7 @@ class DesktopClientConfig(
      * must not claim to be the same app.
      */
     override val APPLICATION_ID: String = when (client) {
+        0    -> "info.nightscout.aapsvirtual"
         2    -> "info.nightscout.aapsclient2"
         3    -> "info.nightscout.aapsclient3"
         else -> "info.nightscout.aapsclient"
@@ -47,17 +51,17 @@ class DesktopClientConfig(
 
     override val SUPPORTED_NS_VERSION: Int = 150000
 
-    // No loop and no pump drivers on desktop: this is a follower.
-    override val APS: Boolean = false
+    // No pump drivers on desktop. The clients are followers; client 0 is the Virtual master and runs the loop.
+    override val APS: Boolean = client == 0
     override val PUMPCONTROL: Boolean = false
     override val PUMPDRIVERS: Boolean = false
 
-    override val AAPSCLIENT: Boolean = true
+    override val AAPSCLIENT: Boolean = !APS
     override val AAPSCLIENT1: Boolean = client == 1
     override val AAPSCLIENT2: Boolean = client == 2
     override val AAPSCLIENT3: Boolean = client == 3
 
-    override val FLAVOR: String = "aapsclient"
+    override val FLAVOR: String = if (APS) "virtual" else "aapsclient"
     override val BUILD_TYPE: String = "debug"
     override val PLATFORM: String = GeneratedBuildInfo.PLATFORM
     override val platform: AppPlatform = AppPlatform.Desktop
@@ -93,6 +97,7 @@ class DesktopClientConfig(
         AAPSCLIENT2 -> "AAPSClient2"
         AAPSCLIENT1 -> "AAPSClient"
         PUMPCONTROL -> "Pumpcontrol"
+        APS         -> "AAPS Virtual"
         else        -> "AAPS"
     }
 
@@ -144,13 +149,10 @@ class DesktopClientConfig(
     override fun isEngineeringMode(): Boolean = isEnabled(ExternalOptions.ENGINEERING_MODE)
 
     /**
-     * Always true, and correct rather than a shortcut.
-     *
-     * Android computes `if (!APS) true else isEngineeringMode() || !isDev()`. Desktop sets
-     * [APS] to false because it is a follower, so that expression is true here whatever the rest
-     * says. Written out rather than copied so it does not read as a stub.
+     * The same expression as Android. On a client [APS] is false, so it is always true. The Virtual master is
+     * always a debug build ([DEBUG]), so it needs `~/AAPS/extra/engineering_mode`, as a debug master does on Android.
      */
-    override fun isEngineeringModeOrRelease(): Boolean = true
+    override fun isEngineeringModeOrRelease(): Boolean = if (!APS) true else isEngineeringMode() || !isDev()
 
     /**
      * Read the same way Android does - by the presence of a file in the `extra` folder.

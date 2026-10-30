@@ -308,7 +308,9 @@ private fun startPlugins(graph: DesktopAppGraph) {
     )
     // Sorted by the key each plugin registers itself with, which is the order the plugin list is
     // shown in and the order category defaults are picked in.
-    val plugins = graph.contributedPlugins.entries.sortedBy { it.key }.map { it.value }
+    // The Virtual master (client 0) also gets the loop-only plugins (Objectives), as Android does under config.APS (2026-10-30)
+    val contributed = if (graph.config.APS) graph.contributedPlugins + graph.contributedApsPlugins else graph.contributedPlugins
+    val plugins = contributed.entries.sortedBy { it.key }.map { it.value }
     graph.pluginStore.plugins = plugins
     graph.configBuilder.initialize()
     // The periodic housekeeping Android gets from KeepAliveWorker. The work is shared; only the

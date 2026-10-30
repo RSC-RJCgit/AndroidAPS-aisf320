@@ -2,6 +2,7 @@ package app.aaps.plugins.sync.nsclientV3.workers
 
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.TE
+import app.aaps.core.keys.sameNightscoutSite
 
 /**
  * What the secondary Nightscout download keeps.
@@ -74,11 +75,32 @@ internal fun bgUploadAllowed(
     else              -> bgFromLiveSite && !isClient && !sameNsSite(primaryUrl, secondaryUrl)
 }
 
-/** Same Nightscout site, ignoring http/https, letter case and a trailing slash. */
-internal fun sameNsSite(a: String, b: String): Boolean {
-    fun plain(url: String) = url.trim().lowercase().removePrefix("https://").removePrefix("http://").trimEnd('/')
-    return plain(a).isNotEmpty() && plain(a) == plain(b)
-}
+/** Same Nightscout site, ignoring http/https, letter case, a trailing slash and anything after `?`. */
+internal fun sameNsSite(a: String, b: String): Boolean = sameNightscoutSite(a, b)
+
+/**
+ * True when a Virtual-pump master (iOS "AAPS", Android "virtual", desktop client 0) would upload to the site it reads
+ * BG from (2026-10-30, per explicit request). It must never: that site belongs to a real looping phone.
+ *
+ * - BG read from the main site: the NSClient BG source with glucose not taken from the second site (second site off,
+ *   its "BG from this connection" off, or it only fills raw).
+ * - The second site switched on and the same site as the main one, whatever it supplies.
+ *
+ * A BG source on the phone itself (xDrip, a Dexcom app) is not a Nightscout site, so only the second case applies.
+ * Never on a real master or a client: [virtualOnlyMaster] is `APS && !PUMPDRIVERS`.
+ */
+internal fun uploadSiteIsBgSite(
+    virtualOnlyMaster: Boolean,
+    nsClientBgSource: Boolean,
+    secondaryEnabled: Boolean,
+    bgFromSecondarySwitch: Boolean,
+    rawFromSecondary: Boolean,
+    primaryUrl: String,
+    secondaryUrl: String
+): Boolean = virtualOnlyMaster && (
+    (nsClientBgSource && !glucoseFromSecondarySite(secondaryEnabled, bgFromSecondarySwitch, rawFromSecondary)) ||
+        (secondaryEnabled && sameNsSite(primaryUrl, secondaryUrl))
+    )
 
 private val secondaryDeviceEventTypes = setOf(
     TE.Type.SENSOR_CHANGE,

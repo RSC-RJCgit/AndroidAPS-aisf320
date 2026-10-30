@@ -77,6 +77,11 @@ android {
             dimension = "standard"
             resValue("string", "watchface_name", "AAPS")
         }
+        create("virtual") {
+            applicationId = "info.nightscout.aapsvirtual"
+            dimension = "standard"
+            resValue("string", "watchface_name", "AAPS Virtual")
+        }
         create("pumpcontrol") {
             applicationId = "info.nightscout.aapspumpcontrol"
             dimension = "standard"

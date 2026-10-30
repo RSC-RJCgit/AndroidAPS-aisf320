@@ -73,6 +73,16 @@ android {
             versionName = Versions.appVersion
             manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
         }
+        // Matches the phone's "virtual" flavour (2026-10-30): CI builds both with one variant name, and the watch pairs by id
+        create("virtual") {
+            applicationId = "info.nightscout.aapsvirtual"
+            dimension = "standard"
+            resValue("string", "app_name", "AAPS Virtual")
+            resValue("string", "label_actions_activity", "AAPS Virtual")
+            resValue("color", "flavor_header_color", "#B0BEC5")
+            versionName = Versions.appVersion + "-virtual"
+            manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+        }
         create("pumpcontrol") {
             applicationId = "info.nightscout.aapspumpcontrol"
             dimension = "standard"

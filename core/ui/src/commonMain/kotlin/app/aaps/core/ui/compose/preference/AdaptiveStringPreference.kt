@@ -12,10 +12,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.StringPreferenceKey
 import app.aaps.core.keys.interfaces.StringValidator
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.keys.interfaces.VisibilityContext
+import app.aaps.core.keys.sameNightscoutSite
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.stringResource
 
@@ -48,7 +50,7 @@ fun AdaptiveStringPreferenceItem(
 
     val state = rememberPreferenceStringState(stringKey)
     val value = state.value
-    val validator = stringKey.validator
+    val validator = stringKey.validator.refusingBgSourceSite(stringKey, visibilityContext)
     val isSecure = isPassword || stringKey.isPassword || stringKey.isPin
 
     // Get dialog summary from key
@@ -123,4 +125,24 @@ private fun ValidatedTextField(
         isError = errorMessage != null,
         supportingText = errorMessage?.let { { Text(it) } }
     )
+}
+
+/**
+ * On a Virtual-pump master the main and second Nightscout addresses must be different sites (2026-10-30, per explicit
+ * request): the master must never upload to the site it reads BG from. The sync plugin also stops uploading when they
+ * match (an imported settings file skips this screen); this refuses the address that would make them the same.
+ */
+internal fun StringValidator.refusingBgSourceSite(key: StringPreferenceKey, context: VisibilityContext?): StringValidator {
+    if (context?.virtualOnlyMaster != true) return this
+    val other = when (key) {
+        StringKey.NsClientUrl          -> StringKey.NsClientSecondaryUrl
+        StringKey.NsClientSecondaryUrl -> StringKey.NsClientUrl
+        else                           -> return this
+    }
+    return StringValidator { value ->
+        val own = validate(value)
+        if (own.isValid && sameNightscoutSite(value, context.preferences.get(other)))
+            StringValidator.ValidationResult.invalid("Main Nightscout site must not be the BG source site")
+        else own
+    }
 }

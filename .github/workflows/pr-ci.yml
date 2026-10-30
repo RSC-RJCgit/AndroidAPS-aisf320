@@ -35,6 +35,8 @@ on:
           - aapsclient2Debug
           - pumpcontrolRelease
           - pumpcontrolDebug
+          - virtualRelease
+          - virtualDebug
 
 jobs:
   build:

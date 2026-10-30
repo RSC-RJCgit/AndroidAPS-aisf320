@@ -50,6 +50,13 @@ interface VisibilityContext {
         get() = false
 
     /**
+     * A master that runs the loop on the Virtual pump only (`APS && !PUMPDRIVERS`: iOS "AAPS", Android "virtual",
+     * desktop client 0). Its main Nightscout address must not be the second site's (2026-10-30).
+     */
+    val virtualOnlyMaster: Boolean
+        get() = false
+
+    /**
      * On a client (AAPSCLIENT): whether currently paired with a master — a snapshot of the
      * Client-Control pairing (NsClientControlClientId set) at context-read time. Always true on a
      * master. Gates [ElementVisibility.MASTER_OR_PAIRED_CLIENT]: an unpaired client hides mutating/command

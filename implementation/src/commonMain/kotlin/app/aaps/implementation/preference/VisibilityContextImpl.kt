@@ -47,6 +47,9 @@ class VisibilityContextImpl(
     override val isClient: Boolean
         get() = config.AAPSCLIENT
 
+    override val virtualOnlyMaster: Boolean
+        get() = config.APS && !config.PUMPDRIVERS
+
     // Live snapshot of the stable Client-Control pairing signal (always true on a master). Read per
     // isVisible() evaluation so CLIENT_PAIRED-gated elements appear/disappear the moment pairing flips.
     override val masterOrPairedClient: Boolean

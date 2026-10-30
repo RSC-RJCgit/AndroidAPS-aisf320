@@ -157,6 +157,8 @@ enum class NotificationId(
     NS_MALFUNCTION(IMPORTANT, SYNC),
     NSCLIENT_VERSION_DOES_NOT_MATCH(NORMAL, SYNC),
     NSCLIENT_PAIRING_ORPHAN(NORMAL, SYNC),
+    // A Virtual-pump master whose main site is its BG source: nothing is uploaded (2026-10-30)
+    NSCLIENT_UPLOAD_TO_BG_SITE(IMPORTANT, SYNC),
     OPEN_HUMANS_SIGNED_OUT(NORMAL, SYNC),
 
     // Sync — SMS
