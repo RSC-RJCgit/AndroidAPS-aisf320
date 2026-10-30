@@ -4,6 +4,7 @@ import app.aaps.plugins.sync.nsShared.isFollowerPhone
 import app.aaps.plugins.sync.nsShared.liveConnectionConfigured
 import android.os.Build
 import app.aaps.core.data.model.AIV
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -98,7 +99,8 @@ class NSDeviceStatusHandler @Inject constructor(
     private val calculationWorkflow: CalculationWorkflow,
     private val profileUtil: ProfileUtil,
     private val activePlugin: Provider<ActivePlugin>,
-    private val liveStepsMirror: LiveStepsMirror
+    private val liveStepsMirror: LiveStepsMirror,
+    private val apsResultProvider: Provider<APSResult>
 ) {
 
     private val disposable = CompositeDisposable()
@@ -209,6 +211,17 @@ class NSDeviceStatusHandler @Inject constructor(
         }
     }
 
+    /** A loop result older than the newest one received, stored once (a 7 min window loaded every 5 min sees it twice). */
+    private fun storeOlderApsResult(suggested: String, clock: Long) {
+        try {
+            if (persistenceLayer.getApsResults(clock, clock).isNotEmpty()) return
+            val rt = RT.deserialize(suggested).apply { timestamp = clock }
+            disposable += persistenceLayer.insertOrUpdateApsResult(apsResultProvider.get().with(rt)).subscribe()
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
+        }
+    }
+
     private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus) {
         nsDeviceStatus.openaps?.suggested?.let {
             JsonHelper.safeGetString(it, "timestamp")?.let { timestamp ->
@@ -284,6 +297,11 @@ class NSDeviceStatusHandler @Inject constructor(
                             disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
                         }
                     }
+                } else if (clock < processedDeviceStatusData.openAPSData.clockSuggested) {
+                    // 2026-10-30, per explicit request: an older loop result is stored too. Loads come in batches (the
+                    // second site every ~5 min, newest first), and only the newest one was kept, so the SMB cycles in
+                    // between were lost and their steps arrow (StepCut=) never showed. Only the newest drives the display.
+                    storeOlderApsResult(it.toString(), clock)
                 }
             }
         }

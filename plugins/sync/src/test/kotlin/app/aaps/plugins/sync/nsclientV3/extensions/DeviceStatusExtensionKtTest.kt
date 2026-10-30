@@ -48,7 +48,7 @@ internal class DeviceStatusExtensionKtTest : TestBase() {
     @BeforeEach
     fun setup() {
         processedDeviceStatusData = ProcessedDeviceStatusDataImpl(rh, dateUtil, preferences, apsResultProvider)
-        nsDeviceStatusHandler = NSDeviceStatusHandler(preferences, config, dateUtil, runningConfiguration, processedDeviceStatusData, aapsLogger, persistenceLayer, overviewData, calculationWorkflow, profileUtil, activePlugin, liveStepsMirror)
+        nsDeviceStatusHandler = NSDeviceStatusHandler(preferences, config, dateUtil, runningConfiguration, processedDeviceStatusData, aapsLogger, persistenceLayer, overviewData, calculationWorkflow, profileUtil, activePlugin, liveStepsMirror, apsResultProvider)
         whenever(config.AAPSCLIENT).thenReturn(true)
         whenever(activePlugin.get()).thenReturn(activePluginValue)
     }
