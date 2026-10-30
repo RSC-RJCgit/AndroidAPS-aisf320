@@ -1905,6 +1905,8 @@ class DataHandlerMobile(
 
     private suspend fun handleStepsCountBatch(events: List<EventData.ActionStepsRate>) {
         aapsLogger.debug(LTag.WEAR, "Steps count batch received: ${events.size} event(s)")
+        // One step source, as in v3: while the phone counts its own steps, watch steps are not stored (2026-10-30)
+        if (preferences.get(BooleanKey.ApsAutoIsfStepsFromPhone)) return
         val rows = events.map { e ->
             SC(
                 duration = e.duration,

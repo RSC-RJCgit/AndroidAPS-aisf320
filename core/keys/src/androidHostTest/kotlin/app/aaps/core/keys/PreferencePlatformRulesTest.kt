@@ -58,6 +58,7 @@ class PreferencePlatformRulesTest {
      * - keep running in background, reload when no BG, the RileyLink heartbeat, its status and the check of other heartbeat
      *   devices: only iOS suspends an app in the background, so only iOS needs them (2026-10-24: listed here, they had been
      *   added without it)
+     * - steps from this phone: the step sensor is read on Android only, and the iOS app is a client (2026-10-30)
      * - raw from the secondary NS: only iOS takes every reading from Nightscout with no raw of its own (2026-10-30)
      */
     @Test
@@ -68,6 +69,7 @@ class PreferencePlatformRulesTest {
             "raise_urgent_alarms_as_android_notification", AppPlatform.ANDROID_ONLY,
             "keep_screen_on", setOf(AppPlatform.Android, AppPlatform.Ios),
             "ns_allow_roaming", AppPlatform.ANDROID_ONLY,
+            "autoisf_steps_from_phone", AppPlatform.ANDROID_ONLY,
             "ios_keep_running_in_background", setOf(AppPlatform.Ios),
             "ios_reload_when_no_bg", setOf(AppPlatform.Ios),
             "ios_rileylink_heartbeat", setOf(AppPlatform.Ios),

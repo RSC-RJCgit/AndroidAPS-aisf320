@@ -385,6 +385,7 @@ open class OpenAPSAutoISFPlugin(
         val advancedFiltering = constraintsChecker.isAdvancedFilteringEnabled().also { inputConstraints.copyReasons(it) }.value()
 
         val now = dateUtil.now()
+        storePhoneSteps(now)
         if (usesLiveSteps() && freshLiveSteps(now) == null) {
             aapsLogger.debug(LTag.APS, "Live steps missing or older than 20 minutes. Calculation skipped.")
             rxBus.send(EventResetOpenAPSGui(rh.gs(ApsStrings.live_steps_missing)))
@@ -1673,6 +1674,7 @@ open class OpenAPSAutoISFPlugin(
             DoubleKey.ApsSmbMaxIob,
             BooleanKey.ApsUseAutosens,
             BooleanKey.AutomationStatesEnabled,
+            BooleanKey.ApsAutoIsfStepsFromPhone,
             BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
             BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual,
             BooleanKey.ApsAutoIsfCodedAutomationsEnabled,
@@ -1808,6 +1810,19 @@ open class OpenAPSAutoISFPlugin(
             .let { LiveSteps.sampleFor(now, it, fromLivePhone = true, ownDevice = own) }
             ?.takeIf { LiveSteps.hasDosingBuckets(it.toBuckets()) }
     }
+
+    // The phone's own steps (PhoneSteps, 2026-10-30, per explicit request), one row per loop, as v3 stores them with
+    // "steps from smartphone". Dosing, the steps graph and the step lines then read them like any other step row.
+    // Not on a client (it does not loop) and not while this phone uses the live phone's steps.
+    private suspend fun storePhoneSteps(now: Long) {
+        if (config.AAPSCLIENT || usesLiveSteps() || !preferences.get(BooleanKey.ApsAutoIsfStepsFromPhone)) return
+        PhoneSteps.row(now)?.let { persistenceLayer.insertOrUpdateStepsCounts(listOf(it)) }
+    }
+
+    /** No own step record (phone or watch) in the last 20 minutes. Rows copied from another phone do not count. */
+    private suspend fun ownStepsMissing(now: Long): Boolean =
+        persistenceLayer.getStepsCountFromTimeToTime(now - LiveSteps.MAX_AGE_MS, now)
+            .let { LiveSteps.sampleFor(now, it, fromLivePhone = false, ownDevice = "openaps://${config.deviceModelForUpload}") } == null
 
     private fun SC.toBuckets(): Map<Int, Int> = mapOf(
         5 to steps5min, 10 to steps10min, 15 to steps15min, 30 to steps30min, 60 to steps60min, 180 to steps180min
@@ -4762,6 +4777,13 @@ open class OpenAPSAutoISFPlugin(
     // from a fresh Live sample, so a missing sample is never written as 0 steps. Out of invoke() for the method size.
     private suspend fun appendStepLines(reason: StringBuilder, now: Long) {
         if (usesLiveSteps() && freshLiveSteps(now) == null) return
+        // 2026-10-30, per explicit request: this phone's own steps missing (the phone and the watch write a row each loop or
+        // every 40 s, still or not, so none in 20 minutes means the sensor, its permission or the watch is gone). No step lines then, so a virtual master and the clients see the steps as
+        // missing rather than as 0 steps. The dosing on this phone is not changed.
+        if (!usesLiveSteps() && ownStepsMissing(now)) {
+            reason.append("Steps missing ;")
+            return
+        }
         reason.append(LiveSteps.reasonText(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now), steps180(now)))
     }
 

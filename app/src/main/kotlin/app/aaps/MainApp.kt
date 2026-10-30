@@ -33,6 +33,7 @@ import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.rx.events.EventAppInitialized
 import app.aaps.core.interfaces.tempTargets.toJson
 import app.aaps.plugins.aps.openAPSAutoISF.PhoneMovementDetector
+import app.aaps.plugins.aps.openAPSAutoISF.PhoneStepListener
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
@@ -108,11 +109,18 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
     }
 
     private val phoneMovementDetector = PhoneMovementDetector()
+    private val phoneStepListener = PhoneStepListener()
 
     private fun registerPhoneMovement() {
         val sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) ?: return
-        sensorManager.registerListener(phoneMovementDetector, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
+            sensorManager.registerListener(phoneMovementDetector, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+        // The phone's own steps (2026-10-30, as v3's StepService). Without "Physical activity" no counts arrive; granted
+        // later, they start with the next app start.
+        sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let {
+            sensorManager.registerListener(phoneStepListener, it, SensorManager.SENSOR_DELAY_NORMAL)
+        }
     }
 
     // When the settings cannot be opened, ComposeMainActivity only hands over to SettingsUnreadableActivity and

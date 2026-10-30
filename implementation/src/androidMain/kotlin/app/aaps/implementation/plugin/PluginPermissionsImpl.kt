@@ -103,6 +103,16 @@ class PluginPermissionsImpl(
                 )
             )
         }
+        // The phone's own step counter (2026-10-30, per explicit request): runtime permission from Android 10
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            add(
+                PermissionGroup(
+                    permissions = listOf(Manifest.permission.ACTIVITY_RECOGNITION),
+                    rationaleTitle = TextRef.AndroidRes(R.string.permission_activity_title),
+                    rationaleDescription = TextRef.AndroidRes(R.string.permission_activity_description),
+                )
+            )
+        }
         // Note: USE_FULL_SCREEN_INTENT is intentionally NOT requested. Google Play silently
         // re-revokes it on every update for a sideloaded, non-alarm app, so it can never be relied
         // on. Background alarms instead wake the screen and launch the alarm activity via

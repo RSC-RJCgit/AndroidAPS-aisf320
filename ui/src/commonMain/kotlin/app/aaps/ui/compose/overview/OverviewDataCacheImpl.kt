@@ -1543,13 +1543,15 @@ class OverviewDataCacheImpl(
         val (fromTime, toTime) = graphTimeRange() ?: return
         val records = persistenceLayer.getStepsCountFromTimeToTime(fromTime, toTime)
             .filter { it.isValid }
+            // A client graphs the master's steps only (2026-10-30): its own watch rows would be mixed in otherwise
+            .filter { !config.AAPSCLIENT || it.device.startsWith("openaps://") }
             // S15 as the last 15 minutes: a row from Live carries S10 and S15 as five-minute bins, a watch row as totals
             .map { sc ->
                 val steps15 = if (sc.device.startsWith("openaps://")) sc.steps5min + sc.steps10min + sc.steps15min else sc.steps15min
                 StepsRow(sc.timestamp, sc.steps5min, steps15, sc.steps30min, sc.steps60min)
             }
-        // A client saves no step records. It has the master's loop results, and each reason carries the step line
-        // (2026-10-18), so the graph is built from those instead.
+        // Without step rows (a client stores the master's step lines as rows only while it receives them), the graph is
+        // built from the master's loop results: each reason carries the step line (2026-10-18).
         val rows = records.ifEmpty {
             persistenceLayer.getApsResults(fromTime, toTime).mapNotNull { result ->
                 val buckets = LiveSteps.buckets(result.reason)

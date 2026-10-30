@@ -23,6 +23,8 @@
     <string name="permission_directory_description">Select a directory for application settings and log files</string>
     <string name="permission_notifications_title">Notifications</string>
     <string name="permission_notifications_description">Required to show alerts, alarms, and pump status updates</string>
+    <string name="permission_activity_title">Physical activity</string>
+    <string name="permission_activity_description">Counts your steps on this phone, for the step-based dosing rules and the steps graph</string>
     <string name="permission_schedule_exact_alarm_title">Alarms and reminders</string>
     <string name="permission_schedule_exact_alarm_description">Required so alarms can wake the screen while AAPS is in the background, and so reminders ring on time</string>
 

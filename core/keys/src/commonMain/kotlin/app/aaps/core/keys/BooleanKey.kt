@@ -308,6 +308,15 @@ enum class BooleanKey(
         defaultedBySM = true,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // The phone's own step counter (2026-10-30, per explicit request), as v3's "steps from smartphone". Android only: the iOS
+    // app is a client and does not loop. Local, each phone its own.
+    ApsAutoIsfStepsFromPhone(
+        "autoisf_steps_from_phone",
+        true,
+        KeysStrings.pref_title_steps_from_phone,
+        KeysStrings.pref_summary_steps_from_phone,
+        platforms = AppPlatform.ANDROID_ONLY
+    ),
     ApsAutoIsfUseLiveStepsOnVirtual(
         "autoisf_use_live_steps_on_virtual",
         false,
