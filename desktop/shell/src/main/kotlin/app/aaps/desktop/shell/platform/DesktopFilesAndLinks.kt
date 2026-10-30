@@ -15,6 +15,8 @@ import dev.zacsweers.metro.SingleIn
 import java.awt.Desktop
 import java.io.File
 import java.net.URI
+import javax.swing.JFileChooser
+import javax.swing.UIManager
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -52,10 +54,26 @@ class DesktopUrlOpener(
 }
 
 /**
+ * Lets the user pick a folder, starting at [start] (2026-10-30, per explicit request): the "AAPS directory" row, which only
+ * opened the fixed folder in the file manager before. A Swing chooser, because the JVM's native dialog cannot pick folders
+ * on Windows. Selecting with nothing highlighted takes the folder being shown. Null when cancelled.
+ */
+fun chooseFolder(start: File): File? {
+    runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
+    val chooser = JFileChooser(start.takeIf { it.isDirectory } ?: start.parentFile).apply {
+        fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+        isAcceptAllFileFilterUsed = false
+        dialogTitle = "AAPS directory"
+        approveButtonText = "Select"
+    }
+    if (chooser.showOpenDialog(null) != JFileChooser.APPROVE_OPTION) return null
+    return chooser.selectedFile ?: chooser.currentDirectory
+}
+
+/**
  * Shows a folder in the system file manager (Explorer, Finder, ...).
  *
- * The desktop has no folder to pick, so the "AAPS directory" row opens it instead. Where opening is
- * not possible the path is logged, the same fallback [DesktopUrlOpener] uses.
+ * Where opening is not possible the path is logged, the same fallback [DesktopUrlOpener] uses.
  */
 fun openFolder(directory: File, aapsLogger: AAPSLogger) {
     val opened = runCatching {

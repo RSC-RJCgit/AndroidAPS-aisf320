@@ -87,8 +87,26 @@ class JvmPrefsFileAccess(
  */
 object DesktopFolders {
 
-    /** The user-visible root, the counterpart of `Documents/AAPS` on a phone. */
-    val root: File get() = File(System.getProperty("user.home") ?: ".", "AAPS")
+    /**
+     * The user-visible root, the counterpart of `Documents/AAPS` on a phone: `~/AAPS`, or the folder chosen in Maintenance
+     * -> AAPS directory (2026-10-30, per explicit request), which [chooseRoot] keeps in [data].
+     */
+    val root: File get() = chosenRoot() ?: File(System.getProperty("user.home") ?: ".", "AAPS")
+
+    /**
+     * Where the chosen root is kept: inside [data], so each install (client 1-3, the Virtual master) has its own choice and
+     * it is known before anything else starts - `extra/engineering_mode` is read at start up.
+     */
+    private val chosenRootFile: File get() = File(data, "aaps_directory.txt")
+
+    private fun chosenRoot(): File? =
+        runCatching { chosenRootFile.takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() }?.let(::File) }.getOrNull()
+
+    /** Makes [directory] the root for this install, from the next read on. */
+    fun chooseRoot(directory: File) {
+        data.mkdirs()
+        chosenRootFile.writeText(directory.absolutePath)
+    }
 
     /**
      * Which client is running: 1, 2 or 3, or 0 for the Virtual master (2026-10-30). Set once by `Main.kt` before anything reads [data].

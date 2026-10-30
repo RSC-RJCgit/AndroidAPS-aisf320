@@ -49,7 +49,7 @@ import app.aaps.desktop.shell.di.GeneratedStringOwners
 import app.aaps.desktop.shell.secure.DesktopStorage
 import app.aaps.desktop.shell.secure.KeyVaultUnavailableException
 import app.aaps.implementation.logging.AAPSLoggerDesktop
-import app.aaps.desktop.shell.platform.openFolder
+import app.aaps.desktop.shell.platform.chooseFolder
 import app.aaps.implementation.maintenance.DesktopFolders
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import app.aaps.shared.clientbindings.ClientViewModelFactory
@@ -79,6 +79,7 @@ import app.aaps.ui.compose.treatments.viewmodels.TreatmentsViewModel
 import app.aaps.ui.compose.treatmentsSheet.TreatmentViewModel
 import app.aaps.ui.search.SearchViewModel
 import dev.zacsweers.metro.createGraphFactory
+import javax.swing.JOptionPane
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import java.io.File
@@ -544,8 +545,22 @@ private fun AapsDesktopApp(graph: DesktopAppGraph, appIcon: Painter, appName: St
                             onNotificationActionClick = { n -> navigator.handleNotificationAction(n.id) },
                             onQuickLaunchActionClick = { action -> navigator.handleQuickLaunchAction(action) },
                             onImportSettingsNavigate = { source -> navController.navigate(AppRoute.ImportSettings.createRoute(source.name)) },
-                            // Opens the AAPS folder (exports, preferences, logs, extra) in the file manager. This used to only log.
-                            onDirectoryClick = { openFolder(DesktopFolders.root, logger) },
+                            // Chooses the AAPS folder (exports, preferences, logs, extra) for this install (2026-10-30). It only
+                            // opened the fixed ~/AAPS in the file manager before, so another folder could not be chosen.
+                            onDirectoryClick = {
+                                chooseFolder(DesktopFolders.root)?.let { picked ->
+                                    if (picked.absoluteFile != DesktopFolders.root.absoluteFile) {
+                                        DesktopFolders.chooseRoot(picked)
+                                        logger.debug(LTag.CORE, "AAPS directory chosen: ${picked.absolutePath}")
+                                        JOptionPane.showMessageDialog(
+                                            null,
+                                            "AAPS directory: ${picked.absolutePath}\nRestart AAPS so it reads the extra folder there (engineering_mode).",
+                                            "AAPS directory",
+                                            JOptionPane.INFORMATION_MESSAGE
+                                        )
+                                    }
+                                }
+                            },
                             // authBrowser, not urlOpener: the sign in ends at a port this app is
                             // listening on, and DesktopAuthBrowser has the fallback launcher an
                             // ordinary link opener does not. See AuthBrowser.
