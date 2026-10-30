@@ -111,6 +111,8 @@ class BolusWizard(
     var insulinFromCOB = 0.0
         private set
     var insulinFromTrend = 0.0
+    /** True when a rising trend was left out because the carbs were eaten earlier (see doCalc). */
+    var trendLeftOut = false
         private set
     var trend = 0.0
         private set
@@ -265,6 +267,12 @@ class BolusWizard(
             if (useTrend) {
                 trend = it.shortAvgDelta
                 insulinFromTrend = profileUtil.fromMgdlToUnits(trend) * 3 / sens
+                // 2026-10-30, per explicit request: carbs eaten earlier (a minus carb time) already make part of a rising
+                // trend, while the carbs part still counts all of them. A rising trend is left out then; a falling one stays.
+                if (carbs > 0 && carbTime < 0 && insulinFromTrend > 0.0) {
+                    trendLeftOut = true
+                    insulinFromTrend = 0.0
+                }
             }
         }
 
@@ -426,6 +434,7 @@ class BolusWizard(
             extras.add(rh.gs(InterfacesStrings.wizard_ecarbs, eCarbsGrams, eCarbsDurationHours, eCarbsDelayMinutes))
         }
         if (carbTime != 0) extras.add(rh.gs(InterfacesStrings.wizard_carbs_time, carbTime))
+        if (trendLeftOut) extras.add(rh.gs(InterfacesStrings.wizard_trend_left_out, carbTime))
         if (carbsHalvedByRecent50) extras.add(rh.gs(InterfacesStrings.wizard_carbs_halved))
         if (hpSafetyApplied) extras.add(rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved))
         warsawPlan?.let { plan ->
