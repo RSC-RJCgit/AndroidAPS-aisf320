@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.27.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.28.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -61,13 +61,21 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .27, 2026-10-29)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .28, 2026-10-30)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.27.patch
-  git apply bolus-calculator-on-3426-aisf321.27.patch
+  git apply --check bolus-calculator-on-3426-aisf321.28.patch
+  git apply bolus-calculator-on-3426-aisf321.28.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .28 (2026-10-30):
+- Carbs entered with a minus time (eaten earlier, e.g. -30 min): a rising BG trend is left out of the bolus, because
+  part of that rise is the same carbs already absorbing while the carbs part still counts all of them. A falling
+  trend is kept. Example (30 Oct 16:56, 15 g at -30 min): 1.55 U would have been about 1.40 U.
+- The saved calculation note shows the carbs' time: "Carbs -30 min (eaten 16:26)" or "Carbs +15 min (for 17:11)",
+  and "Trend left out: carbs -30 min" when that applied, so the main phone and its clients can see it.
+- Retains all patch .27 changes below.
 
 Changes in patch .27 (2026-10-29):
 - Walking soon is ticked by itself in more cases. Hard walking (S30 1000 or more, with S15 or S5 above 0) ticks it
