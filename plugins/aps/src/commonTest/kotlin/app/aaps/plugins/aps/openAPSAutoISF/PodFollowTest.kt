@@ -71,6 +71,13 @@ class PodFollowTest {
         assertFalse(shower12(steps60 = 10))
     }
 
+    // 2026-10-30: a raw jump (shower steam) decides when 10-99 steps rule the quiet-morning test out
+    @Test
+    fun shower12FiresOnARawJumpDespiteSomeSteps() {
+        assertTrue(shower12(steps60 = 39, rawJumpMgdl = 1.7 * 18.016))
+        assertFalse(shower12(steps60 = 100, rawJumpMgdl = 1.7 * 18.016))
+    }
+
     @Test
     fun shower12OpensUsual2OnlyForARecentMark() {
         assertTrue(shower12OpensUsual2(20))
@@ -115,7 +122,7 @@ class PodFollowTest {
         )
     }
 
-    private fun shower12(steps60: Int): Boolean =
+    private fun shower12(steps60: Int, rawJumpMgdl: Double? = null): Boolean =
         shower12ShouldFire(
             ready = true,
             profilePercent = 100,
@@ -129,5 +136,6 @@ class PodFollowTest {
             cob = 0.0,
             minutesSinceBolus = 200,
             ttLowMgdl = null,
+            rawJumpMgdl = rawJumpMgdl,
         )
 }

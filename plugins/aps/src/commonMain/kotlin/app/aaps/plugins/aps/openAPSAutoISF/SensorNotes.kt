@@ -103,6 +103,23 @@ internal fun findRawSpike(raw: List<Pair<Long, Double>>): RawSpike? {
 }
 
 /**
+ * The shower fallback for Shower12 (2026-10-30, per explicit request): the jump half of [findRawSpike], without the fall after it,
+ * which comes 10 min too late to decide on. The newest raw reading of the last 5 min that is 0.9 mmol or more above the reading
+ * 4-7 min before it; the jump in mg/dL, or null. On 52 mornings of Client uploads (9 Sep - 30 Oct) Shower12 came with a raw jump
+ * of 1.0-2.5 almost every time, and 13-74 steps kept it from firing on 9, 18, 21 and 25 Sep while raw jumped 1.0-1.8.
+ */
+internal fun findRawJump(raw: List<Pair<Long, Double>>, now: Long): Double? {
+    for (i in raw.indices.reversed()) {
+        val (at, value) = raw[i]
+        if (now - at > 5 * 60_000L) break
+        val base = raw.subList(0, i).lastOrNull { at - it.first in 4 * 60_000L..7 * 60_000L } ?: continue
+        val jump = value - base.second
+        if (jump >= RAW_SPIKE_JUMP_MGDL) return jump
+    }
+    return null
+}
+
+/**
  * Raw rising more than twice as fast as BG: the newest raw minus the raw 4-7 min before is 0.9 mmol or more, BG is rising,
  * and the raw rise is more than twice the BG [bgDeltaMgdl]. Calibration alone (slope 0.75) makes raw rise 1.33x as fast.
  */

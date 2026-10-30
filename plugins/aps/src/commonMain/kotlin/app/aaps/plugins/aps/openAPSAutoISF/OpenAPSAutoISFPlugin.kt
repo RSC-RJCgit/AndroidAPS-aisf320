@@ -5720,6 +5720,9 @@ open class OpenAPSAutoISFPlugin(
         val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
         val cannulaHours = if (cannula == null) null else (now - cannula.timestamp) / 3_600_000.0
         val livePump = activePlugin.activePump !is VirtualPump
+        val steps60 = steps60(now)
+        // Only read when steps alone would rule the shower out
+        val rawJump = if (steps60 in 10..99) findRawJump(recentRawLibre(now).map { it.first to it.third }, now) else null
         if (shower12ShouldFire(
                 ready = runMarks.ready(RunMark.SHOWER12, 5, now),
                 profilePercent = profilePercent,
@@ -5729,16 +5732,19 @@ open class OpenAPSAutoISFPlugin(
                 bg = bg,
                 delta = delta,
                 shortDelta = shortDelta,
-                steps60 = steps60(now),
+                steps60 = steps60,
                 cob = cob,
                 minutesSinceBolus = minutesSinceLastMealEvent(now),
                 ttLowMgdl = tt?.lowTarget,
+                rawJumpMgdl = rawJump,
             )
         ) {
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 12)
             runMarks.mark(RunMark.SHOWER12, now)
-            sendAutoSms("Shower12: g=${decimals(bg / 18.016, 1)} iobTH=${preferences.get(IntKey.ApsAutoIsfIobThPercent)}")
-            carePortalNote("Shwr12")
+            // Only the raw-jump path names the jump, so the two can be told apart
+            val rawText = if (steps60 >= 10 && rawJump != null) " raw +${decimals(rawJump / 18.016, 1)}" else ""
+            sendAutoSms("Shower12$rawText: g=${decimals(bg / 18.016, 1)} iobTH=${preferences.get(IntKey.ApsAutoIsfIobThPercent)}")
+            carePortalNote("Shwr12$rawText")
             aapsLogger.debug(LTag.APS, "Shower12 iobTH -> 12")
         }
         if (pod2ShouldFire(

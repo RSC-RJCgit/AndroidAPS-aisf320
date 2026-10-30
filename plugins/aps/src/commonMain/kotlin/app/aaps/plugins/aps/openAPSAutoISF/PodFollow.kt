@@ -57,11 +57,15 @@ internal fun shower12ShouldFire(
     cob: Double,
     minutesSinceBolus: Int,
     ttLowMgdl: Double?,
+    rawJumpMgdl: Double? = null,
 ): Boolean {
     if (!ready || profilePercent <= 50 || iobThPercent <= 12 || !steroidsOff) return false
     if (!minuteInWindow(minuteOfDay, 5 * 60 + 30, 8 * 60 + 30)) return false
     if (bg > 144.1 || delta < 6.3 || shortDelta < 4.5) return false
-    if (steps60 >= 10 || cob != 0.0 || minutesSinceBolus < 180) return false
+    // 2026-10-30, per explicit request: 10-99 steps no longer rule it out when raw jumped (shower steam, findRawJump).
+    // 100 or more steps is walking, which also makes raw jump.
+    if (steps60 >= 100 || (steps60 >= 10 && rawJumpMgdl == null)) return false
+    if (cob != 0.0 || minutesSinceBolus < 180) return false
     return ttLowMgdl == null || ttLowMgdl <= 127.9
 }
 
