@@ -72,6 +72,12 @@ internal fun secondaryRawNear(sorted: List<Pair<Long, Double>>, time: Long, tole
 /** True when [gv] has no raw of its own: the Raw line only draws GV.noise over 10 mg/dL. */
 internal fun hasNoRaw(gv: GV): Boolean = (gv.noise ?: 0.0) <= 10.0
 
+/**
+ * Trio's site writes filtered = unfiltered = sgv (2026-10-30), copies rather than raw. A real raw source does not give all
+ * three exactly equal (aapsfour: 100.2 / 100 / 94.6), so this is checked per reading, not by site.
+ */
+internal fun NSSgvV3.rawIsCopyOfSgv(): Boolean = filtered != null && filtered == unfiltered && filtered == sgv
+
 /** Copies of the readings without raw that get one from [secondary]. Readings with raw are never in the result. */
 internal fun fillMissingRaw(readings: List<GV>, secondary: List<Pair<Long, Double>>): List<GV> {
     if (secondary.isEmpty()) return emptyList()

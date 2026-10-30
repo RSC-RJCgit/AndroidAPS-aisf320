@@ -3,6 +3,8 @@ package app.aaps.plugins.sync.nsclientV3.workers
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
+import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
+import app.aaps.core.nssdk.localmodel.entry.NsUnits
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,6 +16,11 @@ class SecondaryRawStoreTest {
 
     private fun gv(time: Long, noise: Double? = null) =
         GV(timestamp = time, utcOffset = 0L, raw = null, value = 150.0, trendArrow = TrendArrow.FLAT, noise = noise, sourceSensor = SourceSensor.UNKNOWN)
+
+    private fun sgv(value: Double, filtered: Double?, unfiltered: Double?) = NSSgvV3(
+        date = 0L, identifier = null, utcOffset = 0L, isValid = true, sgv = value, units = NsUnits.MG_DL, direction = null,
+        noise = null, filtered = filtered, unfiltered = unfiltered
+    )
 
     private val secondary = listOf(60_000L to 140.0, 120_000L to 145.0, 300_000L to 160.0)
 
@@ -39,6 +46,22 @@ class SecondaryRawStoreTest {
     @Test
     fun aReadingWithItsOwnRawIsNeverTouched() {
         assertTrue(fillMissingRaw(listOf(gv(120_000L, noise = 130.0)), secondary).isEmpty())
+    }
+
+    @Test
+    fun realRawCloseToTheBgIsKept() {
+        assertTrue(fillMissingRaw(listOf(gv(120_000L, noise = 150.2)), secondary).isEmpty())
+    }
+
+    @Test
+    fun onlyAllThreeExactlyEqualIsACopy() {
+        // Trio's site: filtered = unfiltered = sgv
+        assertTrue(sgv(134.0, filtered = 134.0, unfiltered = 134.0).rawIsCopyOfSgv())
+        // aapsfour (AAPS, Libre2): real raw
+        assertFalse(sgv(94.6, filtered = 100.2, unfiltered = 100.0).rawIsCopyOfSgv())
+        assertFalse(sgv(100.0, filtered = 100.2, unfiltered = 100.0).rawIsCopyOfSgv())
+        // rsnrjc: no raw fields
+        assertFalse(sgv(143.0, filtered = null, unfiltered = null).rawIsCopyOfSgv())
     }
 
     @Test

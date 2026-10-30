@@ -58,6 +58,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.SecondaryRawStore
 import app.aaps.plugins.sync.nsclientV3.workers.fillMissingRaw
 import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.workers.rawFromSecondarySite
+import app.aaps.plugins.sync.nsclientV3.workers.rawIsCopyOfSgv
 import app.aaps.plugins.sync.nsclientV3.extensions.toCAL
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toEffectiveProfileSwitch
@@ -145,8 +146,17 @@ class NsIncomingDataProcessor(
 
         if (sgvs is List<*>) { // V3 client
 
+            val rawFill = !fromLiveSite && rawFromSecondarySite(
+                preferences.get(BooleanKey.NsClientSecondaryEnabled),
+                preferences.get(BooleanKey.NsClientRawFromSecondary)
+            )
             for (i in 0 until sgvs.size) {
                 val sgv = (sgvs[i] as NSSgvV3).toGV()
+                // Trio's site writes filtered and unfiltered as copies of sgv. That is no raw, so the second site fills it.
+                if (rawFill && (sgvs[i] as NSSgvV3).rawIsCopyOfSgv()) {
+                    sgv.noise = null
+                    sgv.raw = null
+                }
                 // The id on a live-site reading belongs to that other Nightscout.
                 // The uploader skips any glucose that already has an id, so the
                 // main site never receives it. Drop the other id here. A later
