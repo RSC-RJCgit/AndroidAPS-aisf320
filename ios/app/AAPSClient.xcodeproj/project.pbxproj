@@ -12,27 +12,40 @@
 		AA2000500000000000000 /* AapsShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1000200000000000000 /* AapsShared.framework */; };
 		AA2009900000000000000 /* NsSocketBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1009900000000000000 /* NsSocketBridge.swift */; };
 		AA3000300000000000000 /* ClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000100000000000000 /* ClientApp.swift */; };
+		AA7000300000000000000 /* ClientApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1000100000000000000 /* ClientApp.swift */; };
 		AA3000400000000000000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA3000200000000000000 /* Assets.xcassets */; };
+		AA7000400000000000000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA7000200000000000000 /* Assets.xcassets */; };
 		AA3000500000000000000 /* AapsShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1000200000000000000 /* AapsShared.framework */; };
+		AA7000500000000000000 /* AapsShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1000200000000000000 /* AapsShared.framework */; };
 		AA3009900000000000000 /* NsSocketBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1009900000000000000 /* NsSocketBridge.swift */; };
+		AA7009900000000000000 /* NsSocketBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1009900000000000000 /* NsSocketBridge.swift */; };
 		AA2009A00000000000000 /* AapsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000100000000000000 /* AapsActivityAttributes.swift */; };
 		AA2009B00000000000000 /* LiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000200000000000000 /* LiveActivityBridge.swift */; };
 		AA2009C00000000000000 /* AAPSLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA4000100000000000000 /* AAPSLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA3009A00000000000000 /* AapsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000100000000000000 /* AapsActivityAttributes.swift */; };
+		AA7009A00000000000000 /* AapsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000100000000000000 /* AapsActivityAttributes.swift */; };
 		AA3009B00000000000000 /* LiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000200000000000000 /* LiveActivityBridge.swift */; };
+		AA7009B00000000000000 /* LiveActivityBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000200000000000000 /* LiveActivityBridge.swift */; };
 		AA3009C00000000000000 /* AAPSLiveActivity2.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA5000100000000000000 /* AAPSLiveActivity2.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA7009C00000000000000 /* AAPSLiveActivity3.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA8000100000000000000 /* AAPSLiveActivity3.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA4000300000000000000 /* AapsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000100000000000000 /* AapsActivityAttributes.swift */; };
 		AA4000400000000000000 /* AapsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000300000000000000 /* AapsLiveActivity.swift */; };
 		AA5000300000000000000 /* AapsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000100000000000000 /* AapsActivityAttributes.swift */; };
+		AA8000300000000000000 /* AapsActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000100000000000000 /* AapsActivityAttributes.swift */; };
 		AA5000400000000000000 /* AapsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000300000000000000 /* AapsLiveActivity.swift */; };
+		AA8000400000000000000 /* AapsLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000300000000000000 /* AapsLiveActivity.swift */; };
 		AA2009D00000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
 		AA3009D00000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
+		AA7009D00000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
 		AA4000500000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
 		AA5000500000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
+		AA8000500000000000000 /* WidgetBgStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000500000000000000 /* WidgetBgStore.swift */; };
 		AA4000900000000000000 /* AapsBgWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000600000000000000 /* AapsBgWidget.swift */; };
 		AA5000900000000000000 /* AapsBgWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000600000000000000 /* AapsBgWidget.swift */; };
+		AA8000900000000000000 /* AapsBgWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6000600000000000000 /* AapsBgWidget.swift */; };
 		D32B0F773048851500FAFE85 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = AA00SP02000000000000001 /* SocketIO */; };
 		D32B0F783048851500FAFE85 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = AA00SP02000000000000002 /* SocketIO */; };
+		AA7000D00000000000000 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = AA00SP02000000000000003 /* SocketIO */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +62,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = AA5001300000000000000;
 			remoteInfo = AAPSLiveActivity2;
+		};
+		AA7000C00000000000000 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA1001000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA8001300000000000000;
+			remoteInfo = AAPSLiveActivity3;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -75,6 +95,17 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA7000A00000000000000 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AA7009C00000000000000 /* AAPSLiveActivity3.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -85,9 +116,12 @@
 		AA2000100000000000000 /* AAPSClient.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AAPSClient.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA2000200000000000000 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = AAPSClient/Assets.xcassets; sourceTree = "<group>"; };
 		AA3000100000000000000 /* AAPSClient2.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AAPSClient2.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA7000100000000000000 /* AAPS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AAPS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA3000200000000000000 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = AAPSClient2/Assets.xcassets; sourceTree = "<group>"; };
+		AA7000200000000000000 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = AAPS/Assets.xcassets; sourceTree = "<group>"; };
 		AA4000100000000000000 /* AAPSLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AAPSLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA5000100000000000000 /* AAPSLiveActivity2.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AAPSLiveActivity2.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA8000100000000000000 /* AAPSLiveActivity3.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AAPSLiveActivity3.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA6000100000000000000 /* AapsActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AapsActivityAttributes.swift; path = Shared/AapsActivityAttributes.swift; sourceTree = "<group>"; };
 		AA6000200000000000000 /* LiveActivityBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveActivityBridge.swift; path = Shared/LiveActivityBridge.swift; sourceTree = "<group>"; };
 		AA6000300000000000000 /* AapsLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AapsLiveActivity.swift; path = LiveActivity/AapsLiveActivity.swift; sourceTree = "<group>"; };
@@ -115,6 +149,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA7000700000000000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA7000D00000000000000 /* SocketIO in Frameworks */,
+				AA7000500000000000000 /* AapsShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AA4000700000000000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -123,6 +166,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA5000700000000000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA8000700000000000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -143,6 +193,7 @@
 				AA6001200000000000000 /* LiveActivity */,
 				AA2001200000000000000 /* AAPSClient */,
 				AA3001200000000000000 /* AAPSClient2 */,
+				AA7001200000000000000 /* AAPS */,
 				AA1000300000000000000 /* Signing.xcconfig */,
 				AA1000200000000000000 /* AapsShared.framework */,
 				AA1001400000000000000 /* Products */,
@@ -156,6 +207,8 @@
 				AA3000100000000000000 /* AAPSClient2.app */,
 				AA4000100000000000000 /* AAPSLiveActivity.appex */,
 				AA5000100000000000000 /* AAPSLiveActivity2.appex */,
+				AA7000100000000000000 /* AAPS.app */,
+				AA8000100000000000000 /* AAPSLiveActivity3.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -174,6 +227,14 @@
 				AA3000200000000000000 /* Assets.xcassets */,
 			);
 			name = AAPSClient2;
+			sourceTree = "<group>";
+		};
+		AA7001200000000000000 /* AAPS */ = {
+			isa = PBXGroup;
+			children = (
+				AA7000200000000000000 /* Assets.xcassets */,
+			);
+			name = AAPS;
 			sourceTree = "<group>";
 		};
 		AA6001200000000000000 /* LiveActivity */ = {
@@ -235,6 +296,29 @@
 			productReference = AA3000100000000000000 /* AAPSClient2.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA7001300000000000000 /* AAPS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA7001100000000000000 /* Build configuration list for PBXNativeTarget "AAPS" */;
+			buildPhases = (
+				AA7000900000000000000 /* Build shared framework */,
+				AA7000600000000000000 /* Sources */,
+				AA7000700000000000000 /* Frameworks */,
+				AA7000800000000000000 /* Resources */,
+				AA7000A00000000000000 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA7000B00000000000000 /* PBXTargetDependency */,
+			);
+			name = AAPS;
+			packageProductDependencies = (
+				AA00SP02000000000000003 /* SocketIO */,
+			);
+			productName = AAPS;
+			productReference = AA7000100000000000000 /* AAPS.app */;
+			productType = "com.apple.product-type.application";
+		};
 		AA4001300000000000000 /* AAPSLiveActivity */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AA4001100000000000000 /* Build configuration list for PBXNativeTarget "AAPSLiveActivity" */;
@@ -269,6 +353,23 @@
 			productReference = AA5000100000000000000 /* AAPSLiveActivity2.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AA8001300000000000000 /* AAPSLiveActivity3 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA8001100000000000000 /* Build configuration list for PBXNativeTarget "AAPSLiveActivity3" */;
+			buildPhases = (
+				AA8000600000000000000 /* Sources */,
+				AA8000700000000000000 /* Frameworks */,
+				AA8000800000000000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AAPSLiveActivity3;
+			productName = AAPSLiveActivity3;
+			productReference = AA8000100000000000000 /* AAPSLiveActivity3.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -299,6 +400,8 @@
 				AA3001300000000000000 /* AAPSClient2 */,
 				AA4001300000000000000 /* AAPSLiveActivity */,
 				AA5001300000000000000 /* AAPSLiveActivity2 */,
+				AA7001300000000000000 /* AAPS */,
+				AA8001300000000000000 /* AAPSLiveActivity3 */,
 			);
 		};
 /* End PBXProject section */
@@ -320,6 +423,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA7000800000000000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA7000400000000000000 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AA4000800000000000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -328,6 +439,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AA5000800000000000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA8000800000000000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -352,6 +470,20 @@
 			shellScript = "# Keep the framework in step with the Kotlin sources.\n# The simulator and a real phone are different architectures, so the Gradle target follows\n# whatever Xcode is building rather than being fixed to one of them.\ncase \"$PLATFORM_NAME\" in\n  iphonesimulator) KOTLIN_TARGET=IosSimulatorArm64 ;;\n  iphoneos)        KOTLIN_TARGET=IosArm64 ;;\n  *) echo \"error: unsupported platform $PLATFORM_NAME\" >&2; exit 1 ;;\nesac\n# Xcode does not inherit a login shell, so JAVA_HOME is set here rather than assumed.\nexport JAVA_HOME=\"$(/usr/libexec/java_home -v 21)\"\n# Debug or Release Kotlin, following what Xcode is building. Pinned to Debug before, which meant an\n# archive for TestFlight shipped unoptimised Kotlin - the whole app logic - while everything\n# around it was built as a release.\ncase \"$CONFIGURATION\" in\n  Release) KOTLIN_BUILD=Release ;;\n  *)       KOTLIN_BUILD=Debug ;;\nesac\n\"$SRCROOT/../../gradlew\" -p \"$SRCROOT/../..\" \":ios:shell:link${KOTLIN_BUILD}Framework$KOTLIN_TARGET\" --no-daemon\n\n# The alarm sounds live once, in :core:ui's Android resources. Copying them at build time rather\n# than keeping a second set under ios/ means the two cannot drift - a replaced alarm tone stays one\n# edit, not two.\nSOUNDS=\"$SRCROOT/../../core/ui/src/androidMain/res/raw\"\nDEST=\"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DEST\"\nfor s in alarm urgentalarm error boluserror eatreminder; do\n  if [ ! -f \"$SOUNDS/$s.mp3\" ]; then\n    echo \"error: alarm sound $s.mp3 missing from $SOUNDS\" >&2; exit 1\n  fi\n  cp \"$SOUNDS/$s.mp3\" \"$DEST/\"\ndone\n";
 		};
 		AA3000900000000000000 /* Build shared framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Build shared framework";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Keep the framework in step with the Kotlin sources.\n# The simulator and a real phone are different architectures, so the Gradle target follows\n# whatever Xcode is building rather than being fixed to one of them.\ncase \"$PLATFORM_NAME\" in\n  iphonesimulator) KOTLIN_TARGET=IosSimulatorArm64 ;;\n  iphoneos)        KOTLIN_TARGET=IosArm64 ;;\n  *) echo \"error: unsupported platform $PLATFORM_NAME\" >&2; exit 1 ;;\nesac\n# Xcode does not inherit a login shell, so JAVA_HOME is set here rather than assumed.\nexport JAVA_HOME=\"$(/usr/libexec/java_home -v 21)\"\n# Debug or Release Kotlin, following what Xcode is building. Pinned to Debug before, which meant an\n# archive for TestFlight shipped unoptimised Kotlin - the whole app logic - while everything\n# around it was built as a release.\ncase \"$CONFIGURATION\" in\n  Release) KOTLIN_BUILD=Release ;;\n  *)       KOTLIN_BUILD=Debug ;;\nesac\n\"$SRCROOT/../../gradlew\" -p \"$SRCROOT/../..\" \":ios:shell:link${KOTLIN_BUILD}Framework$KOTLIN_TARGET\" --no-daemon\n\n# The alarm sounds live once, in :core:ui's Android resources. Copying them at build time rather\n# than keeping a second set under ios/ means the two cannot drift - a replaced alarm tone stays one\n# edit, not two.\nSOUNDS=\"$SRCROOT/../../core/ui/src/androidMain/res/raw\"\nDEST=\"$BUILT_PRODUCTS_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nmkdir -p \"$DEST\"\nfor s in alarm urgentalarm error boluserror eatreminder; do\n  if [ ! -f \"$SOUNDS/$s.mp3\" ]; then\n    echo \"error: alarm sound $s.mp3 missing from $SOUNDS\" >&2; exit 1\n  fi\n  cp \"$SOUNDS/$s.mp3\" \"$DEST/\"\ndone\n";
+		};
+		AA7000900000000000000 /* Build shared framework */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -392,6 +524,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA7000600000000000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA7000300000000000000 /* ClientApp.swift in Sources */,
+				AA7009900000000000000 /* NsSocketBridge.swift in Sources */,
+				AA7009A00000000000000 /* AapsActivityAttributes.swift in Sources */,
+				AA7009B00000000000000 /* LiveActivityBridge.swift in Sources */,
+				AA7009D00000000000000 /* WidgetBgStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AA4000600000000000000 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -414,6 +558,17 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA8000600000000000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA8000300000000000000 /* AapsActivityAttributes.swift in Sources */,
+				AA8000400000000000000 /* AapsLiveActivity.swift in Sources */,
+				AA8000500000000000000 /* WidgetBgStore.swift in Sources */,
+				AA8000900000000000000 /* AapsBgWidget.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -426,6 +581,11 @@
 			isa = PBXTargetDependency;
 			target = AA5001300000000000000 /* AAPSLiveActivity2 */;
 			targetProxy = AA3000C00000000000000 /* PBXContainerItemProxy */;
+		};
+		AA7000B00000000000000 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA8001300000000000000 /* AAPSLiveActivity3 */;
+			targetProxy = AA7000C00000000000000 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -528,6 +688,48 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA7001000000000000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA1000300000000000000 /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Simulator.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(AAPS_BUILD_NUMBER:default=1)";
+				ENABLE_PREVIEWS = YES;
+				// Which Kotlin/Native output to look in. `linkDebugFramework` and
+				// `linkReleaseFramework` write to different folders, so a path that named one of
+				// them worked in that configuration only - a Release archive found no Kotlin at all.
+				KOTLIN_FRAMEWORK_KIND = debug;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/../shell/build/bin/iosArm64/$(KOTLIN_FRAMEWORK_KIND)Framework",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/../shell/build/bin/iosSimulatorArm64/$(KOTLIN_FRAMEWORK_KIND)Framework",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shared/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AAPS;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				// iPhone stays portrait. iPad must declare all four or the App Store rejects the
+				// upload as an invalid bundle: an app in the iPad device family takes part in
+				// multitasking, and a multitasking app has to survive being any shape.
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -639,6 +841,48 @@
 			};
 			name = Release;
 		};
+		AA7001600000000000000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA1000300000000000000 /* Signing.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = Simulator.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(AAPS_BUILD_NUMBER:default=1)";
+				ENABLE_PREVIEWS = YES;
+				// Which Kotlin/Native output to look in. `linkDebugFramework` and
+				// `linkReleaseFramework` write to different folders, so a path that named one of
+				// them worked in that configuration only - a Release archive found no Kotlin at all.
+				KOTLIN_FRAMEWORK_KIND = release;
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/../shell/build/bin/iosArm64/$(KOTLIN_FRAMEWORK_KIND)Framework",
+				);
+				"FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(inherited)",
+					"$(SRCROOT)/../shell/build/bin/iosSimulatorArm64/$(KOTLIN_FRAMEWORK_KIND)Framework",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shared/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AAPS;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				// iPhone stays portrait. iPad must declare all four or the App Store rejects the
+				// upload as an invalid bundle: an app in the iPad device family takes part in
+				// multitasking, and a multitasking app has to survive being any shape.
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		AA4001000000000000000 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = AA1000300000000000000 /* Signing.xcconfig */;
@@ -720,6 +964,33 @@
 			};
 			name = Debug;
 		};
+		AA8001000000000000000 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA1000300000000000000 /* Signing.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				// The same numbers as the app: App Store Connect rejects an extension whose version differs from its app.
+				CURRENT_PROJECT_VERSION = "$(AAPS_BUILD_NUMBER:default=1)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AAPS;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
+				// Must start with the app's own id, as iOS requires for an extension it carries.
+				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps.LiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		AA5001500000000000000 /* Release */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = AA1000300000000000000 /* Signing.xcconfig */;
@@ -740,6 +1011,33 @@
 				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
 				// Must start with the app's own id, as iOS requires for an extension it carries.
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2.LiveActivity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA8001500000000000000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = AA1000300000000000000 /* Signing.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				// The same numbers as the app: App Store Connect rejects an extension whose version differs from its app.
+				CURRENT_PROJECT_VERSION = "$(AAPS_BUILD_NUMBER:default=1)";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LiveActivity/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = AAPS;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=1.0)";
+				// Must start with the app's own id, as iOS requires for an extension it carries.
+				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -777,6 +1075,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		AA7001100000000000000 /* Build configuration list for PBXNativeTarget "AAPS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA7001000000000000000 /* Debug */,
+				AA7001600000000000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		AA4001100000000000000 /* Build configuration list for PBXNativeTarget "AAPSLiveActivity" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -791,6 +1098,15 @@
 			buildConfigurations = (
 				AA5001000000000000000 /* Debug */,
 				AA5001500000000000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AA8001100000000000000 /* Build configuration list for PBXNativeTarget "AAPSLiveActivity3" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA8001000000000000000 /* Debug */,
+				AA8001500000000000000 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
@@ -815,6 +1131,11 @@
 			productName = SocketIO;
 		};
 		AA00SP02000000000000002 /* SocketIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA00SP01000000000000001 /* XCRemoteSwiftPackageReference "socket" */;
+			productName = SocketIO;
+		};
+		AA00SP02000000000000003 /* SocketIO */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA00SP01000000000000001 /* XCRemoteSwiftPackageReference "socket" */;
 			productName = SocketIO;

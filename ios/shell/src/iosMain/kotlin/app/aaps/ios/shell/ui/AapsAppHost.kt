@@ -202,7 +202,9 @@ private fun startApp(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivit
 
     // Before the composition, not beside it: the first view model built reads the active pump, and
     // an empty plugin list there throws from a coroutine and takes the process with it.
-    IosAppStartup(logger, PluginStoreRegistry(graph.pluginStore, graph.configBuilder), graph.contributedPlugins) { graph.periodicMaintenance.start(graph.appScope) }.run()
+    // The "AAPS" master target also gets the loop-only plugins (Objectives), as Android does under config.APS (2026-10-30)
+    val plugins = if (graph.config.APS) graph.contributedPlugins + graph.contributedApsPlugins else graph.contributedPlugins
+    IosAppStartup(logger, PluginStoreRegistry(graph.pluginStore, graph.configBuilder), plugins) { graph.periodicMaintenance.start(graph.appScope) }.run()
 
     // Attach to the notification centre. Registering a category only records it now, so that building
     // the graph does not need an app bundle - see `IosNotificationDelegate.install`. It is done here

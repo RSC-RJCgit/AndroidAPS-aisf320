@@ -68,4 +68,12 @@ class IosClientFlavorTest {
     fun `only the end of the identifier matters`() {
         assertEquals("aapsclient2", clientFlavorFor("com.example.fork.client2"))
     }
+
+    // 2026-10-30: the "AAPS" target is the master, Android's full flavour. A client identifier never ends in ".aaps".
+    @Test
+    fun theAapsTargetIsTheMaster() {
+        assertEquals("full", clientFlavorFor("com.rscgit.aaps"))
+        assertEquals("aapsclient", clientFlavorFor("com.rscgit.aapsclient"))
+        assertEquals("aapsclient2", clientFlavorFor("com.rscgit.aapsclient2"))
+    }
 }

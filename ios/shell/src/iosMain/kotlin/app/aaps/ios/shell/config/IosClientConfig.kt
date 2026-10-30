@@ -46,12 +46,11 @@ class IosClientConfig(
 
     override val SUPPORTED_NS_VERSION: Int = 150000
 
-    // No loop and no pump drivers on iOS: this is a follower.
-    override val APS: Boolean = false
+    // 2026-10-30, per explicit request: the "AAPS" target (bundle id ending ".aaps") is a master that runs the loop on the
+    // Virtual pump. iOS has no real pump drivers, so PUMPDRIVERS stays false and the Virtual pump is the only pump.
+    // The two client targets stay followers: no loop, and no pump.
     override val PUMPCONTROL: Boolean = false
     override val PUMPDRIVERS: Boolean = false
-
-    override val AAPSCLIENT: Boolean = true
 
     /**
      * Which client this build is, worked out from the bundle it was built into.
@@ -66,6 +65,10 @@ class IosClientConfig(
      * `BuildConfig.FLAVOR` against the same three names.
      */
     override val FLAVOR: String = clientFlavorFor(APPLICATION_ID)
+
+    /** The "AAPS" target, see [FLAVOR]. */
+    override val APS: Boolean = FLAVOR == "full"
+    override val AAPSCLIENT: Boolean = !APS
 
     override val AAPSCLIENT1: Boolean = FLAVOR == "aapsclient"
     override val AAPSCLIENT2: Boolean = FLAVOR == "aapsclient2"
@@ -115,7 +118,7 @@ class IosClientConfig(
     override val appName: TextRef = TextRef.Literal(
         NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleDisplayName") as? String
             ?: NSBundle.mainBundle.objectForInfoDictionaryKey("CFBundleName") as? String
-            ?: "AAPSClient"
+            ?: if (APS) "AAPS" else "AAPSClient"
     )
 
     private val _initProgressFlow = MutableStateFlow(InitProgress(done = true))
@@ -160,13 +163,10 @@ class IosClientConfig(
     override fun isEngineeringMode(): Boolean = isEnabled(ExternalOptions.ENGINEERING_MODE)
 
     /**
-     * Always true, and correct rather than a shortcut.
-     *
-     * Android computes `if (!APS) true else isEngineeringMode() || !isDev()`. [APS] is false here
-     * because this is a follower, so that expression is true whatever the rest says. Written out
-     * rather than copied so it does not read as a stub.
+     * The same expression as Android. On a client [APS] is false, so it is always true; on the "AAPS" master a debug
+     * build needs engineering mode, as on Android.
      */
-    override fun isEngineeringModeOrRelease(): Boolean = true
+    override fun isEngineeringModeOrRelease(): Boolean = if (!APS) true else isEngineeringMode() || !isDev()
 
     /**
      * Read the same way Android does - by the presence of a file in the `extra` folder.
@@ -203,8 +203,12 @@ class IosClientConfig(
  * `app.aaps.client2` the targets use now and the older `info.nightscout.aapsclient2`. Client 1's
  * identifier is a prefix of the others, so the numbered ones are checked first. Anything
  * unrecognised is client 1, which keeps exactly one of the three flags true.
+ *
+ * A bundle identifier ending in `.aaps` (the "AAPS" target, `com.rscgit.aaps`, 2026-10-30) is the master, Android's
+ * "full" flavour.
  */
 internal fun clientFlavorFor(bundleId: String): String = when {
+    bundleId.endsWith(".aaps")   -> "full"
     bundleId.endsWith("client2") -> "aapsclient2"
     bundleId.endsWith("client3") -> "aapsclient3"
     else                         -> "aapsclient"

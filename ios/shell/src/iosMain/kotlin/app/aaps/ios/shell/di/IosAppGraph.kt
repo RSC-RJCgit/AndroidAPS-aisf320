@@ -37,6 +37,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
+import app.aaps.core.interfaces.di.APS
 import app.aaps.core.objects.di.CoreObjectsGraph
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
 import app.aaps.database.AppRepository
@@ -145,13 +146,16 @@ interface IosAppGraph : MetroViewModelMultibindings {
     /**
      * Plugins that register themselves with `@ContributesIntoMap`, keyed by their order.
      *
-     * Only this one bucket, unlike Android, which also merges `@APS`, `@PumpDriver` and
-     * `@NotNSClient` sets. An iOS build is a follower client: `config.APS`, `config.PUMPDRIVERS`
-     * are false and `config.AAPSCLIENT` is true, so all three of those buckets are excluded by the
-     * same rules `:app` applies. One bucket also means no key can collide, which is what
-     * `mergePlugins` exists to detect on Android.
+     * Android also merges `@APS`, `@PumpDriver` and `@NotNSClient` sets. A client target merges none of them
+     * (`config.APS` and `config.PUMPDRIVERS` false, `config.AAPSCLIENT` true). The "AAPS" master target (2026-10-30)
+     * adds [contributedApsPlugins], as `:app` does under `config.APS`. iOS has no pump drivers, and the
+     * `@NotNSClient` plugins (version checker, Tidepool) are Android-only, so those two buckets stay out.
      */
     val contributedPlugins: Map<Int, PluginBase>
+
+    /** Plugins that only belong in a build that runs the loop (Objectives on iOS). Merged only under `config.APS`. */
+    @APS
+    val contributedApsPlugins: Map<Int, PluginBase>
     val automationRuntime: AutomationRuntime
     // The periodic housekeeping shared with Android, and the scope the shell drives it on.
     val periodicMaintenance: PeriodicMaintenance
