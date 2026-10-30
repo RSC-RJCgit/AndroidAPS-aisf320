@@ -10,6 +10,7 @@ import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.source.BgSource
 import app.aaps.core.interfaces.source.NSClientSource
+import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.ui.compose.icons.IcPluginNsClientBg
 import app.aaps.plugins.source.compose.BgSourceComposeContent
 import dev.zacsweers.metro.AppScope
@@ -44,6 +45,8 @@ class NSClientSourcePlugin(
         // Forced on for a client, which has no other BG source. On a master it stays the user's choice, so
         // this is one-sided on purpose - no forced-off half.
         .enforce(EnforcedState.Enabled) { config.AAPSCLIENT }
-        .setDefault(config.AAPSCLIENT),
+        // Also the default on an iOS or desktop master (2026-10-30, the Virtual-pump masters): the master default, Dexcom, is
+        // Android only, so without this the first start failed with "Default plugin not found".
+        .setDefault(config.AAPSCLIENT || config.platform != AppPlatform.Android),
     aapsLogger, rh, notificationManager
 ), BgSource, NSClientSource
