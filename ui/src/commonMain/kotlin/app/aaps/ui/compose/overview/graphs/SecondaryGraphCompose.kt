@@ -213,6 +213,8 @@ fun SecondaryGraphCompose(
     inspect: GraphInspectState? = null,
     /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
     geometryHolder: ChartGeometryHolder? = null,
+    /** A label drawn at the plot's bottom left, just above the time labels (the G1 label). Null draws none. */
+    cornerLabel: String? = null,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -921,8 +923,13 @@ fun SecondaryGraphCompose(
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
     val stepsTapTarget = remember { StepsTapTarget() }
     val stepsTapReporter = stepsTapTarget.takeIf { stepsData != null }
-    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter, stepsTapReporter) {
-        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels + listOfNotNull(inspectLine, geometryReporter, stepsTapReporter)
+    val cornerLabelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface)
+    val cornerLabelMark = remember(cornerLabel, cornerLabelStyle, smbText) {
+        cornerLabel?.let { PlotCornerLabelDecoration(it, cornerLabelStyle, smbText) }
+    }
+    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark) {
+        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels +
+            listOfNotNull(inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark)
     }
 
     // Dual-axis zero alignment.

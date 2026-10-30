@@ -58,7 +58,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
@@ -427,6 +426,23 @@ fun GraphsSection(
     // The live overview stays on the current time until the user drags the main graph.
     var followNow by remember { mutableStateOf(!fitWholeWindow) }
     var placedOnNow by remember(bgScrollState) { mutableStateOf(false) }
+    // 2026-10-30, per explicit request: the graphs are laid out but not shown until they have settled, so the first view
+    // is not drawn at the default zoom and then jumps into place. Settled: the main graph is on its place, the time range
+    // is known, and the window the BG graph takes from the IOB graph has been steady for 400 ms (the IOB graph has then
+    // taken the main graph's zoom). A reopened screen or app, or a new main graph state (a forced redraw), hides them
+    // again. After GRAPHS_READY_TIMEOUT_MS they are shown anyway.
+    var graphsReady by remember(bgScrollState, bgZoomState) { mutableStateOf(false) }
+    val graphsHiddenSince = remember(bgScrollState, bgZoomState) { dateUtil.now() }
+    val graphsSettled = placedOnNow && derivedTimeRange != null && iobVisibleRangeSettled != null
+    LaunchedEffect(bgScrollState, bgZoomState, graphsSettled) {
+        if (graphsReady) return@LaunchedEffect
+        if (!graphsSettled) delay(GRAPHS_READY_TIMEOUT_MS)
+        graphsReady = true
+        graphViewModel.graphSyncLog(
+            "ready",
+            "graph area ready after ${dateUtil.now() - graphsHiddenSince} ms${if (graphsSettled) "" else " (not settled, shown after the time limit)"}"
+        )
+    }
     val latestTimeRange = rememberUpdatedState(derivedTimeRange)
     val latestNow = rememberUpdatedState(nowTimestamp)
 
@@ -935,6 +951,8 @@ fun GraphsSection(
             }
             // Upstream (2026-10-27 port): a touch anywhere on the graphs closes the inspect pill
             .closesInspectPillOnTouch(inspect)
+            // Laid out, so the graphs can size and settle, but not drawn until then (graphsReady)
+            .then(if (graphsReady) Modifier else Modifier.alpha(0f))
     ) {
         if (showZoomButtons) {
             GraphZoomButtons(zoomStep, Modifier.align(Alignment.End))
@@ -1153,24 +1171,17 @@ fun GraphsSection(
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
                 onVisibleRangeChanged = { iobVisibleRange = it },
                 inspect = inspect,
+                // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates"),
+                // at the bottom left because the hourly basal peak numbers use the top line of this graph. Drawn by the chart
+                // at its plot's bottom (2026-10-30): a fixed gap above the graph's edge still covered the time labels.
+                cornerLabel = (
+                    listOf(stringResource(UiStrings.graph_short_number, 1), stringResource(CoreUiStrings.iob)) +
+                        graphConfig.iobOverlays.map { stringResource(seriesShortNameId(it)) } +
+                        listOf(stringResource(UiStrings.graph_label_basal), stringResource(UiStrings.graph_label_max_rates))
+                    ).joinToString("  "),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(graphConfig.iobHeight.dp * graphHeightScale)
-            )
-            // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates").
-            // It sits at the bottom left, because the hourly basal peak numbers use the top line of this graph.
-            // Above the time labels: they are text in sp, so a larger system font made them taller than a fixed 18 dp and
-            // the label covered them (2026-10-28). 22 sp is the same 18 dp plus room at the normal font size.
-            val timeLabelsHeight = with(LocalDensity.current) { 22.sp.toDp() }
-            GraphLabel(
-                number = 1,
-                names = graphConfig.iobOverlays.let { overlays ->
-                    listOf(stringResource(CoreUiStrings.iob)) + overlays.map { stringResource(seriesShortNameId(it)) } +
-                        listOf(stringResource(UiStrings.graph_label_basal), stringResource(UiStrings.graph_label_max_rates))
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 36.dp, bottom = timeLabelsHeight)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
             if (!isSimpleMode) {

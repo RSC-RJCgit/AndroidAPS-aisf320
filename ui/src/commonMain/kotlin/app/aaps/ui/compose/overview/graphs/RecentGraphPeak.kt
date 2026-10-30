@@ -112,7 +112,8 @@ internal class LastBgLabelDecoration(
             if (ranges.xStep == 0.0) return
             val range = ranges.getYRange(Axis.Position.Vertical.Start)
             if (range.length <= 0.0) return
-            val style = TextStyle(color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            // 13 sp (2026-10-30, per explicit request): larger than the other labels, smaller than 3426's 14.4
+            val style = TextStyle(color = color, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             val px = layerBounds.left + layerDimensions.startPadding +
                 layerDimensions.xSpacing * ((x - ranges.minX) / ranges.xStep).toFloat() - scroll
             if (px < layerBounds.left || px > layerBounds.right + 40f) return
@@ -126,6 +127,27 @@ internal class LastBgLabelDecoration(
             val top = (py - layout.size.height / 2f).coerceIn(layerBounds.top, maxOf(layerBounds.top, layerBounds.bottom - layout.size.height))
             with(mutableDrawScope) {
                 drawText(layout, topLeft = Offset(left, top))
+            }
+        }
+    }
+}
+
+/**
+ * A label at the plot's own bottom left (the G1 label, 2026-10-30): placed from the plot area on each draw, so the time
+ * labels below the plot are never covered, whatever their height with the system font size.
+ */
+internal class PlotCornerLabelDecoration(
+    private val label: String,
+    private val style: TextStyle,
+    private val textMeasurer: TextMeasurer,
+) : Decoration {
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        with(context) {
+            val layout = textMeasurer.measure(label, style)
+            val top = layerBounds.bottom - layout.size.height - 2f
+            if (top < layerBounds.top) return
+            with(mutableDrawScope) {
+                drawText(layout, topLeft = Offset(layerBounds.left + 4f, top))
             }
         }
     }

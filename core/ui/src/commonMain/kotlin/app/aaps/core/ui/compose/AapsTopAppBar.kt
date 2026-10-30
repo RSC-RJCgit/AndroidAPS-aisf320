@@ -8,6 +8,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 
 /**
  * AAPS TopAppBar component with proper elevation visibility in dark mode.
@@ -41,6 +42,7 @@ import androidx.compose.ui.Modifier
  * @param modifier Modifier to be applied to the TopAppBar
  * @param navigationIcon The navigation icon displayed at the start of the TopAppBar
  * @param actions The actions displayed at the end of the TopAppBar
+ * @param expandedHeight The bar's height; the Material default unless a screen needs less (statistics in landscape)
  *
  * @see AapsTopAppBarPreview
  * @see AapsTopAppBarWithNavAndActionsPreview
@@ -51,13 +53,15 @@ fun AapsTopAppBar(
     title: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     navigationIcon: @Composable () -> Unit = {},
-    actions: @Composable RowScope.() -> Unit = {}
+    actions: @Composable RowScope.() -> Unit = {},
+    expandedHeight: Dp = TopAppBarDefaults.TopAppBarExpandedHeight
 ) {
     TopAppBar(
         title = title,
         modifier = modifier,
         navigationIcon = navigationIcon,
         actions = actions,
+        expandedHeight = expandedHeight,
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surface,
             scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer

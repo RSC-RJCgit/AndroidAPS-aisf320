@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,6 +25,7 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,6 +46,7 @@ import app.aaps.core.ui.compose.AapsCard
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTopAppBar
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.stats.viewmodels.StatsTab
@@ -62,6 +65,7 @@ import kotlinx.coroutines.launch
  * @param viewModel ViewModel containing all statistics state and business logic
  * @param onNavigateBack Callback when back navigation is requested
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatsScreen(
     viewModel: StatsViewModel,
@@ -82,10 +86,17 @@ fun StatsScreen(
         snapshotFlow { pagerState.settledPage }.collect { viewModel.selectTab(StatsTab.entries[it]) }
     }
 
+    // Landscape (2026-10-30, per explicit request): the top bar and the tabs at half their portrait height, for the charts
+    val landscape = isLandscape()
     Scaffold(
         topBar = {
             AapsTopAppBar(
-                title = { Text(stringResource(CoreUiStrings.statistics)) },
+                title = {
+                    Text(
+                        stringResource(CoreUiStrings.statistics),
+                        style = if (landscape) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -93,7 +104,8 @@ fun StatsScreen(
                             contentDescription = stringResource(CoreUiStrings.back)
                         )
                     }
-                }
+                },
+                expandedHeight = if (landscape) 32.dp else TopAppBarDefaults.TopAppBarExpandedHeight
             )
         }
     ) { paddingValues ->
@@ -104,7 +116,14 @@ fun StatsScreen(
         ) {
             PrimaryTabRow(selectedTabIndex = pagerState.currentPage) {
                 StatsTab.entries.forEachIndexed { index, tab ->
-                    Tab(
+                    if (landscape) Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                        modifier = Modifier.height(24.dp)
+                    ) {
+                        Text(text = tab.label(), maxLines = 1, textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium)
+                    }
+                    else Tab(
                         selected = pagerState.currentPage == index,
                         onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
                         text = { Text(text = tab.label(), maxLines = 2, textAlign = TextAlign.Center) }
