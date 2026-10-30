@@ -483,6 +483,8 @@
     <string name="ns_secondary_settings">Secondary NS (bolus, carbs, and profile)</string>
     <string name="ns_secondary_enabled">Download bolus, carbs, and profile from secondary NS</string>
     <string name="ns_secondary_enabled_summary">Pull manual boluses, carbs, and the profile store from a separate Nightscout site, for example the main phone. SMBs are not copied. This phone does not take the profile store from its own Nightscout while this is on.</string>
+    <string name="ns_raw_from_secondary">Raw from secondary NS when the reading has none</string>
+    <string name="ns_raw_from_secondary_summary">BG stays from this phone\'s BG source. A reading with no raw of its own gets the secondary site\'s reading of the same minute as raw; with none there, raw stays empty. Hides \"Get BG from this connection\".</string>
     <string name="ns_bg_from_live_site">Get BG from this connection (Live\'s site)</string>
     <string name="ns_bg_from_live_site_summary">On by default. BG comes from the site above, so it stays the Live site. Turn off to use this phone\'s own main NS site. One source, not a mix.</string>
     <string name="ns_secondary_receive_therapy_events">Also download device events from secondary NS</string>
@@ -614,6 +616,8 @@
     <string name="pref_summary_loop_every_minute">On: the loop, and one AIV row, runs on every new 1-minute reading. Off: once every 5 minutes. Applies at once.</string>
     <string name="pref_title_show_insulin_totals">Insulin totals row</string>
     <string name="pref_summary_show_insulin_totals">Show twelve insulin totals on the IOB graph.</string>
+    <string name="pref_title_step_cut_old_reasons">Steps arrows for older SMBs</string>
+    <string name="pref_summary_step_cut_old_reasons">For SMBs from before the loop wrote StepCut, read the direct step cuts from the loop reason (high steps, little walking, shower caps, walking 30 min cap). Smaller than the real cut when indirect step effects applied.</string>
     <string name="pref_title_auto_clean_graph">Clean graph also hides the text lines</string>
     <string name="pref_summary_auto_clean_graph">When the graph shows many hours or many SMBs, the SMB labels and the arrows are hidden by themselves. On: the text lines are hidden then too. Off (default): the text lines stay.</string>
     <string name="pref_title_show_graph_text">Show the text lines on the graphs</string>

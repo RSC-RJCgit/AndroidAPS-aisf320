@@ -508,6 +508,8 @@ class PreferencesImpl(
                 // Off on iOS clients (2026-10-28, per explicit request): the screen kept on cost too much battery there
                 BooleanKey.OverviewKeepScreenOn                    -> config.AAPSCLIENT && config.platform != AppPlatform.Ios
                 BooleanKey.NsClientNotificationsFromAlarms         -> config.AAPSCLIENT
+                // iOS takes every reading from Nightscout, and the main site's have no raw (2026-10-30)
+                BooleanKey.NsClientRawFromSecondary                -> config.platform == AppPlatform.Ios
                 BooleanKey.NsClientNotificationsFromAnnouncements  -> config.AAPSCLIENT
                 BooleanKey.NsClientLogAppStart                     -> config.APS
                 BooleanKey.NsClientCreateAnnouncementsFromErrors   -> config.APS

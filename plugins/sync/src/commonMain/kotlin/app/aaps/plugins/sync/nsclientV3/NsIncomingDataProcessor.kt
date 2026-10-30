@@ -30,7 +30,6 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongNonKey
-import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
@@ -55,7 +54,10 @@ import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
+import app.aaps.plugins.sync.nsclientV3.workers.SecondaryRawStore
+import app.aaps.plugins.sync.nsclientV3.workers.fillMissingRaw
 import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
+import app.aaps.plugins.sync.nsclientV3.workers.rawFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.extensions.toCAL
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toEffectiveProfileSwitch
@@ -88,6 +90,7 @@ class NsIncomingDataProcessor(
     private val notificationManager: NotificationManager,
     private val nsClientRepository: NSClientRepository,
     private val displayRawSmoothing: DisplayRawSmoothing,
+    private val secondaryRawStore: SecondaryRawStore,
 ) {
 
     /**
@@ -142,9 +145,8 @@ class NsIncomingDataProcessor(
 
         if (sgvs is List<*>) { // V3 client
 
-            val fallbackRaw = config.platform == AppPlatform.Ios
             for (i in 0 until sgvs.size) {
-                val sgv = (sgvs[i] as NSSgvV3).toGV(fallbackRawToSgv = fallbackRaw)
+                val sgv = (sgvs[i] as NSSgvV3).toGV()
                 // The id on a live-site reading belongs to that other Nightscout.
                 // The uploader skips any glucose that already has an id, so the
                 // main site never receives it. Drop the other id here. A later
@@ -162,6 +164,12 @@ class NsIncomingDataProcessor(
             // Do not run that slope on the live site's own glucose. The number would
             // follow the slope switch and look like an xDrip reading.
             if (!fromLiveSite && preferences.get(BooleanKey.FslApplySmoothing) && !config.AAPSCLIENT) applyLibre(glucoseValues)
+            // After the Libre step, which keeps the reading's own value as its raw: only a reading still without raw takes
+            // the secondary site's reading of the same minute (iOS, see SecondaryRawStore). The BG value is never changed.
+            if (!fromLiveSite && rawFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientRawFromSecondary))) {
+                val filled = fillMissingRaw(glucoseValues, secondaryRawStore.snapshot()).associateBy { it.timestamp }
+                for (i in glucoseValues.indices) filled[glucoseValues[i].timestamp]?.let { glucoseValues[i] = it }
+            }
             if (advanceInitialLoadCursor) nsClient.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
             // Was that sgv more less 5 mins ago ?
             if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {
@@ -176,6 +184,7 @@ class NsIncomingDataProcessor(
     private fun bgFromLiveSite(): Boolean = glucoseFromSecondarySite(
         preferences.get(BooleanKey.NsClientSecondaryEnabled),
         preferences.get(BooleanKey.NsClientBgFromLiveSite),
+        preferences.get(BooleanKey.NsClientRawFromSecondary),
     )
 
     // Raw Libre becomes slope * value + offset, then LibreSpecial. UKF set 1 replaces that when the batch has two points.

@@ -9,12 +9,12 @@ import app.aaps.core.nssdk.localmodel.entry.Direction
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.entry.NsUnits
 
-fun NSSgvV3.toGV(fallbackRawToSgv: Boolean = false): GV {
+fun NSSgvV3.toGV(): GV {
     return GV(
         timestamp = date ?: throw IllegalArgumentException(),
         value = sgv,
-        noise = unfiltered?.takeIf { it > 0.0 } ?: noise ?: if (fallbackRawToSgv) sgv else noise,
-        raw = filtered ?: if (fallbackRawToSgv) sgv else filtered,
+        noise = unfiltered?.takeIf { it > 0.0 } ?: noise,
+        raw = filtered,
         trendArrow = TrendArrow.fromString(direction?.nsName),
         ids = IDs(nightscoutId = identifier),
         // A Nightscout record may have been uploaded by xDrip, whose device field carries a prefix.

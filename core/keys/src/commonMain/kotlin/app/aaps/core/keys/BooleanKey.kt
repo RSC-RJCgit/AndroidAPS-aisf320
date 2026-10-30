@@ -456,14 +456,27 @@ enum class BooleanKey(
         KeysStrings.ns_secondary_receive_therapy_events_summary,
         dependency = NsClientSecondaryEnabled
     ),
+    // iOS only (2026-10-30, per explicit request), on by default there. BG stays from this phone's BG source; the second
+    // site only fills raw where a reading has none. Off everywhere else (calculated default, the key is iOS only).
+    NsClientRawFromSecondary(
+        "ns_raw_from_secondary",
+        true,
+        KeysStrings.ns_raw_from_secondary,
+        KeysStrings.ns_raw_from_secondary_summary,
+        calculatedDefaultValue = true,
+        platforms = setOf(AppPlatform.Ios),
+        dependency = NsClientSecondaryEnabled
+    ),
     // On by default. The full app and a client then take glucose from the second site.
     // Turn off to leave glucose on this phone's main site.
+    // Hidden, and counted as off, while the second site only supplies raw (NsClientRawFromSecondary).
     NsClientBgFromLiveSite(
         "ns_bg_from_live_site",
         true,
         KeysStrings.ns_bg_from_live_site,
         KeysStrings.ns_bg_from_live_site_summary,
-        dependency = NsClientSecondaryEnabled
+        dependency = NsClientSecondaryEnabled,
+        visibility = ElementVisibility { !it.preferences.get(NsClientRawFromSecondary) }
     ),
     NsClientNotificationsFromAlarms("ns_alarms", false, KeysStrings.pref_title_ns_notifications_from_alarms, calculatedDefaultValue = true),
     NsClientNotificationsFromAnnouncements("ns_announcements", false, KeysStrings.pref_title_ns_notifications_from_announcements, calculatedDefaultValue = true),
@@ -562,6 +575,14 @@ enum class BooleanKey(
         true,
         KeysStrings.pref_title_show_insulin_totals,
         KeysStrings.pref_summary_show_insulin_totals
+    ),
+    // Steps arrow (2026-10-30, per explicit request): for SMBs whose loop result has no "StepCut=" (v3 masters before
+    // aisf321UK_1216), work the direct step cuts out of the reason text instead. On by default. Local to each device.
+    ApsAutoIsfStepCutFromOldReasons(
+        "autoisf_step_cut_old_reasons",
+        true,
+        KeysStrings.pref_title_step_cut_old_reasons,
+        KeysStrings.pref_summary_step_cut_old_reasons
     ),
     // 2026-10-10: the text lines on the graphs (every one but the hypoprediction line). True (default) = shown. List 3 "Clean graph, no
     // text" (TT 5.244) turns it off; it is switched back on here, in Settings.

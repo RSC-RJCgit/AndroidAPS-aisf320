@@ -1723,6 +1723,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled,
             BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled,
             BooleanKey.ApsAutoIsfShowInsulinTotals,
+            BooleanKey.ApsAutoIsfStepCutFromOldReasons,
             BooleanKey.ApsAutoIsfLoopEveryMinute,
             BooleanKey.ApsAutoIsfShowGraphText,
             BooleanKey.VirtualShowStepText,

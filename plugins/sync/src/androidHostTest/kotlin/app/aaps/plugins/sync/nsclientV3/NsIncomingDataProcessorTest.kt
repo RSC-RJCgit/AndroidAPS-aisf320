@@ -84,6 +84,7 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
             notificationManager = notificationManager,
             nsClientRepository = nsClientRepository,
             displayRawSmoothing = displayRawSmoothing,
+            secondaryRawStore = app.aaps.plugins.sync.nsclientV3.workers.SecondaryRawStore(),
         )
     }
 

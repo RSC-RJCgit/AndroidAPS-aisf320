@@ -58,6 +58,7 @@ class PreferencePlatformRulesTest {
      * - keep running in background, reload when no BG, the RileyLink heartbeat, its status and the check of other heartbeat
      *   devices: only iOS suspends an app in the background, so only iOS needs them (2026-10-24: listed here, they had been
      *   added without it)
+     * - raw from the secondary NS: only iOS takes every reading from Nightscout with no raw of its own (2026-10-30)
      */
     @Test
     fun `restrictions are the exception`() {
@@ -72,7 +73,8 @@ class PreferencePlatformRulesTest {
             "ios_rileylink_heartbeat", setOf(AppPlatform.Ios),
             "ios_rileylink_status", setOf(AppPlatform.Ios),
             "ios_heartbeat_check_others", setOf(AppPlatform.Ios),
-            "ios_heartbeat_check_device", setOf(AppPlatform.Ios)
+            "ios_heartbeat_check_device", setOf(AppPlatform.Ios),
+            "ns_raw_from_secondary", setOf(AppPlatform.Ios)
         )
     }
 }

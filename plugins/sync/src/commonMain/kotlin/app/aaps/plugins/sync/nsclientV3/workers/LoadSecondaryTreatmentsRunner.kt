@@ -43,7 +43,8 @@ import dev.zacsweers.metro.Inject
  * Temp basals and extended boluses are never taken. Notes stay on
  * the short keep-list, including the one note "MJ active". The profile store and the live step
  * counts come from this site as well. The full app and a client take glucose from this site
- * when "Get BG from this connection" is on.
+ * when "Get BG from this connection" is on. On iOS with "Raw from secondary NS" on, its glucose only fills raw
+ * (see [SecondaryRawStore]).
  */
 @Inject
 class LoadSecondaryTreatmentsRunner(
@@ -58,6 +59,7 @@ class LoadSecondaryTreatmentsRunner(
     private val nsDeviceStatusHandler: NSDeviceStatusHandler,
     private val activePlugin: ActivePlugin,
     private val persistenceLayer: PersistenceLayer,
+    private val secondaryRawStore: SecondaryRawStore,
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -94,7 +96,10 @@ class LoadSecondaryTreatmentsRunner(
     suspend fun runGlucoseOnly(): WorkOutcome {
         if (!preferences.get(BooleanKey.NsClientSecondaryEnabled))
             return WorkOutcome.Skipped("Secondary NS disabled")
-        if (!glucoseFromSecondarySite(secondaryEnabled = true, preferences.get(BooleanKey.NsClientBgFromLiveSite)))
+        val rawOnly = preferences.get(BooleanKey.NsClientRawFromSecondary)
+        if (!glucoseFromSecondarySite(secondaryEnabled = true, preferences.get(BooleanKey.NsClientBgFromLiveSite), rawOnly) &&
+            !rawFromSecondarySite(secondaryEnabled = true, rawOnly)
+        )
             return WorkOutcome.Skipped("Glucose is not taken from the secondary NS")
         val url = preferences.get(StringKey.NsClientSecondaryUrl).trim()
         val token = preferences.get(StringKey.NsClientSecondaryAccessToken).trim()
@@ -274,6 +279,10 @@ class LoadSecondaryTreatmentsRunner(
     // The first read is oldest-first and 500 at a time, so a full page is not the current glucose.
     // Keep reading until a page is short. 0 is not a saved place. The cursor is the newest srvModified.
     private suspend fun downloadGlucose(client: NSAndroidClientImpl) {
+        if (rawFromSecondarySite(secondaryEnabled = true, preferences.get(BooleanKey.NsClientRawFromSecondary))) {
+            downloadRaw(client)
+            return
+        }
         if (!glucoseFromSecondarySite(
                 secondaryEnabled = true,
                 preferences.get(BooleanKey.NsClientBgFromLiveSite)
@@ -322,17 +331,86 @@ class LoadSecondaryTreatmentsRunner(
         }
     }
 
+    // Raw only (iOS, see SecondaryRawStore). The readings go to the store, never to the BG table. After an app start the
+    // store is empty, so the last 6 hours are read again; after that only from the newest held reading.
+    private suspend fun downloadRaw(client: NSAndroidClientImpl) {
+        try {
+            val now = dateUtil.now()
+            val from = secondaryRawStore.newest?.let { it - GLUCOSE_OVERLAP_MS } ?: (now - SecondaryRawStore.KEEP_MS)
+            val sgvs = client.getSgvsNewerThan(from, PAGE_SIZE).values
+            secondaryRawStore.add(sgvs.toRawPairs(), now)
+            val filled = fillStoredRaw(now - SecondaryRawStore.KEEP_MS, now, secondaryRawStore.snapshot())
+            nsClientRepository.addLog("◄ SEC-NS", "${sgvs.size} raw values from secondary NS, $filled readings given raw")
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS raw fetch failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Raw error")
+        }
+    }
+
+    // Stored readings from [from] to [to] that still have no raw take the secondary reading of the same minute.
+    private suspend fun fillStoredRaw(from: Long, to: Long, secondary: List<Pair<Long, Double>>): Int {
+        if (secondary.isEmpty()) return 0
+        val filled = fillMissingRaw(persistenceLayer.getBgReadingsDataFromTimeToTime(from, to, true), secondary)
+        if (filled.isNotEmpty()) {
+            storeDataForDb.addToGlucoseValues(filled.toMutableList())
+            storeDataForDb.storeGlucoseValuesToDb()
+        }
+        return filled.size
+    }
+
     /**
-     * BG history for a full sync (2026-10-15, per explicit request). Live's site has the most complete glucose, so a full
-     * sync takes the BG history from here whatever "Get BG from this connection" says; `LoadBgRunner` then skips the main
-     * site's BG for that sync. Reads from [from] to now, oldest first.
+     * Raw for a full sync (iOS, see [SecondaryRawStore]). Pages through the secondary site from [from], oldest first, and
+     * gives each stored reading without raw the secondary reading of the same minute. Nothing is stored as BG. The last
+     * 6 hours also go to the store, for main readings that arrive later. Runs after this site's BG is stored.
+     */
+    suspend fun fillRawForFullSync(from: Long) {
+        if (!rawFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientRawFromSecondary))) return
+        val url = preferences.get(StringKey.NsClientSecondaryUrl).trim()
+        if (url.isEmpty()) return
+        val client = NSAndroidClientImpl(
+            baseUrl = url.lowercase().replace("https://", "").replace(Regex("/$"), ""),
+            accessToken = preferences.get(StringKey.NsClientSecondaryAccessToken).trim(),
+            logging = false,
+            logger = { msg -> aapsLogger.debug(LTag.HTTP, "SecondaryNS: $msg") }
+        )
+        try {
+            val now = dateUtil.now()
+            var pageFrom = from
+            var page = 0
+            var received = 0
+            var filled = 0
+            while (page < MAX_FULL_SYNC_PAGES) {
+                val sgvs = client.getSgvsNewerThan(pageFrom, PAGE_SIZE).values
+                val pairs = sgvs.toRawPairs()
+                if (pairs.isNotEmpty()) {
+                    filled += fillStoredRaw(pairs.first().first - RAW_MATCH_MS, pairs.last().first + RAW_MATCH_MS, pairs)
+                    secondaryRawStore.add(pairs, now)
+                }
+                received += sgvs.size
+                page++
+                val newestDate = sgvs.maxOfOrNull { it.date ?: 0L } ?: 0L
+                pageFrom = nextGlucoseFrom(firstCatchUp = true, pageFrom, sgvs.size, PAGE_SIZE, newestDate, 0L) ?: break
+            }
+            nsClientRepository.addLog("◄ SEC-NS", "Full sync: $received raw values from secondary NS, $filled readings given raw")
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS full sync raw failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Raw error")
+        } finally {
+            client.close()
+        }
+    }
+
+    /**
+     * BG history for a full sync (2026-10-15, per explicit request). Only while "Get BG from this connection" is on
+     * (2026-10-30, per explicit request): then `LoadBgRunner` skips the main site's BG for that sync, even when this site
+     * gives nothing. Reads from [from] to now, oldest first.
      *
      * A reading is not stored when this phone already has one within [NEAR_DUPLICATE_MS]. The two sites normally carry the
      * same readings with the same times, which the database stores once anyway; the margin is for a site that ever holds
      * its own copy a few seconds apart, which would otherwise show two dots a minute.
      *
      * @return how many readings the site sent (stored or not), or null when no site is set up or the read failed. The
-     * caller falls back to the main site on null or 0.
+     * caller does not fall back to the main site.
      */
     suspend fun downloadGlucoseForFullSync(from: Long): Int? {
         if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) return null

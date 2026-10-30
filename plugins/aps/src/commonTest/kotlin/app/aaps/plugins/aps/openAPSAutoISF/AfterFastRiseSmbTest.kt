@@ -169,6 +169,26 @@ class AfterFastRiseSmbTest {
         assertEquals(0.0, result.microBolus, 0.001)
     }
 
+    @Test
+    fun aBoostRestoreGivesTheStepCutBack() {
+        val result = afterFastRiseSmb(
+            quiet(microBolus = 0.7).copy(uncappedMicroBolus = 1.0, stepCutSinceUncapped = 0.3, smbBoostRecent = true)
+        )
+        assertEquals(1.0, result.microBolus, 0.001)
+        assertEquals(0.0, result.stepCut, 0.001)
+    }
+
+    @Test
+    fun aUamBstTaperKeepsItsShareOfTheStepCut() {
+        val result = afterFastRiseSmb(
+            quiet(microBolus = 0.7, iob = 2.0).copy(
+                uncappedMicroBolus = 1.0, stepCutSinceUncapped = 0.3, smbBoostRecent = true, uamBoostRecent = true, uamBstMinutesAgo = 10,
+            )
+        )
+        assertEquals(0.925, result.microBolus, 0.03)
+        assertEquals(0.075, result.stepCut, 0.001)
+    }
+
     private fun morning(
         hour: Int = 12,
         iob: Double = 0.2,

@@ -43,9 +43,14 @@ internal fun stepsFromPrimarySite(secondaryEnabled: Boolean): Boolean = !seconda
  * This is the full app and a client. The second site can stay on for treatments and the
  * profile without also supplying glucose. The main site stays the one used for pairing.
  * One glucose source: the main site and xDrip do not write at the same time.
+ * While the second site only supplies raw ([rawFromSecondarySite], iOS) the switch is hidden and counts as off.
  */
-internal fun glucoseFromSecondarySite(secondaryEnabled: Boolean, bgFromThisConnection: Boolean): Boolean =
-    secondaryEnabled && bgFromThisConnection
+internal fun glucoseFromSecondarySite(secondaryEnabled: Boolean, bgFromThisConnection: Boolean, rawFromSecondary: Boolean = false): Boolean =
+    secondaryEnabled && bgFromThisConnection && !rawFromSecondary
+
+/** The second site fills raw where this phone's own reading has none (iOS only, see SecondaryRawStore). */
+internal fun rawFromSecondarySite(secondaryEnabled: Boolean, rawFromSecondary: Boolean): Boolean =
+    secondaryEnabled && rawFromSecondary
 
 /**
  * Whether BG may be uploaded to the main site (2026-10-18).

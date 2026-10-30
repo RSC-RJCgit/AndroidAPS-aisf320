@@ -355,6 +355,7 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
         nsClientV3Plugin.lastLoadedSrvModified.collections.entries = 0L
         nsClientV3Plugin.doingFullSync = true
         whenever(preferences.get(BooleanKey.NsClientSecondaryEnabled)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientBgFromLiveSite)).thenReturn(true)
     }
 
     @Test
@@ -370,16 +371,31 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
         assertThat(nsClientV3Plugin.lastLoadedSrvModified.collections.entries).isEqualTo(dateUtil.now())
     }
 
+    // 2026-10-30: no fallback. An empty second site leaves the BG empty rather than taking this site's.
     @Test
-    fun fullSyncFallsBackToThisSiteWhenSecondSiteHasNoBg() = runTest(timeout = 30.seconds) {
+    fun fullSyncDoesNotFallBackToThisSiteWhenSecondSiteHasNoBg() = runTest(timeout = 30.seconds) {
         fullSyncClientWithSecondSite()
         whenever(loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(anyLong())).thenReturn(0)
-        nsClientV3Plugin.newestDataOnServer?.collections?.entries = now // the main site has data, so it is asked
+        nsClientV3Plugin.newestDataOnServer?.collections?.entries = now // the main site has data, but is not asked
         whenever(nsAndroidClient.getSgvsNewerThan(anyLong(), anyInt())).thenReturn(NSAndroidClient.ReadResponse(200, 0, emptyList()))
 
         val result = sut.doWorkAndLog()
 
         assertIs<ListenableWorker.Result.Success>(result)
+        verify(nsAndroidClient, never()).getSgvsNewerThan(anyLong(), anyInt())
+    }
+
+    // 2026-10-30: with "Get BG from this connection" off the BG is this site's only, a full sync included.
+    @Test
+    fun fullSyncWithTheSwitchOffNeverReadsSecondSiteBg() = runTest(timeout = 30.seconds) {
+        fullSyncClientWithSecondSite()
+        whenever(preferences.get(BooleanKey.NsClientBgFromLiveSite)).thenReturn(false)
+        nsClientV3Plugin.newestDataOnServer?.collections?.entries = now
+        whenever(nsAndroidClient.getSgvsNewerThan(anyLong(), anyInt())).thenReturn(NSAndroidClient.ReadResponse(200, 0, emptyList()))
+
+        sut.doWorkAndLog()
+
+        verify(loadSecondaryTreatmentsRunner, never()).downloadGlucoseForFullSync(anyLong())
         verify(nsAndroidClient).getSgvsNewerThan(anyLong(), anyInt())
     }
 

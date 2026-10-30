@@ -91,7 +91,7 @@ class DataSyncSelectorV3(
             val uploadOn = preferences.get(BooleanKey.BgSourceUploadToNs)
             val nsClientBgSource = activePlugin.activeBgSource is NSClientSource
             if (!uploadOn || !nsClientBgSource) return uploadOn
-            val bgFromLiveSite = glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite))
+            val bgFromLiveSite = glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite), preferences.get(BooleanKey.NsClientRawFromSecondary))
             if (!bgFromLiveSite || config.AAPSCLIENT) return false
             return bgUploadAllowed(
                 uploadOn = true,

@@ -125,7 +125,8 @@ class NsFrameHandler(
                 // Those frames would put the other value back.
                 if (!glucoseFromSecondarySite(
                         preferences.get(BooleanKey.NsClientSecondaryEnabled),
-                        preferences.get(BooleanKey.NsClientBgFromLiveSite)
+                        preferences.get(BooleanKey.NsClientBgFromLiveSite),
+                        preferences.get(BooleanKey.NsClientRawFromSecondary)
                     )
                 ) {
                     decode(collection, raw) { docString.toNSSgvV3() }?.let {

@@ -84,6 +84,7 @@ import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadStep
 import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
+import app.aaps.plugins.sync.nsclientV3.workers.rawFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.data.trioSourceUnits
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
@@ -428,7 +429,7 @@ class NSClientV3Plugin(
             delay(T.mins(1).msecs())
             while (isActive) {
                 if (!config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute) &&
-                    glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite))
+                    (glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite), preferences.get(BooleanKey.NsClientRawFromSecondary)) || rawFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientRawFromSecondary)))
                 ) nsLoadExecutor.enqueueSecondaryGlucose()
                 delay(T.mins(1).msecs())
             }
@@ -467,7 +468,8 @@ class NSClientV3Plugin(
         (nsClientSource.isEnabled() || preferences.get(BooleanKey.NsClientAcceptCgmData)) &&
             !glucoseFromSecondarySite(
                 preferences.get(BooleanKey.NsClientSecondaryEnabled),
-                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+                preferences.get(BooleanKey.NsClientBgFromLiveSite),
+                preferences.get(BooleanKey.NsClientRawFromSecondary)
             )
 
     /** Request one catch-up round when a connected socket has not supplied timely glucose. */
@@ -1355,6 +1357,7 @@ class NSClientV3Plugin(
                 title = KeysStrings.ns_secondary_settings,
                 items = listOf(
                     BooleanKey.NsClientSecondaryEnabled,
+                    BooleanKey.NsClientRawFromSecondary,
                     BooleanKey.NsClientBgFromLiveSite,
                     BooleanKey.NsClientSecondaryAcceptTherapyEvent,
                     StringKey.NsClientSecondaryUrl,

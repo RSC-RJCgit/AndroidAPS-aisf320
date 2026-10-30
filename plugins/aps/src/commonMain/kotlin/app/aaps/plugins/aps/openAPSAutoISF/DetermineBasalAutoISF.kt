@@ -799,6 +799,8 @@ internal data class AfterFastRiseInput(
     val minuteOfDay: Int,
     val bg: Double,
     val uncappedMicroBolus: Double,
+    /** Step cut already taken off since [uncappedMicroBolus] (the shower tiers), so a boost restore gives it back too. */
+    val stepCutSinceUncapped: Double = 0.0,
     val steps5: Int,
     val steps15: Int,
     val hypoPrediction2: Double?,
@@ -816,7 +818,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     val reason = StringBuilder()
     val console = StringBuilder()
     var smb = input.microBolus
-    var stepCut = 0.0
+    var stepCut = input.stepCutSinceUncapped
     if (earlyMorningFollowOnAllowed(input.tier, input.libreActive, input.tempTargetSet)) {
         val early = earlyMorningThenTwilight(input.earlyMorning.copy(microBolus = smb))
         smb = early.microBolus
@@ -852,6 +854,11 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
         cob = input.cob,
         riseHold = input.riseHold,
     )
+    if (restored.microBolus != smb && input.uncappedMicroBolus != smb) {
+        // The restore gave back this share of the cuts since the uncapped SMB, step cuts included
+        val givenBack = ((restored.microBolus - smb) / (input.uncappedMicroBolus - smb)).coerceIn(0.0, 1.0)
+        stepCut *= 1.0 - givenBack
+    }
     smb = restored.microBolus
     reason.append(restored.reason)
     val loReb = loRebSmbTrim(smb, input.loRebActive, input.loRebGuardEnabled)
@@ -2274,7 +2281,6 @@ class DetermineBasalAutoISF(
                         ),
                     )
                     microBolus = morningAndGlitch.microBolus
-                    stepCutDirect += morningAndGlitch.stepCut
                     if (morningAndGlitch.reason.isNotEmpty()) rT.reason.append(morningAndGlitch.reason)
                     val adjusted = fastRiseAdjustedMicroBolus(
                         microBolus = microBolus,
@@ -2351,6 +2357,7 @@ class DetermineBasalAutoISF(
                             minuteOfDay = minuteOfDay,
                             bg = bg,
                             uncappedMicroBolus = uncappedMicroBolus,
+                            stepCutSinceUncapped = morningAndGlitch.stepCut,
                             steps5 = steps5,
                             steps15 = steps15,
                             hypoPrediction2 = hypoPrediction2,

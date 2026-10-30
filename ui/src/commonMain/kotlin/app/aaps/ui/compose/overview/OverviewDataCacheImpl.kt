@@ -95,6 +95,7 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.utils.TrendCalculator
 import app.aaps.core.interfaces.workflow.CalculationSignals
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
@@ -160,8 +161,43 @@ private const val URGENT_BATTERY_VOLTAGE = 1.3
 private const val STEP_CUT_MATCH_MS = 3 * 60_000L
 private val STEP_CUT_REGEX = Regex("""\bStepCut=([0-9]+(?:\.[0-9]+)?)""")
 
-/** The insulin the loop wrote as taken off its SMB by step counts ("StepCut=0.12", see DetermineBasalAutoISF.stepCutUnits), or 0. */
-internal fun stepCutFrom(reason: String): Double = STEP_CUT_REGEX.find(reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+/**
+ * The insulin the loop wrote as taken off its SMB by step counts ("StepCut=0.12", see DetermineBasalAutoISF.stepCutUnits), or 0.
+ * With [oldReasons], a reason without that token is read by [oldStepCutFrom] instead.
+ */
+internal fun stepCutFrom(reason: String, oldReasons: Boolean = false): Double =
+    STEP_CUT_REGEX.find(reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: if (oldReasons) oldStepCutFrom(reason) else 0.0
+
+private val OLD_HIGH_STEPS_REGEX = Regex("""microBolus \* 0\.7 extra; microBolus = (-?[0-9.]+)""")
+private val OLD_LOW_STEPS_REGEX = Regex("""microBolus \* 0\.75 low-steps fast-rise extra cut \([^)]*\); microBolus = (-?[0-9.]+)""")
+private val OLD_SHOWER_REGEX = Regex("""fast rise 0\.71[46] shower = (-?[0-9.]+)""")
+private val OLD_CAPS_TAPERED_REGEX = Regex("""fast-rise caps tapered after UamBst \([^,]*, x([0-9.]+)""")
+private val OLD_CAP30_WALKING_REGEX =
+    Regex("""30min SMB cap: ([0-9.]+) -> ([0-9.]+) \(last30min ([0-9.]+)U(?: \+ ([0-9.]+)U bolus)? of ([0-9.]+)U cap[^)]*, walking\)""")
+
+/**
+ * Steps arrow fallback (2026-10-30, per explicit request) for reasons from before "StepCut=" (v3 masters before aisf321UK_1216):
+ * the direct step cuts that the reason text already names. High steps x0.7 and little walking x0.75 print the SMB after the cut;
+ * the shower caps print the change only when their IOB cap also applied; the walking 30 min cap prints its numbers. The Twilight
+ * cap and the indirect effects (activity ratio, dura walking half, Tier 3 walking half) were never written, so they are missing.
+ * A recent boost that skipped the fast-rise caps gave the first three back (all of it, or the taper's share).
+ */
+internal fun oldStepCutFrom(reason: String): Double {
+    fun Regex.number(group: Int = 1) = find(reason)?.groupValues?.get(group)?.toDoubleOrNull()
+    var fastRiseCut = 0.0
+    OLD_SHOWER_REGEX.number()?.let { fastRiseCut += kotlin.math.abs(it) }
+    OLD_HIGH_STEPS_REGEX.number()?.let { fastRiseCut += it.coerceAtLeast(0.0) * 0.3 / 0.7 }
+    OLD_LOW_STEPS_REGEX.number()?.let { fastRiseCut += it.coerceAtLeast(0.0) * 0.25 / 0.75 }
+    val givenBack = if (reason.contains("fast-rise caps skipped")) 1.0 else OLD_CAPS_TAPERED_REGEX.number()?.coerceIn(0.0, 1.0) ?: 0.0
+    var cut = fastRiseCut * (1.0 - givenBack)
+    OLD_CAP30_WALKING_REGEX.find(reason)?.groupValues?.let { g ->
+        val before = g[1].toDoubleOrNull() ?: 0.0
+        val after = g[2].toDoubleOrNull() ?: 0.0
+        val unhalved = ((g[5].toDoubleOrNull() ?: 0.0) * 2.0 - (g[3].toDoubleOrNull() ?: 0.0) - (g[4].toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0)
+        cut += (kotlin.math.min(before, unhalved) - after).coerceAtLeast(0.0)
+    }
+    return if (cut >= 0.01) cut else 0.0
+}
 
 /**
  * What a tap on a therapy event in the graph shows.
@@ -979,8 +1015,10 @@ class OverviewDataCacheImpl(
             .filter { it.type == BS.Type.NORMAL || it.type == BS.Type.SMB }
         // Steps arrow (2026-10-29, per explicit request): each SMB's own loop result, the newest one up to 30 s after it, says
         // in "StepCut=" how much step counts took off it. A client has the master's results, so it shows the same.
+        // Older v3 results without the token are read from their reason text, unless that is switched off.
+        val oldReasons = preferences.get(BooleanKey.ApsAutoIsfStepCutFromOldReasons)
         val loopResults = if (boluses.none { it.type == BS.Type.SMB }) emptyList()
-        else persistenceLayer.getApsResults(fromTime - STEP_CUT_MATCH_MS, toTime).map { it.date to stepCutFrom(it.reason) }.sortedBy { it.first }
+        else persistenceLayer.getApsResults(fromTime - STEP_CUT_MATCH_MS, toTime).map { it.date to stepCutFrom(it.reason, oldReasons) }.sortedBy { it.first }
         val bolusPoints = boluses
             .map { bs ->
                 BolusGraphPoint(

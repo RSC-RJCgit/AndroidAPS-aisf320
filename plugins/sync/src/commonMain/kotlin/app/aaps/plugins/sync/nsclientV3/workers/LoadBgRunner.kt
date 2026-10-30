@@ -41,27 +41,25 @@ class LoadBgRunner(
             return WorkOutcome.Skipped("Load not enabled")
         // A Full synchronization is an explicit request for the history held on this connection, so it is never skipped
         // for the second site: with the switch on, a client was left with only the short windows the second site returns.
-        if (!nsClientV3Plugin.doingFullSync && glucoseFromSecondarySite(
+        // 2026-10-30, per explicit request: one BG source, a full sync included, and no fallback either way. With "Get BG
+        // from this connection" on, the BG history comes from the second site only; when it gives nothing the graph stays
+        // empty rather than taking this site's BG. With it off, a full sync reads this site only, never the second one.
+        if (glucoseFromSecondarySite(
                 preferences.get(BooleanKey.NsClientSecondaryEnabled),
-                preferences.get(BooleanKey.NsClientBgFromLiveSite)
+                preferences.get(BooleanKey.NsClientBgFromLiveSite),
+                preferences.get(BooleanKey.NsClientRawFromSecondary)
             )
-        )
-            return WorkOutcome.Skipped("secondary")
-
-        // 2026-10-15, per explicit request: a full sync on a phone that takes its BG from Nightscout reads the BG history
-        // from the second site (Live's site, the most complete) whatever the switch says. Only when that site gives nothing
-        // (not set up, read failed, no readings) does it fall back to this site, as before. One source per full sync.
-        val takesBgFromNightscout = nsClientSource.isEnabled() || preferences.get(BooleanKey.NsClientAcceptCgmData)
-        if (nsClientV3Plugin.doingFullSync && takesBgFromNightscout && preferences.get(BooleanKey.NsClientSecondaryEnabled)) {
-            val received = loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(dateUtil.now() - nsClientV3Plugin.maxAge)
-            if (received != null && received > 0) {
-                // This site's BG is skipped for this sync. Normal syncs go on from now, not from 100 days back.
-                nsClientV3Plugin.lastLoadedSrvModified.collections.entries = dateUtil.now()
-                nsClientV3Plugin.storeLastLoadedSrvModified()
-                nsClientRepository.addLog("◄ RCV BG END", "Full sync took BG from the secondary NS")
-                return WorkOutcome.Success
+        ) {
+            if (!nsClientV3Plugin.doingFullSync) return WorkOutcome.Skipped("secondary")
+            if (nsClientSource.isEnabled() || preferences.get(BooleanKey.NsClientAcceptCgmData)) {
+                val received = loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(dateUtil.now() - nsClientV3Plugin.maxAge)
+                if (received != null && received > 0) nsClientRepository.addLog("◄ RCV BG END", "Full sync took BG from the secondary NS")
+                else nsClientRepository.addLog("◄ RCV BG END", "Secondary NS gave no BG, none taken from this site")
             }
-            nsClientRepository.addLog("◄ RCV BG", "Secondary NS gave no BG, full sync takes BG from this site")
+            // This site's BG is skipped for this sync. Normal syncs go on from now, not from 100 days back.
+            nsClientV3Plugin.lastLoadedSrvModified.collections.entries = dateUtil.now()
+            nsClientV3Plugin.storeLastLoadedSrvModified()
+            return WorkOutcome.Success
         }
 
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return WorkOutcome.Failure("AndroidClient is null")
@@ -151,6 +149,10 @@ class LoadBgRunner(
 
         storeDataForDb.storeGlucoseValuesToDb()
         storeDataForDb.storeCalibrationEntriesToDb()
+        // iOS: this site's BG is stored, so its readings without raw can now take the second site's (SecondaryRawStore)
+        if (nsClientV3Plugin.doingFullSync &&
+            rawFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientRawFromSecondary))
+        ) loadSecondaryTreatmentsRunner.fillRawForFullSync(dateUtil.now() - nsClientV3Plugin.maxAge)
         nsClientV3Plugin.lastOperationError = null
         return WorkOutcome.Success
     }
