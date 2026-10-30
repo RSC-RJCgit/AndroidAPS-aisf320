@@ -12,8 +12,9 @@ import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
 import kotlinx.serialization.json.JsonObject
 
 /**
- * The main-site client of a Virtual-pump master, with every write refused while [blocked] says the main site is the
- * one BG is read from (2026-10-30, per explicit request; see `uploadSiteIsBgSite`).
+ * The main-site client of a Virtual-pump master, with every write refused while [blocked] says it must not upload there
+ * (2026-10-30, per explicit request): the site is the one BG is read from, a real looper uploads there, or it is not
+ * checked yet (see `DataSyncSelectorV3.mainSiteUploadBlock`).
  *
  * Reads pass through. Treatment, BG and device status uploads are already stopped earlier, in
  * `DataSyncSelectorV3.doUpload`, so their cursors stay put; this catches the rest - the client-control and running
@@ -26,7 +27,7 @@ internal class BgSiteWriteGuard(
 ) : NSAndroidClient by inner {
 
     private fun refuseIfBlocked() {
-        if (blocked()) throw IllegalStateException("Upload stopped: the main Nightscout site is the BG source")
+        if (blocked()) throw IllegalStateException("Upload to the main Nightscout site stopped")
     }
 
     override suspend fun createSgv(nsSgvV3: NSSgvV3): CreateUpdateResponse = refuseIfBlocked().let { inner.createSgv(nsSgvV3) }

@@ -48,9 +48,19 @@ class LoadDeviceStatusRunner(
 
     /** A master needs only the newest device status. */
     private suspend fun loadNewest(nsAndroidClient: NSAndroidClient) {
+        // A Virtual-pump master first looks 24 h back for a real looper on its main site, and uploads nothing until it has
+        // (2026-10-30, per explicit request; see DataSyncSelectorV3.mainSiteUploadBlock). One page is enough: a looper
+        // writes a status every few minutes, so any day it looped shows in the oldest of them.
+        if (nsClientV3Plugin.virtualOnlyMaster && !nsClientV3Plugin.mainSiteLooperChecked) {
+            val day = nsAndroidClient.getDeviceStatusModifiedSince(dateUtil.now() - T.hours(24).msecs(), NSClientV3Plugin.RECORDS_TO_LOAD)
+            nsClientV3Plugin.noteRealLoopers(day)
+            nsClientV3Plugin.mainSiteLooperChecked = true
+            nsClientRepository.addLog("● SITE CHECK", "${day.size} device statuses in 24 h looked at for a real looper")
+        }
         val from = dateUtil.now() - T.mins(7).msecs()
         val deviceStatuses = nsAndroidClient.getDeviceStatusModifiedSince(from, NSClientV3Plugin.RECORDS_TO_LOAD)
         aapsLogger.debug("DEVICESTATUSES: $deviceStatuses")
+        nsClientV3Plugin.noteRealLoopers(deviceStatuses)
         if (deviceStatuses.isNotEmpty()) {
             nsClientRepository.addLog("◄ RCV", "${deviceStatuses.size} DSs from ${dateUtil.dateAndTimeAndSecondsString(from)}")
             nsDeviceStatusHandler.handleNewData(deviceStatuses.toTypedArray())

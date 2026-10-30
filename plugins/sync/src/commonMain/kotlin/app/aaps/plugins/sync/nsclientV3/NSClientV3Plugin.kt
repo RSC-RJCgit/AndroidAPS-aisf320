@@ -66,6 +66,7 @@ import app.aaps.plugins.sync.nsclientV3.compose.NSClientComposeContent
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolusWizard
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSCarbs
+import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSDeviceStatus
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSEffectiveProfileSwitch
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSExtendedBolus
@@ -211,7 +212,7 @@ class NSClientV3Plugin(
         get() = withVirtualUploadWarning(
             when {
                 preferences.get(NsclientBooleanKey.NsPaused)                                          -> rh.gs(CoreUiStrings.paused)
-                dataSyncSelectorV3.uploadToBgSiteBlocked                                              -> rh.gs(SyncStrings.ns_upload_stopped_bg_site)
+                dataSyncSelectorV3.mainSiteUploadBlocked                                              -> mainSiteUploadBlockStatus()
                 isAllowed.not()                                                                       -> blockingReason
                 preferences.get(BooleanKey.NsClient3UseWs) && nsConnection.socketConnected == true  -> rh.gs(InterfacesStrings.confirmation_line, "WS", rh.gs(InterfacesStrings.connected))
                 preferences.get(BooleanKey.NsClient3UseWs) && nsConnection.socketConnected == false -> rh.gs(InterfacesStrings.confirmation_line, "WS", rh.gs(SyncStrings.not_connected))
@@ -342,6 +343,9 @@ class NSClientV3Plugin(
                 nsClientRepository.updateStatus(status)
             }
         val restartOnChange: suspend (Any) -> Unit = {
+            // The site may have changed: check it for a real looper again before uploading (2026-10-30)
+            mainSiteLooperChecked = false
+            realLooperSeenAt = 0L
             nsConnection.stop()
             // Release the HTTP engine before dropping the reference. The Retrofit client leaked
             // quietly here; a Ktor engine holds real connections, so it is closed explicitly.
@@ -739,7 +743,7 @@ class NSClientV3Plugin(
                     logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
                     logger = { msg -> aapsLogger.debug(LTag.HTTP, msg) }
                 )
-            ) { dataSyncSelectorV3.uploadToBgSiteBlocked }
+            ) { dataSyncSelectorV3.mainSiteUploadBlocked }
             clientUrl = url
             clientAccessToken = accessToken
         }
@@ -817,8 +821,8 @@ class NSClientV3Plugin(
             aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
             return
         }
-        if (dataSyncSelectorV3.uploadToBgSiteBlocked) {
-            aapsLogger.debug(LTag.NSCLIENT, "Main site is the BG source. Message dropped")
+        if (dataSyncSelectorV3.mainSiteUploadBlocked) {
+            aapsLogger.debug(LTag.NSCLIENT, "Upload to the main site stopped. Message dropped")
             return
         }
         nsConnection.acknowledgeAlarm(originalAlarm, silenceTimeInMilliseconds)
@@ -1316,22 +1320,53 @@ class NSClientV3Plugin(
         doingFullSync = false
     }
 
-    @Volatile private var uploadToBgSiteNotified = false
+    // A Virtual-pump master's check for a real looper on its main site (2026-10-30, per explicit request). Kept only while
+    // the app runs: the first device-status load after a start looks back 24 h (LoadDeviceStatusRunner).
+    internal val virtualOnlyMaster: Boolean get() = config.APS && !config.PUMPDRIVERS
+    @Volatile internal var mainSiteLooperChecked = false
+    @Volatile private var realLooperSeenAt = 0L
+
+    /** Remembers the newest device status in [statuses] from a real looper, see [isRealLooperStatus]. */
+    internal fun noteRealLoopers(statuses: List<NSDeviceStatus>) {
+        if (!virtualOnlyMaster) return
+        val own = "openaps://${config.deviceModelForUpload}"
+        statuses.filter { isRealLooperStatus(it, own) }
+            .mapNotNull { it.date ?: it.createdAt?.let { at -> runCatching { dateUtil.fromISODateString(at) }.getOrNull() } }
+            .maxOrNull()
+            ?.let { if (it > realLooperSeenAt) realLooperSeenAt = it }
+    }
+
+    internal fun realLooperOnMainSite(now: Long): Boolean = realLooperSeenAt != 0L && now - realLooperSeenAt < REAL_LOOPER_HOLD_MS
+
+    private fun mainSiteUploadBlockStatus(): String = when (dataSyncSelectorV3.mainSiteUploadBlock) {
+        MainSiteUploadBlock.REAL_LOOPER -> rh.gs(SyncStrings.ns_upload_stopped_real_looper)
+        MainSiteUploadBlock.NOT_CHECKED -> rh.gs(SyncStrings.ns_upload_waiting_site_check)
+        else                            -> rh.gs(SyncStrings.ns_upload_stopped_bg_site)
+    }
+
+    @Volatile private var mainSiteBlockNotified: MainSiteUploadBlock? = null
 
     /**
-     * Shows or clears the lasting notification for [DataSyncSelectorV3.uploadToBgSiteBlocked] and returns [blocked], so the
-     * upload pass can stop with one call (2026-10-30). Posted only when it changes, not on every pass.
+     * Shows, changes or clears the lasting notification for [DataSyncSelectorV3.mainSiteUploadBlock] and says whether
+     * uploading stops, so the upload pass can stop with one call (2026-10-30). Posted only when the reason changes. Waiting
+     * for the first check stops uploading too, but only the status line says so: it lasts until the first load.
      */
-    internal fun reportUploadToBgSite(blocked: Boolean): Boolean {
-        if (blocked && !uploadToBgSiteNotified) {
-            aapsLogger.warn(LTag.NSCLIENT, "Upload stopped: the main Nightscout site is the BG source")
-            nsClientRepository.addLog("● STOP", "Upload stopped: the main Nightscout site is the BG source")
-            notificationManager.post(NotificationId.NSCLIENT_UPLOAD_TO_BG_SITE, rh.gs(SyncStrings.ns_upload_stopped_bg_site_notification))
-        } else if (!blocked && uploadToBgSiteNotified) {
-            notificationManager.dismiss(NotificationId.NSCLIENT_UPLOAD_TO_BG_SITE)
+    internal fun reportMainSiteUploadBlock(block: MainSiteUploadBlock?): Boolean {
+        val shown = block.takeIf { it != MainSiteUploadBlock.NOT_CHECKED }
+        if (shown != mainSiteBlockNotified) {
+            if (shown == null) notificationManager.dismiss(NotificationId.NSCLIENT_UPLOAD_TO_BG_SITE)
+            else {
+                val text = rh.gs(
+                    if (shown == MainSiteUploadBlock.REAL_LOOPER) SyncStrings.ns_upload_stopped_real_looper_notification
+                    else SyncStrings.ns_upload_stopped_bg_site_notification
+                )
+                aapsLogger.warn(LTag.NSCLIENT, text)
+                nsClientRepository.addLog("● STOP", text)
+                notificationManager.post(NotificationId.NSCLIENT_UPLOAD_TO_BG_SITE, text)
+            }
+            mainSiteBlockNotified = shown
         }
-        uploadToBgSiteNotified = blocked
-        return blocked
+        return block != null
     }
 
     internal fun executeUpload(origin: String) {

@@ -117,6 +117,7 @@ class NsFrameHandler(
         // profile switches included - would never be read.
         when (collection) {
             "devicestatus" -> decode(collection, raw) { docString.toNSDeviceStatus() }?.let {
+                nsClientV3Plugin().noteRealLoopers(listOf(it))
                 nsDeviceStatusHandler.handleNewData(arrayOf(it))
             }
 

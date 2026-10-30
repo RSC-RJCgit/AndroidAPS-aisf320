@@ -105,11 +105,24 @@ class DataSyncSelectorV3(
         }
 
     /**
-     * True on a Virtual-pump master whose main site is the one it reads BG from, see [uploadSiteIsBgSite] (2026-10-30).
-     * Nothing is uploaded then. Before a BG source is elected the source counts as Nightscout, so nothing goes out early.
+     * Why a Virtual-pump master uploads nothing to its main site, or null (2026-10-30, per explicit request): it reads BG
+     * from that site ([uploadSiteIsBgSite]; before a BG source is elected the source counts as Nightscout), a real looper
+     * uploads there ([NSClientV3Plugin.realLooperOnMainSite]), or the first check of the site has not finished.
+     * Never on a real master or a client.
      */
-    val uploadToBgSiteBlocked: Boolean
-        get() = config.APS && !config.PUMPDRIVERS && uploadSiteIsBgSite(
+    val mainSiteUploadBlock: MainSiteUploadBlock?
+        get() {
+            if (!config.APS || config.PUMPDRIVERS) return null
+            if (bgSiteIsMainSite) return MainSiteUploadBlock.BG_SITE
+            val plugin = nsClientV3Plugin()
+            if (!plugin.mainSiteLooperChecked) return MainSiteUploadBlock.NOT_CHECKED
+            return if (plugin.realLooperOnMainSite(dateUtil.now())) MainSiteUploadBlock.REAL_LOOPER else null
+        }
+
+    val mainSiteUploadBlocked: Boolean get() = mainSiteUploadBlock != null
+
+    private val bgSiteIsMainSite: Boolean
+        get() = uploadSiteIsBgSite(
             virtualOnlyMaster = true,
             nsClientBgSource = runCatching { activePlugin.activeBgSource is NSClientSource }.getOrDefault(true),
             secondaryEnabled = preferences.get(BooleanKey.NsClientSecondaryEnabled),
@@ -160,7 +173,7 @@ class DataSyncSelectorV3(
         // profile switches and notes reach that master only through Nightscout.
         val uploadOn = !isPaused &&
             (if (config.AAPSCLIENT) preferences.get(BooleanKey.NsClientReadOnlyClient) else preferences.get(BooleanKey.NsClientUploadData)) &&
-            !nsClientV3Plugin().reportUploadToBgSite(uploadToBgSiteBlocked)
+            !nsClientV3Plugin().reportMainSiteUploadBlock(mainSiteUploadBlock)
         if (uploadOn && virtualPumpSelected()) {
             aapsLogger.warn(LTag.NSCLIENT, "Virtual pump: check this Nightscout is not the live upload site")
             nsClientRepository.addLog("● WARN", "Virtual pump: check this Nightscout is not the live upload site")
