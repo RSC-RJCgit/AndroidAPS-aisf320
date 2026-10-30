@@ -74,8 +74,8 @@ interface Preferences {
      *
      * In hardened mode the master takes changes only from paired clients, through the signed
      * client-control channel, and never directly from Nightscout. Every key with
-     * [BooleanPreferenceKey.defaultedByHardenedMode] then uses its default (upload on, accept off,
-     * WebSocket on).
+     * [BooleanPreferenceKey.defaultedByHardenedMode] then uses its default (accept off,
+     * WebSocket on). The two upload switches are not forced: they are set independently (2026-10-31).
      *
      * It is the switch [BooleanKey.HardenedMode], read with [get], so simple mode turns it on.
      * A client has the master's value of the switch (it is synced master → client, like simple mode),

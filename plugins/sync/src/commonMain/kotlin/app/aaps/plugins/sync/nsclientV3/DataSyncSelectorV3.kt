@@ -171,9 +171,12 @@ class DataSyncSelectorV3(
         // be allowed to write to settings only.
         // Fork: a read-only client (for a master without client control, such as 3.4) still uploads. Its temp targets,
         // profile switches and notes reach that master only through Nightscout.
-        val uploadOn = !isPaused &&
-            (if (config.AAPSCLIENT) preferences.get(BooleanKey.NsClientReadOnlyClient) else preferences.get(BooleanKey.NsClientUploadData)) &&
-            !nsClientV3Plugin().reportMainSiteUploadBlock(mainSiteUploadBlock)
+        val siteOpen = !isPaused && !nsClientV3Plugin().reportMainSiteUploadBlock(mainSiteUploadBlock)
+        val uploadOn = siteOpen &&
+            (if (config.AAPSCLIENT) preferences.get(BooleanKey.NsClientReadOnlyClient) else preferences.get(BooleanKey.NsClientUploadData))
+        // On a master BG has its own switch, Upload BG to NS (2026-10-31, per explicit request): it goes with Upload data off
+        // too, and Upload data on with it off sends everything but BG (processChangedGlucoseValues reads bgUploadEnabled).
+        val bgOnly = !uploadOn && siteOpen && !config.AAPSCLIENT && preferences.get(BooleanKey.BgSourceUploadToNs)
         if (uploadOn && virtualPumpSelected()) {
             aapsLogger.warn(LTag.NSCLIENT, "Virtual pump: check this Nightscout is not the live upload site")
             nsClientRepository.addLog("● WARN", "Virtual pump: check this Nightscout is not the live upload site")
@@ -213,6 +216,11 @@ class DataSyncSelectorV3(
             processChangedProfileStore()
             storeDataForDb.updateNsIds()
             aapsLogger.debug(LTag.NSCLIENT, "Remaining: $queueCounter")
+        } else if (bgOnly) {
+            queueCounter.gvsRemaining = (persistenceLayer.getLastGlucoseValueId() ?: 0L) - preferences.get(NsclientLongKey.GlucoseValueLastSyncedId)
+            nsClientRepository.updateQueueSize(queueCounter.size())
+            processChangedGlucoseValues()
+            storeDataForDb.updateNsIds()
         }
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
     }

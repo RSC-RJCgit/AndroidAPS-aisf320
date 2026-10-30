@@ -324,6 +324,22 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
         verify(persistenceLayer, Times(0)).getLastBolusId()
     }
 
+    // 2026-10-31: on a master BG has its own switch, so it goes with Upload data off, and nothing else does.
+    @Test
+    fun doUploadSendsBgOnlyWithUploadDataOffTest() = runTest {
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.BgSourceUploadToNs)).thenReturn(true)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        whenever(persistenceLayer.getLastGlucoseValueId()).thenReturn(0L)
+
+        sut.doUpload()
+
+        verify(persistenceLayer).getNextSyncElementGlucoseValue(any())
+        verify(persistenceLayer, Times(0)).getLastBolusId()
+        verify(persistenceLayer, Times(0)).getLastDeviceStatusId()
+    }
+
     // A client sends everything through the master; its own records, like the start note, stay on the phone.
     @Test
     fun doUploadSendsNothingFromAClientTest() = runTest {

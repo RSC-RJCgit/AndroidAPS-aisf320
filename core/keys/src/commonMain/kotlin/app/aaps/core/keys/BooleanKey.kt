@@ -106,7 +106,8 @@ enum class BooleanKey(
         platforms = setOf(AppPlatform.Ios), dependency = IosRileyLinkHeartbeat
     ),
 
-    BgSourceUploadToNs("dexcomg5_nsupload", true, KeysStrings.pref_title_bg_source_upload_to_ns, defaultedBySM = true, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
+    // Not forced by hardened mode (2026-10-31, per explicit request): BG and data uploads are set independently, client control on or off.
+    BgSourceUploadToNs("dexcomg5_nsupload", true, KeysStrings.pref_title_bg_source_upload_to_ns, defaultedBySM = true, hideParentScreenIfHidden = true),
     BgSourceCreateSensorChange("dexcom_lognssensorchange", true, KeysStrings.pref_title_bg_source_create_sensor_change, KeysStrings.pref_summary_bg_source_create_sensor_change, defaultedBySM = true),
     BgSourceRandomBgRandomize("randombg_randomize", true, KeysStrings.pref_title_random_bg_randomize, KeysStrings.pref_summary_random_bg_randomize, defaultedBySM = true),
 
@@ -441,17 +442,18 @@ enum class BooleanKey(
     SmsReportPumpUnreachable("smscommunicator_report_pump_unreachable", true, KeysStrings.pref_title_sms_report_pump_unreachable, KeysStrings.pref_summary_sms_report_pump_unreachable),
 
     VirtualPumpStatusUpload("virtualpump_uploadstatus", false, KeysStrings.pref_title_virtual_pump_status_upload, showInNsClientMode = false),
-    // Hardened mode forces the upload and accept settings to their defaults (upload on, accept off) and hides them,
-    // so the whole Synchronization screen disappears with them (hideParentScreenIfHidden).
-    NsClientUploadData("ns_upload", true, KeysStrings.pref_title_ns_upload_data, KeysStrings.pref_summary_ns_upload_data, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptCgmData("ns_receive_cgm", false, KeysStrings.pref_title_ns_receive_cgm, KeysStrings.pref_summary_ns_receive_cgm, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptProfileStore("ns_receive_profile_store", false, KeysStrings.pref_title_ns_receive_profile_store, KeysStrings.pref_summary_ns_receive_profile_store, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptTempTarget("ns_receive_temp_target", false, KeysStrings.pref_title_ns_receive_temp_target, KeysStrings.pref_summary_ns_receive_temp_target, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptProfileSwitch("ns_receive_profile_switch", false, KeysStrings.pref_title_ns_receive_profile_switch, KeysStrings.pref_summary_ns_receive_profile_switch, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptInsulin("ns_receive_insulin", false, KeysStrings.pref_title_ns_receive_insulin, KeysStrings.pref_summary_ns_receive_insulin, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptCarbs("ns_receive_carbs", false, KeysStrings.pref_title_ns_receive_carbs, KeysStrings.pref_summary_ns_receive_carbs, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptTherapyEvent("ns_receive_therapy_events", false, KeysStrings.pref_title_ns_receive_therapy_event, KeysStrings.pref_summary_ns_receive_therapy_event, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
-    NsClientAcceptRunningMode("ns_receive_running_mode", false, KeysStrings.pref_title_ns_receive_running_mode, KeysStrings.pref_summary_ns_receive_running_mode, showInNsClientMode = false, hideParentScreenIfHidden = true, defaultedByHardenedMode = true),
+    // Hardened mode forces the accept settings off and hides them. Since 2026-10-31 (per explicit request) it no longer forces
+    // the upload switch (see BgSourceUploadToNs), and the accept keys no longer hide the Synchronization screen, so both
+    // upload switches can be set with client control on. A client still hides the screen through this key.
+    NsClientUploadData("ns_upload", true, KeysStrings.pref_title_ns_upload_data, KeysStrings.pref_summary_ns_upload_data, showInNsClientMode = false, hideParentScreenIfHidden = true),
+    NsClientAcceptCgmData("ns_receive_cgm", false, KeysStrings.pref_title_ns_receive_cgm, KeysStrings.pref_summary_ns_receive_cgm, showInNsClientMode = false, defaultedByHardenedMode = true),
+    NsClientAcceptProfileStore("ns_receive_profile_store", false, KeysStrings.pref_title_ns_receive_profile_store, KeysStrings.pref_summary_ns_receive_profile_store, showInNsClientMode = false, defaultedByHardenedMode = true),
+    NsClientAcceptTempTarget("ns_receive_temp_target", false, KeysStrings.pref_title_ns_receive_temp_target, KeysStrings.pref_summary_ns_receive_temp_target, showInNsClientMode = false, defaultedByHardenedMode = true),
+    NsClientAcceptProfileSwitch("ns_receive_profile_switch", false, KeysStrings.pref_title_ns_receive_profile_switch, KeysStrings.pref_summary_ns_receive_profile_switch, showInNsClientMode = false, defaultedByHardenedMode = true),
+    NsClientAcceptInsulin("ns_receive_insulin", false, KeysStrings.pref_title_ns_receive_insulin, KeysStrings.pref_summary_ns_receive_insulin, showInNsClientMode = false, defaultedByHardenedMode = true),
+    NsClientAcceptCarbs("ns_receive_carbs", false, KeysStrings.pref_title_ns_receive_carbs, KeysStrings.pref_summary_ns_receive_carbs, showInNsClientMode = false, defaultedByHardenedMode = true),
+    NsClientAcceptTherapyEvent("ns_receive_therapy_events", false, KeysStrings.pref_title_ns_receive_therapy_event, KeysStrings.pref_summary_ns_receive_therapy_event, showInNsClientMode = false, defaultedByHardenedMode = true),
+    NsClientAcceptRunningMode("ns_receive_running_mode", false, KeysStrings.pref_title_ns_receive_running_mode, KeysStrings.pref_summary_ns_receive_running_mode, showInNsClientMode = false, defaultedByHardenedMode = true),
     NsClientAcceptTbrEb("ns_receive_tbr_eb", false, KeysStrings.pref_title_ns_receive_tbr_eb, KeysStrings.pref_summary_ns_receive_tbr_eb, showInNsClientMode = false, engineeringModeOnly = true, defaultedByHardenedMode = true),
     // A second Nightscout site. A virtual pump reads glucose from its own site, and boluses and
     // carbs from the phone that entered them. SMBs are never taken from this site.

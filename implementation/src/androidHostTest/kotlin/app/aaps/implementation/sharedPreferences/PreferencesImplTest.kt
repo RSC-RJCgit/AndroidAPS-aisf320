@@ -37,10 +37,11 @@ class PreferencesImplTest {
         BooleanKey.NsClientAcceptTherapyEvent to false,
         BooleanKey.NsClientAcceptRunningMode to false,
         BooleanKey.NsClientAcceptTbrEb to false,
-        BooleanKey.NsClientUploadData to true,
-        BooleanKey.BgSourceUploadToNs to true,
         BooleanKey.NsClient3UseWs to true
     )
+
+    /** Set independently with client control on as well (2026-10-31, per explicit request). */
+    private val uploadKeys = listOf(BooleanKey.NsClientUploadData, BooleanKey.BgSourceUploadToNs)
 
     private fun preferences(client: Boolean): PreferencesImpl {
         val config = mock<Config>()
@@ -77,6 +78,18 @@ class PreferencesImplTest {
 
         assertThat(prefs.hardenedMode).isTrue()
         forcedKeys.forEach { (key, forced) -> assertThat(prefs.get(key)).isEqualTo(forced) }
+    }
+
+    @Test
+    fun `master with the switch on keeps the stored upload switches, each on its own`() {
+        val prefs = masterWithOppositeValues()
+        prefs.put(BooleanKey.HardenedMode, true)
+        prefs.put(BooleanKey.NsClientUploadData, true)
+        prefs.put(BooleanKey.BgSourceUploadToNs, false)
+
+        assertThat(uploadKeys.none { it.defaultedByHardenedMode }).isTrue()
+        assertThat(prefs.get(BooleanKey.NsClientUploadData)).isTrue()
+        assertThat(prefs.get(BooleanKey.BgSourceUploadToNs)).isFalse()
     }
 
     @Test
