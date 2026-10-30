@@ -25,8 +25,8 @@ on:
           - virtualRelease
           - virtualDebug
 
-  # Every push to any branch builds fullRelease, then aapsclientRelease, then aapsclient2Release, then virtualRelease (the
-  # Virtual-pump-only master, 2026-10-30) (in that order, one
+  # Every push to any branch builds aapsclient2Release, then virtualRelease (the Virtual-pump-only master), then
+  # fullRelease, then aapsclientRelease (in that order since 2026-10-30, per explicit request; one
   # after another, all uploaded to the same Google Drive folder). Pushes that only touch the workflows are ignored.
   # iOS CI (ios-ci.yml) has its own push trigger and is not affected.
   push:
@@ -40,11 +40,11 @@ jobs:
     name: Build AAPS (${{ matrix.variant }})
     runs-on: ubuntu-latest
     strategy:
-      # One variant at a time so the full APK reaches Drive first; one failing variant does not stop the next.
+      # One variant at a time, in the order above; one failing variant does not stop the next.
       fail-fast: false
       max-parallel: 1
       matrix:
-        variant: ${{ fromJSON(github.event_name == 'push' && '["fullRelease","aapsclientRelease","aapsclient2Release","virtualRelease"]' || format('["{0}"]', github.event.inputs.buildVariant)) }}
+        variant: ${{ fromJSON(github.event_name == 'push' && '["aapsclient2Release","virtualRelease","fullRelease","aapsclientRelease"]' || format('["{0}"]', github.event.inputs.buildVariant)) }}
     steps:
       - name: Decode Secrets Keystore Set and Oauth2 to Env
         env:

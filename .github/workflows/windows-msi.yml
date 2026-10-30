@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       client:
-        description: Desktop client to package (0 = the AAPS Virtual master, Virtual pump only)
+        description: Desktop client to package (0 = the AAPS Virtual master, Virtual pump only; both = 2, 0, 1 on Windows, 2, 1 on macOS)
         type: choice
         default: '2'
         options: ['0', '1', '2', '3', 'both']
@@ -22,7 +22,8 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
-        client: ${{ fromJSON(github.event_name == 'push' && '["2","1"]' || inputs.client == 'both' && '["2","1"]' || format('["{0}"]', inputs.client || '2')) }}
+        # Windows: Client 2, then the AAPS Virtual master (0), then Client 1 (2026-10-30, per explicit request). macOS below stays 2, 1.
+        client: ${{ fromJSON(github.event_name == 'push' && '["2","0","1"]' || inputs.client == 'both' && '["2","0","1"]' || format('["{0}"]', inputs.client || '2')) }}
     runs-on: windows-2025
     timeout-minutes: 90
     defaults:
