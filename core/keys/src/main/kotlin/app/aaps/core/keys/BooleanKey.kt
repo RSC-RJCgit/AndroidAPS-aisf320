@@ -108,6 +108,10 @@ enum class BooleanKey(
     // 2026-10-30, per explicit request: a tap on one of graph5's four top band lines shows all four values at that time
     // (GraphData.addTopBandLines). On by default. Local to the phone, like the other graph display switches.
     ApsAutoIsfGraph5BandTap("graph5_band_tap_popup", true, defaultedBySM = true),
+    // Steps arrow (2026-10-30, per explicit request): for SMBs whose loop result has no "StepCut=" (masters before
+    // aisf321UK_1216), work the direct step cuts out of the reason text instead (PrepareTreatmentsDataWorker.oldStepCutFrom).
+    // On by default. Local to the phone, like the other graph display switches.
+    ApsAutoIsfStepCutFromOldReasons("autoisf_step_cut_old_reasons", true, defaultedBySM = true),
     // 2026-09-26, per explicit request: the row of 12 insulin-delivered totals on the IOB graph (default off).
     ApsAutoIsfShowInsulinTotals("show_insulin_totals_row", false, defaultedBySM = true),
     // 2026-10-10, per explicit request: the text lines on the graphs (steps, extra row, ISF indices, target offset, pp/acce row). The

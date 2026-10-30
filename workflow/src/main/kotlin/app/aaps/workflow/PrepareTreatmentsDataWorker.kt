@@ -44,6 +44,38 @@ import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 
+private val OLD_HIGH_STEPS_REGEX = Regex("""microBolus \* 0\.7 extra; microBolus = (-?[0-9.]+)""")
+private val OLD_LOW_STEPS_REGEX = Regex("""microBolus \* 0\.75 low-steps fast-rise extra cut \([^)]*\); microBolus = (-?[0-9.]+)""")
+private val OLD_SHOWER_REGEX = Regex("""fast rise 0\.71[46] shower = (-?[0-9.]+)""")
+private val OLD_CAPS_TAPERED_REGEX = Regex("""fast-rise caps tapered after UamBst \([^,]*, x([0-9.]+)""")
+private val OLD_CAP30_WALKING_REGEX =
+    Regex("""30min SMB cap: ([0-9.]+) -> ([0-9.]+) \(last30min ([0-9.]+)U(?: \+ ([0-9.]+)U bolus)? of ([0-9.]+)U cap[^)]*, walking\)""")
+
+/**
+ * Steps arrow fallback (2026-10-30, per explicit request, same as v4's OverviewDataCacheImpl) for reasons from before
+ * "StepCut=" (masters before aisf321UK_1216): the direct step cuts that the reason text already names. High steps x0.7 and
+ * little walking x0.75 print the SMB after the cut; the shower caps print the change only when their IOB cap also applied;
+ * the walking 30 min cap prints its numbers. The Twilight cap and the indirect effects (activity ratio, dura walking half,
+ * Tier 3 walking half) were never written, so they are missing. A recent boost that skipped the fast-rise caps gave the
+ * first three back (all of it, or the taper's share).
+ */
+internal fun oldStepCutFrom(reason: String): Double {
+    fun Regex.number(group: Int = 1) = find(reason)?.groupValues?.get(group)?.toDoubleOrNull()
+    var fastRiseCut = 0.0
+    OLD_SHOWER_REGEX.number()?.let { fastRiseCut += kotlin.math.abs(it) }
+    OLD_HIGH_STEPS_REGEX.number()?.let { fastRiseCut += it.coerceAtLeast(0.0) * 0.3 / 0.7 }
+    OLD_LOW_STEPS_REGEX.number()?.let { fastRiseCut += it.coerceAtLeast(0.0) * 0.25 / 0.75 }
+    val givenBack = if (reason.contains("fast-rise caps skipped")) 1.0 else OLD_CAPS_TAPERED_REGEX.number()?.coerceIn(0.0, 1.0) ?: 0.0
+    var cut = fastRiseCut * (1.0 - givenBack)
+    OLD_CAP30_WALKING_REGEX.find(reason)?.groupValues?.let { g ->
+        val before = g[1].toDoubleOrNull() ?: 0.0
+        val after = g[2].toDoubleOrNull() ?: 0.0
+        val unhalved = ((g[5].toDoubleOrNull() ?: 0.0) * 2.0 - (g[3].toDoubleOrNull() ?: 0.0) - (g[4].toDoubleOrNull() ?: 0.0)).coerceAtLeast(0.0)
+        cut += (kotlin.math.min(before, unhalved) - after).coerceAtLeast(0.0)
+    }
+    return if (cut >= 0.01) cut else 0.0
+}
+
 class PrepareTreatmentsDataWorker(
     context: Context,
     params: WorkerParameters
@@ -106,6 +138,8 @@ class PrepareTreatmentsDataWorker(
         val fastRiseRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
         // Steps arrow (2026-10-29): "StepCut=0.12" after "Microbolusing" in the SMB's own loop result
         val stepCutRegex = Regex("""\bStepCut=([0-9]+(?:\.[0-9]+)?)""")
+        // Older results without the token are read from their reason text, unless that is switched off
+        val stepCutOldReasons = preferences.get(BooleanKey.ApsAutoIsfStepCutFromOldReasons)
         val bolusDataPoints = persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
@@ -147,7 +181,9 @@ class PrepareTreatmentsDataWorker(
                 val ownResult = apsResultsList
                     .filter { r -> r.date in (dp.x.toLong() - T.mins(3).msecs())..(dp.x.toLong() + 30_000L) }
                     .maxByOrNull { r -> r.date }
-                dp.stepCut = ownResult?.let { r -> stepCutRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull() } ?: 0.0
+                dp.stepCut = ownResult?.let { r ->
+                    stepCutRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: if (stepCutOldReasons) oldStepCutFrom(r.reason) else 0.0
+                } ?: 0.0
             }
             filteredTreatments.add(dp)
         }

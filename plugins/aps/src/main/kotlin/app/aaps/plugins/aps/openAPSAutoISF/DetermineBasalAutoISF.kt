@@ -2004,6 +2004,8 @@ class DetermineBasalAutoISF @Inject constructor(
                 // Snapshot the full (uncapped) SMB. When the profile is boosted (>100%) all the fast-rise
                 // size-reduction/cap blocks below are undone at the end so a boost delivers full SMBs.
                 val microBolusFullUncapped = microBolus
+                // Step cuts taken before this snapshot stay; the ones after it go back with a boost restore below
+                val stepCutBeforeFastRise = stepCutDirect
 
                 // Slope-compensated shadows of Delta/SDelta/LDelta, scoped by Kotlin variable shadowing to
                 // ONLY this if/else-if cascade (SHOWER/TWILIGHT through the "DEFAULT: NO SMB SIZE CHANGE"
@@ -2418,6 +2420,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     }
                     rT.reason.append(" fast-rise caps skipped ($skipWhy): microBolus ${round(microBolus, 2)} -> ${round(microBolusFullUncapped, 2)} ")
                     microBolus = microBolusFullUncapped
+                    stepCutDirect = stepCutBeforeFastRise
                 } else if (holdFastRiseAfterUamBst && (smbBoostRecent || nightFrSkipActive) && microBolus != microBolusFullUncapped) {
                     // Added 2026-09-13, per explicit request: graduated taper instead of a hard hold, so
                     // the post-boost high-IOB/no-COB window isn't all-or-nothing. First 5 cycles after
@@ -2436,6 +2439,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     if (taperFactor > 0.0) {
                         val cappedMicroBolus = microBolus
                         microBolus += (microBolusFullUncapped - microBolus) * taperFactor
+                        stepCutDirect = stepCutBeforeFastRise + (stepCutDirect - stepCutBeforeFastRise) * (1.0 - taperFactor)
                         rT.reason.append(
                             " fast-rise caps tapered after UamBst (${uamBstMinutesAgo}min, x${round(taperFactor, 2)}, IOB ${round(IOB, 2)} COB ${round(COB, 1)}): " +
                                 "microBolus ${round(cappedMicroBolus, 2)} -> ${round(microBolus, 2)} "

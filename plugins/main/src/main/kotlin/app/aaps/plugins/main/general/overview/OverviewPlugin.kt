@@ -296,6 +296,7 @@ class OverviewPlugin @Inject constructor(
             // the same BooleanKey, so either one works and they stay in sync.
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfShowGraph5, title = R.string.overview_show_graph5))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfGraph5BandTap, title = R.string.overview_graph5_band_tap))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfStepCutFromOldReasons, title = R.string.overview_step_cut_old_reasons))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfShowInsulinTotals, title = R.string.overview_show_insulin_totals_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewQuickWizardCarbTimeFromRise, title = R.string.overview_quickwizard_carb_time_from_rise_title))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {

@@ -311,6 +311,7 @@
     <string name="overview_show_notes_field_in_dialogs_title">Show notes field in treatment dialogs</string>
     <string name="overview_show_graph5">Show 5th graph (main graph clone, no basal)</string>
     <string name="overview_graph5_title">5th graph</string>
+    <string name="overview_step_cut_old_reasons">Steps arrows for older SMBs (read from the loop reason)</string>
     <string name="overview_graph5_band_tap">5th graph: tap a top band line to show its four values</string>
     <string name="overview_show_insulin_totals_title">Show insulin totals row on the IOB graph</string>
     <string name="overview_quickwizard_carb_time_from_rise_title">Quick Wizard: carb time from rise</string>
