@@ -172,6 +172,8 @@ class BolusWizard @Inject constructor(
     var insulinFromCOB = 0.0
         private set
     var insulinFromTrend = 0.0
+    /** True when a rising trend was left out because the carbs were eaten earlier (see doCalc). */
+    var trendLeftOut = false
         private set
     var trend = 0.0
         private set
@@ -355,6 +357,12 @@ class BolusWizard @Inject constructor(
             if (useTrend) {
                 trend = it.shortAvgDelta
                 insulinFromTrend = profileUtil.fromMgdlToUnits(trend) * 3 / sens
+                // 2026-10-30, per explicit request: carbs eaten earlier (a minus carb time) already make part of a rising
+                // trend, while the carbs part still counts all of them. A rising trend is left out then; a falling one stays.
+                if (carbs > 0 && carbTime < 0 && insulinFromTrend > 0.0) {
+                    trendLeftOut = true
+                    insulinFromTrend = 0.0
+                }
             }
         }
 
@@ -624,7 +632,13 @@ class BolusWizard @Inject constructor(
                 "(projected HP ${hpSafetyProjectedMmol?.let { String.format("%.1f", it) } ?: "--"}, " +
                 "COB insulin removed ${decimalFormatter.to2Decimal(hpSafetyCobDoseRemoved)}U)"
         } else ""
-        val combinedNote = listOf(notes, alwaysNote, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
+        // 2026-10-30, per explicit request: the carbs' time offset, so Live and the clients see carbs entered for another time
+        val carbTimeNote = if (carbs > 0 && carbTime != 0) {
+            val clock = dateUtil.timeString(timeStamp + carbTime * 60_000L)
+            (if (carbTime < 0) "Carbs $carbTime min (eaten $clock)" else "Carbs +$carbTime min (for $clock)") +
+                if (trendLeftOut) "\nTrend left out: carbs $carbTime min" else ""
+        } else ""
+        val combinedNote = listOf(notes, alwaysNote, carbTimeNote, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
         return BCR(
             timestamp = dateUtil.now(),
             targetBGLow = profileUtil.convertToMgdl(targetBGLow, unit),
@@ -905,7 +919,8 @@ class BolusWizard @Inject constructor(
         if (useCob) message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_cob, cob, insulinFromCOB)
         if (useBg) message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_bg, insulinFromBG)
         if (includeBolusIOB) message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_iob, -insulinFromBolusIOB - insulinFromBasalIOB)
-        if (useTrend) message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_trend, insulinFromTrend)
+        if (useTrend) message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_trend, insulinFromTrend) +
+            if (trendLeftOut) " (carbs earlier)" else ""
         if (useSuperBolus) message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_superbolus, insulinFromSuperBolus)
         if (percentageCorrection != 100) {
             message += "\n" + rh.gs(app.aaps.core.ui.R.string.wizard_explain_percent, totalBeforePercentageAdjustment, percentageCorrection, calculatedTotalInsulin)
