@@ -64,6 +64,8 @@ fun SensorCycleCompose(
     modifier: Modifier = Modifier
 ) {
     var view by remember { mutableStateOf(SensorCycleView.WHOLE_SENSOR) }
+    // Flat average lines over each quarter of the graph, as iPhone Health shows averages (2026-11-01, per explicit request)
+    var quarters by remember { mutableStateOf(false) }
 
     Column(modifier = modifier) {
         Row(
@@ -77,17 +79,30 @@ fun SensorCycleCompose(
                 modifier = Modifier.padding(end = 8.dp)
             )
             FilterChip(
+                selected = view == SensorCycleView.AMBULATORY,
+                onClick = { view = SensorCycleView.AMBULATORY },
+                label = { Text(stringResource(UiStrings.sensor_cycle_ambulatory)) },
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            FilterChip(
                 selected = view == SensorCycleView.CHANGEOVER,
                 onClick = { view = SensorCycleView.CHANGEOVER },
                 label = { Text(stringResource(UiStrings.sensor_cycle_changeover)) }
             )
         }
+        FilterChip(
+            selected = quarters,
+            onClick = { quarters = !quarters },
+            label = { Text(stringResource(UiStrings.sensor_quarter_averages)) },
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
 
         when {
             data == null                         -> NoData(stringResource(UiStrings.sensor_cycle_no_data))
-            view == SensorCycleView.WHOLE_SENSOR -> WholeSensorView(data, formatDate)
+            view == SensorCycleView.WHOLE_SENSOR -> WholeSensorView(data, formatDate, quarters)
+            view == SensorCycleView.AMBULATORY   -> AmbulatoryView(data, formatDate, quarters)
             data.changeover == null              -> NoData(stringResource(UiStrings.sensor_changeover_no_data))
-            else                                 -> ChangeoverView(data, data.changeover)
+            else                                 -> ChangeoverView(data, data.changeover, formatDate, quarters)
         }
 
         // Offset in whole sensors: 1 shows the three sensors before the newest, and so on
@@ -113,13 +128,14 @@ private fun NoData(text: String) {
 }
 
 @Composable
-private fun WholeSensorView(data: SensorCycleData, formatDate: (Long) -> String) {
+private fun WholeSensorView(data: SensorCycleData, formatDate: (Long) -> String, quarters: Boolean) {
     val profileUtil = LocalProfileUtil.current
     val colors = AapsTheme.generalColors
     val baseColor = MaterialTheme.colorScheme.primary
     val averageColor = colors.cycleAverage
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val highColor = MaterialTheme.colorScheme.tertiary
+    val quarterColor = MaterialTheme.colorScheme.secondary
     val highestValue = maxOf(data.highMgdl, data.sensors.flatMap { it.binMeansMgdl }.filterNotNull().maxOrNull() ?: data.highMgdl)
     val yAxis = calculateAgpYAxis(highestValue, profileUtil.units)
     val binCount = data.averageMgdl.size
@@ -161,10 +177,12 @@ private fun WholeSensorView(data: SensorCycleData, formatDate: (Long) -> String)
             data.averageMgdl, ::x, ::y, averageColor,
             Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round, pathEffect = PathEffect.dashPathEffect(floatArrayOf(10.dp.toPx(), 6.dp.toPx())))
         )
+        if (quarters) drawQuarterAverages(data.quarterAveragesMgdl, data.windowHours.toFloat() / (binCount * data.binHours), ::y, quarterColor)
     }
 
     // Day labels under the chart: every second day, so 15 days fit a phone
     XLabels(labels = (0..days step 2).map { it.toString() }, positions = (0..days step 2).map { it * 24f / (binCount * data.binHours) })
+    if (quarters) QuarterValues(data.quarterAveragesMgdl, quarterColor)
 
     Legend(
         listOf(
@@ -176,8 +194,92 @@ private fun WholeSensorView(data: SensorCycleData, formatDate: (Long) -> String)
     )
 }
 
+/**
+ * The whole life of the shown sensors as shaded bands (2026-11-01, per explicit request): 10-90% light, 25-75% darker
+ * and the median, from every reading of those sensors in each bin, as the AGP draws a day. Smooth where the lines view
+ * is spiky, because one odd sensor widens the band instead of drawing its own peak.
+ */
 @Composable
-private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverData) {
+private fun AmbulatoryView(data: SensorCycleData, formatDate: (Long) -> String, quarters: Boolean) {
+    val profileUtil = LocalProfileUtil.current
+    val colors = AapsTheme.generalColors
+    val wideBandColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+    val narrowBandColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.42f)
+    val medianColor = MaterialTheme.colorScheme.primary
+    val gridColor = MaterialTheme.colorScheme.outlineVariant
+    val highColor = MaterialTheme.colorScheme.tertiary
+    val quarterColor = MaterialTheme.colorScheme.secondary
+    val bands = data.bands
+    val highestValue = maxOf(data.highMgdl, bands.maxOfOrNull { it.p90Mgdl } ?: data.highMgdl)
+    val yAxis = calculateAgpYAxis(highestValue, profileUtil.units)
+    val binCount = data.averageMgdl.size
+    val days = (data.windowHours + 23) / 24
+    val chartDescription = stringResource(UiStrings.sensor_ambulatory_chart_description)
+
+    Text(
+        text = stringResource(UiStrings.sensor_cycle_found, data.sensors.size, data.sensorsAvailable, formatDays(data.windowHours)),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(bottom = 8.dp)
+    )
+    Text(
+        text = stringResource(UiStrings.sensor_cycle_newest_start, formatDate(data.sensors.first().startTimestamp)),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+
+    ChartWithAxis(yAxis = yAxis, description = chartDescription) {
+        val strokeWidth = AapsSpacing.extraSmall.toPx()
+        val dashEffect = PathEffect.dashPathEffect(floatArrayOf(AapsSpacing.medium.toPx(), AapsSpacing.small.toPx()))
+        fun x(bin: Int): Float = size.width * (bin + 0.5f) / binCount
+        fun y(valueMgdl: Double): Float = yPosition(valueMgdl, yAxis)
+
+        drawGrid(gridColor, yAxis)
+        for (day in 0..days) {
+            val dayX = size.width * day * 24f / (binCount * data.binHours)
+            drawLine(gridColor, Offset(dayX, 0f), Offset(dayX, size.height), strokeWidth = strokeWidth / 2f, pathEffect = dashEffect)
+        }
+        drawThreshold(data.lowMgdl, colors.bgLow, yAxis, dashEffect)
+        drawThreshold(data.highMgdl, highColor, yAxis, dashEffect)
+
+        fun drawBand(lower: (SensorBinPercentile) -> Double, upper: (SensorBinPercentile) -> Double, color: Color) {
+            if (bands.size < 2) return
+            val path = Path()
+            bands.forEachIndexed { index, point ->
+                if (index == 0) path.moveTo(x(point.bin), y(upper(point))) else path.lineTo(x(point.bin), y(upper(point)))
+            }
+            bands.asReversed().forEach { point -> path.lineTo(x(point.bin), y(lower(point))) }
+            path.close()
+            drawPath(path, color)
+        }
+        drawBand(SensorBinPercentile::p10Mgdl, SensorBinPercentile::p90Mgdl, wideBandColor)
+        drawBand(SensorBinPercentile::p25Mgdl, SensorBinPercentile::p75Mgdl, narrowBandColor)
+        drawGappedLine(
+            values = bands.associate { it.bin to it.medianMgdl }.let { byBin -> (0 until binCount).map { byBin[it] } },
+            x = ::x,
+            y = ::y,
+            color = medianColor,
+            stroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        )
+        if (quarters) drawQuarterAverages(data.quarterAveragesMgdl, data.windowHours.toFloat() / (binCount * data.binHours), ::y, quarterColor)
+    }
+
+    XLabels(labels = (0..days step 2).map { it.toString() }, positions = (0..days step 2).map { it * 24f / (binCount * data.binHours) })
+    if (quarters) QuarterValues(data.quarterAveragesMgdl, quarterColor)
+
+    Legend(
+        listOf(
+            stringResource(UiStrings.agp_percentile_10_90) to wideBandColor,
+            stringResource(UiStrings.agp_percentile_25_75) to narrowBandColor,
+            stringResource(UiStrings.agp_median) to medianColor,
+            profileUtil.fromMgdlToStringWithUnits(data.lowMgdl) to colors.bgLow,
+            profileUtil.fromMgdlToStringWithUnits(data.highMgdl) to highColor
+        )
+    )
+}
+
+@Composable
+private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverData, formatDate: (Long) -> String, quarters: Boolean) {
     val profileUtil = LocalProfileUtil.current
     val colors = AapsTheme.generalColors
     val wideBandColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
@@ -186,6 +288,7 @@ private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverDa
     val changeColor = MaterialTheme.colorScheme.onSurface
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val highColor = MaterialTheme.colorScheme.tertiary
+    val quarterColor = MaterialTheme.colorScheme.secondary
     val percentiles = changeover.percentiles
     val hours = changeover.hoursEachSide
     val daysEachSide = hours / 24
@@ -198,6 +301,12 @@ private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverDa
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(bottom = 8.dp)
+    )
+    // Which changes are pooled, newest first, as the lines view names its newest start (2026-11-01, per explicit request)
+    Text(
+        text = stringResource(UiStrings.sensor_changeover_dates, changeover.changeTimestamps.joinToString(", ") { formatDate(it) }),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurface
     )
 
     ChartWithAxis(yAxis = yAxis, description = chartDescription) {
@@ -235,6 +344,7 @@ private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverDa
         )
         // The change itself
         drawLine(changeColor, Offset(size.width / 2f, 0f), Offset(size.width / 2f, size.height), strokeWidth = strokeWidth)
+        if (quarters) drawQuarterAverages(changeover.quarterAveragesMgdl, 1f, ::y, quarterColor)
     }
 
     val dayLabels = (-daysEachSide..daysEachSide).toList()
@@ -242,6 +352,7 @@ private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverDa
         labels = dayLabels.map { if (it > 0) "+$it" else it.toString() },
         positions = dayLabels.map { (it + daysEachSide) / (2f * daysEachSide) }
     )
+    if (quarters) QuarterValues(changeover.quarterAveragesMgdl, quarterColor)
 
     Legend(
         listOf(
@@ -263,6 +374,20 @@ private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverDa
         Figure(stringResource(UiStrings.sensor_avg_after), changeover.averageAfterMgdl?.let { profileUtil.fromMgdlToStringWithUnits(it) })
         Figure(stringResource(UiStrings.sensor_tir_before), changeover.tirBeforePercent?.let { "${it.roundToInt()}%" })
         Figure(stringResource(UiStrings.sensor_tir_after), changeover.tirAfterPercent?.let { "${it.roundToInt()}%" })
+    }
+}
+
+/** The quarter averages written out under the chart, one per quarter, in the colour of their lines */
+@Composable
+private fun QuarterValues(averages: List<Double?>, color: Color) {
+    val profileUtil = LocalProfileUtil.current
+    Row(modifier = Modifier.fillMaxWidth().padding(top = AapsSpacing.small)) {
+        averages.forEachIndexed { index, average ->
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(UiStrings.sensor_quarter_label, index + 1), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(average?.let { profileUtil.fromMgdlToStringWithUnits(it) } ?: "-", style = MaterialTheme.typography.titleSmall, color = color)
+            }
+        }
     }
 }
 
@@ -371,6 +496,19 @@ private fun DrawScope.drawThreshold(valueMgdl: Double, color: Color, yAxis: AgpY
 }
 
 /** A line through [values] by index, broken where a value is missing, so a gap in the readings shows as a gap. */
+/**
+ * A flat line at each quarter's average across its quarter of the graph. [spanFraction] is the share of the width the
+ * quarters cover: the sensor life does not always fill the last bin.
+ */
+private fun DrawScope.drawQuarterAverages(averages: List<Double?>, spanFraction: Float, y: (Double) -> Float, color: Color) {
+    val quarterWidth = size.width * spanFraction / averages.size.coerceAtLeast(1)
+    averages.forEachIndexed { index, average ->
+        average ?: return@forEachIndexed
+        val level = y(average)
+        drawLine(color, Offset(index * quarterWidth, level), Offset((index + 1) * quarterWidth, level), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+    }
+}
+
 private fun DrawScope.drawGappedLine(values: List<Double?>, x: (Int) -> Float, y: (Double) -> Float, color: Color, stroke: Stroke) {
     val path = Path()
     var penDown = false

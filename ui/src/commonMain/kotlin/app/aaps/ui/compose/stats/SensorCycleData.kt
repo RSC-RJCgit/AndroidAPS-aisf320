@@ -7,14 +7,17 @@ import app.aaps.core.data.model.SourceSensor
  * Sensor cycle overlay (2026-10-31, per explicit request): glucose laid over the life of each CGM sensor,
  * aligned to its sensor change, the way the Cycle tab lays insulin totals over 28-day cycles.
  *
- * Two views of the same sensors:
- *  - whole sensor: day 0 to the end of the sensor's life, one line per sensor and their average
+ * Three views of the same sensors:
+ *  - lines: day 0 to the end of the sensor's life, one line per sensor and their average
+ *  - ambulatory (2026-11-01, per explicit request): the same span as shaded percentile bands and a median, from all
+ *    readings of the shown sensors in each bin, as the AGP draws a day - smooth where the lines are spiky
  *  - changeover: the last days of one sensor and the first days of the next, pooled over the changes into
  *    median and percentile bands, with the average and time in range before and after (as Nocturne's
  *    "Site Change Impact" report does for pump sites)
  */
 enum class SensorCycleView {
     WHOLE_SENSOR,
+    AMBULATORY,
     CHANGEOVER
 }
 
@@ -34,6 +37,16 @@ data class ChangeoverPercentile(
     val p90Mgdl: Double
 )
 
+/** The pooled readings of all shown sensors in one bin from their starts (2026-11-01). Only bins with readings. */
+data class SensorBinPercentile(
+    val bin: Int,
+    val p10Mgdl: Double,
+    val p25Mgdl: Double,
+    val medianMgdl: Double,
+    val p75Mgdl: Double,
+    val p90Mgdl: Double
+)
+
 data class SensorChangeoverData(
     val changeTimestamps: List<Long>,
     val hoursEachSide: Int,
@@ -41,7 +54,9 @@ data class SensorChangeoverData(
     val averageBeforeMgdl: Double?,
     val averageAfterMgdl: Double?,
     val tirBeforePercent: Double?,
-    val tirAfterPercent: Double?
+    val tirAfterPercent: Double?,
+    /** The mean of each quarter of the window, oldest first: two before the change, two after. Null where it has no readings. */
+    val quarterAveragesMgdl: List<Double?> = emptyList()
 )
 
 data class SensorCycleData(
@@ -50,11 +65,18 @@ data class SensorCycleData(
     /** Newest first, as the Cycle tab orders its cycles. */
     val sensors: List<SensorTrace>,
     val averageMgdl: List<Double?>,
+    /** For the ambulatory view, oldest bin first */
+    val bands: List<SensorBinPercentile>,
     /** Sensor changes found in the history read, so the offset can be capped. */
     val sensorsAvailable: Int,
     val lowMgdl: Double,
     val highMgdl: Double,
-    val changeover: SensorChangeoverData?
+    val changeover: SensorChangeoverData?,
+    /**
+     * The mean of each quarter of the sensor life, from all readings of the shown sensors (2026-11-01, per explicit
+     * request), for the flat lines the Sensor tab can show, as iPhone Health shows averages. Null where it has none.
+     */
+    val quarterAveragesMgdl: List<Double?> = emptyList()
 )
 
 /**
@@ -135,6 +157,10 @@ internal fun calculateSensorCycleData(
     val valid = readings.filter { it.isValid && it.value >= MIN_VALID_BG }.sortedBy { it.timestamp }
     val binMs = binHours * HOUR_MS
     val binCount = (windowHours + binHours - 1) / binHours
+    val pooled = List(binCount) { mutableListOf<Double>() }
+    val quarterSums = DoubleArray(QUARTERS)
+    val quarterCounts = IntArray(QUARTERS)
+    val quarterMs = windowHours * HOUR_MS / QUARTERS.toDouble()
 
     val sensors = shown.map { (index, start) ->
         val nextStart = newestFirst.getOrNull(index - 1) ?: Long.MAX_VALUE
@@ -147,6 +173,12 @@ internal fun calculateSensorCycleData(
             if (bin >= binCount) continue
             sums[bin] += reading.value
             counts[bin]++
+            pooled[bin].add(reading.value)
+            val quarter = ((reading.timestamp - start) / quarterMs).toInt()
+            if (quarter < QUARTERS) {
+                quarterSums[quarter] += reading.value
+                quarterCounts[quarter]++
+            }
         }
         SensorTrace(
             startTimestamp = start,
@@ -164,10 +196,22 @@ internal fun calculateSensorCycleData(
         binHours = binHours,
         sensors = sensors,
         averageMgdl = average,
+        bands = pooled.withIndex().filter { it.value.isNotEmpty() }.map { (bin, values) ->
+            val sorted = values.sorted()
+            SensorBinPercentile(
+                bin = bin,
+                p10Mgdl = percentileOf(sorted, 0.10),
+                p25Mgdl = percentileOf(sorted, 0.25),
+                medianMgdl = percentileOf(sorted, 0.50),
+                p75Mgdl = percentileOf(sorted, 0.75),
+                p90Mgdl = percentileOf(sorted, 0.90)
+            )
+        },
         sensorsAvailable = distinct.size,
         lowMgdl = lowMgdl,
         highMgdl = highMgdl,
-        changeover = calculateChangeover(valid, newestFirst, offset, sensorCount, changeoverHours, now, lowMgdl, highMgdl)
+        changeover = calculateChangeover(valid, newestFirst, offset, sensorCount, changeoverHours, now, lowMgdl, highMgdl),
+        quarterAveragesMgdl = quarterMeans(quarterSums, quarterCounts)
     )
 }
 
@@ -193,6 +237,8 @@ private fun calculateChangeover(
     val byHour = mutableMapOf<Int, MutableList<Double>>()
     val before = mutableListOf<Double>()
     val after = mutableListOf<Double>()
+    val quarterSums = DoubleArray(QUARTERS)
+    val quarterCounts = IntArray(QUARTERS)
     for ((index, change) in changes) {
         val from = maxOf(change - sideMs, newestFirst[index + 1])
         val to = minOf(change + sideMs, newestFirst.getOrNull(index - 1) ?: Long.MAX_VALUE, now + 1)
@@ -202,6 +248,11 @@ private fun calculateChangeover(
             val hour = sinceChange.floorDiv(HOUR_MS).toInt()
             byHour.getOrPut(hour) { mutableListOf() }.add(reading.value)
             if (sinceChange < 0) before.add(reading.value) else after.add(reading.value)
+            val quarter = ((sinceChange + sideMs) * QUARTERS / (2 * sideMs)).toInt()
+            if (quarter in 0 until QUARTERS) {
+                quarterSums[quarter] += reading.value
+                quarterCounts[quarter]++
+            }
         }
     }
 
@@ -222,9 +273,13 @@ private fun calculateChangeover(
         averageBeforeMgdl = before.takeIf { it.isNotEmpty() }?.average(),
         averageAfterMgdl = after.takeIf { it.isNotEmpty() }?.average(),
         tirBeforePercent = before.takeIf { it.isNotEmpty() }?.let { values -> values.count { it in lowMgdl..highMgdl } * 100.0 / values.size },
-        tirAfterPercent = after.takeIf { it.isNotEmpty() }?.let { values -> values.count { it in lowMgdl..highMgdl } * 100.0 / values.size }
+        tirAfterPercent = after.takeIf { it.isNotEmpty() }?.let { values -> values.count { it in lowMgdl..highMgdl } * 100.0 / values.size },
+        quarterAveragesMgdl = quarterMeans(quarterSums, quarterCounts)
     )
 }
+
+private fun quarterMeans(sums: DoubleArray, counts: IntArray): List<Double?> =
+    sums.indices.map { if (counts[it] > 0) sums[it] / counts[it] else null }
 
 /** Linear interpolation between ranks, the same as the AGP. */
 private fun percentileOf(sorted: List<Double>, fraction: Double): Double {
@@ -236,6 +291,8 @@ private fun percentileOf(sorted: List<Double>, fraction: Double): Double {
 }
 
 internal const val SENSOR_CYCLE_COUNT = 3
+/** The flat average lines split each graph into this many equal parts */
+internal const val QUARTERS = 4
 internal const val SENSOR_CYCLE_BIN_HOURS = 3
 internal const val SENSOR_CHANGEOVER_HOURS = 5 * 24
 private const val DEFAULT_WINDOW_HOURS = 15 * 24

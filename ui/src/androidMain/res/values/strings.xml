@@ -436,7 +436,12 @@
     <!--    Sensor cycle overlay -->
     <string name="stats_tab_sensor" comment="Short tab label on the Statistics screen. The tab shows glucose laid over the life of each CGM sensor.">Sensor</string>
     <string name="sensor_cycle_title">Sensor cycle</string>
-    <string name="sensor_cycle_whole">Whole sensor</string>
+    <string name="sensor_cycle_whole">Lines</string>
+    <string name="sensor_cycle_ambulatory" comment="A view of the sensor graph: the whole life of the sensors as shaded percentile bands, like the ambulatory glucose profile (AGP)">Ambulatory</string>
+    <string name="sensor_quarter_averages" comment="On/off chip on the Sensor tab: draws a flat line at the average glucose of each quarter of the graph, as iPhone Health shows averages">Quarter averages</string>
+    <string name="sensor_quarter_label" comment="%1$d=1 to 4. Label of one quarter of the sensor graph, above its average glucose">Quarter %1$d</string>
+    <string name="sensor_ambulatory_chart_description">Glucose percentiles over the life of the sensors</string>
+    <string name="sensor_changeover_dates" comment="%1$s=the dates of the sensor changes the changeover graph uses, newest first, separated by commas">Changes: %1$s</string>
     <string name="sensor_cycle_changeover">Changeover</string>
     <string name="sensor_cycle_offset">Sensors skipped</string>
     <string name="sensor_cycle_found">%1$d sensors shown of %2$d changes, %3$s days each</string>

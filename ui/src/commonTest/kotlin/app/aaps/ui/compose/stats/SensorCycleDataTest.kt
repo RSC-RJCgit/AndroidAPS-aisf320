@@ -86,6 +86,32 @@ class SensorCycleDataTest {
         assertEquals(90.0, data.averageMgdl[2])
     }
 
+    /** Ambulatory view (2026-11-01): every reading of the shown sensors in a bin, pooled, not the sensors' means */
+    @Test
+    fun bandsPoolTheReadingsOfAllSensorsInABin() {
+        val readings = listOf(
+            glucose(start1 + hour, 100.0),
+            glucose(start1 + 2 * hour, 100.0),
+            glucose(start2 + hour, 200.0),
+            glucose(start3 + hour, 300.0),
+            glucose(start3 + 7 * hour, 90.0)
+        )
+        val data = calculate(readings)!!
+
+        assertEquals(listOf(0, 2), data.bands.map { it.bin })
+        val first = data.bands[0]
+        // 100, 100, 200, 300: the median of the readings is 150, where the mean of the sensor means is 200
+        assertEquals(150.0, first.medianMgdl)
+        assertEquals(100.0, first.p25Mgdl)
+        assertEquals(225.0, first.p75Mgdl)
+        assertEquals(90.0, data.bands[1].medianMgdl)
+    }
+
+    @Test
+    fun noReadingsGiveNoBands() {
+        assertEquals(0, calculate(emptyList())!!.bands.size)
+    }
+
     @Test
     fun theOffsetSkipsTheNewestSensors() {
         val data = calculate(listOf(glucose(start1 + hour, 100.0)), offset = 1)!!
@@ -183,6 +209,35 @@ class SensorCycleDataTest {
         assertEquals(168, sensorWindowHours(SourceSensor.MM_SIMPLERA))
         assertEquals(360, sensorWindowHours(SourceSensor.EVERSENSE))
         assertEquals(360, sensorWindowHours(null))
+    }
+
+    /** 10 day window: quarters of 2.5 days, from all readings of the shown sensors (2026-11-01) */
+    @Test
+    fun quarterAveragesPoolTheSensorsByTheirOwnAge() {
+        val data = calculate(
+            listOf(
+                glucose(start3 + hour, 100.0),     // quarter 1 of the newest
+                glucose(start2 + hour, 140.0),     // quarter 1 of the middle one
+                glucose(start1 + 3 * day, 200.0),  // day 3: quarter 2 of the oldest
+                glucose(start3 + 4 * day, 160.0)   // day 4: quarter 2 of the newest
+            )
+        )!!
+
+        assertEquals(listOf(120.0, 180.0, null, null), data.quarterAveragesMgdl)
+    }
+
+    /** Around the changes, 5 days each side: two quarters before the change, two after */
+    @Test
+    fun changeoverQuartersAreTwoBeforeAndTwoAfter() {
+        val data = calculate(
+            listOf(
+                glucose(start3 - hour, 100.0),       // the last hour before the newest change
+                glucose(start2 + 10 * hour, 200.0),  // the first day after the middle change
+                glucose(start3 + 70 * hour, 150.0)   // day 3 after the newest change
+            )
+        )!!
+
+        assertEquals(listOf(null, 100.0, 200.0, 150.0), data.changeover!!.quarterAveragesMgdl)
     }
 
     private fun calculate(readings: List<GV>, offset: Int = 0, windowHours: Int = 240) =
