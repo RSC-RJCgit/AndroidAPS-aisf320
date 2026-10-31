@@ -142,6 +142,18 @@ class GoogleDriveProviderTest {
         assertTrue(listener.stopped, "an abandoned sign in left the port open")
     }
 
+    /** A second click restarted the sign in: the first wait ending must leave the new listener open. */
+    @Test
+    fun `a replaced wait does not stop the newer sign in`() = runTest {
+        val provider = providerReplying()
+        provider.startAuth()
+        listener.onAwait = { provider.startAuth() }
+        listener.result = null
+
+        assertNull(provider.waitForAuthCode(1000))
+        assertFalse(listener.stopped, "the newer sign in's listener was stopped")
+    }
+
     @Test
     fun `a refusal is not an error and gives no code`() = runTest {
         val provider = providerReplying()
@@ -373,6 +385,7 @@ class GoogleDriveProviderTest {
         var stopped = false
         var result: OAuthCallback.Result? = null
         var seenState: String? = null
+        var onAwait: (suspend () -> Unit)? = null
 
         override fun start(port: Int): Boolean {
             started = startSucceeds
@@ -381,6 +394,7 @@ class GoogleDriveProviderTest {
 
         override suspend fun awaitCallback(expectedState: String, timeoutMs: Long): OAuthCallback.Result? {
             seenState = expectedState
+            onAwait?.invoke()
             return result
         }
 

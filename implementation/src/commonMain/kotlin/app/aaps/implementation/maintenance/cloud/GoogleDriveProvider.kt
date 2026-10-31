@@ -63,8 +63,12 @@ class GoogleDriveProvider(
 
     // ----- Signing in -----
 
+    /** Counts sign ins, so a wait that a newer one replaced does not stop the newer one's listener. */
+    private var signInAttempt = 0
+
     /** Returns the URL to show, or null when the port could not be opened for the redirect. */
     override suspend fun startAuth(): String? {
+        signInAttempt++
         val verifier = auth.newVerifier()
         val state = auth.newState()
         tokens.codeVerifier = verifier
@@ -89,9 +93,11 @@ class GoogleDriveProvider(
      * Waits for the redirect and gives back the code.
      *
      * The listener is stopped whatever happens, so a sign in the user abandoned does not leave a port
-     * open behind them.
+     * open behind them - unless a newer sign in has started meanwhile (a second click), because the
+     * listener is then the newer one's and stopping it refused its redirect (2026-10-31).
      */
     override suspend fun waitForAuthCode(timeoutMs: Long): String? {
+        val attempt = signInAttempt
         val expected = tokens.state
         if (expected == null) {
             aapsLogger.error(LTag.CORE, "$TAG asked to wait for a sign in that was not started")
@@ -109,7 +115,7 @@ class GoogleDriveProvider(
                 else                           -> null
             }
         } finally {
-            listener.stop()
+            if (signInAttempt == attempt) listener.stop()
         }
     }
 

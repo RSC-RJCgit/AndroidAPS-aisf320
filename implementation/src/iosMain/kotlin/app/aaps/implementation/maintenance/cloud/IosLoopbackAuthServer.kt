@@ -68,6 +68,9 @@ class IosLoopbackAuthServer(private val aapsLogger: AAPSLogger) {
 
     private var listenSocket: Int = -1
 
+    /** Counts starts. A closed socket's number is reused at once, so the number cannot tell a replaced one apart. */
+    private var started = 0
+
     /**
      * Starts listening, and says whether it managed to.
      *
@@ -113,6 +116,7 @@ class IosLoopbackAuthServer(private val aapsLogger: AAPSLogger) {
         }
 
         listenSocket = fd
+        started++
         aapsLogger.debug(LTag.CORE, "$TAG listening on 127.0.0.1:$port")
         return true
     }
@@ -137,13 +141,16 @@ class IosLoopbackAuthServer(private val aapsLogger: AAPSLogger) {
     suspend fun awaitCallback(expectedState: String, timeoutMs: Long): OAuthCallback.Result? = withContext(Dispatchers.IO) {
         val listening = listenSocket
         if (listening < 0) return@withContext null
+        val mine = started
 
         // Closed however this ends - answered, timed out, failed or cancelled. Leaving it open left a
         // fixed, well known port listening for the life of the app, still accepting anything with a
         // `code` on it, and was also why a second sign in found the port already held.
         try {
             var remaining = timeoutMs
-            while (remaining > 0) {
+            // Ends when a newer start replaced this socket (a second click, 2026-10-31): the new one
+            // belongs to the new wait, and accepting on it here would throw its redirect away.
+            while (remaining > 0 && started == mine) {
                 val slice = if (remaining > POLL_SLICE_MS) POLL_SLICE_MS else remaining
                 val ready = memScoped {
                     val descriptor = alloc<pollfd>()
@@ -156,8 +163,8 @@ class IosLoopbackAuthServer(private val aapsLogger: AAPSLogger) {
                     aapsLogger.error(LTag.CORE, "$TAG stopped waiting, poll failed")
                     return@withContext null
                 }
-                if (ready > 0) {
-                    val result = acceptOne(expectedState)
+                if (ready > 0 && started == mine) {
+                    val result = acceptOne(listening, expectedState)
                     // Not the callback - a favicon, say - or a callback that was not ours. Either way
                     // the real one may still arrive, so keep waiting rather than failing the sign in.
                     if (result != null && result != OAuthCallback.Result.NotTheCallback) return@withContext result
@@ -167,16 +174,18 @@ class IosLoopbackAuthServer(private val aapsLogger: AAPSLogger) {
             aapsLogger.debug(LTag.CORE, "$TAG gave up waiting for the browser")
             null
         } finally {
-            stop()
+            // Only its own socket: start() already closed a replaced one, and the current one is the
+            // newer sign in's.
+            if (started == mine) stop()
         }
     }
 
-    private fun acceptOne(expectedState: String): OAuthCallback.Result? {
+    private fun acceptOne(listening: Int, expectedState: String): OAuthCallback.Result? {
         val client = memScoped {
             val length = alloc<socklen_tVar>()
             length.value = sizeOf<sockaddr_in>().convert()
             val from = alloc<sockaddr_in>()
-            accept(listenSocket, from.ptr.reinterpret<sockaddr>(), length.ptr)
+            accept(listening, from.ptr.reinterpret<sockaddr>(), length.ptr)
         }
         if (client < 0) return null
 

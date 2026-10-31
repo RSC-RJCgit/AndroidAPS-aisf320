@@ -11,8 +11,11 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.sizeOf
 import kotlinx.cinterop.usePinned
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import platform.posix.AF_INET
 import platform.posix.SOCK_STREAM
 import platform.posix.close
@@ -194,6 +197,26 @@ class IosLoopbackAuthServerTest {
         assertTrue(requestLoopback(port, "GET /oauth/callback?error=access_denied HTTP/1.1"))
 
         assertEquals("access_denied", assertIs<OAuthCallback.Result.Denied>(waiting.await()).error)
+    }
+
+    /**
+     * A second tap starts a new sign in while the first still waits. The first wait must neither close
+     * the new socket nor accept on it - its number is usually the old one's, reused.
+     */
+    @Test
+    fun `a restarted sign in still catches its redirect`() = runTest {
+        val port = nextPort++
+        assertTrue(server.start(port))
+        // On a real thread with a real pause, so the first wait is listening before the restart.
+        val first = async(Dispatchers.Default) { server.awaitCallback(expectedState = "first", timeoutMs = 5_000) }
+        withContext(Dispatchers.Default) { delay(300) }
+
+        assertTrue(server.start(port), "the restart could not bind: ${logger.errors}")
+        assertNull(first.await())
+
+        val second = async { server.awaitCallback(expectedState = STATE, timeoutMs = 5_000) }
+        assertTrue(requestLoopback(port, "GET /oauth/callback?code=the-code&state=$STATE HTTP/1.1"))
+        assertEquals("the-code", assertIs<OAuthCallback.Result.Code>(second.await()).code)
     }
 
     /** Stopping has to free the port, or a second sign in in one session cannot start. */

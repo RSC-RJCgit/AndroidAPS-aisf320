@@ -2,8 +2,11 @@ package app.aaps.implementation.maintenance.cloud
 
 import app.aaps.shared.tests.TestBase
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.net.InetAddress
@@ -113,6 +116,26 @@ class JvmAuthRedirectListenerTest : TestBase() {
         sut.awaitCallback("the-state", 300)
 
         assertThat(sut.start(p)).isTrue()
+    }
+
+    /**
+     * A second click starts a new sign in while the first still waits. The first wait ending must not
+     * close the new port: on 31 Oct 2026 it did, and Google's redirect met "refused to connect".
+     */
+    @Test
+    fun `a restarted sign in still catches its redirect`() = runTest {
+        val p = port++
+        assertThat(sut.start(p)).isTrue()
+        // On a real thread with a real pause, so the first wait is listening before the restart.
+        val first = async(Dispatchers.Default) { sut.awaitCallback("first", 5_000) }
+        withContext(Dispatchers.Default) { delay(300) }
+
+        assertThat(sut.start(p)).isTrue()
+        assertThat(first.await()).isNull()
+
+        val second = async { sut.awaitCallback("second", 5_000) }
+        assertThat(requestLoopback(p, "GET /oauth/callback?code=the-code&state=second HTTP/1.1")).isTrue()
+        assertThat((second.await() as OAuthCallback.Result.Code).code).isEqualTo("the-code")
     }
 
     @Test
