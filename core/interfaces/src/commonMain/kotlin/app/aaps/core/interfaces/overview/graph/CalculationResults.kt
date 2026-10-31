@@ -357,8 +357,17 @@ data class TherapyEventGraphPoint(
      * Null for every other event. Events with a value are drawn inside the BG graph at that
      * value, not on the treatment belt.
      */
-    val glucoseUserUnits: Double? = null
+    val glucoseUserUnits: Double? = null,
+    /** Set for a pod (site) or sensor change, which the BG graph marks with a line (2026-11-01, per explicit request) */
+    val deviceChange: DeviceChange? = null
 )
+
+/** The device changes the BG graph marks with a line and a short label (2026-11-01, per explicit request). */
+enum class DeviceChange(val label: String) {
+
+    POD("POD"),
+    SENSOR("SEN")
+}
 
 /**
  * Calibration pair for the BG graph: the finger value is drawn at its own glucose value, so the

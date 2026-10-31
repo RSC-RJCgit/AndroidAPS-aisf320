@@ -60,6 +60,7 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalProfileUtil
@@ -77,6 +78,7 @@ import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
+import app.aaps.core.interfaces.overview.graph.TherapyEventGraphPoint
 import app.aaps.core.interfaces.overview.graph.TherapyEventType
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -114,6 +116,19 @@ private const val showBasalOnBgGraph = false
 
 /** The announcement text Live writes for its Tier 3 UAM boost, drawn over the BG as on Live's main graph. */
 private const val UAM_BOOST_GRAPH_MARK = "B"
+
+/** Announcements this close together are stacked, so their labels do not sit on one another */
+private const val ANNOUNCEMENT_STACK_MS = 20L * 60 * 1000
+
+/**
+ * The announcements the BG graph labels at the BG line. A client shows every one Live writes - its hypo alarms (_____H4,
+ * __________A4), gentle hypo (________________Gentle5), Batt1%, PreSoak24hrs and the rest - as Live's own BG graph does
+ * (2026-11-01, per explicit request); they were only written on the notes graph. A master labels none of them, not even
+ * Live's "B" (2026-11-01, per explicit request): the "B" mark is for clients only.
+ */
+internal fun bgGraphAnnouncements(events: List<TherapyEventGraphPoint>, isClient: Boolean): List<TherapyEventGraphPoint> =
+    if (!isClient) emptyList()
+    else events.filter { it.eventType == TherapyEventType.ANNOUNCEMENT && it.label.isNotBlank() }.sortedBy { it.timestamp }
 private const val SERIES_REGULAR = "regular"
 private const val SERIES_BUCKETED = "bucketed"
 private const val SERIES_RAW = "raw"
@@ -1179,15 +1194,21 @@ fun BgGraphCompose(
     // the BG on its main graph; here it was only an icon on the treatment row. Drawn the same way now.
     val uamBoostColor = AapsTheme.elementColors.announcement
     val uamBoostText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
-    val uamBoostLabels = remember(treatments, bgReadings, minTimestamp, uamBoostColor) {
-        treatments.therapyEvents
-            .filter { it.eventType == TherapyEventType.ANNOUNCEMENT && it.label.trim() == UAM_BOOST_GRAPH_MARK }
+    val isClient = LocalConfig.current.AAPSCLIENT
+    val uamBoostLabels = remember(treatments, bgReadings, minTimestamp, uamBoostColor, isClient) {
+        var groupStart = Long.MIN_VALUE
+        var stack = 0
+        bgGraphAnnouncements(treatments.therapyEvents, isClient)
             .mapNotNull { event ->
                 val y = bgReadings.minByOrNull { abs(it.timestamp - event.timestamp) }?.value ?: return@mapNotNull null
+                if (groupStart == Long.MIN_VALUE || event.timestamp - groupStart >= ANNOUNCEMENT_STACK_MS) {
+                    groupStart = event.timestamp
+                    stack = 0
+                } else stack++
                 SmbStackItem(
                     x = timestampToX(event.timestamp, minTimestamp),
-                    label = UAM_BOOST_GRAPH_MARK,
-                    stackIndex = 0,
+                    label = event.label.trim(),
+                    stackIndex = stack,
                     anchorY = y,
                     color = uamBoostColor,
                 )
@@ -1306,8 +1327,10 @@ fun BgGraphCompose(
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
     // Upstream's clock change mark (2026-10-27 merge): a dashed line and a clock where the UTC offset of the readings changes
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true)
-    val decorations = remember(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
-        listOf(inRangeBox, nowLine, clockChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) +
+    // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
+    val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
+    val decorations = remember(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
+        listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) +
             listOfNotNull(basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
 

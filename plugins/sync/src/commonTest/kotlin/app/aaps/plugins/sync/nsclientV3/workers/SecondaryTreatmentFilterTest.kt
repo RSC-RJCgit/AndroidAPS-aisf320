@@ -35,9 +35,8 @@ class SecondaryTreatmentFilterTest {
     fun `a site change is kept and an ordinary note is not`() {
         assertTrue(secondaryTherapyEventAccepted(TE.Type.CANNULA_CHANGE, null))
         assertFalse(secondaryTherapyEventAccepted(TE.Type.NOTE, "lunch"))
-        assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "StLow 12"))
-        assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "SetRole x=y"))
         assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "MJ active"))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, " MJ active "))
         assertFalse(secondaryTherapyEventAccepted(TE.Type.NOTE, "MJ2"))
         assertFalse(secondaryTherapyEventAccepted(TE.Type.NOTE, "NOMJremains"))
     }
@@ -119,5 +118,33 @@ class SecondaryTreatmentFilterTest {
         // The place did not move on, so the same page would come back again and again
         assertFalse(secondaryTreatmentsNextPage(code = 200, pageSize = 498, nextCursor = 1_000L, queryFrom = 1_000L))
         assertFalse(secondaryTreatmentsNextPage(code = 200, pageSize = 498, nextCursor = null, queryFrom = 1_000L))
+    }
+
+    /** 1 Nov: a master runs its own roles and relays; of the other phone's notes it takes "MJ active" only */
+    @Test
+    fun `a master takes no other note from the other phone`() {
+        listOf("SetRole autoisf_standard_profile_name=Profile130", "StLow 12", "StorageLow 3", "ADesk", "AckDesk", "AcNS1", "AcTT2 relay-TT receipt", "AcLT3", "MJs3", "Gntl5")
+            .forEach { note -> assertFalse(secondaryTherapyEventAccepted(TE.Type.NOTE, note), note) }
+    }
+
+    @Test
+    fun `a client still takes every note, and site and sensor changes still come in`() {
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "SetRole x=y", isClient = true))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.NOTE, "Gntl5", isClient = true))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.CANNULA_CHANGE, null))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.SENSOR_CHANGE, null))
+    }
+
+    /** 1 Nov: of the other phone's device events a master takes the pod and sensor changes only */
+    @Test
+    fun `a master takes pod and sensor changes but not insulin or battery changes`() {
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.CANNULA_CHANGE, null))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.SENSOR_CHANGE, null))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.SENSOR_STARTED, null))
+        assertFalse(secondaryTherapyEventAccepted(TE.Type.INSULIN_CHANGE, null))
+        assertFalse(secondaryTherapyEventAccepted(TE.Type.PUMP_BATTERY_CHANGE, null))
+        // A client still takes them
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.INSULIN_CHANGE, null, isClient = true))
+        assertTrue(secondaryTherapyEventAccepted(TE.Type.PUMP_BATTERY_CHANGE, null, isClient = true))
     }
 }

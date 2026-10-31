@@ -28,20 +28,16 @@ internal fun secondaryMealTreatmentsAccepted(receiveEnabled: Boolean, isClient: 
 
 internal fun secondaryTherapyEventAccepted(type: TE.Type, note: String?, isClient: Boolean = false): Boolean {
     if (type !in secondaryDeviceEventTypes) return false
-    if (type != TE.Type.NOTE) return true
     // A client mirrors the other phone, so it takes every note that phone wrote, as the 3426 client does.
     if (isClient) return true
-    val raw = note.orEmpty()
-    val trimmed = raw.trim()
-    return raw.startsWith("StLow ") ||
-        raw.startsWith("StorageLow ") ||
-        trimmed == "ADesk" ||
-        trimmed == "AckDesk" ||
-        trimmed == "MJ active" ||
-        trimmed.startsWith("AcNS") ||
-        trimmed.startsWith("AcTT") ||
-        trimmed.startsWith("AcLT") ||
-        trimmed.startsWith("SetRole ")
+    // A master takes only the other phone's pod and sensor changes (2026-11-01, per explicit request), as the 3.4 master
+    // does: not its insulin or pump battery changes, which belong to that phone's pump.
+    if (type != TE.Type.NOTE) return type in masterDeviceEventTypes
+    // A master takes only "MJ active" (2026-11-01, per explicit request, deliberately). It runs its own roles, profiles and
+    // relays: a "SetRole" on the other phone's site was meant for that phone, and this master takes a role change only
+    // when its own client sends one, which comes through its main site and never through here. Nothing on a master read
+    // the other notes this list used to let in (StLow, StorageLow, ADesk, AckDesk, AcNS, AcTT, AcLT).
+    return note?.trim() == "MJ active"
 }
 
 /** Once the secondary site is on, step counts come from it. The two addresses are not compared. */
@@ -109,6 +105,8 @@ internal fun uploadSiteIsBgSite(
     (nsClientBgSource && !glucoseFromSecondarySite(secondaryEnabled, bgFromSecondarySwitch, rawFromSecondary)) ||
         (secondaryEnabled && sameNsSite(primaryUrl, secondaryUrl))
     )
+
+private val masterDeviceEventTypes = setOf(TE.Type.CANNULA_CHANGE, TE.Type.SENSOR_CHANGE, TE.Type.SENSOR_STARTED)
 
 private val secondaryDeviceEventTypes = setOf(
     TE.Type.SENSOR_CHANGE,

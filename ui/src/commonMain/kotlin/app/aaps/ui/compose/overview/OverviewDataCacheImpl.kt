@@ -107,6 +107,7 @@ import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.overview.graphs.deviceChangeOf
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedInject
 import kotlinx.coroutines.CoroutineScope
@@ -1077,7 +1078,8 @@ class OverviewDataCacheImpl(
                     eventType = teType,
                     label = therapyEventLabel(te, translator.translate(te.type), profileUtil, rh),
                     duration = te.duration,
-                    glucoseUserUnits = te.glucose?.let { profileUtil.fromMgdlToUnits(profileUtil.convertToMgdl(it, te.glucoseUnit)) }
+                    glucoseUserUnits = te.glucose?.let { profileUtil.fromMgdlToUnits(profileUtil.convertToMgdl(it, te.glucoseUnit)) },
+                    deviceChange = deviceChangeOf(te.type)
                 )
             }
 

@@ -43,8 +43,8 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * Runs when that site is turned on. The two addresses are not compared. Manual boluses and carbs
  * are automatic for clients and the Virtual Pump master; real pumps follow the receive switches.
- * Temp basals and extended boluses are never taken. Notes stay on
- * the short keep-list, including the one note "MJ active". The profile store and the live step
+ * Temp basals and extended boluses are never taken. A client takes every note; a master only
+ * "MJ active" (see secondaryTherapyEventAccepted). The profile store and the live step
  * counts come from this site as well. The full app and a client take glucose from this site
  * when "Get BG from this connection" is on. On iOS with "Raw from secondary NS" on, its glucose only fills raw
  * (see [SecondaryRawStore]).
