@@ -32,5 +32,7 @@ data class SensitivityUiState(
     val ratio: Double = 1.0,
     val isEnabled: Boolean = true,
     val hasData: Boolean = false,
-    val autoIsfHistory: Boolean = false
+    val autoIsfHistory: Boolean = false,
+    /** "HP=5.4", the AutoISF hypo prediction (mmol), shown at the right end of the chip; empty when there is no current value. */
+    val hpText: String = ""
 )

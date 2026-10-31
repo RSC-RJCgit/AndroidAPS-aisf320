@@ -136,19 +136,22 @@ fun OverviewScreen(
         pumpPlugin != null && pumpPlugin.hasComposeContent()
     val pumpSetupPlugin = if (showPumpSetup) pumpPlugin else null
 
-    // Objectives progress badge (visible while objectives not all completed, in APS mode, and not bypassed on the
-    // Virtual pump, where they limit nothing)
+    // Objectives progress badge (visible while objectives not all completed, in APS mode). Bypassed on the Virtual pump
+    // (2026-10-31, per explicit request) it stays, in a neutral colour, and says that it limits nothing.
     val objectivesPlugin = objectives as? PluginBase
     val objectivesTotal = objectives.size
     val objectivesDone = objectives.accomplishedCount
-    val showObjectivesSetup = config.APS && !objectives.isBypassed && objectivesPlugin != null && objectivesTotal > 0 &&
+    val objectivesBypassed = objectives.isBypassed
+    val showObjectivesSetup = config.APS && objectivesPlugin != null && objectivesTotal > 0 &&
         objectivesDone < objectivesTotal && objectivesPlugin.isEnabled() && objectivesPlugin.hasComposeContent()
     val objectivesSetupPlugin = if (showObjectivesSetup) objectivesPlugin else null
     val objectivesProgressText = if (showObjectivesSetup) "$objectivesDone/$objectivesTotal" else null
     // The same progress in words. The badge glyph above is unreadable to a screen reader, because
     // Material3 clears the semantics of a navigation item's whole icon slot when it has a label.
     val objectivesProgressDescription =
-        if (showObjectivesSetup) stringResource(UiStrings.a11y_objectives_progress, objectivesDone, objectivesTotal) else null
+        if (!showObjectivesSetup) null
+        else if (objectivesBypassed) stringResource(UiStrings.a11y_objectives_progress_bypassed, objectivesDone, objectivesTotal)
+        else stringResource(UiStrings.a11y_objectives_progress, objectivesDone, objectivesTotal)
 
     // BG source shortcut: shown when BG quality check reports FLAT or DOUBLED
     val bgQualityState by bgQualityCheck.stateFlow.collectAsStateWithLifecycle()
@@ -241,6 +244,7 @@ fun OverviewScreen(
         objectivesSetupPlugin = objectivesSetupPlugin,
         objectivesProgressText = objectivesProgressText,
         objectivesProgressDescription = objectivesProgressDescription,
+        objectivesBypassed = objectivesBypassed,
         permissionsMissing = permState.hasAnyMissing,
         onPermissionsClick = { permissionsViewModel.showSheet() },
         // Toolbar

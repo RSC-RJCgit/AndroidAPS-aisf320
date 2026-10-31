@@ -10,7 +10,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
@@ -26,12 +25,12 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -219,14 +218,11 @@ internal fun MaintenanceBottomSheetContent(
                     color = primaryColor
                 )
             },
+            // A word, not a bare X (2026-10-31, per explicit request): the X did not say that it disconnects Google Drive
             trailingContent = if (hasCloudCredentials) {
                 {
-                    IconButton(onClick = onClearCloudClick) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = stringResource(CoreUiStrings.clear_cloud_action),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    TextButton(onClick = onClearCloudClick) {
+                        Text(stringResource(CoreUiStrings.clear_cloud_action))
                     }
                 }
             } else null

@@ -976,8 +976,8 @@
 
     <!-- Cloud directory dialog (Compose) -->
     <string name="select_storage_type">Select Storage Type</string>
-    <string name="clear_cloud_action">Clear Settings</string>
-    <string name="clear_cloud_settings">Clear Cloud Settings</string>
+    <string name="clear_cloud_action">Disconnect</string>
+    <string name="clear_cloud_settings">Disconnect Google Drive</string>
     <string name="clear_cloud_settings_message">This will switch to local storage and clear authorization. Continue?</string>
     <string name="cloud_revoke_incomplete">Cloud settings cleared on this device, but the account could not be reached to fully revoke access. You may want to remove it manually in your account settings.</string>
     <string name="cloud_connection_failed">Cloud storage connection failed</string>

@@ -4,7 +4,9 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.source.NSClientSource
+import app.aaps.core.interfaces.source.SecondaryNsSource
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
@@ -33,7 +35,8 @@ class LoadBgRunner(
     private val nsIncomingDataProcessor: NsIncomingDataProcessor,
     private val storeDataForDb: StoreDataForDb,
     private val nsClientRepository: NSClientRepository,
-    private val loadSecondaryTreatmentsRunner: LoadSecondaryTreatmentsRunner
+    private val loadSecondaryTreatmentsRunner: LoadSecondaryTreatmentsRunner,
+    private val activePlugin: ActivePlugin
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -51,7 +54,9 @@ class LoadBgRunner(
             )
         ) {
             if (!nsClientV3Plugin.doingFullSync) return WorkOutcome.Skipped("secondary")
-            if (nsClientSource.isEnabled() || preferences.get(BooleanKey.NsClientAcceptCgmData)) {
+            // 2026-10-31, per explicit request: the Secondary NS BG source counts too. A master with its own CGM as the
+            // BG source still never takes the second site's BG, but with this source that CGM is not in use.
+            if (nsClientSource.isEnabled() || preferences.get(BooleanKey.NsClientAcceptCgmData) || activePlugin.activeBgSource is SecondaryNsSource) {
                 val received = loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(dateUtil.now() - nsClientV3Plugin.maxAge)
                 if (received != null && received > 0) nsClientRepository.addLog("◄ RCV BG END", "Full sync took BG from the secondary NS")
                 else nsClientRepository.addLog("◄ RCV BG END", "Secondary NS gave no BG, none taken from this site")

@@ -154,6 +154,15 @@ private fun VirtualBypassRow(checked: Boolean, onCheckedChange: (Boolean) -> Uni
         Spacer(modifier = Modifier.width(8.dp))
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+    // Why the overview badge still counts unfinished objectives, while nothing is limited (2026-10-31)
+    if (checked) {
+        Text(
+            text = stringResource(ConstraintsStrings.objectives_virtual_bypass_active),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+        )
+    }
     HorizontalDivider()
 }
 

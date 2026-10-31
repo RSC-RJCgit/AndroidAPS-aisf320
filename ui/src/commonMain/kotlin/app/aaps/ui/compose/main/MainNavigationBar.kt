@@ -70,6 +70,8 @@ fun MainNavigationBar(
      * two counts.
      */
     objectivesProgressDescription: String? = null,
+    /** Objectives are ignored on the Virtual pump: the badge stays, in a neutral colour, as it limits nothing. */
+    objectivesBypassed: Boolean = false,
     onNavigate: (NavigationRequest) -> Unit = {},
     permissionsMissing: Boolean = false,
     onPermissionsClick: () -> Unit = {},
@@ -242,8 +244,8 @@ fun MainNavigationBar(
                         badge = {
                             if (objectivesProgressText != null) {
                                 Badge(
-                                    containerColor = AapsTheme.generalColors.statusWarning,
-                                    contentColor = Color.Black
+                                    containerColor = if (objectivesBypassed) MaterialTheme.colorScheme.surfaceVariant else AapsTheme.generalColors.statusWarning,
+                                    contentColor = if (objectivesBypassed) MaterialTheme.colorScheme.onSurfaceVariant else Color.Black
                                 ) { Text(text = objectivesProgressText) }
                             } else {
                                 Badge(

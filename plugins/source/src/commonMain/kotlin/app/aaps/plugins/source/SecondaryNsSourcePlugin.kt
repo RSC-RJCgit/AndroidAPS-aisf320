@@ -6,7 +6,7 @@ import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.TextResolver
-import app.aaps.core.interfaces.source.BgSource
+import app.aaps.core.interfaces.source.SecondaryNsSource
 import app.aaps.core.ui.compose.icons.IcPluginNsClientBg
 import app.aaps.plugins.source.compose.BgSourceComposeContent
 import dev.zacsweers.metro.AppScope
@@ -43,4 +43,4 @@ class SecondaryNsSourcePlugin(
         .pluginName(SourceStrings.secondary_ns_bg)
         .description(SourceStrings.description_source_secondary_ns),
     aapsLogger, rh, notificationManager
-), BgSource
+), SecondaryNsSource

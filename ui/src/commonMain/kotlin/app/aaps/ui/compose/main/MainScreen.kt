@@ -156,6 +156,7 @@ fun MainScreen(
     objectivesSetupPlugin: PluginBase? = null,
     objectivesProgressText: String? = null,
     objectivesProgressDescription: String? = null,
+    objectivesBypassed: Boolean = false,
     // Permissions
     permissionsMissing: Boolean = false,
     onPermissionsClick: () -> Unit = {},
@@ -538,6 +539,7 @@ fun MainScreen(
                                 objectivesSetupPlugin = objectivesSetupPlugin,
                                 objectivesProgressText = objectivesProgressText,
                                 objectivesProgressDescription = objectivesProgressDescription,
+                                objectivesBypassed = objectivesBypassed,
                                 onNavigate = onNavigate,
                                 permissionsMissing = permissionsMissing,
                                 onPermissionsClick = onPermissionsClick,

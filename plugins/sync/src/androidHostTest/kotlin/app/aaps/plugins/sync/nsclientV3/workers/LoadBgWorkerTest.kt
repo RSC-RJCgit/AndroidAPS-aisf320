@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.receivers.ReceiverStatusStore
 import app.aaps.core.interfaces.source.NSClientSource
+import app.aaps.core.interfaces.source.SecondaryNsSource
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
@@ -67,6 +68,7 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
     @Mock lateinit var uiInteraction: UiInteraction
     @Mock lateinit var uel: UserEntryLogger
     @Mock lateinit var loadSecondaryTreatmentsRunner: LoadSecondaryTreatmentsRunner
+    @Mock lateinit var secondaryNsSource: SecondaryNsSource
 
     private lateinit var nsClientV3Plugin: NSClientV3Plugin
     private lateinit var receiverDelegate: ReceiverDelegate
@@ -79,7 +81,7 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
                     LoadBgWorker(
                         appContext, workerParameters, aapsLogger, fabricPrivacy,
                         LoadBgRunner(aapsLogger, preferences, dateUtil,
-                        nsClientV3Plugin, nsClientSource, nsIncomingDataProcessor, storeDataForDb, nsClientRepository, loadSecondaryTreatmentsRunner)
+                        nsClientV3Plugin, nsClientSource, nsIncomingDataProcessor, storeDataForDb, nsClientRepository, loadSecondaryTreatmentsRunner, activePlugin)
                     )
             })
             .build()
@@ -409,6 +411,22 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
         sut.doWorkAndLog()
 
         verify(loadSecondaryTreatmentsRunner, never()).downloadGlucoseForFullSync(anyLong())
+    }
+
+    // 2026-10-31: with the Secondary NS BG source the phone's own CGM is not in use, so the BG comes from the second site
+    @Test
+    fun fullSyncWithSecondaryNsSourceTakesSecondSiteBg() = runTest(timeout = 30.seconds) {
+        fullSyncClientWithSecondSite()
+        whenever(nsClientSource.isEnabled()).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientAcceptCgmData)).thenReturn(false)
+        whenever(activePlugin.activeBgSource).thenReturn(secondaryNsSource)
+        whenever(loadSecondaryTreatmentsRunner.downloadGlucoseForFullSync(anyLong())).thenReturn(120)
+
+        val result = sut.doWorkAndLog()
+
+        assertIs<ListenableWorker.Result.Success>(result)
+        verify(loadSecondaryTreatmentsRunner).downloadGlucoseForFullSync(anyLong())
+        verify(nsAndroidClient, never()).getSgvsNewerThan(anyLong(), anyInt())
     }
 
     @Test

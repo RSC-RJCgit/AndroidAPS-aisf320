@@ -7,6 +7,7 @@
     <string name="objectivenotfinished">Objective %1$d not finished</string>
     <string name="objectives_virtual_bypass">Ignore objectives on Virtual pump</string>
     <string name="objectives_virtual_bypass_summary">Nothing is limited by objectives while the Virtual pump is active. A real pump is limited as usual.</string>
+    <string name="objectives_virtual_bypass_active">Objectives are ignored on this Virtual pump master. The loop, SMB and automation are not affected.</string>
     <string name="objectives_virtual_bypass_on">Objectives ignored on Virtual pump</string>
     <string name="objectives_virtual_bypass_off">Objectives apply again on Virtual pump</string>
     <string name="objectives_limit_after_update">Objectives are not complete, so these are limited: %1$s</string>
