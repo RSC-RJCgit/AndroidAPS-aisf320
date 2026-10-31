@@ -199,12 +199,12 @@
     <string name="other_medication_text">AAPS reduces basal rates or suspends insulin delivery to raise blood sugar. Drugs in the class SGLT2 inhibitors (gliflozins) can prevent increases in blood glucose and, thus, can produce a dangerous insulin deficiency leading to DKA.
 \nCommon brand names are: Invokana®, Forxiga®, Jardiance®, Steglatro®, Suglat®, Apleway®, Deberza®, Synjardy®, Vokanamet®, Xigduo®.\n\nI hereby promise that I will not take such drugs when using AAPS or will deactivate the loop before using such drugs.</string>
     <string name="concentration_feature_label">Insulin Concentration Management</string>
-    <string name="u200_with_profile">Before AAPS supported insulin concentrations, users ran U200 by setting a 50% profile to halve all values. In that setup, which answers are true?</string>
+    <string name="u200_with_profile">You run U200 the old way: a 50% profile halves all values, and Insulin Concentration in AAPS is left at U100. Which answers are true?</string>
     <string name="u200_with_profile_reports">My AAPS database and NS reports become wrong. All values (boluses, rates, TDD) must be multiplied by 2 to see the real values, especially for doctors and the health team.</string>
     <string name="u200_with_profile_pens">I don\'t have to convert anything between AAPS and the pen if I use a U200 pen to give an external bolus.</string>
     <string name="u200_with_profile_pens2">Whatever pen I use to give an external bolus (U100 or U200), I have to convert between the amount calculated by AAPS and the amount I select on the pen, for every external bolus.</string>
     <string name="concentration_hint1">https://wiki.aaps.app/en/dev/AdvancedOptions/InsulinConcentration.html</string>
-    <string name="switch_u200_profile">You have been using the 50% profile workaround with U200 and want to switch to the Insulin Concentration feature. Which answers are true?</string>
+    <string name="switch_u200_profile">You have been running U200 the old way (a 50% profile, with Insulin Concentration in AAPS left at U100) and want to switch to the Insulin Concentration feature set to U200. Which answers are true?</string>
     <string name="switch_u200_profile_any_time">I can switch at any time, because I already have the correct U200 insulin in my pump.</string>
     <string name="switch_u200_profile_ps">I have to prepare a profile twice as aggressive (200% compared to current default profile) and synchronize this new profile after the next Patch/Reservoir change when the U200 insulin is selected.</string>
     <string name="switch_u200_profile_dynisf">I have to disable the DynISF feature for at least a week for the TDD to be perfectly consistent with the actual TDD value calculated in International Units.</string>
@@ -212,7 +212,7 @@
     <string name="switch_u100_u200">You currently use U100 and plan to switch to another concentration with the Insulin Concentration feature. Which answers are true?</string>
     <string name="switch_u100_u200_profile">I have to modify my profile.</string>
     <string name="switch_u100_u200_tube">I should never use pump user interface (for tube pumps) to provide boluses.</string>
-    <string name="switch_u100_u200_pen">I still need to manage conversion between AAPS and external boluses with Pen after the switch.</string>
+    <string name="switch_u100_u200_pen">After the switch, I still need to convert between the bolus AAPS calculates and the units I dial on a pen, whether the pen holds U100 or U200.</string>
     <string name="switch_u100_u200_change">The Insulin Concentration can only be switched when the Insulin in the reservoir is changed or when a Patch/Pod is changed.</string>
 
 </resources>
