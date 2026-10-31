@@ -48,7 +48,8 @@ class ObjectivesComposeContent : ComposablePluginContent {
             onOpenExam = viewModel::onOpenExam,
             onInvokeUITask = viewModel::onInvokeUITask,
             scrollToIndex = scrollToIndex,
-            onScrollHandled = viewModel::onScrollHandled
+            onScrollHandled = viewModel::onScrollHandled,
+            onVirtualBypassToggle = viewModel::onVirtualBypassToggle
         )
 
         // NTP progress dialog

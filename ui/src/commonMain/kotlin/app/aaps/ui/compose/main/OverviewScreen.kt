@@ -136,11 +136,12 @@ fun OverviewScreen(
         pumpPlugin != null && pumpPlugin.hasComposeContent()
     val pumpSetupPlugin = if (showPumpSetup) pumpPlugin else null
 
-    // Objectives progress badge (visible while objectives not all completed, in APS mode)
+    // Objectives progress badge (visible while objectives not all completed, in APS mode, and not bypassed on the
+    // Virtual pump, where they limit nothing)
     val objectivesPlugin = objectives as? PluginBase
     val objectivesTotal = objectives.size
     val objectivesDone = objectives.accomplishedCount
-    val showObjectivesSetup = config.APS && objectivesPlugin != null && objectivesTotal > 0 &&
+    val showObjectivesSetup = config.APS && !objectives.isBypassed && objectivesPlugin != null && objectivesTotal > 0 &&
         objectivesDone < objectivesTotal && objectivesPlugin.isEnabled() && objectivesPlugin.hasComposeContent()
     val objectivesSetupPlugin = if (showObjectivesSetup) objectivesPlugin else null
     val objectivesProgressText = if (showObjectivesSetup) "$objectivesDone/$objectivesTotal" else null

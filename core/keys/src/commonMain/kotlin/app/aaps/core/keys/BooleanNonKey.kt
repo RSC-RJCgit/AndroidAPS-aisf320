@@ -13,6 +13,8 @@ enum class BooleanNonKey(
     SetupWizardIUnderstand("I_understand", false),
     ObjectivesLoopUsed("ObjectivesLoopUsed", false),
     ObjectivesScaleUsed("ObjectivesScaleUsed", false),
+    // Objectives screen, master on VirtualPump only: objectives no longer limit anything. Local only.
+    ObjectivesVirtualPumpBypass("objectives_virtual_pump_bypass", false, exportable = false),
     ObjectivesPumpStatusIsAvailableInNS("ObjectivespumpStatusIsAvailableInNS", false),
     ObjectivesBgIsAvailableInNs("ObjectivesbgIsAvailableInNS", false),
     ObjectivesProfileSwitchUsed("ObjectivesProfileSwitchUsed", false),

@@ -2,10 +2,14 @@ package app.aaps.plugins.constraints.objectives.compose
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.receivers.ReceiverStatusStore
@@ -57,7 +61,9 @@ class ObjectivesViewModel(
     private val receiverStatusStore: ReceiverStatusStore,
     private val aapsLogger: AAPSLogger,
     private val uel: UserEntryLogger,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val persistenceLayer: PersistenceLayer,
+    private val config: Config
 ) : ViewModel() {
 
     private val scope get() = viewModelScope
@@ -158,7 +164,35 @@ class ObjectivesViewModel(
             )
         }
 
-        _uiState.update { it.copy(objectives = objectives) }
+        _uiState.update {
+            it.copy(
+                objectives = objectives,
+                showVirtualBypass = config.APS && objectivesPlugin.isVirtualPumpActive(),
+                virtualBypass = preferences.get(BooleanNonKey.ObjectivesVirtualPumpBypass)
+            )
+        }
+    }
+
+    /**
+     * Virtual master bypass (2026-10-31, per explicit request). Written down as a CarePortal note, so the history
+     * shows when objectives stopped and started applying on this phone.
+     */
+    fun onVirtualBypassToggle(enabled: Boolean) {
+        preferences.put(BooleanNonKey.ObjectivesVirtualPumpBypass, enabled)
+        val note = rh.gs(if (enabled) ConstraintsStrings.objectives_virtual_bypass_on else ConstraintsStrings.objectives_virtual_bypass_off)
+        scope.launch {
+            val now = dateUtil.now()
+            persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+                therapyEvent = TE(timestamp = now, type = TE.Type.NOTE, note = note, glucoseUnit = GlucoseUnit.MGDL),
+                timestamp = now,
+                action = Action.CAREPORTAL,
+                source = Sources.Objectives,
+                note = note,
+                listValues = listOf(ValueWithUnit.SimpleString(note))
+            )
+            updateState()
+            rxBus.send(EventSWUpdate(false))
+        }
     }
 
     fun onDismissNtpDialog() {

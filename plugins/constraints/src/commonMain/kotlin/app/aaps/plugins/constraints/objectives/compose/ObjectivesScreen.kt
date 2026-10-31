@@ -77,7 +77,8 @@ fun ObjectivesScreen(
     onOpenExam: (objectiveIndex: Int, taskIndex: Int) -> Unit,
     onInvokeUITask: (objectiveIndex: Int, taskIndex: Int) -> Unit,
     scrollToIndex: Int,
-    onScrollHandled: () -> Unit
+    onScrollHandled: () -> Unit,
+    onVirtualBypassToggle: (Boolean) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
 
@@ -96,6 +97,9 @@ fun ObjectivesScreen(
                 onFakeModeToggle = onFakeModeToggle,
                 onReset = onReset
             )
+        }
+        if (state.showVirtualBypass) {
+            VirtualBypassRow(checked = state.virtualBypass, onCheckedChange = onVirtualBypassToggle)
         }
 
         LazyColumn(
@@ -125,6 +129,32 @@ fun ObjectivesScreen(
             item { Spacer(modifier = Modifier.height(16.dp)) }
         }
     }
+}
+
+/** Master on the Virtual pump only: objectives can be switched off, as nothing is dosed for real. */
+@Composable
+private fun VirtualBypassRow(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(ConstraintsStrings.objectives_virtual_bypass),
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = stringResource(ConstraintsStrings.objectives_virtual_bypass_summary),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+    HorizontalDivider()
 }
 
 @Composable

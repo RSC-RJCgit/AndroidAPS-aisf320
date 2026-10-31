@@ -101,6 +101,8 @@ enum class StringNonKey(
     ComposeGraphConfig("compose_graphconfig", ""),
     // The tab the Statistics screen opens on: the last one used (per-device UI state, not a user-facing preference)
     StatsTab(key = "stats_tab", defaultValue = "", exportable = false),
+    // Version and commit objectives were last checked at, so an install or update can say what they limit. Local only.
+    ObjectivesLastCheckedVersion(key = "objectives_last_checked_version", defaultValue = "", exportable = false),
 
     // Synthetic mirror of the active plugin per single-select category (value = plugin pluginId, defaults to
     // javaClass.simpleName). Bidirectional for APS/SENSITIVITY/SMOOTHING/CALIBRATION (a client may switch the

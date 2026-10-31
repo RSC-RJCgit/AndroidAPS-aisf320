@@ -267,7 +267,11 @@ enum class NotificationId(
     // and the pairing secrets are plain files next to the data. IMPORTANT, not URGENT: nothing is wrong with
     // therapy, but a copy of the folder gives everything away, and the user can fix it. Appended at the END for
     // the same reason as above.
-    SECRETS_NOT_PROTECTED(IMPORTANT, SYSTEM);
+    SECRETS_NOT_PROTECTED(IMPORTANT, SYSTEM),
+
+    // After an install or update: objectives that are not done yet limit the loop, SMB, automation and so on.
+    // Appended at the END for the same reason as above.
+    OBJECTIVES_LIMIT_FUNCTIONS(IMPORTANT, LOOP);
 
     companion object {
 

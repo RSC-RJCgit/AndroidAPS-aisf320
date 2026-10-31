@@ -19,6 +19,9 @@ interface Objectives {
     val accomplishedCount: Int
     val allAccomplished: Boolean get() = size > 0 && accomplishedCount >= size
 
+    /** True when objectives limit nothing: a master on VirtualPump with the bypass switched on. */
+    val isBypassed: Boolean get() = false
+
     fun isAccomplished(index: Int): Boolean
     fun isStarted(index: Int): Boolean
 }

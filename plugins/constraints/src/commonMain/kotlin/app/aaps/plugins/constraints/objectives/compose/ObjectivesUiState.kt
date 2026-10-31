@@ -6,6 +6,9 @@ import androidx.compose.runtime.Immutable
 data class ObjectivesUiState(
     val objectives: List<ObjectiveUiItem> = emptyList(),
     val isFakeMode: Boolean = false,
+    /** The Virtual pump bypass switch is shown: a master whose active pump is VirtualPump. */
+    val showVirtualBypass: Boolean = false,
+    val virtualBypass: Boolean = false,
     val showDebugControls: Boolean = false,
     val ntpVerification: NtpVerificationState? = null,
     val examSheet: ExamSheetState? = null,
