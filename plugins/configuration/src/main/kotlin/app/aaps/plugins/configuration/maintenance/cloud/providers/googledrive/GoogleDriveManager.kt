@@ -77,9 +77,9 @@ class GoogleDriveManager @Inject constructor(
     private var errorNotificationId: Int? = null
     
     // Local server related
-    private var localServer: ServerSocket? = null
-    private var authCodeReceived: String? = null
-    private var authState: String? = null
+    @Volatile private var localServer: ServerSocket? = null
+    @Volatile private var authCodeReceived: String? = null
+    @Volatile private var authState: String? = null
     private var serverJob: Job? = null
     
     /**
@@ -126,6 +126,12 @@ class GoogleDriveManager @Inject constructor(
     suspend fun startPKCEAuth(): String {
         return withContext(Dispatchers.IO) {
             try {
+                // Drop any code a previous sign in left behind (2026-10-31): a reply that arrived after
+                // its own wait had ended stayed here, and the next sign in's wait took it at once and
+                // failed with invalid_grant before the browser was even used.
+                authCodeReceived = null
+                authState = null
+
                 // Start local server
                 startLocalServer()
                 
@@ -782,10 +788,12 @@ class GoogleDriveManager @Inject constructor(
             aapsLogger.error(LTag.CORE, "$LOG_PREFIX Error handling OAuth callback", e)
             sendHttpResponse(output, 500, "Internal server error")
         } finally {
-            // Delay closing server
+            // Delay closing server. Only the server that took this reply: a sign in started in the
+            // meantime has its own, which closing here would refuse (2026-10-31).
+            val served = localServer
             CoroutineScope(Dispatchers.IO).launch {
                 delay(2000) // Wait 2 seconds for response to complete
-                stopLocalServer()
+                if (localServer === served) stopLocalServer()
             }
         }
     }
@@ -900,15 +908,22 @@ class GoogleDriveManager @Inject constructor(
     suspend fun waitForAuthCode(timeoutMs: Long = 60000): String? {
         return withContext(Dispatchers.IO) {
             val startTime = System.currentTimeMillis()
-            
-            while (authCodeReceived == null && System.currentTimeMillis() - startTime < timeoutMs) {
-                delay(500)
+
+            try {
+                while (authCodeReceived == null && System.currentTimeMillis() - startTime < timeoutMs) {
+                    delay(500)
+                }
+            } catch (e: CancellationException) {
+                // Logged so a sign in that just stops can be told apart from a timeout (2026-10-31).
+                aapsLogger.debug(LTag.CORE, "$LOG_PREFIX Auth wait cancelled after ${System.currentTimeMillis() - startTime} ms")
+                throw e
             }
-            
+
             val code = authCodeReceived
             authCodeReceived = null // Clear used authorization code
             authState = null
-            
+
+            if (code == null) aapsLogger.debug(LTag.CORE, "$LOG_PREFIX Auth wait timed out after $timeoutMs ms")
             code
         }
     }

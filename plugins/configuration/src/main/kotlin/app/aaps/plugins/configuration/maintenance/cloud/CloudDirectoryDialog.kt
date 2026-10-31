@@ -16,6 +16,9 @@ import app.aaps.plugins.configuration.R
 import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
 import app.aaps.plugins.configuration.activities.SingleFragmentActivity
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,7 +46,10 @@ class CloudDirectoryDialog @Inject constructor(
     companion object {
         private const val LOG_PREFIX = CloudConstants.LOG_PREFIX
     }
-    
+
+    /** Outlives the screen that started a sign in; main thread, since the result touches the UI. */
+    private val authScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     /**
      * Show cloud directory dialog
      */
@@ -214,9 +220,22 @@ class CloudDirectoryDialog @Inject constructor(
                 if (cancelled) {
                     ToastUtils.infoToast(activity, rh.gs(R.string.cloud_auth_cancelled))
                 } else {
-                    activity.lifecycleScope.launch {
+                    // Not the activity's lifecycleScope (2026-10-31): the screen can be closed while the
+                    // browser is in front, which cancelled the wait silently and threw away a valid code.
+                    authScope.launch {
                         val authCode = provider.waitForAuthCode(60000)
-                        if (authCode != null) {
+                        val screenGone = activity.isFinishing || activity.isDestroyed
+                        if (authCode != null && screenGone) {
+                            // Finish the sign in anyway; only the screen steps are skipped.
+                            if (provider.completeAuth(authCode)) {
+                                cloudStorageManager.setActiveStorageType(storageType)
+                                val folderId = provider.getOrCreateFolderPath(CloudConstants.CLOUD_PATH_SETTINGS)
+                                if (!folderId.isNullOrEmpty()) provider.setSelectedFolderId(folderId)
+                                ToastUtils.infoToast(activity.applicationContext, rh.gs(R.string.cloud_auth_success))
+                            } else {
+                                ToastUtils.errorToast(activity.applicationContext, rh.gs(R.string.cloud_auth_failed))
+                            }
+                        } else if (authCode != null) {
                             if (provider.completeAuth(authCode)) {
                                 cloudStorageManager.setActiveStorageType(storageType)
                                 ToastUtils.infoToast(activity, rh.gs(R.string.cloud_auth_success))
@@ -233,7 +252,7 @@ class CloudDirectoryDialog @Inject constructor(
                                 ToastUtils.errorToast(activity, rh.gs(R.string.cloud_auth_failed))
                             }
                         } else {
-                            ToastUtils.errorToast(activity, rh.gs(R.string.cloud_auth_timeout))
+                            ToastUtils.errorToast(activity.applicationContext, rh.gs(R.string.cloud_auth_timeout))
                         }
                     }
                 }
