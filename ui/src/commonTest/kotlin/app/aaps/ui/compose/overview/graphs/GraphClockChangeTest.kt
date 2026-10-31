@@ -51,4 +51,19 @@ class GraphClockChangeTest {
         assertEquals(listOf(dst - minute, dst + 10 * minute), changes(points).map { it.timestamp })
         assertEquals(emptyList(), graphClockChanges(dst, dst, TimeZone.UTC, points))
     }
+
+    // 2026-10-31: main-site readings stored with offset 0 between the second site's at +10:30 (Adelaide)
+    @Test
+    fun readingsStoredWithoutAnOffsetDoNotDrawLines() {
+        val points = (0..8).map { reading(dst + it * minute, if (it % 2 == 0) 630 else 0) }
+        assertEquals(emptyList(), changes(points, "Australia/Adelaide"))
+    }
+
+    @Test
+    fun aRealChangeIsStillFoundAmongReadingsWithoutAnOffset() {
+        val points = listOf(reading(dst, 630), reading(dst + minute, 0), reading(dst + 2 * minute, 570), reading(dst + 3 * minute, 0))
+        val change = changes(points, "Australia/Adelaide").single()
+        assertEquals(dst + 2 * minute, change.timestamp)
+        assertEquals(-60, change.minutes)
+    }
 }

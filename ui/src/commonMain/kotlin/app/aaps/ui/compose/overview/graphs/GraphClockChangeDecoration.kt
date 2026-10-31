@@ -111,7 +111,13 @@ internal fun graphClockChanges(
         cursor = next
         offset = nextOffset
     }
-    val switches = readings.sortedBy { it.timestamp }.distinctBy { it.timestamp }.zipWithNext().mapNotNull { (before, after) ->
+    // 2026-10-31, per explicit request: an offset of 0 where this zone is not at 0 is a reading stored without its offset
+    // (a Nightscout entry that carried none), not a phone in UTC. Left in, main-site readings at 0 between the second
+    // site's at +10:30 drew a dashed line at almost every reading.
+    val known = readings.filter { reading ->
+        reading.utcOffset != 0L || timeZone.offsetAt(Instant.fromEpochMilliseconds(reading.timestamp)).totalSeconds == 0
+    }
+    val switches = known.sortedBy { it.timestamp }.distinctBy { it.timestamp }.zipWithNext().mapNotNull { (before, after) ->
         val oldOffset = before.utcOffset ?: return@mapNotNull null
         val newOffset = after.utcOffset ?: return@mapNotNull null
         if (oldOffset == newOffset || after.timestamp !in start..end) return@mapNotNull null
