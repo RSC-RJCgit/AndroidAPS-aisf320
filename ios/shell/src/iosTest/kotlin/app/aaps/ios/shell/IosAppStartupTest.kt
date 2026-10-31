@@ -14,11 +14,16 @@ import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.interfaces.TextRef
+import kotlinx.coroutines.CompletableJob
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -35,6 +40,10 @@ import kotlin.test.assertTrue
  *   enabled plugin. While it only verified the categories, NSClientV3 was enabled but had never run
  *   `onStart`, so the client never synced and never opened a websocket until the Configuration
  *   screen was opened by hand.
+ *
+ * And one more found the same way (2026-11-01): the app has to count as initialized only once the
+ * plugins have started. Counted so from the start, NSClientV3's start read the pump before it was
+ * elected, threw "No pump selected" and stopped half way.
  *
  * Neither shows up in a build. These tests are here so a reordering does not quietly bring them
  * back.
@@ -94,6 +103,8 @@ class IosAppStartupTest {
 
         val calls = mutableListOf<String>()
         var registered: List<PluginBase> = emptyList()
+        /** What initializeConfig hands back: the plugins' start jobs. Done unless a test says otherwise. */
+        var startJobs: List<Job> = emptyList()
 
         override fun register(plugins: List<PluginBase>) {
             calls.add("register")
@@ -102,14 +113,56 @@ class IosAppStartupTest {
 
         override fun initializeConfig(): List<Job> {
             calls.add("initialize")
-            return emptyList()
+            return startJobs
         }
     }
 
     private fun run(plugins: Map<Int, PluginBase>): RecordingRegistry {
         val registry = RecordingRegistry()
-        IosAppStartup(SilentLogger, registry, plugins, startPeriodicWork = {}).run()
+        IosAppStartup(SilentLogger, registry, plugins, startPeriodicWork = {}, scope = TestScope(), onPluginsStarted = {}).run()
         return registry
+    }
+
+    /** Starts with plugins whose start jobs are [jobs], and returns whether the app was marked initialized. */
+    private fun startWith(scope: TestScope, vararg jobs: CompletableJob): () -> Boolean {
+        var initialized = false
+        val registry = RecordingRegistry().apply { startJobs = jobs.toList() }
+        IosAppStartup(SilentLogger, registry, mapOf(1 to NamedPlugin("a")), startPeriodicWork = {}, scope = scope, onPluginsStarted = { initialized = true }).run()
+        return { initialized }
+    }
+
+    @Test
+    fun `the app is initialized only once every plugin has started`() {
+        val scope = TestScope()
+        val first = Job()
+        val second = Job()
+        val initialized = startWith(scope, first, second)
+
+        scope.runCurrent()
+        assertFalse(initialized())
+
+        first.complete()
+        scope.runCurrent()
+        assertFalse(initialized())
+
+        second.complete()
+        scope.runCurrent()
+        assertTrue(initialized())
+    }
+
+    /** One plugin that never settles must not keep the app on the splash screen. */
+    @Test
+    fun `a plugin that never finishes starting holds the app back for 30 seconds at most`() {
+        val scope = TestScope()
+        val initialized = startWith(scope, Job())
+
+        scope.advanceTimeBy(29_000)
+        scope.runCurrent()
+        assertFalse(initialized())
+
+        scope.advanceTimeBy(2_000)
+        scope.runCurrent()
+        assertTrue(initialized())
     }
 
     @Test

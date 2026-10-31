@@ -121,7 +121,10 @@ class IosClientConfig(
             ?: if (APS) "AAPS" else "AAPSClient"
     )
 
-    private val _initProgressFlow = MutableStateFlow(InitProgress(done = true))
+    // Not done until IosAppStartup has started the plugins and the pump is elected (2026-11-01, per explicit request).
+    // Starting at done = true let guarded code read the active pump while NSClientV3 was still starting, which threw
+    // "No pump selected" and left that plugin half started. Android and desktop start the same way.
+    private val _initProgressFlow = MutableStateFlow(InitProgress(done = false))
     override val initProgressFlow: StateFlow<InitProgress> = _initProgressFlow.asStateFlow()
 
     private val _initSnackbarFlow = MutableSharedFlow<String>(extraBufferCapacity = 8)
@@ -131,8 +134,7 @@ class IosClientConfig(
     // and what the start-up progress wants. The one field that must survive is the reconfigure depth:
     // it belongs to whoever opened the window, not to init progress, and clobbering it here would
     // close a window that `whileReconfiguring` still believes is open - reopening the app to readers
-    // in the middle of an import. It matters more on iOS than anywhere else, because iOS starts at
-    // `done = true` and has no start-up sequence that would put the state right again afterwards.
+    // in the middle of an import.
     override fun updateInitProgress(step: String, current: Int, total: Int) {
         _initProgressFlow.update { InitProgress(step = step, current = current, total = total, reconfiguringDepth = it.reconfiguringDepth) }
     }

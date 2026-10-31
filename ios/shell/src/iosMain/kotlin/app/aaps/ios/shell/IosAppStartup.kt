@@ -4,6 +4,11 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.ios.shell.di.GeneratedStringOwners
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * What has to happen before the first screen is composed - the iOS counterpart of `MainApp`.
@@ -22,15 +27,19 @@ import app.aaps.ios.shell.di.GeneratedStringOwners
  * `MainApp` migrates preferences, re-reads the profile repository, vacuums the database, starts the
  * running-mode reconciler and expiry schedulers, starts the automation runtime and runs data
  * migrations - all in the background, behind the splash screen that `AapsAppRoot` shows until
- * `config.initCompleted()`. None of that is wired up here yet. `IosClientConfig` reports
- * initialization done from the start, so the splash does not appear at all.
+ * `config.initCompleted()`. None of that is wired up here yet. What is wired up is the splash itself:
+ * the app counts as initialized only once the plugins have started ([onPluginsStarted]).
  */
 internal class IosAppStartup(
     private val aapsLogger: AAPSLogger,
     private val registry: PluginRegistry,
     private val contributedPlugins: Map<Int, PluginBase>,
     /** Starts the shared periodic housekeeping. A lambda so a test can run this without building it. */
-    private val startPeriodicWork: () -> Unit
+    private val startPeriodicWork: () -> Unit,
+    /** Where the wait for the plugins runs. Not the main thread's caller, so the UI is never blocked by it. */
+    private val scope: CoroutineScope,
+    /** Called once the plugins have started, or the wait gave up: the app then counts as initialized. */
+    private val onPluginsStarted: () -> Unit
 ) {
 
     fun run() {
@@ -52,13 +61,19 @@ internal class IosAppStartup(
         // `ConfigBuilderImpl` is shared, so this is the same `initialize()` Android's `MainApp` and
         // the desktop `Main` call, rather than a copy of part of what it does. Calling only the
         // category check - which is what this did before - left every enabled plugin unstarted.
-        // The jobs are deliberately not waited for here, and that is a gap rather than a decision made
-        // in comfort. Android waits for them (`MainApp`, bounded by 30 s) because everything it does
-        // next reads plugin state. `run()` is called on the iOS main thread, so the same wait would be
-        // a `runBlocking` that can freeze the UI for as long as the slowest driver's `onStart` - worse
-        // than the race it closes. Whoever wires up the splash screen described above should move this
-        // off the main thread and then wait, like Android does.
-        registry.initializeConfig()
+        // Waited for in the background, not here: `run()` is on the iOS main thread, and a blocking wait
+        // could freeze the UI for as long as the slowest driver's `onStart`. Until the wait ends the app
+        // is not initialized, so code guarded by `config.appInitialized` leaves the plugin state alone.
+        // That guard is what NSClientV3 relies on while it starts, before the pump is elected; with the
+        // app reported initialized from the start it read the pump, got "No pump selected" and stopped
+        // half way (2026-11-01). Bounded like Android's `MainApp`, so one driver that never settles
+        // cannot hold the app on the splash screen.
+        val started = registry.initializeConfig()
+        scope.launch {
+            if (withTimeoutOrNull(PLUGIN_START_WAIT) { started.joinAll() } == null)
+                aapsLogger.warn(LTag.CORE, "Plugins did not finish starting within $PLUGIN_START_WAIT")
+            onPluginsStarted()
+        }
 
         // The periodic housekeeping Android gets from KeepAliveWorker: the missed-reading alarm,
         // snooze shortening, and log and database trimming. The work is shared; only the trigger is
@@ -67,5 +82,10 @@ internal class IosAppStartup(
         startPeriodicWork()
 
         aapsLogger.debug(LTag.CORE, "Plugins started and selection verified, starting the UI")
+    }
+
+    private companion object {
+
+        val PLUGIN_START_WAIT = 30.seconds
     }
 }

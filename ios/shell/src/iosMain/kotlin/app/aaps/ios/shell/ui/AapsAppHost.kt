@@ -204,7 +204,12 @@ private fun startApp(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivit
     // an empty plugin list there throws from a coroutine and takes the process with it.
     // The "AAPS" master target also gets the loop-only plugins (Objectives), as Android does under config.APS (2026-10-30)
     val plugins = if (graph.config.APS) graph.contributedPlugins + graph.contributedApsPlugins else graph.contributedPlugins
-    IosAppStartup(logger, PluginStoreRegistry(graph.pluginStore, graph.configBuilder), plugins) { graph.periodicMaintenance.start(graph.appScope) }.run()
+    IosAppStartup(
+        logger, PluginStoreRegistry(graph.pluginStore, graph.configBuilder), plugins,
+        startPeriodicWork = { graph.periodicMaintenance.start(graph.appScope) },
+        scope = graph.appScope,
+        onPluginsStarted = { graph.config.initCompleted() }
+    ).run()
 
     // Attach to the notification centre. Registering a category only records it now, so that building
     // the graph does not need an app bundle - see `IosNotificationDelegate.install`. It is done here
