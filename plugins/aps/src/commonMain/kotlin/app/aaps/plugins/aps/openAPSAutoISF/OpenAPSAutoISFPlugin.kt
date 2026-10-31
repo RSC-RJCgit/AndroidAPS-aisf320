@@ -192,7 +192,11 @@ open class OpenAPSAutoISFPlugin(
         // A follower (Android/iOS/desktop client) never doses - APS is false and the loop does not run - so there is
         // nothing for engineering mode to protect there, and without this a client had no way to show AutoISF at all
         // (an iPhone has no practical way to create the engineering_mode file).
-        .enforce(EnforcedState.Disabled) { !(config.isEngineeringMode() || config.AAPSCLIENT) }
+        // 2026-11-01, per explicit request: also a build with no pump drivers (the Virtual-pump masters), see autoIsfAllowed
+        .enforce(EnforcedState.Disabled) { !autoIsfAllowed(config) }
+        // The APS picked when none is stored, wherever AutoISF may run (2026-11-01, per explicit request). Once the user
+        // picks another one, that choice is stored and kept.
+        .setDefault(autoIsfAllowed(config))
         .description(ApsStrings.description_auto_isf),
     ownPreferences = ApsIntentKey.entries,
     aapsLogger, rh, preferences, notificationManager

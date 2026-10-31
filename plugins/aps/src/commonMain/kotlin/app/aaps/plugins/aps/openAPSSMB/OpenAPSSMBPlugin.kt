@@ -66,6 +66,7 @@ import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
 import app.aaps.plugins.aps.keys.ApsIntentKey
 import app.aaps.plugins.aps.openAPS.TddStatus
+import app.aaps.plugins.aps.openAPSAutoISF.autoIsfAllowed
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -118,7 +119,8 @@ open class OpenAPSSMBPlugin(
         .preferencesVisibleInSimpleMode(false)
         .showInList { config.APS || config.AAPSCLIENT }   // AAPSCLIENT: visible so a client can select the master's APS
         .description(ApsStrings.description_smb)
-        .setDefault(),
+        // Default only where AutoISF may not run (2026-11-01, per explicit request), see autoIsfAllowed
+        .setDefault(!autoIsfAllowed(config)),
     ownPreferences = ApsIntentKey.entries,
     aapsLogger, rh, preferences, notificationManager
 ), APS, PluginConstraints {
