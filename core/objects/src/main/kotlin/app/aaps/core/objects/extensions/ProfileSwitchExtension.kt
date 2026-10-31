@@ -27,8 +27,11 @@ fun PS.getCustomizedName(decimalFormatter: DecimalFormatter): String {
 
 /**
  * Pure profile doesn't contain timestamp, percentage, timeshift, profileName
+ *
+ * @param fallbackDia the insulin duration to use when the JSON has neither "dia" nor an iCfg (2026-11-01, per explicit
+ * request): a profile store uploaded by AAPS 4 (KMP) carries neither, and every one of its profiles was rejected
  */
-fun pureProfileFromJson(jsonObject: JSONObject, dateUtil: DateUtil, defaultUnits: String? = null): PureProfile? {
+fun pureProfileFromJson(jsonObject: JSONObject, dateUtil: DateUtil, defaultUnits: String? = null, fallbackDia: Double? = null): PureProfile? {
     try {
         val txtUnits = JsonHelper.safeGetStringAllowNull(jsonObject, "units", defaultUnits) ?: return null
         val units = GlucoseUnit.fromText(txtUnits)
@@ -37,6 +40,7 @@ fun pureProfileFromJson(jsonObject: JSONObject, dateUtil: DateUtil, defaultUnits
         val dia = JsonHelper.safeGetDoubleAllowNull(jsonObject, "dia")
             ?: jsonObject.optJSONObject("iCfg")?.let { JsonHelper.safeGetLongAllowNull(it, "insulinEndTime", null) }
                 ?.takeIf { it > 0L }?.let { it / 3_600_000.0 }
+            ?: fallbackDia
             ?: return null
         val timezone = TimeZone.getTimeZone(JsonHelper.safeGetString(jsonObject, "timezone", "UTC"))
 

@@ -3,6 +3,7 @@ package app.aaps.implementation.profile
 import androidx.collection.ArrayMap
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileStore
 import app.aaps.core.interfaces.profile.PureProfile
@@ -86,7 +87,14 @@ class ProfileStoreObject @Inject constructor(
                 profile = cachedObjects[profileName]
                 if (profile == null) {
                     JsonHelper.safeGetJSONObject(store, profileName, null)?.let { profileObject ->
-                        profile = pureProfileFromJson(profileObject, dateUtil, units)
+                        // 2026-11-01, per explicit request: a store uploaded by AAPS 4 (KMP) has no "dia" in its profiles,
+                        // and every one came up "Invalid profile ... not accepted from NS". Such a profile takes this
+                        // phone's own insulin duration, the one its running profile uses, so taking the store changes
+                        // nothing about how insulin acts here.
+                        val noDia = !profileObject.has("dia") && !profileObject.has("iCfg")
+                        val fallbackDia = if (noDia) runCatching { activePlugin.activeInsulin.dia }.getOrNull() else null
+                        if (noDia) aapsLogger.debug(LTag.PROFILE, "Profile $profileName has no dia; using this phone's $fallbackDia h")
+                        profile = pureProfileFromJson(profileObject, dateUtil, units, fallbackDia)
                         profile?.let { cachedObjects[profileName] = profile }
                     }
                 }

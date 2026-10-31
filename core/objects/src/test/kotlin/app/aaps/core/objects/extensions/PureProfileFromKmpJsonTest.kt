@@ -42,4 +42,19 @@ class PureProfileFromKmpJsonTest : TestBaseWithProfile() {
 
         assertThat(pureProfileFromJson(json, dateUtil)!!.dia).isWithin(0.001).of(5.0)
     }
+
+    /** 1 Nov: a profile store uploaded by AAPS 4 has neither, and all 18 profiles of it were refused */
+    @Test
+    fun aStoreProfileWithNeitherTakesTheFallbackDia() {
+        val profile = pureProfileFromJson(kmpProfile(withICfg = false), dateUtil, fallbackDia = 6.5)
+
+        assertThat(profile).isNotNull()
+        assertThat(profile!!.dia).isWithin(0.001).of(6.5)
+    }
+
+    @Test
+    fun theFallbackNeverReplacesARealDuration() {
+        assertThat(pureProfileFromJson(kmpProfile(withICfg = true), dateUtil, fallbackDia = 6.5)!!.dia).isWithin(0.001).of(9.0)
+        assertThat(pureProfileFromJson(kmpProfile(withICfg = false).put("dia", 5.0), dateUtil, fallbackDia = 6.5)!!.dia).isWithin(0.001).of(5.0)
+    }
 }
