@@ -2,6 +2,7 @@ package app.aaps.plugins.sync.nsclientV3.workers
 
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.LiveSteps
+import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.InsulinType
@@ -18,6 +19,7 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
+import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.treatment.NSBolus
 import app.aaps.core.nssdk.localmodel.treatment.NSBolusWizard
 import app.aaps.core.nssdk.localmodel.treatment.NSCarbs
@@ -34,6 +36,7 @@ import app.aaps.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
 import app.aaps.plugins.sync.nsclientV3.extensions.toCarbs
 import app.aaps.plugins.sync.nsclientV3.extensions.toTherapyEvent
 import dev.zacsweers.metro.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Downloads the live phone's treatments from the secondary Nightscout.
@@ -224,8 +227,7 @@ class LoadSecondaryTreatmentsRunner(
             totalTherapyEvents += pageTherapyEvents
             page++
 
-            val cursorAdvanced = nextCursor != null && nextCursor > queryFrom
-            continueLoading = response.code != 304 && treatments.size >= PAGE_SIZE && cursorAdvanced
+            continueLoading = secondaryTreatmentsNextPage(response.code, treatments.size, nextCursor, queryFrom)
             if (continueLoading && nextCursor != null) queryFrom = nextCursor
         }
 
@@ -235,6 +237,7 @@ class LoadSecondaryTreatmentsRunner(
         )
         if (page >= MAX_PAGES && continueLoading)
             nsClientRepository.addLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync")
+        if (recoveryScan) downloadSensorChanges(client)
         downloadLiveSteps(client)
         downloadGlucose(client)
         return WorkOutcome.Success
@@ -457,6 +460,41 @@ class LoadSecondaryTreatmentsRunner(
         }
     }
 
+    /**
+     * The other phone's sensor changes of the last 180 days, read with each recovery scan - a full sync, or the site just
+     * turned on (2026-11-01, per explicit request). The scan itself reaches back 16 days only, which is one or two sensors;
+     * the Sensor tab shows 180 days of them. Only sensor changes: no insulin or carbs come with them, so nothing here
+     * changes this phone's IOB. Kept to the device events switch, as the scan is. The Sensor tab merges a change also
+     * stored from the main site. A failure is logged and does not stop the rest of the download.
+     */
+    private suspend fun downloadSensorChanges(client: NSAndroidClient) {
+        if (!preferences.get(BooleanKey.NsClientSecondaryAcceptTherapyEvent)) return
+        try {
+            var pageFrom = dateUtil.now() - SENSOR_LOOKBACK_MS
+            var page = 0
+            var stored = 0
+            while (page < MAX_PAGES) {
+                val events = client.getTreatmentsOfTypeSince(TE.Type.SENSOR_CHANGE.text, pageFrom, PAGE_SIZE).values
+                    .filterIsInstance<NSTherapyEvent>()
+                    .map { it.toTherapyEvent() }
+                    .filter { it.type == TE.Type.SENSOR_CHANGE }
+                events.forEach { storeDataForDb.addToTherapyEvents(it) }
+                stored += events.size
+                page++
+                val newest = events.maxOfOrNull { it.timestamp } ?: break
+                if (events.size < PAGE_SIZE || newest < pageFrom) break
+                pageFrom = newest + 1
+            }
+            storeDataForDb.storeTreatmentsToDb(fullSync = false)
+            nsClientRepository.addLog("◄ SEC-NS", "$stored sensor changes of the last 180 days from secondary NS")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS sensor changes failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Sensor change error")
+        }
+    }
+
     private fun fallbackInsulin(): ICfg =
         profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.iCfg
 
@@ -466,6 +504,8 @@ class LoadSecondaryTreatmentsRunner(
         const val MAX_PAGES = 64
         const val CURSOR_OVERLAP_MS = 2L * 60 * 60 * 1000
         const val RECOVERY_LOOKBACK_MS = 16L * 24 * 60 * 60 * 1000
+        /** As far back as the Sensor tab shows sensors */
+        const val SENSOR_LOOKBACK_MS = 180L * 24 * 60 * 60 * 1000
         const val GLUCOSE_LOOKBACK_MS = 24L * 60 * 60 * 1000
         const val GLUCOSE_OVERLAP_MS = 10L * 60 * 1000
         // 100 days of 1-minute readings is about 290 pages of 500.

@@ -14,6 +14,14 @@ import app.aaps.core.keys.sameNightscoutSite
  */
 internal fun secondaryBolusAccepted(type: BS.Type): Boolean = type == BS.Type.NORMAL
 
+/**
+ * Whether the secondary treatment read asks for another page (2026-11-01). Not "a full page came back": the site sends
+ * 498 or 499 of a 500 limit, and stopping on a short page read about half a day per sync, so the 16 day recovery that
+ * every full sync starts again never caught up. It goes on while a page has anything in it and moves the place on.
+ */
+internal fun secondaryTreatmentsNextPage(code: Int, pageSize: Int, nextCursor: Long?, queryFrom: Long): Boolean =
+    code != 304 && pageSize > 0 && nextCursor != null && nextCursor > queryFrom
+
 /** An enabled secondary connection supplies meals automatically to clients and the Virtual Pump master. */
 internal fun secondaryMealTreatmentsAccepted(receiveEnabled: Boolean, isClient: Boolean, isVirtualMaster: Boolean): Boolean =
     receiveEnabled || isClient || isVirtualMaster

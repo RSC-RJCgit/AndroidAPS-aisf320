@@ -3,6 +3,7 @@ package app.aaps.ios.shell.missing
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.test.runTest
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSTemporaryDirectory
 import platform.Foundation.NSUUID
@@ -119,6 +120,33 @@ class IosMaintenanceTest {
 
         assertTrue(remaining().contains("2026-09-05_213435_full.json"))
         assertTrue(remaining().contains("something.txt"))
+    }
+
+    /** The crash file survives log rotation, so Send logs takes it along (2026-11-01). */
+    @Test
+    fun `send logs copies the last crash with the log`() = runTest {
+        createLog("aaps.log")
+        createLog("last_crash.txt")
+
+        val result = sut.executeSendLogs()
+
+        assertTrue(result.localSuccess)
+        @Suppress("UNCHECKED_CAST")
+        val copies = (manager.contentsOfDirectoryAtPath("$directory/logs", null) as? List<String>).orEmpty()
+        assertTrue(copies.any { it.endsWith("_aaps.log") })
+        assertTrue(copies.any { it.endsWith("_last_crash.txt") })
+    }
+
+    /** The crash file is not a rotated log, so clearing old logs keeps it. */
+    @Test
+    fun `deleting old logs keeps the crash file`() {
+        createLog("aaps.log")
+        createLog("aaps.log.1")
+        createLog("last_crash.txt")
+
+        sut.deleteLogs(keep = 1)
+
+        assertTrue(remaining().contains("last_crash.txt"))
     }
 
     /** A build with no Documents directory answers quietly rather than failing. */

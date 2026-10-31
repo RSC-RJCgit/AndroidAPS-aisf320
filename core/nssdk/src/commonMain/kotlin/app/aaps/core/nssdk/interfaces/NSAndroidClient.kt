@@ -42,6 +42,14 @@ interface NSAndroidClient {
     /** Newest Profile Switch on this site. One row, not the history window. */
     suspend fun getLatestProfileSwitch(): ReadResponse<List<NSTreatment>>
 
+    /**
+     * Treatments of one Nightscout [eventType] dated at or after [from], oldest first, at most [limit] of them (2026-11-01).
+     * By date rather than by change, so one kind of event can be read far back without the rest of the history.
+     * Empty by default, for the fakes that do not need it.
+     */
+    suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int): ReadResponse<List<NSTreatment>> =
+        ReadResponse(code = 200, lastServerModified = null, values = emptyList())
+
     suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse
     /** Device statuses the server stored or changed after [from], oldest change first, at most [limit] of them */
     suspend fun getDeviceStatusModifiedSince(from: Long, limit: Int): List<NSDeviceStatus>

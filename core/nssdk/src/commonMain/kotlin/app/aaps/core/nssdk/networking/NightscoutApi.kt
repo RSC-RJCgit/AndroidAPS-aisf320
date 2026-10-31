@@ -159,6 +159,16 @@ internal class NightscoutApi(
         }
     }
 
+    /** One kind of treatment by its date, oldest first (2026-11-01). The event type is written as [getLatestProfileSwitch] writes it. */
+    suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int) = call(HttpMethod.Get, treatmentListSerializer) {
+        nsUrl("v3", "treatments") {
+            encodedParameters.append("eventType", eventType)
+            encodedParameters.append("date\$gte", from.toString())
+            encodedParameters.append("sort", "date")
+            encodedParameters.append("limit", limit.toString())
+        }
+    }
+
     /** The newest Profile Switch, including one older than the treatment history window. */
     suspend fun getLatestProfileSwitch() = call(HttpMethod.Get, treatmentListSerializer) {
         nsUrl("v3", "treatments") {

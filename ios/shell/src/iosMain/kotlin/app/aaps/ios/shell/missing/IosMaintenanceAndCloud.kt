@@ -4,6 +4,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.ExportResult
 import app.aaps.core.interfaces.maintenance.Maintenance
+import app.aaps.ios.shell.IosCrashLog
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
@@ -71,14 +72,17 @@ class IosMaintenance(
         return ExportResult(localSuccess = true, cloudSuccess = uploaded)
     }
 
-    /** Copies the log files into `logs` and returns the paths of the copies. Empty when there was nothing to copy. */
+    /**
+     * Copies the log files into `logs` and returns the paths of the copies. Empty when there was nothing to copy.
+     * The last crash's file goes with them when there is one (2026-11-01): the log has often rotated past the crash.
+     */
     private fun copyLogs(): List<String> {
         val directory = logDirectory ?: return emptyList()
         val manager = NSFileManager.defaultManager
 
         @Suppress("UNCHECKED_CAST")
         val names = (manager.contentsOfDirectoryAtPath(directory, null) as? List<String>)
-            ?.filter { it == LOG_NAME || it.startsWith("$LOG_NAME.") }
+            ?.filter { it == LOG_NAME || it.startsWith("$LOG_NAME.") || it == IosCrashLog.CRASH_FILE_NAME }
             .orEmpty()
         if (names.isEmpty()) return emptyList()
         val target = "$directory/logs"

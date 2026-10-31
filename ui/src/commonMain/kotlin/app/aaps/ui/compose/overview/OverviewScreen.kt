@@ -366,6 +366,8 @@ fun OverviewScreen(
 
         // Calculation progress (IOB / graph data). Overlaid on top of content so it never reflows
         // the layout — previously a flow child of the content Column which caused the screen to jump.
+        // Just under the version line rather than on the content's top edge, where it covered the top
+        // half of that line's text (2026-11-01, per explicit request).
         AnimatedVisibility(
             visible = calcProgress < 100,
             enter = fadeIn(),
@@ -373,13 +375,14 @@ fun OverviewScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .padding(paddingValues)
+                .padding(top = 11.dp)
                 .fillMaxWidth()
         ) {
             LinearProgressIndicator(
                 progress = { calcProgress / 100f },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(4.dp)
+                    .height(3.dp)
             )
         }
 

@@ -102,4 +102,22 @@ class SecondaryTreatmentFilterTest {
         // A real master or a client is never stopped
         assertFalse(blocked(virtual = false, secondary = false))
     }
+
+    /** 1 Nov: the site sent 498 of 500, and the read stopped there, half a day per sync */
+    @Test
+    fun `a short page still reads on`() {
+        assertTrue(secondaryTreatmentsNextPage(code = 200, pageSize = 498, nextCursor = 2_000L, queryFrom = 1_000L))
+        assertTrue(secondaryTreatmentsNextPage(code = 200, pageSize = 500, nextCursor = 2_000L, queryFrom = 1_000L))
+    }
+
+    @Test
+    fun `the read stops when there is nothing new`() {
+        // An empty page
+        assertFalse(secondaryTreatmentsNextPage(code = 200, pageSize = 0, nextCursor = 2_000L, queryFrom = 1_000L))
+        // Not modified
+        assertFalse(secondaryTreatmentsNextPage(code = 304, pageSize = 498, nextCursor = 2_000L, queryFrom = 1_000L))
+        // The place did not move on, so the same page would come back again and again
+        assertFalse(secondaryTreatmentsNextPage(code = 200, pageSize = 498, nextCursor = 1_000L, queryFrom = 1_000L))
+        assertFalse(secondaryTreatmentsNextPage(code = 200, pageSize = 498, nextCursor = null, queryFrom = 1_000L))
+    }
 }
