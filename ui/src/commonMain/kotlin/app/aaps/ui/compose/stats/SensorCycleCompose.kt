@@ -51,13 +51,15 @@ import kotlin.math.roundToInt
  * the AGP rather than with Vico, because sensors end at different times and the changeover view needs bands.
  *
  * @param data null when there is no sensor change at [offset]
- * @param sensorsAvailable sensor changes found, which caps the offset
+ * @param maxDaysBack how far back the days-back control reaches
+ * @param until the end of the view, shown when it is not now
  * @param formatDate formats a sensor start for the header
  */
 @Composable
 fun SensorCycleCompose(
     data: SensorCycleData?,
-    sensorsAvailable: Int,
+    maxDaysBack: Int,
+    until: Long,
     offset: Int,
     onOffsetChange: (Int) -> Unit,
     formatDate: (Long) -> String,
@@ -105,15 +107,21 @@ fun SensorCycleCompose(
             else                                 -> ChangeoverView(data, data.changeover, formatDate, quarters)
         }
 
-        // Offset in whole sensors: 1 shows the three sensors before the newest, and so on
+        // Days back, one per click, as on the Cycle tab (2026-11-01, per explicit request): the view ends that many days ago
         NumberInputRow(
             labelRef = UiStrings.sensor_cycle_offset,
             value = offset.toDouble(),
             onValueChange = { onOffsetChange(it.toInt()) },
-            valueRange = 0.0..(sensorsAvailable - 1).coerceAtLeast(1).toDouble(),
+            valueRange = 0.0..maxDaysBack.toDouble(),
             step = 1.0,
             modifier = Modifier.fillMaxWidth()
         )
+        if (offset > 0 && until > 0)
+            Text(
+                text = stringResource(UiStrings.sensor_cycle_until, formatDate(until)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
     }
 }
 

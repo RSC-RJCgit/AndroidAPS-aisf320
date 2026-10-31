@@ -443,7 +443,8 @@
     <string name="sensor_ambulatory_chart_description">Glucose percentiles over the life of the sensors</string>
     <string name="sensor_changeover_dates" comment="%1$s=the dates of the sensor changes the changeover graph uses, newest first, separated by commas">Changes: %1$s</string>
     <string name="sensor_cycle_changeover">Changeover</string>
-    <string name="sensor_cycle_offset">Sensors skipped</string>
+    <string name="sensor_cycle_offset">Days back</string>
+    <string name="sensor_cycle_until" comment="%1$s=date and time. Under the sensor graph when it is moved back: the view ends then">Up to %1$s</string>
     <string name="sensor_cycle_found">%1$d sensors shown of %2$d changes, %3$s days each</string>
     <string name="sensor_cycle_newest_start">Newest start = %1$s</string>
     <string name="sensor_cycle_lines_legend">Individual sensors</string>

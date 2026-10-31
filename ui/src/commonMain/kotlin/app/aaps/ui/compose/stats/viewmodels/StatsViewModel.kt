@@ -46,6 +46,8 @@ import app.aaps.ui.compose.stats.calculateAgpStatsData
 import app.aaps.ui.compose.stats.calculateSensorCycleData
 import app.aaps.ui.compose.stats.distinctSensorStarts
 import app.aaps.ui.compose.stats.sensorCycleReadingSpan
+import app.aaps.ui.compose.stats.sensorDaysBackMax
+import app.aaps.ui.compose.stats.sensorStartsDaysBack
 import app.aaps.ui.compose.stats.sensorWindowHours
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
@@ -512,28 +514,40 @@ class StatsViewModel(
         sensorCycleLoadJob?.cancel()
         sensorCycleLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(sensorCycleLoading = it.sensorCycleData == null) }
-            val offset = uiState.value.sensorCycleOffset
-            val (data, available) = withContext<Pair<SensorCycleData?, Int>>(aapsIoDispatcher) {
+            // Days back from now (2026-11-01, per explicit request): one click is one day, as on the Cycle tab
+            val daysBack = uiState.value.sensorCycleOffset
+            val result = withContext(aapsIoDispatcher) {
                 val now = dateUtil.now()
-                val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(SENSOR_HISTORY_DAYS).msecs(), TE.Type.SENSOR_CHANGE, true)
+                val allStarts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(SENSOR_HISTORY_DAYS).msecs(), TE.Type.SENSOR_CHANGE, true)
                     .filter { it.isValid && it.timestamp <= now }
                     .map { it.timestamp }
-                val available = distinctSensorStarts(starts).size
+                val maxDays = sensorDaysBackMax(allStarts, now)
+                val (until, starts) = sensorStartsDaysBack(allStarts, now, daysBack)
                 // The length of a sensor from the one in use now
                 val windowHours = sensorWindowHours(persistenceLayer.getLastGlucoseValue()?.sourceSensor)
-                val span = sensorCycleReadingSpan(starts, now, windowHours, offset) ?: return@withContext null to available
+                val span = sensorCycleReadingSpan(starts, until, windowHours, 0)
+                    ?: return@withContext SensorCycleLoad(null, distinctSensorStarts(allStarts).size, maxDays, until)
                 val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(span.first, span.last, true)
-                calculateSensorCycleData(
+                val data = calculateSensorCycleData(
                     readings = readings,
                     starts = starts,
-                    now = now,
+                    now = until,
                     windowHours = windowHours,
-                    offset = offset,
+                    offset = 0,
                     lowMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
                     highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
-                ) to available
+                )
+                SensorCycleLoad(data, distinctSensorStarts(allStarts).size, maxDays, until)
             }
-            _uiState.update { it.copy(sensorCycleData = data, sensorsAvailable = available, sensorCycleLoading = false) }
+            _uiState.update {
+                it.copy(
+                    sensorCycleData = result.data,
+                    sensorsAvailable = result.available,
+                    sensorCycleMaxDaysBack = result.maxDaysBack,
+                    sensorCycleUntil = result.until,
+                    sensorCycleLoading = false
+                )
+            }
         }
     }
 
@@ -593,6 +607,14 @@ data class StatsUiState(
     val sensorCycleData: SensorCycleData? = null,
     val sensorsAvailable: Int = 0,
     val sensorCycleLoading: Boolean = true,
+    /** Days back from now (2026-11-01): one click is one day */
     val sensorCycleOffset: Int = 0,
+    /** How far back the Sensor tab's days-back control reaches */
+    val sensorCycleMaxDaysBack: Int = 1,
+    /** The end of the Sensor tab's view: now, less the days back */
+    val sensorCycleUntil: Long = 0,
     val showRecalculateDialog: Boolean = false
 )
+
+/** One load of the Sensor tab */
+private data class SensorCycleLoad(val data: SensorCycleData?, val available: Int, val maxDaysBack: Int, val until: Long)
