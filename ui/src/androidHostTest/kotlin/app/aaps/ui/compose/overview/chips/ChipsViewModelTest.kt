@@ -5,7 +5,6 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.SensitivityOverview
-import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.CobGraphData
 import app.aaps.core.interfaces.overview.graph.IobGraphData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
@@ -70,7 +69,6 @@ internal class ChipsViewModelTest {
         whenever(cache.iobGraphFlow).thenReturn(MutableStateFlow(IobGraphData(emptyList(), emptyList())))
         whenever(cache.cobGraphFlow).thenReturn(MutableStateFlow(CobGraphData(emptyList(), emptyList())))
         whenever(cache.predictionsFlow).thenReturn(MutableStateFlow(emptyList()))
-        whenever(cache.autoIsfGraphFlow).thenReturn(MutableStateFlow(AutoIsfGraphData()))
         sut = ChipsViewModel(
             cache, iobCobCalculator, loop, config, persistenceLayer, constraintChecker, profileFunction,
             profileRepository, processedDeviceStatusData, profileUtil, activePlugin, rh, decimalFormatter,

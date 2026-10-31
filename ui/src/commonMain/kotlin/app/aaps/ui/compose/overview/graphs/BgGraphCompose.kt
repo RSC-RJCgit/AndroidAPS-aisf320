@@ -1601,7 +1601,7 @@ fun BgGraphCompose(
     }
 }
 
-private fun oneDecimalText(value: Double): String {
+internal fun oneDecimalText(value: Double): String {
     val scaled = round(value * 10.0).toInt()
     val sign = if (scaled < 0) "-" else ""
     val whole = abs(scaled)

@@ -112,15 +112,6 @@ internal fun SensitivityChip(
                     color = textColor
                 )
             }
-            // The AutoISF hypo prediction at the right end (2026-10-31, per explicit request)
-            if (state.hpText.isNotEmpty()) {
-                Text(
-                    text = state.hpText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = textColor,
-                    modifier = Modifier.padding(start = AapsSpacing.medium)
-                )
-            }
         }
     }
 }

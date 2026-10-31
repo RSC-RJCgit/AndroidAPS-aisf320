@@ -7,7 +7,6 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -28,31 +27,6 @@ class SensitivityChipTest {
 
     @get:Rule
     val compose = createComposeRule()
-
-    @Test
-    fun showsHypoPredictionAtTheEnd() {
-        compose.setContent {
-            MaterialTheme {
-                SensitivityChip(
-                    state = SensitivityUiState(asText = "100%", isfFrom = "5.5", isfTo = "6.8", isfStep = IsfStep.UP, hasData = true, hpText = "HP=5.4"),
-                    onClick = {}
-                )
-            }
-        }
-
-        compose.onNodeWithText("HP=5.4").assertIsDisplayed()
-    }
-
-    @Test
-    fun noHypoPredictionWithoutAValue() {
-        compose.setContent {
-            MaterialTheme {
-                SensitivityChip(state = SensitivityUiState(asText = "100%", hasData = true), onClick = {})
-            }
-        }
-
-        compose.onAllNodesWithText("HP=", substring = true).assertCountEquals(0)
-    }
 
     @Test
     fun showsSensitivityText() {

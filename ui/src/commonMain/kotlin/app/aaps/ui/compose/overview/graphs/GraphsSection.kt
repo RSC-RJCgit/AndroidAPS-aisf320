@@ -954,8 +954,20 @@ fun GraphsSection(
             // Laid out, so the graphs can size and settle, but not drawn until then (graphsReady)
             .then(if (graphsReady) Modifier else Modifier.alpha(0f))
     ) {
-        if (showZoomButtons) {
-            GraphZoomButtons(zoomStep, Modifier.align(Alignment.End))
+        // HP= at the left of the − + row (2026-10-31, per explicit request). Only with a current AutoISF row (statusIsf
+        // is set only then), like the HP= of the steps line, so an old prediction does not linger.
+        val autoIsfStatus by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
+        val hpText = autoIsfStatus.hypoPrediction?.takeIf { autoIsfStatus.statusIsf != null }?.let { "HP=${oneDecimalText(it)}" }
+        if (showZoomButtons || hpText != null) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = hpText.orEmpty(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                if (showZoomButtons) GraphZoomButtons(zoomStep)
+            }
         }
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }

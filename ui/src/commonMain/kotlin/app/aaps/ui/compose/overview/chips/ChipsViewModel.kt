@@ -23,7 +23,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
-import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
@@ -180,16 +179,15 @@ class ChipsViewModel(
     // own it would show the previous loop's ratio and variable ISF. Predictions are published
     // right after the loop ran on the master, and right after a device status came in on a
     // client, so they carry the fresh values on both sides.
-    val sensitivityUiState: StateFlow<SensitivityUiState> =
-        combine(iobCobTicker, cache.iobGraphFlow, cache.predictionsFlow, cache.autoIsfGraphFlow) { _, _, _, autoIsf ->
-            buildSensitivityUiState(autoIsf)
-        }.stateIn(
+    val sensitivityUiState: StateFlow<SensitivityUiState> = combine(iobCobTicker, cache.iobGraphFlow, cache.predictionsFlow) { _, _, _ ->
+        buildSensitivityUiState()
+    }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = SensitivityUiState()
     )
 
-    private suspend fun buildSensitivityUiState(autoIsf: AutoIsfGraphData): SensitivityUiState {
+    private suspend fun buildSensitivityUiState(): SensitivityUiState {
         // Worked out in one place for the chip, its dialog and the watch - see SensitivityOverview
         val data = sensitivityOverview.build()
         return SensitivityUiState(
@@ -206,10 +204,7 @@ class ChipsViewModel(
                 || persistenceLayer.getAutoIsfValuesFromTimeToTime(
                     dateUtil.now() - AUTO_ISF_HISTORY_WINDOW_MS,
                     dateUtil.now()
-                ).isNotEmpty(),
-            // 2026-10-31, per explicit request: HP= on the chip. Only with a current AutoISF row (statusIsf is set only
-            // then), like the HP= of the steps line, so an old prediction does not linger.
-            hpText = autoIsf.hypoPrediction?.takeIf { autoIsf.statusIsf != null }?.let { "HP=${decimalFormatter.to1Decimal(it)}" } ?: ""
+                ).isNotEmpty()
         )
     }
 
