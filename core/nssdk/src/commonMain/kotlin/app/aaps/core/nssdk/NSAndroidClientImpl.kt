@@ -368,8 +368,8 @@ class NSAndroidClientImpl(
             throw UnsuccessfulNightscoutException("Unsuccessful")
     }
 
-    override suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int): NSAndroidClient.ReadResponse<List<NSTreatment>> = callWrapper(dispatcher) {
-        val response = api.getTreatmentsOfTypeSince(eventType, from, limit)
+    override suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int, filters: Map<String, String>): NSAndroidClient.ReadResponse<List<NSTreatment>> = callWrapper(dispatcher) {
+        val response = api.getTreatmentsOfTypeSince(eventType, from, limit, filters)
         if (response.isSuccessful) {
             return@callWrapper NSAndroidClient.ReadResponse(
                 code = response.code,

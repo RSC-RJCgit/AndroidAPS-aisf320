@@ -481,8 +481,9 @@ class LoadSecondaryTreatmentsRunner(
                 events.forEach { storeDataForDb.addToTherapyEvents(it) }
                 stored += events.size
                 page++
+                // Not on a short page: the site sends a few under the limit (see secondaryTreatmentsNextPage). An empty page ends it.
                 val newest = events.maxOfOrNull { it.timestamp } ?: break
-                if (events.size < PAGE_SIZE || newest < pageFrom) break
+                if (newest < pageFrom) break
                 pageFrom = newest + 1
             }
             storeDataForDb.storeTreatmentsToDb(fullSync = false)

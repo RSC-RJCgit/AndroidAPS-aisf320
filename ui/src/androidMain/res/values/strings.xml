@@ -425,6 +425,8 @@
     <string name="raw_tdd">Raw TDD</string>
     <string name="cleaned_tdd">Cleaned TDD</string>
     <string name="cleaned_tdd_explanation">TDD minus insulin for carbs.</string>
+    <string name="tdd_from_secondary_ns" comment="Under the daily insulin table. * marks the days that come from the other phone's records on the second Nightscout, because this phone has none for them. They are shown only, never saved.">* From the other phone, on the second Nightscout. Shown only.</string>
+    <string name="tdd_cycle_days_from_secondary_ns" comment="%1$d=number of days. Under the cycle graph: how many of its days come from the other phone's records on the second Nightscout. Shown only, never saved.">%1$d days from the other phone, on the second Nightscout</string>
     <string name="cycle_lines_legend">Individual cycles</string>
     <string name="cycles_found">%1$d cycles (%2$d days)</string>
     <string name="cycle_day1_date">Day 1 = %1$s</string>

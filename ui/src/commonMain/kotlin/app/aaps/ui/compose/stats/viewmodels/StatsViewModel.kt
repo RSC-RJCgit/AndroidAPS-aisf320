@@ -24,6 +24,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.stats.DexcomTIR
 import app.aaps.core.interfaces.stats.DexcomTirCalculator
+import app.aaps.core.interfaces.stats.SecondaryTddSource
 import app.aaps.core.interfaces.stats.TIR
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
@@ -82,6 +83,9 @@ private const val BG_RELOAD_DEBOUNCE_MS = 30_000L
 /** How far back the Sensor tab looks for sensor changes: enough for the offset to step back a few months. */
 private const val SENSOR_HISTORY_DAYS = 180L
 
+/** The Cycle tab's reach: six 28-day cycles */
+private const val CYCLE_DAYS = 168L
+
 /**
  * ViewModel for StatsScreen managing statistics data loading and state.
  */
@@ -101,7 +105,8 @@ class StatsViewModel(
     private val uel: UserEntryLogger,
     val dateUtil: DateUtil,
     val profileUtil: ProfileUtil,
-    private val preferences: Preferences
+    private val preferences: Preferences,
+    private val secondaryTddSource: SecondaryTddSource
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StatsUiState())
@@ -278,10 +283,11 @@ class StatsViewModel(
         tddLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(tddLoading = true) }
             val data = withContext(aapsIoDispatcher) {
-                val tdds = tddCalculator.calculate(7, allowMissingDays = true)
+                val local = tddCalculator.calculate(7, allowMissingDays = true)
+                val (tdds, secondaryDays) = withSecondaryDays(local, dayStarts(MidnightTime.calcDaysBack(7), 7))
                 val averageTdd = tddCalculator.averageTDD(tdds)
                 val todayTdd = tddCalculator.calculateToday()
-                TddStatsData(tdds = tdds, averageTdd = averageTdd, todayTdd = todayTdd)
+                TddStatsData(tdds = tdds, averageTdd = averageTdd, todayTdd = todayTdd, secondaryDays = secondaryDays)
             }
             _uiState.update { it.copy(tddStatsData = data, tddLoading = false) }
         }
@@ -396,8 +402,39 @@ class StatsViewModel(
                 _uiState.update { it.copy(tddCycleProgress = (phase1Chunks + chunk + 1).toFloat() / totalChunks) }
                 updateCycleGraph(tddList)
             }
+            // The days this phone has no insulin records for, from the other phone's records on the second site
+            // (2026-11-01, per explicit request). Shown only, never stored.
+            val missing = withContext(aapsIoDispatcher) {
+                val have = tddList.map { it.timestamp }.toSet()
+                val days = dayStarts(MidnightTime.calcDaysBack(now, CYCLE_DAYS), CYCLE_DAYS).filter { it !in have }
+                if (days.isEmpty()) emptyMap() else secondaryTddSource.dailyTdds(days)
+            }
+            if (missing.isNotEmpty()) {
+                tddList += missing.values
+                _uiState.update { it.copy(tddCycleSecondaryDays = missing.size) }
+                updateCycleGraph(tddList)
+            }
             _uiState.update { it.copy(tddCycleLoading = false) }
         }
+    }
+
+    /** [count] local midnights from [first] on, oldest first. Found as Android finds them, so a DST day is one day. */
+    private fun dayStarts(first: Long, count: Long): List<Long> =
+        generateSequence(first) { MidnightTime.calc(it + T.hours(27).msecs()) }.take(count.toInt()).toList()
+
+    /**
+     * [local] with the days it lacks filled from the second Nightscout, and which days those are (2026-11-01, per
+     * explicit request). Only days with no total here at all: a day this phone has, even a short one, stays its own.
+     */
+    private suspend fun withSecondaryDays(local: LongSparseArray<TDD>?, days: List<Long>): Pair<LongSparseArray<TDD>?, Set<Long>> {
+        val missing = days.filter { local?.containsKey(it) != true }
+        if (missing.isEmpty()) return local to emptySet()
+        val remote = secondaryTddSource.dailyTdds(missing)
+        if (remote.isEmpty()) return local to emptySet()
+        val merged = LongSparseArray<TDD>()
+        local?.let { for (i in 0 until it.size()) merged.put(it.keyAt(i), it.valueAt(i)) }
+        remote.forEach { (day, tdd) -> merged.put(day, tdd) }
+        return merged to remote.keys
     }
 
     private fun addUniqueTdds(target: MutableList<TDD>, source: LongSparseArray<TDD>?) {
@@ -550,6 +587,8 @@ data class StatsUiState(
     val dexcomTirLoading: Boolean = true,
     val tddCycleLoading: Boolean = true,
     val tddCycleProgress: Float = 0f,
+    /** How many of the Cycle tab's days came from the second Nightscout (2026-11-01) */
+    val tddCycleSecondaryDays: Int = 0,
     val tddCycleOffset: Int = 0,
     val sensorCycleData: SensorCycleData? = null,
     val sensorsAvailable: Int = 0,

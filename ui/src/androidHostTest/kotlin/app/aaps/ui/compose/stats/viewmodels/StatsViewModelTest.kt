@@ -6,6 +6,7 @@ import app.aaps.core.data.model.EB
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
+import app.aaps.core.data.model.TDD
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -13,6 +14,7 @@ import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.stats.DexcomTirCalculator
+import app.aaps.core.interfaces.stats.SecondaryTddSource
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
@@ -56,6 +58,11 @@ internal class StatsViewModelTest {
     @Mock private lateinit var profileUtil: ProfileUtil
     @Mock private lateinit var preferences: Preferences
 
+    /** No second Nightscout: these tests are about this phone's own data */
+    private val noSecondarySite = object : SecondaryTddSource {
+        override suspend fun dailyTdds(dayStarts: List<Long>): Map<Long, TDD> = emptyMap()
+    }
+
     private lateinit var sut: StatsViewModel
 
     @BeforeEach
@@ -81,7 +88,7 @@ internal class StatsViewModelTest {
         whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
         sut = StatsViewModel(
             tddCalculator, tirCalculator, dexcomTirCalculator, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences
+            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite
         )
     }
 
@@ -105,7 +112,7 @@ internal class StatsViewModelTest {
         whenever(preferences.get(StringNonKey.StatsTab)).thenReturn(StatsTab.GLUCOSE.name)
         val viewModel = StatsViewModel(
             tddCalculator, tirCalculator, dexcomTirCalculator, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences
+            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite
         )
         assertThat(viewModel.uiState.value.selectedTab).isEqualTo(StatsTab.GLUCOSE)
     }
@@ -123,7 +130,7 @@ internal class StatsViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val viewModel = StatsViewModel(
             tddCalculator, tirCalculator, dexcomTirCalculator, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences
+            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite
         )
         verifyBlocking(tddCalculator, never()) { calculate(any<Long>(), any<Long>(), any<Boolean>()) }
 

@@ -45,9 +45,10 @@ interface NSAndroidClient {
     /**
      * Treatments of one Nightscout [eventType] dated at or after [from], oldest first, at most [limit] of them (2026-11-01).
      * By date rather than by change, so one kind of event can be read far back without the rest of the history.
-     * Empty by default, for the fakes that do not need it.
+     * [filters] are further Nightscout field filters, for example `originalProfileName$re` to `.` for the effective
+     * profile switches among the notes. Empty by default, for the fakes that do not need it.
      */
-    suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int): ReadResponse<List<NSTreatment>> =
+    suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int, filters: Map<String, String> = emptyMap()): ReadResponse<List<NSTreatment>> =
         ReadResponse(code = 200, lastServerModified = null, values = emptyList())
 
     suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse

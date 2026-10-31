@@ -238,6 +238,12 @@ private fun CycleTab(state: StatsUiState, viewModel: StatsViewModel) {
                     onOffsetChange = { viewModel.updateCycleOffset(it) },
                     modifier = Modifier.fillMaxWidth()
                 )
+                if (state.tddCycleSecondaryDays > 0)
+                    Text(
+                        text = stringResource(UiStrings.tdd_cycle_days_from_secondary_ns, state.tddCycleSecondaryDays),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
             } else if (!state.tddCycleLoading) {
                 Text(
                     text = stringResource(UiStrings.not_enough_data_for_cycles),

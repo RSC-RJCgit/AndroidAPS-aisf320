@@ -21,6 +21,7 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 
 /**
  * Data class containing TDD (Total Daily Dose) statistics for profile calculations.
@@ -33,7 +34,9 @@ import app.aaps.core.ui.compose.stringResource
 data class TddStatsData(
     val tdds: LongSparseArray<TDD>?,
     val averageTdd: AverageTDD?,
-    val todayTdd: TDD?
+    val todayTdd: TDD?,
+    /** The days in [tdds] worked out from the other phone's records on the second Nightscout, marked with * (2026-11-01) */
+    val secondaryDays: Set<Long> = emptySet()
 )
 
 /**
@@ -83,7 +86,7 @@ fun TddStatsCompose(
             for (i in 0 until tdds.size()) {
                 val tdd = tdds.valueAt(i)
                 TddTableDataRow(
-                    date = dateUtil.dateString(tdd.timestamp),
+                    date = dateUtil.dateString(tdd.timestamp) + if (tdd.timestamp in tddStatsData.secondaryDays) " *" else "",
                     basal = decimalFormatter.to2Decimal(tdd.basalAmount),
                     bolus = decimalFormatter.to2Decimal(tdd.bolusAmount),
                     total = decimalFormatter.to2Decimal(tdd.totalAmount),
@@ -106,6 +109,14 @@ fun TddStatsCompose(
                 isBold = true
             )
         }
+
+        if (tddStatsData.secondaryDays.isNotEmpty())
+            Text(
+                text = stringResource(UiStrings.tdd_from_secondary_ns),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
 
         // Today row
         tddStatsData.todayTdd?.let { today ->

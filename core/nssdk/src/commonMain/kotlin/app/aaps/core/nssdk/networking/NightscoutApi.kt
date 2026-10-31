@@ -160,9 +160,11 @@ internal class NightscoutApi(
     }
 
     /** One kind of treatment by its date, oldest first (2026-11-01). The event type is written as [getLatestProfileSwitch] writes it. */
-    suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int) = call(HttpMethod.Get, treatmentListSerializer) {
+    suspend fun getTreatmentsOfTypeSince(eventType: String, from: Long, limit: Int, filters: Map<String, String> = emptyMap()) = call(HttpMethod.Get, treatmentListSerializer) {
         nsUrl("v3", "treatments") {
-            encodedParameters.append("eventType", eventType)
+            // Encoded here: these parameters go out as written, and an event type has a space in it
+            encodedParameters.append("eventType", eventType.replace(" ", "%20"))
+            filters.forEach { (name, value) -> encodedParameters.append(name, value) }
             encodedParameters.append("date\$gte", from.toString())
             encodedParameters.append("sort", "date")
             encodedParameters.append("limit", limit.toString())
