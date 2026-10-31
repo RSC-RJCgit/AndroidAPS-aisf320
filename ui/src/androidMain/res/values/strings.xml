@@ -430,6 +430,25 @@
     <string name="calculation_in_progress_percent">Calculating… %1$d%%</string>
     <string name="not_enough_data_for_cycles">Not enough data (need at least 56 days for 2 cycles)</string>
 
+    <!--    Sensor cycle overlay -->
+    <string name="stats_tab_sensor" comment="Short tab label on the Statistics screen. The tab shows glucose laid over the life of each CGM sensor.">Sensor</string>
+    <string name="sensor_cycle_title">Sensor cycle</string>
+    <string name="sensor_cycle_whole">Whole sensor</string>
+    <string name="sensor_cycle_changeover">Changeover</string>
+    <string name="sensor_cycle_offset">Sensors skipped</string>
+    <string name="sensor_cycle_found">%1$d sensors shown of %2$d changes, %3$s days each</string>
+    <string name="sensor_cycle_newest_start">Newest start = %1$s</string>
+    <string name="sensor_cycle_lines_legend">Individual sensors</string>
+    <string name="sensor_cycle_no_data">No sensor change found. Sensor changes are logged with CGM sensor insert in Actions.</string>
+    <string name="sensor_changeover_no_data">Needs at least two sensor changes</string>
+    <string name="sensor_changeover_explanation">Last %1$d days of one sensor and first %1$d days of the next, %2$d changes pooled</string>
+    <string name="sensor_cycle_chart_description">Glucose over the life of each sensor, with their average</string>
+    <string name="sensor_changeover_chart_description">Glucose percentiles before and after sensor changes</string>
+    <string name="sensor_avg_before">Avg before</string>
+    <string name="sensor_avg_after">Avg after</string>
+    <string name="sensor_tir_before">TIR before</string>
+    <string name="sensor_tir_after">TIR after</string>
+
     <string-array name="yes_no_positiveonly_negativeonly">
         <item>Both</item>
         <item>Positive only</item>

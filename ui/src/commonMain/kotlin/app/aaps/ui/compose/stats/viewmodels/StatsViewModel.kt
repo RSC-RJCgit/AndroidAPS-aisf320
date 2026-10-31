@@ -12,7 +12,9 @@ import app.aaps.core.data.model.EB
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.TB
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TDD
+import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
@@ -35,10 +37,15 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.ui.compose.stats.AgpStatsData
 import app.aaps.ui.compose.stats.AgpStatsRange
 import app.aaps.ui.compose.stats.CycleSeries
+import app.aaps.ui.compose.stats.SensorCycleData
 import app.aaps.ui.compose.stats.TddCyclePatternData
 import app.aaps.ui.compose.stats.TddStatsData
 import app.aaps.ui.compose.stats.TirStatsData
 import app.aaps.ui.compose.stats.calculateAgpStatsData
+import app.aaps.ui.compose.stats.calculateSensorCycleData
+import app.aaps.ui.compose.stats.distinctSensorStarts
+import app.aaps.ui.compose.stats.sensorCycleReadingSpan
+import app.aaps.ui.compose.stats.sensorWindowHours
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
@@ -72,6 +79,9 @@ private const val TDD_RELOAD_DEBOUNCE_MS = 5_000L
 /** Longer than the totals: a reading arrives every minute, and a glucose reload walks up to 30 days of them. */
 private const val BG_RELOAD_DEBOUNCE_MS = 30_000L
 
+/** How far back the Sensor tab looks for sensor changes: enough for the offset to step back a few months. */
+private const val SENSOR_HISTORY_DAYS = 180L
+
 /**
  * ViewModel for StatsScreen managing statistics data loading and state.
  */
@@ -99,6 +109,7 @@ class StatsViewModel(
 
     private var cycleLoadJob: Job? = null
     private var agpLoadJob: Job? = null
+    private var sensorCycleLoadJob: Job? = null
 
     /**
      * Held so a reload can replace the one before it instead of racing it.
@@ -119,7 +130,8 @@ class StatsViewModel(
         _uiState.update {
             it.copy(
                 selectedTab = savedTab,
-                tddCycleOffset = preferences.get(IntNonKey.TddCycleOffset)
+                tddCycleOffset = preferences.get(IntNonKey.TddCycleOffset),
+                sensorCycleOffset = preferences.get(IntNonKey.SensorCycleOffset)
             )
         }
         observeTddInputs()
@@ -173,6 +185,8 @@ class StatsViewModel(
                 loadAgpStats(uiState.value.agpRange)
                 loadDexcomTirStats()
             }
+
+            StatsTab.SENSOR        -> loadSensorCycle()
         }
     }
 
@@ -447,6 +461,45 @@ class StatsViewModel(
         )
     }
 
+    fun updateSensorCycleOffset(offset: Int) {
+        preferences.put(IntNonKey.SensorCycleOffset, offset)
+        _uiState.update { it.copy(sensorCycleOffset = offset) }
+        loadSensorCycle()
+    }
+
+    /**
+     * Sensor tab (2026-10-31): the sensor changes of the last [SENSOR_HISTORY_DAYS] days, and the readings of only
+     * the sensors shown at the current offset, so a change of offset reads the database again, briefly.
+     */
+    private fun loadSensorCycle() {
+        sensorCycleLoadJob?.cancel()
+        sensorCycleLoadJob = viewModelScope.launch {
+            _uiState.update { it.copy(sensorCycleLoading = it.sensorCycleData == null) }
+            val offset = uiState.value.sensorCycleOffset
+            val (data, available) = withContext<Pair<SensorCycleData?, Int>>(aapsIoDispatcher) {
+                val now = dateUtil.now()
+                val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(SENSOR_HISTORY_DAYS).msecs(), TE.Type.SENSOR_CHANGE, true)
+                    .filter { it.isValid && it.timestamp <= now }
+                    .map { it.timestamp }
+                val available = distinctSensorStarts(starts).size
+                // The length of a sensor from the one in use now
+                val windowHours = sensorWindowHours(persistenceLayer.getLastGlucoseValue()?.sourceSensor)
+                val span = sensorCycleReadingSpan(starts, now, windowHours, offset) ?: return@withContext null to available
+                val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(span.first, span.last, true)
+                calculateSensorCycleData(
+                    readings = readings,
+                    starts = starts,
+                    now = now,
+                    windowHours = windowHours,
+                    offset = offset,
+                    lowMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
+                    highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
+                ) to available
+            }
+            _uiState.update { it.copy(sensorCycleData = data, sensorsAvailable = available, sensorCycleLoading = false) }
+        }
+    }
+
     fun showRecalculateDialog() {
         _uiState.update { it.copy(showRecalculateDialog = true) }
     }
@@ -473,7 +526,8 @@ enum class StatsTab {
     INSULIN,
     TIME_IN_RANGE,
     GLUCOSE,
-    CYCLE
+    CYCLE,
+    SENSOR
 }
 
 /**
@@ -497,5 +551,9 @@ data class StatsUiState(
     val tddCycleLoading: Boolean = true,
     val tddCycleProgress: Float = 0f,
     val tddCycleOffset: Int = 0,
+    val sensorCycleData: SensorCycleData? = null,
+    val sensorsAvailable: Int = 0,
+    val sensorCycleLoading: Boolean = true,
+    val sensorCycleOffset: Int = 0,
     val showRecalculateDialog: Boolean = false
 )

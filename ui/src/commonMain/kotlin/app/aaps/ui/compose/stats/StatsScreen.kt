@@ -55,12 +55,13 @@ import app.aaps.ui.compose.stats.viewmodels.StatsViewModel
 import kotlinx.coroutines.launch
 
 /**
- * Composable screen displaying statistics in four tabs: Insulin (TDD), Time in range (TIR and Dexcom TIR),
- * Glucose (AGP and the glucose pentagon) and Cycle (the TDD cycle pattern).
+ * Composable screen displaying statistics in five tabs: Insulin (TDD), Time in range (TIR and Dexcom TIR),
+ * Glucose (AGP and the glucose pentagon), Cycle (the TDD cycle pattern) and Sensor (glucose over each CGM sensor).
  *
  * Tabs, not one long list: the sections are read one at a time, and only the tab on screen is
- * calculated. Four, not one per section: Material says to avoid more than four fixed tabs, and the
- * sections in one tab are read together. The screen opens on the tab used last.
+ * calculated. Not one per section: the sections in one tab are read together. Sensor was added as a fifth
+ * (2026-10-31, per explicit request), past Material's four, because it is a subject of its own; the labels are
+ * short enough to fit. The screen opens on the tab used last.
  *
  * @param viewModel ViewModel containing all statistics state and business logic
  * @param onNavigateBack Callback when back navigation is requested
@@ -139,6 +140,7 @@ fun StatsScreen(
                     StatsTab.TIME_IN_RANGE -> TimeInRangeTab(state)
                     StatsTab.GLUCOSE       -> GlucoseTab(state, viewModel)
                     StatsTab.CYCLE         -> CycleTab(state, viewModel)
+                    StatsTab.SENSOR        -> SensorTab(state, viewModel)
                 }
             }
         }
@@ -159,6 +161,7 @@ private fun StatsTab.label(): String = when (this) {
     StatsTab.TIME_IN_RANGE -> stringResource(CoreUiStrings.tir)
     StatsTab.GLUCOSE       -> stringResource(CoreUiStrings.glucose)
     StatsTab.CYCLE         -> stringResource(UiStrings.stats_tab_cycle)
+    StatsTab.SENSOR        -> stringResource(UiStrings.stats_tab_sensor)
 }
 
 @Composable
@@ -241,6 +244,35 @@ private fun CycleTab(state: StatsUiState, viewModel: StatsViewModel) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+/** Glucose laid over each CGM sensor from its sensor change, or around the changes. */
+@Composable
+private fun SensorTab(state: StatsUiState, viewModel: StatsViewModel) {
+    StatsPage {
+        StatsSection(title = stringResource(UiStrings.sensor_cycle_title)) {
+            Crossfade(
+                targetState = state.sensorCycleLoading,
+                label = stringResource(CoreUiStrings.loading)
+            ) { isLoading ->
+                if (isLoading) {
+                    LoadingSection(
+                        title = stringResource(UiStrings.sensor_cycle_title),
+                        message = stringResource(UiStrings.calculation_in_progress)
+                    )
+                } else {
+                    SensorCycleCompose(
+                        data = state.sensorCycleData,
+                        sensorsAvailable = state.sensorsAvailable,
+                        offset = state.sensorCycleOffset,
+                        onOffsetChange = { viewModel.updateSensorCycleOffset(it) },
+                        formatDate = viewModel.dateUtil::dateAndTimeString,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
