@@ -455,6 +455,19 @@
     <string name="sensor_avg_after">Avg after</string>
     <string name="sensor_tir_before">TIR before</string>
     <string name="sensor_tir_after">TIR after</string>
+    <string name="stats_tab_pod" comment="Short tab label on the Statistics screen. The tab shows the insulin used by each pod, from one pod change to the next.">Pods</string>
+    <string name="pod_insulin_title">Insulin per pod</string>
+    <string name="pod_insulin_offset">Pods skipped</string>
+    <string name="pod_insulin_found" comment="%1$d=pods on the graph, %2$d=pod changes found">%1$d pods shown of %2$d changes, oldest first</string>
+    <string name="pod_insulin_averages" comment="%1$s=average insulin units of the finished pods shown, %2$s=average units a day of all pods shown">Average %1$s U per pod, %2$s U/day</string>
+    <string name="pod_insulin_no_data">No pod change found. A pod change is logged as a site change when a pod is activated, or with Fill in Actions.</string>
+    <string name="pod_insulin_chart_description">Insulin per day of each pod, oldest pod first, with the total of each pod under its bars</string>
+    <string name="pod_insulin_row" comment="One pod in the list under the graph. %1$s=date and time of the pod change, %2$s=hours the pod ran, %3$s=insulin units in total, %4$s=units a day">%1$s · %2$s h · %3$s U · %4$s U/day</string>
+    <string name="pod_insulin_in_use" comment="After the pod still running, in the list under the graph">in use</string>
+    <string name="pod_insulin_day_legend">Insulin per day</string>
+    <string name="pod_insulin_in_use_legend">Pod in use</string>
+    <string name="pod_insulin_secondary_legend" comment="Days on the pod graph whose insulin comes from the other phone's records on the second Nightscout. Marked * in the list.">From the other phone (*)</string>
+    <string name="pod_insulin_average_legend">Average per day</string>
 
     <string-array name="yes_no_positiveonly_negativeonly">
         <item>Both</item>

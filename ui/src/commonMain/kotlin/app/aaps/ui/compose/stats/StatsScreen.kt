@@ -55,8 +55,9 @@ import app.aaps.ui.compose.stats.viewmodels.StatsViewModel
 import kotlinx.coroutines.launch
 
 /**
- * Composable screen displaying statistics in five tabs: Insulin (TDD), Time in range (TIR and Dexcom TIR),
- * Glucose (AGP and the glucose pentagon), Cycle (the TDD cycle pattern) and Sensor (glucose over each CGM sensor).
+ * Composable screen displaying statistics in six tabs: Insulin (TDD), Time in range (TIR and Dexcom TIR),
+ * Glucose (AGP and the glucose pentagon), Cycle (the TDD cycle pattern), Sensor (glucose over each CGM sensor) and
+ * Pods (the insulin of each pod, 2026-11-01, per explicit request).
  *
  * Tabs, not one long list: the sections are read one at a time, and only the tab on screen is
  * calculated. Not one per section: the sections in one tab are read together. Sensor was added as a fifth
@@ -141,6 +142,7 @@ fun StatsScreen(
                     StatsTab.GLUCOSE       -> GlucoseTab(state, viewModel)
                     StatsTab.CYCLE         -> CycleTab(state, viewModel)
                     StatsTab.SENSOR        -> SensorTab(state, viewModel)
+                    StatsTab.POD           -> PodTab(state, viewModel)
                 }
             }
         }
@@ -162,6 +164,7 @@ private fun StatsTab.label(): String = when (this) {
     StatsTab.GLUCOSE       -> stringResource(CoreUiStrings.glucose)
     StatsTab.CYCLE         -> stringResource(UiStrings.stats_tab_cycle)
     StatsTab.SENSOR        -> stringResource(UiStrings.stats_tab_sensor)
+    StatsTab.POD           -> stringResource(UiStrings.stats_tab_pod)
 }
 
 @Composable
@@ -278,6 +281,44 @@ private fun SensorTab(state: StatsUiState, viewModel: StatsViewModel) {
                         formatDate = viewModel.dateUtil::dateAndTimeString,
                         modifier = Modifier.fillMaxWidth()
                     )
+                }
+            }
+        }
+    }
+}
+
+/** The insulin of each pod, day by day and in total, oldest pod first. */
+@Composable
+private fun PodTab(state: StatsUiState, viewModel: StatsViewModel) {
+    StatsPage {
+        StatsSection(title = stringResource(UiStrings.pod_insulin_title)) {
+            Crossfade(
+                targetState = state.podInsulinLoading,
+                label = stringResource(CoreUiStrings.loading)
+            ) { isLoading ->
+                if (isLoading) {
+                    LoadingSection(
+                        title = stringResource(UiStrings.pod_insulin_title),
+                        message = stringResource(UiStrings.calculation_in_progress)
+                    )
+                } else {
+                    Column {
+                        PodInsulinCompose(
+                            data = state.podInsulinData,
+                            podsAvailable = state.podsAvailable,
+                            offset = state.podInsulinOffset,
+                            onOffsetChange = { viewModel.updatePodInsulinOffset(it) },
+                            formatDate = viewModel.dateUtil::dateAndTimeString,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        val secondaryDays = state.podInsulinData?.secondaryDays ?: 0
+                        if (secondaryDays > 0)
+                            Text(
+                                text = stringResource(UiStrings.tdd_cycle_days_from_secondary_ns, secondaryDays),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                    }
                 }
             }
         }

@@ -38,11 +38,13 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.ui.compose.stats.AgpStatsData
 import app.aaps.ui.compose.stats.AgpStatsRange
 import app.aaps.ui.compose.stats.CycleSeries
+import app.aaps.ui.compose.stats.PodInsulinData
 import app.aaps.ui.compose.stats.SensorCycleData
 import app.aaps.ui.compose.stats.TddCyclePatternData
 import app.aaps.ui.compose.stats.TddStatsData
 import app.aaps.ui.compose.stats.TirStatsData
 import app.aaps.ui.compose.stats.calculateAgpStatsData
+import app.aaps.ui.compose.stats.calculatePodInsulinData
 import app.aaps.ui.compose.stats.calculateSensorCycleData
 import app.aaps.ui.compose.stats.distinctSensorStarts
 import app.aaps.ui.compose.stats.sensorCycleReadingSpan
@@ -83,6 +85,9 @@ private const val BG_RELOAD_DEBOUNCE_MS = 30_000L
 /** How far back the Sensor tab looks for sensor changes: enough for the offset to step back a few months. */
 private const val SENSOR_HISTORY_DAYS = 180L
 
+/** How far back the Pod tab looks for pod changes, as the Sensor tab does for sensors */
+private const val POD_HISTORY_DAYS = 180L
+
 /** The Cycle tab's reach: six 28-day cycles */
 private const val CYCLE_DAYS = 168L
 
@@ -115,6 +120,7 @@ class StatsViewModel(
     private var cycleLoadJob: Job? = null
     private var agpLoadJob: Job? = null
     private var sensorCycleLoadJob: Job? = null
+    private var podInsulinLoadJob: Job? = null
 
     /**
      * Held so a reload can replace the one before it instead of racing it.
@@ -136,7 +142,8 @@ class StatsViewModel(
             it.copy(
                 selectedTab = savedTab,
                 tddCycleOffset = preferences.get(IntNonKey.TddCycleOffset),
-                sensorCycleOffset = preferences.get(IntNonKey.SensorCycleOffset)
+                sensorCycleOffset = preferences.get(IntNonKey.SensorCycleOffset),
+                podInsulinOffset = preferences.get(IntNonKey.PodInsulinOffset)
             )
         }
         observeTddInputs()
@@ -192,6 +199,8 @@ class StatsViewModel(
             }
 
             StatsTab.SENSOR        -> loadSensorCycle()
+
+            StatsTab.POD           -> loadPodInsulin()
         }
     }
 
@@ -224,6 +233,8 @@ class StatsViewModel(
                 // Recalculated now only when on screen; otherwise when the Insulin tab is opened next time
                 if (uiState.value.selectedTab == StatsTab.INSULIN) loadTddStats()
                 else loadedTabs -= StatsTab.INSULIN
+                // The Pod tab is summed again the next time it is shown, not at every SMB while it is on screen
+                loadedTabs -= StatsTab.POD
             }
             .launchIn(viewModelScope)
     }
@@ -537,6 +548,46 @@ class StatsViewModel(
         }
     }
 
+    fun updatePodInsulinOffset(offset: Int) {
+        preferences.put(IntNonKey.PodInsulinOffset, offset)
+        _uiState.update { it.copy(podInsulinOffset = offset) }
+        loadPodInsulin()
+    }
+
+    /**
+     * Pod tab (2026-11-01, per explicit request): the site changes of the last [POD_HISTORY_DAYS] days, and the insulin
+     * of the pods shown at the current offset, day by day. Summed as the overview's "insulin since cannula change" is,
+     * so the pod in use matches it: whole days from the stored daily totals, the part days at both ends in 5-minute
+     * steps. Works the same on a client: the site changes, boluses and temporary basals all come over Nightscout.
+     */
+    private fun loadPodInsulin() {
+        podInsulinLoadJob?.cancel()
+        podInsulinLoadJob = viewModelScope.launch {
+            _uiState.update { it.copy(podInsulinLoading = it.podInsulinData == null) }
+            val offset = uiState.value.podInsulinOffset
+            val (data, available) = withContext<Pair<PodInsulinData?, Int>>(aapsIoDispatcher) {
+                val now = dateUtil.now()
+                val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(POD_HISTORY_DAYS).msecs(), TE.Type.CANNULA_CHANGE, true)
+                    .filter { it.isValid && it.timestamp <= now }
+                    .map { it.timestamp }
+                // Kept apart from the data, so the offset can still be stepped back when it is past the oldest pod
+                val available = distinctSensorStarts(starts).size
+                calculatePodInsulinData(
+                    starts = starts,
+                    now = now,
+                    offset = offset,
+                    dayStartOf = { MidnightTime.calc(it) },
+                    // Found as Android finds them, so a DST day is one day
+                    nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
+                    sumUnits = { from, to -> tddCalculator.calculateIntervalWithCachedDays(from, to, allowMissingData = true)?.totalAmount },
+                    // Days this phone has no records for, from the other phone on the second site: shown only, never stored
+                    secondaryUnits = { days -> secondaryTddSource.dailyTdds(days).mapValues { it.value.totalAmount } }
+                ) to available
+            }
+            _uiState.update { it.copy(podInsulinData = data, podsAvailable = available, podInsulinLoading = false) }
+        }
+    }
+
     fun showRecalculateDialog() {
         _uiState.update { it.copy(showRecalculateDialog = true) }
     }
@@ -564,7 +615,8 @@ enum class StatsTab {
     TIME_IN_RANGE,
     GLUCOSE,
     CYCLE,
-    SENSOR
+    SENSOR,
+    POD
 }
 
 /**
@@ -594,5 +646,9 @@ data class StatsUiState(
     val sensorsAvailable: Int = 0,
     val sensorCycleLoading: Boolean = true,
     val sensorCycleOffset: Int = 0,
+    val podInsulinData: PodInsulinData? = null,
+    val podsAvailable: Int = 0,
+    val podInsulinLoading: Boolean = true,
+    val podInsulinOffset: Int = 0,
     val showRecalculateDialog: Boolean = false
 )
