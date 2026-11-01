@@ -24,5 +24,19 @@ object FreshInstallDefaults {
             preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
         if (preferences.getIfExists(BooleanKey.ApsAutoIsfAutoCleanGraph) == null)
             preferences.put(BooleanKey.ApsAutoIsfAutoCleanGraph, false)
+        applyForkDefaults(preferences, config)
+    }
+
+    /**
+     * This fork's AutoISF settings ([forkAutoIsfDefaults], 2026-11-01, per explicit request), on clients and Virtual-pump
+     * masters only - a master with real pump drivers is set up by hand. On a client the master-owned settings are left
+     * out: the client takes them from its master, as a settings import does.
+     */
+    internal fun applyForkDefaults(preferences: Preferences, config: Config, defaults: List<ForkDefault> = forkAutoIsfDefaults) {
+        if (!config.AAPSCLIENT && config.PUMPDRIVERS) return
+        for (default in defaults) {
+            if (config.AAPSCLIENT && default.synced) continue
+            if (!default.isStored(preferences)) default.write(preferences)
+        }
     }
 }

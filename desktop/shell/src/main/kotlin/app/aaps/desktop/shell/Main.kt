@@ -51,6 +51,7 @@ import app.aaps.desktop.shell.secure.KeyVaultUnavailableException
 import app.aaps.implementation.logging.AAPSLoggerDesktop
 import app.aaps.desktop.shell.platform.chooseFolder
 import app.aaps.implementation.maintenance.DesktopFolders
+import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import app.aaps.shared.clientbindings.ClientViewModelFactory
 import app.aaps.shared.impl.sharedPreferences.StoreUnreadableException
@@ -215,6 +216,9 @@ private class DesktopStartup {
  */
 private fun startApp(storage: DesktopStorage.Opened): DesktopAppGraph {
     val graph = createGraphFactory<DesktopAppGraph.Factory>().create(CoreObjectsGraph, ClientGraphBindings)
+    // A new install starts with the fork's settings, as on Android and iOS (2026-11-01, per explicit request). Before the
+    // plugins start, so they read them.
+    FreshInstallDefaults.apply(graph.preferences, graph.config)
     startPlugins(graph)
     // Said in the app, not only in the log: the user is the one who can fix it, by installing a keyring.
     if (storage.fallbackReason != null)
