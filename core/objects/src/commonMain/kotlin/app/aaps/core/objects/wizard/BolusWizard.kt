@@ -158,6 +158,9 @@ class BolusWizard(
     var splitOverMax: Boolean = true
     /** Minutes between the usual split parts. */
     var splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES
+    /** The calculator's own dose when [useFixedInsulin] replaced it, else null. */
+    var suggestedInsulin: Double? = null
+        private set
 
     /** Immutable snapshot of the computed result, built at the end of [doCalc] (additive — the legacy
      *  fields above stay). The shared bolus path consumes this instead of reaching into individual fields. */
@@ -949,6 +952,23 @@ class BolusWizard(
                 }
             }
         }
+    }
+
+    /**
+     * Insulin-only mode of the calculator (2026-11-01): the dose the user typed is given, not the suggestion.
+     * Call after [doCalc], with max bolus set as for the calculation. The suggestion stays in [suggestedInsulin],
+     * and a calculation result made before this call keeps the calculator's own figures. Max bolus and the split
+     * over max bolus apply to the typed dose. The held walking-soon part and the rapid-fall split do not.
+     */
+    fun useFixedInsulin(units: Double) {
+        suggestedInsulin = calculatedTotalInsulin
+        calculatedTotalInsulin = Round.roundTo(units.coerceAtLeast(0.0), ch.bolusStep(units.coerceAtLeast(0.0)))
+        unclampedCalculatedInsulin = calculatedTotalInsulin
+        carbsEquivalent = 0.0
+        walkingSoonHeldUnits = 0.0
+        rapidFallForSplit = false
+        insulinAfterConstraints = constraintChecker.applyBolusConstraints(ConstraintObject(calculatedTotalInsulin, aapsLogger)).value()
+        warsawIobBaseline = (insulinFromBolusIOB + insulinFromBasalIOB).coerceAtLeast(0.0) + insulinAfterConstraints
     }
 
     fun createBolusCalculatorResult(

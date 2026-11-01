@@ -436,18 +436,31 @@ class MasterActionExecutorImpl(
         if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
         val percentForCalc = if (caution) min(inputs.percentage, WizardDropTrendCaution.scaledWizPercent(inputs.percentage))
         else inputs.percentage
+        var suggestedBcr: BCR? = null
         val wizard = try {
             bolusWizardProvider().doCalc(
                 profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, percentForCalc,
                 inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
                 protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
                 walkingSoon = inputs.walkingSoon,
-            )
+            ).also { w ->
+                // Insulin-only mode (2026-11-01): the typed dose replaces the suggestion, under the same max bolus.
+                // The calculation saved with the bolus is made first, so it keeps what the calculator suggested.
+                inputs.fixedInsulin?.let { fixed ->
+                    suggestedBcr = w.createBolusCalculatorResult(
+                        eCarbsGrams = inputs.eCarbsGrams,
+                        eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
+                        eCarbsDurationHours = inputs.eCarbsDurationHours,
+                    )
+                    w.useFixedInsulin(fixed)
+                }
+            }
         } finally {
             if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
         }
         wizard.warsawRetryLater = inputs.retryFpuLater
-        if (inputs.giveRestLater && inputs.percentage > percentForCalc) {
+        // Nothing is added later to a typed dose: the user chose the amount
+        if (inputs.fixedInsulin == null && inputs.giveRestLater && inputs.percentage > percentForCalc) {
             val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
             wizard.addLaterUnits(scaled * (inputs.percentage - percentForCalc) / 100.0)
         }
@@ -479,7 +492,7 @@ class MasterActionExecutorImpl(
             PendingBolus(
                 baseInsulin,
                 wizard.carbs,
-                wizard.createBolusCalculatorResult(
+                suggestedBcr?.let { bcr -> bcr.copy(note = directInsulinNote(wizard, bcr.note)) } ?: wizard.createBolusCalculatorResult(
                     eCarbsGrams = inputs.eCarbsGrams,
                     eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
                     eCarbsDurationHours = inputs.eCarbsDurationHours,
@@ -505,7 +518,9 @@ class MasterActionExecutorImpl(
                 smbPause = pause.takeIf { givesInsulin }
             )
         )
-        val advisorApplies = wizard.needsBolusAdvisor()
+        // A typed dose is given as it is: no "correct now, eat later" choice
+        val advisorApplies = inputs.fixedInsulin == null && wizard.needsBolusAdvisor()
+        val directLine = wizard.suggestedInsulin?.let { listOf(ConfirmationLine(ConfirmationRole.INFO, directInsulinText(wizard))) }.orEmpty()
         return MasterActionExecutor.PrepareResult.Preview(
             insulin = insulinAfterConstraints,
             carbs = wizard.carbs,
@@ -513,7 +528,7 @@ class MasterActionExecutorImpl(
             // Pass the eCarbs split (food type → extended carbs) so the delivery confirmation shows the eCarbs line too —
             // the record-only path already does this via getConfirmationSummary(). Advisor = correction-only ("eat later"),
             // so eCarbs don't apply there.
-            lines = wizard.buildConfirmationLines(
+            lines = directLine + wizard.buildConfirmationLines(
                 advisor = false,
                 eCarbsGrams = inputs.eCarbsGrams,
                 eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
@@ -533,6 +548,13 @@ class MasterActionExecutorImpl(
             ),
         )
     }
+
+    /** "Direct 2.00 U, calculator suggested 1.40 U" for a dose typed in the calculator's insulin-only mode. */
+    private fun directInsulinText(wizard: BolusWizard): String =
+        rh.gs(InterfacesStrings.wizard_direct_insulin, wizard.calculatedTotalInsulin, wizard.suggestedInsulin ?: 0.0)
+
+    private fun directInsulinNote(wizard: BolusWizard, note: String): String =
+        if (note.isEmpty()) directInsulinText(wizard) else rh.gs(InterfacesStrings.wizard_notes_join, directInsulinText(wizard), note)
 
     override suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller?): MasterActionExecutor.PrepareResult {
         val bolus = actions.filterIsInstance<BatchAction.Bolus>().firstOrNull()

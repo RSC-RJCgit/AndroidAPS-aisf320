@@ -212,6 +212,7 @@ fun WizardDialogScreen(
         onFatChange = { viewModel.updateFat(it.toInt()) },
         onWarsawDurationChange = { viewModel.updateWarsawDuration(it) },
         onMaxBolusChange = { viewModel.updateMaxBolus(it) },
+        onFixedInsulinChange = { viewModel.updateFixedInsulin(it) },
         onAddCarbs = viewModel::addCarbs,
         onCarbsTypeChange = viewModel::updateCarbsType,
         onPercentageChange = { viewModel.updatePercentage(it.toInt()) },
@@ -252,6 +253,7 @@ internal fun WizardDialogContent(
     onFatChange: (Double) -> Unit = {},
     onWarsawDurationChange: (Double) -> Unit = {},
     onMaxBolusChange: (Double) -> Unit = {},
+    onFixedInsulinChange: (Double) -> Unit = {},
     onAddCarbs: (Int) -> Unit,
     onCarbsTypeChange: (CarbsType) -> Unit,
     onPercentageChange: (Double) -> Unit,
@@ -279,12 +281,19 @@ internal fun WizardDialogContent(
     onSettingsClick: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
+    // Insulin-only mode (2026-11-01): the boxes keep their values, only max bolus, its split, BG and carbs change
+    val locked = uiState.insulinOnly
 
     Scaffold(
         topBar = {
             Column {
                 AapsTopAppBar(
-                    title = { Text((stringResourceOrNull(ElementType.BOLUS_WIZARD.label()) ?: "")) },
+                    title = {
+                        Text(
+                            if (locked) stringResource(UiStrings.wizard_insulin_only_title)
+                            else stringResourceOrNull(ElementType.BOLUS_WIZARD.label()) ?: ""
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
@@ -331,10 +340,10 @@ internal fun WizardDialogContent(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                if (uiState.totalInsulin > 0.0) {
-                    Text(stringResource(InterfacesStrings.format_insulin_units, uiState.totalInsulin))
+                if (uiState.deliveredInsulin > 0.0) {
+                    Text(stringResource(InterfacesStrings.format_insulin_units, uiState.deliveredInsulin))
                 }
-                if (uiState.totalInsulin > 0.0 && (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0)) {
+                if (uiState.deliveredInsulin > 0.0 && (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0)) {
                     Spacer(modifier = Modifier.width(4.dp))
                 }
                 if (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0) {
@@ -465,6 +474,7 @@ internal fun WizardDialogContent(
                         ) {
                             // BG
                             SegmentedButton(
+                                enabled = !locked,
                                 checked = uiState.useBg,
                                 onCheckedChange = onBgToggle,
                                 shape = SegmentedButtonDefaults.itemShape(0, 5),
@@ -481,7 +491,7 @@ internal fun WizardDialogContent(
                                 checked = uiState.useTT && uiState.hasTempTarget && uiState.useBg,
                                 onCheckedChange = onTTToggle,
                                 shape = SegmentedButtonDefaults.itemShape(1, 5),
-                                enabled = uiState.hasTempTarget && uiState.useBg,
+                                enabled = uiState.hasTempTarget && uiState.useBg && !locked,
                                 icon = {}
                             ) {
                                 Icon(
@@ -492,6 +502,7 @@ internal fun WizardDialogContent(
                             }
                             // Trend
                             SegmentedButton(
+                                enabled = !locked,
                                 checked = uiState.useTrend,
                                 onCheckedChange = onTrendToggle,
                                 shape = SegmentedButtonDefaults.itemShape(2, 5),
@@ -505,6 +516,7 @@ internal fun WizardDialogContent(
                             }
                             // IOB
                             SegmentedButton(
+                                enabled = !locked,
                                 checked = uiState.useIOB,
                                 onCheckedChange = onIOBToggle,
                                 shape = SegmentedButtonDefaults.itemShape(3, 5),
@@ -518,6 +530,7 @@ internal fun WizardDialogContent(
                             }
                             // COB
                             SegmentedButton(
+                                enabled = !locked,
                                 checked = uiState.useCOB,
                                 onCheckedChange = onCOBToggle,
                                 shape = SegmentedButtonDefaults.itemShape(4, 5),
@@ -562,6 +575,7 @@ internal fun WizardDialogContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(
+                            enabled = !locked,
                             checked = uiState.walkingSoon,
                             onCheckedChange = onWalkingSoonToggle
                         )
@@ -703,6 +717,23 @@ internal fun WizardDialogContent(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     // Carbs Input
                     Column(modifier = itemModifier) {
+                        uiState.fixedInsulin?.let { fixed ->
+                            NumberInputRow(
+                                labelRef = UiStrings.wizard_insulin_to_give,
+                                value = fixed,
+                                onValueChange = onFixedInsulinChange,
+                                valueRange = 0.0..60.0,
+                                step = if (uiState.bolusStep > 0.0) uiState.bolusStep else 0.05,
+                                unitLabel = TextRef.Literal("U"),
+                                decimalPlaces = 2
+                            )
+                            if (uiState.hasResult)
+                                Text(
+                                    text = stringResource(InterfacesStrings.wizard_direct_insulin, fixed, uiState.totalInsulin),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                        }
                         NumberInputRow(
                             labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
                             value = uiState.maxBolus,
@@ -713,7 +744,7 @@ internal fun WizardDialogContent(
                             decimalPlaces = 2
                         )
                         // v3's split box (2026-10-22): shown when the dose is over max bolus
-                        if (uiState.totalInsulin > uiState.maxBolus + 0.005) {
+                        if (uiState.deliveredInsulin > uiState.maxBolus + 0.005) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
@@ -754,6 +785,7 @@ internal fun WizardDialogContent(
                         )
                         NumberInputRow(
                             labelRef = InterfacesStrings.wizard_protein,
+                            enabled = !locked,
                             value = uiState.protein.toDouble(),
                             onValueChange = onProteinChange,
                             valueRange = 0.0..250.0,
@@ -762,6 +794,7 @@ internal fun WizardDialogContent(
                         )
                         NumberInputRow(
                             labelRef = InterfacesStrings.wizard_fat,
+                            enabled = !locked,
                             value = uiState.fat.toDouble(),
                             onValueChange = onFatChange,
                             valueRange = 0.0..250.0,
@@ -770,6 +803,7 @@ internal fun WizardDialogContent(
                         )
                         NumberInputRow(
                             labelRef = InterfacesStrings.wizard_fpu_duration,
+                            enabled = !locked,
                             value = uiState.warsawDurationHours,
                             onValueChange = onWarsawDurationChange,
                             valueRange = 0.0..24.0,
@@ -784,6 +818,7 @@ internal fun WizardDialogContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
+                                enabled = !locked,
                                 checked = uiState.fpuInstead,
                                 onCheckedChange = onFpuInsteadToggle
                             )
@@ -797,6 +832,7 @@ internal fun WizardDialogContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
+                                enabled = !locked,
                                 checked = uiState.giveRestLater,
                                 onCheckedChange = onGiveRestLaterToggle
                             )
@@ -816,6 +852,7 @@ internal fun WizardDialogContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
+                                enabled = !locked,
                                 checked = uiState.delayFpuInsteadOfCancel,
                                 onCheckedChange = onDelayFpuInsteadOfCancelToggle
                             )
@@ -835,6 +872,7 @@ internal fun WizardDialogContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
+                                enabled = !locked,
                                 checked = uiState.unreliableSmb,
                                 onCheckedChange = onUnreliableSmbToggle
                             )
@@ -848,6 +886,7 @@ internal fun WizardDialogContent(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(
+                                enabled = !locked,
                                 checked = uiState.smallMeal,
                                 onCheckedChange = onSmallMealToggle
                             )
@@ -873,6 +912,7 @@ internal fun WizardDialogContent(
                     // opens the field for a value that would take too many steps.
                     ExpandableNumberInputRow(
                         labelRef = CoreUiStrings.wizard_correction,
+                        enabled = !locked,
                         value = uiState.directCorrection,
                         onValueChange = onDirectCorrectionChange,
                         valueRange = -uiState.maxBolus..uiState.maxBolus,
@@ -941,6 +981,7 @@ internal fun WizardDialogContent(
                     val percentageExpandRequester = rememberBringIntoViewOnExpand(percentageExpanded)
                     ExpandableNumberInputRow(
                         labelRef = CoreUiStrings.wizard_use_percentage,
+                        enabled = !locked,
                         value = uiState.percentage.toDouble(),
                         onValueChange = onPercentageChange,
                         valueRange = Constants.WIZARD_PERCENTAGE_RANGE,

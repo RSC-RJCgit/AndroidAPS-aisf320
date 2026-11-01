@@ -102,8 +102,20 @@ data class WizardDialogUiState(
     /** An SMB is being delivered on this phone (always false on a client: its master decides). */
     val smbBeingDelivered: Boolean = false,
     /** The user has changed the BG field. From then on it keeps their value and no longer follows new readings. */
-    val bgEdited: Boolean = false
+    val bgEdited: Boolean = false,
+    /**
+     * Insulin-only mode (2026-11-01), opened from the Insulin dialog: this typed dose is given, and the calculation
+     * only shows what the calculator suggests. Null is the usual calculator.
+     */
+    val fixedInsulin: Double? = null
 )
+
+val WizardDialogUiState.insulinOnly: Boolean
+    get() = fixedInsulin != null
+
+/** The insulin OK gives: the typed dose in insulin-only mode, else the calculated one. */
+val WizardDialogUiState.deliveredInsulin: Double
+    get() = fixedInsulin ?: totalInsulin
 
 /**
  * A new sensor reading came in. The BG field follows it until the user has edited the field: the BG is sent to the
@@ -117,7 +129,7 @@ fun WizardDialogUiState.withNewReading(bg: Double, ageMinutes: Int): WizardDialo
  * the dose after the SMB has finished, with the SMB in IOB.
  */
 val WizardDialogUiState.waitsForSmb: Boolean
-    get() = smbBeingDelivered && totalInsulin > 0.0 && !forcedRecordOnly
+    get() = smbBeingDelivered && deliveredInsulin > 0.0 && !forcedRecordOnly
 
 val WizardDialogUiState.isMgdl: Boolean
     get() = units == GlucoseUnit.MGDL

@@ -389,7 +389,7 @@ class ClientControlRoundTrip(
                         eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours, profileName, walkingSoon,
                         protein = protein, fat = fat, warsawDurationHours = warsawDurationHours, maxBolus = maxBolus,
                         giveRestLater = giveRestLater, retryFpuLater = retryFpuLater, splitOverMax = splitOverMax,
-                        splitIntervalMinutes = splitIntervalMinutes,
+                        splitIntervalMinutes = splitIntervalMinutes, fixedInsulin = fixedInsulin,
                     )
                 }
 

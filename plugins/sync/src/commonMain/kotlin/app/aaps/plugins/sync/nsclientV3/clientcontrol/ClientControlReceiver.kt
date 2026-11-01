@@ -803,7 +803,7 @@ class ClientControlReceiver(
             profileName = message.profileName, source = Sources.NSClient, walkingSoon = message.walkingSoon,
             protein = message.protein, fat = message.fat, warsawDurationHours = message.warsawDurationHours, maxBolus = message.maxBolus,
             giveRestLater = message.giveRestLater, retryFpuLater = message.retryFpuLater, splitOverMax = message.splitOverMax,
-            splitIntervalMinutes = message.splitIntervalMinutes,
+            splitIntervalMinutes = message.splitIntervalMinutes, fixedInsulin = message.fixedInsulin,
         )
         return when (val result = masterActionExecutor.prepareWizard(inputs, entry.caller)) {
             is MasterActionExecutor.PrepareResult.Error   -> {

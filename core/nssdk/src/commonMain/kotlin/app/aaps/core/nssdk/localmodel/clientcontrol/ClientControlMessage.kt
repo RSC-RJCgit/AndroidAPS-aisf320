@@ -175,6 +175,8 @@ sealed class ClientControlMessage {
         val retryFpuLater: Boolean = true,
         val splitOverMax: Boolean = true,
         val splitIntervalMinutes: Int = 7,
+        // 2026-11-01: insulin-only mode of the calculator. Null (an older client) is the usual calculator.
+        val fixedInsulin: Double? = null,
     ) : ClientControlMessage()
 
     /**

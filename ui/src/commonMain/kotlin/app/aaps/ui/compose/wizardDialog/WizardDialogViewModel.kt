@@ -35,6 +35,7 @@ import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
@@ -195,6 +196,9 @@ class WizardDialogViewModel(
     private suspend fun initialize() {
         val initialCarbs = savedStateHandle.get<String>("carbs")?.toIntOrNull()
         val initialNotes = savedStateHandle.get<String>("notes")
+        // Insulin-only mode: the dose typed in the Insulin dialog (2026-11-01)
+        val fixedInsulin = savedStateHandle.get<String>("insulin")?.toDoubleOrNull()?.takeIf { it > 0.0 }
+        if (fixedInsulin != null) walkingSoonTouched = true
 
         val profileStore = profileRepository.profile.value ?: return
 
@@ -260,8 +264,11 @@ class WizardDialogViewModel(
                 useTrend = useTrend,
                 useIOB = true,
                 useCOB = useCOB,
-                fpuInstead = defaultAutoFpu,
-                smallMeal = defaultSmallMeal,
+                // Insulin-only mode: the meal extras and the later parts are off, only max bolus and its split apply
+                fpuInstead = defaultAutoFpu && fixedInsulin == null,
+                smallMeal = defaultSmallMeal && fixedInsulin == null,
+                giveRestLater = fixedInsulin == null,
+                fixedInsulin = fixedInsulin,
                 splitOverMax = preferences.get(BooleanKey.WizardSplitOverMaxBolus),
                 splitIntervalMinutes = preferences.get(IntKey.WizardSplitIntervalMinutes),
                 alarmChecked = false,
@@ -290,7 +297,7 @@ class WizardDialogViewModel(
 
         // Unreliable SMBs as a starting state goes through the same path as ticking it by hand (it also lifts the max
         // bolus back to the safety limit and sets the unreliable ratios), then recalculates.
-        if (defaultUnreliable) enableMealExtra(unreliable = true) else recalculate()
+        if (defaultUnreliable && fixedInsulin == null) enableMealExtra(unreliable = true) else recalculate()
     }
 
     // --- Input update methods ---
@@ -304,6 +311,12 @@ class WizardDialogViewModel(
         recalculate()
     }
 
+    /** The dose to give in insulin-only mode. The calculation does not change with it. */
+    fun updateFixedInsulin(value: Double) {
+        if (!uiState.value.insulinOnly) return
+        _uiState.update { it.copy(fixedInsulin = value.coerceIn(0.0, 60.0)) }
+    }
+
     fun updateCarbs(value: Int) {
         val state = uiState.value
         val clamped = value.coerceIn(0, state.maxCarbs)
@@ -312,10 +325,12 @@ class WizardDialogViewModel(
     }
 
     fun toggleFpuInstead(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         if (checked) enableMealExtra(unreliable = false) else disableMealExtra()
     }
 
     fun toggleDelayFpuInsteadOfCancel(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(delayFpuInsteadOfCancel = checked) }
         recalculate()
     }
@@ -329,15 +344,18 @@ class WizardDialogViewModel(
     }
 
     fun toggleGiveRestLater(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(giveRestLater = checked) }
         recalculate()
     }
 
     fun toggleUnreliableSmb(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         if (checked) enableMealExtra(unreliable = true) else disableMealExtra()
     }
 
     fun toggleSmallMeal(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(smallMeal = checked) }
         recalculate()
     }
@@ -379,16 +397,19 @@ class WizardDialogViewModel(
     }
 
     fun updateProtein(value: Int) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(protein = value.coerceIn(0, 250)) }
         recalculate()
     }
 
     fun updateFat(value: Int) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(fat = value.coerceIn(0, 250)) }
         recalculate()
     }
 
     fun updateWarsawDuration(value: Double) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(warsawDurationHours = value.coerceIn(0.0, 24.0)) }
         recalculate()
     }
@@ -425,11 +446,13 @@ class WizardDialogViewModel(
     }
 
     fun updatePercentage(value: Int) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(percentage = value) }
         recalculate()
     }
 
     fun updateDirectCorrection(value: Double) {
+        if (uiState.value.insulinOnly) return
         val state = uiState.value
         val clamped = value.coerceIn(-state.maxBolus, state.maxBolus)
         _uiState.update { it.copy(directCorrection = clamped) }
@@ -464,6 +487,7 @@ class WizardDialogViewModel(
     // --- Toggle methods ---
 
     fun toggleBg(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update {
             it.copy(
                 useBg = checked,
@@ -475,17 +499,20 @@ class WizardDialogViewModel(
     }
 
     fun toggleTT(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(useTT = checked) }
         recalculate()
     }
 
     fun toggleTrend(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(useTrend = checked) }
         savePreferences()
         recalculate()
     }
 
     fun toggleIOB(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update {
             it.copy(
                 useIOB = checked,
@@ -498,12 +525,14 @@ class WizardDialogViewModel(
     }
 
     fun toggleWalkingSoon(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         walkingSoonTouched = true
         _uiState.update { it.copy(walkingSoon = checked) }
         recalculate()
     }
 
     fun toggleCOB(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update {
             it.copy(
                 useCOB = checked,
@@ -516,6 +545,7 @@ class WizardDialogViewModel(
     }
 
     fun toggleAlarm(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(alarmChecked = checked) }
         recalculate()
     }
@@ -713,7 +743,7 @@ class WizardDialogViewModel(
                 targetBGLow = 0.0, // not exposed directly
                 targetBGHigh = 0.0,
                 hasResult = true,
-                okVisible = w.data.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0 || w.warsawPlan != null,
+                okVisible = (it.fixedInsulin ?: w.data.calculatedTotalInsulin) > 0.0 || carbsAfterConstraint > 0 || w.warsawPlan != null,
                 hasTempTarget = hasTT,
                 effectiveCarbs = effectiveCarbs,
                 eCarbs = eCarbs,
@@ -726,7 +756,7 @@ class WizardDialogViewModel(
     // --- Action methods ---
 
     fun hasAction(): Boolean =
-        wizard?.let { it.insulinAfterConstraints > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 || it.warsawPlan != null } ?: false
+        wizard?.let { (uiState.value.fixedInsulin ?: it.insulinAfterConstraints) > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 || it.warsawPlan != null } ?: false
 
     fun getConfirmationSummary(): List<ConfirmationLine> {
         val state = uiState.value
@@ -797,6 +827,7 @@ class WizardDialogViewModel(
             walkingSoon = state.walkingSoon,
             giveRestLater = state.giveRestLater, retryFpuLater = state.delayFpuInsteadOfCancel,
             splitOverMax = state.splitOverMax, splitIntervalMinutes = state.splitIntervalMinutes,
+            fixedInsulin = state.fixedInsulin?.let { Round.floorTo(it, ch.bolusStep(it)) },
         )
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         // Counted from before the prepare, so on a client the confirmation closes before the master's pause ends.

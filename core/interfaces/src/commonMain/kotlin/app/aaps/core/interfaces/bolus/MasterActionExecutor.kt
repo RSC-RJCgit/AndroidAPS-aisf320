@@ -288,5 +288,7 @@ interface MasterActionExecutor {
         val retryFpuLater: Boolean = true,
         val splitOverMax: Boolean = true,
         val splitIntervalMinutes: Int = 7,
+        // 2026-11-01: insulin-only mode. The dose the user typed is given; the calculation is still made and saved.
+        val fixedInsulin: Double? = null,
     )
 }

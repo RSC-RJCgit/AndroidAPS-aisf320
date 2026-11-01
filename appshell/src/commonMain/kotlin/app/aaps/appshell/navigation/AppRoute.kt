@@ -84,12 +84,14 @@ sealed class AppRoute(val route: String) {
     data object TreatmentDialog : AppRoute("treatment_dialog")
     data object TempBasalDialog : AppRoute("temp_basal_dialog")
     data object ExtendedBolusDialog : AppRoute("extended_bolus_dialog")
-    data object WizardDialog : AppRoute("wizard_dialog?carbs={carbs}&notes={notes}") {
+    data object WizardDialog : AppRoute("wizard_dialog?carbs={carbs}&notes={notes}&insulin={insulin}") {
 
-        fun createRoute(carbs: Int? = null, notes: String? = null): String {
+        /** [insulin]: the calculator's insulin-only mode, with this dose from the Insulin dialog (2026-11-01). */
+        fun createRoute(carbs: Int? = null, notes: String? = null, insulin: Double? = null): String {
             val params = buildList {
                 carbs?.let { add("carbs=$it") }
                 notes?.let { add("notes=$it") }
+                insulin?.let { add("insulin=$it") }
             }
             return if (params.isEmpty()) "wizard_dialog"
             else "wizard_dialog?${params.joinToString("&")}"
