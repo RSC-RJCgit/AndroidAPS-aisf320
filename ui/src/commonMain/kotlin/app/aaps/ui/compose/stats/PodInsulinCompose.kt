@@ -34,7 +34,6 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalDecimalFormatter
-import app.aaps.core.ui.compose.NumberInputRow
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -72,13 +71,11 @@ fun PodInsulinCompose(
         }
 
         // Offset in whole pods: 1 shows the pods before the newest, and so on
-        NumberInputRow(
-            labelRef = UiStrings.pod_insulin_offset,
-            value = offset.toDouble(),
-            onValueChange = { onOffsetChange(it.toInt()) },
-            valueRange = 0.0..(podsAvailable - 1).coerceAtLeast(1).toDouble(),
-            step = 1.0,
-            modifier = Modifier.fillMaxWidth()
+        StatsOffsetStepper(
+            label = UiStrings.pod_insulin_offset,
+            value = offset,
+            max = (podsAvailable - 1).coerceAtLeast(1),
+            onValueChange = onOffsetChange
         )
     }
 }

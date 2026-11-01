@@ -1,6 +1,7 @@
 package app.aaps.ui.compose.stats
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -416,9 +419,13 @@ private fun GlucoseTab(state: StatsUiState, viewModel: StatsViewModel) {
 /** One tab: its sections, scrolling on their own. */
 @Composable
 private fun StatsPage(content: @Composable ColumnScope.() -> Unit) {
+    // A tap anywhere outside a field closes the keyboard (2026-11-01, per explicit request): the iOS number pad has no
+    // Done key, so a number field left the keyboard open with no way to close it
+    val focusManager = LocalFocusManager.current
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .pointerInput(Unit) { detectTapGestures { focusManager.clearFocus() } }
             .verticalScroll(rememberScrollState())
             .padding(AapsSpacing.medium),
         verticalArrangement = Arrangement.spacedBy(AapsSpacing.medium),
