@@ -427,8 +427,8 @@
     <string name="cleaned_tdd">Cleaned TDD</string>
     <string name="cleaned_tdd_explanation">TDD minus insulin for carbs.</string>
     <string name="built_in_settings_title">Built-in settings</string>
-    <string name="built_in_settings_desc">Apply this fork's built-in settings again</string>
-    <string name="built_in_settings_question" comment="Asked at start until answered, and from Maintenance. OK applies the settings, Cancel keeps everything as it is.">Use this fork's built-in settings? They replace about 60 AutoISF settings, simple mode (off), the overview graph heights, the objectives bypass (on) and an empty instance name. Nightscout addresses, tokens and the pump stay as they are. Cancel keeps everything; they can be applied later from Maintenance.</string>
+    <string name="built_in_settings_desc">Apply this fork\'s built-in settings again</string>
+    <string name="built_in_settings_question" comment="Asked at start until answered, and from Maintenance. OK applies the settings, Cancel keeps everything as it is.">Use this fork\'s built-in settings? They replace about 60 AutoISF settings, simple mode (off), the overview graph heights, the objectives bypass (on) and an empty instance name. Nightscout addresses, tokens and the pump stay as they are. Cancel keeps everything; they can be applied later from Maintenance.</string>
     <string name="built_in_settings_password_prompt">Enter the master password to replace the settings</string>
     <string name="built_in_settings_set_password" comment="Shown when no master password is set yet. Cancel means later: the settings are still applied, and export waits until a password is set.">Set a master password (Cancel: later)</string>
     <string name="built_in_settings_password_mismatch">The two passwords differ. Set a master password (Cancel: later)</string>
