@@ -59,12 +59,13 @@ class DexcomTirImpl : DexcomTIR {
         }
     }
 
-    private fun veryLowPct() = if (count > 0) veryLow.toDouble() / count * 100.0 else 0.0
-    private fun lowPct() = if (count > 0) low.toDouble() / count * 100.0 else 0.0
-    private fun inRangePct() = if (count > 0) 100 - veryLowPct() - lowPct() - highPct() - veryHighPct() else 0.0
-    private fun highPct() = if (count > 0) high.toDouble() / count * 100.0 else 0.0
-    private fun veryHighPct() = if (count > 0) veryHigh.toDouble() / count * 100.0 else 0.0
-    private fun mean() = sum / count
+    override fun veryLowPct() = if (count > 0) veryLow.toDouble() / count * 100.0 else 0.0
+    override fun lowPct() = if (count > 0) low.toDouble() / count * 100.0 else 0.0
+    override fun inRangePct() = if (count > 0) 100 - veryLowPct() - lowPct() - highPct() - veryHighPct() else 0.0
+    override fun highPct() = if (count > 0) high.toDouble() / count * 100.0 else 0.0
+    override fun veryHighPct() = if (count > 0) veryHigh.toDouble() / count * 100.0 else 0.0
+    override fun mean() = if (count > 0) sum / count else 0.0
+    override fun count() = count
 
     override fun calculateSD(): Double {
         if (count == 0) return 0.0
