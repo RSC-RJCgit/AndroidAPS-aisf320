@@ -32,6 +32,7 @@ import app.aaps.ui.activities.QuickWizardListActivity
 import app.aaps.ui.activities.TDDStatsActivity
 import app.aaps.ui.dialogs.BolusProgressDialog
 import app.aaps.ui.dialogs.AutoISFHistoryDialog
+import app.aaps.ui.dialogs.OverviewStatsDialog
 import app.aaps.ui.dialogs.CalibrationDialog
 import app.aaps.ui.dialogs.CarbsDialog
 import app.aaps.ui.dialogs.CareDialog
@@ -161,6 +162,11 @@ class UiInteractionImpl @Inject constructor(
     override fun runAutoISFHistoryDialog(fragmentManager: FragmentManager) {
         AutoISFHistoryDialog()
             .show(fragmentManager, "AutoISFHistoryDialog")
+    }
+
+    override fun runOverviewStatsDialog(fragmentManager: FragmentManager) {
+        OverviewStatsDialog()
+            .show(fragmentManager, "OverviewStatsDialog")
     }
 
     override fun runCarbsDialog(fragmentManager: FragmentManager) {

@@ -1462,6 +1462,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             binding.pump.text = rh.gs(R.string.client_settings1_chip)
             binding.pump.setOnClickListener { showTtCodesListDialog() }
             binding.aiv.setOnClickListener { openAutoIsfHistory() }
+            binding.statsDot.setOnClickListener { uiInteraction.runOverviewStatsDialog(childFragmentManager) }
             binding.openaps.text = if (config.AAPSCLIENT) processedDeviceStatusData.openApsStatus else {
                 val age = loop.lastRun?.lastAPSRun?.takeIf { it > 0L }?.let { dateUtil.minAgo(rh, it) }.orEmpty()
                 listOf(rh.gs(R.string.client_oaps_chip), age).filter { it.isNotBlank() }.joinToString(" ")

@@ -68,6 +68,9 @@ interface UiInteraction {
     fun runInsulinDialog(fragmentManager: FragmentManager)
     fun runCalibrationDialog(fragmentManager: FragmentManager)
     fun runAutoISFHistoryDialog(fragmentManager: FragmentManager)
+
+    /** The glucose statistics summary behind the overview's yellow dot (2026-11-01) */
+    fun runOverviewStatsDialog(fragmentManager: FragmentManager)
     fun runCarbsDialog(fragmentManager: FragmentManager)
     fun runTempTargetDialog(fragmentManager: FragmentManager)
     fun runExtendedBolusDialog(fragmentManager: FragmentManager)

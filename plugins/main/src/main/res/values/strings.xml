@@ -423,6 +423,7 @@
 
     <string name="client_settings1_chip">Set1</string>
     <string name="client_aiv_chip" translatable="false">AIV</string>
+    <string name="overview_stats_dot">Statistics</string>
     <string name="client_oaps_chip" translatable="false">oAPS</string>
     <string name="client_settings2_chip">Set2</string>
     <string name="client_settings3_chip">Set3</string>

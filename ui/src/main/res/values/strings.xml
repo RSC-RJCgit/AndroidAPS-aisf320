@@ -23,6 +23,14 @@
     <string name="do_you_want_reset_stats">Do you want to reset activity stats?</string>
     <string name="do_you_want_recalculate_tdd_stats">Do you want to recalculate TDD stats?</string>
     <string name="statistics">Statistics</string>
+    <string name="overview_stats_days" comment="%1$d=number of days, a button in the overview statistics summary">%1$d days</string>
+    <string name="overview_stats_no_data">No glucose readings in this period</string>
+    <string name="overview_stats_low">Low</string>
+    <string name="overview_stats_in_range">In range</string>
+    <string name="overview_stats_high">High</string>
+    <string name="overview_stats_gmi" translatable="false">GMI</string>
+    <string name="overview_stats_cv" translatable="false">CV</string>
+    <string name="overview_stats_range" comment="%1$s=low limit, %2$s=high limit, %3$s=units">Range %1$s - %2$s %3$s</string>
     <string name="calculation_in_progress">Calculation in progress</string>
     <string name="invalid_age">Invalid age entry</string>
     <string name="invalid_weight">Invalid weight entry</string>

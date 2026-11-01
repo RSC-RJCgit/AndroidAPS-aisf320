@@ -188,6 +188,17 @@
                         android:text="@string/client_aiv_chip"
                         android:textSize="16sp" />
 
+                    <!-- The glucose statistics, a round yellow mark as in v4 (2026-11-01, per explicit request) -->
+                    <View
+                        android:id="@+id/stats_dot"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
+                        android:layout_gravity="center_vertical"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp"
+                        android:background="@drawable/overview_stats_dot"
+                        android:contentDescription="@string/overview_stats_dot" />
+
                     <TextView
                         android:id="@+id/openaps"
                         android:layout_width="wrap_content"

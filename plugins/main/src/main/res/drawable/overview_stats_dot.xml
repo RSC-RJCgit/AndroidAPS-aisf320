@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The overview's statistics mark (2026-11-01): the high colour, yellow in the dark theme, as v4's dot -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="?attr/highColor" />
+</shape>
