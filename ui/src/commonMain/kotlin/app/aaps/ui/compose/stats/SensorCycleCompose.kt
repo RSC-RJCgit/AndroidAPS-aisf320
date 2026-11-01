@@ -406,8 +406,9 @@ private fun ChartWithAxis(yAxis: AgpYAxis, description: String, onDraw: DrawScop
     val profileUtil = LocalProfileUtil.current
     // Taller than the AGP's (2026-11-01, per explicit request): a sensor's span is days, not one day, and the lines and
     // bands need the room. The spacing round the chart is trimmed instead of the screen growing much.
-    // 2/3 in landscape, as the overview graphs (2026-11-01, per explicit request)
-    val chartHeight = AapsSpacing.bgCircleSize * 2 * if (isLandscape()) 2f / 3f else 1f
+    // 220 dp in landscape (2026-11-01, per explicit request): 2/3 (168 dp) was not tall enough, and the full 252 dp
+    // would push the chips and dates off a landscape screen
+    val chartHeight = if (isLandscape()) LANDSCAPE_SENSOR_CHART_HEIGHT else AapsSpacing.bgCircleSize * 2
     Text(
         text = profileUtil.units.displayLabel,
         modifier = Modifier.fillMaxWidth().padding(top = AapsSpacing.extraSmall),
@@ -530,3 +531,5 @@ private fun DrawScope.drawGappedLine(values: List<Double?>, x: (Int) -> Float, y
 /** Days per sensor for the header: "10", or "10.5" for the G7. */
 private fun formatDays(windowHours: Int): String =
     if (windowHours % 24 == 0) (windowHours / 24).toString() else ((windowHours * 10 / 24) / 10.0).toString()
+
+private val LANDSCAPE_SENSOR_CHART_HEIGHT = 220.dp

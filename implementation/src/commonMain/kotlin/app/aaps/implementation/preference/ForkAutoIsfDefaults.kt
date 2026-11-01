@@ -1,6 +1,7 @@
 package app.aaps.implementation.preference
 
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
@@ -39,6 +40,14 @@ internal sealed class ForkDefault {
     class Whole(private val key: IntKey, private val value: Int) : ForkDefault() {
 
         override val synced get() = key.sync != null
+        override fun isStored(preferences: Preferences) = preferences.getIfExists(key) != null
+        override fun write(preferences: Preferences) = preferences.put(key, value)
+    }
+
+    /** A setting kept on this phone only, never synced (2026-11-01: the objectives bypass) */
+    class NonBool(private val key: BooleanNonKey, private val value: Boolean) : ForkDefault() {
+
+        override val synced get() = false
         override fun isStored(preferences: Preferences) = preferences.getIfExists(key) != null
         override fun write(preferences: Preferences) = preferences.put(key, value)
     }

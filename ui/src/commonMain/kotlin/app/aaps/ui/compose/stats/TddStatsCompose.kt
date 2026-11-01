@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalDecimalFormatter
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 
@@ -73,12 +74,14 @@ fun TddStatsCompose(
 ) {
     val dateUtil = LocalDateUtil.current
     val decimalFormatter = LocalDecimalFormatter.current
+    // Tighter in landscape (2026-11-01, per explicit request), so the week, its average and today fit about one screen
+    val dividerPadding = if (isLandscape()) 2.dp else 8.dp
     Column(modifier = modifier) {
         // Header row with column labels
         TddTableHeaderRow()
 
         HorizontalDivider(
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier.padding(vertical = dividerPadding)
         )
 
         // Historical TDD data rows (one per day)
@@ -98,7 +101,7 @@ fun TddStatsCompose(
         // Average row
         tddStatsData.averageTdd?.let { avg ->
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = dividerPadding)
             )
             TddTableDataRow(
                 date = stringResource(CoreUiStrings.average),
@@ -121,7 +124,7 @@ fun TddStatsCompose(
         // Today row
         tddStatsData.todayTdd?.let { today ->
             HorizontalDivider(
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = dividerPadding)
             )
             TddTableDataRow(
                 date = stringResource(InterfacesStrings.today),
@@ -146,7 +149,7 @@ fun TddTableHeaderRow() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = if (isLandscape()) 2.dp else 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
@@ -210,7 +213,7 @@ fun TddTableDataRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = if (isLandscape()) 1.dp else 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(

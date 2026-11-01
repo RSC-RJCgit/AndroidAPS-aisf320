@@ -7,6 +7,10 @@ import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
+import app.aaps.core.interfaces.configuration.BUILT_IN_SETTINGS_OFF
+import app.aaps.core.interfaces.configuration.BuiltInSettingsApplier
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.configuration.builtInSettingsPromptPending
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -24,6 +28,7 @@ import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.maintenance.PrefsFileInfo
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
+import app.aaps.core.interfaces.protection.PasswordHasher
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.OwnDatabasePlugin
 import app.aaps.core.interfaces.pump.PumpSync
@@ -32,6 +37,9 @@ import app.aaps.core.interfaces.sync.DataSyncSelectorXdrip
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
 import dev.zacsweers.metro.AppScope
@@ -81,7 +89,11 @@ class MaintenanceViewModel(
     private val overviewData: OverviewData,
     private val overviewDataCache: OverviewDataCache,
     private val nsClient: NsClient,
-    private val dateUtil: DateUtil
+    private val dateUtil: DateUtil,
+    private val preferences: Preferences,
+    private val config: Config,
+    private val passwordHasher: PasswordHasher,
+    private val builtInSettingsApplier: BuiltInSettingsApplier
 ) : ViewModel() {
 
     private val _events = MutableSharedFlow<MaintenanceEvent>()
@@ -99,6 +111,68 @@ class MaintenanceViewModel(
 
     init {
         refreshExportConfig()
+    }
+
+    // ----- Built-in settings (2026-11-01, per explicit request) -----
+
+    /** One step of the "use built-in settings?" flow. Null when nothing is shown. */
+    sealed interface BuiltInStep {
+
+        data object Ask : BuiltInStep
+
+        /** A master password is set: it is asked for before anything is overwritten */
+        data class EnterPassword(val wrong: Boolean = false) : BuiltInStep
+
+        /** No master password yet: set one now, or later */
+        data class SetPassword(val mismatch: Boolean = false) : BuiltInStep
+
+        data class Done(val written: Int) : BuiltInStep
+    }
+
+    // Asked at start until answered, on a client or a Virtual-pump master, whether a new install, a reinstall or an update
+    private val _builtInStep = MutableStateFlow<BuiltInStep?>(if (builtInSettingsPromptPending(preferences, config)) BuiltInStep.Ask else null)
+    val builtInStep: StateFlow<BuiltInStep?> = _builtInStep.asStateFlow()
+
+    /** From Maintenance: apply the built-in settings again, or answer a question put off */
+    fun openBuiltInSettings() {
+        _builtInStep.value = BuiltInStep.Ask
+    }
+
+    fun answerBuiltIn(useThem: Boolean) {
+        if (!useThem) {
+            // No: nothing changes, and the setup wizard starts as before when it never ran
+            preferences.put(StringNonKey.BuiltInSettingsChoice, BUILT_IN_SETTINGS_OFF)
+            _builtInStep.value = null
+            return
+        }
+        _builtInStep.value = if (importExportPrefs.isMasterPasswordSet()) BuiltInStep.EnterPassword() else BuiltInStep.SetPassword()
+    }
+
+    fun enterBuiltInPassword(password: String) {
+        if (importExportPrefs.isMasterPasswordCorrect(password)) applyBuiltIn()
+        else _builtInStep.value = BuiltInStep.EnterPassword(wrong = true)
+    }
+
+    /** Both fields must match. [later] skips setting one: export then waits until a password is set. */
+    fun setBuiltInPassword(password: String, again: String, later: Boolean) {
+        if (!later) {
+            if (password.isEmpty() || password != again) {
+                _builtInStep.value = BuiltInStep.SetPassword(mismatch = true)
+                return
+            }
+            preferences.put(StringKey.ProtectionMasterPassword, passwordHasher.hashPassword(password))
+        }
+        applyBuiltIn()
+    }
+
+    fun dismissBuiltIn() {
+        _builtInStep.value = null
+    }
+
+    private fun applyBuiltIn() {
+        val written = builtInSettingsApplier.apply(rh.gs(config.appName))
+        aapsLogger.info(LTag.CORE, "Built-in settings applied: $written settings")
+        _builtInStep.value = BuiltInStep.Done(written)
     }
 
     fun refreshExportConfig() {

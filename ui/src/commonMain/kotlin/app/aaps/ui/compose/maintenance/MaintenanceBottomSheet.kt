@@ -42,6 +42,7 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.TonalIcon
 import app.aaps.core.ui.compose.consumeOverscroll
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +60,7 @@ fun MaintenanceBottomSheet(
     onResetApsResultsClick: () -> Unit,
     onCleanupDbClick: () -> Unit,
     onResetDbClick: () -> Unit,
+    onBuiltInSettingsClick: () -> Unit = {},
     exportConfig: ExportConfig? = null,
     onToggleSettingsLocal: (Boolean) -> Unit = {},
     onToggleSettingsCloud: (Boolean) -> Unit = {},
@@ -90,6 +92,7 @@ fun MaintenanceBottomSheet(
             onResetApsResultsClick = onResetApsResultsClick,
             onCleanupDbClick = onCleanupDbClick,
             onResetDbClick = onResetDbClick,
+            onBuiltInSettingsClick = onBuiltInSettingsClick,
             exportConfig = exportConfig,
             onToggleSettingsLocal = onToggleSettingsLocal,
             onToggleSettingsCloud = onToggleSettingsCloud,
@@ -121,6 +124,7 @@ internal fun MaintenanceBottomSheetContent(
     onResetApsResultsClick: () -> Unit = {},
     onCleanupDbClick: () -> Unit = {},
     onResetDbClick: () -> Unit = {},
+    onBuiltInSettingsClick: () -> Unit = {},
     exportConfig: ExportConfig? = null,
     onToggleSettingsLocal: (Boolean) -> Unit = {},
     onToggleSettingsCloud: (Boolean) -> Unit = {},
@@ -273,6 +277,15 @@ internal fun MaintenanceBottomSheetContent(
                     )
                 }
             }
+        )
+        // The fork's built-in settings, again or for the first time (2026-11-01, per explicit request)
+        MaintenanceItem(
+            text = stringResource(UiStrings.built_in_settings_title),
+            description = stringResource(UiStrings.built_in_settings_desc),
+            icon = Icons.Default.FileDownload,
+            color = primaryColor,
+            onDismiss = onDismiss,
+            onClick = onBuiltInSettingsClick
         )
         MaintenanceItem(
             text = stringResource(CoreUiStrings.ue_export_to_csv),

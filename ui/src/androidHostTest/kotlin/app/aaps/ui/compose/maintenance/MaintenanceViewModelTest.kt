@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.maintenance
 
+import app.aaps.core.interfaces.configuration.BuiltInSettingsApplier
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -14,11 +16,16 @@ import app.aaps.core.interfaces.maintenance.ExportPreparation
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.plugin.ActivePlugin
+import app.aaps.core.interfaces.protection.PasswordHasher
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.sync.DataSyncSelectorXdrip
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CompletableDeferred
@@ -42,6 +49,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -66,6 +74,10 @@ internal class MaintenanceViewModelTest {
     @Mock private lateinit var overviewDataCache: OverviewDataCache
     @Mock private lateinit var nsClient: NsClient
     @Mock private lateinit var dateUtil: DateUtil
+    @Mock private lateinit var preferences: Preferences
+    @Mock private lateinit var config: Config
+    @Mock private lateinit var passwordHasher: PasswordHasher
+    @Mock private lateinit var builtInSettingsApplier: BuiltInSettingsApplier
 
     private lateinit var sut: MaintenanceViewModel
     private lateinit var testDispatcher: TestDispatcher
@@ -78,11 +90,90 @@ internal class MaintenanceViewModelTest {
         // against the default state.
         testDispatcher = StandardTestDispatcher()
         Dispatchers.setMain(testDispatcher)
-        sut = MaintenanceViewModel(
-            aapsLogger, generatedTextResolver(), l, maintenance, importExportPrefs, fileListProvider, cloudDirectoryManager,
-            activePlugin, persistenceLayer, fabricPrivacy, uel, dataSyncSelectorXdrip, pumpSync,
-            iobCobCalculator, overviewData, overviewDataCache, nsClient, dateUtil
-        )
+        // Answered already, so no built-in settings question is up unless a test asks for one
+        whenever(preferences.get(StringNonKey.BuiltInSettingsChoice)).thenReturn("off")
+        whenever(preferences.get(StringNonKey.ActivePluginPump)).thenReturn("VirtualPumpPlugin")
+        whenever(config.appName).thenReturn(TextRef.Literal("AAPS"))
+        sut = build()
+    }
+
+    private fun build() = MaintenanceViewModel(
+        aapsLogger, generatedTextResolver(), l, maintenance, importExportPrefs, fileListProvider, cloudDirectoryManager,
+        activePlugin, persistenceLayer, fabricPrivacy, uel, dataSyncSelectorXdrip, pumpSync,
+        iobCobCalculator, overviewData, overviewDataCache, nsClient, dateUtil,
+        preferences, config, passwordHasher, builtInSettingsApplier
+    )
+
+    // ----- Built-in settings (2026-11-01) -----
+
+    @Test
+    fun `the built-in settings question is up until answered on a Virtual master`() {
+        assertThat(sut.builtInStep.value).isNull()
+        whenever(preferences.get(StringNonKey.BuiltInSettingsChoice)).thenReturn("")
+        assertThat(build().builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
+    }
+
+    @Test
+    fun `a master with a real pump is never asked`() {
+        whenever(preferences.get(StringNonKey.BuiltInSettingsChoice)).thenReturn("")
+        whenever(preferences.get(StringNonKey.ActivePluginPump)).thenReturn("OmnipodDashPumpPlugin")
+        assertThat(build().builtInStep.value).isNull()
+    }
+
+    @Test
+    fun `no changes nothing and records the answer`() {
+        sut.openBuiltInSettings()
+        sut.answerBuiltIn(useThem = false)
+
+        verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
+        verify(builtInSettingsApplier, never()).apply(any())
+        assertThat(sut.builtInStep.value).isNull()
+    }
+
+    @Test
+    fun `with a master password set it is asked before anything is overwritten`() {
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        whenever(importExportPrefs.isMasterPasswordCorrect("right")).thenReturn(true)
+        whenever(builtInSettingsApplier.apply(any())).thenReturn(64)
+        sut.openBuiltInSettings()
+        sut.answerBuiltIn(useThem = true)
+        assertThat(sut.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.EnterPassword())
+
+        sut.enterBuiltInPassword("wrong")
+        assertThat(sut.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.EnterPassword(wrong = true))
+        verify(builtInSettingsApplier, never()).apply(any())
+
+        sut.enterBuiltInPassword("right")
+        verify(builtInSettingsApplier).apply("AAPS")
+        assertThat(sut.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Done(64))
+    }
+
+    @Test
+    fun `without a master password one is set, and only when both fields match`() {
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(false)
+        whenever(passwordHasher.hashPassword("secret")).thenReturn("hash")
+        sut.openBuiltInSettings()
+        sut.answerBuiltIn(useThem = true)
+        assertThat(sut.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.SetPassword())
+
+        sut.setBuiltInPassword("secret", "secrte", later = false)
+        assertThat(sut.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.SetPassword(mismatch = true))
+        verify(builtInSettingsApplier, never()).apply(any())
+
+        sut.setBuiltInPassword("secret", "secret", later = false)
+        verify(preferences).put(StringKey.ProtectionMasterPassword, "hash")
+        verify(builtInSettingsApplier).apply("AAPS")
+    }
+
+    @Test
+    fun `later applies the settings without setting a password`() {
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(false)
+        sut.openBuiltInSettings()
+        sut.answerBuiltIn(useThem = true)
+        sut.setBuiltInPassword("", "", later = true)
+
+        verify(preferences, never()).put(eq(StringKey.ProtectionMasterPassword), any<String>())
+        verify(builtInSettingsApplier).apply("AAPS")
     }
 
     @AfterEach

@@ -15,6 +15,11 @@ enum class StringNonKey(
     ImportRestoreBaseline("import_restore_baseline", "{}", exportable = false),
     /** The build (version and commit) the switch defaults were last reset for, see `BuildDefaultsReset`. */
     DefaultsResetBuild("defaults_reset_build", "", exportable = false),
+    /**
+     * Whether this phone uses the fork's built-in settings (2026-11-01, per explicit request): "" not asked yet, "on" or
+     * "off". Each phone answers for itself, so it is never exported. See `BuiltInSettings`.
+     */
+    BuiltInSettingsChoice("built_in_settings_choice", "", exportable = false),
     /** iOS: the RileyLink used for the background heartbeat (its Bluetooth identifier). This phone's own device, so not exported. */
     IosRileyLinkId("ios_rileylink_id", "", exportable = false),
     /** Current heartbeat reception and audio state for this iPhone's overview. */

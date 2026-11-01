@@ -36,6 +36,7 @@ import app.aaps.core.interfaces.clientcontrol.ActionProgress
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.InitProgress
+import app.aaps.core.interfaces.configuration.builtInSettingsPromptPending
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.protection.PasswordCheck
@@ -51,21 +52,22 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalAppIcon
+import app.aaps.core.ui.compose.LocalClientPaired
+import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalDecimalFormatter
-import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.LocalMasterControlAllowed
-import app.aaps.core.ui.compose.LocalReadOnlyClient
-import app.aaps.core.ui.compose.LocalClientPaired
 import app.aaps.core.ui.compose.LocalMasterReachable
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.LocalProfileUtil
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.LocalSnackbarHostState
 import app.aaps.core.ui.compose.ProtectionHost
 import app.aaps.core.ui.compose.dialogs.GlobalDialogHost
@@ -73,8 +75,8 @@ import app.aaps.core.ui.compose.dialogs.GlobalSnackbarHost
 import app.aaps.core.ui.compose.dialogs.PasswordCheckHost
 import app.aaps.core.ui.compose.preference.LocalCheckPassword
 import app.aaps.core.ui.compose.preference.LocalClearExportPasswordStore
-import app.aaps.core.ui.compose.preference.LocalRememberMasterPassword
 import app.aaps.core.ui.compose.preference.LocalHashPassword
+import app.aaps.core.ui.compose.preference.LocalRememberMasterPassword
 import app.aaps.core.ui.compose.preference.LocalVisibilityContext
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
 import app.aaps.core.ui.compose.stringResource
@@ -207,9 +209,13 @@ fun AapsAppRoot(
                 // composed once `initProgress.done`, so navigating any earlier throws "navigation
                 // graph has not been set". `currentBackStackEntryFlow.first()` returns as soon as the
                 // NavHost has installed its graph, which is the condition that actually matters.
-                LaunchedEffect(initProgress.done) {
+                // The wizard waits for the built-in settings question (2026-11-01, per explicit request): a yes covers it,
+                // a no starts it. Keyed on the answer, so a no given later still opens it.
+                val builtInChoice by preferences.observe(StringNonKey.BuiltInSettingsChoice).collectAsStateWithLifecycle()
+                LaunchedEffect(initProgress.done, builtInChoice) {
                     if (!initProgress.done) return@LaunchedEffect
                     if (suppressSetupWizard || preferences.get(BooleanNonKey.GeneralSetupWizardProcessed)) return@LaunchedEffect
+                    if (builtInSettingsPromptPending(preferences, config)) return@LaunchedEffect
                     navController.currentBackStackEntryFlow.first()
                     protectionCheck.requestProtection(ProtectionCheck.Protection.PREFERENCES) { result ->
                         if (result == ProtectionResult.GRANTED) navController.navigate(AppRoute.SetupWizard.route)

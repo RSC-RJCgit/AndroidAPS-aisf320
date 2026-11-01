@@ -20,6 +20,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.window.ComposeUIViewController
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -33,6 +34,7 @@ import app.aaps.appshell.navigation.appNavGraph
 import app.aaps.appshell.navigation.handleNotificationAction
 import app.aaps.appshell.navigation.handleQuickLaunchAction
 import app.aaps.appshell.navigation.handleSearchResultClick
+import app.aaps.core.interfaces.configuration.builtInSettingsPromptPending
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.IosNotificationDelegate
@@ -41,6 +43,7 @@ import app.aaps.core.interfaces.protection.ProtectionResult
 import app.aaps.core.interfaces.resources.TextRefValueRegistry
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.objects.di.CoreObjectsGraph
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalMetroViewModelFactory
@@ -50,7 +53,6 @@ import app.aaps.core.ui.compose.metroViewModel
 import app.aaps.core.ui.compose.rememberOwnViewModelStoreOwner
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.implementation.lifecycle.IosProtectionLifecycle
-import app.aaps.core.keys.StringNonKey
 import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.implementation.protection.KeychainUnavailableException
@@ -92,9 +94,9 @@ import app.aaps.ui.compose.treatments.viewmodels.TreatmentsViewModel
 import app.aaps.ui.compose.treatmentsSheet.TreatmentViewModel
 import app.aaps.ui.search.SearchViewModel
 import dev.zacsweers.metro.createGraphFactory
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
-import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
@@ -457,7 +459,11 @@ private fun AapsApp(app: StartedApp) {
             // route and the screen are already shared through `appNavGraph`; only the trigger
             // was Android's, so a new iOS user landed on an empty overview with nothing to
             // follow and no hint that a wizard existed. Reported from TestFlight.
-            LaunchedEffect(Unit) {
+            // Waits for the built-in settings question as AapsAppRoot does (2026-11-01, per explicit request)
+            val builtInChoice by graph.preferences.observe(StringNonKey.BuiltInSettingsChoice)
+                .collectAsStateWithLifecycle()
+            LaunchedEffect(builtInChoice) {
+                if (builtInSettingsPromptPending(graph.preferences, graph.config)) return@LaunchedEffect
                 if (!graph.preferences.get(BooleanNonKey.GeneralSetupWizardProcessed)) {
                     graph.protectionCheck.requestProtection(ProtectionCheck.Protection.PREFERENCES) { result ->
                         if (result == ProtectionResult.GRANTED) navController.navigate(AppRoute.SetupWizard.route)

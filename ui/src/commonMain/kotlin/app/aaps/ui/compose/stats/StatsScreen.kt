@@ -2,6 +2,7 @@ package app.aaps.ui.compose.stats
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -327,7 +328,7 @@ private fun PodTab(state: StatsUiState, viewModel: StatsViewModel) {
 
 @Composable
 private fun TimeInRangeTab(state: StatsUiState) {
-    StatsPage {
+    val tir: @Composable () -> Unit = {
         StatsSection(title = stringResource(CoreUiStrings.tir)) {
             Crossfade(
                 targetState = state.tirLoading,
@@ -348,6 +349,8 @@ private fun TimeInRangeTab(state: StatsUiState) {
                 }
             }
         }
+    }
+    val dexcom: @Composable () -> Unit = {
         StatsSection(title = stringResource(UiStrings.dexcom_tir)) {
             Crossfade(
                 targetState = state.dexcomTirLoading,
@@ -367,6 +370,18 @@ private fun TimeInRangeTab(state: StatsUiState) {
                     }
                 }
             }
+        }
+    }
+    StatsPage {
+        // Side by side in landscape (2026-11-01, per explicit request): stacked, the two tables ran well below the screen
+        if (isLandscape()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(AapsSpacing.medium)) {
+                Box(modifier = Modifier.weight(1f)) { tir() }
+                Box(modifier = Modifier.weight(1f)) { dexcom() }
+            }
+        } else {
+            tir()
+            dexcom()
         }
     }
 }

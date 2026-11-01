@@ -16,7 +16,10 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.dialogs.OkCancelDialog
 import app.aaps.core.ui.compose.dialogs.OkDialog
 import app.aaps.core.ui.compose.dialogs.QueryAnyPasswordDialog
+import app.aaps.core.ui.compose.dialogs.SetPasswordDialog
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.maintenance.MaintenanceViewModel.BuiltInStep
 import app.aaps.ui.compose.maintenance.MaintenanceViewModel.ExportState
 
 /**
@@ -98,6 +101,7 @@ fun MaintenanceDialogs(
             onResetApsResultsClick = { showConfirmResetAps = true },
             onCleanupDbClick = { showConfirmCleanupDb = true },
             onResetDbClick = { showConfirmResetDb = true },
+            onBuiltInSettingsClick = { maintenanceViewModel.openBuiltInSettings() },
             exportConfig = exportConfig,
             isDirectoryAccessGranted = isDirectoryAccessGranted,
             directoryPath = directoryPath,
@@ -225,6 +229,41 @@ fun MaintenanceDialogs(
 
         is ExportState.Idle                  -> { /* no dialog */
         }
+    }
+
+    // Built-in settings (2026-11-01, per explicit request): asked at start until answered, and from Maintenance
+    val builtInStep by maintenanceViewModel.builtInStep.collectAsStateWithLifecycle()
+    when (val step = builtInStep) {
+        BuiltInStep.Ask                  -> OkCancelDialog(
+            title = stringResource(UiStrings.built_in_settings_title),
+            message = stringResource(UiStrings.built_in_settings_question),
+            onConfirm = { maintenanceViewModel.answerBuiltIn(useThem = true) },
+            onDismiss = { maintenanceViewModel.answerBuiltIn(useThem = false) }
+        )
+
+        is BuiltInStep.EnterPassword     -> QueryAnyPasswordDialog(
+            title = stringResource(StringKey.ProtectionMasterPassword.title),
+            passwordExplanation = stringResource(UiStrings.built_in_settings_password_prompt),
+            errorMessage = if (step.wrong) stringResource(CoreUiStrings.wrongpassword) else null,
+            onConfirm = { password -> maintenanceViewModel.enterBuiltInPassword(password) },
+            onCancel = { maintenanceViewModel.dismissBuiltIn() }
+        )
+
+        // Cancel is "later": the settings are still applied, and export waits for a password
+        is BuiltInStep.SetPassword       -> SetPasswordDialog(
+            title = stringResource(if (step.mismatch) UiStrings.built_in_settings_password_mismatch else UiStrings.built_in_settings_set_password),
+            pinInput = false,
+            onConfirm = { password, again -> maintenanceViewModel.setBuiltInPassword(password, again, later = false) },
+            onCancel = { maintenanceViewModel.setBuiltInPassword("", "", later = true) }
+        )
+
+        is BuiltInStep.Done              -> OkDialog(
+            title = stringResource(UiStrings.built_in_settings_title),
+            message = stringResource(UiStrings.built_in_settings_done, step.written),
+            onDismiss = { maintenanceViewModel.dismissBuiltIn() }
+        )
+
+        null                             -> Unit
     }
 
     // Cleanup result dialog

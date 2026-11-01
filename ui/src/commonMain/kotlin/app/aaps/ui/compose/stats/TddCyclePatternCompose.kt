@@ -38,7 +38,6 @@ import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.NumberInputRow
-import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import com.patrykandpatrick.vico.compose.cartesian.CartesianChartHost
@@ -196,8 +195,8 @@ fun TddCyclePatternCompose(
             val shownCycles = if (cleaned) data.cleanedCycles else data.rawCycles
             val average = if (cleaned) data.cleanedAverage else data.rawAverage
             val baseColor = if (cleaned) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary
-            // 2/3 in landscape, as the overview graphs (2026-11-01, per explicit request)
-            val cycleChartHeight = 200.dp * if (isLandscape()) 2f / 3f else 1f
+            // Full height in landscape too (2026-11-01, per explicit request): at 2/3 it was too small to read
+            val cycleChartHeight = 200.dp
             val weekAverages = if (quarters) cycleWeekAverages(shownCycles) else emptyList()
             if (ambulatory)
                 TddCycleBandChart(
