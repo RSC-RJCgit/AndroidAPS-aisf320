@@ -1322,7 +1322,8 @@ class NSClientV3Plugin(
 
     // A Virtual-pump master's check for a real looper on its main site (2026-10-30, per explicit request). Kept only while
     // the app runs: the first device-status load after a start looks back 24 h (LoadDeviceStatusRunner).
-    internal val virtualOnlyMaster: Boolean get() = config.APS && !config.PUMPDRIVERS
+    // Since 2026-11-01 (per explicit request) also a full build with the Virtual pump selected, not only the "virtual" flavour.
+    internal val virtualOnlyMaster: Boolean get() = config.APS && (!config.PUMPDRIVERS || dataSyncSelectorV3.virtualPumpSelected())
     @Volatile internal var mainSiteLooperChecked = false
     @Volatile private var realLooperSeenAt = 0L
 

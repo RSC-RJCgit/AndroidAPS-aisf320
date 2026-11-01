@@ -112,7 +112,7 @@ class DataSyncSelectorV3(
      */
     val mainSiteUploadBlock: MainSiteUploadBlock?
         get() {
-            if (!config.APS || config.PUMPDRIVERS) return null
+            if (!nsClientV3Plugin().virtualOnlyMaster) return null
             if (bgSiteIsMainSite) return MainSiteUploadBlock.BG_SITE
             val plugin = nsClientV3Plugin()
             if (!plugin.mainSiteLooperChecked) return MainSiteUploadBlock.NOT_CHECKED
