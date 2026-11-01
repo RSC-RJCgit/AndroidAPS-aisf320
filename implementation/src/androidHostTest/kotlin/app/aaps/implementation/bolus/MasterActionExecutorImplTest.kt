@@ -523,7 +523,9 @@ class MasterActionExecutorImplTest : TestBaseWithProfile() {
         carbs: Int = 20,
         executor: MasterActionExecutorImpl = create(),
         carbTime: Int = 0,
-        alarm: Boolean = false
+        alarm: Boolean = false,
+        fixedInsulin: Double? = null,
+        suggested: BolusWizard.() -> Unit = {}
     ): MasterActionExecutor.PrepareResult {
         whenever(config.appInitialized).thenReturn(true)
         whenever(runningModeGuard.rejectionMessage(any())).thenReturn(null)
@@ -547,7 +549,8 @@ class MasterActionExecutorImplTest : TestBaseWithProfile() {
         // Read before the stubbing: dateUtil is a mock too, and a mock call inside thenReturn breaks the stubbing.
         val now = dateUtil.now()
         whenever(bw.timeStamp).thenReturn(now)
-        whenever(bw.createBolusCalculatorResult()).thenReturn(mock<BCR>())
+        whenever(bw.createBolusCalculatorResult()).thenReturn(if (fixedInsulin != null) bcr(calculated) else mock<BCR>())
+        bw.suggested()
         whenever(bw.buildWizardDetail()).thenReturn(
             EventData.WizardDetail(
                 totalInsulin = calculated, carbs = carbs, insulinFromBG = 0.0, insulinFromTrend = 0.0, insulinFromCOB = 0.0, insulinFromCarbs = calculated,
@@ -557,10 +560,55 @@ class MasterActionExecutorImplTest : TestBaseWithProfile() {
         )
         val inputs = MasterActionExecutor.WizardInputs(
             bg = 0.0, carbs = carbs, percentage = 100, directCorrection = 0.0, carbTime = carbTime, useBg = false, useCob = false, useIob = false,
-            useTt = false, useTrend = false, alarm = alarm, notes = ""
+            useTt = false, useTrend = false, alarm = alarm, notes = "", fixedInsulin = fixedInsulin
         )
         return executor.prepareWizard(inputs)
     }
+
+    private fun bcr(total: Double) = BCR(
+        timestamp = 0L, targetBGLow = 100.0, targetBGHigh = 100.0, isf = 50.0, ic = 10.0, bolusIOB = 0.0, wasBolusIOBUsed = true,
+        basalIOB = 0.0, wasBasalIOBUsed = true, glucoseValue = 150.0, wasGlucoseUsed = true, glucoseDifference = 50.0, glucoseInsulin = total,
+        glucoseTrend = 0.0, wasTrendUsed = false, trendInsulin = 0.0, cob = 0.0, wasCOBUsed = false, cobInsulin = 0.0, carbs = 0.0,
+        wereCarbsUsed = false, carbsInsulin = 0.0, otherCorrection = 0.0, wasSuperbolusUsed = false, superbolusInsulin = 0.0,
+        wasTempTargetUsed = false, totalInsulin = total, percentageCorrection = 100, profileName = "Test", note = ""
+    )
+
+    // ---- insulin-only mode of the calculator (2026-11-01) ----
+
+    @Test
+    fun prepareWizard_insulinOnly_savesTheSuggestionBeforeTheTypedDoseReplacesIt() = runTest {
+        var bw: BolusWizard? = null
+        val result = preparedManualWizard(calculated = 1.4, afterConstraints = 1.4, carbs = 0, fixedInsulin = 2.0) {
+            bw = this
+            whenever(suggestedInsulin).thenReturn(1.4)
+        }
+
+        assertThat(result).isInstanceOf(MasterActionExecutor.PrepareResult.Preview::class.java)
+        val order = org.mockito.kotlin.inOrder(bw!!)
+        order.verify(bw!!).createBolusCalculatorResult()
+        order.verify(bw!!).useFixedInsulin(2.0)
+    }
+
+    @Test
+    fun prepareWizard_insulinOnly_showsTheSuggestionAndOffersNoAdvisor() = runTest {
+        val result = preparedManualWizard(calculated = 1.4, afterConstraints = 1.4, carbs = 0, fixedInsulin = 2.0) {
+            whenever(suggestedInsulin).thenReturn(1.4)
+            whenever(needsBolusAdvisor()).thenReturn(true)
+        } as MasterActionExecutor.PrepareResult.Preview
+
+        assertThat(result.advisorApplies).isFalse()
+        assertThat(result.lines.first().role).isEqualTo(ConfirmationRole.INFO)
+    }
+
+    @Test
+    fun prepareWizard_usualCalculator_doesNotUseAFixedDose() = runTest {
+        var bw: BolusWizard? = null
+        preparedManualWizard(calculated = 1.4, afterConstraints = 1.4) { bw = this }
+
+        verify(bw!!, never()).useFixedInsulin(any())
+    }
+
+
 
     // ---- the "time to eat" timer counts from the end of the bolus (#5327), as in 3.x ----
 
