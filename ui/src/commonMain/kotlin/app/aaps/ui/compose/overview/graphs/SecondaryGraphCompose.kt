@@ -192,8 +192,10 @@ internal class ClampedVerticalAxisItemPlacer(
  * Each series type has its own color and rendering style:
  * - IOB: Blue line with area fill + bolus markers (SMBs, normal boluses, extended boluses)
  * - COB: Orange adaptive-step line with area fill + carbs markers + failover dots
- * - Simple line series (AbsIOB, BGI, Sensitivity, VarSens, DevSlope, HR, Steps): Colored line with gradient fill
+ * - Simple line series (AbsIOB, BGI, Sensitivity, VarSens, DevSlope): Colored line with gradient fill
  * - Deviations: Per-type colored step lines with gradient fill (POSITIVE/NEGATIVE/EQUAL/UAM/CSF)
+ * - Steps: S5, S15, S30 and S60 as four lines, each in its own colour
+ * - Heart rate: Thin curved line, one per stretch of readings, so it has a break where the watch sent nothing
  */
 @OptIn(FlowPreview::class)
 @Composable
@@ -322,7 +324,7 @@ fun SecondaryGraphCompose(
         SeriesType.FINAL_ISF,
         SeriesType.IOB_TH          -> autoIsfData?.pointsFor(secondaryType) ?: emptyList()
         SeriesType.DEV_SLOPE       -> viewModel.devSlopeGraphFlow.collectAsStateWithLifecycle().value.dsMax
-        SeriesType.HEART_RATE      -> viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value.heartRates
+        SeriesType.HEART_RATE      -> viewModel.heartRateGraphFlow.collectAsStateWithLifecycle().value.segments.flatten()
         SeriesType.STEPS           -> viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value.steps
         SeriesType.ACTIVITY        -> viewModel.activityGraphFlow.collectAsStateWithLifecycle().value.activity
         SeriesType.PREDICTIONS     -> emptyList() // UI-only overlay flag, not a secondary series
@@ -365,8 +367,10 @@ fun SecondaryGraphCompose(
                 if (it.dsMax.isNotEmpty()) add(SeriesType.DEV_SLOPE to processPoints(it.dsMax, minTimestamp, minX, maxX))
                 // dsMin tagged separately via DEV_SLOPE_MIN marker (see below)
             }
-            hrData?.heartRates?.takeIf { it.isNotEmpty() }?.let {
-                add(SeriesType.HEART_RATE to processPoints(it, minTimestamp, minX, maxX))
+            // One line per stretch, so the line has a break where the watch sent nothing. x is whole minutes, and
+            // two readings in the same minute would draw a vertical stroke.
+            hrData?.segments?.forEach { segment ->
+                add(SeriesType.HEART_RATE to processPoints(segment, minTimestamp, minX, maxX).distinctBy { it.first })
             }
             // S5, S15, S30, S60 in this order; the slots below give each its own colour by this order (2026-10-18)
             stepsData?.takeIf { SeriesType.STEPS in primaryTypes }?.let { data ->
@@ -721,7 +725,7 @@ fun SecondaryGraphCompose(
             for (spec in primarySeries) {
                 add(
                     when (val slot = spec.slot) {
-                        is SeriesSlot.DeviationLine -> createDeviationLine(slot.type)
+                        is SeriesSlot.DeviationLine -> createColumnLine(deviationColor(slot.type))
                         SeriesSlot.IobLine          -> iobLineStyle.iobLine
                         SeriesSlot.SmallSmb         -> iobLineStyle.smallSmbLine
                         SeriesSlot.MediumSmb        -> iobLineStyle.mediumSmbLine
@@ -1871,16 +1875,12 @@ fun createSeriesLine(type: SeriesType, colors: SeriesColors): LineCartesianLayer
             stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
             areaFill = null
         )
-        // Points/dots only — no connecting line
-        SeriesType.HEART_RATE, SeriesType.STEPS                                  -> LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+        // Thin curved line, no fill, one per stretch of readings
+        SeriesType.HEART_RATE                                                    -> LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(color)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.5.dp),
             areaFill = null,
-            pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(
-                    component = ShapeComponent(fill = Fill(color), shape = SafeCircleShape),
-                    size = 4.dp
-                )
-            )
+            interpolator = LineCartesianLayer.Interpolator.cubic()
         )
         // Default: smooth line with gradient area fill
         else                                                                     -> LineCartesianLayer.Line(
@@ -2063,9 +2063,8 @@ private fun deviationColor(type: DeviationType): Color = when (type) {
     DeviationType.CSF      -> DEVIATION_COLOR_CSF
 }
 
-/** Step line with solid area fill and thin stroke, per-deviation-type color */
-private fun createDeviationLine(type: DeviationType): LineCartesianLayer.Line {
-    val color = deviationColor(type)
+/** Columns: a step line with solid area fill and no stroke. Used for the deviations (one color per type) and the steps. */
+private fun createColumnLine(color: Color): LineCartesianLayer.Line {
     return LineCartesianLayer.Line(
         fill = LineCartesianLayer.LineFill.single(Fill(color)),
         stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 0.dp),

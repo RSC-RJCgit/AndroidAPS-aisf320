@@ -209,7 +209,7 @@ class ProfileRepositoryImpl(
             withContext(aapsIoDispatcher) {
                 val original = profilesList[index]
                 showAppended = true
-                profilesList.add(original.copy(name = original.name + " copy"))
+                profilesList.add(original.copy(name = rh.gs(CoreUiStrings.profile_clone_name, original.name)))
                 storeSettingsInternal(timestamp = dateUtil.now())
             }
             snapshot()

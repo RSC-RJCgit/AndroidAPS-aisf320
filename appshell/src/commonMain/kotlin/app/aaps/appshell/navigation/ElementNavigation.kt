@@ -135,7 +135,7 @@ class ElementNavigator(
             ElementType.FOOD_MANAGEMENT         -> navController.navigate(AppRoute.FoodManagement.route)
             ElementType.TRIO_REMOTE             -> navController.navigate(AppRoute.TrioRemote.route)
             ElementType.RUNNING_MODE            -> navController.navigate(AppRoute.RunningMode.route)
-            ElementType.SCENE_MANAGEMENT        -> navController.navigate(AppRoute.SceneList.route)
+            ElementType.SCENE_MANAGEMENT        -> navController.navigate(AppRoute.SceneList.createRoute(mode))
             ElementType.AUTOMATION_MANAGEMENT   -> navController.navigate(AppRoute.AutomationList.route)
             ElementType.AUTOMATION_STATES       -> navController.navigate(AppRoute.AutomationStates.route)
             ElementType.AUTHORIZED_CLIENTS      -> navController.navigate(AppRoute.AuthorizedClients.route)
@@ -226,9 +226,9 @@ fun ElementNavigator.handleQuickLaunchAction(action: QuickLaunchAction) {
             mainViewModel.requestProfileConfirmation(action.profileName, action.percentage, action.durationMinutes)
         }
 
-        is QuickLaunchAction.SceneAction       -> guarded(ElementType.SCENE.protection) {
-            mainViewModel.requestSceneConfirmation(action.sceneId)
-        }
+        // Not guarded here: the view model asks for protection itself, so the overview scenes sheet gets the
+        // same check. Guarding here too would ask twice when the protection timeout is 0.
+        is QuickLaunchAction.SceneAction       -> mainViewModel.requestSceneConfirmation(action.sceneId)
 
         is QuickLaunchAction.PluginAction      -> {
             val index = activePlugin.getPluginsList().indexOfFirst { it::class.simpleName == action.className }
