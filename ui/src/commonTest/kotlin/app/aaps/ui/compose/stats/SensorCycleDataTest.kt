@@ -240,25 +240,6 @@ class SensorCycleDataTest {
         assertEquals(listOf(null, 100.0, 200.0, 150.0), data.changeover!!.quarterAveragesMgdl)
     }
 
-    /** One click is one day back (2026-11-01): the view ends then, and only changes made by then count */
-    @Test
-    fun daysBackMovesTheEndOfTheViewOneDayAtATime() {
-        val starts = listOf(start1, start2, start3)
-
-        assertEquals(now to starts, sensorStartsDaysBack(starts, now, 0))
-        assertEquals(now - day to starts, sensorStartsDaysBack(starts, now, 1))
-        // 5 days back is before the newest change (4.5 days ago): that sensor is not shown yet
-        assertEquals(now - 5 * day to listOf(start1, start2), sensorStartsDaysBack(starts, now, 5))
-        assertEquals(now to starts, sensorStartsDaysBack(starts, now, -3))
-    }
-
-    @Test
-    fun daysBackReachesTheOldestChange() {
-        assertEquals(24, sensorDaysBackMax(listOf(start1, start2, start3), now))
-        assertEquals(1, sensorDaysBackMax(emptyList(), now))
-        assertEquals(1, sensorDaysBackMax(listOf(now - hour), now))
-    }
-
     private fun calculate(readings: List<GV>, offset: Int = 0, windowHours: Int = 240) =
         calculateSensorCycleData(
             readings = readings,

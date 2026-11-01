@@ -42,6 +42,7 @@ import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.NumberInputRow
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import kotlin.math.roundToInt
@@ -51,15 +52,13 @@ import kotlin.math.roundToInt
  * the AGP rather than with Vico, because sensors end at different times and the changeover view needs bands.
  *
  * @param data null when there is no sensor change at [offset]
- * @param maxDaysBack how far back the days-back control reaches
- * @param until the end of the view, shown when it is not now
+ * @param sensorsAvailable sensor changes found, which caps the offset
  * @param formatDate formats a sensor start for the header
  */
 @Composable
 fun SensorCycleCompose(
     data: SensorCycleData?,
-    maxDaysBack: Int,
-    until: Long,
+    sensorsAvailable: Int,
     offset: Int,
     onOffsetChange: (Int) -> Unit,
     formatDate: (Long) -> String,
@@ -107,21 +106,15 @@ fun SensorCycleCompose(
             else                                 -> ChangeoverView(data, data.changeover, formatDate, quarters)
         }
 
-        // Days back, one per click, as on the Cycle tab (2026-11-01, per explicit request): the view ends that many days ago
+        // Offset in whole sensors: 1 shows the three sensors before the newest, and so on
         NumberInputRow(
             labelRef = UiStrings.sensor_cycle_offset,
             value = offset.toDouble(),
             onValueChange = { onOffsetChange(it.toInt()) },
-            valueRange = 0.0..maxDaysBack.toDouble(),
+            valueRange = 0.0..(sensorsAvailable - 1).coerceAtLeast(1).toDouble(),
             step = 1.0,
             modifier = Modifier.fillMaxWidth()
         )
-        if (offset > 0 && until > 0)
-            Text(
-                text = stringResource(UiStrings.sensor_cycle_until, formatDate(until)),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
     }
 }
 
@@ -154,7 +147,7 @@ private fun WholeSensorView(data: SensorCycleData, formatDate: (Long) -> String,
         text = stringResource(UiStrings.sensor_cycle_found, data.sensors.size, data.sensorsAvailable, formatDays(data.windowHours)),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp)
+        modifier = Modifier.padding(bottom = 4.dp)
     )
     Text(
         text = stringResource(UiStrings.sensor_cycle_newest_start, formatDate(data.sensors.first().startTimestamp)),
@@ -228,7 +221,7 @@ private fun AmbulatoryView(data: SensorCycleData, formatDate: (Long) -> String, 
         text = stringResource(UiStrings.sensor_cycle_found, data.sensors.size, data.sensorsAvailable, formatDays(data.windowHours)),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp)
+        modifier = Modifier.padding(bottom = 4.dp)
     )
     Text(
         text = stringResource(UiStrings.sensor_cycle_newest_start, formatDate(data.sensors.first().startTimestamp)),
@@ -308,7 +301,7 @@ private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverDa
         text = stringResource(UiStrings.sensor_changeover_explanation, daysEachSide, changeover.changeTimestamps.size),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp)
+        modifier = Modifier.padding(bottom = 4.dp)
     )
     // Which changes are pooled, newest first, as the lines view names its newest start (2026-11-01, per explicit request)
     Text(
@@ -376,7 +369,7 @@ private fun ChangeoverView(data: SensorCycleData, changeover: SensorChangeoverDa
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = AapsSpacing.medium, bottom = AapsSpacing.small)
+            .padding(top = AapsSpacing.small, bottom = AapsSpacing.extraSmall)
     ) {
         Figure(stringResource(UiStrings.sensor_avg_before), changeover.averageBeforeMgdl?.let { profileUtil.fromMgdlToStringWithUnits(it) })
         Figure(stringResource(UiStrings.sensor_avg_after), changeover.averageAfterMgdl?.let { profileUtil.fromMgdlToStringWithUnits(it) })
@@ -411,10 +404,13 @@ private fun RowScope.Figure(label: String, value: String?) {
 @Composable
 private fun ChartWithAxis(yAxis: AgpYAxis, description: String, onDraw: DrawScope.() -> Unit) {
     val profileUtil = LocalProfileUtil.current
-    val chartHeight = AapsSpacing.bgCircleSize + AapsSpacing.bgCircleSize / 2
+    // Taller than the AGP's (2026-11-01, per explicit request): a sensor's span is days, not one day, and the lines and
+    // bands need the room. The spacing round the chart is trimmed instead of the screen growing much.
+    // 2/3 in landscape, as the overview graphs (2026-11-01, per explicit request)
+    val chartHeight = AapsSpacing.bgCircleSize * 2 * if (isLandscape()) 2f / 3f else 1f
     Text(
         text = profileUtil.units.displayLabel,
-        modifier = Modifier.fillMaxWidth().padding(top = AapsSpacing.small),
+        modifier = Modifier.fillMaxWidth().padding(top = AapsSpacing.extraSmall),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -471,7 +467,7 @@ private fun XLabels(labels: List<String>, positions: List<Float>) {
 @Composable
 private fun Legend(entries: List<Pair<String, Color>>) {
     FlowRow(
-        modifier = Modifier.padding(top = AapsSpacing.medium, bottom = AapsSpacing.small),
+        modifier = Modifier.padding(top = AapsSpacing.small, bottom = AapsSpacing.extraSmall),
         horizontalArrangement = Arrangement.spacedBy(AapsSpacing.large),
         verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)
     ) {

@@ -272,8 +272,7 @@ private fun SensorTab(state: StatsUiState, viewModel: StatsViewModel) {
                 } else {
                     SensorCycleCompose(
                         data = state.sensorCycleData,
-                        maxDaysBack = state.sensorCycleMaxDaysBack,
-                        until = state.sensorCycleUntil,
+                        sensorsAvailable = state.sensorsAvailable,
                         offset = state.sensorCycleOffset,
                         onOffsetChange = { viewModel.updateSensorCycleOffset(it) },
                         formatDate = viewModel.dateUtil::dateAndTimeString,

@@ -129,20 +129,6 @@ internal fun sensorCycleReadingSpan(
 }
 
 /**
- * The Sensor tab steps back one day per click, as the Cycle tab does (2026-11-01, per explicit request), rather than one
- * sensor. [daysBack] moves the end of the view back that many days: the sensors are those started by then, and the newest
- * of them is cut off there. Returns that moment and the changes up to it.
- */
-internal fun sensorStartsDaysBack(starts: List<Long>, now: Long, daysBack: Int): Pair<Long, List<Long>> {
-    val until = now - daysBack.coerceAtLeast(0) * DAY_MS
-    return until to starts.filter { it <= until }
-}
-
-/** How many days back the oldest change still leaves a sensor to show: at least 1, so the control has a range. */
-internal fun sensorDaysBackMax(starts: List<Long>, now: Long): Int =
-    starts.minOrNull()?.let { ((now - it) / DAY_MS).toInt() }?.coerceAtLeast(1) ?: 1
-
-/**
  * Lays the readings over the sensors.
  *
  * @param readings glucose readings, at least the [sensorCycleReadingSpan] for this offset
@@ -312,5 +298,4 @@ internal const val SENSOR_CHANGEOVER_HOURS = 5 * 24
 private const val DEFAULT_WINDOW_HOURS = 15 * 24
 private const val MIN_VALID_BG = 39.0
 private const val HOUR_MS = 60L * 60L * 1000L
-private const val DAY_MS = 24 * HOUR_MS
 private const val DUPLICATE_START_MS = 2 * HOUR_MS

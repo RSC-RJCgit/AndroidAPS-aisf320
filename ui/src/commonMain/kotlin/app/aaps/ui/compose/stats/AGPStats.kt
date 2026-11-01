@@ -39,6 +39,7 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalProfileUtil
+import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 
@@ -123,7 +124,8 @@ private fun AgpChart(data: AgpStatsData) {
     val highestValue = maxOf(data.highMgdl, percentiles.maxOfOrNull { it.p90Mgdl } ?: data.highMgdl)
     val yAxis = calculateAgpYAxis(highestValue, profileUtil.units)
     val chartDescription = stringResource(UiStrings.agp_chart_description)
-    val chartHeight = AapsSpacing.bgCircleSize + AapsSpacing.bgCircleSize / 2
+    // 2/3 in landscape, as the overview graphs (2026-11-01, per explicit request)
+    val chartHeight = (AapsSpacing.bgCircleSize + AapsSpacing.bgCircleSize / 2) * if (isLandscape()) 2f / 3f else 1f
     val axisWidth = AapsSpacing.xxLarge + AapsSpacing.extraLarge
 
     Text(stringResource(UiStrings.agp_title), style = MaterialTheme.typography.titleSmall)
