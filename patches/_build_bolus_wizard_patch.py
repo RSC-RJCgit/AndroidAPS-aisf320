@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.28.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.29.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -61,13 +61,25 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .28, 2026-10-30)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .29, 2026-11-01)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.28.patch
-  git apply bolus-calculator-on-3426-aisf321.28.patch
+  git apply --check bolus-calculator-on-3426-aisf321.29.patch
+  git apply bolus-calculator-on-3426-aisf321.29.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .29 (2026-11-01):
+- Insulin given from the Insulin dialog (a pump bolus, not record-only) now goes on in the bolus calculator, in an
+  "insulin only" mode. Carbs start at 0 and can be entered to reproduce a calculator run. The calculation shows what
+  the calculator suggests; the new "Insulin to give" field holds the typed dose, and that dose is given.
+- In that mode the boxes (BG, TT, trend, IOB, COB, superbolus, Walking soon, the meal extras, protein, fat, correction)
+  are locked. Max bolus and "Split bolus every" still apply, to the typed dose.
+- The saved calculation keeps the calculator's own total and starts its note with "Direct 2.00U, calculator suggested
+  1.40U", so Treatments shows both. The confirmation shows the same line. No bolus advisor for a typed dose.
+- The eating-soon temp target is still set from the Insulin dialog, through its own confirmation, before the
+  calculator opens. Record-only doses work as before.
+- Retains all patch .28 changes below.
 
 Changes in patch .28 (2026-10-30):
 - Carbs entered with a minus time (eaten earlier, e.g. -30 min): a rising BG trend is left out of the bolus, because
@@ -1480,6 +1492,18 @@ def apply_surgical(staging: Path) -> None:
                                         ScheduledDoseSupersession.bump()
                                     }""",
         "InsulinDialog delivery bump",
+    )
+    # Patch .29 (2026-11-01): a pump bolus opens the calculator's insulin-only mode. The block is taken from our own
+    # InsulinDialog.kt, so the patch cannot drift from the fork.
+    ours_ins = read(OURS, p)
+    start = ours_ins.index("        // 2026-11-01, per explicit request: a pump bolus goes on")
+    end_marker = "            return true\n        }\n"
+    end = ours_ins.index(end_marker, start) + len(end_marker)
+    t = must_replace(
+        t,
+        "        val eatingSoonChecked = binding.startEatingSoonTt.isChecked\n",
+        "        val eatingSoonChecked = binding.startEatingSoonTt.isChecked\n" + ours_ins[start:end],
+        "InsulinDialog insulin-only redirect",
     )
     write(staging, p, t)
 

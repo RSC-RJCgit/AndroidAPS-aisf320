@@ -103,6 +103,9 @@ class WizardDialog : DaggerDialogFragment() {
     private var usePercentage = false
     private var carbsPassedIntoWizard = 0.0
     private var notesPassedIntoWizard = ""
+    // Insulin-only mode (2026-11-01, per explicit request): the dose typed in the Insulin dialog. It is given; the
+    // calculation only shows what the calculator suggests. Null is the usual calculator.
+    private var fixedInsulinPassedIntoWizard: Double? = null
     private var okClicked: Boolean = false // one shot guards
     private var disposable: CompositeDisposable = CompositeDisposable()
     private var bolusStep = 0.0
@@ -189,12 +192,14 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("warsaw_duration_input", binding.warsawDurationInput.value)
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
+        if (fixedInsulinPassedIntoWizard != null) savedInstanceState.putDouble("fixed_insulin_input", binding.fixedInsulinInput.value)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         this.arguments?.let { bundle ->
             carbsPassedIntoWizard = bundle.getDouble("carbs_input")
             notesPassedIntoWizard = bundle.getString("notes_input") ?: ""
+            fixedInsulinPassedIntoWizard = bundle.getDouble("fixed_insulin", 0.0).takeIf { it > 0.0 }
         }
 
         dialog?.window?.requestFeature(Window.FEATURE_NO_TITLE)
@@ -357,6 +362,8 @@ class WizardDialog : DaggerDialogFragment() {
                 calculateInsulin()
                 wizard?.manualSplitBolusEnabled = binding.splitBolusCheckbox.isChecked
                 wizard?.manualSplitBolusIntervalMins = binding.splitBolusIntervalInput.value.toInt().coerceIn(1, 60)
+                // Insulin-only mode: the typed dose replaces the suggestion (max bolus and the split still apply)
+                fixedInsulin()?.let { wizard?.useFixedInsulin(it) }
                 // walkingSoon itself is NOT set here (unlike manualSplitBolusEnabled above): it has to be
                 // known at calculateInsulin()'s doCalc() call (below/live via onCheckedChanged) since it
                 // changes the CALCULATED total, not just how an already-calculated dose gets delivered.
@@ -432,6 +439,43 @@ class WizardDialog : DaggerDialogFragment() {
             .observeOn(aapsSchedulers.main)
             .subscribe({ calculateInsulin() }, fabricPrivacy::logException)
         setA11yLabels()
+        setupInsulinOnlyMode(savedInstanceState)
+    }
+
+    // The typed dose in insulin-only mode, else null
+    private fun fixedInsulin(): Double? =
+        if (fixedInsulinPassedIntoWizard == null || _binding == null) null else binding.fixedInsulinInput.value
+
+    // Insulin-only mode: the "Insulin to give" row, and the boxes locked at their values. Only max bolus, its split, BG,
+    // carbs and the carb time still change; carbs reproduce a calculator run and are recorded with the bolus.
+    private fun setupInsulinOnlyMode(savedInstanceState: Bundle?) {
+        val fixed = fixedInsulinPassedIntoWizard ?: return
+        binding.fixedInsulinRow.visibility = View.VISIBLE
+        binding.fixedInsulinInfo.visibility = View.VISIBLE
+        binding.fixedInsulinInput.setParams(
+            savedInstanceState?.getDouble("fixed_insulin_input") ?: fixed, 0.0, 60.0, bolusStep.takeIf { it > 0.0 } ?: 0.05,
+            decimalFormatter.pumpSupportedBolusFormat(activePlugin.activePump.pumpDescription.bolusStep), false, binding.okcancel.ok
+        )
+        binding.fixedInsulinInput.setOnValueChangedListener { calculateInsulin() }
+        // Meal extras and Walking soon off: they change how a calculated dose is given, not a typed one
+        walkingSoonUserOverride = true
+        binding.walkingSoonCheckbox.isChecked = false
+        binding.unreliableSmbsCheckbox.isChecked = false
+        binding.smallMealCheckbox.isChecked = false
+        binding.autoFpuCheckbox.isChecked = false
+        listOf(
+            binding.bgCheckbox, binding.ttCheckbox, binding.bgTrendCheckbox, binding.iobCheckbox, binding.cobCheckbox, binding.sbCheckbox,
+            binding.bgCheckboxIcon, binding.ttCheckboxIcon, binding.trendCheckboxIcon, binding.iobCheckboxIcon, binding.cobCheckboxIcon,
+            binding.walkingSoonCheckbox, binding.unreliableSmbsCheckbox, binding.smallMealCheckbox, binding.autoFpuCheckbox,
+            binding.delayFpuCheckbox, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
+            binding.correctionPercent
+        ).forEach { it.lockForInsulinOnly() }
+    }
+
+    private fun View.lockForInsulinOnly() {
+        isEnabled = false
+        alpha = 0.5f
+        if (this is ViewGroup) for (i in 0 until childCount) getChildAt(i).lockForInsulinOnly()
     }
 
     private fun setA11yLabels() {
@@ -813,6 +857,11 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.okcancel.ok.visibility = View.VISIBLE
             }
             binding.percentUsed.text = rh.gs(app.aaps.core.ui.R.string.format_percent, wizard.percentageCorrection)
+            // Insulin-only mode: the total above is the calculator's suggestion, the typed dose is what OK gives
+            val fixed = fixedInsulin()
+            if (fixed != null)
+                binding.fixedInsulinInfo.text = "Direct ${decimalFormatter.to2Decimal(fixed)}U, calculator suggested ${decimalFormatter.to2Decimal(wizard.calculatedTotalInsulin)}U"
+            val doseGiven = fixed ?: wizard.calculatedTotalInsulin
             calculatedPercentage = wizard.calculatedPercentage
             calculatedCorrection = wizard.calculatedCorrection
 
@@ -820,7 +869,7 @@ class WizardDialog : DaggerDialogFragment() {
             val maxBolus = constraintChecker.getMaxBolusAllowed().value()
             val p = profileFunction.getProfile()
             val activeProfileSwitchPct = if (p is ProfileSealed.EPS) p.value.originalPercentage else p?.percentage ?: 100
-            val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct == 100 && wizard.calculatedTotalInsulin > maxBolus && maxBolus > 0
+            val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct == 100 && doseGiven > maxBolus && maxBolus > 0
             if (splitFeatureAvailable) {
                 if (!splitBolusInitialized) {
                     splitBolusInitialized = true
@@ -836,9 +885,9 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.splitBolusRow.visibility = android.view.View.VISIBLE
                 if (binding.splitBolusCheckbox.isChecked) {
                     val intervalMins = binding.splitBolusIntervalInput.value.toInt().coerceIn(1, 60)
-                    val numParts = ceil(wizard.calculatedTotalInsulin / maxBolus).toInt()
+                    val numParts = ceil(doseGiven / maxBolus).toInt()
                     val fullParts = numParts - 1
-                    val lastPartDose = Round.roundTo(wizard.calculatedTotalInsulin - fullParts * maxBolus, bolusStep)
+                    val lastPartDose = Round.roundTo(doseGiven - fullParts * maxBolus, bolusStep)
                     val partSize = Round.roundTo(maxBolus, bolusStep)
                     val infoText = if (lastPartDose < partSize)
                         "Split: ${fullParts}× ${decimalFormatter.to2Decimal(partSize)}U + ${decimalFormatter.to2Decimal(lastPartDose)}U every ${intervalMins}min — SMBs allowed, IOB rise deducted"

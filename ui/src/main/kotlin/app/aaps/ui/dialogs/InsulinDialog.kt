@@ -198,6 +198,51 @@ class InsulinDialog : DialogFragmentWithDate() {
         val unitLabel = if (units == GlucoseUnit.MMOL) rh.gs(app.aaps.core.ui.R.string.mmol) else rh.gs(app.aaps.core.ui.R.string.mgdl)
         val recordOnlyChecked = binding.recordOnly.isChecked
         val eatingSoonChecked = binding.startEatingSoonTt.isChecked
+        // 2026-11-01, per explicit request: a pump bolus goes on in the calculator's insulin-only mode, which shows what
+        // the calculator suggests and gives the typed dose. Record-only (pen) doses stay here. The eating-soon target
+        // is still set from here, and the calculator opens once it is confirmed.
+        if (!recordOnlyChecked && insulinAfterConstraints > 0 && !config.AAPSCLIENT) {
+            val notes = binding.notesLayout.notes.text.toString()
+            val fragmentManager = activity?.supportFragmentManager ?: return true
+            val openCalculator = {
+                WizardDialog().also { dialog ->
+                    dialog.arguments = Bundle().also { bundle ->
+                        bundle.putDouble("fixed_insulin", insulin)
+                        if (notes.isNotEmpty()) bundle.putString("notes_input", notes)
+                    }
+                }.show(fragmentManager, "WizardDialog")
+            }
+            if (!eatingSoonChecked) {
+                openCalculator()
+                return true
+            }
+            val ttDuration = preferences.get(IntKey.OverviewEatingSoonDuration)
+            val ttTarget = preferences.get(UnitDoubleKey.OverviewEatingSoonTarget)
+            val ttLine = rh.gs(R.string.temp_target_short) + ": " + (decimalFormatter.to1Decimal(ttTarget) + " " + unitLabel + " (" +
+                rh.gs(app.aaps.core.ui.R.string.format_mins, ttDuration) + ")").formatColor(context, rh, app.aaps.core.ui.R.attr.tempTargetConfirmation)
+            activity?.let { activity ->
+                OKDialog.showConfirmation(activity, rh.gs(app.aaps.core.ui.R.string.bolus), HtmlHelper.fromHtml(ttLine), {
+                    disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+                        TT(
+                            timestamp = System.currentTimeMillis(),
+                            duration = TimeUnit.MINUTES.toMillis(ttDuration.toLong()),
+                            reason = TT.Reason.EATING_SOON,
+                            lowTarget = profileUtil.convertToMgdl(ttTarget, units),
+                            highTarget = profileUtil.convertToMgdl(ttTarget, units)
+                        ),
+                        action = Action.TT, source = Sources.InsulinDialog,
+                        note = notes,
+                        listValues = listOf(
+                            ValueWithUnit.TETTReason(TT.Reason.EATING_SOON),
+                            ValueWithUnit.fromGlucoseUnit(ttTarget, units),
+                            ValueWithUnit.Minute(ttDuration)
+                        )
+                    ).subscribe()
+                    openCalculator()
+                })
+            }
+            return true
+        }
 
         if (insulinAfterConstraints > 0) {
             actions.add(

@@ -223,6 +223,9 @@ class BolusWizard @Inject constructor(
         private set
     var calculatedCorrection: Double = 0.0
         private set
+    // The calculator's own dose when useFixedInsulin() replaced it, else null (2026-11-01)
+    var suggestedInsulin: Double? = null
+        private set
 
     // Input
     lateinit var profile: Profile
@@ -622,6 +625,20 @@ class BolusWizard @Inject constructor(
             "Exercise ${if (walkingSoon) "ON" else "off"}, Split ${if (splitPending) "pending" else "none"}, Delayed $delayedLabel, FPU $fpuText"
     }
 
+    // Insulin-only mode of the calculator (2026-11-01, per explicit request), opened from the Insulin dialog: the dose the
+    // user typed is given, not the suggestion. Call after doCalc(), with max bolus set as for the calculation. Max bolus and
+    // the "Split bolus every" box apply to the typed dose; the calculation saved with it keeps the calculator's own total.
+    fun useFixedInsulin(units: Double) {
+        suggestedInsulin = calculatedTotalInsulin
+        calculatedTotalInsulin = Round.roundTo(units.coerceAtLeast(0.0), activePlugin.activePump.pumpDescription.bolusStep)
+        carbsEquivalent = 0.0
+        insulinAfterConstraints = constraintChecker.applyBolusConstraints(ConstraintObject(calculatedTotalInsulin, aapsLogger)).value()
+    }
+
+    // "Direct 2.00U, calculator suggested 1.40U", or "" for the usual calculator
+    private fun directInsulinNote(): String =
+        suggestedInsulin?.let { "Direct ${decimalFormatter.to2Decimal(calculatedTotalInsulin)}U, calculator suggested ${decimalFormatter.to2Decimal(it)}U" } ?: ""
+
     fun createBolusCalculatorResult(): BCR {
         val unit = profileFunction.getUnits()
         val splitNote = splitProjectionNote()
@@ -638,7 +655,7 @@ class BolusWizard @Inject constructor(
             (if (carbTime < 0) "Carbs $carbTime min (eaten $clock)" else "Carbs +$carbTime min (for $clock)") +
                 if (trendLeftOut) "\nTrend left out: carbs $carbTime min" else ""
         } else ""
-        val combinedNote = listOf(notes, alwaysNote, carbTimeNote, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
+        val combinedNote = listOf(directInsulinNote(), notes, alwaysNote, carbTimeNote, splitNote, hpSafetyNote).filter { it.isNotEmpty() }.joinToString("\n")
         return BCR(
             timestamp = dateUtil.now(),
             targetBGLow = profileUtil.convertToMgdl(targetBGLow, unit),
@@ -668,7 +685,8 @@ class BolusWizard @Inject constructor(
             wasSuperbolusUsed = useSuperBolus,
             superbolusInsulin = insulinFromSuperBolus,
             wasTempTargetUsed = useTT,
-            totalInsulin = calculatedTotalInsulin,
+            // What the calculator suggested, also when a typed dose was given (see useFixedInsulin)
+            totalInsulin = suggestedInsulin ?: calculatedTotalInsulin,
             percentageCorrection = percentageCorrection,
             profileName = profileName,
             note = combinedNote
@@ -695,6 +713,7 @@ class BolusWizard @Inject constructor(
                     .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
             )
         }
+        directInsulinNote().takeIf { it.isNotEmpty() }?.let { actions.add(it) }
         if (carbs > 0 && !advisor) {
             var timeShift = ""
             if (carbTime > 0) {
@@ -846,7 +865,8 @@ class BolusWizard @Inject constructor(
                 automation.removeAutomationEventBolusReminder()
             if (carbs > 0.0)
                 automation.removeAutomationEventEatReminder()
-            if (preferences.get(BooleanKey.OverviewUseBolusAdvisor) && profileUtil.convertToMgdl(bg, profile.units) > 180 && carbs > 0 && carbTime >= 0)
+            // A typed dose is given as it is: no "correct now, eat later" choice
+            if (suggestedInsulin == null && preferences.get(BooleanKey.OverviewUseBolusAdvisor) && profileUtil.convertToMgdl(bg, profile.units) > 180 && carbs > 0 && carbTime >= 0)
                 OKDialog.showYesNoCancel(
                     ctx, rh.gs(app.aaps.core.ui.R.string.bolus_advisor), rh.gs(app.aaps.core.ui.R.string.bolus_advisor_message),
                     { bolusAdvisorProcessing(ctx) },
