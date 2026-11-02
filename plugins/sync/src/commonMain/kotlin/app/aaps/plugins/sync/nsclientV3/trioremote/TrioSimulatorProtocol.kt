@@ -14,8 +14,9 @@ import kotlinx.serialization.json.put
 
 /** Decodes the normal Trio encrypted push. This result is only a test record, never a pump command. */
 internal object TrioSimulatorProtocol {
-    const val REQUEST_KIND = "aaps-trio-simulator-command-v1"
-    const val RECEIVER_KIND = "aaps-trio-simulator-receiver-v1"
+    // Old record-only messages must never turn into actions after an update.
+    const val REQUEST_KIND = "aaps-trio-simulator-command-v2"
+    const val RECEIVER_KIND = "aaps-trio-simulator-receiver-v2"
     const val MAX_AGE_MS = 600_000L
 
     fun validId(id: String): Boolean = id.matches(Regex("[A-Za-z0-9_-]{1,40}"))
@@ -84,10 +85,10 @@ internal object TrioSimulatorProtocol {
             }
             else -> error("Unsupported test command")
         }
-        return Action(TrioRemoteCrypto.digest(message.toJson().toString()), summary)
+        return Action(TrioRemoteCrypto.digest(message.toJson().toString()), summary, message)
     }
 
-    data class Action(val fingerprint: String, val summary: String)
+    data class Action(val fingerprint: String, val summary: String, val message: TrioRemoteMessage)
 }
 
 internal fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.content

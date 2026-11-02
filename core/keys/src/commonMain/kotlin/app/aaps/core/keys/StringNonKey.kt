@@ -14,6 +14,7 @@ enum class StringNonKey(
 
     ImportRestoreBaseline("import_restore_baseline", "{}", exportable = false),
     TrioSimulatorReceipts("trio_simulator_receipts", "{}", exportable = false),
+    TrioSimulatorOverride("trio_simulator_override", "", exportable = false),
     /** The build (version and commit) the switch defaults were last reset for, see `BuildDefaultsReset`. */
     DefaultsResetBuild("defaults_reset_build", "", exportable = false),
     /**
