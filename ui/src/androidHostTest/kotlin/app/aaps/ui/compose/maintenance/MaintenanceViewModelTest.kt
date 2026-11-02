@@ -24,6 +24,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.shared.tests.generatedTextResolver
@@ -110,10 +111,11 @@ internal class MaintenanceViewModelTest {
     // ----- Built-in settings (2026-11-01) -----
 
     @Test
-    fun `the built-in settings question is up until answered on a Virtual master`() {
+    fun `without a master password defaults apply without a query`() {
         assertThat(sut.builtInStep.value).isNull()
         whenever(preferences.get(StringNonKey.BuiltInSettingsChoice)).thenReturn("")
-        assertThat(build().builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
+        assertThat(build().builtInStep.value).isNull()
+        verify(builtInSettingsApplier).apply("AAPS")
     }
 
     @Test
@@ -124,9 +126,39 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `an update asks again after an earlier answer`() {
+    fun `an update with a password preserves settings and asks after ten seconds`() {
         whenever(config.HEAD).thenReturn("next-build")
-        assertThat(build().builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        val updated = build()
+        assertThat(updated.builtInStep.value).isNull()
+        verify(preferences).put(BooleanNonKey.GeneralSetupWizardProcessed, true)
+        testDispatcher.scheduler.runCurrent()
+        testDispatcher.scheduler.advanceTimeBy(9_999)
+        testDispatcher.scheduler.runCurrent()
+        assertThat(updated.builtInStep.value).isNull()
+        testDispatcher.scheduler.advanceTimeBy(1)
+        testDispatcher.scheduler.runCurrent()
+        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
+        verify(builtInSettingsApplier, never()).apply(any())
+    }
+
+    @Test
+    fun `an update without a password applies the preset silently`() {
+        whenever(config.HEAD).thenReturn("next-build")
+        assertThat(build().builtInStep.value).isNull()
+        verify(builtInSettingsApplier).apply("AAPS")
+    }
+
+    @Test
+    fun `opening defaults manually cancels the delayed startup question`() {
+        whenever(config.HEAD).thenReturn("next-build")
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        val updated = build()
+        updated.openBuiltInSettings()
+        updated.answerBuiltIn(false)
+        testDispatcher.scheduler.advanceTimeBy(10_001)
+        testDispatcher.scheduler.runCurrent()
+        assertThat(updated.builtInStep.value).isNull()
         verify(builtInSettingsApplier, never()).apply(any())
     }
 

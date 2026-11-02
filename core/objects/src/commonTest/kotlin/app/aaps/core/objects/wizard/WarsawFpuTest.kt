@@ -39,9 +39,9 @@ class WarsawFpuTest {
         val plan = warsawFpuPlan(proteinGrams = 10, fatGrams = 10, ic = 10.0)
         requireNotNull(plan)
         assertEquals(1.3, plan.fpu, 0.0001)
-        assertEquals(4, plan.numDoses)
+        assertEquals(8, plan.numDoses)
         assertEquals(240, plan.durationMinutes)
-        assertEquals(0.325, plan.perDoseInsulin, 0.0001)
+        assertEquals(0.1625, plan.perDoseInsulin, 0.0001)
         assertEquals(1.3, plan.totalInsulin, 0.0001)
         assertFalse(plan.capped)
     }
@@ -51,9 +51,9 @@ class WarsawFpuTest {
         val plan = warsawFpuPlan(proteinGrams = 0, fatGrams = 50, ic = 10.0, durationHoursCap = 5.0)
         requireNotNull(plan)
         assertEquals(4.5, plan.fpu, 0.0001)
-        assertEquals(8, (plan.fullTierInsulin / plan.perDoseInsulin).toInt())
-        assertEquals(5, plan.numDoses)
-        assertEquals(0.5625, plan.perDoseInsulin, 0.0001)
+        assertEquals(16, (plan.fullTierInsulin / plan.perDoseInsulin).toInt())
+        assertEquals(10, plan.numDoses)
+        assertEquals(0.28125, plan.perDoseInsulin, 0.0001)
         assertEquals(2.8125, plan.totalInsulin, 0.0001)
         assertTrue(plan.capped)
     }
@@ -65,10 +65,33 @@ class WarsawFpuTest {
     }
 
     @Test
-    fun delaysAreOneHourApart() {
-        assertEquals(60, warsawDoseDelayMinutes(1, 4, 240))
-        assertEquals(240, warsawDoseDelayMinutes(4, 4, 240))
+    fun delaysAreThirtyMinutesApart() {
+        assertEquals(30, warsawDoseDelayMinutes(1, 8, 240))
+        assertEquals(60, warsawDoseDelayMinutes(2, 8, 240))
+        assertEquals(240, warsawDoseDelayMinutes(8, 8, 240))
         assertEquals(180, warsawDoseDelayMinutes(1, 1, 180))
+    }
+
+    @Test
+    fun halfHourCapAndExtraInsulinKeepThirtyMinuteParts() {
+        val capped = requireNotNull(warsawFpuPlan(0, 50, 10.0, durationHoursCap = 5.5))
+        assertEquals(11, capped.numDoses)
+        assertEquals(330, capped.durationMinutes)
+        assertEquals(0.28125, capped.perDoseInsulin, 0.0001)
+        val extra = requireNotNull(warsawPlanPlusUnits(null, 1.2))
+        assertEquals(6, extra.numDoses)
+        assertEquals(180, extra.durationMinutes)
+        assertEquals(0.2, extra.perDoseInsulin, 0.0001)
+        assertEquals(30, warsawDoseDelayMinutes(1, extra.numDoses, extra.durationMinutes))
+    }
+
+    @Test
+    fun retryWindowFitsBetweenHalfHourParts() {
+        val first = 30 * 60_000L
+        val next = 60 * 60_000L
+        assertTrue(warsawCanRetry(first, first, next))
+        assertTrue(warsawCanRetry(first + 10 * 60_000L, first, next))
+        assertFalse(warsawCanRetry(first + 11 * 60_000L, first, next))
     }
 
     @Test

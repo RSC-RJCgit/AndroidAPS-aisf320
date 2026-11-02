@@ -8,7 +8,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.math.floor
 
 /**
- * Protein and fat insulin, spread as one dose per hour.
+ * Protein and fat insulin, spread as one dose every 30 minutes.
  *
  * The immediate wizard bolus does not include this insulin. Fat-protein units pick a length:
  * up to 1 gives 3 hours, up to 2 gives 4 hours, up to 3 gives 5 hours, and above 3 gives 8 hours.
@@ -36,21 +36,22 @@ fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap
         fpu <= 3.0 -> 5
         else       -> 8
     }
-    val perDoseInsulin = totalRequiredInsulin / tierHours
-    val numDoses = if (tierHours == 8) floor(durationHoursCap.coerceIn(0.0, 8.0)).toInt() else tierHours
+    val fullDoses = tierHours * 2
+    val perDoseInsulin = totalRequiredInsulin / fullDoses
+    val numDoses = if (tierHours == 8) floor(durationHoursCap.coerceIn(0.0, 8.0) * 2).toInt() else fullDoses
     if (numDoses <= 0) return null
     return WarsawFpuPlan(
         fpu = fpu,
-        durationMinutes = numDoses * 60,
+        durationMinutes = numDoses * 30,
         numDoses = numDoses,
         perDoseInsulin = perDoseInsulin,
         totalInsulin = perDoseInsulin * numDoses,
-        fullTierInsulin = perDoseInsulin * tierHours,
-        capped = numDoses < tierHours,
+        fullTierInsulin = perDoseInsulin * fullDoses,
+        capped = numDoses < fullDoses,
     )
 }
 
-/** Add [units] onto an existing hourly plan, or start a 3 hour plan when there is none. */
+/** Add [units] onto an existing half-hour plan, or start a 3 hour plan when there is none. */
 fun warsawPlanPlusUnits(plan: WarsawFpuPlan?, units: Double): WarsawFpuPlan? {
     if (units <= 0.0) return plan
     if (plan == null) {
@@ -58,8 +59,8 @@ fun warsawPlanPlusUnits(plan: WarsawFpuPlan?, units: Double): WarsawFpuPlan? {
         return WarsawFpuPlan(
             fpu = 0.0,
             durationMinutes = hours * 60,
-            numDoses = hours,
-            perDoseInsulin = units / hours,
+            numDoses = hours * 2,
+            perDoseInsulin = units / (hours * 2),
             totalInsulin = units,
             fullTierInsulin = units,
             capped = false,
@@ -74,7 +75,7 @@ fun warsawPlanPlusUnits(plan: WarsawFpuPlan?, units: Double): WarsawFpuPlan? {
     )
 }
 
-/** Hour 1 is the first delay. A single dose waits the whole length. */
+/** Half an hour is the first delay for a normal plan. A single dose waits the whole length. */
 fun warsawDoseDelayMinutes(index: Int, numDoses: Int, durationMinutes: Int): Int {
     if (numDoses <= 1) return durationMinutes.coerceAtLeast(1)
     return (durationMinutes.toLong() * index / numDoses).toInt()

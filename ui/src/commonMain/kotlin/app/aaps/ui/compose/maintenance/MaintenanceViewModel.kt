@@ -38,6 +38,7 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
@@ -47,6 +48,8 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -108,10 +111,6 @@ class MaintenanceViewModel(
     private val _directoryPath = MutableStateFlow<String?>(null)
     val directoryPath: StateFlow<String?> = _directoryPath.asStateFlow()
 
-    init {
-        refreshExportConfig()
-    }
-
     // ----- Built-in settings (2026-11-01, per explicit request) -----
 
     /** One step of the "use built-in settings?" flow. Null when nothing is shown. */
@@ -128,12 +127,39 @@ class MaintenanceViewModel(
         data class Done(val written: Int) : BuiltInStep
     }
 
-    // Asked at start until answered, on a client or a Virtual-pump master, whether a new install, a reinstall or an update
-    private val _builtInStep = MutableStateFlow<BuiltInStep?>(if (builtInSettingsPromptPending(preferences, config)) BuiltInStep.Ask else null)
+    private val _builtInStep = MutableStateFlow<BuiltInStep?>(null)
     val builtInStep: StateFlow<BuiltInStep?> = _builtInStep.asStateFlow()
+    private var builtInStartupJob: Job? = null
+    private val _builtInStartupOffer = MutableStateFlow(false)
+    val builtInStartupOffer: StateFlow<Boolean> = _builtInStartupOffer.asStateFlow()
+
+    init {
+        refreshExportConfig()
+        if (builtInSettingsPromptPending(preferences, config)) {
+            if (!importExportPrefs.isMasterPasswordSet()) {
+                // No password: silently choose a new installation with the preset, once for this build.
+                applyBuiltIn(showDone = false)
+            } else {
+                // Existing password: choose an update and keep all saved settings. No installation-type wizard.
+                preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)
+                _builtInStep.value = BuiltInStep.Ask
+                _builtInStartupOffer.value = true
+                builtInStartupJob = viewModelScope.launch {
+                    delay(10_000L)
+                    if (_builtInStep.value == BuiltInStep.Ask) {
+                        recordBuiltInSettingsAnswer(preferences, config, useBuiltIn = false)
+                        _builtInStep.value = null
+                    }
+                    _builtInStartupOffer.value = false
+                }
+            }
+        }
+    }
 
     /** From Maintenance: apply the built-in settings again, or answer a question put off */
     fun openBuiltInSettings() {
+        builtInStartupJob?.cancel()
+        _builtInStartupOffer.value = false
         _builtInStep.value = BuiltInStep.Ask
     }
 
@@ -141,6 +167,8 @@ class MaintenanceViewModel(
         val step = _builtInStep.value
         if (useThem && step != BuiltInStep.Ask) return
         if (!useThem && step != BuiltInStep.Ask && step !is BuiltInStep.EnterPassword && step !is BuiltInStep.SetPassword) return
+        builtInStartupJob?.cancel()
+        _builtInStartupOffer.value = false
         if (!useThem) {
             // No: nothing changes, and the setup wizard starts as before when it never ran
             recordBuiltInSettingsAnswer(preferences, config, useBuiltIn = false)
@@ -168,13 +196,15 @@ class MaintenanceViewModel(
     }
 
     fun dismissBuiltIn() {
+        builtInStartupJob?.cancel()
+        _builtInStartupOffer.value = false
         _builtInStep.value = null
     }
 
-    private fun applyBuiltIn() {
+    private fun applyBuiltIn(showDone: Boolean = true) {
         val written = builtInSettingsApplier.apply(rh.gs(config.appName))
         aapsLogger.info(LTag.CORE, "Built-in settings applied: $written settings")
-        _builtInStep.value = BuiltInStep.Done(written)
+        _builtInStep.value = if (showDone) BuiltInStep.Done(written) else null
     }
 
     fun refreshExportConfig() {
