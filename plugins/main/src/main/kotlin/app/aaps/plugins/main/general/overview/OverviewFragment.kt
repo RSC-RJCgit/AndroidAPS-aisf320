@@ -49,6 +49,7 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.graph.data.GraphViewWithCleanup
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
 import app.aaps.core.interfaces.aps.IobTotal
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.automation.AutomationStateInterface
@@ -2213,6 +2214,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val lastBgColor = lastBgData.lastBgColor(context)
         val isActualBg = lastBgData.isActualBg()
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
+        val acceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration?.takeIf { it.isFinite() }
+        binding.infoLayout.bgAcceleration.text = acceleration?.let { decimalFormatter.to2Decimal(profileUtil.fromMgdlToUnits(it)) }
+            ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
         val trendDescription = trendCalculator.getTrendDescription(iobCobCalculator.ads)
         val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)
         val lastBgDescription = lastBgData.lastBgDescription()

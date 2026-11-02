@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="overview_bg_acceleration_label" comment="BG acceleration per 5 minutes squared, shown beside the basal rate. This is not the AutoISF acce factor.">acce</string>
 
     <!-- SMS Communicator & OTP Authenticator -->
 

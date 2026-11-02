@@ -347,7 +347,7 @@
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:orientation="vertical"
-        app:layout_constraintEnd_toStartOf="@+id/extended_layout"
+        app:layout_constraintEnd_toStartOf="@+id/acceleration_layout"
         app:layout_constraintStart_toEndOf="@+id/cob_layout"
         app:layout_constraintTop_toTopOf="@+id/iob_layout"
         tools:ignore="UseCompoundDrawables">
@@ -374,13 +374,42 @@
     </LinearLayout>
 
     <LinearLayout
+        android:id="@+id/acceleration_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="0dp"
+        android:gravity="bottom|center_horizontal"
+        android:orientation="vertical"
+        app:layout_constraintStart_toEndOf="@id/basal_layout"
+        app:layout_constraintEnd_toStartOf="@id/extended_layout"
+        app:layout_constraintTop_toTopOf="@id/basal_layout"
+        app:layout_constraintBottom_toBottomOf="@id/basal_layout">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/overview_bg_acceleration_label"
+            android:textAppearance="@style/TextAppearance.AppCompat.Small" />
+
+        <TextView
+            android:id="@+id/bg_acceleration"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:paddingTop="3dp"
+            android:paddingBottom="3dp"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            android:textStyle="bold"
+            tools:text="0.03" />
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/extended_layout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:gravity="center_horizontal"
         android:orientation="vertical"
         app:layout_constraintEnd_toStartOf="@+id/as_layout"
-        app:layout_constraintStart_toEndOf="@+id/basal_layout"
+        app:layout_constraintStart_toEndOf="@+id/acceleration_layout"
         app:layout_constraintTop_toTopOf="@+id/iob_layout"
         tools:ignore="UseCompoundDrawables">
 
