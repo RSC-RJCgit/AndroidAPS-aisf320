@@ -957,11 +957,18 @@ fun GraphsSection(
         // HP= at the left of the − + row (2026-10-31, per explicit request). Only with a current AutoISF row (statusIsf
         // is set only then), like the HP= of the steps line, so an old prediction does not linger.
         val autoIsfStatus by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
+        val bgInfoState by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
+        val deltaText = stringResource(
+            UiStrings.overview_glucose_changes,
+            autoIsfStatus.statusShortDelta ?: bgInfoState.bgInfo?.shortAvgDeltaText ?: "—",
+            autoIsfStatus.statusLongDelta ?: bgInfoState.bgInfo?.longAvgDeltaText ?: "—",
+            autoIsfStatus.statusAcceleration ?: "—"
+        )
         val hpText = autoIsfStatus.hypoPrediction?.takeIf { autoIsfStatus.statusIsf != null }?.let { "HP=${oneDecimalText(it)}" }
-        if (showZoomButtons || hpText != null) {
+        if (showZoomButtons || hpText != null || bgInfoState.bgInfo != null || autoIsfStatus.statusAcceleration != null) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = hpText.orEmpty(),
+                    text = listOfNotNull(deltaText, hpText).joinToString("  "),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f)

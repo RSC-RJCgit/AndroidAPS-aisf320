@@ -226,6 +226,10 @@ data class AutoIsfGraphData(
     val statusRatio: String? = null,
     /** Step counts. Null before the first loop row. */
     val statusSteps: String? = null,
+    /** Current loop glucose changes, formatted in the user's glucose units. */
+    val statusShortDelta: String? = null,
+    val statusLongDelta: String? = null,
+    val statusAcceleration: String? = null,
 ) {
 
     fun pointsFor(type: SeriesType): List<GraphDataPoint> = when (type) {

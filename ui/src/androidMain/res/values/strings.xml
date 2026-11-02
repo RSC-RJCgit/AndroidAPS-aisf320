@@ -277,6 +277,7 @@
     <string name="autoisf_history_ukf_delta_15" comment="Change in the UKF glucose over about 15 minutes.">UKF d15</string>
     <string name="autoisf_history_final" comment="The final ISF factor after acce, bg, pp and dura.">Final</string>
     <string name="autoisf_history_acce" comment="The acce ISF factor. Example: 1.20">acce</string>
+    <string name="overview_glucose_changes" comment="Glucose changes in the user's units. %1$s=short delta, %2$s=long delta, %3$s=BG acceleration per 5 minutes squared. Example: SD +0.2  LD +0.1  acce 0.03">SD %1$s  LD %2$s  acce %3$s</string>
     <string name="autoisf_history_bg" comment="The bg ISF factor. Example: 1.10">bg</string>
     <string name="autoisf_history_pp" comment="The pp ISF factor. Example: 0.90">pp</string>
     <string name="autoisf_history_dura" comment="The dura ISF factor. Example: 1.05">dura</string>
