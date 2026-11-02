@@ -42,6 +42,7 @@ import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.queue.Command
 import app.aaps.core.interfaces.queue.CommandQueue
@@ -165,6 +166,7 @@ class MasterActionExecutorImpl(
         val removeStartEvents: Boolean = false,
         val calibration: BatchAction.Calibration? = null,
         val recordOnly: Boolean = false,
+        val virtualOnly: Boolean = false,
         val iCfg: ICfg? = null,
         val bolusTimestamp: Long? = null,
         val warsawPlan: WarsawFpuPlan? = null,
@@ -556,7 +558,9 @@ class MasterActionExecutorImpl(
     private fun directInsulinNote(wizard: BolusWizard, note: String): String =
         if (note.isEmpty()) directInsulinText(wizard) else rh.gs(InterfacesStrings.wizard_notes_join, directInsulinText(wizard), note)
 
-    override suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller?): MasterActionExecutor.PrepareResult {
+    override suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller?, virtualOnly: Boolean): MasterActionExecutor.PrepareResult {
+        if (virtualOnly && activePlugin.activePumpInternal !is VirtualPump)
+            return MasterActionExecutor.PrepareResult.Error("Trio simulator requires VirtualPump")
         val bolus = actions.filterIsInstance<BatchAction.Bolus>().firstOrNull()
         val tt = actions.filterIsInstance<BatchAction.TempTarget>().firstOrNull() // ≤1 by construction
         val ps = actions.filterIsInstance<BatchAction.ProfileSwitch>().firstOrNull() // ≤1 by construction
@@ -719,7 +723,7 @@ class MasterActionExecutorImpl(
                 carbTimeMinutes = bolus?.carbsTimeOffsetMinutes ?: 0, useAlarm = bolus?.alarm == true, notes = bolus?.notes, mode = BolusMode.FIXED,
                 eventType = eventType, carbsDurationHours = bolus?.carbsDurationHours ?: 0,
                 eCarbsGrams = bolus?.eCarbsGrams ?: 0, eCarbsDelayMinutes = bolus?.eCarbsDelayMinutes ?: 0, eCarbsDurationHours = bolus?.eCarbsDurationHours ?: 0,
-                tempTarget = tt, profileSwitch = ps, runningMode = rm, recordOnly = recordOnly, iCfg = bolus?.iCfg, bolusTimestamp = bolus?.timestamp?.takeIf { it > 0L },
+                tempTarget = tt, profileSwitch = ps, runningMode = rm, recordOnly = recordOnly, virtualOnly = virtualOnly, iCfg = bolus?.iCfg, bolusTimestamp = bolus?.timestamp?.takeIf { it > 0L },
                 tempBasal = cappedTb, extendedBolus = cappedEb, cancelTempBasal = ctb != null, cancelExtendedBolus = ceb != null,
                 insulinActivate = ia, therapyEvents = tes, therapyEventEdits = teEdits,
                 removals = removals, removeStartEvents = rse != null, calibration = cal,
@@ -759,6 +763,11 @@ class MasterActionExecutorImpl(
         // same id can't both deliver (the loser gets null → NoPending). A non-matching id, or a dose prepared for
         // another caller, removes nothing, leaving other actors' parked doses intact.
         val p = pending.takeFor(bolusId, caller?.clientId) ?: return MasterActionExecutor.ConfirmResult.NoPending
+        if (p.virtualOnly && activePlugin.activePumpInternal !is VirtualPump) {
+            p.smbPause?.let { smbPause.end(it) }
+            onError(MasterActionExecutor.Failure("Trio simulator requires VirtualPump"))
+            return MasterActionExecutor.ConfirmResult.NotAllowed
+        }
         // The role is checked again now: it may have been lowered on the master since the prepare.
         if (caller != null && !caller.role.allows(p.requiredRole)) {
             p.smbPause?.let { smbPause.end(it) }
@@ -830,7 +839,7 @@ class MasterActionExecutorImpl(
                     val carbsTime = if (p.carbs > 0) dateUtil.now() + T.mins(p.carbTimeMinutes.toLong()).msecs() else null
                     val stamp = p.bolusTimestamp
                     val past = stamp != null && stamp < dateUtil.now() - 30_000L
-                    deliver(
+                    deliverBatchTreatment(
                         p.insulin,
                         p.carbs,
                         carbsTime = carbsTime,
@@ -843,6 +852,7 @@ class MasterActionExecutorImpl(
                         recordOnly = past,
                         iCfg = if (past) p.iCfg else null,
                         timestamp = stamp,
+                        virtualOnly = p.virtualOnly,
                         onSuccess = fixedOnSuccess
                     )
                 }
@@ -1636,8 +1646,26 @@ class MasterActionExecutorImpl(
         iCfg: ICfg?,
         timestamp: Long?,
         onSuccess: () -> Unit
+    ) = deliverBatchTreatment(amount, carbs, carbsTime, carbsDuration, bolusCalculatorResult, notes, source, onError, eventType, recordOnly, iCfg, timestamp, onSuccess)
+
+    private suspend fun deliverBatchTreatment(
+        amount: Double,
+        carbs: Int,
+        carbsTime: Long?,
+        carbsDuration: Int,
+        bolusCalculatorResult: BCR?,
+        notes: String?,
+        source: Sources,
+        onError: (MasterActionExecutor.Failure) -> Unit,
+        eventType: TE.Type?,
+        recordOnly: Boolean,
+        iCfg: ICfg?,
+        timestamp: Long?,
+        onSuccess: () -> Unit,
+        virtualOnly: Boolean = false
     ) {
         val detailedBolusInfo = DetailedBolusInfo().apply {
+            this.virtualOnly = virtualOnly
             eventType?.let { this.eventType = it }
             insulin = amount
             this.carbs = carbs.toDouble()

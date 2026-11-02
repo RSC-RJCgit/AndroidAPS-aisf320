@@ -58,7 +58,7 @@ interface MasterActionExecutor {
      * [confirm] then delivers + applies the TT in decision-B order (raising TT first, bolus, lowering TT only if
      * accepted). At most one [BatchAction.Bolus] and one [BatchAction.TempTarget].
      */
-    suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller? = null): PrepareResult
+    suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller? = null, virtualOnly: Boolean = false): PrepareResult
 
     /**
      * Drain the slot, verify [bolusId] matches the parked bolus, and deliver. Idempotent (consume-once): a second

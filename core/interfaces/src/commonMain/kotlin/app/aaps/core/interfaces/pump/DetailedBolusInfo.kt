@@ -16,6 +16,8 @@ class DetailedBolusInfo {
     // Requesting parameters for driver
     var insulin = 0.0
     var carbs = 0.0
+    /** Simulator requests must never reach a real pump, including after waiting in the queue. */
+    var virtualOnly = false
 
     // Additional requesting parameters
     var timestamp = Clock.System.now().toEpochMilliseconds()
@@ -67,6 +69,7 @@ class DetailedBolusInfo {
         val n = DetailedBolusInfo()
         n.insulin = insulin
         n.carbs = carbs
+        n.virtualOnly = virtualOnly
 
         n.timestamp = timestamp
         n.lastKnownBolusTime = lastKnownBolusTime

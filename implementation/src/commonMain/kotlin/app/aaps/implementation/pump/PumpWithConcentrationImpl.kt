@@ -21,6 +21,7 @@ import app.aaps.core.interfaces.pump.PumpProfile
 import app.aaps.core.interfaces.pump.PumpRate
 import app.aaps.core.interfaces.pump.PumpSync
 import app.aaps.core.interfaces.pump.PumpWithConcentration
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.actions.CustomAction
 import app.aaps.core.interfaces.pump.actions.CustomActionType
 import app.aaps.core.interfaces.queue.CustomCommand
@@ -132,8 +133,12 @@ class PumpWithConcentrationImpl(
     override val baseBasalRate: PumpRate get() = activePumpInternal.baseBasalRate
 
     override suspend fun deliverTreatment(detailedBolusInfo: DetailedBolusInfo): PumpEnactResult {
+        // Pin the driver: switching pumps cannot redirect a queued simulator dose to a real device.
+        val pump = activePumpInternal
+        if (detailedBolusInfo.virtualOnly && pump !is VirtualPump)
+            return pumpEnactResultProvider().success(false).enacted(false).cancelled(true).comment("Simulator bolus blocked: VirtualPump is no longer selected")
         // Priming is in pump units already: it goes to the pump as it is, and its result comes back as it is.
-        if (detailedBolusInfo.bolusType == BS.Type.PRIMING) return activePumpInternal.deliverTreatment(detailedBolusInfo)
+        if (detailedBolusInfo.bolusType == BS.Type.PRIMING) return pump.deliverTreatment(detailedBolusInfo)
         // Read once, so the way back uses the same factor as the way in.
         val concentration = concentration
         // IU -> cU. The max limit is applied in IU by ConstraintsChecker (it folds the pump's own cU cap
@@ -143,7 +148,7 @@ class PumpWithConcentrationImpl(
         val requestedIu = detailedBolusInfo.insulin
         val converted = requestedIu / concentration
         val guarded = converted.coerceAtMost(constraintsChecker.getMaxBolusAllowed().value() / concentration)
-        val result = Round.floorTo(guarded, activePumpInternal.bolusStepSize(guarded))
+        val result = Round.floorTo(guarded, pump.bolusStepSize(guarded))
         if (result != converted)
             aapsLogger.warn(LTag.PUMP, "Concentration boundary adjusted bolus: requested $requestedIu IU -> $converted cU -> $result cU (concentration $concentration)")
         detailedBolusInfo.insulin = result
@@ -156,7 +161,7 @@ class PumpWithConcentrationImpl(
         }
         // cU -> IU. The driver answers in the units it was given, but every reader of bolusDelivered (SMS
         // reply, Nightscout device status, loop screen) expects IU. Under U200 it showed half the dose (#5191).
-        return activePumpInternal.deliverTreatment(detailedBolusInfo).also {
+        return pump.deliverTreatment(detailedBolusInfo).also {
             it.bolusDelivered = PumpInsulin(it.bolusDelivered).iU(concentration)
         }
     }
