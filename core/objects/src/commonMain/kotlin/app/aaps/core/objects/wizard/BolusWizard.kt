@@ -496,13 +496,15 @@ class BolusWizard(
             LTag.CORE,
             "Warsaw: ${plan.numDoses} doses of ${plan.perDoseInsulin} U over ${plan.durationMinutes} min, retry=$retryLater"
         )
+        val step = ch.bolusStep(plan.perDoseInsulin)
+        val parts = (1..plan.numDoses).map { warsawPartUnits(plan.totalInsulin, plan.numDoses, it, step) }
         for (index in 1..plan.numDoses) {
+            val planned = parts[index - 1]
+            if (planned <= 0.0) continue
             val delayMin = warsawDoseDelayMinutes(index, plan.numDoses, plan.durationMinutes)
             val firstDueAt = scheduledAt + delayMin * 60_000L
-            val nextDueAt = if (index < plan.numDoses) {
-                scheduledAt + warsawDoseDelayMinutes(index + 1, plan.numDoses, plan.durationMinutes) * 60_000L
-            } else null
-            val planned = plan.perDoseInsulin
+            val nextIndex = (index + 1..plan.numDoses).firstOrNull { parts[it - 1] > 0.0 }
+            val nextDueAt = nextIndex?.let { scheduledAt + warsawDoseDelayMinutes(it, plan.numDoses, plan.durationMinutes) * 60_000L }
             appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, "fpu$index of ${plan.numDoses}") }
         }
     }

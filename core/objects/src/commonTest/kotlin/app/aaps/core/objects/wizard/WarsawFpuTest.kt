@@ -95,6 +95,22 @@ class WarsawFpuTest {
     }
 
     @Test
+    fun smallerPartsNeverRoundTheSeriesAboveItsTotal() {
+        val small = (1..6).map { warsawPartUnits(0.15, 6, it, 0.05) }
+        assertEquals(0.15, small.sum(), 0.000001)
+        val capped = (1..10).map { warsawPartUnits(2.8125, 10, it, 0.05) }
+        assertEquals(2.8, capped.sum(), 0.000001)
+        for (parts in listOf(6, 8, 10, 16)) {
+            for (total in listOf(0.01, 0.15, 1.3, 2.8125, 4.5)) {
+                val doses = (1..parts).map { warsawPartUnits(total, parts, it, 0.05) }
+                assertTrue(doses.all { it >= 0.0 })
+                assertTrue(doses.sum() <= total + 0.000001)
+                assertTrue(total - doses.sum() < 0.05 + 0.000001)
+            }
+        }
+    }
+
+    @Test
     fun bgGateAndIobRise() {
         val mmol = Constants.MMOLL_TO_MGDL
         assertTrue(warsawDoseBgAllows(5.6 * mmol, 0.3 * mmol, 0.3 * mmol))
