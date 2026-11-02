@@ -2215,8 +2215,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val isActualBg = lastBgData.isActualBg()
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
         val acceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration?.takeIf { it.isFinite() }
-        binding.infoLayout.bgAcceleration.text = acceleration?.let { decimalFormatter.to2Decimal(profileUtil.fromMgdlToUnits(it)) }
-            ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
         val trendDescription = trendCalculator.getTrendDescription(iobCobCalculator.ads)
         val trendArrow = trendCalculator.getTrendArrow(iobCobCalculator.ads)
         val lastBgDescription = lastBgData.lastBgDescription()
@@ -2240,6 +2238,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         runOnUiThread {
             _binding ?: return@runOnUiThread
             binding.infoLayout.bg.text = profileUtil.fromMgdlToStringInUnits(lastBg?.recalculated)
+            binding.infoLayout.bgAcceleration.text = acceleration?.let { decimalFormatter.to2Decimal(profileUtil.fromMgdlToUnits(it)) }
+                ?: rh.gs(app.aaps.core.ui.R.string.value_unavailable_short)
             binding.infoLayout.bg.setTextColor(lastBgColor)
             trendArrow?.let { binding.infoLayout.arrow.setImageResource(it.directionToIcon()) }
             binding.infoLayout.arrow.visibility = (trendArrow != null).toVisibilityKeepSpace()
