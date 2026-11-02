@@ -103,7 +103,7 @@ class WizardDialog : DaggerDialogFragment() {
     private var usePercentage = false
     private var carbsPassedIntoWizard = 0.0
     private var notesPassedIntoWizard = ""
-    // Insulin-only mode (2026-11-01, per explicit request): the dose typed in the Insulin dialog. It is given; the
+    // Insulin-only mode: the typed dose is given; zero opens the input without selecting a dose. The
     // calculation only shows what the calculator suggests. Null is the usual calculator.
     private var fixedInsulinPassedIntoWizard: Double? = null
     private var okClicked: Boolean = false // one shot guards
@@ -199,7 +199,9 @@ class WizardDialog : DaggerDialogFragment() {
         this.arguments?.let { bundle ->
             carbsPassedIntoWizard = bundle.getDouble("carbs_input")
             notesPassedIntoWizard = bundle.getString("notes_input") ?: ""
-            fixedInsulinPassedIntoWizard = bundle.getDouble("fixed_insulin", 0.0).takeIf { it > 0.0 }
+            fixedInsulinPassedIntoWizard = if (bundle.containsKey("fixed_insulin")) {
+                bundle.getDouble("fixed_insulin").takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
+            } else null
         }
 
         dialog?.window?.requestFeature(Window.FEATURE_NO_TITLE)

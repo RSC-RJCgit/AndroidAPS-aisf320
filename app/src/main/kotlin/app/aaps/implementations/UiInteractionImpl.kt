@@ -38,7 +38,6 @@ import app.aaps.ui.dialogs.CarbsDialog
 import app.aaps.ui.dialogs.CareDialog
 import app.aaps.ui.dialogs.ExtendedBolusDialog
 import app.aaps.ui.dialogs.FillDialog
-import app.aaps.ui.dialogs.InsulinDialog
 import app.aaps.ui.dialogs.LoopDialog
 import app.aaps.ui.dialogs.ProfileSwitchDialog
 import app.aaps.ui.dialogs.ProfileViewerDialog
@@ -150,8 +149,12 @@ class UiInteractionImpl @Inject constructor(
     }
 
     override fun runInsulinDialog(fragmentManager: FragmentManager) {
-        InsulinDialog()
-            .show(fragmentManager, "InsulinDialog")
+        WizardDialog().apply {
+            arguments = Bundle().apply {
+                putDouble("carbs_input", 0.0)
+                putDouble("fixed_insulin", 0.0)
+            }
+        }.show(fragmentManager, "WizardDialog")
     }
 
     override fun runCalibrationDialog(fragmentManager: FragmentManager) {
