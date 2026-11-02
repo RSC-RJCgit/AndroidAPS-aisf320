@@ -1196,11 +1196,13 @@ class BolusWizard @Inject constructor(
             fpu <= 3.0 -> 5
             else       -> 8
         }
-        val perDoseInsulin = totalRequiredInsulin / tierHours
-        val numDoses = if (tierHours == 8) floor(warsawDurationHours.coerceIn(0.0, 8.0)).toInt() else tierHours
-        val fullTierInsulin = perDoseInsulin * tierHours
+        val fullDoses = tierHours * 2
+        val perDoseInsulin = totalRequiredInsulin / fullDoses
+        val numDoses = if (tierHours == 8) floor(warsawDurationHours.coerceIn(0.0, 8.0) * 2).toInt() else fullDoses
+        if (numDoses <= 0) return null
+        val fullTierInsulin = perDoseInsulin * fullDoses
         val deliveredTotal = perDoseInsulin * numDoses
-        return WarsawFpuPlan(fpu, numDoses * 60, numDoses, perDoseInsulin, deliveredTotal, fullTierInsulin, capped = numDoses < tierHours)
+        return WarsawFpuPlan(fpu, numDoses * 30, numDoses, perDoseInsulin, deliveredTotal, fullTierInsulin, capped = numDoses < fullDoses)
     }
 
     // Carb-split bolus: profile% at or above 100 (a boosted profile still needs its correctly-scaled,
@@ -1307,25 +1309,32 @@ class BolusWizard @Inject constructor(
                     LTag.CORE,
                     "DelayedDose(fpu): FPU=${plan.fpu} duration=${plan.durationMinutes}min split into " +
                         "${plan.numDoses} dose(s) of ${plan.perDoseInsulin}U each, BG- and IOBdelta-gated per dose" +
-                        if (plan.capped) " [CAPPED at ${plan.numDoses}h, full tier=${plan.fullTierInsulin}U/8h]" else ""
+                        if (plan.capped) " [CAPPED at ${plan.durationMinutes / 60.0}h, full tier=${plan.fullTierInsulin}U/8h]" else ""
                 )
-                preferences.put(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU, Math.round(plan.totalInsulin * 1000))
+                val step = activePlugin.activePump.pumpDescription.bolusStep
+                val parts = (1..plan.numDoses).map { warsawPartUnits(plan.totalInsulin, plan.numDoses, it, step) }
+                val lastPart = parts.indexOfLast { it > 0.0 } + 1
+                val scheduledTotal = parts.sum()
+                preferences.put(LongKey.ApsAutoIsfPendingWarsawRemainingMilliU, Math.round(scheduledTotal * 1000))
                 val scheduledAt = dateUtil.now()
                 for (i in 1..plan.numDoses) {
+                    val part = parts[i - 1]
+                    if (part <= 0.0) continue
                     val delayMins = if (plan.numDoses == 1) plan.durationMinutes.coerceAtLeast(1)
                     else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
                     // When the NEXT part is due: a failed check on this part is re-checked every 10 min until 10 min before it.
-                    val nextDueAt = if (i < plan.numDoses) scheduledAt + T.mins(plan.durationMinutes.toLong() * (i + 1) / plan.numDoses).msecs() else null
+                    val nextIndex = (i + 1..plan.numDoses).firstOrNull { parts[it - 1] > 0.0 }
+                    val nextDueAt = nextIndex?.let { scheduledAt + T.mins(plan.durationMinutes.toLong() * it / plan.numDoses).msecs() }
                     // 2026-10-14, per explicit request: the label is only shown text (notes, Treatments row, calculation
                     // record, log), so it says which part this is and marks the last one, e.g. "fpu2 of 4", "fpu4 (last of 4)".
-                    val partLabel = if (i == plan.numDoses) "fpu$i (last of ${plan.numDoses})" else "fpu$i of ${plan.numDoses}"
+                    val partLabel = if (i == lastPart) "fpu$i (last of ${plan.numDoses})" else "fpu$i of ${plan.numDoses}"
                     scheduleSingleDelayedDose(
-                        plan.perDoseInsulin, delayMins, partLabel, schedulingPct, iobBaselineForDelayedDoses, myScheduleToken,
-                        deliverAt = scheduledAt + T.mins(delayMins.toLong()).msecs(), isLast = i == plan.numDoses, nextDueAt = nextDueAt,
+                        part, delayMins, partLabel, schedulingPct, iobBaselineForDelayedDoses, myScheduleToken,
+                        deliverAt = scheduledAt + T.mins(delayMins.toLong()).msecs(), isLast = i == lastPart, nextDueAt = nextDueAt,
                         retryLater = delayFpuInsteadOfCancel
                     )
                 }
-                totalProjectedFutureSplitDoses += plan.totalInsulin
+                totalProjectedFutureSplitDoses += scheduledTotal
                 noteDetails.add(
                     "protein+fat ${decimalFormatter.to2Decimal(plan.totalInsulin)}U over ${plan.durationMinutes}min " +
                         "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})"
