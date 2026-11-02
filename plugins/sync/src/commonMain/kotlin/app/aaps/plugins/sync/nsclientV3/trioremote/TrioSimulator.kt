@@ -75,7 +75,7 @@ class TrioSimulator(
     }
 
     private fun receiverAllowed(): Boolean = config.APS && !config.AAPSCLIENT &&
-        preferences.get(BooleanKey.TrioSimulatorReceiver) && activePlugin.activePump is VirtualPump
+        preferences.get(BooleanKey.TrioSimulatorReceiver) && activePlugin.activePumpInternal is VirtualPump
 
     /** Public within the module for tests that advance one receiver poll at a time. */
     internal suspend fun pollOnce() {

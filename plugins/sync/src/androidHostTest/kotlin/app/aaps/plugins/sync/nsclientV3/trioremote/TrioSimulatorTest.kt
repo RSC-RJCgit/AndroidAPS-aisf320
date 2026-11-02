@@ -86,7 +86,7 @@ class TrioSimulatorTest {
             null
         }.whenever(preferences).put(any<StringNonPreferenceKey>(), any<String>())
         whenever(config.APS).thenReturn(true)
-        whenever(activePlugin.activePump).thenReturn(pump)
+        whenever(activePlugin.activePumpInternal).thenReturn(pump)
         whenever(dateUtil.now()).thenAnswer { 1_700_000_000_000L + testScheduler.currentTime }
         whenever(dateUtil.dateAndTimeString(any())).thenReturn("test time")
         whenever(plugin.nsAndroidClient).thenReturn(api)
@@ -164,11 +164,11 @@ class TrioSimulatorTest {
     fun realPumpsAndClientBuildsCannotRunTheReceiver() = runTest {
         val receiver = prepare()
         val realPump: Pump = mock()
-        whenever(activePlugin.activePump).thenReturn(realPump)
+        whenever(activePlugin.activePumpInternal).thenReturn(realPump)
         receiver.pollOnce()
         assertThat(mailbox).isEmpty()
         assertThat(strings[StringKey.TrioSimulatorStatus.key]).contains("blocked")
-        whenever(activePlugin.activePump).thenReturn(pump)
+        whenever(activePlugin.activePumpInternal).thenReturn(pump)
         whenever(config.AAPSCLIENT).thenReturn(true)
         receiver.pollOnce()
         assertThat(mailbox).isEmpty()

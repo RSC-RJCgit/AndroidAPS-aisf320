@@ -428,6 +428,7 @@
     <string name="cleaned_tdd_explanation">TDD minus insulin for carbs.</string>
     <string name="trio_simulator_banner">SIMULATOR — encrypted test transport, no Apple push or pump actions.</string>
     <string name="trio_simulator_missing_id">Enter a valid simulator ID in NSClientV3 → Trio connection simulator.</string>
+    <string name="trio_simulator_missing_secret">Enter the simulator shared secret in NSClientV3 → Trio connection simulator.</string>
     <string name="trio_simulator_result">Simulator confirmed: %1$s</string>
     <string name="built_in_settings_title">Built-in settings</string>
     <string name="built_in_settings_desc">Apply this fork\'s built-in settings again</string>

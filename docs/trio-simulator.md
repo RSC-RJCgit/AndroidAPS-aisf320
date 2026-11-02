@@ -10,7 +10,7 @@ On the receiving full v4 app:
 2. Open Settings > NSClientV3 > Trio connection simulator.
 3. Enter a Simulator ID, such as `virtual-test`, and a Simulator shared secret.
 4. Turn on Receive simulated Trio commands. Leave Send to the Trio simulator off on this device.
-5. Keep NSClientV3 running. Simulator status should say it is ready. The last received action is shown in this same read-only status field.
+5. Keep NSClientV3 running. On iOS, keep the receiver app open in the foreground; this transport cannot wake it with Apple push. Simulator status should say it is ready. The last received action is shown in this same read-only status field.
 
 On the sending v4 app or client:
 
