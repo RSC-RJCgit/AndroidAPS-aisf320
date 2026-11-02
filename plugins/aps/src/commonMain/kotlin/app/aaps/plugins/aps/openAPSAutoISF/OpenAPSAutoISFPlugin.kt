@@ -4814,9 +4814,10 @@ open class OpenAPSAutoISFPlugin(
         determineBasalAutoISF.bolusSum30ForCap = if (mcapOn) normalBolusSum(now, 30 * 60 * 1000L) else 0.0
         if (mcapOn) {
             val strength = profileStrengthNow()
-            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walking)
-            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walking) ", walking" else ""
-            determineBasalAutoISF.smbCap30Walking = walking
+            val walkingForCap = mcapWalking(steps5(now), steps30(now))
+            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walkingForCap)
+            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walkingForCap) ", walking" else ""
+            determineBasalAutoISF.smbCap30Walking = walkingForCap
         } else {
             determineBasalAutoISF.smbCap30ForCap = 2.1
             determineBasalAutoISF.smbCap30Note = ""
