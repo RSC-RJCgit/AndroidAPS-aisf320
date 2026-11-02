@@ -30,6 +30,8 @@ class BuiltInSettingsTest {
     private val config: Config = mock()
 
     private fun stored(instanceName: String = "", graphs: String = "") {
+        whenever(config.VERSION_NAME).thenReturn("4.0.0-test")
+        whenever(config.HEAD).thenReturn("abc123")
         whenever(preferences.get(StringKey.GeneralInstanceName)).thenReturn(instanceName)
         whenever(preferences.get(StringNonKey.ComposeGraphConfig)).thenReturn(graphs)
     }
@@ -53,6 +55,7 @@ class BuiltInSettingsTest {
         BuiltInSettings.apply(preferences, config, "AAPS")
 
         verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "on")
+        verify(preferences).put(StringNonKey.BuiltInSettingsPromptBuild, "4.0.0-test@abc123")
         verify(preferences).put(BooleanNonKey.GeneralSetupWizardProcessed, true)
     }
 

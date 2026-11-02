@@ -729,9 +729,9 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         // A brand-new install starts with a few settings that differ from their defaults, for example a client starts
         // read-only. Only on a fresh install, so an update changes nothing.
         FreshInstallDefaults.apply(preferences, config)
-        // A Virtual master or a client gets the agreed on/off switches once per new build (2026-10-21, per explicit request)
+        // Initialize a fresh Virtual master/client; updates wait for the built-in settings choice.
         BuildDefaultsReset.apply(preferences, config, preferences.get(StringNonKey.ActivePluginPump)).let { changed ->
-            if (changed.isNotEmpty()) aapsLogger.info(LTag.CORE, "New build: agreed switches set: ${changed.joinToString { it.key }}")
+            if (changed.isNotEmpty()) aapsLogger.info(LTag.CORE, "Fresh install: agreed switches set: ${changed.joinToString { it.key }}")
         }
 
         // Harvest the DIA each old profile was using, for the database migration in dataMigrations().

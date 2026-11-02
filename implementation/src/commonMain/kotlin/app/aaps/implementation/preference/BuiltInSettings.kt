@@ -1,6 +1,6 @@
 package app.aaps.implementation.preference
 
-import app.aaps.core.interfaces.configuration.BUILT_IN_SETTINGS_ON
+import app.aaps.core.interfaces.configuration.recordBuiltInSettingsAnswer
 import app.aaps.core.interfaces.configuration.BuiltInSettingsApplier
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.overview.graph.GraphConfig
@@ -62,9 +62,9 @@ object BuiltInSettings {
             preferences.put(StringKey.GeneralInstanceName, instanceName)
             written++
         }
-        preferences.put(StringNonKey.BuiltInSettingsChoice, BUILT_IN_SETTINGS_ON)
         // A yes covers what the setup wizard asks, apart from the master password, which the yes asks for itself
         preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)
+        recordBuiltInSettingsAnswer(preferences, config, useBuiltIn = true)
         return written
     }
 

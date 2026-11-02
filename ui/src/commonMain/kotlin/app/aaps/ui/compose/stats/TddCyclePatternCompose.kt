@@ -122,8 +122,8 @@ fun TddCyclePatternCompose(
 ) {
     var showCleaned by remember { mutableStateOf(false) }
     // Lines or shaded bands, and flat week averages, as on the Sensor tab (2026-11-01, per explicit request)
-    var ambulatory by remember { mutableStateOf(false) }
-    var quarters by remember { mutableStateOf(false) }
+    var ambulatory by remember { mutableStateOf(true) }
+    var quarters by remember { mutableStateOf(true) }
 
     Column(modifier = modifier) {
         Text(

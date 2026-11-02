@@ -20,6 +20,8 @@ enum class StringNonKey(
      * "off". Each phone answers for itself, so it is never exported. See `BuiltInSettings`.
      */
     BuiltInSettingsChoice("built_in_settings_choice", "", exportable = false),
+    /** The build on which this phone last answered the built-in settings question. */
+    BuiltInSettingsPromptBuild("built_in_settings_prompt_build", "", exportable = false),
     /** iOS: the RileyLink used for the background heartbeat (its Bluetooth identifier). This phone's own device, so not exported. */
     IosRileyLinkId("ios_rileylink_id", "", exportable = false),
     /** Current heartbeat reception and audio state for this iPhone's overview. */

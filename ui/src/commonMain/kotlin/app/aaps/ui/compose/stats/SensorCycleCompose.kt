@@ -63,9 +63,9 @@ fun SensorCycleCompose(
     formatDate: (Long) -> String,
     modifier: Modifier = Modifier
 ) {
-    var view by remember { mutableStateOf(SensorCycleView.WHOLE_SENSOR) }
+    var view by remember { mutableStateOf(SensorCycleView.AMBULATORY) }
     // Flat average lines over each quarter of the graph, as iPhone Health shows averages (2026-11-01, per explicit request)
-    var quarters by remember { mutableStateOf(false) }
+    var quarters by remember { mutableStateOf(true) }
 
     Column(modifier = modifier) {
         Row(

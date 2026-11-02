@@ -34,14 +34,12 @@ import app.aaps.appshell.navigation.appNavGraph
 import app.aaps.appshell.navigation.handleNotificationAction
 import app.aaps.appshell.navigation.handleQuickLaunchAction
 import app.aaps.appshell.navigation.handleSearchResultClick
-import app.aaps.core.interfaces.configuration.builtInSettingsPromptPending
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.IosNotificationDelegate
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.protection.ProtectionResult
 import app.aaps.core.interfaces.resources.TextRefValueRegistry
-import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.objects.di.CoreObjectsGraph
@@ -199,7 +197,7 @@ private fun startApp(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivit
     IosCrashLog.install(logger)
     // A brand-new install starts read-only, as on Android (see FreshInstallDefaults). Before anything reads the setting.
     FreshInstallDefaults.apply(graph.preferences, graph.config)
-    // A client gets the agreed on/off switches once per new build (2026-10-21, per explicit request)
+    // Initialize a fresh client. Updates wait for the built-in settings choice.
     BuildDefaultsReset.apply(graph.preferences, graph.config, graph.preferences.get(StringNonKey.ActivePluginPump))
 
     // Before the composition, not beside it: the first view model built reads the active pump, and
@@ -452,24 +450,9 @@ private fun AapsApp(app: StartedApp) {
                 }
             )
 
-            // The overview is the start destination, the same as Android and desktop. Settings
-            // used to be, which left its back arrow inert - there was nothing behind it - and
-            // left every other screen unreachable, since they are all reached from the overview.
-            // First run opens the setup wizard, as `ComposeMainActivity` does on Android. The
-            // route and the screen are already shared through `appNavGraph`; only the trigger
-            // was Android's, so a new iOS user landed on an empty overview with nothing to
-            // follow and no hint that a wizard existed. Reported from TestFlight.
-            // Waits for the built-in settings question as AapsAppRoot does (2026-11-01, per explicit request)
-            val builtInChoice by graph.preferences.observe(StringNonKey.BuiltInSettingsChoice)
-                .collectAsStateWithLifecycle()
-            LaunchedEffect(builtInChoice) {
-                if (builtInSettingsPromptPending(graph.preferences, graph.config)) return@LaunchedEffect
-                if (!graph.preferences.get(BooleanNonKey.GeneralSetupWizardProcessed)) {
-                    graph.protectionCheck.requestProtection(ProtectionCheck.Protection.PREFERENCES) { result ->
-                        if (result == ProtectionResult.GRANTED) navController.navigate(AppRoute.SetupWizard.route)
-                    }
-                }
-            }
+            // The overview is the start destination, as on Android and desktop.
+            // AapsAppRoot owns the first-run wizard and waits for the built-in settings answer.
+            // A second trigger here would ask for settings protection twice after Cancel.
 
             NavHost(navController = navController, startDestination = AppRoute.Main.route) {
                 appNavGraph(

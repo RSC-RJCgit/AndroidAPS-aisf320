@@ -246,15 +246,15 @@ fun MaintenanceDialogs(
             passwordExplanation = stringResource(UiStrings.built_in_settings_password_prompt),
             errorMessage = if (step.wrong) stringResource(CoreUiStrings.wrongpassword) else null,
             onConfirm = { password -> maintenanceViewModel.enterBuiltInPassword(password) },
-            onCancel = { maintenanceViewModel.dismissBuiltIn() }
+            onCancel = { maintenanceViewModel.answerBuiltIn(useThem = false) }
         )
 
-        // Cancel is "later": the settings are still applied, and export waits for a password
+        // Cancel keeps the saved settings and does not set a password.
         is BuiltInStep.SetPassword       -> SetPasswordDialog(
             title = stringResource(if (step.mismatch) UiStrings.built_in_settings_password_mismatch else UiStrings.built_in_settings_set_password),
             pinInput = false,
-            onConfirm = { password, again -> maintenanceViewModel.setBuiltInPassword(password, again, later = false) },
-            onCancel = { maintenanceViewModel.setBuiltInPassword("", "", later = true) }
+            onConfirm = { password, again -> maintenanceViewModel.setBuiltInPassword(password, again) },
+            onCancel = { maintenanceViewModel.answerBuiltIn(useThem = false) }
         )
 
         is BuiltInStep.Done              -> OkDialog(

@@ -2,6 +2,7 @@ package app.aaps.implementation.preference
 
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import com.google.common.truth.Truth.assertThat
@@ -14,7 +15,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
-/** A Virtual master or a client gets the agreed switches once per build; the main master looping phone never (2026-10-21). */
+/** Fresh installs initialize once; updates preserve saved settings until an explicit choice. */
 internal class BuildDefaultsResetTest {
 
     private val preferences: Preferences = mock()
@@ -69,13 +70,34 @@ internal class BuildDefaultsResetTest {
     }
 
     @Test
-    fun anUpdateRestoresTheGraphTextRows() {
+    fun aFreshInstallSetsTheGraphTextRows() {
         given()
         whenever(preferences.get(BooleanKey.ApsAutoIsfShowGraphText)).thenReturn(false)
         whenever(preferences.get(BooleanKey.ApsAutoIsfAutoCleanGraph)).thenReturn(true)
         BuildDefaultsReset.apply(preferences, config, "VirtualPumpPlugin")
         verify(preferences).put(BooleanKey.ApsAutoIsfShowGraphText, true)
         verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, false)
+    }
+
+    @Test
+    fun anUpdateDoesNotOverwriteSavedSwitchesBeforeTheUserAnswers() {
+        given(doneFor = "4.0.0-previous@old")
+        whenever(preferences.get(BooleanKey.ApsUseAutosens)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.ApsAutoIsfShowGraphText)).thenReturn(false)
+
+        assertThat(BuildDefaultsReset.apply(preferences, config, "VirtualPumpPlugin")).isEmpty()
+        verify(preferences, never()).put(any<BooleanKey>(), any<Boolean>())
+        verify(preferences, never()).putRemote(any<BooleanKey>(), any<Boolean>(), any())
+        verify(preferences, never()).put(eq(StringNonKey.DefaultsResetBuild), anyOrNull())
+    }
+
+    @Test
+    fun anOlderConfiguredInstallWithoutABuildMarkerKeepsItsSettings() {
+        given()
+        whenever(preferences.get(BooleanNonKey.GeneralSetupWizardProcessed)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.ApsUseAutosens)).thenReturn(true)
+        assertThat(BuildDefaultsReset.apply(preferences, config, "VirtualPumpPlugin")).isEmpty()
+        verify(preferences, never()).put(any<BooleanKey>(), any<Boolean>())
     }
 
     @Test

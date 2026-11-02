@@ -92,6 +92,9 @@ internal class MaintenanceViewModelTest {
         Dispatchers.setMain(testDispatcher)
         // Answered already, so no built-in settings question is up unless a test asks for one
         whenever(preferences.get(StringNonKey.BuiltInSettingsChoice)).thenReturn("off")
+        whenever(config.VERSION_NAME).thenReturn("4.0.0-test")
+        whenever(config.HEAD).thenReturn("abc123")
+        whenever(preferences.get(StringNonKey.BuiltInSettingsPromptBuild)).thenReturn("4.0.0-test@abc123")
         whenever(preferences.get(StringNonKey.ActivePluginPump)).thenReturn("VirtualPumpPlugin")
         whenever(config.appName).thenReturn(TextRef.Literal("AAPS"))
         sut = build()
@@ -121,11 +124,19 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
+    fun `an update asks again after an earlier answer`() {
+        whenever(config.HEAD).thenReturn("next-build")
+        assertThat(build().builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
+        verify(builtInSettingsApplier, never()).apply(any())
+    }
+
+    @Test
     fun `no changes nothing and records the answer`() {
         sut.openBuiltInSettings()
         sut.answerBuiltIn(useThem = false)
 
         verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
+        verify(preferences).put(StringNonKey.BuiltInSettingsPromptBuild, "4.0.0-test@abc123")
         verify(builtInSettingsApplier, never()).apply(any())
         assertThat(sut.builtInStep.value).isNull()
     }
@@ -156,24 +167,64 @@ internal class MaintenanceViewModelTest {
         sut.answerBuiltIn(useThem = true)
         assertThat(sut.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.SetPassword())
 
-        sut.setBuiltInPassword("secret", "secrte", later = false)
+        sut.setBuiltInPassword("secret", "secrte")
         assertThat(sut.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.SetPassword(mismatch = true))
         verify(builtInSettingsApplier, never()).apply(any())
 
-        sut.setBuiltInPassword("secret", "secret", later = false)
+        sut.setBuiltInPassword("secret", "secret")
         verify(preferences).put(StringKey.ProtectionMasterPassword, "hash")
         verify(builtInSettingsApplier).apply("AAPS")
     }
 
     @Test
-    fun `later applies the settings without setting a password`() {
+    fun `cancelling password setup keeps the saved settings`() {
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(false)
         sut.openBuiltInSettings()
         sut.answerBuiltIn(useThem = true)
-        sut.setBuiltInPassword("", "", later = true)
+        sut.answerBuiltIn(useThem = false)
 
         verify(preferences, never()).put(eq(StringKey.ProtectionMasterPassword), any<String>())
-        verify(builtInSettingsApplier).apply("AAPS")
+        verify(builtInSettingsApplier, never()).apply(any())
+        verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
+        assertThat(sut.builtInStep.value).isNull()
+    }
+
+    @Test
+    fun `cancelling master password entry keeps the saved settings`() {
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        sut.openBuiltInSettings()
+        sut.answerBuiltIn(useThem = true)
+        sut.answerBuiltIn(useThem = false)
+
+        verify(builtInSettingsApplier, never()).apply(any())
+        verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
+        assertThat(sut.builtInStep.value).isNull()
+    }
+
+    @Test
+    fun `a late password result after cancel cannot apply settings`() {
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        whenever(importExportPrefs.isMasterPasswordCorrect("right")).thenReturn(true)
+        sut.openBuiltInSettings()
+        sut.answerBuiltIn(useThem = true)
+        sut.answerBuiltIn(useThem = false)
+        sut.enterBuiltInPassword("right")
+
+        verify(builtInSettingsApplier, never()).apply(any())
+        assertThat(sut.builtInStep.value).isNull()
+    }
+
+    @Test
+    fun `a late password setup result after cancel cannot change settings or password`() {
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(false)
+        sut.openBuiltInSettings()
+        sut.answerBuiltIn(useThem = true)
+        sut.answerBuiltIn(useThem = false)
+        sut.setBuiltInPassword("secret", "secret")
+
+        verify(preferences, never()).put(eq(StringKey.ProtectionMasterPassword), any<String>())
+        verify(builtInSettingsApplier, never()).apply(any())
+        assertThat(sut.builtInStep.value).isNull()
     }
 
     @AfterEach

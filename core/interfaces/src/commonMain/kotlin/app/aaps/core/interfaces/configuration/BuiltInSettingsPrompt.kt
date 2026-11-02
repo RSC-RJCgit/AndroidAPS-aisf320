@@ -12,12 +12,21 @@ fun builtInSettingsOffered(config: Config, activePump: String): Boolean =
     config.AAPSCLIENT || activePump.isEmpty() || activePump == VIRTUAL_PUMP_PLUGIN
 
 /**
- * True while the "use built-in settings?" question waits for an answer. The setup wizard waits for it too: a Yes covers
- * what the wizard would ask, a No starts the wizard as before.
+ * True until this phone answers for the current build. An update asks again; an app restart does not.
+ * The setup wizard waits for the answer too.
  */
 fun builtInSettingsPromptPending(preferences: Preferences, config: Config): Boolean =
-    preferences.get(StringNonKey.BuiltInSettingsChoice).isEmpty() &&
-        builtInSettingsOffered(config, preferences.get(StringNonKey.ActivePluginPump))
+    builtInSettingsOffered(config, preferences.get(StringNonKey.ActivePluginPump)) &&
+        (preferences.get(StringNonKey.BuiltInSettingsChoice).isEmpty() ||
+            preferences.get(StringNonKey.BuiltInSettingsPromptBuild) != builtInSettingsBuild(config))
+
+/** Records an explicit answer without applying any defaults. Each phone answers separately. */
+fun recordBuiltInSettingsAnswer(preferences: Preferences, config: Config, useBuiltIn: Boolean) {
+    preferences.put(StringNonKey.BuiltInSettingsChoice, if (useBuiltIn) BUILT_IN_SETTINGS_ON else BUILT_IN_SETTINGS_OFF)
+    preferences.put(StringNonKey.BuiltInSettingsPromptBuild, builtInSettingsBuild(config))
+}
+
+private fun builtInSettingsBuild(config: Config): String = config.VERSION_NAME + "@" + config.HEAD
 
 /** The stored answers to the question */
 const val BUILT_IN_SETTINGS_ON = "on"

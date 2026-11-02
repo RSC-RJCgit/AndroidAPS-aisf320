@@ -212,7 +212,8 @@ fun AapsAppRoot(
                 // The wizard waits for the built-in settings question (2026-11-01, per explicit request): a yes covers it,
                 // a no starts it. Keyed on the answer, so a no given later still opens it.
                 val builtInChoice by preferences.observe(StringNonKey.BuiltInSettingsChoice).collectAsStateWithLifecycle()
-                LaunchedEffect(initProgress.done, builtInChoice) {
+                val builtInPromptBuild by preferences.observe(StringNonKey.BuiltInSettingsPromptBuild).collectAsStateWithLifecycle()
+                LaunchedEffect(initProgress.done, builtInChoice, builtInPromptBuild) {
                     if (!initProgress.done) return@LaunchedEffect
                     if (suppressSetupWizard || preferences.get(BooleanNonKey.GeneralSetupWizardProcessed)) return@LaunchedEffect
                     if (builtInSettingsPromptPending(preferences, config)) return@LaunchedEffect

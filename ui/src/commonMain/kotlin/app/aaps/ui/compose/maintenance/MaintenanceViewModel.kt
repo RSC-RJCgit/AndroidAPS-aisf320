@@ -7,10 +7,10 @@ import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
-import app.aaps.core.interfaces.configuration.BUILT_IN_SETTINGS_OFF
 import app.aaps.core.interfaces.configuration.BuiltInSettingsApplier
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.builtInSettingsPromptPending
+import app.aaps.core.interfaces.configuration.recordBuiltInSettingsAnswer
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -38,7 +38,6 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.StringKey
-import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
@@ -139,9 +138,12 @@ class MaintenanceViewModel(
     }
 
     fun answerBuiltIn(useThem: Boolean) {
+        val step = _builtInStep.value
+        if (useThem && step != BuiltInStep.Ask) return
+        if (!useThem && step != BuiltInStep.Ask && step !is BuiltInStep.EnterPassword && step !is BuiltInStep.SetPassword) return
         if (!useThem) {
             // No: nothing changes, and the setup wizard starts as before when it never ran
-            preferences.put(StringNonKey.BuiltInSettingsChoice, BUILT_IN_SETTINGS_OFF)
+            recordBuiltInSettingsAnswer(preferences, config, useBuiltIn = false)
             _builtInStep.value = null
             return
         }
@@ -149,19 +151,19 @@ class MaintenanceViewModel(
     }
 
     fun enterBuiltInPassword(password: String) {
+        if (_builtInStep.value !is BuiltInStep.EnterPassword) return
         if (importExportPrefs.isMasterPasswordCorrect(password)) applyBuiltIn()
         else _builtInStep.value = BuiltInStep.EnterPassword(wrong = true)
     }
 
-    /** Both fields must match. [later] skips setting one: export then waits until a password is set. */
-    fun setBuiltInPassword(password: String, again: String, later: Boolean) {
-        if (!later) {
-            if (password.isEmpty() || password != again) {
-                _builtInStep.value = BuiltInStep.SetPassword(mismatch = true)
-                return
-            }
-            preferences.put(StringKey.ProtectionMasterPassword, passwordHasher.hashPassword(password))
+    /** Both fields must match before either the password or settings are changed. */
+    fun setBuiltInPassword(password: String, again: String) {
+        if (_builtInStep.value !is BuiltInStep.SetPassword) return
+        if (password.isEmpty() || password != again) {
+            _builtInStep.value = BuiltInStep.SetPassword(mismatch = true)
+            return
         }
+        preferences.put(StringKey.ProtectionMasterPassword, passwordHasher.hashPassword(password))
         applyBuiltIn()
     }
 

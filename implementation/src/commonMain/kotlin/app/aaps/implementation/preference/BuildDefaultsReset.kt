@@ -2,13 +2,14 @@ package app.aaps.implementation.preference
 
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.SyncDirection
 
 /**
- * Every new build puts the on/off display and AutoISF switches of a Virtual master or a client to an agreed set, once, on
- * its first start (2026-10-21, per explicit request: after an update it was never clear which switches such a phone had).
+ * Initializes the switches of a fresh Virtual master or client. Updates preserve saved settings;
+ * built-in settings are applied later only after an explicit choice and password confirmation.
  *
  * The main master looping phone (a master with a real pump) is never touched: an update must not change how it looks or
  * doses, so the code defaults stay as that phone needs them and [AGREED] is a separate list. Numbers, the Nightscout and
@@ -72,11 +73,13 @@ object BuildDefaultsReset {
     /** The pump plugin id a Virtual master runs (`PluginBase.pluginId`, the class name). */
     private const val VIRTUAL_PUMP = "VirtualPumpPlugin"
 
-    /** Returns the switches it changed (empty on the main master looping phone, or when this build already did it). */
+    /** Returns changed switches on a fresh install. Existing installs and real-pump masters are left alone. */
     fun apply(preferences: Preferences, config: Config, activePump: String): List<BooleanKey> {
         if (!config.AAPSCLIENT && activePump != VIRTUAL_PUMP) return emptyList()
+        if (preferences.get(StringNonKey.DefaultsResetBuild).isNotEmpty() ||
+            preferences.get(BooleanNonKey.GeneralSetupWizardProcessed)
+        ) return emptyList()
         val build = config.VERSION_NAME + "@" + config.HEAD
-        if (preferences.get(StringNonKey.DefaultsResetBuild) == build) return emptyList()
         val changed = AGREED.filter { (key, value) ->
             if (preferences.get(key) == value) return@filter false
             if (config.AAPSCLIENT && key.sync?.direction == SyncDirection.Bidirectional) preferences.putRemote(key, value, 0L)
