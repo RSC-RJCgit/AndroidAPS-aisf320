@@ -121,6 +121,22 @@ internal fun WizardDialogUiState.withFixedInsulin(value: Double): WizardDialogUi
     return copy(fixedInsulin = dose, okVisible = hasResult && (dose > 0.0 || effectiveCarbs > 0 || eCarbs > 0))
 }
 
+/** Positive carbs leave manual mode for the rest of this calculator session. */
+internal fun WizardDialogUiState.withMealCarbs(value: Int, autoFpu: Boolean, unreliable: Boolean, small: Boolean): WizardDialogUiState {
+    val carbs = value.coerceIn(0, maxCarbs)
+    if (!insulinOnly || carbs == 0) return copy(carbs = carbs)
+    return copy(
+        carbs = carbs,
+        fixedInsulin = null,
+        fpuInstead = autoFpu && !unreliable,
+        unreliableSmb = unreliable,
+        smallMeal = small,
+        giveRestLater = true,
+        hasResult = false,
+        okVisible = false
+    )
+}
+
 val WizardDialogUiState.insulinOnly: Boolean
     get() = fixedInsulin != null
 

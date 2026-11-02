@@ -325,7 +325,21 @@ class WizardDialogViewModel(
     fun updateCarbs(value: Int) {
         val state = uiState.value
         val clamped = value.coerceIn(0, state.maxCarbs)
-        _uiState.update { it.copy(carbs = clamped) }
+        if (state.insulinOnly && clamped > 0) {
+            val unreliable = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+            val autoFpu = preferences.get(BooleanKey.WizardDefaultAutoFpu)
+            val small = preferences.get(BooleanKey.WizardDefaultSmallMeal)
+            walkingSoonTouched = false
+            savedStateHandle.remove<String>("insulin")
+            _uiState.update { it.withMealCarbs(clamped, autoFpu, unreliable, small) }
+            // Use the same setup as opening the usual calculator, including the unreliable SMB defaults.
+            if (unreliable) {
+                enableMealExtra(unreliable = true)
+                return
+            }
+        } else {
+            _uiState.update { it.copy(carbs = clamped) }
+        }
         recalculate()
     }
 

@@ -171,6 +171,34 @@ internal class WizardDialogViewModelTest {
         assertThat(opened.copy(hasResult = false).withFixedInsulin(1.25).okVisible).isFalse()
     }
 
+    @Test
+    fun `positive carbs leave manual mode and restore meal defaults`() {
+        val manual = WizardDialogUiState(fixedInsulin = 1.25, maxCarbs = 100, totalInsulin = 3.5, hasResult = true, okVisible = true, giveRestLater = false)
+        val meal = manual.withMealCarbs(30, autoFpu = true, unreliable = false, small = true)
+        assertThat(meal.insulinOnly).isFalse()
+        assertThat(meal.deliveredInsulin).isEqualTo(3.5)
+        assertThat(meal.carbs).isEqualTo(30)
+        assertThat(meal.fpuInstead).isTrue()
+        assertThat(meal.smallMeal).isTrue()
+        assertThat(meal.giveRestLater).isTrue()
+        // Wait for the meal calculation before allowing confirmation.
+        assertThat(meal.hasResult).isFalse()
+        assertThat(meal.okVisible).isFalse()
+        assertThat(meal.withMealCarbs(0, autoFpu = false, unreliable = false, small = false).insulinOnly).isFalse()
+    }
+
+    @Test
+    fun `zero carbs keep the entered dose and positive carbs respect unreliable defaults`() {
+        val manual = WizardDialogUiState(fixedInsulin = 1.25, maxCarbs = 100, giveRestLater = false)
+        assertThat(manual.withMealCarbs(0, true, true, true)).isEqualTo(manual)
+        val meal = manual.withMealCarbs(200, autoFpu = true, unreliable = true, small = false)
+        assertThat(meal.carbs).isEqualTo(100)
+        assertThat(meal.unreliableSmb).isTrue()
+        assertThat(meal.fpuInstead).isFalse()
+        assertThat(meal.smallMeal).isFalse()
+        assertThat(manual.copy(maxCarbs = 0).withMealCarbs(30, true, true, true).insulinOnly).isTrue()
+    }
+
     // The BG field follows readings until the user edits it.
     @Test
     fun `the BG field follows new readings until the user edits it`() {
