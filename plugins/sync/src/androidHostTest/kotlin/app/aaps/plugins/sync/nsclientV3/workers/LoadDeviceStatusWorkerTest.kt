@@ -105,7 +105,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `notInitializedAndroidClient returns failure`() = runTest(timeout = 30.seconds) {
+    fun notInitializedAndroidClientReturnsFailure() = runTest(timeout = 30.seconds) {
         sut = buildSut()
 
         val result = sut.doWorkAndLog()
@@ -115,7 +115,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `successful load with data returns success`() = runTest(timeout = 30.seconds) {
+    fun successfulLoadWithDataReturnsSuccess() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
@@ -140,7 +140,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `successful load with empty data returns success`() = runTest(timeout = 30.seconds) {
+    fun successfulLoadWithEmptyDataReturnsSuccess() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
@@ -156,7 +156,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `empty history on a known Trio source uses recent device status`() = runTest {
+    fun emptyHistoryOnAKnownTrioSourceUsesRecentDeviceStatus() = runTest {
         val site = "https://trio.example"
         whenever(preferences.get(StringKey.NsClientUrl)).thenReturn(site)
         whenever(preferences.get(StringNonKey.NsClientTrioProfileUnits))
@@ -178,7 +178,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `nonempty history does not also fetch recent Trio status`() = runTest {
+    fun nonemptyHistoryDoesNotAlsoFetchRecentTrioStatus() = runTest {
         whenever(preferences.get(StringKey.NsClientUrl)).thenReturn("https://trio.example")
         whenever(preferences.get(StringNonKey.NsClientTrioProfileUnits))
             .thenReturn("""{"site":"https://trio.example","units":"MGDL","start":0}""")
@@ -198,7 +198,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `error handling returns failure and sets lastOperationError`() = runTest(timeout = 30.seconds) {
+    fun errorHandlingReturnsFailureAndSetsLastOperationError() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
@@ -215,7 +215,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `successful load clears lastOperationError`() = runTest(timeout = 30.seconds) {
+    fun successfulLoadClearsLastOperationError() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
@@ -231,7 +231,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `sets initialLoadFinished to true`() = runTest(timeout = 30.seconds) {
+    fun setsInitialLoadFinishedToTrue() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
@@ -247,7 +247,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `loads data from last 7 minutes`() = runTest(timeout = 30.seconds) {
+    fun loadsDataFromLast7Minutes() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
@@ -264,7 +264,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
 
     /** A client works out the ISF for carbs from the master's loop results of 48 hours, which come with them. */
     @Test
-    fun `a client loads the last 48 hours after a start`() = runTest(timeout = 30.seconds) {
+    fun aClientLoadsTheLast48HoursAfterAStart() = runTest(timeout = 30.seconds) {
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
         whenever(config.AAPSCLIENT).thenReturn(true)
         sut = buildSut()
@@ -277,7 +277,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
 
     /** Then everything the server got since the last load, also what came while the phone was offline. */
     @Test
-    fun `a client goes on from the last load`() = runTest(timeout = 30.seconds) {
+    fun aClientGoesOnFromTheLastLoad() = runTest(timeout = 30.seconds) {
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
         whenever(config.AAPSCLIENT).thenReturn(true)
         nsClientV3Plugin.lastLoadedDeviceStatusSrvModified = now - T.hours(2).msecs()
@@ -291,7 +291,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
 
     /** A day holds about 300, so a full page is followed by the next one, from its newest change on. */
     @Test
-    fun `a client loads page after page`() = runTest(timeout = 30.seconds) {
+    fun aClientLoadsPageAfterPage() = runTest(timeout = 30.seconds) {
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
         whenever(config.AAPSCLIENT).thenReturn(true)
         sut = buildSut()
@@ -310,7 +310,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
 
     /** A full sync, the way to rebuild a client's database, loads the 48 hours again. */
     @Test
-    fun `a full sync loads the 48 hours again`() = runTest(timeout = 30.seconds) {
+    fun aFullSyncLoadsThe48HoursAgain() = runTest(timeout = 30.seconds) {
         nsClientV3Plugin.lastLoadedDeviceStatusSrvModified = now - T.hours(2).msecs()
 
         nsClientV3Plugin.resetToFullSync()
@@ -319,7 +319,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `handles multiple device statuses`() = runTest(timeout = 30.seconds) {
+    fun handlesMultipleDeviceStatuses() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
@@ -353,7 +353,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun `initialLoadFinished remains true once set`() = runTest(timeout = 30.seconds) {
+    fun initialLoadFinishedRemainsTrueOnceSet() = runTest(timeout = 30.seconds) {
         whenever(workManager.beginUniqueWork(anyString(), anyOrNull(), anyOrNull<OneTimeWorkRequest>())).thenReturn(workContinuation)
         whenever(workContinuation.then(any<OneTimeWorkRequest>())).thenReturn(workContinuation)
         nsClientV3Plugin.nsAndroidClient = nsAndroidClient
