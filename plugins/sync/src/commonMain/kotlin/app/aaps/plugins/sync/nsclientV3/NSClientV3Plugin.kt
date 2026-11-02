@@ -82,6 +82,7 @@ import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientStringKey
 import app.aaps.plugins.sync.nsclientV3.services.RunningConfigurationPublisher
+import app.aaps.plugins.sync.nsclientV3.trioremote.TrioSimulator
 import app.aaps.plugins.sync.nsclientV3.ws.NsConnection
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadExecutor
 import app.aaps.plugins.sync.nsclientV3.ws.NsLoadStep
@@ -161,6 +162,7 @@ class NSClientV3Plugin(
     private val nsConnection: NsConnection,
     private val nsLoadExecutor: NsLoadExecutor,
     notificationManager: NotificationManager,
+    private val trioSimulator: TrioSimulator,
 ) : NsClient, Sync, PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -290,6 +292,7 @@ class NSClientV3Plugin(
         receiverDelegate.grabReceiversState()
         scope = CoroutineScope(aapsIoDispatcher + SupervisorJob())
         runningConfigurationPublisher.start(scope)
+        trioSimulator.start(scope)
         preferencesClientPublisher.start(scope)
         // A one-time convenience: if it fails, log it and go on - it must never stop the plugin from starting.
         if (!config.AAPSCLIENT) scope.launch {
@@ -574,6 +577,7 @@ class NSClientV3Plugin(
 
     override suspend fun onStop() {
         runningConfigurationPublisher.stop()
+        trioSimulator.stop()
         preferencesClientPublisher.stop()
         // Cancel and then WAIT. cancel() only asks: a coroutine keeps running until it reaches its
         // next suspension point, so without the join the stop returns while background work is still
@@ -1438,6 +1442,17 @@ class NSClientV3Plugin(
                     StringKey.TrioRemoteSharedSecret,
                     StringKey.TrioRemoteApnsKeyId,
                     StringKey.TrioRemoteApnsKey
+                )
+            ),
+            PreferenceSubScreenDef(
+                key = "ns_trio_simulator_settings",
+                title = KeysStrings.trio_simulator_settings,
+                items = listOf(
+                    BooleanKey.TrioSimulatorReceiver,
+                    BooleanKey.TrioSimulatorSender,
+                    StringKey.TrioSimulatorId,
+                    StringKey.TrioSimulatorSecret,
+                    StringKey.TrioSimulatorStatus
                 )
             ),
             PreferenceSubScreenDef(

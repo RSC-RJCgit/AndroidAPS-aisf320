@@ -97,7 +97,7 @@ internal class LoadBgWorkerTest : TestBaseWithProfile() {
         nsClientV3Plugin = NSClientV3Plugin(
             aapsLogger, rh, preferences, rxBus,
             receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
-            nsClientSource, storeDataForDb, decimalFormatter, l, nsClientRepository, uel, mock(), mock(), mock(), mock(), mock(), mock(), profileRepository, mock(), mock(), mock()
+            nsClientSource, storeDataForDb, decimalFormatter, l, nsClientRepository, uel, mock(), mock(), mock(), mock(), mock(), mock(), profileRepository, mock(), mock(), mock(), trioSimulator = mock()
         )
         nsClientV3Plugin.newestDataOnServer = LastModified(LastModified.Collections())
     }

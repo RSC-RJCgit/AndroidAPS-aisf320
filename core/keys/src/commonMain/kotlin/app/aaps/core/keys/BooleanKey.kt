@@ -460,6 +460,8 @@ enum class BooleanKey(
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false, KeysStrings.ns_secondary_enabled, KeysStrings.ns_secondary_enabled_summary),
     // Trio remote control, as in LoopFollow (2026-10-29, per explicit request). The rest of its settings depend on this.
     TrioRemoteEnabled("trio_remote_enabled", false, KeysStrings.trio_remote_enabled, KeysStrings.trio_remote_enabled_summary),
+    TrioSimulatorReceiver("trio_simulator_receiver", false, KeysStrings.trio_simulator_receiver, KeysStrings.trio_simulator_receiver_summary, showInNsClientMode = false),
+    TrioSimulatorSender("trio_simulator_sender", false, KeysStrings.trio_simulator_sender, KeysStrings.trio_simulator_sender_summary),
     NsClientSecondaryAcceptTherapyEvent(
         "nsclient_secondary_receive_therapy_events",
         true,

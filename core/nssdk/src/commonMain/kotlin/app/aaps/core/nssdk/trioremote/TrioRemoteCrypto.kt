@@ -33,7 +33,10 @@ object TrioRemoteCrypto {
         return Base64.Default.encode(nonce + sealed)
     }
 
-    /** What Trio does with the message. Only the tests need it here. Null when it does not open with [sharedSecret]. */
+    /** A stable digest for simulator replay protection. It does not expose the command or secret. */
+    fun digest(text: String): String = Base64.UrlSafe.encode(sha256.hashBlocking(text.encodeToByteArray()))
+
+    /** What Trio does with the message. Null when it does not open with [sharedSecret]. */
     fun decrypt(sharedSecret: String, encrypted: String): String? = try {
         val bytes = Base64.Default.decode(encrypted)
         key(sharedSecret).cipher()

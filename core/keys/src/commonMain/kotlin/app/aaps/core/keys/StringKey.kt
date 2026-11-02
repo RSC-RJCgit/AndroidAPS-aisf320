@@ -359,6 +359,9 @@ enum class StringKey(
         summary = KeysStrings.trio_remote_user_summary,
         dependency = BooleanKey.TrioRemoteEnabled
     ),
+    TrioSimulatorId("trio_simulator_id", "", KeysStrings.trio_simulator_id, KeysStrings.trio_simulator_id_summary),
+    TrioSimulatorSecret("trio_simulator_secret", "", KeysStrings.trio_simulator_secret, KeysStrings.trio_simulator_secret_summary, isPassword = true),
+    TrioSimulatorStatus("trio_simulator_status", "", KeysStrings.trio_simulator_status, enabledCondition = PreferenceEnabledCondition { false }),
     TrioRemoteSharedSecret(
         key = "trio_remote_shared_secret",
         defaultValue = "",

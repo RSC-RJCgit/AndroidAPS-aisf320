@@ -225,15 +225,16 @@ internal class NSDeviceStatusHandlerTest {
 
     @Test
     fun correctedResultAtTheSameTimestampCanBeRetried() {
+        val suggestedTime = "2026-11-02T00:00:00Z"
         val previous = RT(bg = 100.0)
         val loop = ProcessedDeviceStatusData.OpenAPSData().apply { suggested = previous; clockSuggested = 1_000L }
         whenever(processedDeviceStatusData.openAPSData).thenReturn(loop)
-        whenever(dateUtil.fromISODateString(SUGGESTED_TIME)).thenReturn(5_000L)
+        whenever(dateUtil.fromISODateString(suggestedTime)).thenReturn(5_000L)
         val malformed = NSDeviceStatus(
             device = "openaps://test",
-            pump = NSDeviceStatus.Pump(clock = SUGGESTED_TIME, reservoir = 99.0),
+            pump = NSDeviceStatus.Pump(clock = suggestedTime, reservoir = 99.0),
             openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
-                put("timestamp", SUGGESTED_TIME)
+                put("timestamp", suggestedTime)
                 put("bg", "not a number")
             })
         )
@@ -243,7 +244,7 @@ internal class NSDeviceStatusHandlerTest {
         verify(processedDeviceStatusData, never()).pumpData = any()
 
         val corrected = malformed.copy(pump = null, openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
-            put("timestamp", SUGGESTED_TIME)
+            put("timestamp", suggestedTime)
             put("bg", 123)
         }))
         sut.handleNewData(arrayOf(corrected))

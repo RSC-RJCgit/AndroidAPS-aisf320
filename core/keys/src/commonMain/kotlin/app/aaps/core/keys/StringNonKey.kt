@@ -13,6 +13,7 @@ enum class StringNonKey(
 ) : StringNonPreferenceKey {
 
     ImportRestoreBaseline("import_restore_baseline", "{}", exportable = false),
+    TrioSimulatorReceipts("trio_simulator_receipts", "{}", exportable = false),
     /** The build (version and commit) the switch defaults were last reset for, see `BuildDefaultsReset`. */
     DefaultsResetBuild("defaults_reset_build", "", exportable = false),
     /**

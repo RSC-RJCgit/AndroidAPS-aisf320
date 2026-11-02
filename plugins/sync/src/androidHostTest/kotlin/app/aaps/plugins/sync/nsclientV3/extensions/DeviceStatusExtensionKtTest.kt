@@ -49,7 +49,7 @@ internal class DeviceStatusExtensionKtTest : TestBase() {
 
     @BeforeEach
     fun setup() {
-        processedDeviceStatusData = ProcessedDeviceStatusDataImpl { apsResult }
+        processedDeviceStatusData = ProcessedDeviceStatusDataImpl({ apsResult }, preferences)
         nsDeviceStatusHandler = NSDeviceStatusHandler(
             preferences, config, dateUtil, processedDeviceStatusData, aapsLogger,
             persistenceLayer, overviewData, calculationWorkflow, rxBus, testScope,

@@ -98,12 +98,13 @@ fun TrioRemoteScreen(
         OkCancelDialog(
             title = stringResource(UiStrings.trio_remote_confirm_title),
             message = commandText(command, viewModel),
-            secondMessage = stringResource(UiStrings.trio_remote_confirm_note),
+            secondMessage = stringResource(if (state.confirmingSimulator) UiStrings.trio_simulator_banner else UiStrings.trio_remote_confirm_note),
             onConfirm = {
+                val simulator = state.confirmingSimulator
                 viewModel.dismissConfirmation()
                 // A bolus also needs the bolus protection, as every bolus in AAPS does
-                if (command is TrioRemoteCommand.Bolus) requestBolusProtection { viewModel.send(command) }
-                else viewModel.send(command)
+                if (command is TrioRemoteCommand.Bolus) requestBolusProtection { viewModel.send(command, simulator) }
+                else viewModel.send(command, simulator)
             },
             onDismiss = viewModel::dismissConfirmation
         )
@@ -119,8 +120,9 @@ private fun SetupCard(setup: TrioRemoteSetup) {
                 return@Column
             }
             setup.trio?.let { trio ->
+                if (setup.simulator) Text(stringResource(UiStrings.trio_simulator_banner))
                 Text(stringResource(UiStrings.trio_remote_trio_app, trio.bundleId))
-                Text(stringResource(if (trio.production) UiStrings.trio_remote_server_production else UiStrings.trio_remote_server_development))
+                if (!setup.simulator) Text(stringResource(if (trio.production) UiStrings.trio_remote_server_production else UiStrings.trio_remote_server_development))
             }
             if (setup.missing.isNotEmpty()) {
                 Text(stringResource(UiStrings.trio_remote_missing_title), color = MaterialTheme.colorScheme.error)
@@ -134,6 +136,7 @@ private fun SetupCard(setup: TrioRemoteSetup) {
                                 TrioRemoteSetup.Missing.APNS_KEY      -> UiStrings.trio_remote_missing_apns_key
                                 TrioRemoteSetup.Missing.TRIO_PROFILE  -> UiStrings.trio_remote_missing_trio_profile
                                 TrioRemoteSetup.Missing.TEAM_ID       -> UiStrings.trio_remote_missing_team_id
+                                TrioRemoteSetup.Missing.SIMULATOR_ID  -> UiStrings.trio_simulator_missing_id
                             }
                         )
                     )
@@ -241,6 +244,7 @@ private fun ResultText(outcome: SendOutcome, viewModel: TrioRemoteViewModel) {
     val command = commandText(outcome.command, viewModel)
     when (val result = outcome.result) {
         TrioRemoteResult.Sent      -> Text(stringResource(UiStrings.trio_remote_sent, command))
+        is TrioRemoteResult.Simulated -> Text(stringResource(UiStrings.trio_simulator_result, result.detail))
         is TrioRemoteResult.Failed -> Text(stringResource(UiStrings.trio_remote_failed, command, result.reason), color = MaterialTheme.colorScheme.error)
     }
 }

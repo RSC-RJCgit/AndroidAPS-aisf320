@@ -69,7 +69,7 @@ class NSClientV3PluginSchedulingTest : TestBaseWithProfile() {
             aapsLogger, text, preferences, rxBus,
             receiverDelegate, config, dateUtil, dataSyncSelectorV3, persistenceLayer,
             nsClientSource, mock(), decimalFormatter, l, nsClientRepository, mock(),
-            mock(), mock(), mock(), mock(), mock(), mock(), mock(), nsConnection, nsLoadExecutor, mock()
+            mock(), mock(), mock(), mock(), mock(), mock(), mock(), nsConnection, nsLoadExecutor, mock(), trioSimulator = mock()
         )
     }
 

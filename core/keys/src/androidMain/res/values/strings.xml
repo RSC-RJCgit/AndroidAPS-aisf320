@@ -496,6 +496,16 @@
     <string name="ns_secondary_token">Secondary NS access token</string>
     <string name="ns_secondary_token_summary">Access token for the secondary Nightscout site. Leave blank if that site does not use one.</string>
     <string name="trio_remote_settings">Trio remote control</string>
+    <string name="trio_simulator_settings">Trio connection simulator</string>
+    <string name="trio_simulator_receiver">Receive simulated Trio commands</string>
+    <string name="trio_simulator_receiver_summary">Virtual master only. Receives and records encrypted test commands through Nightscout settings. No insulin, treatments or profile changes are applied. Keep NSClientV3 running. Requires permission to read and write Nightscout settings.</string>
+    <string name="trio_simulator_sender">Send to the Trio simulator</string>
+    <string name="trio_simulator_sender_summary">Use the Trio remote screen with the test mailbox instead of Apple push. Both devices need the same simulator ID and simulator secret. APNs keys are not used. This does not test Apple push delivery.</string>
+    <string name="trio_simulator_id">Simulator ID</string>
+    <string name="trio_simulator_id_summary">Same on the sender and Virtual master. Use 1–40 letters, digits, underscores or hyphens. Use a separate test Nightscout site.</string>
+    <string name="trio_simulator_secret">Simulator shared secret</string>
+    <string name="trio_simulator_secret_summary">Same test secret on both devices. Encrypts the normal Trio command payload and the receiver reply. Not sent to Nightscout.</string>
+    <string name="trio_simulator_status">Simulator status / last received action</string>
     <string name="trio_remote_enabled">Trio remote control</string>
     <string name="trio_remote_enabled_summary">Send temp targets, carbs, boluses and overrides to the Trio that uploads to this Nightscout site, as LoopFollow does. Remote control must be on in Trio, with the same shared secret.</string>
     <string name="trio_remote_user">User</string>

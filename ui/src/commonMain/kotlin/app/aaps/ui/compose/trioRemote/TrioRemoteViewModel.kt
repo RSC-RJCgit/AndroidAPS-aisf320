@@ -94,11 +94,11 @@ class TrioRemoteViewModel(
     fun dismissConfirmation() = _uiState.update { it.copy(confirming = null) }
 
     /** Called after the confirmation, and for a bolus after the bolus protection too */
-    fun send(command: TrioRemoteCommand) {
+    fun send(command: TrioRemoteCommand, expectedSimulator: Boolean) {
         if (_uiState.value.sending) return
         _uiState.update { it.copy(confirming = null, sending = true, result = null) }
         viewModelScope.launch {
-            val result = trioRemoteControl.send(command)
+            val result = trioRemoteControl.send(command, expectedSimulator = expectedSimulator)
             _uiState.update { it.copy(sending = false, result = SendOutcome(command, result)) }
         }
     }
@@ -112,7 +112,7 @@ class TrioRemoteViewModel(
     /** Minutes between [eatenAt] and now, for the confirmation */
     fun minutesAgo(eatenAt: Long): Int = ((dateUtil.now() - eatenAt) / 60_000L).toInt()
 
-    private fun ask(command: TrioRemoteCommand) = _uiState.update { it.copy(confirming = command, problem = null, result = null) }
+    private fun ask(command: TrioRemoteCommand) = _uiState.update { it.copy(confirming = command, confirmingSimulator = it.setup.simulator, problem = null, result = null) }
 
     private fun problem(problem: Problem) = _uiState.update { it.copy(problem = problem) }
 
@@ -148,6 +148,7 @@ data class TrioRemoteUiState(
     val problem: TrioRemoteViewModel.Problem? = null,
     /** The command waiting for the user's OK */
     val confirming: TrioRemoteCommand? = null,
+    val confirmingSimulator: Boolean = false,
     val sending: Boolean = false,
     val result: SendOutcome? = null
 )

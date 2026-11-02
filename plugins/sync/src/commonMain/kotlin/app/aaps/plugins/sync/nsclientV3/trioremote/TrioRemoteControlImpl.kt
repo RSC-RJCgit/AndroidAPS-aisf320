@@ -6,6 +6,8 @@ import app.aaps.core.interfaces.trio.TrioRemoteCommand
 import app.aaps.core.interfaces.trio.TrioRemoteControl
 import app.aaps.core.interfaces.trio.TrioRemoteResult
 import app.aaps.core.interfaces.trio.TrioRemoteSetup
+import app.aaps.core.interfaces.trio.TrioPushDetails
+import app.aaps.core.interfaces.trio.TrioOverridePreset
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
@@ -33,12 +35,26 @@ import kotlin.math.roundToLong
 class TrioRemoteControlImpl(
     private val preferences: Preferences,
     private val dateUtil: DateUtil,
-    private val aapsLogger: AAPSLogger
+    private val aapsLogger: AAPSLogger,
+    private val simulator: TrioSimulator
 ) : TrioRemoteControl {
 
     private val apns by lazy { ApnsPushClient(nowSeconds = { dateUtil.now() / 1000 }) }
 
     override fun setup(): TrioRemoteSetup {
+        if (preferences.get(BooleanKey.TrioSimulatorSender)) {
+            val id = preferences.get(StringKey.TrioSimulatorId).trim()
+            val missing = buildList {
+                if (!TrioSimulatorProtocol.validId(id)) add(TrioRemoteSetup.Missing.SIMULATOR_ID)
+                if (preferences.get(StringKey.TrioSimulatorSecret).isBlank()) add(TrioRemoteSetup.Missing.SHARED_SECRET)
+                if (preferences.get(StringKey.TrioRemoteUser).isBlank()) add(TrioRemoteSetup.Missing.USER)
+            }
+            return TrioRemoteSetup(
+                enabled = preferences.get(BooleanKey.TrioRemoteEnabled), missing = missing,
+                trio = TrioPushDetails(id, "Trio protocol simulator", "", false),
+                overridePresets = listOf(TrioOverridePreset("Simulator override", 100.0, 60, null)), simulator = true
+            )
+        }
         val info = trioPushInfo(preferences.get(StringNonKey.NsClientTrioPushInfo), preferences.get(StringKey.NsClientUrl))
         val missing = buildList {
             if (preferences.get(StringKey.TrioRemoteUser).isBlank()) add(TrioRemoteSetup.Missing.USER)
@@ -56,11 +72,14 @@ class TrioRemoteControlImpl(
         )
     }
 
-    override suspend fun send(command: TrioRemoteCommand): TrioRemoteResult {
+    override suspend fun send(command: TrioRemoteCommand, expectedSimulator: Boolean?): TrioRemoteResult {
         val setup = setup()
+        if (expectedSimulator != null && setup.simulator != expectedSimulator)
+            return TrioRemoteResult.Failed("Remote mode changed. Reopen the screen and confirm again.")
         val trio = setup.trio
         if (!setup.ready || trio == null) return TrioRemoteResult.Failed("Not set up: ${setup.missing.joinToString()}")
         val message = messageFor(command, preferences.get(StringKey.TrioRemoteUser).trim(), dateUtil.now() / 1000.0)
+        if (setup.simulator) return simulator.send(message.toPush(preferences.get(StringKey.TrioSimulatorSecret), "Trio simulator test"))
         val result = apns.send(
             deviceToken = trio.deviceToken,
             bundleId = trio.bundleId,

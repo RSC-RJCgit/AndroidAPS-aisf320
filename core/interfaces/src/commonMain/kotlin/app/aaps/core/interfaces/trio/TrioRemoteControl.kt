@@ -12,7 +12,7 @@ interface TrioRemoteControl {
     /** What is set up, and what is still missing, read fresh each time */
     fun setup(): TrioRemoteSetup
 
-    suspend fun send(command: TrioRemoteCommand): TrioRemoteResult
+    suspend fun send(command: TrioRemoteCommand, expectedSimulator: Boolean? = null): TrioRemoteResult
 }
 
 sealed interface TrioRemoteCommand {
@@ -31,6 +31,8 @@ sealed interface TrioRemoteResult {
 
     /** Apple took the push. Whether Trio did what it said shows in Nightscout a little later. */
     data object Sent : TrioRemoteResult
+    /** The test receiver decoded and recorded the action; no pump or treatment action was performed. */
+    data class Simulated(val detail: String) : TrioRemoteResult
 
     /** [reason] is a setup problem, or Apple's answer such as "BadDeviceToken" */
     data class Failed(val reason: String) : TrioRemoteResult
@@ -44,12 +46,13 @@ data class TrioRemoteSetup(
     val missing: List<Missing>,
     /** From Trio's profile on this app's Nightscout site; null until a Trio profile has been read */
     val trio: TrioPushDetails?,
-    val overridePresets: List<TrioOverridePreset>
+    val overridePresets: List<TrioOverridePreset>,
+    val simulator: Boolean = false
 ) {
 
     val ready: Boolean get() = enabled && missing.isEmpty()
 
-    enum class Missing { USER, SHARED_SECRET, KEY_ID, APNS_KEY, TRIO_PROFILE, TEAM_ID }
+    enum class Missing { USER, SHARED_SECRET, KEY_ID, APNS_KEY, TRIO_PROFILE, TEAM_ID, SIMULATOR_ID }
 }
 
 /** What Trio uploads so it can be reached. None of it is secret. */
