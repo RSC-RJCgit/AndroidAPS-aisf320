@@ -233,10 +233,12 @@ fun MaintenanceDialogs(
 
     // Built-in settings (2026-11-01, per explicit request): asked at start until answered, and from Maintenance
     val builtInStep by maintenanceViewModel.builtInStep.collectAsStateWithLifecycle()
+    val builtInStartupOffer by maintenanceViewModel.builtInStartupOffer.collectAsStateWithLifecycle()
     when (val step = builtInStep) {
         BuiltInStep.Ask                  -> OkCancelDialog(
             title = stringResource(UiStrings.built_in_settings_title),
             message = stringResource(UiStrings.built_in_settings_question),
+            secondMessage = if (builtInStartupOffer) stringResource(UiStrings.built_in_settings_auto_keep) else null,
             onConfirm = { maintenanceViewModel.answerBuiltIn(useThem = true) },
             onDismiss = { maintenanceViewModel.answerBuiltIn(useThem = false) }
         )
