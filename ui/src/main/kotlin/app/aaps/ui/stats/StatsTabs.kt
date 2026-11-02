@@ -56,12 +56,12 @@ class StatsTabs(
     private var shown: Tab? = null
     private var agpRange = AgpStatsRange.DAYS_7
     private var cycleOffset = 0
-    private var cycleBands = false
-    private var cycleWeeks = false
+    private var cycleBands = true
+    private var cycleWeeks = true
     private var cycleTdds: List<TDD>? = null
-    private var sensorView = SensorCycleView.WHOLE_SENSOR
+    private var sensorView = SensorCycleView.AMBULATORY
     private var sensorOffset = 0
-    private var sensorQuarters = false
+    private var sensorQuarters = true
     private var podOffset = 0
     private val request = SerialDisposable()
     private var requestVersion = 0L
@@ -111,11 +111,11 @@ class StatsTabs(
         if (state == null) return
         agpRange = AgpStatsRange.entries.firstOrNull { it.name == state.getString("stats.agpRange") } ?: AgpStatsRange.DAYS_7
         cycleOffset = state.getInt("stats.cycleOffset").coerceIn(0, CYCLE_LENGTH - 1)
-        cycleBands = state.getBoolean("stats.cycleBands")
-        cycleWeeks = state.getBoolean("stats.cycleWeeks")
-        sensorView = SensorCycleView.entries.firstOrNull { it.name == state.getString("stats.sensorView") } ?: SensorCycleView.WHOLE_SENSOR
+        cycleBands = state.getBoolean("stats.cycleBands", true)
+        cycleWeeks = state.getBoolean("stats.cycleWeeks", true)
+        sensorView = SensorCycleView.entries.firstOrNull { it.name == state.getString("stats.sensorView") } ?: SensorCycleView.AMBULATORY
         sensorOffset = state.getInt("stats.sensorOffset").coerceAtLeast(0)
-        sensorQuarters = state.getBoolean("stats.sensorQuarters")
+        sensorQuarters = state.getBoolean("stats.sensorQuarters", true)
         podOffset = state.getInt("stats.podOffset").coerceAtLeast(0)
     }
 
@@ -240,8 +240,8 @@ class StatsTabs(
 
     private fun showCycle(tdds: List<TDD>) {
         container.removeAllViews()
-        container.addView(choices(listOf(false to rh.gs(R.string.stats_view_lines), true to rh.gs(R.string.stats_view_bands)), cycleBands) { cycleBands = it; showCycle(tdds) })
-        container.addView(toggle(rh.gs(R.string.stats_week_averages), cycleWeeks) { cycleWeeks = it; showCycle(tdds) })
+        container.addView(choices(listOf(false to rh.gs(R.string.stats_view_lines), true to rh.gs(R.string.stats_view_ambulatory)), cycleBands) { cycleBands = it; showCycle(tdds) })
+        container.addView(toggle(rh.gs(R.string.stats_quarter_averages), cycleWeeks) { cycleWeeks = it; showCycle(tdds) })
         val data = computeCycleData(tdds, cycleOffset) { dateUtil.dateString(it) }
         if (data == null) {
             container.addView(note(rh.gs(R.string.stats_cycle_not_enough, tdds.size)))
