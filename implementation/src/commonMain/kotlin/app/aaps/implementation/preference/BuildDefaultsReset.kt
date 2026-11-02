@@ -27,8 +27,8 @@ object BuildDefaultsReset {
         BooleanKey.ApsAutoIsfShowInsulinTotals to true,
         BooleanKey.ApsAutoIsfShowCarbModelCurve to true,
         BooleanKey.ApsAutoIsfShowGraph5 to true,
-        // Show the four main-graph text rows, including after an update.
-        BooleanKey.ApsAutoIsfAutoCleanGraph to false,
+        // Show text normally, and hide it while clean graph is active.
+        BooleanKey.ApsAutoIsfAutoCleanGraph to true,
         BooleanKey.ApsAutoIsfShowGraphText to true,
         BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled to false,
         BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled to false,

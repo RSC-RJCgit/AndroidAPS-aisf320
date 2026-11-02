@@ -15,7 +15,7 @@ class SplitSafetyTest {
     }
 
     @Test fun hpGateRequiresFreshPrediction() {
-        assertEquals(SplitHpCheck.Cancel, splitHpCheck(3800L, 1_000_000L, 1_000_000L))
+        assertEquals(SplitHpCheck.Hold, splitHpCheck(3800L, 1_000_000L, 1_000_000L))
         assertEquals(SplitHpCheck.Allow, splitHpCheck(4000L, 1_000_000L, 1_300_000L))
         assertEquals(SplitHpCheck.Wait, splitHpCheck(3800L, 0L, 1_000_000L))
         assertEquals(SplitHpCheck.Wait, splitHpCheck(3800L, 1_000_000L, 1_300_001L))

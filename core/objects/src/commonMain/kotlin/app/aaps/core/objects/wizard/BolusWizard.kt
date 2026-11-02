@@ -742,9 +742,8 @@ class BolusWizard(
     /**
      * Schedule the insulin that was above max bolus, and the insulin walking soon held back.
      * The immediate bolus already delivered the first part.
-     * Later parts are smaller when insulin on board has risen. They stop if glucose is unsafe,
-     * the profile drops below 100%, or the pump will not take a bolus.
-     * The usual checks are 7 minutes apart and stop after 3 unsafe checks or 60 minutes.
+     * Temporary profile, pump, low-HP1 and glucose restrictions hold delivery until a later check.
+     * The usual checks are 7 minutes apart and expire after 150 minutes.
      * When all three deltas are under -0.1 mmol/L, the max-bolus leftover uses 25 minute checks
      * for 2.5 hours. Walking soon always uses the usual checks.
      * A newer bolus cancels whatever is still waiting.
@@ -839,17 +838,6 @@ class BolusWizard(
                 warsawNote("C", remaining, "superseded by newer entry", source, splitCancelWhat(remaining))
                 return@launch
             }
-            val profile = profileFunction.getProfile()
-            if (profile == null || profileSwitchPercent(profile) < 100) {
-                aapsLogger.info(LTag.CORE, "Split leftover cancelled: profile is under 100%")
-                cancelSplitPart(remaining, "profile under 100%", iobBaseline, source)
-                return@launch
-            }
-            if (loop.runningMode() == RM.Mode.SUPER_BOLUS || runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null) {
-                aapsLogger.info(LTag.CORE, "Split leftover cancelled: pump will not take a bolus")
-                cancelSplitPart(remaining, "pump will not take a bolus", iobBaseline, source)
-                return@launch
-            }
             val now = dateUtil.now()
             if (now < deliverAt) {
                 launchSplitPart(remaining, previousPart, iobBaseline, token, source, deliverAt, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed)
@@ -860,13 +848,30 @@ class BolusWizard(
                 cancelSplitPart(remaining, "time limit passed", iobBaseline, source)
                 return@launch
             }
+            suspend fun holdThisCheck(reason: String) {
+                aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${remaining} U left")
+                warsawNote("D", remaining, "$reason; check again in $intervalMinutes min", source, splitCancelWhat(remaining))
+                launchSplitPart(
+                    remaining, previousPart, iobBaseline, token, source,
+                    now + intervalMinutes * 60_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed
+                )
+            }
+            val profile = profileFunction.getProfile()
+            if (profile == null || profileSwitchPercent(profile) < 100) {
+                holdThisCheck("profile missing or under 100%")
+                return@launch
+            }
+            if (loop.runningMode() == RM.Mode.SUPER_BOLUS || runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null) {
+                holdThisCheck("pump will not take a bolus")
+                return@launch
+            }
             val hpAt = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)
             val hpValue = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
             val hpCheck = if (hpAt == preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At))
                 splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
             when (hpCheck) {
-                SplitHpCheck.Cancel -> {
-                    cancelSplitPart(remaining, "HP1 below 4.0 mmol/L", iobBaseline, source)
+                SplitHpCheck.Hold -> {
+                    holdThisCheck("HP1 below 4.0 mmol/L")
                     return@launch
                 }
                 SplitHpCheck.Wait -> {

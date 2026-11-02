@@ -4,8 +4,10 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
@@ -17,6 +19,15 @@ class FreshInstallDefaultsTest {
 
     private val preferences: Preferences = mock()
     private val config: Config = mock()
+
+    @BeforeEach
+    fun emptyStorage() {
+        // Missing settings return null. Mockito otherwise supplies false or zero for boxed numbers and booleans.
+        whenever(preferences.getIfExists(any<BooleanKey>())).thenReturn(null)
+        whenever(preferences.getIfExists(any<DoubleKey>())).thenReturn(null)
+        whenever(preferences.getIfExists(any<IntKey>())).thenReturn(null)
+        whenever(preferences.getIfExists(any<StringKey>())).thenReturn(null)
+    }
 
     private fun setUp(client: Boolean, wizardDone: Boolean, stored: Boolean?) {
         whenever(config.AAPSCLIENT).thenReturn(client)
@@ -59,7 +70,7 @@ class FreshInstallDefaultsTest {
         setUp(client = false, wizardDone = false, stored = null)
         FreshInstallDefaults.apply(preferences, config)
         verify(preferences).put(BooleanKey.ApsAutoIsfShowGraphText, true)
-        verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, false)
+        verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, true)
     }
 
     @Test

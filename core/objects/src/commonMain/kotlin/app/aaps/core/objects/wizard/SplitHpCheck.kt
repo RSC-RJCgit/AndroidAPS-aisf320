@@ -1,8 +1,8 @@
 package app.aaps.core.objects.wizard
 
-enum class SplitHpCheck { Wait, Cancel, Allow }
+enum class SplitHpCheck { Wait, Hold, Allow }
 
 fun splitHpCheck(hpMilliMmol: Long, measuredAt: Long, now: Long): SplitHpCheck {
     if (measuredAt <= 0L || measuredAt > now || now - measuredAt > 300_000L) return SplitHpCheck.Wait
-    return if (hpMilliMmol < 4_000L) SplitHpCheck.Cancel else SplitHpCheck.Allow
+    return if (hpMilliMmol < 4_000L) SplitHpCheck.Hold else SplitHpCheck.Allow
 }

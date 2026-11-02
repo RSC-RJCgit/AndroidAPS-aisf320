@@ -9,6 +9,7 @@ import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.keys.interfaces.SyncDirection
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
@@ -28,7 +29,8 @@ import kotlinx.serialization.json.buildJsonObject
  * update most of these are already stored (simple mode on, graphs at 100 dp), and filling only the empty ones changed
  * nothing. It runs once per yes, so a value the user changes afterwards stays until they apply again.
  *
- * Settings a client takes from its master are left out on a client, as in [FreshInstallDefaults.applyForkDefaults].
+ * Settings a client takes from its master are left out, except the four switches in [clientSwitches]. Those are set
+ * locally without sending changes to the master; the master's next settings document can replace them.
  * An instance name already set is kept: it names this phone, so it is only filled when empty.
  */
 object BuiltInSettings {
@@ -36,6 +38,7 @@ object BuiltInSettings {
     /** The general settings, on top of [forkAutoIsfDefaults] */
     internal val general: List<ForkDefault> = listOf(
         ForkDefault.Bool(BooleanKey.GeneralSimpleMode, false),
+        ForkDefault.Bool(BooleanKey.ApsAutoIsfAutoCleanGraph, true),
         ForkDefault.NonBool(BooleanNonKey.ObjectivesVirtualPumpBypass, true),
     )
 
@@ -44,6 +47,15 @@ object BuiltInSettings {
     internal const val IOB_HEIGHT = 250
     internal const val SECONDARY_HEIGHT = 250
     internal const val GRAPH5_HEIGHT = 500
+
+    // These shared switches are also requested on the client when its user accepts this preset.
+    // The next settings document from the master can still replace them.
+    internal val clientSwitches = listOf(
+        BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
+        BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
+        BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled,
+        BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled
+    )
 
     /**
      * Writes the built-in settings and records the yes. [instanceName] is the name a phone without one gets.
@@ -55,6 +67,14 @@ object BuiltInSettings {
             if (config.AAPSCLIENT && default.synced) continue
             default.write(preferences)
             written++
+        }
+        if (config.AAPSCLIENT) {
+            for (key in clientSwitches) {
+                // Set the local copy without sending a settings change to the dosing master.
+                if (key.sync?.direction == SyncDirection.Bidirectional) preferences.putRemote(key, true, 0L)
+                else preferences.put(key, true)
+                written++
+            }
         }
         preferences.put(StringNonKey.ComposeGraphConfig, withBuiltInGraphHeights(preferences.get(StringNonKey.ComposeGraphConfig)))
         written++

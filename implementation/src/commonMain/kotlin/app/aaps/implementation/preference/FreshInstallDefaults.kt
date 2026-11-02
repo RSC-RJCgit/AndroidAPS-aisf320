@@ -23,7 +23,7 @@ object FreshInstallDefaults {
         if (preferences.getIfExists(BooleanKey.ApsAutoIsfShowGraphText) == null)
             preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
         if (preferences.getIfExists(BooleanKey.ApsAutoIsfAutoCleanGraph) == null)
-            preferences.put(BooleanKey.ApsAutoIsfAutoCleanGraph, false)
+            preferences.put(BooleanKey.ApsAutoIsfAutoCleanGraph, true)
         applyForkDefaults(preferences, config)
     }
 

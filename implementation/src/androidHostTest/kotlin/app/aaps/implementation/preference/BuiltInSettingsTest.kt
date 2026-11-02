@@ -60,6 +60,38 @@ class BuiltInSettingsTest {
     }
 
     @Test
+    fun theFiveRequestedSwitchesAreOnWhenTheMasterAccepts() {
+        stored()
+        // A local Virtual master can already have off values from an earlier install or import.
+        for (key in BuiltInSettings.clientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
+            whenever(preferences.getIfExists(key)).thenReturn(false)
+            whenever(preferences.get(key)).thenReturn(false)
+        }
+        BuiltInSettings.apply(preferences, config, "AAPS")
+
+        for (key in BuiltInSettings.clientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
+            verify(preferences).put(key, true)
+        }
+    }
+
+    @Test
+    fun theClientSetsTheRequestedSwitchesWithoutSendingThemToTheMaster() {
+        stored()
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        for (key in BuiltInSettings.clientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
+            whenever(preferences.getIfExists(key)).thenReturn(false)
+            whenever(preferences.get(key)).thenReturn(false)
+        }
+        BuiltInSettings.apply(preferences, config, "AAPSClient")
+
+        for (key in BuiltInSettings.clientSwitches) {
+            verify(preferences).putRemote(key, true, 0L)
+            verify(preferences, never()).put(key, true)
+        }
+        verify(preferences).put(BooleanKey.ApsAutoIsfAutoCleanGraph, true)
+    }
+
+    @Test
     fun anEmptyInstanceNameIsFilledAndASetOneKept() {
         stored(instanceName = "")
         BuiltInSettings.apply(preferences, config, "AAPS")
