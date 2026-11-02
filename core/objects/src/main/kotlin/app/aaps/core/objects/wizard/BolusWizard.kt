@@ -1448,7 +1448,7 @@ class BolusWizard @Inject constructor(
     private fun fpuWhat(label: String, dose: Double): String =
         "Protein/fat $label of ${ofBolus()}: ${decimalFormatter.to2Decimal(dose)} U"
 
-    private fun deferDoseNote(what: String, amount: Double, reason: String) {
+    private fun deferDoseNote(what: String, amount: Double, reason: String, retryMinutes: Int = 10) {
         persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
             therapyEvent = TE(
                 timestamp = NoteTimestampAllocator.next(dateUtil.now()),
@@ -1461,7 +1461,7 @@ class BolusWizard @Inject constructor(
             },
             action = Action.CAREPORTAL,
             source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
-            note = "$what. Waiting, checked again every 10 min: $reason",
+            note = "$what. Waiting, checked again every $retryMinutes min: $reason",
             listValues = listOf()
         ).blockingGet()
     }
@@ -1625,9 +1625,9 @@ class BolusWizard @Inject constructor(
     // (bounding every soft-retry path -- missing data, IOB-rose skip, AND now BG-unsafe -- from the
     // FIRST call, computed once and threaded unchanged through every recursive call) decides when to
     // finally give up. Raised from 60min to 150min (2.5h) to actually cover a slow fat/protein-driven
-    // rise like 15 Sep's, instead of writing off the residual ~20min into it. The hard-stop conditions
-    // above (explicit cancel, superseded, profile switch, pump unavailable and superbolus) still end
-    // the schedule immediately regardless of retryDeadline.
+    // rise like 15 Sep's, instead of writing off the residual ~20min into it.
+    // Explicit cancel and a newer entry still end the schedule immediately. Temporary profile, pump,
+    // superbolus and low-HP1 restrictions hold delivery and retry within the same deadline.
     private fun cappedFollowUpDose(candidate: Double, step: Double): Double? {
         val at = preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqAt)
         val requirement = preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU)
@@ -1673,28 +1673,6 @@ class BolusWizard @Inject constructor(
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
-            val pct = activeProfileSwitchPct()
-            if (pct < 100) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: profile switch at $pct% (scheduled at $schedulingPct%) — cancelling remaining ${remainingResidual}U")
-                writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "profile switch to $pct%", "Carb split", iobBaselineForNextGap)
-                setSplitPendingRemaining(0.0)
-                return@postDelayed
-            }
-            if (pumpUnavailable()) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: pump suspended — cancelling remaining ${remainingResidual}U")
-                writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "pump suspended", "Carb split", iobBaselineForNextGap)
-                setSplitPendingRemaining(0.0)
-                return@postDelayed
-            }
-            if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
-                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: superbolus active — cancelling remaining ${remainingResidual}U")
-                writeLastSkippedZero(lastSkippedZero)
-                cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "superbolus active", "Carb split", iobBaselineForNextGap)
-                setSplitPendingRemaining(0.0)
-                return@postDelayed
-            }
             if (dateUtil.now() < deliverAt) {
                 scheduleReducedPartsSplitBolus(
                     remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
@@ -1709,16 +1687,34 @@ class BolusWizard @Inject constructor(
                 setSplitPendingRemaining(0.0)
                 return@postDelayed
             }
+            fun holdThisCheck(reason: String) {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: $reason — waiting ${intervalMins}min, remaining ${remainingResidual}U")
+                deferDoseNote(splitCancelWhat(remainingResidual), remainingResidual, reason, intervalMins)
+                scheduleReducedPartsSplitBolus(
+                    remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
+                    dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline, lastSkippedZero
+                )
+            }
+            val pct = activeProfileSwitchPct()
+            if (pct < 100) {
+                holdThisCheck("profile switch to $pct%")
+                return@postDelayed
+            }
+            if (pumpUnavailable()) {
+                holdThisCheck("pump unavailable")
+                return@postDelayed
+            }
+            if (loop.runningMode == RM.Mode.SUPER_BOLUS) {
+                holdThisCheck("superbolus active")
+                return@postDelayed
+            }
             val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
             val hpValue = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
             val hpCheck = if (hpAt == preferences.get(LongKey.ApsAutoIsfLastCycleHp1At))
                 splitHpCheck(hpValue, hpAt, dateUtil.now()) else SplitHpCheck.Wait
             when (hpCheck) {
-                SplitHpCheck.Cancel -> {
-                    aapsLogger.info(LTag.CORE, "ReducedSplitBolus: HP1 below 4.0 mmol/L — cancelling remaining ${remainingResidual}U")
-                    writeLastSkippedZero(lastSkippedZero)
-                    cancelDoseNote(splitCancelWhat(remainingResidual), remainingResidual, "HP1 below 4.0 mmol/L", "Carb split", iobBaselineForNextGap)
-                    setSplitPendingRemaining(0.0)
+                SplitHpCheck.Hold -> {
+                    holdThisCheck("HP1 below 4.0 mmol/L")
                     return@postDelayed
                 }
                 SplitHpCheck.Wait -> {

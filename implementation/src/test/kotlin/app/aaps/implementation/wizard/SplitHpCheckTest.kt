@@ -6,8 +6,8 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 
 class SplitHpCheckTest {
-    @Test fun freshLowPredictionCancels() {
-        assertThat(splitHpCheck(3800L, 1_000_000L, 1_000_000L)).isEqualTo(SplitHpCheck.Cancel)
+    @Test fun freshLowPredictionHoldsUntilRecovery() {
+        assertThat(splitHpCheck(3800L, 1_000_000L, 1_000_000L)).isEqualTo(SplitHpCheck.Hold)
         assertThat(splitHpCheck(4000L, 1_000_000L, 1_000_000L)).isEqualTo(SplitHpCheck.Allow)
     }
 
