@@ -77,10 +77,13 @@ class TrioSimulatorActionExecutor(
                     ), Action.CARBS, Sources.NSClient, note)
                     Outcome(true, action.summary)
                 }
-                TrioRemoteMessage.TEMP_TARGET -> batch(listOf(BatchAction.TempTarget(
-                    TT.Reason.CUSTOM.text, requireNotNull(message.target).toDouble(), message.target.toDouble(),
-                    requireNotNull(message.duration), 0, note
-                )), action.summary)
+                TrioRemoteMessage.TEMP_TARGET -> {
+                    val target = requireNotNull(message.target).toDouble()
+                    batch(listOf(BatchAction.TempTarget(
+                        TT.Reason.CUSTOM.text, target, target,
+                        requireNotNull(message.duration), 0, note
+                    )), action.summary)
+                }
                 TrioRemoteMessage.CANCEL_TEMP_TARGET -> batch(listOf(BatchAction.TempTarget(TT.Reason.CUSTOM.text, 0.0, 0.0, 0, 0, note)), action.summary)
                 TrioRemoteMessage.START_OVERRIDE -> startOverride(message, note)
                 TrioRemoteMessage.CANCEL_OVERRIDE -> cancelOverride(note)
