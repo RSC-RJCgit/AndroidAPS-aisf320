@@ -84,6 +84,7 @@ object BuiltInSettings {
         }
         // A yes covers what the setup wizard asks, apart from the master password, which the yes asks for itself
         preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)
+        preferences.put(BooleanNonKey.BuiltInSettingsAppliedBefore, true)
         recordBuiltInSettingsAnswer(preferences, config, useBuiltIn = true)
         return written
     }

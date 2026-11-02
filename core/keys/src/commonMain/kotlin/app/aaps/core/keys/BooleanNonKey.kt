@@ -10,6 +10,8 @@ enum class BooleanNonKey(
 ) : BooleanNonPreferenceKey {
 
     GeneralSetupWizardProcessed("startupwizard_processed", false),
+    /** This installation has successfully applied the built-in settings at least once. */
+    BuiltInSettingsAppliedBefore("built_in_settings_applied_before", false, exportable = false),
     SetupWizardIUnderstand("I_understand", false),
     ObjectivesLoopUsed("ObjectivesLoopUsed", false),
     ObjectivesScaleUsed("ObjectivesScaleUsed", false),

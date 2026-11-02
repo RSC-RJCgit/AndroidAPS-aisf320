@@ -8,6 +8,7 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
 import app.aaps.core.interfaces.configuration.BuiltInSettingsApplier
+import app.aaps.core.interfaces.configuration.BUILT_IN_SETTINGS_ON
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.builtInSettingsPromptPending
 import app.aaps.core.interfaces.configuration.recordBuiltInSettingsAnswer
@@ -38,6 +39,7 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
@@ -135,6 +137,12 @@ class MaintenanceViewModel(
 
     init {
         refreshExportConfig()
+        // Preserve evidence from installations that applied defaults before this flag existed.
+        val appliedBefore = preferences.get(BooleanNonKey.BuiltInSettingsAppliedBefore) ||
+            preferences.get(StringNonKey.BuiltInSettingsChoice) == BUILT_IN_SETTINGS_ON
+        if (appliedBefore && !preferences.get(BooleanNonKey.BuiltInSettingsAppliedBefore)) {
+            preferences.put(BooleanNonKey.BuiltInSettingsAppliedBefore, true)
+        }
         if (builtInSettingsPromptPending(preferences, config)) {
             if (!importExportPrefs.isMasterPasswordSet()) {
                 // No password: silently choose a new installation with the preset, once for this build.
@@ -143,15 +151,15 @@ class MaintenanceViewModel(
                 // Existing password: choose an update and keep all saved settings. No installation-type wizard.
                 preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)
                 _builtInStep.value = BuiltInStep.Ask
-                _builtInStartupOffer.value = true
-                builtInStartupJob = viewModelScope.launch {
+                _builtInStartupOffer.value = appliedBefore
+                builtInStartupJob = if (appliedBefore) viewModelScope.launch {
                     delay(10_000L)
                     if (_builtInStep.value == BuiltInStep.Ask) {
                         recordBuiltInSettingsAnswer(preferences, config, useBuiltIn = false)
                         _builtInStep.value = null
                     }
                     _builtInStartupOffer.value = false
-                }
+                } else null
             }
         }
     }

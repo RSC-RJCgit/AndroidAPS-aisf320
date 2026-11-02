@@ -57,6 +57,7 @@ class BuiltInSettingsTest {
         verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "on")
         verify(preferences).put(StringNonKey.BuiltInSettingsPromptBuild, "4.0.0-test@abc123")
         verify(preferences).put(BooleanNonKey.GeneralSetupWizardProcessed, true)
+        verify(preferences).put(BooleanNonKey.BuiltInSettingsAppliedBefore, true)
     }
 
     @Test

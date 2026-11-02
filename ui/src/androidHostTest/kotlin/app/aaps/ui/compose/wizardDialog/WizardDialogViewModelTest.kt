@@ -121,6 +121,34 @@ internal class WizardDialogViewModelTest {
         )
 
     @Test
+    fun `turning default auto FPU off removes suggested grams`() {
+        val state = WizardDialogUiState(carbs = 40, fat = 14, protein = 16, fpuInstead = true)
+        val cleared = state.withoutMealExtra(null, null, null)
+        assertThat(cleared.fat).isEqualTo(0)
+        assertThat(cleared.protein).isEqualTo(0)
+        assertThat(cleared.fpuInstead).isFalse()
+        assertThat(cleared.carbs).isEqualTo(40)
+    }
+
+    @Test
+    fun `turning auto FPU off keeps manual protein and removes suggested fat`() {
+        val state = WizardDialogUiState(fat = 14, protein = 25, fpuInstead = true)
+        val cleared = state.withoutMealExtra(null, null, 25)
+        assertThat(cleared.fat).isEqualTo(0)
+        assertThat(cleared.protein).isEqualTo(25)
+    }
+
+    @Test
+    fun `turning auto FPU off restores earlier manual grams and percentage`() {
+        val state = WizardDialogUiState(fat = 14, protein = 16, percentage = 90, unreliableSmb = true)
+        val restored = state.withoutMealExtra(Triple(5, 10, 100), null, null)
+        assertThat(restored.fat).isEqualTo(5)
+        assertThat(restored.protein).isEqualTo(10)
+        assertThat(restored.percentage).isEqualTo(100)
+        assertThat(restored.unreliableSmb).isFalse()
+    }
+
+    @Test
     fun `manual entry is retained while the profile is unavailable`() {
         val manual = createViewModel(SavedStateHandle(mapOf("carbs" to "0", "insulin" to "0.0")))
         mainDispatcher.scheduler.advanceUntilIdle()

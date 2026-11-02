@@ -140,6 +140,19 @@ internal fun WizardDialogUiState.withMealCarbs(value: Int, autoFpu: Boolean, unr
 val WizardDialogUiState.insulinOnly: Boolean
     get() = fixedInsulin != null
 
+/** Remove automatic grams while keeping manual entries or restoring those saved before autofill. */
+internal fun WizardDialogUiState.withoutMealExtra(
+    previous: Triple<Int, Int, Int>?,
+    manualFat: Int?,
+    manualProtein: Int?
+): WizardDialogUiState = copy(
+    fpuInstead = false,
+    unreliableSmb = false,
+    fat = manualFat ?: previous?.first ?: 0,
+    protein = manualProtein ?: previous?.second ?: 0,
+    percentage = previous?.third ?: percentage
+)
+
 /** The insulin OK gives: the typed dose in insulin-only mode, else the calculated one. */
 val WizardDialogUiState.deliveredInsulin: Double
     get() = fixedInsulin ?: totalInsulin

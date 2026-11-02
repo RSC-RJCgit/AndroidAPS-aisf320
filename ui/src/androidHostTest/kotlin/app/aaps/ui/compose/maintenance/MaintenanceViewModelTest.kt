@@ -127,6 +127,7 @@ internal class MaintenanceViewModelTest {
 
     @Test
     fun `an update with a password asks immediately and keeps settings after ten seconds`() {
+        whenever(preferences.get(BooleanNonKey.BuiltInSettingsAppliedBefore)).thenReturn(true)
         whenever(config.HEAD).thenReturn("next-build")
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         val updated = build()
@@ -144,6 +145,41 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
+    fun `defaults never applied leaves the prompt open beyond ten seconds`() {
+        whenever(config.HEAD).thenReturn("next-build")
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        val updated = build()
+
+        testDispatcher.scheduler.runCurrent()
+        testDispatcher.scheduler.advanceTimeBy(30_000)
+        testDispatcher.scheduler.runCurrent()
+
+        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
+        assertThat(updated.builtInStartupOffer.value).isFalse()
+        verify(preferences, never()).put(StringNonKey.BuiltInSettingsChoice, "off")
+        verify(preferences, never()).put(BooleanNonKey.BuiltInSettingsAppliedBefore, true)
+        verify(builtInSettingsApplier, never()).apply(any())
+    }
+
+    @Test
+    fun `a previous on choice records past use and keeps the timeout`() {
+        whenever(config.HEAD).thenReturn("next-build")
+        whenever(preferences.get(StringNonKey.BuiltInSettingsChoice)).thenReturn("on")
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        val updated = build()
+
+        verify(preferences).put(BooleanNonKey.BuiltInSettingsAppliedBefore, true)
+        assertThat(updated.builtInStartupOffer.value).isTrue()
+        testDispatcher.scheduler.runCurrent()
+        testDispatcher.scheduler.advanceTimeBy(10_000)
+        testDispatcher.scheduler.runCurrent()
+
+        assertThat(updated.builtInStep.value).isNull()
+        verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
+        verify(preferences, never()).put(BooleanNonKey.BuiltInSettingsAppliedBefore, false)
+    }
+
+    @Test
     fun `an update without a password applies the preset silently`() {
         whenever(config.HEAD).thenReturn("next-build")
         assertThat(build().builtInStep.value).isNull()
@@ -152,6 +188,7 @@ internal class MaintenanceViewModelTest {
 
     @Test
     fun `opening defaults manually cancels the automatic timeout`() {
+        whenever(preferences.get(BooleanNonKey.BuiltInSettingsAppliedBefore)).thenReturn(true)
         whenever(config.HEAD).thenReturn("next-build")
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         val updated = build()

@@ -134,6 +134,8 @@ class WizardDialogViewModel(
     private var maxBolusTouched = false
     private var walkingSoonTouched = false
     private var mealBeforeExtra: Triple<Int, Int, Int>? = null
+    private var manualExtraFat: Int? = null
+    private var manualExtraProtein: Int? = null
 
     override fun onCleared() {
         if (maxBolusOverridden) savedSafetyMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
@@ -380,6 +382,8 @@ class WizardDialogViewModel(
     }
 
     private fun enableMealExtra(unreliable: Boolean) {
+        manualExtraFat = null
+        manualExtraProtein = null
         val state = uiState.value
         if (!state.fpuInstead && !state.unreliableSmb) {
             mealBeforeExtra = Triple(state.fat, state.protein, state.percentage)
@@ -404,25 +408,23 @@ class WizardDialogViewModel(
         val saved = mealBeforeExtra
         mealBeforeExtra = null
         _uiState.update {
-            it.copy(
-                fpuInstead = false,
-                unreliableSmb = false,
-                fat = saved?.first ?: it.fat,
-                protein = saved?.second ?: it.protein,
-                percentage = saved?.third ?: it.percentage,
-            )
+            it.withoutMealExtra(saved, manualExtraFat, manualExtraProtein)
         }
+        manualExtraFat = null
+        manualExtraProtein = null
         recalculate()
     }
 
     fun updateProtein(value: Int) {
         if (uiState.value.insulinOnly) return
+        if (uiState.value.fpuInstead || uiState.value.unreliableSmb) manualExtraProtein = value.coerceIn(0, 250)
         _uiState.update { it.copy(protein = value.coerceIn(0, 250)) }
         recalculate()
     }
 
     fun updateFat(value: Int) {
         if (uiState.value.insulinOnly) return
+        if (uiState.value.fpuInstead || uiState.value.unreliableSmb) manualExtraFat = value.coerceIn(0, 250)
         _uiState.update { it.copy(fat = value.coerceIn(0, 250)) }
         recalculate()
     }
@@ -668,7 +670,12 @@ class WizardDialogViewModel(
             typedProtein = state.protein,
             percentage = state.percentage,
             extendedCarbPercent = carbsType.eCarbsPercent,
-        )
+        ).let { extra ->
+            if (state.fpuInstead || state.unreliableSmb) extra.copy(
+                fatGrams = manualExtraFat ?: extra.fatGrams,
+                proteinGrams = manualExtraProtein ?: extra.proteinGrams
+            ) else extra
+        }
         val immediatePercent = extra.immediateCarbPercent ?: carbsType.carbsPercent
         val effectiveCarbs = state.carbs * immediatePercent / 100
         val eCarbs = extra.extendedCarbs
