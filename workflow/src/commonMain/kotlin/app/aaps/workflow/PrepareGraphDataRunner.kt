@@ -928,7 +928,8 @@ class PrepareGraphDataRunner(
                 statusIsf = currentAutoIsf?.let { statusIsfLine(it) },
                 statusShortDelta = currentAutoIsf?.let { profileUtil.fromMgdlToSignedStringInUnits(it.shortAvgDelta) },
                 statusLongDelta = currentAutoIsf?.let { profileUtil.fromMgdlToSignedStringInUnits(it.longAvgDelta) },
-                statusAcceleration = currentAutoIsf?.let { decimalFormatter.to2Decimal(profileUtil.fromMgdlToUnits(it.bgAcceleration)) },
+                statusAcceleration = currentAutoIsf?.bgAcceleration?.takeIf { it.isFinite() }
+                    ?.let { decimalFormatter.to2Decimal(profileUtil.fromMgdlToUnits(it)) },
                 statusRatio = currentAutoIsf?.let { statusRatioLine(it, autoIsfRows) },
                 statusSteps = statusStepsLine(currentAutoIsf?.timestamp ?: statusTime, hypoPrediction.takeIf { currentAutoIsf != null }, onlyWithSteps = currentAutoIsf == null),
             )
