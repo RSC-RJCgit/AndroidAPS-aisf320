@@ -86,7 +86,7 @@ sealed class AppRoute(val route: String) {
     data object ExtendedBolusDialog : AppRoute("extended_bolus_dialog")
     data object WizardDialog : AppRoute("wizard_dialog?carbs={carbs}&notes={notes}&insulin={insulin}") {
 
-        /** [insulin]: the calculator's insulin-only mode, with this dose from the Insulin dialog (2026-11-01). */
+        /** [insulin] selects insulin-only mode; zero opens an empty dose input, null opens the usual calculator. */
         fun createRoute(carbs: Int? = null, notes: String? = null, insulin: Double? = null): String {
             val params = buildList {
                 carbs?.let { add("carbs=$it") }

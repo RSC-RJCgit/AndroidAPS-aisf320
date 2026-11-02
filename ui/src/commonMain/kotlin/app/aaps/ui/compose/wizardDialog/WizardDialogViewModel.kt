@@ -196,9 +196,15 @@ class WizardDialogViewModel(
     private suspend fun initialize() {
         val initialCarbs = savedStateHandle.get<String>("carbs")?.toIntOrNull()
         val initialNotes = savedStateHandle.get<String>("notes")
-        // Insulin-only mode: the dose typed in the Insulin dialog (2026-11-01)
-        val fixedInsulin = savedStateHandle.get<String>("insulin")?.toDoubleOrNull()?.takeIf { it > 0.0 }
-        if (fixedInsulin != null) walkingSoonTouched = true
+        // The insulin button opens this mode directly at zero; the suggestion never selects the manual dose.
+        val fixedInsulin = parseFixedInsulin(savedStateHandle.get<String>("insulin"))
+        if (fixedInsulin != null) {
+            walkingSoonTouched = true
+            // Keep manual mode even while the profile is unavailable; a later refresh must not select a calculated dose.
+            _uiState.update {
+                it.copy(fixedInsulin = fixedInsulin, carbs = initialCarbs ?: 0, notes = initialNotes ?: "", fpuInstead = false, smallMeal = false, giveRestLater = false, walkingSoon = false)
+            }
+        }
 
         val profileStore = profileRepository.profile.value ?: return
 
@@ -313,8 +319,7 @@ class WizardDialogViewModel(
 
     /** The dose to give in insulin-only mode. The calculation does not change with it. */
     fun updateFixedInsulin(value: Double) {
-        if (!uiState.value.insulinOnly) return
-        _uiState.update { it.copy(fixedInsulin = value.coerceIn(0.0, 60.0)) }
+        _uiState.update { it.withFixedInsulin(value) }
     }
 
     fun updateCarbs(value: Int) {

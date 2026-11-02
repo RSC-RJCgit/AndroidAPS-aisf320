@@ -109,17 +109,69 @@ internal class WizardDialogViewModelTest {
         whenever(commandQueue.smbBeingDelivered).thenReturn(smbBeingDelivered)
         whenever(rxBus.toFlow(EventAutosensCalculationFinished::class)).thenReturn(MutableSharedFlow())
         Dispatchers.setMain(mainDispatcher)
-        sut = WizardDialogViewModel(
-            SavedStateHandle(), bolusWizardProvider, constraintChecker, profileFunction, profileUtil,
+        sut = createViewModel()
+    }
+
+    private fun createViewModel(state: SavedStateHandle = SavedStateHandle()) = WizardDialogViewModel(
+            state, bolusWizardProvider, constraintChecker, profileFunction, profileUtil,
             profileRepository, activePlugin, ch, iobCobCalculator, persistenceLayer, preferences, config,
             rh, dateUtil, decimalFormatter, aapsLogger, runningModeGuard, automation, wizardExecutor, rxBus,
             glucoseStatusProvider,
             CoroutineScope(UnconfinedTestDispatcher()), commandQueue
         )
+
+    @Test
+    fun `manual entry is retained while the profile is unavailable`() {
+        val manual = createViewModel(SavedStateHandle(mapOf("carbs" to "0", "insulin" to "0.0")))
+        mainDispatcher.scheduler.advanceUntilIdle()
+        assertThat(manual.uiState.value.insulinOnly).isTrue()
+        assertThat(manual.uiState.value.deliveredInsulin).isEqualTo(0.0)
+        assertThat(manual.uiState.value.okVisible).isFalse()
     }
 
-    // The BG field is sent to the master with the other inputs. Filled once when the wizard opened, it dosed on a BG
-    // from minutes ago when the user came back to the wizard later.
+    @Test
+    fun `zero manual insulin stays zero even when the calculator suggests a dose`() {
+        val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin("0.0"), totalInsulin = 3.5)
+        assertThat(state.insulinOnly).isTrue()
+        assertThat(state.deliveredInsulin).isEqualTo(0.0)
+        assertThat(state.carbs).isEqualTo(0)
+        assertThat(state.okVisible).isFalse()
+    }
+
+    @Test
+    fun `a missing manual insulin argument keeps the usual calculator`() {
+        val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin(null), totalInsulin = 3.5)
+        assertThat(state.insulinOnly).isFalse()
+        assertThat(state.deliveredInsulin).isEqualTo(3.5)
+    }
+
+    @Test
+    fun `an invalid manual insulin argument cannot fall back to the calculated dose`() {
+        for (argument in listOf("-1", "NaN", "Infinity", "invalid")) {
+            val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin(argument), totalInsulin = 3.5)
+            assertThat(state.insulinOnly).isTrue()
+            assertThat(state.deliveredInsulin).isEqualTo(0.0)
+        }
+    }
+
+    @Test
+    fun `a positive manual dose is kept instead of the calculator suggestion`() {
+        val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin("1.25"), totalInsulin = 3.5)
+        assertThat(state.deliveredInsulin).isEqualTo(1.25)
+    }
+
+    @Test
+    fun `typing a manual dose enables confirm and clearing it disables confirm`() {
+        val opened = WizardDialogUiState(fixedInsulin = 0.0, totalInsulin = 3.5, hasResult = true)
+        val typed = opened.withFixedInsulin(1.25)
+        assertThat(typed.okVisible).isTrue()
+        assertThat(typed.deliveredInsulin).isEqualTo(1.25)
+        assertThat(typed.totalInsulin).isEqualTo(3.5)
+        assertThat(typed.withFixedInsulin(0.0).okVisible).isFalse()
+        assertThat(opened.copy(hasResult = false).withFixedInsulin(1.25).okVisible).isFalse()
+    }
+
+    // The BG field follows readings until the user edits it.
     @Test
     fun `the BG field follows new readings until the user edits it`() {
         val opened = WizardDialogUiState(bg = 6.1, bgAgeMinutes = 4, hasBgData = true)

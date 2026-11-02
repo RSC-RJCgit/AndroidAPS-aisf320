@@ -110,6 +110,17 @@ data class WizardDialogUiState(
     val fixedInsulin: Double? = null
 )
 
+/** A supplied argument always stays in manual mode, including zero or an invalid dose. */
+internal fun parseFixedInsulin(argument: String?): Double? =
+    argument?.let { it.toDoubleOrNull()?.takeIf { dose -> dose.isFinite() && dose >= 0.0 } ?: 0.0 }
+
+/** Editing the manual dose changes the confirm state without replacing the calculator's suggestion. */
+internal fun WizardDialogUiState.withFixedInsulin(value: Double): WizardDialogUiState {
+    if (!insulinOnly) return this
+    val dose = value.takeIf { it.isFinite() }?.coerceIn(0.0, 60.0) ?: 0.0
+    return copy(fixedInsulin = dose, okVisible = hasResult && (dose > 0.0 || effectiveCarbs > 0 || eCarbs > 0))
+}
+
 val WizardDialogUiState.insulinOnly: Boolean
     get() = fixedInsulin != null
 

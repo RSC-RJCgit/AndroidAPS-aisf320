@@ -139,6 +139,11 @@ class AppRouteTest {
     }
 
     @Test
+    fun insulinInputStartsWithZeroCarbsAndNoSelectedDose() {
+        assertThat(AppRoute.WizardDialog.createRoute(carbs = 0, insulin = 0.0)).isEqualTo("wizard_dialog?carbs=0&insulin=0.0")
+    }
+
+    @Test
     fun wizardDialog_carbsAndNotes_joinedWithAmpersand() {
         assertThat(AppRoute.WizardDialog.createRoute(carbs = 45, notes = "snack"))
             .isEqualTo("wizard_dialog?carbs=45&notes=snack")
