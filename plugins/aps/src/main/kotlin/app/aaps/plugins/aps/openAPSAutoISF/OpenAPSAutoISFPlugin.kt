@@ -5164,7 +5164,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Mcap (2026-10-26): smaller cap for a stronger profile (real ISF values, name only as fallback) and while walking
         if (mcapOn) {
             val strength = profileStrengthNow()
-            val walkingForCap = walkingNow()
+            val walkingForCap = mcapWalking(recentSteps5Minutes, recentSteps30Minutes)
             determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walkingForCap)
             determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walkingForCap) ", walking" else ""
             determineBasalAutoISF.smbCap30Walking = walkingForCap

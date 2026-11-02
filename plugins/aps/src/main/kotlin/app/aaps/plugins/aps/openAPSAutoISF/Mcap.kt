@@ -18,5 +18,8 @@ internal fun profileStrengthPercent(referenceIsfMgdl: Double?, currentIsfMgdl: D
  * (2.1 x 100 / strength: 1.6 U at 130%, 1.4 U at 150%), and half that while walking. Replayed over 5-26 Oct: 4 U more held
  * back before lows by the profile scaling and 2 U more by the walking half, none before a BG above 12 within 3 hours.
  */
+/** Older hourly steps alone must not halve the cap after recent activity has stopped. */
+internal fun mcapWalking(steps5: Int, steps30: Int): Boolean = steps5 > 20 || steps30 > 100
+
 internal fun mcapSmbCap30Min(strengthPercent: Double, walking: Boolean): Double =
     2.1 * 100.0 / strengthPercent.coerceAtLeast(100.0) * (if (walking) 0.5 else 1.0)
