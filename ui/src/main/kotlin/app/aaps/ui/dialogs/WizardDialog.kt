@@ -146,6 +146,8 @@ class WizardDialog : DaggerDialogFragment() {
     // (added same day) is the sticky alternative -- unticking it stops auto-fill outright, surviving
     // carbs edits, so you don't have to keep re-editing the boxes by hand.
     private var proteinFatManuallyOverridden = false
+    private var fatManuallyOverridden = false
+    private var proteinManuallyOverridden = false
     private var applyingAutoFpu = false
 
     // This property is only valid between onCreateView and onDestroyView.
@@ -285,10 +287,22 @@ class WizardDialog : DaggerDialogFragment() {
         // wiz% to 90 (see calculateInsulin()'s own wizPercentForThisCalc).
         binding.carbsInput.setOnValueChangedListener {
             proteinFatManuallyOverridden = false
+            fatManuallyOverridden = false
+            proteinManuallyOverridden = false
             autoFillProteinFatFromCarbs()
         }
-        binding.proteinInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
-        binding.fatInput.setOnValueChangedListener { if (!applyingAutoFpu) proteinFatManuallyOverridden = true }
+        binding.proteinInput.setOnValueChangedListener {
+            if (!applyingAutoFpu) {
+                proteinFatManuallyOverridden = true
+                proteinManuallyOverridden = true
+            }
+        }
+        binding.fatInput.setOnValueChangedListener {
+            if (!applyingAutoFpu) {
+                proteinFatManuallyOverridden = true
+                fatManuallyOverridden = true
+            }
+        }
         // Starting state of the three FPU boxes comes from Overview > Bolus calculator defaults (2026-10-06, per explicit
         // request). Set BEFORE the listeners below attach, so opening the dialog does not trigger a recompute. Not remembered
         // between uses: every open starts from these defaults.
@@ -299,15 +313,24 @@ class WizardDialog : DaggerDialogFragment() {
         // Small meal (2026-10-05): halves the Fat/Protein auto-fill. Same behaviour as the unreliable box: re-runs the
         // suggestion (only takes effect while the boxes are not manually overridden) and recalculates.
         binding.smallMealCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
-        // Auto FPU on/off (2026-10-02, per explicit request): unlike proteinFatManuallyOverridden (which a
-        // later carbs edit silently resets, see carbsInput's listener above), this checkbox is the sticky
-        // "leave my Fat/Protein boxes alone" switch -- autoFillProteinFatFromCarbs() checks it directly and
-        // no-ops while unticked, regardless of carbs changes. Re-ticking re-applies the suggestion immediately.
+        // Turning auto FPU off clears suggested grams but keeps fields edited by the user.
+        // Turning it on fills both fields again.
         binding.autoFpuCheckbox.setOnCheckedChangeListener { _, checked ->
             if (checked) {
                 proteinFatManuallyOverridden = false
+                fatManuallyOverridden = false
+                proteinManuallyOverridden = false
                 autoFillProteinFatFromCarbs()
+            } else {
+                applyingAutoFpu = true
+                try {
+                    if (!fatManuallyOverridden) binding.fatInput.value = 0.0
+                    if (!proteinManuallyOverridden) binding.proteinInput.value = 0.0
+                } finally {
+                    applyingAutoFpu = false
+                }
             }
+            calculateInsulin()
         }
 
         // If there is no BG using % lower that 100% leads to high BGs
