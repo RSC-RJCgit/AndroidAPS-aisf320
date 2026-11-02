@@ -126,19 +126,20 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `an update with a password preserves settings and asks after ten seconds`() {
+    fun `an update with a password asks immediately and keeps settings after ten seconds`() {
         whenever(config.HEAD).thenReturn("next-build")
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         val updated = build()
-        assertThat(updated.builtInStep.value).isNull()
+        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
         verify(preferences).put(BooleanNonKey.GeneralSetupWizardProcessed, true)
         testDispatcher.scheduler.runCurrent()
         testDispatcher.scheduler.advanceTimeBy(9_999)
         testDispatcher.scheduler.runCurrent()
-        assertThat(updated.builtInStep.value).isNull()
+        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
         testDispatcher.scheduler.advanceTimeBy(1)
         testDispatcher.scheduler.runCurrent()
-        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
+        assertThat(updated.builtInStep.value).isNull()
+        verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
         verify(builtInSettingsApplier, never()).apply(any())
     }
 
@@ -150,7 +151,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `opening defaults manually cancels the delayed startup question`() {
+    fun `opening defaults manually cancels the automatic timeout`() {
         whenever(config.HEAD).thenReturn("next-build")
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         val updated = build()
@@ -159,6 +160,20 @@ internal class MaintenanceViewModelTest {
         testDispatcher.scheduler.advanceTimeBy(10_001)
         testDispatcher.scheduler.runCurrent()
         assertThat(updated.builtInStep.value).isNull()
+        verify(builtInSettingsApplier, never()).apply(any())
+    }
+
+    @Test
+    fun `choosing defaults cancels the timer and waits for the password`() {
+        whenever(config.HEAD).thenReturn("next-build")
+        whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
+        val updated = build()
+        testDispatcher.scheduler.runCurrent()
+        testDispatcher.scheduler.advanceTimeBy(9_000)
+        updated.answerBuiltIn(true)
+        testDispatcher.scheduler.advanceTimeBy(2_000)
+        testDispatcher.scheduler.runCurrent()
+        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.EnterPassword())
         verify(builtInSettingsApplier, never()).apply(any())
     }
 
