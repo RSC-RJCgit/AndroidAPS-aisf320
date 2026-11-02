@@ -106,6 +106,9 @@ class WizardDialog : DaggerDialogFragment() {
     // Insulin-only mode: the typed dose is given; zero opens the input without selecting a dose. The
     // calculation only shows what the calculator suggests. Null is the usual calculator.
     private var fixedInsulinPassedIntoWizard: Double? = null
+    private val insulinOnlyControlStates = mutableMapOf<View, Pair<Boolean, Float>>()
+    private var insulinOnlyControlsReady = false
+    private var switchingToMealCalculator = false
     private var okClicked: Boolean = false // one shot guards
     private var disposable: CompositeDisposable = CompositeDisposable()
     private var bolusStep = 0.0
@@ -192,6 +195,7 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("warsaw_duration_input", binding.warsawDurationInput.value)
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
+        savedInstanceState.putBoolean("meal_calculator_mode", fixedInsulinPassedIntoWizard == null)
         if (fixedInsulinPassedIntoWizard != null) savedInstanceState.putDouble("fixed_insulin_input", binding.fixedInsulinInput.value)
     }
 
@@ -203,6 +207,7 @@ class WizardDialog : DaggerDialogFragment() {
                 bundle.getDouble("fixed_insulin").takeIf { it.isFinite() && it >= 0.0 } ?: 0.0
             } else null
         }
+        if (savedInstanceState?.getBoolean("meal_calculator_mode") == true) fixedInsulinPassedIntoWizard = null
 
         dialog?.window?.requestFeature(Window.FEATURE_NO_TITLE)
         dialog?.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN)
@@ -448,8 +453,7 @@ class WizardDialog : DaggerDialogFragment() {
     private fun fixedInsulin(): Double? =
         if (fixedInsulinPassedIntoWizard == null || _binding == null) null else binding.fixedInsulinInput.value
 
-    // Insulin-only mode: the "Insulin to give" row, and the boxes locked at their values. Only max bolus, its split, BG,
-    // carbs and the carb time still change; carbs reproduce a calculator run and are recorded with the bolus.
+    // Start with a manual dose. Entering carbs switches this session to the full meal calculator.
     private fun setupInsulinOnlyMode(savedInstanceState: Bundle?) {
         val fixed = fixedInsulinPassedIntoWizard ?: return
         binding.fixedInsulinRow.visibility = View.VISIBLE
@@ -472,12 +476,43 @@ class WizardDialog : DaggerDialogFragment() {
             binding.delayFpuCheckbox, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
             binding.correctionPercent
         ).forEach { it.lockForInsulinOnly() }
+        insulinOnlyControlsReady = true
+        calculateInsulin()
     }
 
     private fun View.lockForInsulinOnly() {
+        insulinOnlyControlStates.putIfAbsent(this, isEnabled to alpha)
         isEnabled = false
         alpha = 0.5f
         if (this is ViewGroup) for (i in 0 until childCount) getChildAt(i).lockForInsulinOnly()
+    }
+
+    private fun switchToMealCalculatorIfNeeded() {
+        if (!insulinOnlyControlsReady || fixedInsulinPassedIntoWizard == null || binding.carbsInput.value <= 0.0) return
+        switchingToMealCalculator = true
+        try {
+            // Clear the manual override before restoring controls: OK must now use the meal calculation.
+            fixedInsulinPassedIntoWizard = null
+            arguments?.remove("fixed_insulin")
+            binding.fixedInsulinRow.visibility = View.GONE
+            binding.fixedInsulinInfo.visibility = View.GONE
+            insulinOnlyControlStates.forEach { (view, state) ->
+                view.isEnabled = state.first
+                view.alpha = state.second
+            }
+            insulinOnlyControlStates.clear()
+            insulinOnlyControlsReady = false
+            walkingSoonUserOverride = false
+            binding.unreliableSmbsCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+            binding.smallMealCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultSmallMeal)
+            binding.autoFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultAutoFpu)
+            binding.ttCheckbox.isEnabled = binding.bgCheckbox.isChecked && persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now()) != null
+            processEnabledIcons()
+            proteinFatManuallyOverridden = false
+            autoFillProteinFatFromCarbs()
+        } finally {
+            switchingToMealCalculator = false
+        }
     }
 
     private fun setA11yLabels() {
@@ -508,6 +543,8 @@ class WizardDialog : DaggerDialogFragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+        insulinOnlyControlStates.clear()
+        insulinOnlyControlsReady = false
     }
 
     private fun onCheckedChanged(buttonView: CompoundButton, @Suppress("unused") state: Boolean) {
@@ -710,6 +747,8 @@ class WizardDialog : DaggerDialogFragment() {
 
     @SuppressLint("SetTextI18n")
     private fun calculateInsulin() {
+        if (switchingToMealCalculator) return
+        switchToMealCalculatorIfNeeded()
         val profileStore = activePlugin.activeProfileSource.profile ?: return // not initialized yet
         var profileName = binding.profileList.text.toString()
         val specificProfile: Profile?
