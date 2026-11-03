@@ -11,7 +11,6 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.Notification
 import app.aaps.core.interfaces.plugin.ActivePlugin
-import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
@@ -61,10 +60,13 @@ class SimulatorBgReplay @Inject constructor(
     }
 
     private fun eligible(): Boolean = !stopped && runCatching {
-        val syncs = activePlugin.activeSyncs.mapNotNull { it as? PluginBase }.filter { it.isEnabled() }
+        val syncs = activePlugin.getPluginsList().filter { it is NSClientPlugin || it is NSClientV3Plugin }.filter { it.isEnabled() }
         config.APS && !config.AAPSCLIENT && activePlugin.activePump is VirtualPump &&
             syncs.any { it is NSClientPlugin } && syncs.none { it is NSClientV3Plugin }
-    }.getOrDefault(false)
+    }.getOrElse { error ->
+        log("Cannot check replay eligibility (${error.javaClass.simpleName})")
+        false
+    }
 
     @Synchronized
     fun run() {

@@ -101,7 +101,7 @@ class LoadSecondaryBolusCarbsWorker(
         // Replay selects historical BG by reading timestamp, not the ordinary modified-since cursor.
         // Keep treatment/profile imports, but do not mix this live BG stream with simulator replay.
         if (activePlugin.fullAapsOnVirtualPump(config) && preferences.get(BooleanKey.NsClientSimulatorBgReplay) &&
-            activePlugin.activeSyncs.any { it is NSClientPlugin && it.isEnabled() }) return
+            activePlugin.getPluginsList().any { it is NSClientPlugin && it.isEnabled() }) return
         if (!activePlugin.isFollowerPhone(config) || !preferences.get(BooleanKey.NsClientBgFromLiveSite)) return
         try {
             val cursor = preferences.get(LongKey.NsClientSecondaryBgLastModified)
