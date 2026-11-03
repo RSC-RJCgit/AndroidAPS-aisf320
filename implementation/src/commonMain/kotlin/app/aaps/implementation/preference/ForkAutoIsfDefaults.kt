@@ -67,6 +67,11 @@ internal sealed class ForkDefault {
 }
 
 internal val forkAutoIsfDefaults: List<ForkDefault> = listOf(
+    ForkDefault.Bool(BooleanKey.ApsAutoIsfLowTtLowersSens, true),
+    ForkDefault.Bool(BooleanKey.ApsAutoIsfHighTtRaisesSens, true),
+    ForkDefault.Bool(BooleanKey.ApsActivityDetection, true),
+    ForkDefault.Bool(BooleanKey.AutomationCodedLocationsEnabled, true),
+    ForkDefault.Bool(BooleanKey.ApsUseSmbWithHighTt, true),
     ForkDefault.Dbl(DoubleKey.ApsAutoIsfMax, 2.6),
     ForkDefault.Dbl(DoubleKey.ApsAutoIsfMaxLow, 1.0),
     ForkDefault.Dbl(DoubleKey.ApsAutoIsfMin, 0.3),
@@ -98,7 +103,7 @@ internal val forkAutoIsfDefaults: List<ForkDefault> = listOf(
     ForkDefault.Str(StringKey.ApsAutoIsfStandard110ProfileName, "Profile150"),
     ForkDefault.Str(StringKey.ApsAutoIsfStandardProfileName, "Profile150"),
     ForkDefault.Bool(BooleanKey.ApsAutoIsfStepCutFromOldReasons, true),
-    ForkDefault.Bool(BooleanKey.ApsAutoIsfStepsFromPhone, true),
+    ForkDefault.Bool(BooleanKey.ApsAutoIsfStepsFromPhone, false),
     ForkDefault.Str(StringKey.ApsAutoIsfSteroid100ProfileName, "Steroid100"),
     ForkDefault.Str(StringKey.ApsAutoIsfSteroid110ProfileName, "Steroid110"),
     ForkDefault.Str(StringKey.ApsAutoIsfSteroid130ProfileName, "Steroid130"),

@@ -32,7 +32,7 @@ enum class BooleanKey(
 
     // Not synced (2026-10-29, per explicit request): it only changes how one screen looks, so each device keeps its own.
     // Synced, the default "on" of a new install or an old Nightscout copy switched it on everywhere and hid the graph pencils.
-    GeneralSimpleMode(key = "simple_mode", defaultValue = true, title = KeysStrings.pref_title_simple_mode),
+    GeneralSimpleMode(key = "simple_mode", defaultValue = false, title = KeysStrings.pref_title_simple_mode),
     GeneralInsulinConcentration(
         key = "insulin_concentration_enabled", defaultValue = false, title = KeysStrings.pref_title_insulin_concentration, summary = KeysStrings.pref_summary_insulin_concentration,
         defaultedBySM = true,
@@ -123,7 +123,7 @@ enum class BooleanKey(
     ApsUseSmb("use_smb", true, KeysStrings.pref_title_aps_use_smb, KeysStrings.pref_summary_aps_use_smb, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     ApsUseSmbWithHighTt(
         "enableSMB_with_high_temptarget",
-        false,
+        true,
         KeysStrings.pref_title_aps_use_smb_with_high_tt,
         KeysStrings.pref_summary_aps_use_smb_with_high_tt,
         defaultedBySM = true,
@@ -201,7 +201,7 @@ enum class BooleanKey(
     ),
     ApsAutoIsfHighTtRaisesSens(
         "high_temptarget_raises_sensitivity",
-        false,
+        true,
         KeysStrings.pref_title_aps_high_tt_raises_sensitivity,
         KeysStrings.pref_summary_aps_high_tt_raises_sensitivity,
         defaultedBySM = true,
@@ -209,7 +209,7 @@ enum class BooleanKey(
     ),
     ApsAutoIsfLowTtLowersSens(
         "low_temptarget_lowers_sensitivity",
-        false,
+        true,
         KeysStrings.pref_title_aps_low_tt_lowers_sensitivity,
         KeysStrings.pref_summary_aps_low_tt_lowers_sensitivity,
         defaultedBySM = true,
@@ -313,14 +313,14 @@ enum class BooleanKey(
     // app is a client and does not loop. Local, each phone its own.
     ApsAutoIsfStepsFromPhone(
         "autoisf_steps_from_phone",
-        true,
+        false,
         KeysStrings.pref_title_steps_from_phone,
         KeysStrings.pref_summary_steps_from_phone,
         platforms = AppPlatform.ANDROID_ONLY
     ),
     ApsAutoIsfUseLiveStepsOnVirtual(
         "autoisf_use_live_steps_on_virtual",
-        false,
+        true,
         KeysStrings.pref_title_aps_use_live_steps,
         KeysStrings.pref_summary_aps_use_live_steps,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
@@ -394,7 +394,7 @@ enum class BooleanKey(
     ),
     ApsActivityDetection(
         "activity_detection",
-        false,
+        true,
         KeysStrings.pref_title_aps_activity_detection,
         KeysStrings.pref_summary_aps_activity_detection,
         defaultedBySM = true,
@@ -458,6 +458,11 @@ enum class BooleanKey(
     // A second Nightscout site. A virtual pump reads glucose from its own site, and boluses and
     // carbs from the phone that entered them. SMBs are never taken from this site.
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false, KeysStrings.ns_secondary_enabled, KeysStrings.ns_secondary_enabled_summary),
+    NsClientTemporaryBgRelay(
+        "nsclient_temporary_bg_relay", false,
+        KeysStrings.ns_temporary_bg_relay, KeysStrings.ns_temporary_bg_relay_summary,
+        showInNsClientMode = false, showInPumpControlMode = false
+    ),
     // Trio remote control, as in LoopFollow (2026-10-29, per explicit request). The rest of its settings depend on this.
     TrioRemoteEnabled("trio_remote_enabled", false, KeysStrings.trio_remote_enabled, KeysStrings.trio_remote_enabled_summary),
     TrioSimulatorReceiver("trio_simulator_receiver", false, KeysStrings.trio_simulator_receiver, KeysStrings.trio_simulator_receiver_summary, showInNsClientMode = false),
@@ -625,7 +630,7 @@ enum class BooleanKey(
     // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     AutomationCodedLocationsEnabled(
         "automation_coded_locations",
-        false,
+        true,
         KeysStrings.pref_title_coded_locations,
         KeysStrings.pref_summary_coded_locations
     ),

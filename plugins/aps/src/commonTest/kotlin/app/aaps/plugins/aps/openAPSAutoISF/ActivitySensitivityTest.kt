@@ -8,7 +8,6 @@ class ActivitySensitivityTest {
     private fun ratio(
         enabled: Boolean = true,
         tempTargetSet: Boolean = false,
-        phoneMoved: Boolean = true,
         stepsKnown: Boolean = true,
         steps5: Int = 0,
         steps10: Int = 0,
@@ -28,7 +27,7 @@ class ActivitySensitivityTest {
         activityScale: Double = 1.0,
         inactivityScale: Double = 1.0,
     ) = activitySensitivityRatio(
-        enabled, tempTargetSet, phoneMoved, stepsKnown, steps5, steps10, steps15, steps30, steps60,
+        enabled, tempTargetSet, stepsKnown, steps5, steps10, steps15, steps30, steps60,
         hour, bg, targetBg, shortDelta, minutesSinceStart, sleeping, sleepStateExists,
         ignoreInactivityOvernight, idleStartHour, idleEndHour, activityScale, inactivityScale,
     )
@@ -44,9 +43,8 @@ class ActivitySensitivityTest {
     }
 
     @Test
-    fun hardWalkingLowersTheRatioOnlyWhenThePhoneMoved() {
+    fun importedWalkingStepsLowerTheRatioWithoutLocalPhoneMotion() {
         assertEquals(0.7, ratio(steps5 = 301, steps60 = 3000), 0.001)
-        assertEquals(1.0, ratio(phoneMoved = false, steps5 = 301, steps60 = 3000), 0.001)
     }
 
     @Test
@@ -56,13 +54,13 @@ class ActivitySensitivityTest {
 
     @Test
     fun sittingStillRaisesTheRatio() {
-        assertEquals(1.2, ratio(phoneMoved = false, steps60 = 10, bg = 140.0), 0.001)
-        assertEquals(1.1, ratio(phoneMoved = false, steps60 = 100, bg = 140.0), 0.001)
+        assertEquals(1.2, ratio(steps60 = 10, bg = 140.0), 0.001)
+        assertEquals(1.1, ratio(steps60 = 100, bg = 140.0), 0.001)
     }
 
     @Test
     fun aFallingGlucoseDoesNotAddInsulinForSittingStill() {
-        assertEquals(1.0, ratio(phoneMoved = false, steps60 = 10, shortDelta = -1.0), 0.001)
+        assertEquals(1.0, ratio(steps60 = 10, shortDelta = -1.0), 0.001)
     }
 
     @Test

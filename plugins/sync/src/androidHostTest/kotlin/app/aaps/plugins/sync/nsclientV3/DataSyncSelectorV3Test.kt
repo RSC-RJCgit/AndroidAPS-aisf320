@@ -50,7 +50,7 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
     @BeforeEach
     fun setUp() {
         storeDataForDb = StoreDataForDbImpl(aapsLogger, persistenceLayer, preferences, config, nsClientRepository, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
-        sut = DataSyncSelectorV3(preferences, aapsLogger, dateUtil, profileFunction, activePlugin, profileRepository, persistenceLayer, storeDataForDb, config, nsClientRepository) { nsClientV3Plugin }
+        sut = DataSyncSelectorV3(preferences, aapsLogger, dateUtil, profileFunction, activePlugin, profileRepository, persistenceLayer, storeDataForDb, config, nsClientRepository, mock()) { nsClientV3Plugin }
     }
 
     @Test

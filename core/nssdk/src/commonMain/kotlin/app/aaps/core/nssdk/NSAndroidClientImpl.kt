@@ -14,6 +14,7 @@ import app.aaps.core.nssdk.localmodel.authorization.NSAuthSubject
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.nssdk.localmodel.entry.NSMbgV3
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
+import app.aaps.core.nssdk.localmodel.entry.NsUnits
 import app.aaps.core.nssdk.localmodel.food.NSFood
 import app.aaps.core.nssdk.localmodel.treatment.CreateUpdateResponse
 import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
@@ -43,6 +44,8 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -208,6 +211,11 @@ class NSAndroidClientImpl(
             throw InvalidParameterNightscoutException(response.errorBody() ?: response.message())
         else
             throw UnsuccessfulNightscoutException("Unsuccessful")
+    }
+
+    override suspend fun createSgvV1(nsSgvV3: NSSgvV3): CreateUpdateResponse = callWrapper(dispatcher) {
+        val response = api.createEntryV1(simulatorSgvV1(nsSgvV3))
+        CreateUpdateResponse(response = response.code, identifier = null)
     }
 
     override suspend fun createSgv(nsSgvV3: NSSgvV3): CreateUpdateResponse = callWrapper(dispatcher) {
@@ -854,5 +862,24 @@ class NSAndroidClientImpl(
         // TODO: Parameters?
         private const val RETRIES = 3
         private const val RETRY_DELAY = 100L
+    }
+}
+
+/** Minimal v1 SGV payload. Do not send v3 IDs, subjects or server modification fields. */
+internal fun simulatorSgvV1(entry: NSSgvV3): JsonObject {
+    val at = requireNotNull(entry.date)
+    require(entry.isValid && entry.sgv.isFinite() && entry.sgv > 0)
+    val mgdl = if (entry.units == NsUnits.MMOL_L) entry.sgv * 18.0182 else entry.sgv
+    return buildJsonObject {
+        put("type", "sgv")
+        put("date", at)
+        put("dateString", Instant.fromEpochMilliseconds(at).toString())
+        put("sgv", mgdl)
+        put("units", "mg/dl")
+        entry.device?.let { put("device", it) }
+        entry.direction?.let { put("direction", it.nsName) }
+        entry.noise?.let { put("noise", it) }
+        entry.filtered?.let { put("filtered", it) }
+        entry.unfiltered?.let { put("unfiltered", it) }
     }
 }

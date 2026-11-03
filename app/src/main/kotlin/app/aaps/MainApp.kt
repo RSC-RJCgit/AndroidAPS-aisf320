@@ -32,7 +32,6 @@ import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.rx.events.EventAppInitialized
 import app.aaps.core.interfaces.tempTargets.toJson
-import app.aaps.plugins.aps.openAPSAutoISF.PhoneMovementDetector
 import app.aaps.plugins.aps.openAPSAutoISF.PhoneStepListener
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
@@ -108,14 +107,10 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         private val PLUGIN_START_WAIT = 30.seconds
     }
 
-    private val phoneMovementDetector = PhoneMovementDetector()
     private val phoneStepListener = PhoneStepListener()
 
-    private fun registerPhoneMovement() {
+    private fun registerPhoneSteps() {
         val sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)?.let {
-            sensorManager.registerListener(phoneMovementDetector, it, SensorManager.SENSOR_DELAY_NORMAL)
-        }
         // The phone's own steps (2026-10-30, as v3's StepService). Without "Physical activity" no counts arrive; granted
         // later, they start with the next app start.
         sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)?.let {
@@ -257,7 +252,7 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
 
         // Here should be everything injected
         aapsLogger.debug("onCreate")
-        registerPhoneMovement()
+        registerPhoneSteps()
         storage.notes.forEach { aapsLogger.info(LTag.CORE, it) }
         AndroidStorage.onSaveFailure = { aapsLogger.error(LTag.CORE, "Settings could not be saved, the next change tries again: ${it.message}") }
         // Left by an earlier start whose settings could not be opened.
@@ -717,15 +712,9 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         // Those writes go below Preferences, so the cached flows have not seen them.
         preferences.reloadFromStore()
 
-        // Seeds simple mode for an install that predates the key.
-        //
-        // NOT a migration and deliberately not in the list above: it invents a value rather than moving
-        // one, and `simple_mode` feeds PreferencesImpl.calculatedDefaultValue, so a wrong guess changes
-        // the effective value of a whole family of settings. Skipped on a client, which adopts the
-        // value from the master via sync - a local put here would trigger a client→master round-trip
-        // (modal) at startup. The master seeds and publishes; the client follows.
+        // A phone without a saved choice starts with simple mode off. Existing choices stay as saved.
         if (!config.AAPSCLIENT && preferences.getIfExists(BooleanKey.GeneralSimpleMode) == null)
-            preferences.put(BooleanKey.GeneralSimpleMode, !preferences.get(BooleanNonKey.GeneralSetupWizardProcessed))
+            preferences.put(BooleanKey.GeneralSimpleMode, false)
         // A brand-new install starts with a few settings that differ from their defaults, for example a client starts
         // read-only. Only on a fresh install, so an update changes nothing.
         FreshInstallDefaults.apply(preferences, config)

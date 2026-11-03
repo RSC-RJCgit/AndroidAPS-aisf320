@@ -1204,13 +1204,12 @@ open class OpenAPSAutoISFPlugin(
             }
         }
         val nowMs = dateUtil.now()
-        val stepSample = if (usesLiveSteps()) freshLiveSteps(nowMs)
-        else persistenceLayer.getLastStepsCountFromTimeToTime(nowMs - 60 * 60 * 1000L, nowMs)
+        // Activity uses fresh imported steps only; missing data stays neutral.
+        val stepSample = freshLiveSteps(nowMs)
         val startedAt = if (processStartedAtMs == 0L) nowMs else processStartedAtMs
         val activityRatio = if (glucose_status == null) 1.0 else activitySensitivityRatio(
             enabled = preferences.get(BooleanKey.ApsActivityDetection),
             tempTargetSet = isTempTarget,
-            phoneMoved = PhoneMotion.movedRecently(nowMs),
             stepsKnown = stepSample != null,
             steps5 = stepSample?.steps5min ?: 0,
             // Bins from either source (StepBins.kt)

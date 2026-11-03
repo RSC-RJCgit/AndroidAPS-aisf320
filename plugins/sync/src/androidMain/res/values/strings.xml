@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="ns_bg_relay_active">Simulator BG replay is ON. Values come from the secondary site 48 hours ago and use current replay timestamps. Turn replay OFF when normal uploads return.</string>
+    <string name="ns_bg_relay_paused">Normal v3 BG uploads resumed. Simulator BG replay is paused for 10 minutes and will check again. Turn replay OFF when it is no longer needed.</string>
     <!-- AAPSClient -->
     <!-- ns_wifi_ssids moved to core:keys module -->
     <string name="connection_settings_title">Connection settings</string>

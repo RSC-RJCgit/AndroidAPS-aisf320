@@ -98,6 +98,7 @@ enum class LongNonKey(
 
     // Server time of the newest glucose page taken from the secondary Nightscout. 0 means not yet.
     NsClientSecondaryGlucoseModified("nsclient_secondary_glucose_modified", 0L, exportable = false),
+    NsClientBgRelayPauseUntil("nsclient_bg_relay_pause_until", 0L, exportable = false),
 
     // Time of the newest "SetRole ..." Note already handled. Local only.
     ApsAutoIsfSetRoleNoteHandledAt("autoisf_set_role_note_handled_at", 0L, exportable = false),

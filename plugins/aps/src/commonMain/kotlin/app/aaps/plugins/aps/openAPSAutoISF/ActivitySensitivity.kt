@@ -1,20 +1,6 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
 /**
- * Remembers the last time the phone accelerometer moved.
- * The Android listener writes the time. Other targets never move, so walking stays neutral.
- */
-internal object PhoneMotion {
-    private var lastMovedAtMs: Long = 0L
-
-    fun markMoved(nowMs: Long) {
-        lastMovedAtMs = nowMs
-    }
-
-    fun movedRecently(nowMs: Long): Boolean = lastMovedAtMs + 15 * 60_000L > nowMs
-}
-
-/**
  * Step activity ratio from 3.2.1. Below 1.0 means walking, so the loop gives less insulin.
  * Above 1.0 means sitting still, so the loop gives more insulin. 1.0 changes nothing.
  * Missing steps stay at 1.0. A missing watch sample is not the same as sitting still.
@@ -22,7 +8,6 @@ internal object PhoneMotion {
 internal fun activitySensitivityRatio(
     enabled: Boolean,
     tempTargetSet: Boolean,
-    phoneMoved: Boolean,
     stepsKnown: Boolean,
     steps5: Int,
     steps10: Int,
@@ -48,10 +33,10 @@ internal fun activitySensitivityRatio(
     if (minutesSinceStart < 60L && steps60 <= 200) return 1.0
     if (sleeping && steps60 <= 200) return 1.0
     if (overnight && steps60 <= 200 && ignoreInactivityOvernight && !sleepStateExists) return 1.0
-    if (phoneMoved && (steps5 > 300 || steps10 > 300 || steps15 > 300 || steps30 > 1500 || steps60 > 2500)) {
+    if ((steps5 > 300 || steps10 > 300 || steps15 > 300 || steps30 > 1500 || steps60 > 2500)) {
         return 1.0 - 0.3 * activityScale
     }
-    if (phoneMoved && (steps5 > 200 || steps10 > 200 || steps15 > 200 || steps30 > 500 || steps60 > 800)) {
+    if ((steps5 > 200 || steps10 > 200 || steps15 > 200 || steps30 > 500 || steps60 > 800)) {
         return 1.0 - 0.15 * activityScale
     }
     if (bg < targetBg && steps60 <= 200) return 1.0

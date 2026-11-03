@@ -390,6 +390,10 @@ class NSClientV3Plugin(
         // client-control commands sent during the reconnect.
         preferences.observeEffective(BooleanKey.NsClient3UseWs).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
         preferences.observe(NsclientBooleanKey.NsPaused).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
+        preferences.observe(BooleanKey.NsClientTemporaryBgRelay).collectResilient(scope, aapsLogger, LTag.NSCLIENT) { enabled ->
+            dataSyncSelectorV3.clearTemporaryBgRelayIfDisabled()
+            if (enabled && dataSyncSelectorV3.temporaryBgRelayAvailable) executeUpload("BG_RELAY_ENABLED")
+        }
         preferences.observe(BooleanKey.NsClientNotificationsFromAlarms).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
         preferences.observe(BooleanKey.NsClientNotificationsFromAnnouncements).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
         preferences.observe(LongNonKey.LocalProfileLastChange).drop(1)
@@ -440,6 +444,7 @@ class NSClientV3Plugin(
                 if (!config.AAPSCLIENT && preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute) &&
                     (glucoseFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientBgFromLiveSite), preferences.get(BooleanKey.NsClientRawFromSecondary)) || rawFromSecondarySite(preferences.get(BooleanKey.NsClientSecondaryEnabled), preferences.get(BooleanKey.NsClientRawFromSecondary)))
                 ) nsLoadExecutor.enqueueSecondaryGlucose()
+                if (preferences.get(BooleanKey.NsClientTemporaryBgRelay) && dataSyncSelectorV3.temporaryBgRelayAvailable) executeUpload("BG_RELAY_TICK")
                 delay(T.mins(1).msecs())
             }
         }
@@ -1424,6 +1429,7 @@ class NSClientV3Plugin(
                 title = KeysStrings.ns_secondary_settings,
                 items = listOf(
                     BooleanKey.NsClientSecondaryEnabled,
+                    BooleanKey.NsClientTemporaryBgRelay,
                     BooleanKey.NsClientRawFromSecondary,
                     BooleanKey.NsClientBgFromLiveSite,
                     BooleanKey.NsClientSecondaryAcceptTherapyEvent,

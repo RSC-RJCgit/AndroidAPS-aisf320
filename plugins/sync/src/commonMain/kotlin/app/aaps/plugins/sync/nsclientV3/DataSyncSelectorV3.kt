@@ -23,6 +23,7 @@ import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.workers.bgUploadAllowed
 import app.aaps.plugins.sync.nsclientV3.workers.glucoseFromSecondarySite
 import app.aaps.plugins.sync.nsclientV3.workers.uploadSiteIsBgSite
+import app.aaps.plugins.sync.nsclientV3.workers.SecondaryBgRelay
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -41,6 +42,7 @@ class DataSyncSelectorV3(
     private val storeDataForDb: StoreDataForDb,
     private val config: Config,
     private val nsClientRepository: NSClientRepository,
+    private val secondaryBgRelay: SecondaryBgRelay,
     private val nsClientV3Plugin: () -> NSClientV3Plugin
 ) : DataSyncSelector {
 
@@ -84,6 +86,9 @@ class DataSyncSelectorV3(
     private val isPaused get() = preferences.get(NsclientBooleanKey.NsPaused)
 
     override fun queueSize(): Long = queueCounter.size()
+
+    internal fun clearTemporaryBgRelayIfDisabled() = secondaryBgRelay.clearIfDisabled()
+    internal val temporaryBgRelayAvailable: Boolean get() = secondaryBgRelay.legacyMainSelected()
 
     // 2026-10-18: also with the NSClient BG source when BG comes from the second (Live) site, see bgUploadAllowed().
     // The addresses are read only when they decide the answer.
@@ -164,6 +169,12 @@ class DataSyncSelectorV3(
         config.AAPSCLIENT && !isValid && preferences.get(BooleanKey.NsClientReadOnlyClient)
 
     override suspend fun doUpload() {
+        secondaryBgRelay.clearIfDisabled()
+        if (preferences.get(BooleanKey.NsClientTemporaryBgRelay) && temporaryBgRelayAvailable) {
+            // This explicit mode uploads BG only, independently of the normal treatment uploader.
+            if (!isPaused) secondaryBgRelay.run(nsClientV3Plugin().nsAndroidClient)
+            return
+        }
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
         // A client uploads nothing. Everything it does goes to the master through the settings collection, and the
         // master writes the records. What is left on a client stays on the phone: a note like "AndroidAPS started",

@@ -32,6 +32,8 @@ interface NSAndroidClient {
     suspend fun getSgvsModifiedSince(from: Long, limit: Int): ReadResponse<List<NSSgvV3>>
     suspend fun getSgvsNewerThan(from: Long, limit: Int): ReadResponse<List<NSSgvV3>>
     suspend fun createSgv(nsSgvV3: NSSgvV3): CreateUpdateResponse
+    /** Legacy entry upload for the explicitly enabled simulator replay. */
+    suspend fun createSgvV1(nsSgvV3: NSSgvV3): CreateUpdateResponse
     suspend fun updateSvg(nsSgvV3: NSSgvV3): CreateUpdateResponse
     suspend fun createCalibration(nsMbgV3: NSMbgV3): CreateUpdateResponse
     suspend fun updateCalibration(nsMbgV3: NSMbgV3): CreateUpdateResponse
