@@ -24,7 +24,6 @@ import io.ktor.http.takeFrom
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonElement
 
 /**
  * The Nightscout API v3 endpoints, on Ktor.
@@ -126,11 +125,6 @@ internal class NightscoutApi(
             encodedParameters.append("limit", limit.toString())
         }
     }
-
-    suspend fun createEntryV1(entry: JsonObject) =
-        call(HttpMethod.Post, JsonElement.serializer()) {
-            nsUrl("v1", "entries"); jsonBody(entry)
-        }
 
     suspend fun createEntry(remoteEntry: RemoteEntry) =
         call(HttpMethod.Post, RemoteCreateUpdateResponse.serializer()) {

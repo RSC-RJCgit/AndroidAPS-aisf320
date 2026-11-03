@@ -458,11 +458,6 @@ enum class BooleanKey(
     // A second Nightscout site. A virtual pump reads glucose from its own site, and boluses and
     // carbs from the phone that entered them. SMBs are never taken from this site.
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false, KeysStrings.ns_secondary_enabled, KeysStrings.ns_secondary_enabled_summary),
-    NsClientTemporaryBgRelay(
-        "nsclient_temporary_bg_relay", false,
-        KeysStrings.ns_temporary_bg_relay, KeysStrings.ns_temporary_bg_relay_summary,
-        showInNsClientMode = false, showInPumpControlMode = false
-    ),
     // Trio remote control, as in LoopFollow (2026-10-29, per explicit request). The rest of its settings depend on this.
     TrioRemoteEnabled("trio_remote_enabled", false, KeysStrings.trio_remote_enabled, KeysStrings.trio_remote_enabled_summary),
     TrioSimulatorReceiver("trio_simulator_receiver", false, KeysStrings.trio_simulator_receiver, KeysStrings.trio_simulator_receiver_summary, showInNsClientMode = false),
