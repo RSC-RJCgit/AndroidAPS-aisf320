@@ -9,6 +9,7 @@ enum class LongNonKey(
 ) : LongNonPreferenceKey {
 
     LastDelayedBolusDeliveredAt("last_delayed_bolus_delivered_at", 0L, exportable = false),
+    NsClientSimulatorBgReplayPauseUntil("nsclient_simulator_bg_replay_pause_until", 0L, exportable = false),
     LastLoRebAppliedAt("last_loreb_applied_at", 0L, exportable = false),
     LastHiBrkTwilightTtAt("last_hibrk_twilight_tt_at", 0L, exportable = false),
 

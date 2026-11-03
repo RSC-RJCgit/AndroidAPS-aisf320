@@ -87,7 +87,9 @@ class DataSyncSelectorV1 @Inject constructor(
     private var running = false
     private val sync = Any()
 
-    private val bgUploadEnabled get() = preferences.get(BooleanKey.BgSourceUploadToNs) && activePlugin.activeBgSource !is NSClientSource
+    private val bgUploadEnabled get() =
+        !(fullAapsOnVirtualPump && preferences.get(BooleanKey.NsClientSimulatorBgReplay)) &&
+            preferences.get(BooleanKey.BgSourceUploadToNs) && activePlugin.activeBgSource !is NSClientSource
 
     override suspend fun doUpload() {
         synchronized(sync) {

@@ -17,6 +17,7 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.sync.R
+import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -53,7 +54,7 @@ class SimulatorBgReplay @Inject constructor(
     private fun eligible(): Boolean = !stopped && runCatching {
         val syncs = activePlugin.activeSyncs.mapNotNull { it as? PluginBase }.filter { it.isEnabled() }
         config.APS && !config.AAPSCLIENT && activePlugin.activePump is VirtualPump &&
-            syncs.any { it.pluginId == "NSClientPlugin" } && syncs.none { it.pluginId == "NSClientV3Plugin" }
+            syncs.any { it is NSClientPlugin } && syncs.none { it is NSClientV3Plugin }
     }.getOrDefault(false)
 
     @Synchronized
@@ -79,7 +80,9 @@ class SimulatorBgReplay @Inject constructor(
             val hash = MessageDigest.getInstance("SHA-1").digest(secret.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
             val target = entries(primary, now - PAUSE_MS, now, 1000, hash = hash)
-            if (target.any { it.optLong("srvModified", 0L) > 0L && it.optLong("date", 0L) in (now - PAUSE_MS + 1)..now }) {
+            if (!eligible() || !preferences.get(BooleanKey.NsClientSimulatorBgReplay)) return
+            if (target.any { it.optBoolean("isValid", true) && it.optLong("srvModified", 0L) > 0L &&
+                    it.optLong("date", 0L) in (now - PAUSE_MS + 1)..now }) {
                 preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, now + PAUSE_MS)
                 warn(true)
                 return
@@ -92,6 +95,7 @@ class SimulatorBgReplay @Inject constructor(
             val at = source.getLong("date") + DELAY_MS
             if (target.any { it.optLong("date", 0L) == at }) return
             if (!eligible() || !preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
+                !preferences.get(BooleanKey.NsClientSecondaryEnabled) ||
                 !preferences.get(BooleanKey.NsClientSecondaryEnabled) ||
                 preferences.get(StringKey.NsClientUrl).trim().trimEnd('/') != primary ||
                 preferences.get(StringKey.NsClientSecondaryUrl).trim().trimEnd('/') != secondary ||
@@ -107,14 +111,16 @@ class SimulatorBgReplay @Inject constructor(
             request(primary + "/api/v1/entries.json", hash, JSONArray().put(entry).toString())
             logger.debug(LTag.NSCLIENT, "Simulator BG replay: one secondary reading from 48 hours ago uploaded as v1")
         } catch (error: Exception) {
-            logger.error(LTag.NSCLIENT, "Simulator BG replay failed; will retry on the next tick", error)
+            logger.warn(LTag.NSCLIENT, "Simulator BG replay failed (${error.javaClass.simpleName}); will retry on the next tick")
         }
     }
 
     private fun siteKey(url: String): String {
         val uri = URI(url)
         require(uri.scheme == "https" || uri.scheme == "http")
-        return "${uri.host?.lowercase()}:${uri.port}${uri.path.trimEnd('/')}"
+        require(!uri.host.isNullOrBlank() && uri.rawUserInfo == null)
+        val port = uri.port.takeUnless { it == 80 || it == 443 } ?: -1
+        return "${uri.host.lowercase()}:$port${uri.path.trimEnd('/')}"
     }
 
     private fun entries(base: String, from: Long, to: Long, count: Int, hash: String? = null, token: String? = null): List<JSONObject> {
@@ -150,6 +156,7 @@ class SimulatorBgReplay @Inject constructor(
     }
 
     private fun warn(paused: Boolean) {
+        if (stopped || !preferences.get(BooleanKey.NsClientSimulatorBgReplay)) return
         val text = rh.gs(if (paused) R.string.ns_simulator_bg_replay_paused else R.string.ns_simulator_bg_replay_active)
         if (text != lastWarning) {
             uiInteraction.addNotification(Notification.NSCLIENT_SIMULATOR_BG_REPLAY, text, Notification.NORMAL)

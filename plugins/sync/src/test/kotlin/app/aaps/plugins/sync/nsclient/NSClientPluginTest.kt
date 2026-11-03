@@ -6,6 +6,7 @@ import app.aaps.shared.tests.TestBaseWithProfile
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.mock
 import org.mockito.Mock
 
 class NSClientPluginTest : TestBaseWithProfile() {
@@ -20,7 +21,7 @@ class NSClientPluginTest : TestBaseWithProfile() {
     @BeforeEach fun prepare() {
         nsClientPlugin = NSClientPlugin(
             aapsLogger, aapsSchedulers, rxBus, rh, context, fabricPrivacy, preferences, receiverDelegate, dataSyncSelectorV1,
-            dateUtil, persistenceLayer, profileUtil, nsSettingsStatus, decimalFormatter, config
+            dateUtil, persistenceLayer, profileUtil, nsSettingsStatus, decimalFormatter, config, mock()
         )
     }
 

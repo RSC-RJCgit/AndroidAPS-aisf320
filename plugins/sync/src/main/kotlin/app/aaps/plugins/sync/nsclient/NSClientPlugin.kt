@@ -62,6 +62,8 @@ import io.socket.client.Socket
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.util.concurrent.TimeUnit
+import io.reactivex.rxjava3.core.Observable
 
 @Singleton
 class NSClientPlugin @Inject constructor(
@@ -79,7 +81,8 @@ class NSClientPlugin @Inject constructor(
     private val profileUtil: ProfileUtil,
     private val nsSettingsStatus: NSSettingsStatus,
     private val decimalFormatter: DecimalFormatter,
-    private val config: Config
+    private val config: Config,
+    private val simulatorBgReplay: SimulatorBgReplay
 ) : NsClient, Sync, PluginBase(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -106,6 +109,23 @@ class NSClientPlugin @Inject constructor(
         context.bindService(Intent(context, NSClientService::class.java), mConnection, Context.BIND_AUTO_CREATE)
         super.onStart()
         receiverDelegate.grabReceiversState()
+        simulatorBgReplay.start()
+        disposable += Observable.interval(0, 1, TimeUnit.MINUTES, aapsSchedulers.io)
+            .subscribe({
+                if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
+                    (isAllowed && !preferences.get(NsclientBooleanKey.NsPaused))) {
+                    safe("simulatorBgReplay") { simulatorBgReplay.run() }
+                }
+            }, fabricPrivacy::logException)
+        disposable += rxBus.toObservable(EventPreferenceChange::class.java)
+            .observeOn(aapsSchedulers.io)
+            .subscribe({ event ->
+                if (event.isChanged(BooleanKey.NsClientSimulatorBgReplay.key) &&
+                    (!preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
+                        (isAllowed && !preferences.get(NsclientBooleanKey.NsPaused)))) {
+                    safe("simulatorBgReplayChanged") { simulatorBgReplay.run() }
+                }
+            }, fabricPrivacy::logException)
         disposable += rxBus
             .toObservable(EventNSClientStatus::class.java)
             .observeOn(aapsSchedulers.io)
@@ -136,6 +156,7 @@ class NSClientPlugin @Inject constructor(
     }
 
     override fun onStop() {
+        simulatorBgReplay.stop()
         nsClientService?.destroy()
         if (nsClientService != null) context.unbindService(mConnection)
         disposable.clear()
@@ -433,6 +454,9 @@ class NSClientPlugin @Inject constructor(
                 key = "ns_secondary_settings"
                 title = rh.gs(R.string.ns_secondary_settings)
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSecondaryEnabled, summary = R.string.ns_secondary_enabled_summary, title = R.string.ns_secondary_enabled))
+                addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSimulatorBgReplay, summary = R.string.ns_simulator_bg_replay_summary, title = R.string.ns_simulator_bg_replay_title).also {
+                    it.isVisible = dataSyncSelectorV1.fullAapsOnVirtualPump
+                })
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSecondaryAcceptTherapyEvent, summary = R.string.ns_secondary_receive_therapy_events_summary, title = R.string.ns_secondary_receive_therapy_events))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
