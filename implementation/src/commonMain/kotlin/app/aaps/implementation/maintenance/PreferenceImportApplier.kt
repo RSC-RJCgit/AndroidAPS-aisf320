@@ -169,14 +169,8 @@ class PreferenceImportApplier(
                 continue
             }
 
-            // On a client a SYNCED key belongs to the master, whichever direction it travels.
-            // Writing it here would apply and then be silently reverted by the master's next cold
-            // publish - `applySyncedPrefs` adopts with putRemote(.., 0L), unconditionally - which is
-            // worse than never applying it.
-            //
-            // The test used to be `direction == Bidirectional`, which left MasterOnly keys through:
-            // those are even more the master's own, and a client writing one is the same silent
-            // revert with none of the ambiguity.
+            // This file-import flow excludes shared protocol keys on clients. The built-in preset
+            // has a separate explicit local-only path and can apply the full client preset.
             if (config.AAPSCLIENT && key.sync != null) {
                 syncedSkipped++
                 continue

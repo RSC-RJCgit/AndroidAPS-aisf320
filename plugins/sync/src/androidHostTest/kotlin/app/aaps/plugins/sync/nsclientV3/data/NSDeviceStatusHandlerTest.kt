@@ -509,7 +509,7 @@ internal class NSDeviceStatusHandlerTest {
         })
     )
 
-    // ---- read-only client follows the 3.x master's APS choice (2026-10-16) ----
+    // ---- a master status broadcast does not choose this client's APS ----
 
     private fun apsPlugin(id: String, algorithm: APSResult.Algorithm): PluginBase =
         mock<PluginBase>(extraInterfaces = arrayOf(APS::class)).also {

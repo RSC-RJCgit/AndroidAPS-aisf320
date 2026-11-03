@@ -484,13 +484,8 @@ class SWDefinition(
             .add(screenPump)
             .add(screenSensitivity)
 
-    // A client asks only for what it owns itself. Units and the low/high marks are deliberately NOT
-    // here: they carry SyncSpec(Cold, Bidirectional), so the master's cold running-config doc
-    // overwrites whatever the user sets (applySyncedPrefs adopts with putRemote(.., 0L)) as soon as
-    // the Nightscout connection is up - pairing is not even needed for that. Asking would be wasted
-    // work, and on a re-run of the wizard an edit here would instead push to the master. They stay
-    // editable in Settings, where the sync badge says they are shared with the main phone.
-    // There is no BG source screen either: a client reads BG from Nightscout.
+    // Client setup uses local defaults for units and display ranges; they remain editable in Settings.
+    // A passive master settings broadcast does not overwrite them. BG comes from Nightscout.
     private fun swDefinitionNSClient() = // List all the screens here
         add(screenSetupWizard)
             .add(screenEula)
