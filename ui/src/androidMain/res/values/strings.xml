@@ -212,6 +212,8 @@
     <string name="wizard_walking_soon" comment="Checkbox on the bolus calculator. Ticked means the user will walk soon, so the immediate dose is cut to 70 percent.">Walking soon</string>
     <string name="quickwizard_walking_soon_auto" comment="Switch in the QuickWizard editor. On: when the button is used, Walking soon is set from the steps, the same way the bolus calculator sets its box.">Walking soon: set from the steps</string>
     <string name="quickwizard_save_before_run">This button has changes that are not saved. Save them and run the button?</string>
+    <string name="wizard_fpu_thirty_minutes">FPU every 30 minutes (off: 60 minutes)</string>
+    <string name="wizard_split_fpu_bolus">Use split boluses for FPU</string>
     <string name="wizard_fpu_instead" comment="Checkbox. Ticked accepts automatic fat and protein from the carb grams. Fat is 0.35 times the carbs. Protein is 0.4 times the carbs. Those are later hourly doses. Extended carbs are off. Unticked leaves the typed fat and protein. Grams above 0 still schedule hourly doses.">Accept automatic fat and protein later</string>
     <string name="wizard_give_rest_later" comment="Checkbox, on by default. The fall caution removes part of the bolus now. Ticked gives that part later as hourly boluses. The first dose waits an hour. Unticked, that part is not given.">Delay part of the bolus (safety)</string>
     <string name="wizard_split_over_max" comment="Checkbox in the bolus calculator and switch in a QuickWizard button. Ticked: max bolus is given now and the rest over max bolus later, in parts, while BG is 7.0 or more and not falling.">Give the rest over max bolus later, in parts</string>

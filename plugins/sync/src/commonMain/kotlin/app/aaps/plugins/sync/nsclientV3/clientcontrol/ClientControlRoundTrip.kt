@@ -388,6 +388,7 @@ class ClientControlRoundTrip(
                         bg, carbs, percentage, directCorrection, carbTime, useBg, useCob, useIob, useTt, useTrend, alarm, notes,
                         eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours, profileName, walkingSoon,
                         protein = protein, fat = fat, warsawDurationHours = warsawDurationHours, maxBolus = maxBolus,
+                        fpuIntervalMinutes = fpuIntervalMinutes,
                         giveRestLater = giveRestLater, retryFpuLater = retryFpuLater, splitOverMax = splitOverMax,
                         splitIntervalMinutes = splitIntervalMinutes, fixedInsulin = fixedInsulin,
                     )

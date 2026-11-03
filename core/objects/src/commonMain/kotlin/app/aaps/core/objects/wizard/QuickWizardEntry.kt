@@ -146,8 +146,8 @@ class QuickWizardEntry(
         // 2026-10-21, per explicit request: the same meal extras, falling-BG caution, walking soon and later doses as the
         // Bolus Wizard (WizardDialogViewModel), so a button gives the dose the wizard would give with the same options.
         val extra = mealExtra(
-            fpuInstead = autoFpu(),
-            unreliableSmb = unreliableSmb(),
+            fpuInstead = splitFpuBolus() && autoFpu(),
+            unreliableSmb = splitFpuBolus() && unreliableSmb(),
             carbs = carbs(),
             typedFat = fat(),
             typedProtein = protein(),
@@ -188,9 +188,10 @@ class QuickWizardEntry(
             carbTime(),
             positiveIOBOnly = uPositiveIOBOnly,
             source = Sources.QuickWizard,
-            protein = extra.proteinGrams,
-            fat = extra.fatGrams,
+            protein = if (splitFpuBolus()) extra.proteinGrams else 0,
+            fat = if (splitFpuBolus()) extra.fatGrams else 0,
             warsawDurationHours = warsawDurationHours(),
+            fpuIntervalMinutes = fpuIntervalMinutes(),
             walkingSoon = walking,
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
         wizard.warsawRetryLater = retryFpuLater()
@@ -201,11 +202,16 @@ class QuickWizardEntry(
         return wizard
     }
 
-    // The Bolus Wizard's options. A switch the editor never wrote follows the wizard's default setting. Unreliable SMBs
-    // win over automatic fat and protein, as in the wizard.
-    fun unreliableSmb(): Boolean = data.unreliableSmb ?: preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+    // Unsaved options follow the calculator defaults. Unreliable SMBs change automatic FPU ratios.
+    fun unreliableSmb(): Boolean = autoFpu() && (data.unreliableSmb ?: preferences.get(BooleanKey.WizardDefaultUnreliableSmbs))
 
-    fun autoFpu(): Boolean = (data.autoFpu ?: preferences.get(BooleanKey.WizardDefaultAutoFpu)) && !unreliableSmb()
+    // Old presets could save the unreliable mode with automatic FPU false. Keep that explicit choice;
+    // a preset with neither saved uses the automatic-FPU default as its master switch.
+    fun autoFpu(): Boolean = (data.autoFpu ?: preferences.get(BooleanKey.WizardDefaultAutoFpu)) || data.unreliableSmb == true
+
+    fun splitFpuBolus(): Boolean = data.splitFpuBolus
+
+    fun fpuIntervalMinutes(): Int = if (data.fpuIntervalMinutes == 60) 60 else 30
 
     fun smallMeal(): Boolean = data.smallMeal ?: preferences.get(BooleanKey.WizardDefaultSmallMeal)
 
@@ -263,27 +269,28 @@ class QuickWizardEntry(
 
     fun percentage(): Int = data.percentage
 
-    fun useEcarbs(): Int = data.useEcarbs
+    fun storedUseEcarbs(): Int = data.useEcarbs
+
+    fun useEcarbs(): Int = if (mode() == QuickWizardMode.WIZARD && splitFpuBolus()) NEVER else storedUseEcarbs()
 
     fun carbs2(): Int = data.carbs2
 
     /**
      * The extended-carbs amount this preset really delivers: [carbs2] when eCarbs are switched on, 0 when they
-     * are off. Every caller needs the switch together with the amount, so the two stay in one place.
+     * are off. Saved eCarbs are used only when split FPU is off. Turning split FPU on does not erase them.
      */
     fun eCarbsGrams(): Int = when {
-        // As in the wizard, automatic fat and protein (or unreliable SMBs) send the slow part as later doses instead
-        mode() == QuickWizardMode.WIZARD && (autoFpu() || unreliableSmb()) -> 0
-        mealTypeApplies()                                                    -> carbs() * carbsType().eCarbsPercent / 100
-        useEcarbs() == ALWAYS                                                -> carbs2()
-        else                                                                 -> 0
+        mode() == QuickWizardMode.WIZARD && splitFpuBolus() -> 0
+        useEcarbs() == ALWAYS -> carbs2()
+        mealTypeApplies() -> carbs() * carbsType().eCarbsPercent / 100
+        else -> 0
     }
 
     /** Minutes until the extended carbs start: the meal type's, else the button's own [time]. */
-    fun eCarbsDelayMinutes(): Int = if (mealTypeApplies()) carbsType().eCarbsDelayMinutes else time()
+    fun eCarbsDelayMinutes(): Int = if (useEcarbs() != ALWAYS && mealTypeApplies()) carbsType().eCarbsDelayMinutes else time()
 
     /** Hours the extended carbs last: the meal type's, else the button's own [duration]. */
-    fun eCarbsDurationHours(): Int = if (mealTypeApplies()) carbsType().eCarbsDurationHours else duration()
+    fun eCarbsDurationHours(): Int = if (useEcarbs() != ALWAYS && mealTypeApplies()) carbsType().eCarbsDurationHours else duration()
 
     /** Meal type of a calculator button (2026-10-22). CARBS and INSULIN buttons keep their own fixed extended carbs. */
     fun carbsType(): CarbsType = if (mode() == QuickWizardMode.WIZARD) CarbsType.fromName(data.carbsType) else CarbsType.BREAD
@@ -295,7 +302,7 @@ class QuickWizardEntry(
      * because the slow part becomes fat and protein doses instead.
      */
     fun carbsNow(): Int =
-        if (mode() == QuickWizardMode.WIZARD && unreliableSmb()) carbs()
+        if (mode() == QuickWizardMode.WIZARD && splitFpuBolus() && unreliableSmb()) carbs()
         else carbs() * carbsType().carbsPercent / 100
 
     fun time(): Int = data.time

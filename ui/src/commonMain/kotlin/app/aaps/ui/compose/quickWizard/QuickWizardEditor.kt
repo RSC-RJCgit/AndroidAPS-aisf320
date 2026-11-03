@@ -118,6 +118,8 @@ fun QuickWizardEditor(
     useTempTarget: Boolean,
     useAlarm: Boolean,
     autoFpu: Boolean,
+    splitFpuBolus: Boolean,
+    fpuIntervalMinutes: Int,
     smallMeal: Boolean,
     unreliableSmb: Boolean,
     walkingSoonAuto: Boolean,
@@ -159,6 +161,8 @@ fun QuickWizardEditor(
     onUseTempTargetChange: (Boolean) -> Unit,
     onUseAlarmChange: (Boolean) -> Unit,
     onAutoFpuChange: (Boolean) -> Unit,
+    onSplitFpuBolusChange: (Boolean) -> Unit,
+    onFpuThirtyMinutesChange: (Boolean) -> Unit,
     onSmallMealChange: (Boolean) -> Unit,
     onUnreliableSmbChange: (Boolean) -> Unit,
     onWalkingSoonAutoChange: (Boolean) -> Unit,
@@ -242,6 +246,32 @@ fun QuickWizardEditor(
         }
 
         // Carbs (WIZARD and CARBS modes)
+        if (mode == QuickWizardMode.WIZARD) {
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_split_fpu_bolus),
+                checked = splitFpuBolus,
+                onCheckedChange = onSplitFpuBolusChange
+            )
+            SwitchRow(
+                label = stringResource(UiStrings.quickwizard_walking_soon_auto),
+                checked = walkingSoonAuto,
+                onCheckedChange = onWalkingSoonAutoChange
+            )
+            if (!walkingSoonAuto) {
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_walking_soon),
+                    checked = walkingSoon,
+                    onCheckedChange = onWalkingSoonChange,
+                    modifier = Modifier.padding(start = 16.dp)
+                )
+            }
+            SwitchRow(
+                label = stringResource(UiStrings.wizard_fpu_instead),
+                checked = autoFpu,
+                onCheckedChange = onAutoFpuChange
+            )
+        }
+
         if (mode != QuickWizardMode.INSULIN) {
             NumberInputRow(
                 labelRef = InterfacesStrings.carbs,
@@ -258,10 +288,10 @@ fun QuickWizardEditor(
             // 2026-10-22, per explicit request: with automatic fat/protein or unreliable SMB ticked, the boxes show the grams
             // the button will use (the same mealExtra as QuickWizardEntry at run time), greyed out because a typed value is
             // not used then. Unticked, they show the typed values again. Only the display changes, not what is saved.
-            val autoExtra = autoFpu || unreliableSmb
+            val autoExtra = splitFpuBolus && autoFpu
             val shownExtra = mealExtra(
-                fpuInstead = autoFpu,
-                unreliableSmb = unreliableSmb,
+                fpuInstead = splitFpuBolus && autoFpu,
+                unreliableSmb = splitFpuBolus && autoFpu && unreliableSmb,
                 carbs = carbs,
                 typedFat = fat,
                 typedProtein = protein,
@@ -311,6 +341,14 @@ fun QuickWizardEditor(
                 unitLabel = CoreUiStrings.units_hours,
                 modifier = Modifier.fillMaxWidth()
             )
+            if (splitFpuBolus) {
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_fpu_thirty_minutes),
+                    checked = fpuIntervalMinutes == 30,
+                    onCheckedChange = onFpuThirtyMinutesChange
+                )
+            }
+
         }
 
         // Carb Time (WIZARD mode only)
@@ -435,24 +473,6 @@ fun QuickWizardEditor(
 
             // The Bolus Wizard's own options (2026-10-21, per explicit request), so this button gives the wizard's dose
             SwitchRow(
-                label = stringResource(UiStrings.quickwizard_walking_soon_auto),
-                checked = walkingSoonAuto,
-                onCheckedChange = onWalkingSoonAutoChange
-            )
-            if (!walkingSoonAuto) {
-                SwitchRow(
-                    label = stringResource(UiStrings.wizard_walking_soon),
-                    checked = walkingSoon,
-                    onCheckedChange = onWalkingSoonChange,
-                    modifier = Modifier.padding(start = 16.dp)
-                )
-            }
-            SwitchRow(
-                label = stringResource(UiStrings.wizard_fpu_instead),
-                checked = autoFpu,
-                onCheckedChange = onAutoFpuChange
-            )
-            SwitchRow(
                 label = stringResource(UiStrings.wizard_unreliable_smb),
                 checked = unreliableSmb,
                 onCheckedChange = onUnreliableSmbChange
@@ -540,9 +560,8 @@ fun QuickWizardEditor(
             )
         }
 
-        // Extended Carbs Section (WIZARD and CARBS modes). Hidden while a cake or pizza meal type sets the extended carbs,
-        // so the two cannot add up.
-        if (mode != QuickWizardMode.INSULIN && !(mode == QuickWizardMode.WIZARD && carbsType != CarbsType.BREAD)) {
+        // Extended carbs are a separate mode. Keep stored values when the controls are hidden.
+        if (mode != QuickWizardMode.INSULIN && !(mode == QuickWizardMode.WIZARD && splitFpuBolus)) {
             HorizontalDivider()
             SwitchRow(
                 label = stringResource(UiStrings.additional_ecarbs),

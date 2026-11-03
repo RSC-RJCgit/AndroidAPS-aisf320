@@ -182,11 +182,13 @@ class QuickWizardManagementViewModel(
             editorPercentage = entry.percentage(),
             editorDevicePhone = entry.device() == QuickWizardEntry.DEVICE_PHONE || entry.device() == QuickWizardEntry.DEVICE_ALL,
             editorDeviceWatch = entry.device() == QuickWizardEntry.DEVICE_WATCH || entry.device() == QuickWizardEntry.DEVICE_ALL,
-            editorUseEcarbs = entry.useEcarbs() == QuickWizardEntry.ALWAYS,
+            editorUseEcarbs = entry.storedUseEcarbs() == QuickWizardEntry.ALWAYS,
             editorTime = entry.time(),
             editorDuration = entry.duration(),
             editorCarbs2 = entry.carbs2(),
             editorAutoFpu = entry.autoFpu(),
+            editorSplitFpuBolus = entry.splitFpuBolus(),
+            editorFpuIntervalMinutes = entry.fpuIntervalMinutes(),
             editorSmallMeal = entry.smallMeal(),
             editorCarbsType = entry.carbsType(),
             editorUnreliableSmb = entry.unreliableSmb(),
@@ -344,7 +346,9 @@ class QuickWizardManagementViewModel(
                 val mode = currentState.editorMode
                 when (mode) {
                     QuickWizardMode.WIZARD, QuickWizardMode.CARBS -> {
-                        if (currentState.editorCarbs <= 0 && (!currentState.editorUseEcarbs || currentState.editorCarbs2 <= 0)) {
+                        if (currentState.editorCarbs <= 0 &&
+                            (currentState.editorSplitFpuBolus || !currentState.editorUseEcarbs || currentState.editorCarbs2 <= 0) &&
+                            (!currentState.editorSplitFpuBolus || (currentState.editorProtein <= 0 && currentState.editorFat <= 0))) {
                             rxBus.send(EventShowSnackbar("Carbs must be greater than 0", EventShowSnackbar.Type.Error))
                             return@launch
                         }
@@ -395,6 +399,8 @@ class QuickWizardManagementViewModel(
                     duration = currentState.editorDuration,
                     carbs2 = currentState.editorCarbs2,
                     autoFpu = currentState.editorAutoFpu,
+                    splitFpuBolus = currentState.editorSplitFpuBolus,
+                    fpuIntervalMinutes = currentState.editorFpuIntervalMinutes,
                     smallMeal = currentState.editorSmallMeal,
                     carbsType = currentState.editorCarbsType.name,
                     unreliableSmb = currentState.editorUnreliableSmb,
@@ -596,13 +602,21 @@ class QuickWizardManagementViewModel(
         _uiState.update { it.copy(editorUseTempTarget = value, hasUnsavedChanges = true) }
     }
 
-    // Unreliable SMBs and automatic fat and protein exclude each other, as in the Bolus Wizard
+    // Automatic FPU is the master switch; unreliable SMBs choose its larger ratios.
+    fun updateFpuThirtyMinutes(value: Boolean) {
+        _uiState.update { it.copy(editorFpuIntervalMinutes = if (value) 30 else 60, hasUnsavedChanges = true) }
+    }
+
+    fun updateSplitFpuBolus(value: Boolean) {
+        _uiState.update { it.copy(editorSplitFpuBolus = value, hasUnsavedChanges = true) }
+    }
+
     fun updateAutoFpu(value: Boolean) {
-        _uiState.update { it.copy(editorAutoFpu = value, editorUnreliableSmb = if (value) false else it.editorUnreliableSmb, hasUnsavedChanges = true) }
+        _uiState.update { it.copy(editorAutoFpu = value, editorUnreliableSmb = if (value) it.editorUnreliableSmb else false, hasUnsavedChanges = true) }
     }
 
     fun updateUnreliableSmb(value: Boolean) {
-        _uiState.update { it.copy(editorUnreliableSmb = value, editorAutoFpu = if (value) false else it.editorAutoFpu, hasUnsavedChanges = true) }
+        _uiState.update { it.copy(editorUnreliableSmb = value, editorAutoFpu = if (value) true else it.editorAutoFpu, hasUnsavedChanges = true) }
     }
 
     fun updateSmallMeal(value: Boolean) {

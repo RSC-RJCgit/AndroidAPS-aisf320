@@ -62,6 +62,8 @@ data class QuickWizardEntryData(
     // A null switch follows the wizard's default setting when the button is used; the editor writes the value it shows.
     /** Automatic fat and protein from the carbs (fat 0.35 x, protein 0.4 x). */
     val autoFpu: Boolean? = null,
+    val splitFpuBolus: Boolean = true,
+    val fpuIntervalMinutes: Int = 30,
     /** Halves the automatic fat and protein. */
     val smallMeal: Boolean? = null,
     /** Larger fat and protein, wizard percent 90 and the saved max bolus. */
@@ -135,6 +137,8 @@ data class QuickWizardEntryData(
                 warsawDurationHours = json.lenientDouble("warsawDurationHours", 5.0),
                 maxBolus = json.lenientDouble("maxBolus", 0.0),
                 autoFpu = json.lenientBooleanOrNull("autoFpu"),
+                splitFpuBolus = json.lenientBoolean("splitFpuBolus", json.lenientInt("useEcarbs", NEVER) != ALWAYS),
+                fpuIntervalMinutes = if (json.lenientInt("fpuIntervalMinutes", 30) == 60) 60 else 30,
                 smallMeal = json.lenientBooleanOrNull("smallMeal"),
                 unreliableSmb = json.lenientBooleanOrNull("unreliableSmb"),
                 walkingSoon = json.lenientInt("walkingSoon", AUTO),
@@ -184,6 +188,8 @@ data class QuickWizardEntryData(
             put("warsawDurationHours", warsawDurationHours)
             put("maxBolus", maxBolus)
             autoFpu?.let { put("autoFpu", it) }
+            put("splitFpuBolus", splitFpuBolus)
+            put("fpuIntervalMinutes", fpuIntervalMinutes)
             smallMeal?.let { put("smallMeal", it) }
             unreliableSmb?.let { put("unreliableSmb", it) }
             put("walkingSoon", walkingSoon)

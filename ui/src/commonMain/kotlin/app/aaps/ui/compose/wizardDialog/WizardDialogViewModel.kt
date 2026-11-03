@@ -227,10 +227,11 @@ class WizardDialogViewModel(
         val useBolusAdvisor = preferences.get(BooleanKey.OverviewUseBolusAdvisor)
         // Starting state of the three meal-extra boxes (2026-10-06, per explicit request): every open starts from the
         // Overview settings defaults, nothing is remembered from the last use. Unreliable SMBs and Auto fat/protein are
-        // mutually exclusive in this wizard, so Unreliable wins when both defaults are on.
-        val defaultUnreliable = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+        // two calculation modes. Automatic FPU off keeps both modes off on opening; Unreliable selects the ratio when on.
+        val autoFpuEnabled = preferences.get(BooleanKey.WizardDefaultAutoFpu)
+        val defaultUnreliable = autoFpuEnabled && preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
         val defaultSmallMeal = preferences.get(BooleanKey.WizardDefaultSmallMeal)
-        val defaultAutoFpu = preferences.get(BooleanKey.WizardDefaultAutoFpu) && !defaultUnreliable
+        val defaultAutoFpu = autoFpuEnabled && !defaultUnreliable
 
         val storedPercentage = preferences.get(IntKey.OverviewBolusPercentage)
         val percentage = bolusPercentageFor(storedPercentage)
@@ -328,8 +329,8 @@ class WizardDialogViewModel(
         val state = uiState.value
         val clamped = value.coerceIn(0, state.maxCarbs)
         if (state.insulinOnly && clamped > 0) {
-            val unreliable = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
             val autoFpu = preferences.get(BooleanKey.WizardDefaultAutoFpu)
+            val unreliable = autoFpu && preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
             val small = preferences.get(BooleanKey.WizardDefaultSmallMeal)
             walkingSoonTouched = false
             savedStateHandle.remove<String>("insulin")
@@ -342,6 +343,17 @@ class WizardDialogViewModel(
         } else {
             _uiState.update { it.copy(carbs = clamped) }
         }
+        recalculate()
+    }
+
+    fun toggleFpuThirtyMinutes(checked: Boolean) {
+        _uiState.update { it.copy(fpuIntervalMinutes = if (checked) 30 else 60) }
+        recalculate()
+    }
+
+    fun toggleSplitFpuBolus(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(splitFpuBolus = checked) }
         recalculate()
     }
 
@@ -662,8 +674,8 @@ class WizardDialogViewModel(
         // sends fat and protein as later doses instead.
         val carbsType = state.carbsType
         val extra = mealExtra(
-            fpuInstead = state.fpuInstead,
-            unreliableSmb = state.unreliableSmb,
+            fpuInstead = state.splitFpuBolus && state.fpuInstead,
+            unreliableSmb = state.splitFpuBolus && state.unreliableSmb,
             smallMeal = state.smallMeal,
             carbs = state.carbs,
             typedFat = state.fat,
@@ -671,14 +683,14 @@ class WizardDialogViewModel(
             percentage = state.percentage,
             extendedCarbPercent = carbsType.eCarbsPercent,
         ).let { extra ->
-            if (state.fpuInstead || state.unreliableSmb) extra.copy(
+            if (state.splitFpuBolus && (state.fpuInstead || state.unreliableSmb)) extra.copy(
                 fatGrams = manualExtraFat ?: extra.fatGrams,
                 proteinGrams = manualExtraProtein ?: extra.proteinGrams
             ) else extra
         }
         val immediatePercent = extra.immediateCarbPercent ?: carbsType.carbsPercent
         val effectiveCarbs = state.carbs * immediatePercent / 100
-        val eCarbs = extra.extendedCarbs
+        val eCarbs = if (state.splitFpuBolus) 0 else extra.extendedCarbs
         val liveBg = glucoseStatusProvider.getGlucoseStatusData()?.glucose
         val bgMgdlForCaution = if (state.bg > 0.0) profileUtil.convertToMgdl(state.bg, state.units) else liveBg ?: 999.0
         val percentForCalc = if (dropTrendCautionApplies(bgMgdlForCaution)) {
@@ -717,9 +729,10 @@ class WizardDialogViewModel(
             state.alarmChecked,
             state.notes,
             state.carbTime,
-            protein = extra.proteinGrams,
-            fat = extra.fatGrams,
+            protein = if (state.splitFpuBolus) extra.proteinGrams else 0,
+            fat = if (state.splitFpuBolus) extra.fatGrams else 0,
             warsawDurationHours = state.warsawDurationHours,
+            fpuIntervalMinutes = state.fpuIntervalMinutes,
             walkingSoon = state.walkingSoon,
         )
 
@@ -840,7 +853,7 @@ class WizardDialogViewModel(
 
     fun deliverManualWizard() {
         val state = uiState.value
-        val effectiveCarbs = state.carbsType.carbsNow(state.carbs)
+        val effectiveCarbs = state.effectiveCarbs
         // null → recompute on the master's active profile (index 0 = "Active"); else the selected stored profile by name.
         val profileName = if (state.selectedProfileIndex == 0) null else state.profileNames.getOrNull(state.selectedProfileIndex)
         val inputs = MasterActionExecutor.WizardInputs(
@@ -848,8 +861,11 @@ class WizardDialogViewModel(
             carbTime = state.carbTime, useBg = state.useBg, useCob = state.useCOB, useIob = state.useIOB,
             useTt = state.useTT, useTrend = state.useTrend, alarm = state.alarmChecked, notes = state.notes,
             eCarbsGrams = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime, eCarbsDurationHours = state.eCarbsDurationHours,
-            profileName = profileName, protein = state.protein, fat = state.fat,
+            profileName = profileName,
+            protein = if (state.splitFpuBolus) state.protein else 0,
+            fat = if (state.splitFpuBolus) state.fat else 0,
             warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
+            fpuIntervalMinutes = state.fpuIntervalMinutes,
             walkingSoon = state.walkingSoon,
             giveRestLater = state.giveRestLater, retryFpuLater = state.delayFpuInsteadOfCancel,
             splitOverMax = state.splitOverMax, splitIntervalMinutes = state.splitIntervalMinutes,

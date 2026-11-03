@@ -802,6 +802,7 @@ class ClientControlReceiver(
             eCarbsGrams = message.eCarbsGrams, eCarbsDelayMinutes = message.eCarbsDelayMinutes, eCarbsDurationHours = message.eCarbsDurationHours,
             profileName = message.profileName, source = Sources.NSClient, walkingSoon = message.walkingSoon,
             protein = message.protein, fat = message.fat, warsawDurationHours = message.warsawDurationHours, maxBolus = message.maxBolus,
+            fpuIntervalMinutes = message.fpuIntervalMinutes,
             giveRestLater = message.giveRestLater, retryFpuLater = message.retryFpuLater, splitOverMax = message.splitOverMax,
             splitIntervalMinutes = message.splitIntervalMinutes, fixedInsulin = message.fixedInsulin,
         )

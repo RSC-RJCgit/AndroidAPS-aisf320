@@ -227,6 +227,8 @@ fun WizardDialogScreen(
         onCOBToggle = viewModel::toggleCOB,
         onWalkingSoonToggle = viewModel::toggleWalkingSoon,
         onFpuInsteadToggle = viewModel::toggleFpuInstead,
+        onSplitFpuBolusToggle = viewModel::toggleSplitFpuBolus,
+        onFpuThirtyMinutesToggle = viewModel::toggleFpuThirtyMinutes,
         onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
         onSplitOverMaxToggle = viewModel::toggleSplitOverMax,
         onSplitIntervalChange = viewModel::updateSplitIntervalMinutes,
@@ -268,6 +270,8 @@ internal fun WizardDialogContent(
     onCOBToggle: (Boolean) -> Unit,
     onWalkingSoonToggle: (Boolean) -> Unit = {},
     onFpuInsteadToggle: (Boolean) -> Unit = {},
+    onSplitFpuBolusToggle: (Boolean) -> Unit = {},
+    onFpuThirtyMinutesToggle: (Boolean) -> Unit = {},
     onGiveRestLaterToggle: (Boolean) -> Unit = {},
     onSplitOverMaxToggle: (Boolean) -> Unit = {},
     onSplitIntervalChange: (Int) -> Unit = {},
@@ -569,6 +573,38 @@ internal fun WizardDialogContent(
                     }
 
                     Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            enabled = !locked,
+                            checked = uiState.splitFpuBolus,
+                            onCheckedChange = onSplitFpuBolusToggle
+                        )
+                        Text(
+                            text = stringResource(UiStrings.wizard_split_fpu_bolus),
+                            modifier = Modifier.clickable(enabled = !locked) { onSplitFpuBolusToggle(!uiState.splitFpuBolus) }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            enabled = !locked,
+                            checked = uiState.fpuInstead || uiState.unreliableSmb,
+                            onCheckedChange = onFpuInsteadToggle
+                        )
+                        Text(
+                            text = stringResource(UiStrings.wizard_fpu_instead),
+                            modifier = Modifier.clickable(enabled = !locked) { onFpuInsteadToggle(!(uiState.fpuInstead || uiState.unreliableSmb)) }
+                        )
+                    }
+
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 4.dp),
@@ -581,7 +617,7 @@ internal fun WizardDialogContent(
                         )
                         Text(
                             text = stringResource(UiStrings.wizard_walking_soon),
-                            modifier = Modifier.clickable { onWalkingSoonToggle(!uiState.walkingSoon) }
+                            modifier = Modifier.clickable(enabled = !locked) { onWalkingSoonToggle(!uiState.walkingSoon) }
                         )
                     }
 
@@ -811,22 +847,24 @@ internal fun WizardDialogContent(
                             unitLabel = TextRef.Literal("h"),
                             decimalPlaces = 1
                         )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                enabled = !locked,
-                                checked = uiState.fpuInstead,
-                                onCheckedChange = onFpuInsteadToggle
-                            )
-                            Text(
-                                text = stringResource(UiStrings.wizard_fpu_instead),
-                                modifier = Modifier.clickable { onFpuInsteadToggle(!uiState.fpuInstead) }
-                            )
+                        if (uiState.splitFpuBolus) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    enabled = !locked,
+                                    checked = uiState.fpuIntervalMinutes == 30,
+                                    onCheckedChange = onFpuThirtyMinutesToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_fpu_thirty_minutes),
+                                    modifier = Modifier.clickable(enabled = !locked) { onFpuThirtyMinutesToggle(uiState.fpuIntervalMinutes != 30) }
+                                )
+                            }
                         }
+
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically

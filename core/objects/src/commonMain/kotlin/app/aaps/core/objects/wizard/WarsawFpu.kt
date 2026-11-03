@@ -8,12 +8,12 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.math.floor
 
 /**
- * Protein and fat insulin, spread as one dose every 30 minutes.
+ * Protein and fat insulin, spread every 30 minutes by default, or every 60 minutes.
  *
  * The immediate wizard bolus does not include this insulin. Fat-protein units pick a length:
  * up to 1 gives 3 hours, up to 2 gives 4 hours, up to 3 gives 5 hours, and above 3 gives 8 hours.
- * Each dose is the total divided by that full length. On the 8 hour length, [durationHoursCap]
- * only drops the later hours. It does not make the earlier doses bigger.
+ * On the 8 hour length, the duration cap removes its share of the total.
+ * The selected interval divides that same total without changing the length or cap.
  */
 data class WarsawFpuPlan(
     val fpu: Double,
@@ -23,9 +23,10 @@ data class WarsawFpuPlan(
     val totalInsulin: Double,
     val fullTierInsulin: Double,
     val capped: Boolean,
+    val intervalMinutes: Int = 30,
 )
 
-fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap: Double = 5.0): WarsawFpuPlan? {
+fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap: Double = 5.0, intervalMinutes: Int = 30): WarsawFpuPlan? {
     if (ic <= 0.0) return null
     val totalRequiredInsulin = (proteinGrams * 0.4 + fatGrams * 0.9) / ic
     if (totalRequiredInsulin <= 0.0) return null
@@ -36,22 +37,24 @@ fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap
         fpu <= 3.0 -> 5
         else       -> 8
     }
-    val fullDoses = tierHours * 2
-    val perDoseInsulin = totalRequiredInsulin / fullDoses
-    val numDoses = if (tierHours == 8) floor(durationHoursCap.coerceIn(0.0, 8.0) * 2).toInt() else fullDoses
-    if (numDoses <= 0) return null
+    val interval = if (intervalMinutes == 60) 60 else 30
+    val duration = if (tierHours == 8) floor(durationHoursCap.coerceIn(0.0, 8.0) * 2).toInt() * 30 else tierHours * 60
+    if (duration <= 0) return null
+    val numDoses = (duration + interval - 1) / interval
+    val total = totalRequiredInsulin * duration / (tierHours * 60)
     return WarsawFpuPlan(
         fpu = fpu,
-        durationMinutes = numDoses * 30,
+        durationMinutes = duration,
         numDoses = numDoses,
-        perDoseInsulin = perDoseInsulin,
-        totalInsulin = perDoseInsulin * numDoses,
-        fullTierInsulin = perDoseInsulin * fullDoses,
-        capped = numDoses < fullDoses,
+        perDoseInsulin = total / numDoses,
+        totalInsulin = total,
+        fullTierInsulin = totalRequiredInsulin,
+        capped = duration < tierHours * 60,
+        intervalMinutes = interval,
     )
 }
 
-/** Add [units] onto an existing half-hour plan, or start a 3 hour plan when there is none. */
+/** Add [units] onto an existing plan, or start a 3 hour, 30-minute plan when there is none. */
 fun warsawPlanPlusUnits(plan: WarsawFpuPlan?, units: Double): WarsawFpuPlan? {
     if (units <= 0.0) return plan
     if (plan == null) {
@@ -76,7 +79,8 @@ fun warsawPlanPlusUnits(plan: WarsawFpuPlan?, units: Double): WarsawFpuPlan? {
 }
 
 /** Half an hour is the first delay for a normal plan. A single dose waits the whole length. */
-fun warsawDoseDelayMinutes(index: Int, numDoses: Int, durationMinutes: Int): Int {
+fun warsawDoseDelayMinutes(index: Int, numDoses: Int, durationMinutes: Int, intervalMinutes: Int = 0): Int {
+    if (intervalMinutes > 0) return minOf(index * intervalMinutes, durationMinutes).coerceAtLeast(1)
     if (numDoses <= 1) return durationMinutes.coerceAtLeast(1)
     return (durationMinutes.toLong() * index / numDoses).toInt()
 }

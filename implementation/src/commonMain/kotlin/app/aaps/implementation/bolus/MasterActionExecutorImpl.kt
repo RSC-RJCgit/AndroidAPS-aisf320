@@ -444,6 +444,7 @@ class MasterActionExecutorImpl(
                 profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, percentForCalc,
                 inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
                 protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
+                fpuIntervalMinutes = inputs.fpuIntervalMinutes,
                 walkingSoon = inputs.walkingSoon,
             ).also { w ->
                 // Insulin-only mode (2026-11-01): the typed dose replaces the suggestion, under the same max bolus.

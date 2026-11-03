@@ -218,6 +218,7 @@ class BolusWizard(
         fat: Int = 0,
         warsawDurationHours: Double = 5.0,
         walkingSoon: Boolean = false,
+        fpuIntervalMinutes: Int = 30,
     ): BolusWizard {
 
         this.profile = profile
@@ -283,7 +284,7 @@ class BolusWizard(
         // A recent low halves only this carb insulin.
         // Protein and fat stay out of the immediate bolus. They are spread later, one dose per hour.
         ic = profile.getIc() * baseScale
-        warsawPlan = warsawFpuPlan(protein, fat, ic, warsawDurationHours)
+        warsawPlan = warsawFpuPlan(protein, fat, ic, warsawDurationHours, fpuIntervalMinutes)
         if (activePct < 100 || useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) warsawPlan = null
         insulinFromCarbs = carbs / ic
         val status = glucoseStatus
@@ -501,10 +502,10 @@ class BolusWizard(
         for (index in 1..plan.numDoses) {
             val planned = parts[index - 1]
             if (planned <= 0.0) continue
-            val delayMin = warsawDoseDelayMinutes(index, plan.numDoses, plan.durationMinutes)
+            val delayMin = warsawDoseDelayMinutes(index, plan.numDoses, plan.durationMinutes, plan.intervalMinutes)
             val firstDueAt = scheduledAt + delayMin * 60_000L
             val nextIndex = (index + 1..plan.numDoses).firstOrNull { parts[it - 1] > 0.0 }
-            val nextDueAt = nextIndex?.let { scheduledAt + warsawDoseDelayMinutes(it, plan.numDoses, plan.durationMinutes) * 60_000L }
+            val nextDueAt = nextIndex?.let { scheduledAt + warsawDoseDelayMinutes(it, plan.numDoses, plan.durationMinutes, plan.intervalMinutes) * 60_000L }
             appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, "fpu$index of ${plan.numDoses}") }
         }
     }

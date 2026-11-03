@@ -45,6 +45,8 @@ data class QuickWizardManagementUiState(
     val editorCarbs2: Int = 0,              // eCarbs additional carbs
     // The Bolus Wizard's own options (2026-10-21)
     val editorAutoFpu: Boolean = false,
+    val editorSplitFpuBolus: Boolean = true,
+    val editorFpuIntervalMinutes: Int = 30,
     val editorSmallMeal: Boolean = false,
     val editorCarbsType: CarbsType = CarbsType.BREAD,
     val editorUnreliableSmb: Boolean = false,
