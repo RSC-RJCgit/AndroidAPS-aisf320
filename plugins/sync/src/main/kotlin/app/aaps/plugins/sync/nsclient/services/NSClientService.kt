@@ -601,6 +601,7 @@ class NSClientService : DaggerService() {
     }
 
     fun dbUpdate(collection: String, @Suppress("LocalVariableName") _id: String?, data: JSONObject?, originalObject: Any, progress: String) {
+        if (dataSyncSelectorV1.replayBgOnly) return
         try {
             if (_id == null) return
             if (!isConnected || !hasWriteAuth) return
@@ -621,6 +622,7 @@ class NSClientService : DaggerService() {
     }
 
     fun dbAdd(collection: String, data: JSONObject, originalObject: Any, progress: String) {
+        if (dataSyncSelectorV1.replayBgOnly) return
         try {
             if (!isConnected || !hasWriteAuth) return
             val message = JSONObject()

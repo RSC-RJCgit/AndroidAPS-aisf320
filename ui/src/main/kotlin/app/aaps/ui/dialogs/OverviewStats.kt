@@ -14,7 +14,9 @@ data class OverviewStatsData(
     val averageMgdl: Double,
     val gmiPercent: Double,
     val cvPercent: Double
-)
+) {
+    val eA1cPercent: Double get() = (averageMgdl + 46.7) / 28.7
+}
 
 /** The range v4's summary uses: 70-180 mg/dL, 3.9-10.0 mmol/L */
 const val OVERVIEW_STATS_LOW_MGDL = 70.0

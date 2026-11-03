@@ -12,6 +12,8 @@ import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.JsonHelper
@@ -27,6 +29,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -82,7 +85,50 @@ class DataSyncSelectorV1 @Inject constructor(
     /** True for a full AAPS on VirtualPump (see UploadBrake.kt). */
     val fullAapsOnVirtualPump get() = activePlugin.fullAapsOnVirtualPump(config)
 
-    override fun queueSize(): Long = queueCounter.size()
+    val replayBgOnly: Boolean
+        get() = config.APS && fullAapsOnVirtualPump && preferences.get(BooleanKey.NsClientSimulatorBgReplay)
+
+    override fun queueSize(): Long = if (replayBgOnly) 0L else queueCounter.size()
+
+    /** Do not queue simulated history for a later upload when BG-only replay ends or full sync is requested. */
+    @Synchronized
+    fun updateReplayUploadMode() {
+        if (!fullAapsOnVirtualPump) return
+        val site = preferences.get(StringKey.NsClientUrl).trim().trimEnd('/')
+        if (site.isBlank()) return
+        val saved = runCatching { JSONObject(preferences.get(StringNonKey.NsClientSimulatorBgReplayUploadSkips)) }
+            .getOrElse { JSONObject() }
+        val state = saved.optJSONObject(site) ?: JSONObject()
+        if (!replayBgOnly && !state.optBoolean("active", false) && !state.has("cursors")) return
+        val capture = replayBgOnly || state.optBoolean("active", false)
+        val floors = state.optJSONObject("cursors") ?: JSONObject()
+        val latest = mapOf(
+            NsclientLongKey.BolusLastSyncedId to (persistenceLayer.getLastBolusId() ?: 0L),
+            NsclientLongKey.CarbsLastSyncedId to (persistenceLayer.getLastCarbsId() ?: 0L),
+            NsclientLongKey.BolusCalculatorLastSyncedId to (persistenceLayer.getLastBolusCalculatorResultId() ?: 0L),
+            NsclientLongKey.TemporaryTargetLastSyncedId to (persistenceLayer.getLastTemporaryTargetId() ?: 0L),
+            NsclientLongKey.FoodLastSyncedId to (persistenceLayer.getLastFoodId() ?: 0L),
+            NsclientLongKey.GlucoseValueLastSyncedId to (persistenceLayer.getLastGlucoseValueId() ?: 0L),
+            NsclientLongKey.TherapyEventLastSyncedId to (persistenceLayer.getLastTherapyEventId() ?: 0L),
+            NsclientLongKey.DeviceStatusLastSyncedId to (persistenceLayer.getLastDeviceStatusId() ?: 0L),
+            NsclientLongKey.TemporaryBasalLastSyncedId to (persistenceLayer.getLastTemporaryBasalId() ?: 0L),
+            NsclientLongKey.ExtendedBolusLastSyncedId to (persistenceLayer.getLastExtendedBolusId() ?: 0L),
+            NsclientLongKey.ProfileSwitchLastSyncedId to (persistenceLayer.getLastProfileSwitchId() ?: 0L),
+            NsclientLongKey.EffectiveProfileSwitchLastSyncedId to (persistenceLayer.getLastEffectiveProfileSwitchId() ?: 0L),
+            NsclientLongKey.RunningModeLastSyncedId to (persistenceLayer.getLastRunningModeId() ?: 0L),
+            NsclientLongKey.ProfileStoreLastSyncedId to preferences.get(LongNonKey.LocalProfileLastChange)
+        )
+        latest.forEach { (key, lastId) ->
+            // A cleared database can start its IDs again. Do not carry an old floor into it.
+            if (floors.optLong(key.key, 0L) > lastId) floors.remove(key.key)
+            if (capture) floors.put(key.key, lastId)
+            val floor = floors.optLong(key.key, 0L)
+            if (floor > preferences.get(key)) preferences.put(key, floor)
+        }
+        state.put("active", replayBgOnly).put("cursors", floors)
+        saved.put(site, state)
+        preferences.put(StringNonKey.NsClientSimulatorBgReplayUploadSkips, saved.toString())
+    }
 
     private var running = false
     private val sync = Any()
@@ -92,6 +138,12 @@ class DataSyncSelectorV1 @Inject constructor(
             preferences.get(BooleanKey.BgSourceUploadToNs) && activePlugin.activeBgSource !is NSClientSource
 
     override suspend fun doUpload() {
+        updateReplayUploadMode()
+        if (replayBgOnly) {
+            rxBus.send(EventNSClientUpdateGuiQueue())
+            rxBus.send(EventNSClientNewLog("● BG REPLAY", "BG-only upload: simulated treatments, profiles and device status stay local"))
+            return
+        }
         synchronized(sync) {
             if (running) {
                 rxBus.send(EventNSClientNewLog("● RUN", "Already running"))
@@ -168,6 +220,7 @@ class DataSyncSelectorV1 @Inject constructor(
         val lastDeviceStatusDbId = persistenceLayer.getLastDeviceStatusId()
         if (lastDeviceStatusDbId != null) preferences.put(NsclientLongKey.DeviceStatusLastSyncedId, lastDeviceStatusDbId)
         else preferences.remove(NsclientLongKey.DeviceStatusLastSyncedId)
+        updateReplayUploadMode()
     }
 
     private fun confirmLastBolusIdIfGreater(lastSynced: Long) {
@@ -179,7 +232,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedBoluses() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastBolusId() ?: 0L
             var startId = preferences.get(NsclientLongKey.BolusLastSyncedId)
             if (startId > lastDbId) {
@@ -227,7 +280,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedCarbs() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastCarbsId() ?: 0L
             var startId = preferences.get(NsclientLongKey.CarbsLastSyncedId)
             if (startId > lastDbId) {
@@ -275,7 +328,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedBolusCalculatorResults() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastBolusCalculatorResultId() ?: 0L
             var startId = preferences.get(NsclientLongKey.BolusCalculatorLastSyncedId)
             if (startId > lastDbId) {
@@ -323,7 +376,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedTempTargets() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastTemporaryTargetId() ?: 0L
             var startId = preferences.get(NsclientLongKey.TemporaryTargetLastSyncedId)
             if (startId > lastDbId) {
@@ -371,7 +424,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedFoods() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastFoodId() ?: 0L
             var startId = preferences.get(NsclientLongKey.FoodLastSyncedId)
             if (startId > lastDbId) {
@@ -419,7 +472,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedGlucoseValues() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastGlucoseValueId() ?: 0L
             var startId = preferences.get(NsclientLongKey.GlucoseValueLastSyncedId)
             if (startId > lastDbId) {
@@ -469,7 +522,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedTherapyEvents() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastTherapyEventId() ?: 0L
             var startId = preferences.get(NsclientLongKey.TherapyEventLastSyncedId)
             if (startId > lastDbId) {
@@ -517,7 +570,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedDeviceStatuses() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastDeviceStatusId() ?: 0L
             var startId = preferences.get(NsclientLongKey.DeviceStatusLastSyncedId)
             if (startId > lastDbId) {
@@ -548,7 +601,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedTemporaryBasals() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastTemporaryBasalId() ?: 0L
             var startId = preferences.get(NsclientLongKey.TemporaryBasalLastSyncedId)
             if (startId > lastDbId) {
@@ -599,7 +652,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedExtendedBoluses() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastExtendedBolusId() ?: 0L
             var startId = preferences.get(NsclientLongKey.ExtendedBolusLastSyncedId)
             if (startId > lastDbId) {
@@ -650,7 +703,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedProfileSwitches() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastProfileSwitchId() ?: 0L
             var startId = preferences.get(NsclientLongKey.ProfileSwitchLastSyncedId)
             if (startId > lastDbId) {
@@ -698,7 +751,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedEffectiveProfileSwitches() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastEffectiveProfileSwitchId() ?: 0L
             var startId = preferences.get(NsclientLongKey.EffectiveProfileSwitchLastSyncedId)
             if (startId > lastDbId) {
@@ -746,7 +799,7 @@ class DataSyncSelectorV1 @Inject constructor(
     private suspend fun processChangedRunningModes() {
         var cont = true
         while (cont) {
-            if (isPaused) return
+            if (isPaused || replayBgOnly) return
             val lastDbId = persistenceLayer.getLastRunningModeId() ?: 0L
             var startId = preferences.get(NsclientLongKey.RunningModeLastSyncedId)
             if (startId > lastDbId) {
@@ -794,7 +847,7 @@ class DataSyncSelectorV1 @Inject constructor(
     }
 
     private suspend fun processChangedProfileStore() {
-        if (isPaused) return
+        if (isPaused || replayBgOnly) return
         val lastSync = preferences.get(NsclientLongKey.ProfileStoreLastSyncedId)
         val lastChange = preferences.get(LongNonKey.LocalProfileLastChange)
         if (lastChange == 0L) return

@@ -150,6 +150,10 @@ class OverviewStatsDialog : DaggerDialogFragment() {
         row.addView(values, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         content.addView(row)
         content.addView(TextView(context).apply {
+            text = "${rh.gs(R.string.stats_ea1c)}: ${percent(stats.eA1cPercent)}"
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        })
+        content.addView(TextView(context).apply {
             text = rh.gs(
                 R.string.overview_stats_range,
                 profileUtil.fromMgdlToStringInUnits(OVERVIEW_STATS_LOW_MGDL),

@@ -112,6 +112,7 @@ class NSClientPlugin @Inject constructor(
         simulatorBgReplay.start()
         disposable += Observable.interval(0, 1, TimeUnit.MINUTES, aapsSchedulers.io)
             .subscribe({
+                dataSyncSelectorV1.updateReplayUploadMode()
                 if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
                     (isAllowed && !preferences.get(NsclientBooleanKey.NsPaused))) {
                     safe("simulatorBgReplay") { simulatorBgReplay.run() }
@@ -120,6 +121,7 @@ class NSClientPlugin @Inject constructor(
         disposable += rxBus.toObservable(EventPreferenceChange::class.java)
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
+                if (event.isChanged(BooleanKey.NsClientSimulatorBgReplay.key)) dataSyncSelectorV1.updateReplayUploadMode()
                 if (event.isChanged(BooleanKey.NsClientSimulatorBgReplay.key) &&
                     (!preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
                         (isAllowed && !preferences.get(NsclientBooleanKey.NsPaused)))) {

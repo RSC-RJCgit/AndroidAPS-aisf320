@@ -9,6 +9,7 @@ enum class StringNonKey(
 ) : StringNonPreferenceKey {
 
     NsClientSimulatorBgReplayRecovery("nsclient_simulator_bg_replay_recovery", "", exportable = false),
+    NsClientSimulatorBgReplayUploadSkips("nsclient_simulator_bg_replay_upload_skips", "{}", exportable = false),
     NsClientSimulatorBgReplayUploads("nsclient_simulator_bg_replay_uploads", "[]", exportable = false),
     QuickWizard(key = "QuickWizard", defaultValue = "[]"),
     /** The build (version and commit) the agreed switches were last set for, see `BuildDefaultsReset`. */

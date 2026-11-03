@@ -413,10 +413,11 @@ class StatsTabs(
             val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(POD_HISTORY_DAYS).msecs(), TE.Type.CANNULA_CHANGE, true)
                 .filter { it.isValid && it.timestamp <= now }.map { it.timestamp }
             val available = distinctSensorStarts(starts).size
-            val data = calculatePodInsulinData(
+            val all = calculatePodInsulinData(
                 starts = starts,
                 now = now,
-                offset = offset,
+                offset = 0,
+                podCount = maxOf(33, offset + POD_COUNT),
                 dayStartOf = { MidnightTime.calc(it) },
                 // Found as Android finds them, so a DST day is one day
                 nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
@@ -428,14 +429,23 @@ class StatsTabs(
                     cached?.totalAmount ?: tddCalculator.calculateInterval(from, to, allowMissingData = true)?.totalAmount
                 }
             )
-            PodResult(data, available)
+            val data = all?.copy(pods = all.pods.dropLast(offset).takeLast(POD_COUNT))?.takeIf { it.pods.isNotEmpty() }
+            PodResult(data, available, all?.pods?.takeLast(33).orEmpty())
         }) { result -> showPods(result) }
     }
 
-    private class PodResult(val data: PodInsulinData?, val available: Int)
+    private class PodResult(val data: PodInsulinData?, val available: Int, val summary: List<PodInsulin>)
 
     private fun showPods(result: PodResult) {
         container.removeAllViews()
+        if (result.summary.isNotEmpty()) {
+            container.addView(HorizontalScrollView(context).apply {
+                addView(note(result.summary.joinToString("  ·  ") { pod ->
+                    val units = if (pod.days.any { it.units != null }) String.format(Locale.getDefault(), "%.1f U", pod.totalUnits) else "—"
+                    "${dateUtil.dateStringShort(pod.startTimestamp)} $units"
+                }).apply { setSingleLine(true) })
+            })
+        }
         val data = result.data
         if (data == null) {
             container.addView(note(rh.gs(R.string.stats_pods_no_data)))
