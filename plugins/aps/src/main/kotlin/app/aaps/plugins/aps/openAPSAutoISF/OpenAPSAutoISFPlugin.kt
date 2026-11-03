@@ -1194,6 +1194,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (profileName.isBlank()) return false
         if (activePlugin.activeProfileSource.profile?.getSpecificProfile(profileName) == null) return false
         if (roleKey in steroidsOffRoleKeys && isSteroidMarkedProfileName(profileName)) return false
+        if (roleKey == StringKey.ApsAutoIsfStandardProfileName || roleKey == StringKey.ApsAutoIsfLowProfileName) {
+            alignEffectiveProfileRoles(profileName)
+        }
         preferences.put(roleKey, profileName)
         if (roleKey in steroidsOffRoleKeys) {
             lockstepPartnerCurrent(roleKey, profileName)

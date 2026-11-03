@@ -1,5 +1,7 @@
 package app.aaps.ui.dialogs
 
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
+
 import android.content.Context
 import android.os.Bundle
 import android.text.Editable
@@ -550,6 +552,9 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
                             emitSetRoleNote(steroidKey, profileName)
                         } ?: (roleOption.key ?: ladderCurrentRoleKeyForName(profileName))?.let { roleKey ->
                             if (!config.AAPSCLIENT) {
+                                if (roleKey == StringKey.ApsAutoIsfStandardProfileName || roleKey == StringKey.ApsAutoIsfLowProfileName) {
+                                    (activePlugin.activeAPS as? ProfileRoleSynchronizer)?.alignEffectiveProfileRoles(profileName)
+                                }
                                 preferences.put(roleKey, profileName)
                                 // 2026-09-14 drift fix: keep the partner Current locked to the same
                                 // A/B/C letter, same as applySetRole() does on the relay-receiving side.
