@@ -288,9 +288,9 @@ class QuickWizardEntry @Inject constructor(
     // Walking soon can be forced on/off or chosen from current steps and BG.
     fun useWalkingSoon(): Int = safeGetInt(storage, "useWalkingSoon", AUTO)
 
-    fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", if (preferences.get(BooleanKey.WizardSplitOverMaxBolus)) YES else NO)
+    fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", if (preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled)) YES else NO)
 
-    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", preferences.get(IntKey.WizardSplitIntervalMinutes)).coerceIn(1, 60)
+    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", preferences.get(IntKey.ApsAutoIsfSplitBolusInterval)).coerceIn(1, 60)
 
     fun splitFpuBolus(): Boolean = safeGetBoolean(storage, "splitFpuBolus", storedUseEcarbs() != YES)
 
