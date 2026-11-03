@@ -345,6 +345,7 @@ class NSClientPlugin @Inject constructor(
     }
 
     override fun resetToFullSync() {
+        simulatorBgReplay.requestFullSync()
         dataSyncSelector.resetToNextFullSync()
     }
 

@@ -8,6 +8,7 @@ enum class StringNonKey(
     override val exportable: Boolean = true
 ) : StringNonPreferenceKey {
 
+    NsClientSimulatorBgReplayRecovery("nsclient_simulator_bg_replay_recovery", "", exportable = false),
     NsClientSimulatorBgReplayUploads("nsclient_simulator_bg_replay_uploads", "[]", exportable = false),
     QuickWizard(key = "QuickWizard", defaultValue = "[]"),
     /** The build (version and commit) the agreed switches were last set for, see `BuildDefaultsReset`. */
