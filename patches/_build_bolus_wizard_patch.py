@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.29.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.30.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -61,13 +61,19 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .29, 2026-11-01)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .30, 2026-11-03)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.29.patch
-  git apply bolus-calculator-on-3426-aisf321.29.patch
+  git apply --check bolus-calculator-on-3426-aisf321.30.patch
+  git apply bolus-calculator-on-3426-aisf321.30.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .30 (2026-11-03):
+- Refreshes the bolus calculator sources from the current v3 checkout.
+- FPU splitting uses 30-minute intervals, preserving the calculated total and duration.
+- Turning automatic FPU off clears automatically populated fat/protein values while preserving manually edited values.
+- Retains the earlier calculator changes below.
 
 Changes in patch .29 (2026-11-01):
 - Insulin given from the Insulin dialog (a pump bolus, not record-only) now goes on in the bolus calculator, in an

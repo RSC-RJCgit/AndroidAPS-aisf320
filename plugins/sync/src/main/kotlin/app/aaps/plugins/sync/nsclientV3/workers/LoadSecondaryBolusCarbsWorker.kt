@@ -27,6 +27,7 @@ import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.utils.JsonHelper
+import app.aaps.plugins.sync.nsclient.NSClientPlugin
 import app.aaps.plugins.sync.nsclient.data.NSDeviceStatusHandler
 import app.aaps.plugins.sync.nsShared.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
@@ -97,6 +98,10 @@ class LoadSecondaryBolusCarbsWorker(
     // modified-since cursor pattern as LoadBgWorker, using the treatment cursor's own last-modified value as a simple starting point since
     // SGVs and treatments share the same NS "last modified" clock; a short 10-minute overlap keeps it safe either way.
     private suspend fun loadSecondaryGlucose(client: NSAndroidClient) {
+        // Replay selects historical BG by reading timestamp, not the ordinary modified-since cursor.
+        // Keep treatment/profile imports, but do not mix this live BG stream with simulator replay.
+        if (activePlugin.fullAapsOnVirtualPump(config) && preferences.get(BooleanKey.NsClientSimulatorBgReplay) &&
+            activePlugin.activeSyncs.any { it is NSClientPlugin && it.isEnabled() }) return
         if (!activePlugin.isFollowerPhone(config) || !preferences.get(BooleanKey.NsClientBgFromLiveSite)) return
         try {
             val cursor = preferences.get(LongKey.NsClientSecondaryBgLastModified)
