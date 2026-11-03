@@ -11152,30 +11152,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         isTempTarget: Boolean, bg: Double, target_bg: Double, now: Int, sDelta: Double,
         stepsSample: LiveStepsMirror.Sample? = liveStepsForCycle, persist: Boolean = true
     ): Double {
-        val mirrored = useLiveStepsOnVirtual()
-        val recentSteps5Minutes = if (mirrored) stepsSample?.steps(5) ?: 0 else this.recentSteps5Minutes
-        val recentSteps10Minutes = if (mirrored) stepsSample?.steps(10) ?: 0 else this.recentSteps10Minutes
-        val recentSteps15Minutes = if (mirrored) stepsSample?.steps(15) ?: 0 else this.recentSteps15Minutes
-        val recentSteps30Minutes = if (mirrored) stepsSample?.steps(30) ?: 0 else this.recentSteps30Minutes
-        val recentSteps60Minutes = if (mirrored) stepsSample?.steps(60) ?: 0 else this.recentSteps60Minutes
-        val recentSteps180Minutes = if (mirrored) stepsSample?.steps(180) ?: 0 else this.recentSteps180Minutes
-        if (persist && !mirrored && preferences.get(BooleanKey.ActivityMonitorShowStepsFromSmartphone)) {
-            val nowMillis = System.currentTimeMillis()
-            val stepsCount = SC(
-                duration = 0,
-                timestamp = nowMillis,
-                steps5min = recentSteps5Minutes,
-                steps10min = recentSteps5Minutes + recentSteps10Minutes,
-                steps15min = recentSteps5Minutes + recentSteps10Minutes + recentSteps15Minutes,
-                steps30min = recentSteps30Minutes,
-                steps60min = recentSteps60Minutes,
-                steps180min = recentSteps180Minutes,
-                device = "Smartphone"
-            )
-            disposable += persistenceLayer.insertOrUpdateStepsCount(stepsCount).subscribe()
-        }
-
-        val phoneMoved = if (useLiveStepsOnVirtual()) stepsSample?.hasDosingBuckets() == true else PhoneMovementDetector.phoneMoved()
+        // Imported samples are the only activity input. Local steps and motion are not a fallback.
+        val recentSteps5Minutes = stepsSample?.steps(5) ?: 0
+        val recentSteps10Minutes = stepsSample?.steps(10) ?: 0
+        val recentSteps15Minutes = stepsSample?.steps(15) ?: 0
+        val recentSteps30Minutes = stepsSample?.steps(30) ?: 0
+        val recentSteps60Minutes = stepsSample?.steps(60) ?: 0
+        val phoneMoved = stepsSample?.hasDosingBuckets() == true
         val lastAppStart = preferences.get(LongKey.AppStart)
         //val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart) / 60000
         val time_since_start = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
@@ -11195,7 +11178,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // signal with no consumer. Sleeping itself stays live (existSleepState/useSleepState above are
         // still load-bearing for the inactivity-detection gates below).
 
-        if (useLiveStepsOnVirtual() && stepsSample?.hasDosingBuckets() != true) {
+        if (!useLiveStepsOnVirtual() || stepsSample?.hasDosingBuckets() != true) {
             consoleLog.add("Activity monitor unavailable: missing or stale Live steps")
         } else if (!activityDetection) {
             consoleLog.add("Activity monitor disabled in settings")
@@ -11211,10 +11194,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps60Minutes <= 200 && ignore_inactivity_overnight && !existSleepState
             ) {
                 consoleLog.add("Activity monitor disabled inactivity detection: sleeping hours")
-            // phoneMoved only gates ACTIVITY detection below: stale/absent motion data could hide real
-            // movement happening elsewhere, so a high step count without phone motion is left unapplied
-            // (falls through to neutral/inactivity checks). It does NOT gate inactivity detection --
-            // a stationary phone doesn't invalidate a low step count, if anything it corroborates it.
+            // A fresh imported sample is sufficient; this phone need not move.
             } else if (phoneMoved && (recentSteps5Minutes > 300 || recentSteps10Minutes > 300 || recentSteps15Minutes > 300 || recentSteps30Minutes > 1500 || recentSteps60Minutes > 2500)) {
                 activityRatio = 1 - 0.3 * activity_scale_factor
                 consoleLog.add("Activity monitor detected activity, sensitivity ratio: $activityRatio")

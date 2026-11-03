@@ -17,7 +17,7 @@ enum class BooleanKey(
     override val exportable: Boolean = true
 ) : BooleanPreferenceKey {
 
-    GeneralSimpleMode("simple_mode", true),
+    GeneralSimpleMode("simple_mode", false),
     GeneralSetupWizardProcessed("startupwizard_processed", false),
     OverviewKeepScreenOn("keep_screen_on", false, calculatedDefaultValue = true),
     OverviewShowTreatmentButton("show_treatment_button", false, defaultedBySM = true, hideParentScreenIfHidden = true),
@@ -47,7 +47,7 @@ enum class BooleanKey(
     ApsUseDynamicSensitivity("use_dynamic_sensitivity", false),
     ApsUseAutosens("openapsama_useautosens", true, defaultedBySM = true, negativeDependency = ApsUseDynamicSensitivity), // change from default false
     ApsUseSmb("use_smb", true, defaultedBySM = true), // change from default false
-    ApsUseSmbWithHighTt("enableSMB_with_high_temptarget", false, defaultedBySM = true, dependency = ApsUseSmb),
+    ApsUseSmbWithHighTt("enableSMB_with_high_temptarget", true, defaultedBySM = true, dependency = ApsUseSmb),
     ApsUseSmbAlways("enableSMB_always", true, defaultedBySM = true, dependency = ApsUseSmb), // change from default false
     ApsUseSmbWithCob("enableSMB_with_COB", true, defaultedBySM = true, dependency = ApsUseSmb), // change from default false
     ApsUseSmbWithLowTt("enableSMB_with_temptarget", true, defaultedBySM = true, dependency = ApsUseSmb), // change from default false
@@ -58,11 +58,11 @@ enum class BooleanKey(
     ApsAlwaysUseShortDeltas("always_use_shortavg", false, defaultedBySM = true, hideParentScreenIfHidden = true),
     ApsDynIsfAdjustSensitivity("dynisf_adjust_sensitivity", false, defaultedBySM = true, dependency = ApsUseDynamicSensitivity), // change from default false
     ApsAmaAutosensAdjustTargets("autosens_adjust_targets", true, defaultedBySM = true),
-    ApsAutoIsfHighTtRaisesSens("high_temptarget_raises_sensitivity", false, defaultedBySM = true),
-    ApsAutoIsfLowTtLowersSens("low_temptarget_lowers_sensitivity", false, defaultedBySM = true),
+    ApsAutoIsfHighTtRaisesSens("high_temptarget_raises_sensitivity", true, defaultedBySM = true),
+    ApsAutoIsfLowTtLowersSens("low_temptarget_lowers_sensitivity", true, defaultedBySM = true),
     ApsAutoIsfTddSensitivity("autoisf_tdd_sensitivity", true, defaultedBySM = true),
     ApsAutoIsfTddFactor("autoisf_tdd_factor", true, defaultedBySM = true),
-    ApsActivityDetection("activity_detection", false, defaultedBySM = true),
+    ApsActivityDetection("activity_detection", true, defaultedBySM = true),
     AutomationStatesEnabled("automation_states_enabled", true),
     ApsAutoIsfCustomAutomationsEnabled("autoisf_custom_automations_enabled", true),
     // Shows the two direct Kotlin MJ buttons on Overview. Independent of native Automation events.
@@ -73,7 +73,7 @@ enum class BooleanKey(
     // text, the same fallback AAPSCLIENT already relies on) instead of this device's local StepService
     // sensor for every recentStepsXMinutes gate. Off by default -- Virtual keeps its own local sensor
     // reading unless explicitly opted in. Added 2026-09-16, per explicit request.
-    ApsAutoIsfUseLiveStepsOnVirtual("autoisf_use_live_steps_on_virtual", false),
+    ApsAutoIsfUseLiveStepsOnVirtual("autoisf_use_live_steps_on_virtual", true),
     ApsAutoIsfUseLiveMjStateOnVirtual("autoisf_use_live_mj_state_on_virtual", false),
     ApsAutoIsfUseLiveSteroidEventsOnVirtual("autoisf_use_live_steroid_events_on_virtual", false),
     // 2026-09-26, per explicit request: Virtual mirrors Live's Battery1% response (safety profile on Bt<1%, back to Standard on bat>1). Default on.
@@ -261,7 +261,7 @@ enum class BooleanKey(
     ActivityMonitorOvernight("ignore_inactivity_overnight", true, defaultedBySM=true, dependency = ActivityMonitorDetection),
     ActivityMonitorStepsActive("steps_activity_detected", false, defaultedBySM=true),
     ActivityMonitorStepsInactive("steps_inactivity_detected", false, defaultedBySM=true),
-    ActivityMonitorShowStepsFromSmartphone("steps_graph_from_smartphone", true, defaultedBySM = true),
+    ActivityMonitorShowStepsFromSmartphone("steps_graph_from_smartphone", false, defaultedBySM = true),
 
     MaintenanceEnableFabric("enable_fabric2", true, defaultedBySM = true, hideParentScreenIfHidden = true),
 
