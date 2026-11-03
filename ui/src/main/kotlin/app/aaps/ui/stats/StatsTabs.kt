@@ -62,7 +62,6 @@ class StatsTabs(
     private var sensorView = SensorCycleView.AMBULATORY
     private var sensorOffset = 0
     private var sensorQuarters = true
-    private var podOffset = 0
     private val request = SerialDisposable()
     private var requestVersion = 0L
 
@@ -104,7 +103,6 @@ class StatsTabs(
         state.putString("stats.sensorView", sensorView.name)
         state.putInt("stats.sensorOffset", sensorOffset)
         state.putBoolean("stats.sensorQuarters", sensorQuarters)
-        state.putInt("stats.podOffset", podOffset)
     }
 
     fun restoreState(state: Bundle?) {
@@ -116,7 +114,6 @@ class StatsTabs(
         sensorView = SensorCycleView.entries.firstOrNull { it.name == state.getString("stats.sensorView") } ?: SensorCycleView.AMBULATORY
         sensorOffset = state.getInt("stats.sensorOffset").coerceAtLeast(0)
         sensorQuarters = state.getBoolean("stats.sensorQuarters", true)
-        podOffset = state.getInt("stats.podOffset").coerceAtLeast(0)
     }
 
     // ---------- Glucose ----------
@@ -407,7 +404,6 @@ class StatsTabs(
 
     private fun loadPods() {
         loading(Tab.PODS)
-        val offset = podOffset
         load(Tab.PODS, {
             val now = dateUtil.now()
             val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(POD_HISTORY_DAYS).msecs(), TE.Type.CANNULA_CHANGE, true)
@@ -417,7 +413,7 @@ class StatsTabs(
                 starts = starts,
                 now = now,
                 offset = 0,
-                podCount = maxOf(33, offset + POD_COUNT),
+                podCount = available,
                 dayStartOf = { MidnightTime.calc(it) },
                 // Found as Android finds them, so a DST day is one day
                 nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
@@ -429,12 +425,16 @@ class StatsTabs(
                     cached?.totalAmount ?: tddCalculator.calculateInterval(from, to, allowMissingData = true)?.totalAmount
                 }
             )
-            val data = all?.copy(pods = all.pods.dropLast(offset).takeLast(POD_COUNT))?.takeIf { it.pods.isNotEmpty() }
-            PodResult(data, available, all?.pods?.takeLast(33).orEmpty())
+            val highest = all?.pods.orEmpty()
+                .filter { pod -> pod.days.any { it.units != null } }
+                .sortedWith(compareByDescending<PodInsulin> { it.totalUnits }.thenByDescending { it.startTimestamp })
+                .take(POD_COUNT)
+            val data = all?.copy(pods = highest)?.takeIf { it.pods.isNotEmpty() }
+            PodResult(data, all?.pods?.takeLast(33).orEmpty())
         }) { result -> showPods(result) }
     }
 
-    private class PodResult(val data: PodInsulinData?, val available: Int, val summary: List<PodInsulin>)
+    private class PodResult(val data: PodInsulinData?, val summary: List<PodInsulin>)
 
     private fun showPods(result: PodResult) {
         container.removeAllViews()
@@ -453,7 +453,7 @@ class StatsTabs(
             container.addView(title(rh.gs(R.string.stats_pods_title)))
             container.addView(note(rh.gs(R.string.stats_pods_found, data.pods.size, data.podsAvailable)))
             container.addView(note(rh.gs(R.string.stats_pods_local_totals)))
-            // One bar per day of each pod, pods side by side with a gap, oldest first; the pod's total over its days
+            // One bar per day of each pod, with the highest-total pod first; the pod's total over its days
             val slots = mutableListOf<StatsChartView.Bar>()
             val labels = mutableListOf<Pair<Float, String>>()
             var x = 0f
@@ -502,7 +502,6 @@ class StatsTabs(
                 )
             ))
         }
-        container.addView(stepper(rh.gs(R.string.stats_pods_skipped), podOffset, (result.available - 1).coerceAtLeast(0)) { podOffset = it; loadPods() })
     }
 
     // ---------- Shared parts ----------

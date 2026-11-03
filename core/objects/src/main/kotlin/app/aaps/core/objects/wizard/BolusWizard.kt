@@ -1187,7 +1187,7 @@ class BolusWizard @Inject constructor(
             fpu <= 3.0 -> 5
             else       -> 8
         }
-        val interval = if (fpuIntervalMinutes == 60) 60 else 30
+        val interval = fpuIntervalMinutes.coerceIn(30, 60)
         // The cap and total do not change with the selected spacing.
         val duration = if (tierHours == 8) floor(warsawDurationHours.coerceIn(0.0, 8.0) * 2).toInt() * 30 else tierHours * 60
         if (duration <= 0) return null

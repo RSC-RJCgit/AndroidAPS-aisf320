@@ -54,9 +54,9 @@
     <string name="stats_avg_after">Average after</string>
     <string name="stats_tir_before">TIR before</string>
     <string name="stats_tir_after">TIR after</string>
-    <string name="stats_pods_no_data">No site-change records were found for this selection.</string>
+    <string name="stats_pods_no_data">No pod insulin totals are available.</string>
     <string name="stats_pods_title">Insulin per pod</string>
-    <string name="stats_pods_found">%1$d of %2$d pods shown</string>
+    <string name="stats_pods_found">%1$d highest-total pods of %2$d · highest first</string>
     <string name="stats_pods_local_totals">Insulin records from this phone.</string>
     <string name="stats_pod_days">Daily insulin (U)</string>
     <string name="stats_pods_explanation">Bars show daily insulin within each pod. Labels below show pod totals in units. The current pod is highlighted.</string>
@@ -64,7 +64,6 @@
     <string name="stats_pod_day">Day %1$d: %2$s U</string>
     <string name="stats_pod_in_use">In use</string>
     <string name="stats_pods_averages">Completed pods: %1$s U per pod · All shown pods: %2$s U/day</string>
-    <string name="stats_pods_skipped">Pods skipped</string>
     <string name="stats_pods_average_line">Average U/day</string>
     <string name="stats_failed">Statistics could not be loaded. Select the tab again to retry.</string>
 </resources>

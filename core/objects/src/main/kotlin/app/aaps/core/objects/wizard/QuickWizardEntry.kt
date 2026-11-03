@@ -294,7 +294,7 @@ class QuickWizardEntry @Inject constructor(
 
     fun splitFpuBolus(): Boolean = safeGetBoolean(storage, "splitFpuBolus", storedUseEcarbs() != YES)
 
-    fun fpuIntervalMinutes(): Int = if (safeGetInt(storage, "fpuIntervalMinutes", 30) == 60) 60 else 30
+    fun fpuIntervalMinutes(): Int = safeGetInt(storage, "fpuIntervalMinutes", 30).coerceIn(30, 60)
 
     fun retryFpuLater(): Boolean = safeGetBoolean(storage, "retryFpuLater", true)
 

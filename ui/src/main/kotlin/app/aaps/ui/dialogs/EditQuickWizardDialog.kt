@@ -128,7 +128,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                     entry.storage.put("useWalkingSoon", if (binding.walkingSoonAutoCheckbox.isChecked) QuickWizardEntry.AUTO else checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))
                     entry.storage.put("splitFpuBolus", binding.splitFpuBolusCheckbox.isChecked)
                     entry.storage.put("retryFpuLater", binding.retryFpuLaterCheckbox.isChecked)
-                    entry.storage.put("fpuIntervalMinutes", if (binding.fpuThirtyMinutesCheckbox.isChecked) 30 else 60)
+                    entry.storage.put("fpuIntervalMinutes", binding.fpuIntervalInput.value.toInt().coerceIn(30, 60))
                     entry.storage.put("useUnreliableSmb", checkBoxToRadioNumbers(binding.unreliableSmbsCheckbox.isChecked))
                     entry.storage.put("useSmallMeal", checkBoxToRadioNumbers(binding.smallMealCheckbox.isChecked))
                     entry.storage.put("useAutoFpu", checkBoxToRadioNumbers(binding.autoFpuCheckbox.isChecked))
@@ -308,11 +308,13 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         binding.walkingSoonCheckbox.isEnabled = !binding.walkingSoonAutoCheckbox.isChecked
         binding.walkingSoonAutoCheckbox.setOnCheckedChangeListener { _, checked -> binding.walkingSoonCheckbox.isEnabled = !checked }
         binding.splitFpuBolusCheckbox.isChecked = entry.splitFpuBolus()
-        binding.fpuThirtyMinutesCheckbox.isChecked = entry.fpuIntervalMinutes() == 30
+        binding.fpuIntervalInput.setParams(
+            entry.fpuIntervalMinutes().toDouble(), 30.0, 60.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok
+        )
         fun updateFpuMode() {
             val split = binding.splitFpuBolusCheckbox.isChecked
             binding.useEcarbs.visibility = if (split) View.GONE else View.VISIBLE
-            binding.fpuThirtyMinutesCheckbox.visibility = if (split) View.VISIBLE else View.GONE
+            binding.fpuIntervalRow.visibility = if (split) View.VISIBLE else View.GONE
             useECarbs(binding.useEcarbs.isChecked)
         }
         binding.splitFpuBolusCheckbox.setOnCheckedChangeListener { _, _ -> updateFpuMode() }
