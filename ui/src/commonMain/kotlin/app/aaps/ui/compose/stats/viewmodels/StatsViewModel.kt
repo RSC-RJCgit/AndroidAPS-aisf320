@@ -39,6 +39,8 @@ import app.aaps.ui.compose.stats.AgpStatsData
 import app.aaps.ui.compose.stats.AgpStatsRange
 import app.aaps.ui.compose.stats.CycleSeries
 import app.aaps.ui.compose.stats.PodInsulinData
+import app.aaps.ui.compose.stats.PodInsulin
+import app.aaps.ui.compose.stats.POD_COUNT
 import app.aaps.ui.compose.stats.SensorCycleData
 import app.aaps.ui.compose.stats.TddCyclePatternData
 import app.aaps.ui.compose.stats.TddStatsData
@@ -565,26 +567,29 @@ class StatsViewModel(
         podInsulinLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(podInsulinLoading = it.podInsulinData == null) }
             val offset = uiState.value.podInsulinOffset
-            val (data, available) = withContext<Pair<PodInsulinData?, Int>>(aapsIoDispatcher) {
+            val (data, available, summary) = withContext<Triple<PodInsulinData?, Int, List<PodInsulin>>>(aapsIoDispatcher) {
                 val now = dateUtil.now()
                 val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(POD_HISTORY_DAYS).msecs(), TE.Type.CANNULA_CHANGE, true)
                     .filter { it.isValid && it.timestamp <= now }
                     .map { it.timestamp }
                 // Kept apart from the data, so the offset can still be stepped back when it is past the oldest pod
                 val available = distinctSensorStarts(starts).size
-                calculatePodInsulinData(
+                val all = calculatePodInsulinData(
                     starts = starts,
                     now = now,
-                    offset = offset,
+                    offset = 0,
+                    podCount = maxOf(33, offset + POD_COUNT),
                     dayStartOf = { MidnightTime.calc(it) },
                     // Found as Android finds them, so a DST day is one day
                     nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
                     sumUnits = { from, to -> tddCalculator.calculateIntervalWithCachedDays(from, to, allowMissingData = true)?.totalAmount },
                     // Days this phone has no records for, from the other phone on the second site: shown only, never stored
                     secondaryUnits = { days -> secondaryTddSource.dailyTdds(days).mapValues { it.value.totalAmount } }
-                ) to available
+                )
+                val data = all?.copy(pods = all.pods.dropLast(offset).takeLast(POD_COUNT))?.takeIf { it.pods.isNotEmpty() }
+                Triple(data, available, all?.pods?.takeLast(33).orEmpty())
             }
-            _uiState.update { it.copy(podInsulinData = data, podsAvailable = available, podInsulinLoading = false) }
+            _uiState.update { it.copy(podInsulinData = data, podsAvailable = available, podInsulinSummary = summary, podInsulinLoading = false) }
         }
     }
 
@@ -647,6 +652,7 @@ data class StatsUiState(
     val sensorCycleLoading: Boolean = true,
     val sensorCycleOffset: Int = 0,
     val podInsulinData: PodInsulinData? = null,
+    val podInsulinSummary: List<PodInsulin> = emptyList(),
     val podsAvailable: Int = 0,
     val podInsulinLoading: Boolean = true,
     val podInsulinOffset: Int = 0,

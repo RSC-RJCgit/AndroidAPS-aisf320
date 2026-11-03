@@ -1,6 +1,8 @@
 package app.aaps.ui.compose.stats
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -55,9 +57,24 @@ fun PodInsulinCompose(
     offset: Int,
     onOffsetChange: (Int) -> Unit,
     formatDate: (Long) -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    summary: List<PodInsulin> = emptyList(),
+    formatSummaryDate: (Long) -> String = formatDate
 ) {
     Column(modifier = modifier) {
+        if (summary.isNotEmpty()) {
+            val decimalFormatter = LocalDecimalFormatter.current
+            Text(
+                text = summary.joinToString("  ·  ") { pod ->
+                    val units = if (pod.days.any { it.units != null }) "${decimalFormatter.to1Decimal(pod.totalUnits)} U" else "—"
+                    "${formatSummaryDate(pod.startTimestamp)} $units"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                softWrap = false,
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+            )
+        }
         if (data == null) {
             Text(
                 text = stringResource(UiStrings.pod_insulin_no_data),

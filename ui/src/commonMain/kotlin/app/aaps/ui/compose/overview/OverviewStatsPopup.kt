@@ -144,6 +144,11 @@ private fun OverviewStatsValues(data: AgpStatsData, onOpenStats: () -> Unit) {
         }
     }
     Text(
+        "${stringResource(UiStrings.agp_ea1c)}: ${stringResource(UiStrings.agp_percent, data.eA1cPercent)}",
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Text(
         stringResource(UiStrings.agp_range, profileUtil.fromMgdlToStringInUnits(data.lowMgdl), profileUtil.fromMgdlToStringInUnits(data.highMgdl)) + " " + unit,
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant

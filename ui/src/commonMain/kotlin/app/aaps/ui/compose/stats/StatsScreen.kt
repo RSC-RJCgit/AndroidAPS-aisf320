@@ -309,6 +309,8 @@ private fun PodTab(state: StatsUiState, viewModel: StatsViewModel) {
                     Column {
                         PodInsulinCompose(
                             data = state.podInsulinData,
+                            summary = state.podInsulinSummary,
+                            formatSummaryDate = viewModel.dateUtil::dateStringShort,
                             podsAvailable = state.podsAvailable,
                             offset = state.podInsulinOffset,
                             onOffsetChange = { viewModel.updatePodInsulinOffset(it) },
