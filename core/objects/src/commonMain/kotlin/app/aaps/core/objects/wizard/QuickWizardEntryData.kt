@@ -138,7 +138,7 @@ data class QuickWizardEntryData(
                 maxBolus = json.lenientDouble("maxBolus", 0.0),
                 autoFpu = json.lenientBooleanOrNull("autoFpu"),
                 splitFpuBolus = json.lenientBoolean("splitFpuBolus", json.lenientInt("useEcarbs", NEVER) != ALWAYS),
-                fpuIntervalMinutes = if (json.lenientInt("fpuIntervalMinutes", 30) == 60) 60 else 30,
+                fpuIntervalMinutes = json.lenientInt("fpuIntervalMinutes", 30).coerceIn(30, 60),
                 smallMeal = json.lenientBooleanOrNull("smallMeal"),
                 unreliableSmb = json.lenientBooleanOrNull("unreliableSmb"),
                 walkingSoon = json.lenientInt("walkingSoon", AUTO),

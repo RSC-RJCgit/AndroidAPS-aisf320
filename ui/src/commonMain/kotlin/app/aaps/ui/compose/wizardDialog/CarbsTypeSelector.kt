@@ -40,13 +40,14 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CarbsTypeSelector(selected: CarbsType, onChange: (CarbsType) -> Unit, modifier: Modifier = Modifier) {
+internal fun CarbsTypeSelector(selected: CarbsType, onChange: (CarbsType) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         SingleChoiceSegmentedButtonRow(
             modifier = Modifier.weight(1f)
         ) {
             CarbsType.entries.forEachIndexed { index, type ->
                 SegmentedButton(
+                    enabled = enabled,
                     selected = selected == type,
                     onClick = { onChange(type) },
                     shape = SegmentedButtonDefaults.itemShape(index, CarbsType.entries.size),

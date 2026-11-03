@@ -37,7 +37,7 @@ fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap
         fpu <= 3.0 -> 5
         else       -> 8
     }
-    val interval = if (intervalMinutes == 60) 60 else 30
+    val interval = intervalMinutes.coerceIn(30, 60)
     val duration = if (tierHours == 8) floor(durationHoursCap.coerceIn(0.0, 8.0) * 2).toInt() * 30 else tierHours * 60
     if (duration <= 0) return null
     val numDoses = (duration + interval - 1) / interval

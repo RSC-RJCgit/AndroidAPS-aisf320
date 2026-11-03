@@ -145,7 +145,6 @@ class StatsViewModel(
                 selectedTab = savedTab,
                 tddCycleOffset = preferences.get(IntNonKey.TddCycleOffset),
                 sensorCycleOffset = preferences.get(IntNonKey.SensorCycleOffset),
-                podInsulinOffset = preferences.get(IntNonKey.PodInsulinOffset)
             )
         }
         observeTddInputs()
@@ -550,15 +549,10 @@ class StatsViewModel(
         }
     }
 
-    fun updatePodInsulinOffset(offset: Int) {
-        preferences.put(IntNonKey.PodInsulinOffset, offset)
-        _uiState.update { it.copy(podInsulinOffset = offset) }
-        loadPodInsulin()
-    }
 
     /**
      * Pod tab (2026-11-01, per explicit request): the site changes of the last [POD_HISTORY_DAYS] days, and the insulin
-     * of the pods shown at the current offset, day by day. Summed as the overview's "insulin since cannula change" is,
+     * of the ten pods with the highest totals, day by day. Summed as the overview's "insulin since cannula change" is,
      * so the pod in use matches it: whole days from the stored daily totals, the part days at both ends in 5-minute
      * steps. Works the same on a client: the site changes, boluses and temporary basals all come over Nightscout.
      */
@@ -566,19 +560,17 @@ class StatsViewModel(
         podInsulinLoadJob?.cancel()
         podInsulinLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(podInsulinLoading = it.podInsulinData == null) }
-            val offset = uiState.value.podInsulinOffset
-            val (data, available, summary) = withContext<Triple<PodInsulinData?, Int, List<PodInsulin>>>(aapsIoDispatcher) {
+            val (data, summary) = withContext<Pair<PodInsulinData?, List<PodInsulin>>>(aapsIoDispatcher) {
                 val now = dateUtil.now()
                 val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(POD_HISTORY_DAYS).msecs(), TE.Type.CANNULA_CHANGE, true)
                     .filter { it.isValid && it.timestamp <= now }
                     .map { it.timestamp }
-                // Kept apart from the data, so the offset can still be stepped back when it is past the oldest pod
                 val available = distinctSensorStarts(starts).size
                 val all = calculatePodInsulinData(
                     starts = starts,
                     now = now,
                     offset = 0,
-                    podCount = maxOf(33, offset + POD_COUNT),
+                    podCount = available,
                     dayStartOf = { MidnightTime.calc(it) },
                     // Found as Android finds them, so a DST day is one day
                     nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
@@ -586,10 +578,14 @@ class StatsViewModel(
                     // Days this phone has no records for, from the other phone on the second site: shown only, never stored
                     secondaryUnits = { days -> secondaryTddSource.dailyTdds(days).mapValues { it.value.totalAmount } }
                 )
-                val data = all?.copy(pods = all.pods.dropLast(offset).takeLast(POD_COUNT))?.takeIf { it.pods.isNotEmpty() }
-                Triple(data, available, all?.pods?.takeLast(33).orEmpty())
+                val highest = all?.pods.orEmpty()
+                    .filter { pod -> pod.days.any { it.units != null } }
+                    .sortedWith(compareByDescending<PodInsulin> { it.totalUnits }.thenByDescending { it.startTimestamp })
+                    .take(POD_COUNT)
+                val data = all?.copy(pods = highest)?.takeIf { it.pods.isNotEmpty() }
+                data to all?.pods?.takeLast(33).orEmpty()
             }
-            _uiState.update { it.copy(podInsulinData = data, podsAvailable = available, podInsulinSummary = summary, podInsulinLoading = false) }
+            _uiState.update { it.copy(podInsulinData = data, podInsulinSummary = summary, podInsulinLoading = false) }
         }
     }
 
@@ -653,8 +649,6 @@ data class StatsUiState(
     val sensorCycleOffset: Int = 0,
     val podInsulinData: PodInsulinData? = null,
     val podInsulinSummary: List<PodInsulin> = emptyList(),
-    val podsAvailable: Int = 0,
     val podInsulinLoading: Boolean = true,
-    val podInsulinOffset: Int = 0,
     val showRecalculateDialog: Boolean = false
 )

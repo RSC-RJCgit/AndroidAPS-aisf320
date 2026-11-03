@@ -211,7 +211,7 @@ class QuickWizardEntry(
 
     fun splitFpuBolus(): Boolean = data.splitFpuBolus
 
-    fun fpuIntervalMinutes(): Int = if (data.fpuIntervalMinutes == 60) 60 else 30
+    fun fpuIntervalMinutes(): Int = data.fpuIntervalMinutes.coerceIn(30, 60)
 
     fun smallMeal(): Boolean = data.smallMeal ?: preferences.get(BooleanKey.WizardDefaultSmallMeal)
 

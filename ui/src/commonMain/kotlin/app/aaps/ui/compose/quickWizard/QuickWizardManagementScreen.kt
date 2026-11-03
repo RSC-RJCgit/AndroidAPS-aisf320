@@ -491,7 +491,7 @@ fun QuickWizardManagementScreen(
                                         onUseAlarmChange = viewModel::updateUseAlarm,
                                         onAutoFpuChange = viewModel::updateAutoFpu,
                                         onSplitFpuBolusChange = viewModel::updateSplitFpuBolus,
-                                        onFpuThirtyMinutesChange = viewModel::updateFpuThirtyMinutes,
+                                        onFpuIntervalChange = viewModel::updateFpuInterval,
                                         onSmallMealChange = viewModel::updateSmallMeal,
                                         onCarbsTypeChange = viewModel::updateCarbsType,
                                         onUnreliableSmbChange = viewModel::updateUnreliableSmb,

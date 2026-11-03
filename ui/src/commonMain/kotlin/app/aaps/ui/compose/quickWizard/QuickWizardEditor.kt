@@ -162,7 +162,7 @@ fun QuickWizardEditor(
     onUseAlarmChange: (Boolean) -> Unit,
     onAutoFpuChange: (Boolean) -> Unit,
     onSplitFpuBolusChange: (Boolean) -> Unit,
-    onFpuThirtyMinutesChange: (Boolean) -> Unit,
+    onFpuIntervalChange: (Int) -> Unit,
     onSmallMealChange: (Boolean) -> Unit,
     onUnreliableSmbChange: (Boolean) -> Unit,
     onWalkingSoonAutoChange: (Boolean) -> Unit,
@@ -342,10 +342,14 @@ fun QuickWizardEditor(
                 modifier = Modifier.fillMaxWidth()
             )
             if (splitFpuBolus) {
-                SwitchRow(
-                    label = stringResource(UiStrings.wizard_fpu_thirty_minutes),
-                    checked = fpuIntervalMinutes == 30,
-                    onCheckedChange = onFpuThirtyMinutesChange
+                NumberInputRow(
+                    labelRef = UiStrings.wizard_fpu_interval,
+                    value = fpuIntervalMinutes.toDouble(),
+                    onValueChange = { onFpuIntervalChange(it.toInt()) },
+                    valueRange = 30.0..60.0,
+                    step = 1.0,
+                    unitLabel = CoreUiStrings.units_min,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
 

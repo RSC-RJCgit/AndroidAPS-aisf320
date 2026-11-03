@@ -603,8 +603,8 @@ class QuickWizardManagementViewModel(
     }
 
     // Automatic FPU is the master switch; unreliable SMBs choose its larger ratios.
-    fun updateFpuThirtyMinutes(value: Boolean) {
-        _uiState.update { it.copy(editorFpuIntervalMinutes = if (value) 30 else 60, hasUnsavedChanges = true) }
+    fun updateFpuInterval(value: Int) {
+        _uiState.update { it.copy(editorFpuIntervalMinutes = value.coerceIn(30, 60), hasUnsavedChanges = true) }
     }
 
     fun updateSplitFpuBolus(value: Boolean) {

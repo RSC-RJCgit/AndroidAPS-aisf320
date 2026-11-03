@@ -42,20 +42,15 @@ import app.aaps.ui.UiStrings
 import kotlin.math.ceil
 
 /**
- * The Pod tab (2026-11-01, per explicit request): the insulin of each pod, oldest to newest. Bars are the days of each
- * pod, the pod's total under them, and a row per pod below with its days and total. Drawn on a canvas like the
- * Sensor tab, with the same chart height and the same offset in whole pods.
+ * The ten pods with the highest insulin totals, highest first, with daily bars and a row per pod.
+ * The compact summary above the chart stays in start-date order.
  *
- * @param data null when there is no pod change at [offset]
- * @param podsAvailable pod changes found, which caps the offset
+ * @param data null when no pod has insulin totals
  * @param formatDate formats a pod change for its row
  */
 @Composable
 fun PodInsulinCompose(
     data: PodInsulinData?,
-    podsAvailable: Int,
-    offset: Int,
-    onOffsetChange: (Int) -> Unit,
     formatDate: (Long) -> String,
     modifier: Modifier = Modifier,
     summary: List<PodInsulin> = emptyList(),
@@ -87,13 +82,7 @@ fun PodInsulinCompose(
             PodRows(data, formatDate)
         }
 
-        // Offset in whole pods: 1 shows the pods before the newest, and so on
-        StatsOffsetStepper(
-            label = UiStrings.pod_insulin_offset,
-            value = offset,
-            max = (podsAvailable - 1).coerceAtLeast(1),
-            onValueChange = onOffsetChange
-        )
+
     }
 }
 

@@ -346,8 +346,9 @@ class WizardDialogViewModel(
         recalculate()
     }
 
-    fun toggleFpuThirtyMinutes(checked: Boolean) {
-        _uiState.update { it.copy(fpuIntervalMinutes = if (checked) 30 else 60) }
+    fun updateFpuInterval(value: Int) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(fpuIntervalMinutes = value.coerceIn(30, 60)) }
         recalculate()
     }
 
@@ -472,10 +473,7 @@ class WizardDialogViewModel(
     }
 
     fun addCarbs(increment: Int) {
-        val state = uiState.value
-        val newValue = (state.carbs + increment).coerceIn(0, state.maxCarbs)
-        _uiState.update { it.copy(carbs = newValue) }
-        recalculate()
+        updateCarbs(uiState.value.carbs + increment)
     }
 
     fun updatePercentage(value: Int) {

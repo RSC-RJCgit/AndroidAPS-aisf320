@@ -13,7 +13,6 @@ enum class IntNonKey(
     // Statistics, Sensor tab: how many of the newest sensors to skip
     SensorCycleOffset("sensor_cycle_offset", 0),
     // Statistics, Pod tab: how many of the newest pods to skip
-    PodInsulinOffset("pod_insulin_offset", 0),
 
     // How many morning role changes have happened. Cleared after a profile-batch step down. Local only.
     ApsAutoIsfMorningRoleSwapChangeStreak("autoisf_morning_roleswap_change_streak", 0),

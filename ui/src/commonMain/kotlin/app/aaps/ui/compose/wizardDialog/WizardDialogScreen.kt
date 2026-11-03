@@ -228,7 +228,7 @@ fun WizardDialogScreen(
         onWalkingSoonToggle = viewModel::toggleWalkingSoon,
         onFpuInsteadToggle = viewModel::toggleFpuInstead,
         onSplitFpuBolusToggle = viewModel::toggleSplitFpuBolus,
-        onFpuThirtyMinutesToggle = viewModel::toggleFpuThirtyMinutes,
+        onFpuIntervalChange = viewModel::updateFpuInterval,
         onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
         onSplitOverMaxToggle = viewModel::toggleSplitOverMax,
         onSplitIntervalChange = viewModel::updateSplitIntervalMinutes,
@@ -271,7 +271,7 @@ internal fun WizardDialogContent(
     onWalkingSoonToggle: (Boolean) -> Unit = {},
     onFpuInsteadToggle: (Boolean) -> Unit = {},
     onSplitFpuBolusToggle: (Boolean) -> Unit = {},
-    onFpuThirtyMinutesToggle: (Boolean) -> Unit = {},
+    onFpuIntervalChange: (Int) -> Unit = {},
     onGiveRestLaterToggle: (Boolean) -> Unit = {},
     onSplitOverMaxToggle: (Boolean) -> Unit = {},
     onSplitIntervalChange: (Int) -> Unit = {},
@@ -819,6 +819,12 @@ internal fun WizardDialogContent(
                             increment3 = uiState.carbsButtonIncrement3,
                             onAddCarbs = onAddCarbs
                         )
+                        CarbsTypeSelector(
+                            selected = uiState.carbsType,
+                            onChange = onCarbsTypeChange,
+                            enabled = !locked,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         NumberInputRow(
                             labelRef = InterfacesStrings.wizard_protein,
                             enabled = !locked,
@@ -848,20 +854,15 @@ internal fun WizardDialogContent(
                             decimalPlaces = 1
                         )
                         if (uiState.splitFpuBolus) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    enabled = !locked,
-                                    checked = uiState.fpuIntervalMinutes == 30,
-                                    onCheckedChange = onFpuThirtyMinutesToggle
-                                )
-                                Text(
-                                    text = stringResource(UiStrings.wizard_fpu_thirty_minutes),
-                                    modifier = Modifier.clickable(enabled = !locked) { onFpuThirtyMinutesToggle(uiState.fpuIntervalMinutes != 30) }
-                                )
-                            }
+                            NumberInputRow(
+                                labelRef = UiStrings.wizard_fpu_interval,
+                                enabled = !locked,
+                                value = uiState.fpuIntervalMinutes.toDouble(),
+                                onValueChange = { onFpuIntervalChange(it.toInt()) },
+                                valueRange = 30.0..60.0,
+                                step = 1.0,
+                                unitLabel = TextRef.Literal("min")
+                            )
                         }
 
 
@@ -934,14 +935,6 @@ internal fun WizardDialogContent(
                             )
                         }
 
-                        // Carbs type selector
-                        CarbsTypeSelector(
-                            selected = uiState.carbsType,
-                            onChange = onCarbsTypeChange,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp)
-                        )
                     }
 
                     // Direct Correction: collapsed, so there is no second open field under the carbs
