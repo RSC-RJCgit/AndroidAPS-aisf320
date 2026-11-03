@@ -997,7 +997,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 (profile != null && preferences.get(BooleanKey.OverviewShowCarbsButton)).toVisibility()
             binding.buttonsLayout.treatmentButton.visibility = (loop.runningMode != RM.Mode.DISCONNECTED_PUMP && !pump.isSuspended() && pump.isInitialized() && profile != null
                 && preferences.get(BooleanKey.OverviewShowTreatmentButton)).toVisibility()
-            binding.buttonsLayout.wizardButton.visibility = (loop.runningMode != RM.Mode.DISCONNECTED_PUMP && !pump.isSuspended() && pump.isInitialized() && profile != null
+            // A client opens the calculator for the master; its local pump state must not hide the button.
+            binding.buttonsLayout.wizardButton.visibility = ((config.AAPSCLIENT ||
+                (loop.runningMode != RM.Mode.DISCONNECTED_PUMP && !pump.isSuspended() && pump.isInitialized())) && profile != null
                 && preferences.get(BooleanKey.OverviewShowWizardButton)).toVisibility()
             binding.buttonsLayout.insulinButton.visibility = (profile != null && preferences.get(BooleanKey.OverviewShowInsulinButton)).toVisibility()
             if (loop.runningMode == RM.Mode.DISCONNECTED_PUMP || pump.isSuspended() || !pump.isInitialized()) {

@@ -195,6 +195,8 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("protein_input", binding.proteinInput.value)
         savedInstanceState.putDouble("fat_input", binding.fatInput.value)
         savedInstanceState.putDouble("warsaw_duration_input", binding.warsawDurationInput.value)
+        savedInstanceState.putBoolean("split_fpu_bolus", binding.splitFpuBolusCheckbox.isChecked)
+        savedInstanceState.putBoolean("fpu_thirty_minutes", binding.fpuThirtyMinutesCheckbox.isChecked)
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
         savedInstanceState.putBoolean("meal_calculator_mode", fixedInsulinPassedIntoWizard == null)
@@ -308,6 +310,14 @@ class WizardDialog : DaggerDialogFragment() {
         // between uses: every open starts from these defaults.
         binding.unreliableSmbsCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
         binding.smallMealCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultSmallMeal)
+        binding.splitFpuBolusCheckbox.isChecked = savedInstanceState?.getBoolean("split_fpu_bolus", true) ?: true
+        binding.fpuThirtyMinutesCheckbox.isChecked = savedInstanceState?.getBoolean("fpu_thirty_minutes", true) ?: true
+        binding.fpuThirtyMinutesCheckbox.visibility = if (binding.splitFpuBolusCheckbox.isChecked) View.VISIBLE else View.GONE
+        binding.splitFpuBolusCheckbox.setOnCheckedChangeListener { _, checked ->
+            binding.fpuThirtyMinutesCheckbox.visibility = if (checked) View.VISIBLE else View.GONE
+            calculateInsulin()
+        }
+        binding.fpuThirtyMinutesCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
         binding.autoFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultAutoFpu)
         binding.unreliableSmbsCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
         // Small meal (2026-10-05): halves the Fat/Protein auto-fill. Same behaviour as the unreliable box: re-runs the
@@ -495,8 +505,8 @@ class WizardDialog : DaggerDialogFragment() {
         listOf(
             binding.bgCheckbox, binding.ttCheckbox, binding.bgTrendCheckbox, binding.iobCheckbox, binding.cobCheckbox, binding.sbCheckbox,
             binding.bgCheckboxIcon, binding.ttCheckboxIcon, binding.trendCheckboxIcon, binding.iobCheckboxIcon, binding.cobCheckboxIcon,
-            binding.walkingSoonCheckbox, binding.unreliableSmbsCheckbox, binding.smallMealCheckbox, binding.autoFpuCheckbox,
-            binding.delayFpuCheckbox, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
+            binding.walkingSoonCheckbox, binding.unreliableSmbsCheckbox, binding.smallMealCheckbox, binding.autoFpuCheckbox, binding.splitFpuBolusCheckbox,
+            binding.delayFpuCheckbox, binding.fpuThirtyMinutesCheckbox, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
             binding.correctionPercent
         ).forEach { it.lockForInsulinOnly() }
         insulinOnlyControlsReady = true
@@ -854,8 +864,9 @@ class WizardDialog : DaggerDialogFragment() {
             carbTime,
             usePercentage = usePercentage,
             totalPercentage = percentageCorrection.toDouble(),
-            protein = protein,
-            fat = fat,
+            // Original eCarbs mode has no extra insulin plan for fat/protein.
+            protein = if (binding.splitFpuBolusCheckbox.isChecked) protein else 0,
+            fat = if (binding.splitFpuBolusCheckbox.isChecked) fat else 0,
             walkingSoon = binding.walkingSoonCheckbox.isChecked
         )
 
@@ -863,6 +874,7 @@ class WizardDialog : DaggerDialogFragment() {
             // Set before anything below reads warsawFpuPlan() (the live preview does, further down) --
             // see BolusWizard.warsawDurationHours's own doc comment.
             wizard.warsawDurationHours = binding.warsawDurationInput.value
+            wizard.fpuIntervalMinutes = if (binding.fpuThirtyMinutesCheckbox.isChecked) 30 else 60
             // Ticked (default): a protein/fat part that fails a due-time check is re-checked every 10 min, not cancelled.
             wizard.delayFpuInsteadOfCancel = binding.delayFpuCheckbox.isChecked
             // See dropTrendCautionApplied's own doc comment -- a fourth DelayedBolusWorker trigger reason.

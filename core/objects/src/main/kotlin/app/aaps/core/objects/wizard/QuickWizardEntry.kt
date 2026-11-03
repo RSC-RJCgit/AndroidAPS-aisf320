@@ -16,6 +16,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.valueToUnits
 import app.aaps.core.objects.utils.StepCountSource
+import app.aaps.core.utils.JsonHelper.safeGetBoolean
 import app.aaps.core.utils.JsonHelper.safeGetDouble
 import app.aaps.core.utils.JsonHelper.safeGetInt
 import app.aaps.core.utils.JsonHelper.safeGetString
@@ -59,6 +60,7 @@ class QuickWizardEntry @Inject constructor(
         const val NO = 1
         const val POSITIVE_ONLY = 2
         const val NEGATIVE_ONLY = 3
+        const val AUTO = 4
         const val DEVICE_ALL = 0
         const val DEVICE_PHONE = 1
         const val DEVICE_WATCH = 2
@@ -199,11 +201,15 @@ class QuickWizardEntry @Inject constructor(
             // computed by the time doCalc() returns). Previously QuickWizard had no way to supply these
             // at all, so the Warsaw-FPU extended series could never engage for a QuickWizard-triggered
             // bolus regardless of BolusWizard's own logic.
-            protein = autoProtein,
-            fat = autoFat,
-            // "Always on" is live S30 (S5 OR watch only), not a hard 50%. Seated press uses standing wiz%.
-            walkingSoon = useWalkingSoon() == YES &&
-                (WizardActivitySteps.stillMovingNow(stepCountSource, dateUtil.now()) == true)
+            protein = if (splitFpuBolus()) autoProtein else 0,
+            fat = if (splitFpuBolus()) autoFat else 0,
+            // An explicit choice wins; Auto follows the calculator step and BG rules.
+            walkingSoon = when (useWalkingSoon()) {
+                YES -> true
+                NO -> false
+                else -> WizardActivitySteps.walkingSoonDefault(stepCountSource, dateUtil.now(), lastBG.value,
+                    glucoseStatus?.delta ?: 0.0) ?: false
+            }
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
         // Split-bolus (carb-split-over-max-bolus) isn't a doCalc() parameter -- it only affects later
         // scheduling (splitProjectionNote()/scheduleSplitProteinFatDoses(), both called from
@@ -216,6 +222,8 @@ class QuickWizardEntry @Inject constructor(
         // reasoning/timing as split-bolus above -- warsawFpuPlan() only runs later, on demand, so this
         // is safe to set post-doCalc() (unlike protein/fat themselves further up).
         wizard.warsawDurationHours = warsawDurationHours()
+        wizard.fpuIntervalMinutes = fpuIntervalMinutes()
+        wizard.delayFpuInsteadOfCancel = retryFpuLater()
         // A fourth DelayedBolusWorker reason, as in the dialog: the held-back part can follow once BG rises.
         wizard.dropTrendCautionApplied = dropTrendCaution
         return wizard
@@ -263,7 +271,9 @@ class QuickWizardEntry @Inject constructor(
 
     fun percentage(): Int = safeGetInt(storage, "percentage", 100)
 
-    fun useEcarbs(): Int = safeGetInt(storage, "useEcarbs", NO)
+    fun storedUseEcarbs(): Int = safeGetInt(storage, "useEcarbs", NO)
+
+    fun useEcarbs(): Int = if (splitFpuBolus()) NO else storedUseEcarbs()
 
     fun carbs2(): Int = safeGetInt(storage, "carbs2")
 
@@ -275,13 +285,18 @@ class QuickWizardEntry @Inject constructor(
 
     fun useAlarm(): Int = safeGetInt(storage, "useAlarm", NO)
 
-    // "Walking soon" / manual split-bolus. Always-on is live S30 (S5 OR watch only), not a hard 50%.
-    // Seated press uses standing wiz%; moving now uses MOVING_PERCENT (70).
-    fun useWalkingSoon(): Int = safeGetInt(storage, "useWalkingSoon", NO)
+    // Walking soon can be forced on/off or chosen from current steps and BG.
+    fun useWalkingSoon(): Int = safeGetInt(storage, "useWalkingSoon", AUTO)
 
-    fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", NO)
+    fun useSplitBolus(): Int = safeGetInt(storage, "useSplitBolus", if (preferences.get(BooleanKey.WizardSplitOverMaxBolus)) YES else NO)
 
-    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", 7)
+    fun splitBolusIntervalMins(): Int = safeGetInt(storage, "splitBolusIntervalMins", preferences.get(IntKey.WizardSplitIntervalMinutes)).coerceIn(1, 60)
+
+    fun splitFpuBolus(): Boolean = safeGetBoolean(storage, "splitFpuBolus", storedUseEcarbs() != YES)
+
+    fun fpuIntervalMinutes(): Int = if (safeGetInt(storage, "fpuIntervalMinutes", 30) == 60) 60 else 30
+
+    fun retryFpuLater(): Boolean = safeGetBoolean(storage, "retryFpuLater", true)
 
     // Bolus Wizard boxes (2026-10-22). A button saved before these existed follows the "Bolus calculator defaults" settings.
     fun unreliableSmb(): Boolean = optionOrDefault("useUnreliableSmb", BooleanKey.WizardDefaultUnreliableSmbs)

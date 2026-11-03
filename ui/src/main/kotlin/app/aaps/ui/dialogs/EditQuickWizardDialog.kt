@@ -95,9 +95,10 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         binding.okcancel.ok.setOnClickListener {
             val carbs = SafeParse.stringToInt(binding.carbsInput.text)
             val carbs2 = SafeParse.stringToInt(binding.carbs2.text)
-            val useECarbs = binding.useEcarbs.isChecked
+            val useECarbs = binding.useEcarbs.isChecked && !binding.splitFpuBolusCheckbox.isChecked
 
-            if (carbs > 0 || (useECarbs && carbs2 > 0)) {
+            if (carbs > 0 || (useECarbs && carbs2 > 0) ||
+                (binding.splitFpuBolusCheckbox.isChecked && (binding.proteinInput.value > 0 || binding.fatInput.value > 0))) {
                 try {
                     entry.storage.put("buttonText", binding.buttonEdit.text.toString())
                     entry.storage.put("carbs", carbs)
@@ -120,11 +121,14 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                     } else if (binding.deviceWatchCheckbox.isChecked) {
                         entry.storage.put("device", QuickWizardEntry.DEVICE_WATCH)
                     }
-                    entry.storage.put("useEcarbs", checkBoxToRadioNumbers(useECarbs))
+                    entry.storage.put("useEcarbs", checkBoxToRadioNumbers(binding.useEcarbs.isChecked))
                     entry.storage.put("time", binding.time.value.toInt())
                     entry.storage.put("duration", SafeParse.stringToInt(binding.duration.text))
                     entry.storage.put("carbs2", carbs2)
-                    entry.storage.put("useWalkingSoon", checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))
+                    entry.storage.put("useWalkingSoon", if (binding.walkingSoonAutoCheckbox.isChecked) QuickWizardEntry.AUTO else checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))
+                    entry.storage.put("splitFpuBolus", binding.splitFpuBolusCheckbox.isChecked)
+                    entry.storage.put("retryFpuLater", binding.retryFpuLaterCheckbox.isChecked)
+                    entry.storage.put("fpuIntervalMinutes", if (binding.fpuThirtyMinutesCheckbox.isChecked) 30 else 60)
                     entry.storage.put("useUnreliableSmb", checkBoxToRadioNumbers(binding.unreliableSmbsCheckbox.isChecked))
                     entry.storage.put("useSmallMeal", checkBoxToRadioNumbers(binding.smallMealCheckbox.isChecked))
                     entry.storage.put("useAutoFpu", checkBoxToRadioNumbers(binding.autoFpuCheckbox.isChecked))
@@ -178,7 +182,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         }
 
         fun useECarbs(yes: Boolean) {
-            if (yes) {
+            if (yes && !binding.splitFpuBolusCheckbox.isChecked) {
                 binding.timeLabel.visibility = View.VISIBLE
                 binding.time.visibility = View.VISIBLE
                 binding.durationLabel.visibility = View.VISIBLE
@@ -293,13 +297,27 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         binding.useSuperBolus.isChecked = radioNumbersToCheckBox(entry.useSuperBolus())
         binding.useTempTarget.isChecked = radioNumbersToCheckBox(entry.useTempTarget())
 
-        binding.useEcarbs.isChecked = radioNumbersToCheckBox(entry.useEcarbs())
+        binding.useEcarbs.isChecked = radioNumbersToCheckBox(entry.storedUseEcarbs())
         binding.carbs2.value = SafeParse.stringToDouble(entry.carbs2().toString())
         binding.time.value = SafeParse.stringToDouble(entry.time().toString())
         binding.duration.value = SafeParse.stringToDouble(entry.duration().toString())
         useECarbs(radioNumbersToCheckBox(entry.useEcarbs()))
 
-        binding.walkingSoonCheckbox.isChecked = radioNumbersToCheckBox(entry.useWalkingSoon())
+        binding.walkingSoonAutoCheckbox.isChecked = entry.useWalkingSoon() == QuickWizardEntry.AUTO
+        binding.walkingSoonCheckbox.isChecked = entry.useWalkingSoon() == QuickWizardEntry.YES
+        binding.walkingSoonCheckbox.isEnabled = !binding.walkingSoonAutoCheckbox.isChecked
+        binding.walkingSoonAutoCheckbox.setOnCheckedChangeListener { _, checked -> binding.walkingSoonCheckbox.isEnabled = !checked }
+        binding.splitFpuBolusCheckbox.isChecked = entry.splitFpuBolus()
+        binding.fpuThirtyMinutesCheckbox.isChecked = entry.fpuIntervalMinutes() == 30
+        fun updateFpuMode() {
+            val split = binding.splitFpuBolusCheckbox.isChecked
+            binding.useEcarbs.visibility = if (split) View.GONE else View.VISIBLE
+            binding.fpuThirtyMinutesCheckbox.visibility = if (split) View.VISIBLE else View.GONE
+            useECarbs(binding.useEcarbs.isChecked)
+        }
+        binding.splitFpuBolusCheckbox.setOnCheckedChangeListener { _, _ -> updateFpuMode() }
+        updateFpuMode()
+        binding.retryFpuLaterCheckbox.isChecked = entry.retryFpuLater()
         binding.unreliableSmbsCheckbox.isChecked = entry.unreliableSmb()
         binding.smallMealCheckbox.isChecked = entry.smallMeal()
         binding.autoFpuCheckbox.isChecked = entry.autoFpu()

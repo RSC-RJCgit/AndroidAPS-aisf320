@@ -135,6 +135,54 @@
 
         </LinearLayout>
 
+        <CheckBox
+            android:id="@+id/split_fpu_bolus_checkbox"
+            style="@style/Widget.App.CheckBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Use split boluses for FPU"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:ignore="HardcodedText" />
+
+        <CheckBox
+            android:id="@+id/auto_fpu_checkbox"
+            style="@style/Widget.App.CheckBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="start|center_vertical"
+            android:text="Auto fat/protein from carbs (only when protein and fat below are both 0)"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:ignore="HardcodedText" />
+        <CheckBox
+            android:id="@+id/walking_soon_auto_checkbox"
+            style="@style/Widget.App.CheckBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Walking soon: use current steps and BG"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:ignore="HardcodedText" />
+
+        <CheckBox
+            android:id="@+id/walking_soon_checkbox"
+            style="@style/Widget.App.CheckBox"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="start|center_vertical"
+            android:text="Walking soon: ON (70% now, rest later if needed)"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:ignore="HardcodedText" />
+        <CheckBox
+            android:id="@+id/retry_fpu_later_checkbox"
+            style="@style/Widget.App.CheckBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Recheck a delayed FPU dose every 10 minutes"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:ignore="HardcodedText" />
+
         <TableLayout
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
@@ -435,16 +483,6 @@
                 android:text="@string/additional_ecarbs"
                 android:textAppearance="@style/TextAppearance.AppCompat.Medium" />
 
-            <CheckBox
-                android:id="@+id/walking_soon_checkbox"
-                style="@style/Widget.App.CheckBox"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:gravity="start|center_vertical"
-                android:lines="1"
-                android:text="Walking soon (70% if S30 moving; seated uses standing %)"
-                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-                tools:ignore="HardcodedText" />
 
             <CheckBox
                 android:id="@+id/unreliable_smbs_checkbox"
@@ -462,19 +500,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="start|center_vertical"
-                android:text="Small meal: auto fat/protein halves"
+                android:text="Fast carbs: halve automatic fat/protein"
                 android:textAppearance="@style/TextAppearance.AppCompat.Medium"
                 tools:ignore="HardcodedText" />
 
-            <CheckBox
-                android:id="@+id/auto_fpu_checkbox"
-                style="@style/Widget.App.CheckBox"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:gravity="start|center_vertical"
-                android:text="Auto fat/protein from carbs (only when protein and fat below are both 0)"
-                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-                tools:ignore="HardcodedText" />
 
             <LinearLayout
                 android:id="@+id/split_bolus_row"
@@ -605,7 +634,7 @@
                 android:layout_height="wrap_content"
                 android:paddingTop="2dp"
                 android:paddingBottom="4dp"
-                android:text="Caps how many fixed hourly doses fire (only above 3 FPU) — insulin for hours beyond this cap is not delivered. Total given is reduced, not made up later."
+                android:text="Caps how many fixed 30-minute doses fire (only above 3 FPU) — insulin for hours beyond this cap is not delivered. Total given is reduced, not made up later."
                 android:textAppearance="?android:attr/textAppearanceSmall"
                 android:textColor="?attr/warningColor"
                 tools:ignore="HardcodedText" />
@@ -675,6 +704,15 @@
                     android:textAppearance="?android:attr/textAppearanceSmall" />
 
             </TableRow>
+
+            <CheckBox
+                android:id="@+id/fpu_thirty_minutes_checkbox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:checked="true"
+                android:text="FPU every 30 minutes (off: 60 minutes)"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                tools:ignore="HardcodedText" />
 
             <TableRow
                 android:layout_width="match_parent"

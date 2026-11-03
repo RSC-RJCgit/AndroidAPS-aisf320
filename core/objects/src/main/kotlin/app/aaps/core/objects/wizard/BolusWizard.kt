@@ -191,6 +191,7 @@ class BolusWizard @Inject constructor(
     // fixed 3h/4h/5h duration. Set here, not a doCalc() parameter, because warsawFpuPlan() only runs
     // later, on demand, same as manualSplitBolusEnabled above. Defaults to 5h.
     var warsawDurationHours: Double = 5.0
+    var fpuIntervalMinutes: Int = 30
 
     // Set by WizardDialog's "Delay protein/fat doses instead of cancelling" checkbox (on by default, 2026-10-05): ticked, a
     // protein/fat (FPU) part that fails a due-time check is re-checked every 10 min instead of cancelled; unticked, it is
@@ -775,7 +776,7 @@ class BolusWizard @Inject constructor(
             actions.add(rh.gs(app.aaps.core.ui.R.string.advisoralarm).formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor))
 
         if (quickWizardEntry != null) {
-            val eCarbsYesNo = JsonHelper.safeGetInt(quickWizardEntry.storage, "useEcarbs", QuickWizardEntry.NO)
+            val eCarbsYesNo = quickWizardEntry.useEcarbs()
             if (eCarbsYesNo == QuickWizardEntry.YES) {
                 val timeOffset = JsonHelper.safeGetInt(quickWizardEntry.storage, "time", 0)
                 val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0)
@@ -1170,22 +1171,12 @@ class BolusWizard @Inject constructor(
     // capped plan's shortfall is visible, not just its own (already-reduced) total.
     data class WarsawFpuPlan(
         val fpu: Double, val durationMinutes: Int, val numDoses: Int, val perDoseInsulin: Double,
-        val totalInsulin: Double, val fullTierInsulin: Double, val capped: Boolean
+        val totalInsulin: Double, val fullTierInsulin: Double, val capped: Boolean, val intervalMinutes: Int = 30
     )
 
-    // Fixed Warsaw/Pankiewicz step table (verified 2026-09-16 against the real published method --
-    // omnicalculator.com/health/warsaw-method, juiceboxpodcast.com/warcal, ezcalculator.net all agree):
-    // NON-proportional, a jump table, not the smooth interpolation this file used before verification.
-    // FPU picks a TIER; each tier's per-dose amount is FIXED at totalInsulin/tierHours (that tier's own
-    // real, full duration), one dose per hour -- confirmed against four worked examples (1/2/3/8 doses
-    // of equal size, one per hour, each stopping exactly at its own tier's hour count).
-    //
-    // Only the top tier (FPU>3, real duration 8h) is user-adjustable, via warsawDurationHours -- and
-    // per explicit request, that setting is a HARD CAP on how many of the FIXED-size hourly doses
-    // actually fire, not a redistribution: perDoseInsulin stays at totalInsulin/8 regardless of the
-    // cap, so hours beyond the cap (up to 8h) are simply never delivered. The total insulin actually
-    // given is therefore genuinely reduced when capped below 8h -- not repacked into fewer, bigger
-    // doses, and not made up later. Tiers 1-3 have no override -- always their own full fixed duration.
+    // FPU picks 3, 4, 5 or 8 hours. Only the 8-hour tier can be capped by the duration input.
+    // The cap removes its share of the total; changing spacing between 30 and 60 minutes does not.
+    // The last part stays at the duration cap when it falls between full-hour boundaries.
     fun warsawFpuPlan(): WarsawFpuPlan? {
         val totalRequiredInsulin = insulinFromProteinOnly + insulinFromFatOnly
         if (totalRequiredInsulin <= 0.0) return null
@@ -1196,13 +1187,14 @@ class BolusWizard @Inject constructor(
             fpu <= 3.0 -> 5
             else       -> 8
         }
-        val fullDoses = tierHours * 2
-        val perDoseInsulin = totalRequiredInsulin / fullDoses
-        val numDoses = if (tierHours == 8) floor(warsawDurationHours.coerceIn(0.0, 8.0) * 2).toInt() else fullDoses
-        if (numDoses <= 0) return null
-        val fullTierInsulin = perDoseInsulin * fullDoses
-        val deliveredTotal = perDoseInsulin * numDoses
-        return WarsawFpuPlan(fpu, numDoses * 30, numDoses, perDoseInsulin, deliveredTotal, fullTierInsulin, capped = numDoses < fullDoses)
+        val interval = if (fpuIntervalMinutes == 60) 60 else 30
+        // The cap and total do not change with the selected spacing.
+        val duration = if (tierHours == 8) floor(warsawDurationHours.coerceIn(0.0, 8.0) * 2).toInt() * 30 else tierHours * 60
+        if (duration <= 0) return null
+        val numDoses = (duration + interval - 1) / interval
+        val deliveredTotal = totalRequiredInsulin * duration / (tierHours * 60)
+        return WarsawFpuPlan(fpu, duration, numDoses, deliveredTotal / numDoses, deliveredTotal,
+            totalRequiredInsulin, capped = duration < tierHours * 60, intervalMinutes = interval)
     }
 
     // Carb-split bolus: profile% at or above 100 (a boosted profile still needs its correctly-scaled,
@@ -1321,10 +1313,10 @@ class BolusWizard @Inject constructor(
                     val part = parts[i - 1]
                     if (part <= 0.0) continue
                     val delayMins = if (plan.numDoses == 1) plan.durationMinutes.coerceAtLeast(1)
-                    else (plan.durationMinutes.toLong() * i / plan.numDoses).toInt()
+                    else minOf(i * plan.intervalMinutes, plan.durationMinutes)
                     // When the NEXT part is due: a failed check on this part is re-checked every 10 min until 10 min before it.
                     val nextIndex = (i + 1..plan.numDoses).firstOrNull { parts[it - 1] > 0.0 }
-                    val nextDueAt = nextIndex?.let { scheduledAt + T.mins(plan.durationMinutes.toLong() * it / plan.numDoses).msecs() }
+                    val nextDueAt = nextIndex?.let { scheduledAt + T.mins(minOf(it * plan.intervalMinutes, plan.durationMinutes).toLong()).msecs() }
                     // 2026-10-14, per explicit request: the label is only shown text (notes, Treatments row, calculation
                     // record, log), so it says which part this is and marks the last one, e.g. "fpu2 of 4", "fpu4 (last of 4)".
                     val partLabel = if (i == lastPart) "fpu$i (last of ${plan.numDoses})" else "fpu$i of ${plan.numDoses}"
@@ -2005,7 +1997,7 @@ class BolusWizard @Inject constructor(
     }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {
-        val eCarbsYesNo = JsonHelper.safeGetInt(quickWizardEntry.storage, "useEcarbs", QuickWizardEntry.NO)
+        val eCarbsYesNo = quickWizardEntry.useEcarbs()
         if (eCarbsYesNo == QuickWizardEntry.YES) {
             val timeOffset = JsonHelper.safeGetInt(quickWizardEntry.storage, "time", 0)
             val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0)
