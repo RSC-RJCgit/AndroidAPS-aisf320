@@ -2,8 +2,6 @@ package app.aaps.plugins.sync.nsclientV3.data
 
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.SC
-import app.aaps.core.data.plugin.PluginType
-import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
@@ -37,9 +35,7 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.contentOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.max
@@ -176,7 +172,6 @@ class NSDeviceStatusHandler(
                 .mapNotNull { it.createdAt }
                 .maxOrNull() ?: 0L
             if (newestCreatedAt > 0L) nsClientV3Plugin().bumpDevicestatusHeartbeat(newestCreatedAt)
-            mirrorMasterAps(accepted.map { it.status }.toTypedArray())
             // Rebuild predictions once for the newest data in this batch.
             launchReceivedStatusWork("predictions") { calculationWorkflow.runOnReceivedPredictions(overviewData) }
             if (apsResults.isNotEmpty()) launchReceivedStatusWork("APS history") { storeApsResults(apsResults) }
@@ -227,21 +222,6 @@ class NSDeviceStatusHandler(
                 aapsLogger.error(LTag.NSCLIENT, "Received device status $label failed: ${error.message}")
             }
         }
-    }
-
-    /** A read-only client follows the APS choice explicitly supplied by its AAPS master. */
-    private fun mirrorMasterAps(deviceStatuses: Array<NSDeviceStatus>) {
-        if (!preferences.get(BooleanKey.NsClientReadOnlyClient)) return
-        val aps = (deviceStatuses.filter { it.configuration != null }.maxByOrNull { it.date ?: 0L }
-            ?.configuration?.get("aps") as? JsonPrimitive)?.contentOrNull ?: return
-        val plugin = activePlugin.getSpecificPluginsList(PluginType.APS).firstOrNull { (it as? APS)?.algorithm?.name == aps }
-        if (plugin == null) {
-            aapsLogger.debug(LTag.NSCLIENT, "Read-only client: the master runs $aps, which this build does not have")
-            return
-        }
-        if (preferences.get(StringNonKey.ActivePluginAps) == plugin.pluginId) return
-        preferences.putRemote(StringNonKey.ActivePluginAps, plugin.pluginId, 0L)
-        aapsLogger.info(LTag.NSCLIENT, "Read-only client: APS set to ${plugin.pluginId}, as on the master ($aps)")
     }
 
     /**

@@ -17,6 +17,7 @@ import app.aaps.core.graph.profile.ProfileCompareData
 import app.aaps.core.graph.profile.buildProfileCompareData
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.CodedProfileRoles
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
 import app.aaps.core.interfaces.bolus.BatchAction
 import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.clientcontrol.ActionProgress
@@ -759,6 +760,9 @@ class ProfileManagementViewModel(
      */
     private fun writeRole(key: String, value: String) {
         if (!config.AAPSCLIENT) {
+            if (key == StringKey.ApsAutoIsfStandardProfileName.key || key == StringKey.ApsAutoIsfLowProfileName.key) {
+                (activePlugin.activeAPS as? ProfileRoleSynchronizer)?.alignEffectiveProfileRoles(value)
+            }
             preferences.put(stringKeyForCodedRole(key), value)
             return
         }

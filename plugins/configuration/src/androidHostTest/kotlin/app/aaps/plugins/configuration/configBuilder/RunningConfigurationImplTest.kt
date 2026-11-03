@@ -8,7 +8,6 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.logging.AAPSLogger
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.Pump
@@ -17,7 +16,6 @@ import app.aaps.core.interfaces.pump.PumpWithConcentration
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.scenes.ActiveSceneSnapshot
 import app.aaps.core.interfaces.scenes.ActiveSceneSync
-import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
@@ -64,10 +62,8 @@ internal class RunningConfigurationImplTest {
     @Mock private lateinit var aapsLogger: AAPSLogger
     @Mock private lateinit var config: Config
     @Mock private lateinit var pumpSync: PumpSync
-    @Mock private lateinit var notificationManager: NotificationManager
     @Mock private lateinit var nsClientRepository: NSClientRepository
     @Mock private lateinit var constraintsChecker: ConstraintsChecker
-    @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var eatReminder: EatReminder
 
     private val eatReminderState = MutableStateFlow<EatReminderState?>(null)
@@ -81,9 +77,8 @@ internal class RunningConfigurationImplTest {
         whenever(eatReminder.state).thenReturn(eatReminderState)
         sut = RunningConfigurationImpl(
             activePlugin, activeSceneSync,
-            preferences, aapsLogger, config, pumpSync, notificationManager, nsClientRepository, constraintsChecker, dateUtil, eatReminder
+            preferences, aapsLogger, config, pumpSync, nsClientRepository, constraintsChecker, eatReminder
         )
-        whenever(dateUtil.now()).thenReturn(NOW)
     }
 
     /** Empty cold doc — nothing to apply, and crucially the active scene and the eat timer are left alone. */
@@ -139,7 +134,7 @@ internal class RunningConfigurationImplTest {
     fun applyColdWithSceneDefinitionsDoesNotTouchActiveScene() {
         whenever(preferences.get(StringNonKey.SceneDefinitions.key)).thenReturn(StringNonKey.SceneDefinitions)
         sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(StringNonKey.SceneDefinitions.key to "[]")))
-        verify(preferences).putRemote(StringNonKey.SceneDefinitions, "[]", 0L)
+        verify(preferences, never()).putRemote(eq(StringNonKey.SceneDefinitions), any<String>(), any())
         verify(activeSceneSync, never()).applyActiveScene(anyOrNull())
     }
 
@@ -204,26 +199,16 @@ internal class RunningConfigurationImplTest {
         )
     }
 
-    /**
-     * A String cold-channel key carried in the cold doc's `syncedPrefs` (e.g. AutomationEvents, which
-     * moved onto the generic channel) must be adopted via `putRemote` — master-wins, version floored to
-     * 0, no client→master echo — not a plain `put`. Guards the downlink apply path at the config layer.
-     */
+    /** A settings broadcast does not overwrite local automation definitions. */
     @Test
-    fun applyColdSyncedPrefsAdoptsStringColdKeyViaPutRemote() {
+    fun applyColdDoesNotAdoptAutomationDefinitions() {
         val json = """[{"id":"x","title":"from-master"}]"""
         whenever(preferences.get(StringNonKey.AutomationEvents.key)).thenReturn(StringNonKey.AutomationEvents)
         sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(StringNonKey.AutomationEvents.key to json)))
-        verify(preferences).putRemote(StringNonKey.AutomationEvents, json, 0L)
+        verify(preferences, never()).putRemote(eq(StringNonKey.AutomationEvents), any<String>(), any())
     }
 
-    /**
-     * Plugin settings ride ONLY the generic cold `syncedPrefs` block now (flagged `SyncSpec(Cold, Bidirectional)`
-     * — the legacy `apsConfiguration`/`sensitivityConfiguration`/`safetyConfiguration` sub-docs were deleted).
-     * Representative guard that a plugin-settings key is flagged for the cold path, and that — carried in
-     * `syncedPrefs` — it is adopted on the client via `putRemote` (master-wins, version floored).
-     */
-    /** 2026-10-21: a key that is local to each device now is not taken from an older master that still publishes it. */
+    /** Display preferences stay local, including when an older master broadcasts them. */
     @Test
     fun applyColdIgnoresAKeyThatIsLocalToTheDevice() {
         assertNull(BooleanKey.ApsAutoIsfShowGraph5.sync)
@@ -261,19 +246,40 @@ internal class RunningConfigurationImplTest {
         verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
     }
 
-    /** After that the master's value counts on a paired client: these settings change the loop. */
+    /** Pairing and elapsed time do not turn a broadcast into a settings command. */
     @Test
-    fun pairedClientFollowsTheMasterAfterTheHold() {
+    fun pairedClientKeepsSettingsEvenAfterTheOldHold() {
         whenever(preferences.get(LongNonKey.NsClientControlPairedAt)).thenReturn(1L)
         whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
         whenever(preferences.get(LongComposedKey.SyncedPrefModified, DoubleKey.AutosensMin.key)).thenReturn(NOW - 5 * 60_000L)
         sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
-        verify(preferences).putRemote(DoubleKey.AutosensMin, 0.85, 0L)
+        verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
     }
 
     /** The display settings belong to each phone and are not shared at all. */
     @Test
+    fun pairingDoesNotAllowBroadcastsToOverwriteClientPresetSwitches() {
+        val switches = listOf(
+            BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
+            BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
+            BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled,
+            BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled,
+            BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
+            BooleanKey.ApsAutoIsfShowGraphText
+        )
+        for (pairedAt in listOf(0L, 1L)) {
+            whenever(preferences.get(LongNonKey.NsClientControlPairedAt)).thenReturn(pairedAt)
+            sut.applyCold(NSRunningConfiguration(syncedPrefs = switches.associate { it.key to "false" }))
+        }
+        for (key in switches) {
+            verify(preferences, never()).putRemote(eq(key), any<Boolean>(), any())
+            verify(preferences, never()).put(eq(key), any<Boolean>())
+        }
+    }
+
+    @Test
     fun displaySettingsAreLocalToEachPhone() {
+        assertNull(BooleanKey.ApsAutoIsfShowGraphText.sync)
         assertNull(BooleanKey.ApsAutoIsfShowInsulinTotals.sync)
         assertNull(BooleanKey.ApsAutoIsfShowCarbModelCurve.sync)
         assertNull(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled.sync)
@@ -282,22 +288,22 @@ internal class RunningConfigurationImplTest {
         assertNull(BooleanKey.OverviewUseBolusAdvisor.sync)
     }
 
-    /** A read-only client still follows the master for a shared setting it never changed. */
+    /** Even an untouched setting belongs to this client. */
     @Test
-    fun readOnlyClientFollowsTheMasterForAnUntouchedSetting() {
+    fun readOnlyClientKeepsAnUntouchedSetting() {
         whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
         whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
         sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
-        verify(preferences).putRemote(DoubleKey.AutosensMin, 0.85, 0L)
+        verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
     }
 
     @Test
-    fun applyColdSyncedPrefsAdoptsPluginSettingDoubleViaPutRemote() {
+    fun applyColdDoesNotAdoptPluginSettingDouble() {
         assertEquals(SyncChannel.Cold, DoubleKey.AutosensMin.sync?.channel)
         assertEquals(SyncDirection.Bidirectional, DoubleKey.AutosensMin.sync?.direction)
         whenever(preferences.get(DoubleKey.AutosensMin.key)).thenReturn(DoubleKey.AutosensMin)
         sut.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(DoubleKey.AutosensMin.key to "0.85")))
-        verify(preferences).putRemote(DoubleKey.AutosensMin, 0.85, 0L)
+        verify(preferences, never()).putRemote(eq(DoubleKey.AutosensMin), any<Double>(), any())
     }
 
     /**
@@ -346,6 +352,7 @@ internal class RunningConfigurationImplTest {
 
         assertEquals(PumpType.ACCU_CHEK_COMBO, description.pumpType)
         verify(activePlugin, never()).activePump
+        verify(preferences, never()).put(eq(StringKey.VirtualPumpType), any<String>())
     }
 
     /**

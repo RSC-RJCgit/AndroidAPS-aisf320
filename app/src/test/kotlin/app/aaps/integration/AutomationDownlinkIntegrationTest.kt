@@ -126,14 +126,14 @@ class AutomationDownlinkIntegrationTest : TestBaseWithProfile() {
         )
         runningConfig = RunningConfigurationImpl(
             activePlugin, activeSceneSync, preferences, aapsLogger, config,
-            pumpSync, notificationManager, nsClientRepository, constraintsChecker, dateUtil, mock()
+            pumpSync, nsClientRepository, constraintsChecker, mock()
         )
     }
 
     private fun TestScope.scope() = CoroutineScope(StandardTestDispatcher(testScheduler))
 
     @Test
-    fun masterEditReachesClientRuntimeThroughTheColdDoc() = runTest {
+    fun masterBroadcastDoesNotReplaceClientAutomations() = runTest {
         // MASTER: edit an automation; capture the JSON it persists (what the running-config publisher ships).
         val masterScope = scope()
         masterRuntime.start(masterScope)
@@ -151,13 +151,13 @@ class AutomationDownlinkIntegrationTest : TestBaseWithProfile() {
 
         // The cold doc is built directly here rather than via the master's RunningConfigurationImpl.toJson()
         // (which needs the full plugin graph); the master-side String-key serialization is covered by
-        // RunningConfigurationImplTest, and the apply routing by applyColdSyncedPrefsAdoptsStringColdKeyViaPutRemote.
+        // RunningConfigurationImplTest, and rejection on the client is covered by RunningConfigurationImplTest.
         runningConfig.applyCold(NSRunningConfiguration(syncedPrefs = mapOf(StringNonKey.AutomationEvents.key to coldJson)))
         advanceUntilIdle()
 
-        // The cold-doc apply routed AutomationEvents → putRemote → client self-observe → loadFromSP.
-        assertThat(clientRuntime.events.value.map { it.title }).contains("from-master")
-        // Band-aid: the client re-serializes to the same canonical JSON → no echo write back to the master.
+        // A broadcast is not an authorized command to edit the client.
+        assertThat(clientRuntime.events.value.map { it.title }).doesNotContain("from-master")
+        // No local setting changed, so there is no edit sent back.
         assertThat(clientLocalPutCount).isEqualTo(0)
 
         masterScope.cancel()

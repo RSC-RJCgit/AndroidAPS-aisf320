@@ -2,6 +2,7 @@ package app.aaps.implementation.preference
 
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.keys.BooleanKey
+import org.junit.jupiter.api.Assertions.assertEquals
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -28,6 +29,12 @@ internal class BuildDefaultsResetTest {
         whenever(preferences.get(StringNonKey.DefaultsResetBuild)).thenReturn(doneFor)
         // Every switch already as agreed, unless a test says otherwise
         BuildDefaultsReset.AGREED.forEach { (key, value) -> whenever(preferences.get(key)).thenReturn(value) }
+    }
+
+    @Test
+    fun customAutomationsStayOnInInstallDefaults() {
+        assertThat(BooleanKey.ApsAutoIsfCustomAutomationsEnabled.defaultValue).isTrue()
+        assertEquals(true, BuildDefaultsReset.AGREED[BooleanKey.ApsAutoIsfCustomAutomationsEnabled])
     }
 
     @Test

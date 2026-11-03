@@ -9,8 +9,6 @@ import app.aaps.core.interfaces.configuration.RunningConfigurationKeys
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.PumpSync
@@ -18,12 +16,7 @@ import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.pump.defs.fillFor
 import app.aaps.core.interfaces.scenes.ActiveSceneSnapshot
 import app.aaps.core.interfaces.scenes.ActiveSceneSync
-import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
-import app.aaps.core.keys.LongComposedKey
-import app.aaps.core.keys.LongNonKey
-import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.BooleanNonPreferenceKey
 import app.aaps.core.keys.interfaces.DoubleNonPreferenceKey
@@ -37,7 +30,6 @@ import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.nssdk.localmodel.configuration.NSActiveScene
 import app.aaps.core.nssdk.localmodel.configuration.NSEatReminder
 import app.aaps.core.nssdk.localmodel.configuration.NSRunningConfiguration
-import app.aaps.plugins.configuration.ConfigurationStrings
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
@@ -47,9 +39,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-
-/** How long a paired client keeps its own change of a shared setting before the master's value counts again. */
-private const val LOCAL_EDIT_HOLD_MS = 3 * 60_000L
 
 @ContributesBinding(AppScope::class, binding = binding<RunningConfiguration>())
 @ContributesBinding(AppScope::class, binding = binding<RunningConfigurationKeys>())
@@ -62,10 +51,8 @@ class RunningConfigurationImpl(
     private val aapsLogger: AAPSLogger,
     private val config: Config,
     private val pumpSync: PumpSync,
-    private val notificationManager: NotificationManager,
     private val nsClientRepository: NSClientRepository,
     private val constraintsChecker: ConstraintsChecker,
-    private val dateUtil: DateUtil,
     private val eatReminder: EatReminder
 ) : RunningConfiguration, RunningConfigurationKeys {
 
@@ -163,41 +150,6 @@ class RunningConfigurationImpl(
         }
     }
 
-    // Apply master-published synced prefs on the client. "Master wins": adopt verbatim via putRemote
-    // (which suppresses the client→master echo and floors the modified stamp; the wire carries no
-    // per-key lastModified yet). A later client edit out-stamps it via max(stored+1, now()).
-    /**
-     * `putRemote(key, value, 0L)`: the trailing `0L` is the lastModified stamp. Passing `0L` floors
-     * the stamp to the minimum so any later user edit (stamped with `max(stored+1, now())`) always
-     * out-wins this remotely-adopted value under last-write-wins.
-     */
-    private fun applySyncedPrefs(prefs: Map<String, String>) {
-        val readOnlyClient = preferences.get(BooleanKey.NsClientReadOnlyClient)
-        val paired = preferences.get(LongNonKey.NsClientControlPairedAt) > 0L
-        val now = dateUtil.now()
-        prefs.forEach { (keyString, valueString) ->
-            val key = preferences.get(keyString) ?: return@forEach
-            // 2026-10-21: only keys this app still shares. A master on an older build still publishes a key that is now
-            // local to each device (Graph 5), and taking it switched the client's own choice off again.
-            if (key.sync == null) return@forEach
-            // A client keeps what it changed itself (2026-10-21, per explicit request: iPhone toggles kept switching back).
-            // Read-only or not paired: its edit never reaches the master, so it is kept. Paired: the edit goes to the master
-            // as a signed change, and is kept for [LOCAL_EDIT_HOLD_MS] so a settings doc already on its way cannot undo it;
-            // after that the master's value counts, because these settings change the loop. A key it never changed still
-            // follows the master. Display settings are not shared at all (they have no sync).
-            val localEdit = preferences.get(LongComposedKey.SyncedPrefModified, key.key)
-            if (localEdit > 0L && (readOnlyClient || !paired || now - localEdit < LOCAL_EDIT_HOLD_MS)) return@forEach
-            when (key) {
-                is BooleanNonPreferenceKey -> valueString.toBooleanStrictOrNull()?.let { preferences.putRemote(key, it, 0L) }
-                is StringNonPreferenceKey  -> preferences.putRemote(key, valueString, 0L)
-                is IntNonPreferenceKey     -> valueString.toIntOrNull()?.let { preferences.putRemote(key, it, 0L) }
-                is DoubleNonPreferenceKey  -> valueString.toDoubleOrNull()?.let { preferences.putRemote(key, it, 0L) }
-                is UnitDoublePreferenceKey -> valueString.toDoubleOrNull()?.let { preferences.putRemote(key, it, 0L) }   // raw mg/dl
-                else                       -> aapsLogger.warn(LTag.CORE, "syncedPrefs: unsupported key type for $keyString")
-            }
-        }
-    }
-
     // Runtime state — published to the separate "hot" doc, not the cold config doc.
     override fun hotKeys(): List<NonPreferenceKey> = listOf(StringNonKey.ActiveScene, StringNonKey.EatReminder)
 
@@ -214,12 +166,10 @@ class RunningConfigurationImpl(
             val matches = config.VERSION_NAME.startsWith(it)
             nsClientRepository.addLog("◄ VERSION", "Received AAPS version $it" + if (matches) "" else " (differs from this client)")
         }
-        // APS/Sensitivity/Smoothing/Calibration selection is adopted via the synced ActivePlugin* keys
-        // (applied below in syncedPrefs → ConfigBuilder's key observer performs the switch).
+        // Plugin choices belong to this phone; received configuration does not select plugins.
 
         configuration.pump?.let {
-            if (preferences.get(StringKey.VirtualPumpType) != it) {
-                preferences.put(StringKey.VirtualPumpType, it)
+            if (activePlugin.activePumpInternal.pumpDescription.pumpType != PumpType.getByDescription(it)) {
                 // The driver's own description: through the concentration wrapper it is a copy when the
                 // insulin is not U100, and the change would be lost.
                 activePlugin.activePumpInternal.pumpDescription.fillFor(PumpType.getByDescription(it))
@@ -228,7 +178,7 @@ class RunningConfigurationImpl(
             }
         }
 
-        configuration.syncedPrefs?.let { applySyncedPrefs(it) }
+        // Broadcast settings are status only. They never overwrite this client's preferences.
         // Read-only mirror of the master's active-pump faking flag onto this client's VirtualPump. Applied verbatim
         // (incl. false, so turning it off on the master propagates); null = older master → leave the client flag as-is.
         // activePumpInternal (the real plugin) — NOT activePump, which is a PumpWithConcentration wrapper that isn't a VirtualPump.

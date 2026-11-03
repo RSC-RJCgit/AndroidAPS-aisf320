@@ -108,11 +108,14 @@ class FreshInstallDefaultsTest {
 
     /** A client takes the master-owned ones from its master; it gets only its own */
     @Test
-    fun aClientGetsOnlyTheSettingsItOwns() {
+    fun aClientGetsTheWholePresetWithoutSendingItToTheMaster() {
         forkSetUp(client = true, pumpDrivers = false)
         FreshInstallDefaults.applyForkDefaults(preferences, config)
         verify(preferences, never()).put(DoubleKey.ApsAutoIsfMax, 2.6)
         verify(preferences, never()).put(StringKey.ApsAutoIsfStandardProfileName, "Profile150")
+        verify(preferences).putRemote(DoubleKey.ApsAutoIsfMax, 2.6, 0L)
+        verify(preferences).putRemote(StringKey.ApsAutoIsfStandardProfileName, "Profile150", 0L)
+        verify(preferences).putRemote(BooleanKey.ApsAutoIsfCustomAutomationsEnabled, true, 0L)
         verify(preferences).put(BooleanKey.ApsAutoIsfShowInsulinTotals, true)
     }
 

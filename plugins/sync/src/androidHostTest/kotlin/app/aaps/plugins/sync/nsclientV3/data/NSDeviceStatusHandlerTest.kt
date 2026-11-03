@@ -530,12 +530,12 @@ internal class NSDeviceStatusHandlerTest {
     }
 
     @Test
-    fun readOnlyClientTakesTheApsOfItsMaster() {
+    fun readOnlyClientKeepsItsApsWhenMasterStatusArrives() {
         readOnlyClientWithPlugins()
 
         sut.handleNewData(arrayOf(statusFromMaster("AUTO_ISF")))
 
-        verify(preferences).putRemote(StringNonKey.ActivePluginAps, "OpenAPSAutoISFPlugin", 0L)
+        verify(preferences, never()).putRemote(eq(StringNonKey.ActivePluginAps), any<String>(), any())
     }
 
     @Test

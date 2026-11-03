@@ -15,9 +15,8 @@ import app.aaps.core.keys.interfaces.SyncDirection
  * doses, so the code defaults stay as that phone needs them and [AGREED] is a separate list. Numbers, the Nightscout and
  * pump setup, profiles and the read-only and pairing settings are not touched either.
  *
- * On a client a shared switch is written the way a master's value is, so it is not sent back to the master; the master's
- * next settings document then gives the master's own value again. On a Virtual master it is written as a normal change,
- * so its clients get it.
+ * Client defaults are written locally without sending edits to the master. Broadcast settings do not
+ * overwrite them. A Virtual master stores its own defaults as normal local changes.
  */
 object BuildDefaultsReset {
 
@@ -60,7 +59,7 @@ object BuildDefaultsReset {
         BooleanKey.ApsAutoIsfUamBoostEnabled to true,
         BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled to true,
         BooleanKey.ApsAutoIsfCodedAutomationsEnabled to true,
-        BooleanKey.ApsAutoIsfCustomAutomationsEnabled to false,
+        BooleanKey.ApsAutoIsfCustomAutomationsEnabled to true,
         BooleanKey.AutomationStatesEnabled to true,
         BooleanKey.ApsActivityDetection to false,
         BooleanKey.ApsIgnoreInactivityOvernight to true,

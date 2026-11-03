@@ -6,6 +6,8 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.PS
 import app.aaps.core.interfaces.aps.CodedProfileRoles
+import app.aaps.core.interfaces.aps.APS
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
 import app.aaps.core.data.model.TT
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.profile.ProfileCompareData
@@ -26,6 +28,7 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.singleBlock
@@ -50,6 +53,7 @@ import org.mockito.Mock
 import org.mockito.MockitoAnnotations
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -120,6 +124,30 @@ internal class ProfileManagementViewModelTest {
 
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
+
+    @Test
+    fun assigningCurrentLowAlignsTheTierBeforeWritingTheRole() {
+        val aps = mock<APS>(extraInterfaces = arrayOf(ProfileRoleSynchronizer::class))
+        whenever(activePlugin.activeAPS).thenReturn(aps)
+        val synchronizer = aps as ProfileRoleSynchronizer
+
+        sut.declareRoleForSwitch("Profile80", StringKey.ApsAutoIsfLowProfileName.key)
+
+        inOrder(synchronizer, preferences) {
+            verify(synchronizer).alignEffectiveProfileRoles("Profile80")
+            verify(preferences).put(StringKey.ApsAutoIsfLowProfileName, "Profile80")
+        }
+    }
+
+    @Test
+    fun assigningCurrentStandardAlsoAlignsTheTier() {
+        val aps = mock<APS>(extraInterfaces = arrayOf(ProfileRoleSynchronizer::class))
+        whenever(activePlugin.activeAPS).thenReturn(aps)
+
+        sut.declareRoleForSwitch("Profile130", StringKey.ApsAutoIsfStandardProfileName.key)
+
+        verify(aps as ProfileRoleSynchronizer).alignEffectiveProfileRoles("Profile130")
+    }
 
     @Test
     fun defaultUiStateIsLoadingInEDITModeAndEmpty() {

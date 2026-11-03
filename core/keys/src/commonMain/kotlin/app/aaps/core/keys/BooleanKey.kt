@@ -379,7 +379,7 @@ enum class BooleanKey(
     ),
     ApsAutoIsfCustomAutomationsEnabled(
         "autoisf_custom_automations_enabled",
-        false,
+        true,
         KeysStrings.pref_title_aps_custom_automations,
         KeysStrings.pref_summary_aps_custom_automations,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
@@ -612,8 +612,7 @@ enum class BooleanKey(
         true,
         KeysStrings.pref_title_show_graph_text,
         KeysStrings.pref_summary_show_graph_text,
-        defaultedBySM = true,
-        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+        defaultedBySM = true
     ),
     VirtualShowStepText(
         "virtual_show_step_text",

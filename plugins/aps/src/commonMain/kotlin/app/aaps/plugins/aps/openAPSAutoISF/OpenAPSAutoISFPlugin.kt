@@ -4363,6 +4363,9 @@ open class OpenAPSAutoISFPlugin(
         if (name.isBlank()) return false
         if (profileRepository.profile.value?.getSpecificProfile(name) == null) return false
         if (name.contains("steroid", ignoreCase = true) || name.contains("%")) return false
+        if (roleKey == StringKey.ApsAutoIsfStandardProfileName || roleKey == StringKey.ApsAutoIsfLowProfileName) {
+            alignEffectiveProfileRoles(name)
+        }
         preferences.put(roleKey, name)
         keepSteroidsOff()
         return true

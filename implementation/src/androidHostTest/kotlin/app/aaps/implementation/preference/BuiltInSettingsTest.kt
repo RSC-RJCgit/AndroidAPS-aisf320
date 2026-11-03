@@ -26,6 +26,13 @@ import org.mockito.kotlin.whenever
 /** The fork's built-in settings, applied on a yes (2026-11-01) */
 class BuiltInSettingsTest {
 
+    private val requestedClientSwitches = listOf(
+        BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
+        BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
+        BooleanKey.ApsAutoIsfSmbOffsetOverrideEnabled,
+        BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled
+    )
+
     private val preferences: Preferences = mock()
     private val config: Config = mock()
 
@@ -64,13 +71,13 @@ class BuiltInSettingsTest {
     fun theFiveRequestedSwitchesAreOnWhenTheMasterAccepts() {
         stored()
         // A local Virtual master can already have off values from an earlier install or import.
-        for (key in BuiltInSettings.clientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
+        for (key in requestedClientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
             whenever(preferences.getIfExists(key)).thenReturn(false)
             whenever(preferences.get(key)).thenReturn(false)
         }
         BuiltInSettings.apply(preferences, config, "AAPS")
 
-        for (key in BuiltInSettings.clientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
+        for (key in requestedClientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
             verify(preferences).put(key, true)
         }
     }
@@ -79,13 +86,13 @@ class BuiltInSettingsTest {
     fun theClientSetsTheRequestedSwitchesWithoutSendingThemToTheMaster() {
         stored()
         whenever(config.AAPSCLIENT).thenReturn(true)
-        for (key in BuiltInSettings.clientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
+        for (key in requestedClientSwitches + BooleanKey.ApsAutoIsfAutoCleanGraph) {
             whenever(preferences.getIfExists(key)).thenReturn(false)
             whenever(preferences.get(key)).thenReturn(false)
         }
         BuiltInSettings.apply(preferences, config, "AAPSClient")
 
-        for (key in BuiltInSettings.clientSwitches) {
+        for (key in requestedClientSwitches) {
             verify(preferences).putRemote(key, true, 0L)
             verify(preferences, never()).put(key, true)
         }
@@ -105,15 +112,17 @@ class BuiltInSettingsTest {
         verify(other, never()).put(eq(StringKey.GeneralInstanceName), any<String>())
     }
 
-    /** A client takes the master's settings from its master, so those are not written there */
+    /** A client applies the whole preset locally without sending it to its master. */
     @Test
-    fun aClientSkipsTheMastersSettings() {
+    fun aClientAppliesTheWholePresetLocally() {
         stored()
         whenever(config.AAPSCLIENT).thenReturn(true)
         BuiltInSettings.apply(preferences, config, "AAPSClient")
 
-        // Synced from the master
+        verify(preferences).putRemote(DoubleKey.ApsAutoIsfMax, 2.6, 0L)
         verify(preferences, never()).put(DoubleKey.ApsAutoIsfMax, 2.6)
+        verify(preferences).putRemote(BooleanKey.ApsAutoIsfCustomAutomationsEnabled, true, 0L)
+        verify(preferences, never()).put(BooleanKey.ApsAutoIsfCustomAutomationsEnabled, true)
         // This phone's own
         verify(preferences).put(BooleanNonKey.ObjectivesVirtualPumpBypass, true)
     }

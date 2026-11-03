@@ -1,6 +1,6 @@
 package app.aaps.core.interfaces.aps
 
-/** Called only after a profile has actually become effective, including a timed switch's reversion. */
+/** Aligns current roles after a profile becomes effective or a current role is explicitly assigned. */
 interface ProfileRoleSynchronizer {
     fun alignEffectiveProfileRoles(profileName: String)
 }

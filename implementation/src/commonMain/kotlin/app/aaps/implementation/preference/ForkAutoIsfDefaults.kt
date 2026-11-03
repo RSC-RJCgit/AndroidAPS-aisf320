@@ -12,51 +12,57 @@ import app.aaps.core.keys.interfaces.Preferences
  * Virtual-pump master starts set up without a settings file. Taken from the Windows virtual master's own settings on
  * 1 Nov 2026 (its AutoISF_settings export). No addresses, tokens or other secrets, and nothing pump-specific.
  *
- * Applied by [FreshInstallDefaults] only: once, on a new install, and only where nothing is stored. A value changed later
+ * Applied on a fresh install, or when built-in settings are accepted. Client writes stay local. A value changed later
  * is stored and kept, and a settings import still brings the file's values.
  */
 internal sealed class ForkDefault {
 
-    /** Owned by the master on a client: a client takes these from its master, so they are not written there */
-    abstract val synced: Boolean
-
     abstract fun isStored(preferences: Preferences): Boolean
-    abstract fun write(preferences: Preferences)
+    abstract fun write(preferences: Preferences, localOnly: Boolean = false)
 
     class Bool(private val key: BooleanKey, private val value: Boolean) : ForkDefault() {
 
-        override val synced get() = key.sync != null
         override fun isStored(preferences: Preferences) = preferences.getIfExists(key) != null
-        override fun write(preferences: Preferences) = preferences.put(key, value)
+        override fun write(preferences: Preferences, localOnly: Boolean) {
+            if (localOnly && key.sync != null) preferences.putRemote(key, value, 0L)
+            else preferences.put(key, value)
+        }
     }
 
     class Dbl(private val key: DoubleKey, private val value: Double) : ForkDefault() {
 
-        override val synced get() = key.sync != null
         override fun isStored(preferences: Preferences) = preferences.getIfExists(key) != null
-        override fun write(preferences: Preferences) = preferences.put(key, value)
+        override fun write(preferences: Preferences, localOnly: Boolean) {
+            if (localOnly && key.sync != null) preferences.putRemote(key, value, 0L)
+            else preferences.put(key, value)
+        }
     }
 
     class Whole(private val key: IntKey, private val value: Int) : ForkDefault() {
 
-        override val synced get() = key.sync != null
         override fun isStored(preferences: Preferences) = preferences.getIfExists(key) != null
-        override fun write(preferences: Preferences) = preferences.put(key, value)
+        override fun write(preferences: Preferences, localOnly: Boolean) {
+            if (localOnly && key.sync != null) preferences.putRemote(key, value, 0L)
+            else preferences.put(key, value)
+        }
     }
 
     /** A setting kept on this phone only, never synced (2026-11-01: the objectives bypass) */
     class NonBool(private val key: BooleanNonKey, private val value: Boolean) : ForkDefault() {
 
-        override val synced get() = false
         override fun isStored(preferences: Preferences) = preferences.getIfExists(key) != null
-        override fun write(preferences: Preferences) = preferences.put(key, value)
+        override fun write(preferences: Preferences, localOnly: Boolean) {
+            preferences.put(key, value)
+        }
     }
 
     class Str(private val key: StringKey, private val value: String) : ForkDefault() {
 
-        override val synced get() = key.sync != null
         override fun isStored(preferences: Preferences) = preferences.getIfExists(key) != null
-        override fun write(preferences: Preferences) = preferences.put(key, value)
+        override fun write(preferences: Preferences, localOnly: Boolean) {
+            if (localOnly && key.sync != null) preferences.putRemote(key, value, 0L)
+            else preferences.put(key, value)
+        }
     }
 }
 

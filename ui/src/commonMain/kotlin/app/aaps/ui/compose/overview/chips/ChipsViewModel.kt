@@ -14,6 +14,7 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -675,6 +676,9 @@ class ChipsViewModel(
             }
             viewModelScope.launch { sendSetRoleNote(role.key, name) }
             return ""
+        }
+        if (role.key == StringKey.ApsAutoIsfStandardProfileName || role.key == StringKey.ApsAutoIsfLowProfileName) {
+            (activePlugin.activeAPS as? ProfileRoleSynchronizer)?.alignEffectiveProfileRoles(name)
         }
         preferences.put(role.key, name)
         list1Generation++
