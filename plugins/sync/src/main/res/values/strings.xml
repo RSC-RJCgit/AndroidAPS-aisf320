@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="ns_simulator_bg_replay_title">Replay secondary BG from 48 hours ago</string>
-    <string name="ns_simulator_bg_replay_summary">Simulator sites only. Requires legacy NSClient selected, NSClientV3 disabled, and Virtual pump. Upload one secondary-site reading at a time through v1, shifted forward by 48 hours. Fresh v3 BG pauses replay for 10 minutes before another check. While enabled, only replay BG is uploaded to the main site; simulated treatments, profiles and device status stay local and are not queued for later upload.</string>
-    <string name="ns_simulator_bg_replay_active">Simulator BG replay is ON. Secondary-site values from 48 hours ago are uploaded with current replay timestamps. Turn replay OFF when normal uploads return.</string>
+    <string name="ns_simulator_bg_replay_title">Replay secondary BG from 48 hours ago (72 if none)</string>
+    <string name="ns_simulator_bg_replay_summary">Simulator sites only. Requires legacy NSClient selected, NSClientV3 disabled, and Virtual pump. Upload one secondary-site reading at a time through v1, shifted forward by 48 hours. If there is no 48-hour reading and no main-site BG for 15 minutes, it switches to 72 hours, including full-sync recovery, and stays on 72 until replay is turned off. Fresh v3 BG pauses replay for 10 minutes before another check. While enabled, only replay BG is uploaded to the main site; simulated treatments, profiles and device status stay local and are not queued for later upload.</string>
+    <string name="ns_simulator_bg_replay_active">Simulator BG replay is ON. Secondary-site values from 48 hours ago (or 72, once switched) are uploaded with current replay timestamps. Turn replay OFF when normal uploads return.</string>
     <string name="ns_simulator_bg_replay_paused">Normal v3 BG resumed. Simulator replay is paused for 10 minutes and will check again. Turn replay OFF when it is no longer needed.</string>
     <!-- AAPSClient -->
     <string name="ns_cellular">Use Cellular connection</string>

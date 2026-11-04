@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.30.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.31.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -61,13 +61,21 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .30, 2026-11-03)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .31, 2026-11-04)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.30.patch
-  git apply bolus-calculator-on-3426-aisf321.30.patch
+  git apply --check bolus-calculator-on-3426-aisf321.31.patch
+  git apply bolus-calculator-on-3426-aisf321.31.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .31 (2026-11-04):
+- Refreshes the bolus calculator and QuickWizard sources from the current v3 checkout (aisf321UK_1282-1285).
+- "Use split boluses for FPU" chooses per calculation (and per QuickWizard button) between the Warsaw split FPU doses
+  and the original eCarbs approach. With it off, fat and protein add no insulin and QuickWizard eCarbs work as before.
+- The FPU dose spacing is now any value from 30 to 60 minutes (was a 30/60 checkbox). The total is the same either way.
+- Auto fat/protein from carbs can be unticked to stop carbs overwriting the boxes.
+- QuickWizard split-bolus defaults read the AutoISF split-bolus settings.
 
 Changes in patch .30 (2026-11-03):
 - Refreshes the bolus calculator sources from the current v3 checkout.

@@ -10,6 +10,8 @@ enum class LongNonKey(
 
     LastDelayedBolusDeliveredAt("last_delayed_bolus_delivered_at", 0L, exportable = false),
     NsClientSimulatorBgReplayPauseUntil("nsclient_simulator_bg_replay_pause_until", 0L, exportable = false),
+    // When replay switched from 48 to 72 hours (0 = still 48). Stays on 72 until replay is turned off.
+    NsClientSimulatorBgReplayLongDelaySince("nsclient_simulator_bg_replay_long_delay_since", 0L, exportable = false),
     LastLoRebAppliedAt("last_loreb_applied_at", 0L, exportable = false),
     LastHiBrkTwilightTtAt("last_hibrk_twilight_tt_at", 0L, exportable = false),
 

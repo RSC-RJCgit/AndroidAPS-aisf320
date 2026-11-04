@@ -57,10 +57,17 @@ class SimulatorBgReplay @Inject constructor(
     fun requestFullSync() {
         if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay)) return
         fullSyncRequested = true
-        log("Full sync queued: recover missing replay BG for the last 48 hours")
+        log("Full sync queued: recover missing replay BG for the last 48 hours, from ${delayHours()} hours earlier")
     }
 
     fun start() { stopped = false }
+
+    // 48 hours, or 72 once the 48-hour source ran dry (2026-11-05, per explicit request: travel across time zones
+    // leaves the 48-hour source empty at unexpected times). Sticky: no return to 48 until replay is turned off,
+    // and full-sync recovery uses the same shift.
+    private fun longDelay(): Boolean = preferences.get(LongNonKey.NsClientSimulatorBgReplayLongDelaySince) > 0L
+    private fun delayMs(): Long = if (longDelay()) LONG_DELAY_MS else DELAY_MS
+    private fun delayHours(): Long = delayMs() / (60 * 60_000L)
 
     fun stop() {
         stopped = true
@@ -101,7 +108,7 @@ class SimulatorBgReplay @Inject constructor(
         }
         if (fullSyncRequested) {
             val now = dateUtil.now()
-            recovery = Recovery(now - DELAY_MS, now,
+            recovery = Recovery(now - RECOVERY_SPAN_MS, now,
                 preferences.get(StringKey.NsClientUrl).trim().trimEnd('/'),
                 preferences.get(StringKey.NsClientSecondaryUrl).trim().trimEnd('/'))
             fullSyncRequested = false
@@ -129,6 +136,7 @@ class SimulatorBgReplay @Inject constructor(
     private fun runWindow(recoveryFrom: Long? = null, recoveryTo: Long? = null): Boolean {
         if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay)) {
             preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, 0L)
+            preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelaySince, 0L)
             if (lastWarning != null) rxBus.send(EventDismissNotification(Notification.NSCLIENT_SIMULATOR_BG_REPLAY))
             lastWarning = null
             return false
@@ -156,7 +164,8 @@ class SimulatorBgReplay @Inject constructor(
             val hash = MessageDigest.getInstance("SHA-1").digest(secret.toByteArray(Charsets.UTF_8))
                 .joinToString("") { "%02x".format(it.toInt() and 255) }
             stage = "checking main site"
-            val recentTarget = entries(primary, now - PAUSE_MS, now, 1000, hash = hash)
+            // Read back GAP_MS (15 min): the 10-minute pause check below filters its own range.
+            val recentTarget = entries(primary, now - GAP_MS, now, 1000, hash = hash)
             val target = if (recoveryFrom != null && recoveryTo != null)
                 entries(primary, recoveryFrom, recoveryTo, 1000, hash = hash) else recentTarget
             check(target.size < 1000) { "Replay window exceeds query limit" }
@@ -176,10 +185,12 @@ class SimulatorBgReplay @Inject constructor(
                 return false
             }
             preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, 0L)
-            val due = now - DELAY_MS
-            stage = "reading secondary site 48 hours ago"
-            val from = recoveryFrom?.minus(DELAY_MS) ?: (due - SAMPLE_WINDOW_MS + 1)
-            val to = recoveryTo?.minus(DELAY_MS) ?: due
+            val delay = delayMs()
+            val hours = delay / (60 * 60_000L)
+            val due = now - delay
+            stage = "reading secondary site $hours hours ago"
+            val from = recoveryFrom?.minus(delay) ?: (due - SAMPLE_WINDOW_MS + 1)
+            val to = recoveryTo?.minus(delay) ?: due
             val fetched = entries(secondary, from, to, 1000, token = token)
             check(fetched.size < 1000) { "Replay window exceeds query limit" }
             val valid = fetched.filter { it.optBoolean("isValid", true) &&
@@ -187,12 +198,20 @@ class SimulatorBgReplay @Inject constructor(
             val sources = if (recoveryFrom == null) listOfNotNull(valid.maxByOrNull { it.optLong("date", 0L) })
                 else valid.distinctBy { it.optLong("date", 0L) }.sortedBy { it.optLong("date", 0L) }
             if (sources.isEmpty()) {
+                // Live tick only: no 48-hour reading and no BG on the main site for 15 minutes -> switch to 72 hours.
+                if (recoveryFrom == null && !longDelay() &&
+                    recentTarget.none { it.optBoolean("isValid", true) && it.optLong("date", 0L) in (now - GAP_MS + 1)..now }) {
+                    preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelaySince, now)
+                    log("No secondary BG from 48 hours ago and no main-site BG for 15 minutes; switched to 72 hours until replay is turned off")
+                    logger.debug(LTag.NSCLIENT, "Simulator BG replay: switched to 72-hour delay")
+                    return runWindow()
+                }
                 log("No secondary BG between ${dateUtil.toISOString(from)} and ${dateUtil.toISOString(to)}; no substitute reading generated")
                 return true
             }
             var uploaded = 0
             for (source in sources) {
-                val at = source.getLong("date") + DELAY_MS
+                val at = source.getLong("date") + delay
                 if (!eligible() || !preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
                     !preferences.get(BooleanKey.NsClientSecondaryEnabled) ||
                     preferences.get(StringKey.NsClientUrl).trim().trimEnd('/') != primary ||
@@ -221,7 +240,7 @@ class SimulatorBgReplay @Inject constructor(
                         emptyList(), null
                     ).blockingGet()
                     lastStoredAt = at
-                    if (recoveryFrom == null) log("Secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")}: source ${dateUtil.toISOString(source.getLong("date"))}, replay ${dateUtil.toISOString(at)} (+48 hours); saved locally")
+                    if (recoveryFrom == null) log("Secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")}: source ${dateUtil.toISOString(source.getLong("date"))}, replay ${dateUtil.toISOString(at)} (+$hours hours); saved locally")
                 }
                 if (target.any { it.optLong("date", 0L) == at }) {
                     if (recoveryFrom == null) log("Replay timestamp already present on main site; upload skipped")
@@ -242,7 +261,7 @@ class SimulatorBgReplay @Inject constructor(
                 request(primary + "/api/v1/entries.json", hash, JSONArray().put(entry).toString())
                 uploaded++
                 if (recoveryFrom == null) log("One replay BG uploaded to main Nightscout using v1")
-                logger.debug(LTag.NSCLIENT, "Simulator BG replay: one secondary reading from 48 hours ago uploaded as v1")
+                logger.debug(LTag.NSCLIENT, "Simulator BG replay: one secondary reading from $hours hours ago uploaded as v1")
             }
             if (recoveryFrom != null) log("Replay recovery window: ${sources.size} source readings, $uploaded missing readings uploaded")
             return true
@@ -312,6 +331,9 @@ class SimulatorBgReplay @Inject constructor(
 
     private companion object {
         const val DELAY_MS = 48 * 60 * 60_000L
+        const val LONG_DELAY_MS = 72 * 60 * 60_000L
+        const val GAP_MS = 15 * 60_000L
+        const val RECOVERY_SPAN_MS = 48 * 60 * 60_000L
         const val SAMPLE_WINDOW_MS = 5 * 60_000L
         const val PAUSE_MS = 10 * 60_000L
         const val RECOVERY_WINDOW_MS = 6 * 60 * 60_000L
