@@ -30,6 +30,15 @@ enum class BooleanNonKey(
     // Wizard toggle states (persisted across restarts, not user-facing preferences)
     WizardIncludeCob("wizard_include_cob", false),
     WizardIncludeTrend("wizard_include_trend_bg", false),
+    // Bolus calculator ticks remembered from the last confirmed meal calculation (2026-11-05, per explicit request: the
+    // simple screen uses the detailed screen's last settings). Auto fat/protein, Unreliable SMBs and Small meal are saved
+    // to the Overview "Bolus calculator defaults" settings instead.
+    WizardIncludeBg("wizard_include_bg", true),
+    WizardIncludeTt("wizard_include_tt", true),
+    WizardIncludeIob("wizard_include_iob", true),
+    WizardSplitFpuBolus("wizard_split_fpu_bolus", true),
+    WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", true),
+    WizardGiveRestLater("wizard_give_rest_later", true),
 
     // Set once the read-only client defaults (bolus calculator, NSClient BG) were added to the toolbar (2026-10-16)
     QuickLaunchReadOnlyDefaultsAdded("quick_launch_read_only_defaults_added", false),

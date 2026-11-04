@@ -20,7 +20,14 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import app.aaps.core.ui.compose.AapsTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -185,6 +192,9 @@ fun QuickWizardEditor(
     modifier: Modifier = Modifier
 ) {
     LocalDateUtil.current
+    // Simple screen first, every time (2026-11-05, per explicit request): name, mode, carbs or insulin, meal type, Split
+    // FPU, Walking soon and Auto fat/protein. The hidden settings keep the button's saved values.
+    var detailed by rememberSaveable { mutableStateOf(false) }
     Column(
         modifier = modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -241,7 +251,10 @@ fun QuickWizardEditor(
                 step = 0.05,
                 decimalPlaces = 2,
                 unitLabel = CoreUiStrings.insulin_unit_shortname,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(2.dp, AapsTheme.elementColors.insulin, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             )
         }
 
@@ -280,341 +293,354 @@ fun QuickWizardEditor(
                 valueRange = 0.0..maxCarbs,
                 step = 1.0,
                 unitLabel = CoreUiStrings.units_grams,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(2.dp, AapsTheme.elementColors.carbs, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             )
         }
 
         if (mode == QuickWizardMode.WIZARD) {
-            // 2026-10-22, per explicit request: with automatic fat/protein or unreliable SMB ticked, the boxes show the grams
-            // the button will use (the same mealExtra as QuickWizardEntry at run time), greyed out because a typed value is
-            // not used then. Unticked, they show the typed values again. Only the display changes, not what is saved.
-            val autoExtra = splitFpuBolus && autoFpu
-            val shownExtra = mealExtra(
-                fpuInstead = splitFpuBolus && autoFpu,
-                unreliableSmb = splitFpuBolus && autoFpu && unreliableSmb,
-                carbs = carbs,
-                typedFat = fat,
-                typedProtein = protein,
-                percentage = 100,
-                extendedCarbPercent = carbsType.eCarbsPercent,
-                smallMeal = smallMeal,
-            )
-            NumberInputRow(
-                labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
-                // 2026-10-23, per explicit request: a button without its own max bolus (0) uses the max bolus setting when
-                // it runs, so the box shows that setting instead of staying empty. It is stored only when changed here.
-                value = if (maxBolus < 0.1) savedMaxBolus else maxBolus,
-                onValueChange = onMaxBolusChange,
-                valueRange = 0.0..60.0,
-                step = 0.1,
-                decimalPlaces = 2,
-                unitLabel = CoreUiStrings.insulin_unit_shortname,
-                modifier = Modifier.fillMaxWidth()
-            )
-            NumberInputRow(
-                labelRef = InterfacesStrings.wizard_protein,
-                value = shownExtra.proteinGrams.toDouble(),
-                onValueChange = { onProteinChange(it.toInt()) },
-                valueRange = 0.0..250.0,
-                step = 1.0,
-                unitLabel = CoreUiStrings.units_grams,
-                enabled = !autoExtra,
-                modifier = Modifier.fillMaxWidth()
-            )
-            NumberInputRow(
-                labelRef = InterfacesStrings.wizard_fat,
-                value = shownExtra.fatGrams.toDouble(),
-                onValueChange = { onFatChange(it.toInt()) },
-                valueRange = 0.0..250.0,
-                step = 1.0,
-                unitLabel = CoreUiStrings.units_grams,
-                enabled = !autoExtra,
-                modifier = Modifier.fillMaxWidth()
-            )
-            NumberInputRow(
-                labelRef = InterfacesStrings.wizard_fpu_duration,
-                value = warsawDurationHours,
-                onValueChange = onWarsawDurationChange,
-                valueRange = 0.0..24.0,
-                step = 0.5,
-                decimalPlaces = 1,
-                unitLabel = CoreUiStrings.units_hours,
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (splitFpuBolus) {
+            // Meal type, as in the Bolus Wizard (2026-10-22): cake and pizza give part of the carbs later as extended carbs
+            CarbsTypeSelector(selected = carbsType, onChange = onCarbsTypeChange, modifier = Modifier.fillMaxWidth())
+        }
+        SwitchRow(
+            label = stringResource(UiStrings.wizard_detailed_settings),
+            checked = detailed,
+            onCheckedChange = { detailed = it }
+        )
+
+        if (detailed) {
+            if (mode == QuickWizardMode.WIZARD) {
+                // 2026-10-22, per explicit request: with automatic fat/protein or unreliable SMB ticked, the boxes show the grams
+                // the button will use (the same mealExtra as QuickWizardEntry at run time), greyed out because a typed value is
+                // not used then. Unticked, they show the typed values again. Only the display changes, not what is saved.
+                val autoExtra = splitFpuBolus && autoFpu
+                val shownExtra = mealExtra(
+                    fpuInstead = splitFpuBolus && autoFpu,
+                    unreliableSmb = splitFpuBolus && autoFpu && unreliableSmb,
+                    carbs = carbs,
+                    typedFat = fat,
+                    typedProtein = protein,
+                    percentage = 100,
+                    extendedCarbPercent = carbsType.eCarbsPercent,
+                    smallMeal = smallMeal,
+                )
                 NumberInputRow(
-                    labelRef = UiStrings.wizard_fpu_interval,
-                    value = fpuIntervalMinutes.toDouble(),
-                    onValueChange = { onFpuIntervalChange(it.toInt()) },
-                    valueRange = 30.0..60.0,
+                    labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
+                    // 2026-10-23, per explicit request: a button without its own max bolus (0) uses the max bolus setting when
+                    // it runs, so the box shows that setting instead of staying empty. It is stored only when changed here.
+                    value = if (maxBolus < 0.1) savedMaxBolus else maxBolus,
+                    onValueChange = onMaxBolusChange,
+                    valueRange = 0.0..60.0,
+                    step = 0.1,
+                    decimalPlaces = 2,
+                    unitLabel = CoreUiStrings.insulin_unit_shortname,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                NumberInputRow(
+                    labelRef = InterfacesStrings.wizard_protein,
+                    value = shownExtra.proteinGrams.toDouble(),
+                    onValueChange = { onProteinChange(it.toInt()) },
+                    valueRange = 0.0..250.0,
                     step = 1.0,
+                    unitLabel = CoreUiStrings.units_grams,
+                    enabled = !autoExtra,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                NumberInputRow(
+                    labelRef = InterfacesStrings.wizard_fat,
+                    value = shownExtra.fatGrams.toDouble(),
+                    onValueChange = { onFatChange(it.toInt()) },
+                    valueRange = 0.0..250.0,
+                    step = 1.0,
+                    unitLabel = CoreUiStrings.units_grams,
+                    enabled = !autoExtra,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                NumberInputRow(
+                    labelRef = InterfacesStrings.wizard_fpu_duration,
+                    value = warsawDurationHours,
+                    onValueChange = onWarsawDurationChange,
+                    valueRange = 0.0..24.0,
+                    step = 0.5,
+                    decimalPlaces = 1,
+                    unitLabel = CoreUiStrings.units_hours,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (splitFpuBolus) {
+                    NumberInputRow(
+                        labelRef = UiStrings.wizard_fpu_interval,
+                        value = fpuIntervalMinutes.toDouble(),
+                        onValueChange = { onFpuIntervalChange(it.toInt()) },
+                        valueRange = 30.0..60.0,
+                        step = 1.0,
+                        unitLabel = CoreUiStrings.units_min,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+            }
+
+            // Carb Time (WIZARD mode only)
+            if (mode == QuickWizardMode.WIZARD) {
+                NumberInputRow(
+                    labelRef = UiStrings.carb_time,
+                    value = carbTime.toDouble(),
+                    onValueChange = { onCarbTimeChange(it.toInt()) },
+                    valueRange = -60.0..60.0,
+                    step = 5.0,
                     unitLabel = CoreUiStrings.units_min,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-        }
-
-        // Carb Time (WIZARD mode only)
-        if (mode == QuickWizardMode.WIZARD) {
-            NumberInputRow(
-                labelRef = UiStrings.carb_time,
-                value = carbTime.toDouble(),
-                onValueChange = { onCarbTimeChange(it.toInt()) },
-                valueRange = -60.0..60.0,
-                step = 5.0,
-                unitLabel = CoreUiStrings.units_min,
+            // Valid Time Range
+            TimeRangePicker(
+                label = stringResource(UiStrings.valid_from_to),
+                startSeconds = validFrom,
+                endSeconds = validTo,
+                onStartChange = onValidFromChange,
+                onEndChange = onValidToChange,
                 modifier = Modifier.fillMaxWidth()
             )
-        }
 
-        // Valid Time Range
-        TimeRangePicker(
-            label = stringResource(UiStrings.valid_from_to),
-            startSeconds = validFrom,
-            endSeconds = validTo,
-            onStartChange = onValidFromChange,
-            onEndChange = onValidToChange,
-            modifier = Modifier.fillMaxWidth()
-        )
+            // Calculator Options (WIZARD mode only)
+            if (mode == QuickWizardMode.WIZARD) {
+                HorizontalDivider()
 
-        // Calculator Options (WIZARD mode only)
-        if (mode == QuickWizardMode.WIZARD) {
-            HorizontalDivider()
-
-            // Calculator Options Section
-            Text(
-                text = stringResource(UiStrings.calculator_options),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            // Use BG
-            SwitchRow(
-                label = stringResource(UiStrings.use_bg),
-                checked = useBG,
-                onCheckedChange = onUseBGChange
-            )
-
-            // Use COB
-            SwitchRow(
-                label = stringResource(UiStrings.use_cob),
-                checked = useCOB,
-                onCheckedChange = onUseCOBChange
-            )
-
-            // Use IOB
-            SwitchRow(
-                label = stringResource(UiStrings.use_iob),
-                checked = useIOB,
-                onCheckedChange = onUseIOBChange
-            )
-
-            // Use Positive IOB Only (only visible when IOB enabled)
-            if (useIOB) {
-                SwitchRow(
-                    label = stringResource(UiStrings.overview_edit_quickwizard_use_positive_iob_only),
-                    checked = usePositiveIOBOnly,
-                    onCheckedChange = onUsePositiveIOBOnlyChange,
-                    modifier = Modifier.padding(start = 16.dp)
+                // Calculator Options Section
+                Text(
+                    text = stringResource(UiStrings.calculator_options),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
                 )
-            }
 
-            // Use Trend
-            Column(modifier = Modifier.fillMaxWidth()) {
+                // Use BG
                 SwitchRow(
-                    label = stringResource(UiStrings.use_trend),
-                    checked = useTrend != TrendOption.NO,
-                    onCheckedChange = { enabled ->
-                        onUseTrendChange(if (enabled) TrendOption.YES else TrendOption.NO)
-                    }
+                    label = stringResource(UiStrings.use_bg),
+                    checked = useBG,
+                    onCheckedChange = onUseBGChange
                 )
-                // Trend options (only visible when trend enabled)
-                if (useTrend != TrendOption.NO) {
-                    Column(modifier = Modifier.padding(start = 16.dp, top = 8.dp)) {
-                        TrendRadioButton(
-                            label = stringResource(UiStrings.trend_all),
-                            selected = useTrend == TrendOption.YES,
-                            onClick = { onUseTrendChange(TrendOption.YES) }
-                        )
-                        TrendRadioButton(
-                            label = stringResource(UiStrings.trend_positive_only),
-                            selected = useTrend == TrendOption.POSITIVE_ONLY,
-                            onClick = { onUseTrendChange(TrendOption.POSITIVE_ONLY) }
-                        )
-                        TrendRadioButton(
-                            label = stringResource(UiStrings.trend_negative_only),
-                            selected = useTrend == TrendOption.NEGATIVE_ONLY,
-                            onClick = { onUseTrendChange(TrendOption.NEGATIVE_ONLY) }
-                        )
+
+                // Use COB
+                SwitchRow(
+                    label = stringResource(UiStrings.use_cob),
+                    checked = useCOB,
+                    onCheckedChange = onUseCOBChange
+                )
+
+                // Use IOB
+                SwitchRow(
+                    label = stringResource(UiStrings.use_iob),
+                    checked = useIOB,
+                    onCheckedChange = onUseIOBChange
+                )
+
+                // Use Positive IOB Only (only visible when IOB enabled)
+                if (useIOB) {
+                    SwitchRow(
+                        label = stringResource(UiStrings.overview_edit_quickwizard_use_positive_iob_only),
+                        checked = usePositiveIOBOnly,
+                        onCheckedChange = onUsePositiveIOBOnlyChange,
+                        modifier = Modifier.padding(start = 16.dp)
+                    )
+                }
+
+                // Use Trend
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SwitchRow(
+                        label = stringResource(UiStrings.use_trend),
+                        checked = useTrend != TrendOption.NO,
+                        onCheckedChange = { enabled ->
+                            onUseTrendChange(if (enabled) TrendOption.YES else TrendOption.NO)
+                        }
+                    )
+                    // Trend options (only visible when trend enabled)
+                    if (useTrend != TrendOption.NO) {
+                        Column(modifier = Modifier.padding(start = 16.dp, top = 8.dp)) {
+                            TrendRadioButton(
+                                label = stringResource(UiStrings.trend_all),
+                                selected = useTrend == TrendOption.YES,
+                                onClick = { onUseTrendChange(TrendOption.YES) }
+                            )
+                            TrendRadioButton(
+                                label = stringResource(UiStrings.trend_positive_only),
+                                selected = useTrend == TrendOption.POSITIVE_ONLY,
+                                onClick = { onUseTrendChange(TrendOption.POSITIVE_ONLY) }
+                            )
+                            TrendRadioButton(
+                                label = stringResource(UiStrings.trend_negative_only),
+                                selected = useTrend == TrendOption.NEGATIVE_ONLY,
+                                onClick = { onUseTrendChange(TrendOption.NEGATIVE_ONLY) }
+                            )
+                        }
                     }
                 }
-            }
 
-            // Use Super Bolus (only if enabled in preferences)
-            if (showSuperBolusOption) {
+                // Use Super Bolus (only if enabled in preferences)
+                if (showSuperBolusOption) {
+                    SwitchRow(
+                        label = stringResource(UiStrings.overview_edit_quickwizard_superbolus),
+                        checked = useSuperBolus,
+                        onCheckedChange = onUseSuperBolusChange
+                    )
+                }
+
+                // Use Temp Target
                 SwitchRow(
-                    label = stringResource(UiStrings.overview_edit_quickwizard_superbolus),
-                    checked = useSuperBolus,
-                    onCheckedChange = onUseSuperBolusChange
+                    label = stringResource(UiStrings.use_temp_target),
+                    checked = useTempTarget,
+                    onCheckedChange = onUseTempTargetChange
                 )
-            }
 
-            // Use Temp Target
-            SwitchRow(
-                label = stringResource(UiStrings.use_temp_target),
-                checked = useTempTarget,
-                onCheckedChange = onUseTempTargetChange
-            )
-
-            // Alarm
-            SwitchRow(
-                label = stringResource(UiStrings.use_alarm),
-                checked = useAlarm,
-                onCheckedChange = onUseAlarmChange,
-                icon = Icons.Default.Alarm
-            )
-
-            // The Bolus Wizard's own options (2026-10-21, per explicit request), so this button gives the wizard's dose
-            SwitchRow(
-                label = stringResource(UiStrings.wizard_unreliable_smb),
-                checked = unreliableSmb,
-                onCheckedChange = onUnreliableSmbChange
-            )
-            SwitchRow(
-                label = stringResource(UiStrings.wizard_small_meal),
-                checked = smallMeal,
-                onCheckedChange = onSmallMealChange
-            )
-            // Meal type, as in the Bolus Wizard (2026-10-22): cake and pizza give part of the carbs later as extended carbs
-            CarbsTypeSelector(selected = carbsType, onChange = onCarbsTypeChange, modifier = Modifier.fillMaxWidth())
-            SwitchRow(
-                label = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel),
-                checked = retryFpuLater,
-                onCheckedChange = onRetryFpuLaterChange
-            )
-            SwitchRow(
-                label = stringResource(UiStrings.wizard_give_rest_later),
-                checked = giveRestLater,
-                onCheckedChange = onGiveRestLaterChange
-            )
-            SwitchRow(
-                label = stringResource(UiStrings.wizard_split_over_max),
-                checked = splitOverMax,
-                onCheckedChange = onSplitOverMaxChange
-            )
-            if (splitOverMax) {
-                NumberInputRow(
-                    labelRef = UiStrings.wizard_split_interval,
-                    value = splitIntervalMinutes.toDouble(),
-                    onValueChange = { onSplitIntervalMinutesChange(it.toInt()) },
-                    valueRange = 1.0..60.0,
-                    step = 1.0,
-                    unitLabel = CoreUiStrings.units_min,
-                    modifier = Modifier.fillMaxWidth().padding(start = 16.dp)
+                // Alarm
+                SwitchRow(
+                    label = stringResource(UiStrings.use_alarm),
+                    checked = useAlarm,
+                    onCheckedChange = onUseAlarmChange,
+                    icon = Icons.Default.Alarm
                 )
-            }
-            NumberInputRow(
-                labelRef = CoreUiStrings.wizard_correction,
-                value = directCorrection,
-                onValueChange = onDirectCorrectionChange,
-                valueRange = -maxInsulin..maxInsulin,
-                step = 0.05,
-                decimalPlaces = 2,
-                unitLabel = CoreUiStrings.insulin_unit_shortname,
-                modifier = Modifier.fillMaxWidth()
-            )
 
-            HorizontalDivider()
-
-            // Percentage
-            NumberInputRow(
-                labelRef = IntKey.OverviewBolusPercentage.title,
-                value = percentage.toDouble(),
-                onValueChange = { onPercentageChange(it.toInt()) },
-                valueRange = Constants.WIZARD_PERCENTAGE_RANGE,
-                step = 5.0,
-                unitLabel = CoreUiStrings.units_percent,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-        } // end WIZARD-only section
-
-        // Device Selection (only if wear control enabled)
-        if (showWearOptions) {
-            HorizontalDivider()
-            Text(
-                text = stringResource(UiStrings.device_selection),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            SwitchRow(
-                label = stringResource(UiStrings.show_on_phone),
-                checked = devicePhone,
-                onCheckedChange = onDevicePhoneChange,
-                icon = Icons.Default.PhoneAndroid
-            )
-
-            SwitchRow(
-                label = stringResource(UiStrings.show_on_watch),
-                checked = deviceWatch,
-                onCheckedChange = onDeviceWatchChange,
-                icon = Icons.Default.Watch
-            )
-        }
-
-        // Extended carbs are a separate mode. Keep stored values when the controls are hidden.
-        if (mode != QuickWizardMode.INSULIN && !(mode == QuickWizardMode.WIZARD && splitFpuBolus)) {
-            HorizontalDivider()
-            SwitchRow(
-                label = stringResource(UiStrings.additional_ecarbs),
-                checked = useEcarbs,
-                onCheckedChange = onUseEcarbsChange
-            )
-
-            if (useEcarbs) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Time offset
+                // The Bolus Wizard's own options (2026-10-21, per explicit request), so this button gives the wizard's dose
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_unreliable_smb),
+                    checked = unreliableSmb,
+                    onCheckedChange = onUnreliableSmbChange
+                )
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_small_meal),
+                    checked = smallMeal,
+                    onCheckedChange = onSmallMealChange
+                )
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel),
+                    checked = retryFpuLater,
+                    onCheckedChange = onRetryFpuLaterChange
+                )
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_give_rest_later),
+                    checked = giveRestLater,
+                    onCheckedChange = onGiveRestLaterChange
+                )
+                SwitchRow(
+                    label = stringResource(UiStrings.wizard_split_over_max),
+                    checked = splitOverMax,
+                    onCheckedChange = onSplitOverMaxChange
+                )
+                if (splitOverMax) {
                     NumberInputRow(
-                        labelRef = UiStrings.time_offset,
-                        value = time.toDouble(),
-                        onValueChange = { onTimeChange(it.toInt()) },
-                        valueRange = (-7 * 24 * 60).toDouble()..(12 * 60).toDouble(),
-                        step = 5.0,
+                        labelRef = UiStrings.wizard_split_interval,
+                        value = splitIntervalMinutes.toDouble(),
+                        onValueChange = { onSplitIntervalMinutesChange(it.toInt()) },
+                        valueRange = 1.0..60.0,
+                        step = 1.0,
                         unitLabel = CoreUiStrings.units_min,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // Duration
-                    NumberInputRow(
-                        labelRef = CoreUiStrings.duration,
-                        value = duration.toDouble(),
-                        onValueChange = { onDurationChange(it.toInt()) },
-                        valueRange = 0.0..10.0,
-                        step = 1.0,
-                        unitLabel = CoreUiStrings.units_hours,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // Additional carbs
-                    NumberInputRow(
-                        labelRef = UiStrings.ecarbs_additional,
-                        value = carbs2.toDouble(),
-                        onValueChange = { onCarbs2Change(it.toInt()) },
-                        valueRange = 0.0..maxCarbs,
-                        step = 1.0,
-                        unitLabel = CoreUiStrings.units_grams,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp)
                     )
                 }
+                NumberInputRow(
+                    labelRef = CoreUiStrings.wizard_correction,
+                    value = directCorrection,
+                    onValueChange = onDirectCorrectionChange,
+                    valueRange = -maxInsulin..maxInsulin,
+                    step = 0.05,
+                    decimalPlaces = 2,
+                    unitLabel = CoreUiStrings.insulin_unit_shortname,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                HorizontalDivider()
+
+                // Percentage
+                NumberInputRow(
+                    labelRef = IntKey.OverviewBolusPercentage.title,
+                    value = percentage.toDouble(),
+                    onValueChange = { onPercentageChange(it.toInt()) },
+                    valueRange = Constants.WIZARD_PERCENTAGE_RANGE,
+                    step = 5.0,
+                    unitLabel = CoreUiStrings.units_percent,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+            } // end WIZARD-only section
+
+            // Device Selection (only if wear control enabled)
+            if (showWearOptions) {
+                HorizontalDivider()
+                Text(
+                    text = stringResource(UiStrings.device_selection),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                SwitchRow(
+                    label = stringResource(UiStrings.show_on_phone),
+                    checked = devicePhone,
+                    onCheckedChange = onDevicePhoneChange,
+                    icon = Icons.Default.PhoneAndroid
+                )
+
+                SwitchRow(
+                    label = stringResource(UiStrings.show_on_watch),
+                    checked = deviceWatch,
+                    onCheckedChange = onDeviceWatchChange,
+                    icon = Icons.Default.Watch
+                )
             }
-        } // end non-INSULIN section
+
+            // Extended carbs are a separate mode. Keep stored values when the controls are hidden.
+            if (mode != QuickWizardMode.INSULIN && !(mode == QuickWizardMode.WIZARD && splitFpuBolus)) {
+                HorizontalDivider()
+                SwitchRow(
+                    label = stringResource(UiStrings.additional_ecarbs),
+                    checked = useEcarbs,
+                    onCheckedChange = onUseEcarbsChange
+                )
+
+                if (useEcarbs) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Time offset
+                        NumberInputRow(
+                            labelRef = UiStrings.time_offset,
+                            value = time.toDouble(),
+                            onValueChange = { onTimeChange(it.toInt()) },
+                            valueRange = (-7 * 24 * 60).toDouble()..(12 * 60).toDouble(),
+                            step = 5.0,
+                            unitLabel = CoreUiStrings.units_min,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Duration
+                        NumberInputRow(
+                            labelRef = CoreUiStrings.duration,
+                            value = duration.toDouble(),
+                            onValueChange = { onDurationChange(it.toInt()) },
+                            valueRange = 0.0..10.0,
+                            step = 1.0,
+                            unitLabel = CoreUiStrings.units_hours,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Additional carbs
+                        NumberInputRow(
+                            labelRef = UiStrings.ecarbs_additional,
+                            value = carbs2.toDouble(),
+                            onValueChange = { onCarbs2Change(it.toInt()) },
+                            valueRange = 0.0..maxCarbs,
+                            step = 1.0,
+                            unitLabel = CoreUiStrings.units_grams,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            } // end non-INSULIN section
+        }
     }
 }
 

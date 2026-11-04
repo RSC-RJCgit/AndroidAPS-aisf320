@@ -268,15 +268,18 @@ class WizardDialogViewModel(
                 notes = initialNotes ?: "",
                 selectedProfileIndex = 0,
                 // Toggles
-                useBg = true,
-                useTT = true,
+                // 2026-11-05: BG, TT, IOB and the FPU boxes start from the last confirmed meal calculation, like trend and COB.
+                useBg = preferences.get(BooleanNonKey.WizardIncludeBg),
+                useTT = preferences.get(BooleanNonKey.WizardIncludeTt),
                 useTrend = useTrend,
-                useIOB = true,
+                useIOB = preferences.get(BooleanNonKey.WizardIncludeIob) || useCOB,
                 useCOB = useCOB,
+                splitFpuBolus = preferences.get(BooleanNonKey.WizardSplitFpuBolus),
+                delayFpuInsteadOfCancel = preferences.get(BooleanNonKey.WizardDelayFpuInsteadOfCancel),
                 // Insulin-only mode: the meal extras and the later parts are off, only max bolus and its split apply
                 fpuInstead = defaultAutoFpu && fixedInsulin == null,
                 smallMeal = defaultSmallMeal && fixedInsulin == null,
-                giveRestLater = fixedInsulin == null,
+                giveRestLater = fixedInsulin == null && preferences.get(BooleanNonKey.WizardGiveRestLater),
                 fixedInsulin = fixedInsulin,
                 splitOverMax = preferences.get(BooleanKey.WizardSplitOverMaxBolus),
                 splitIntervalMinutes = preferences.get(IntKey.WizardSplitIntervalMinutes),
@@ -813,6 +816,7 @@ class WizardDialogViewModel(
      * appScope: the screen pops on confirm, which would cancel viewModelScope before the write runs.
      */
     fun recordOnly() {
+        saveRememberedTicks()
         val state = uiState.value
         appScope.launch {
             wizard?.executeNormal(
@@ -838,6 +842,25 @@ class WizardDialogViewModel(
     }
 
     /**
+     * The ticks the next run starts from (2026-11-05, per explicit request), saved when a meal calculation is confirmed.
+     * Insulin-only mode turns the meal boxes off, so it saves nothing.
+     */
+    private fun saveRememberedTicks() {
+        val state = uiState.value
+        if (state.insulinOnly) return
+        savePreferences()
+        preferences.put(BooleanNonKey.WizardIncludeBg, state.useBg)
+        preferences.put(BooleanNonKey.WizardIncludeTt, state.useTT)
+        preferences.put(BooleanNonKey.WizardIncludeIob, state.useIOB)
+        preferences.put(BooleanNonKey.WizardSplitFpuBolus, state.splitFpuBolus)
+        preferences.put(BooleanNonKey.WizardDelayFpuInsteadOfCancel, state.delayFpuInsteadOfCancel)
+        preferences.put(BooleanNonKey.WizardGiveRestLater, state.giveRestLater)
+        preferences.put(BooleanKey.WizardDefaultAutoFpu, state.fpuInstead || state.unreliableSmb)
+        preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, state.unreliableSmb)
+        preferences.put(BooleanKey.WizardDefaultSmallMeal, state.smallMeal)
+    }
+
+    /**
      * Deliver the manual wizard bolus role-transparently via [WizardExecutor]: the master recomputes the dose on its
      * OWN profile (the dialog's profile selection travels), temp target, COB and IOB, caps it, and authors the
      * confirmation. Both roles render the master's EXACT lines via the shared [showWizardBolusConfirmation]; the user's
@@ -850,6 +873,7 @@ class WizardDialogViewModel(
         get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
 
     fun deliverManualWizard() {
+        saveRememberedTicks()
         val state = uiState.value
         val effectiveCarbs = state.effectiveCarbs
         // null → recompute on the master's active profile (index 0 = "Active"); else the selected stored profile by name.

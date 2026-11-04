@@ -598,4 +598,6 @@
     <string name="sensor_raw_none">No raw signal stored for these sensors. Choose BG to see their glucose.</string>
     <string name="sensor_signal_unavailable">Raw signal unavailable</string>
     <string name="sensor_signal_note">Stored unfiltered channel, hourly means. Missing and identical BG copies are omitted. Older records may not identify the original device signal.</string>
+    <!-- Bolus calculator simple screen (2026-11-05) -->
+    <string name="wizard_detailed_settings">Detailed settings (untick for simple input)</string>
 </resources>
