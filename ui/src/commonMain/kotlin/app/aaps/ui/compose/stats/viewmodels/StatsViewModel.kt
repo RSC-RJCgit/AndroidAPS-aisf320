@@ -43,6 +43,7 @@ import app.aaps.ui.compose.stats.PodInsulinCache
 import app.aaps.ui.compose.stats.PodInsulin
 import app.aaps.ui.compose.stats.POD_COUNT
 import app.aaps.ui.compose.stats.SensorCycleData
+import app.aaps.ui.compose.stats.SENSOR_TAB_COUNT
 import app.aaps.ui.compose.stats.sensorRawReadings
 import app.aaps.ui.compose.stats.TddCyclePatternData
 import app.aaps.ui.compose.stats.TddStatsData
@@ -542,7 +543,7 @@ class StatsViewModel(
                 val available = distinctSensorStarts(starts).size
                 // The length of a sensor from the one in use now
                 val windowHours = sensorWindowHours(persistenceLayer.getLastGlucoseValue()?.sourceSensor)
-                val span = sensorCycleReadingSpan(starts, now, windowHours, offset) ?: return@withContext Triple(null, null, available)
+                val span = sensorCycleReadingSpan(starts, now, windowHours, offset, sensorCount = SENSOR_TAB_COUNT) ?: return@withContext Triple(null, null, available)
                 val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(span.first, span.last, true)
                 val bg = calculateSensorCycleData(
                     readings = readings,
@@ -551,7 +552,8 @@ class StatsViewModel(
                     windowHours = windowHours,
                     offset = offset,
                     lowMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
-                    highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
+                    highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark)),
+                    sensorCount = SENSOR_TAB_COUNT
                 )
                 // The same views from the raw signal (2026-11-04, per explicit request)
                 val raw = calculateSensorCycleData(
@@ -561,7 +563,8 @@ class StatsViewModel(
                     windowHours = windowHours,
                     offset = offset,
                     lowMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
-                    highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
+                    highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark)),
+                    sensorCount = SENSOR_TAB_COUNT
                 )?.takeIf { data -> data.sensors.any { sensor -> sensor.binMeansMgdl.any { it != null } } }
                 Triple(bg, raw, available)
             }

@@ -460,7 +460,7 @@
     <string name="sensor_changeover_dates" comment="%1$s=the dates of the sensor changes the changeover graph uses, newest first, separated by commas">Changes: %1$s</string>
     <string name="sensor_cycle_changeover">Changeover</string>
     <string name="sensor_cycle_offset">Sensors skipped</string>
-    <string name="sensor_cycle_found">%1$d sensors shown of %2$d changes, %3$s days each</string>
+    <string name="sensor_cycle_found">%1$d of %2$d sensor changes shown, %3$s days each</string>
     <string name="sensor_cycle_newest_start">Newest start = %1$s</string>
     <string name="sensor_cycle_lines_legend">Individual sensors</string>
     <string name="sensor_cycle_no_data">No sensor change found. Sensor changes are logged with CGM sensor insert in Actions.</string>
