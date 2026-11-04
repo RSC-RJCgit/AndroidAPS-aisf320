@@ -56,6 +56,8 @@
     <string name="stats_tir_after">TIR after</string>
     <string name="stats_pods_no_data">No pod insulin totals are available.</string>
     <string name="stats_pods_title">Insulin per pod</string>
+    <string name="stats_pods_previous">Previous pod: %1$s</string>
+    <string name="stats_pods_second_last">2nd last pod: %1$s</string>
     <string name="stats_pods_found">%1$d highest-total pods of %2$d · highest first</string>
     <string name="stats_pod_in_use">In use</string>
     <string name="stats_failed">Statistics could not be loaded. Select the tab again to retry.</string>

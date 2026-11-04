@@ -458,6 +458,14 @@ class StatsTabs(
     private fun showPods(result: PodResult) {
         container.removeAllViews()
         container.addView(title(rh.gs(R.string.stats_pods_title)))
+        // The previous pod (the last finished one) and the one before it first (2026-11-04, per explicit request)
+        val finished = result.summary.filter { !it.inUse }
+        fun line(pod: PodInsulin): String {
+            val units = if (pod.days.any { it.units != null }) String.format(Locale.getDefault(), "%.1f U", pod.totalUnits) else "—"
+            return "${dateUtil.dateStringShort(pod.startTimestamp)}  $units  ·  ${String.format(Locale.getDefault(), "%.1f d", pod.hours / 24)}"
+        }
+        finished.lastOrNull()?.let { container.addView(note(rh.gs(R.string.stats_pods_previous, line(it)))) }
+        finished.getOrNull(finished.size - 2)?.let { container.addView(note(rh.gs(R.string.stats_pods_second_last, line(it)))) }
         val data = result.data
         if (data == null) {
             container.addView(note(rh.gs(R.string.stats_pods_no_data)))
