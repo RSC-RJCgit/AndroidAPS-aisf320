@@ -126,22 +126,15 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `an update with a password asks immediately and keeps settings after ten seconds`() {
+    fun `an update with a password applies the preset without asking when agreed before`() {
         whenever(preferences.get(BooleanNonKey.BuiltInSettingsAppliedBefore)).thenReturn(true)
         whenever(config.HEAD).thenReturn("next-build")
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         val updated = build()
-        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
-        verify(preferences).put(BooleanNonKey.GeneralSetupWizardProcessed, true)
-        testDispatcher.scheduler.runCurrent()
-        testDispatcher.scheduler.advanceTimeBy(9_999)
-        testDispatcher.scheduler.runCurrent()
-        assertThat(updated.builtInStep.value).isEqualTo(MaintenanceViewModel.BuiltInStep.Ask)
-        testDispatcher.scheduler.advanceTimeBy(1)
-        testDispatcher.scheduler.runCurrent()
         assertThat(updated.builtInStep.value).isNull()
-        verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
-        verify(builtInSettingsApplier, never()).apply(any())
+        assertThat(updated.builtInStartupOffer.value).isFalse()
+        verify(builtInSettingsApplier).apply("AAPS")
+        verify(preferences, never()).put(StringNonKey.BuiltInSettingsChoice, "off")
     }
 
     @Test
@@ -162,20 +155,16 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `a previous on choice records past use and keeps the timeout`() {
+    fun `a previous on choice records past use and applies the preset without asking`() {
         whenever(config.HEAD).thenReturn("next-build")
         whenever(preferences.get(StringNonKey.BuiltInSettingsChoice)).thenReturn("on")
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         val updated = build()
 
         verify(preferences).put(BooleanNonKey.BuiltInSettingsAppliedBefore, true)
-        assertThat(updated.builtInStartupOffer.value).isTrue()
-        testDispatcher.scheduler.runCurrent()
-        testDispatcher.scheduler.advanceTimeBy(10_000)
-        testDispatcher.scheduler.runCurrent()
-
         assertThat(updated.builtInStep.value).isNull()
-        verify(preferences).put(StringNonKey.BuiltInSettingsChoice, "off")
+        verify(builtInSettingsApplier).apply("AAPS")
+        verify(preferences, never()).put(StringNonKey.BuiltInSettingsChoice, "off")
         verify(preferences, never()).put(BooleanNonKey.BuiltInSettingsAppliedBefore, false)
     }
 
@@ -187,8 +176,7 @@ internal class MaintenanceViewModelTest {
     }
 
     @Test
-    fun `opening defaults manually cancels the automatic timeout`() {
-        whenever(preferences.get(BooleanNonKey.BuiltInSettingsAppliedBefore)).thenReturn(true)
+    fun `opening defaults manually and answering no changes nothing`() {
         whenever(config.HEAD).thenReturn("next-build")
         whenever(importExportPrefs.isMasterPasswordSet()).thenReturn(true)
         val updated = build()
