@@ -536,9 +536,9 @@ class WizardDialog : DaggerDialogFragment() {
         binding.notesLayout.root.visibility = showIf(detailed && preferences.get(BooleanKey.OverviewShowNotesInDialogs))
         binding.delimiter.visibility = showIf(detailed && binding.calculationCheckbox.isChecked)
         binding.result.visibility = showIf(detailed && binding.calculationCheckbox.isChecked)
-        // Insulin only: just the dose on the simple screen; carbs (which switch to the meal calculator) are under Detailed.
+        // Insulin only: the dose and the carbs (entering carbs switches to the meal calculator); the meal boxes come back then.
         val mealInputs = detailed || !insulinOnly
-        binding.carbsRow.visibility = showIf(mealInputs)
+        binding.carbsRow.visibility = View.VISIBLE
         binding.carbsTypeRow.visibility = showIf(!insulinOnly)
         listOf(binding.splitFpuBolusCheckbox, binding.autoFpuCheckbox, binding.walkingSoonCheckbox)
             .forEach { it.visibility = showIf(mealInputs) }
