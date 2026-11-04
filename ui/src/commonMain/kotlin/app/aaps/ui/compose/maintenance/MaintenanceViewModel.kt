@@ -51,7 +51,6 @@ import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelKey
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -144,22 +143,14 @@ class MaintenanceViewModel(
             preferences.put(BooleanNonKey.BuiltInSettingsAppliedBefore, true)
         }
         if (builtInSettingsPromptPending(preferences, config)) {
-            if (!importExportPrefs.isMasterPasswordSet()) {
-                // No password: silently choose a new installation with the preset, once for this build.
+            if (!importExportPrefs.isMasterPasswordSet() || appliedBefore) {
+                // No password, or the built-in settings were agreed to on an earlier install (2026-11-04, per explicit
+                // request): apply the preset without asking, once for this build. An earlier yes covers later builds.
                 applyBuiltIn(showDone = false)
             } else {
-                // Existing password: choose an update and keep all saved settings. No installation-type wizard.
+                // Existing password and never agreed: ask, and wait for the answer. No installation-type wizard.
                 preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)
                 _builtInStep.value = BuiltInStep.Ask
-                _builtInStartupOffer.value = appliedBefore
-                builtInStartupJob = if (appliedBefore) viewModelScope.launch {
-                    delay(10_000L)
-                    if (_builtInStep.value == BuiltInStep.Ask) {
-                        recordBuiltInSettingsAnswer(preferences, config, useBuiltIn = false)
-                        _builtInStep.value = null
-                    }
-                    _builtInStartupOffer.value = false
-                } else null
             }
         }
     }
