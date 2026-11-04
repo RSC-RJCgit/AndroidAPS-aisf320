@@ -296,6 +296,11 @@ private fun percentileOf(sorted: List<Double>, fraction: Double): Double {
 }
 
 internal const val SENSOR_CYCLE_COUNT = 3
+/**
+ * The Sensor tab shows one sensor at a time (2026-11-04, per explicit request): with three, neighbouring offsets shared
+ * two sensors, so their quarter averages were not independent. [SENSOR_CYCLE_COUNT] stays the calculation's default.
+ */
+internal const val SENSOR_TAB_COUNT = 1
 /** The flat average lines split each graph into this many equal parts */
 internal const val QUARTERS = 4
 internal const val SENSOR_CYCLE_BIN_HOURS = 3

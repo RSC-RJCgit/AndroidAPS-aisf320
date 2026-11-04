@@ -300,12 +300,12 @@ class StatsTabs(
                 .filter { it.isValid && it.timestamp <= now }.map { it.timestamp }
             val available = distinctSensorStarts(starts).size
             val window = sensorWindowHours(persistenceLayer.getLastGlucoseValue()?.sourceSensor)
-            val span = sensorCycleReadingSpan(starts, now, window, offset)
+            val span = sensorCycleReadingSpan(starts, now, window, offset, sensorCount = SENSOR_TAB_COUNT)
             val readings = span?.let { persistenceLayer.getBgReadingsDataFromTimeToTime(it.first, it.last, true) }.orEmpty()
             SensorResult(
-                calculateSensorCycleData(readings, starts, now, window, offset, low, high), available,
+                calculateSensorCycleData(readings, starts, now, window, offset, low, high, sensorCount = SENSOR_TAB_COUNT), available,
                 // The same views from the raw signal; null when the shown sensors have none
-                calculateSensorCycleData(sensorRawReadings(readings), starts, now, window, offset, low, high)
+                calculateSensorCycleData(sensorRawReadings(readings), starts, now, window, offset, low, high, sensorCount = SENSOR_TAB_COUNT)
                     ?.takeIf { data -> data.sensors.any { sensor -> sensor.binMeansMgdl.any { it != null } } }
             )
         }) { result -> showSensor(result) }
