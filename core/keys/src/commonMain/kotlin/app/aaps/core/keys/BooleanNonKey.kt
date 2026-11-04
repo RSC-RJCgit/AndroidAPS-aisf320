@@ -13,6 +13,8 @@ enum class BooleanNonKey(
     /** This installation has successfully applied the built-in settings at least once. */
     BuiltInSettingsAppliedBefore("built_in_settings_applied_before", false, exportable = false),
     SetupWizardIUnderstand("I_understand", false),
+    /** Statistics, Sensor tab (2026-11-04, per explicit request): draw the sensor's raw signal (the default) or BG */
+    StatsSensorRaw("stats_sensor_raw", true),
     ObjectivesLoopUsed("ObjectivesLoopUsed", false),
     ObjectivesScaleUsed("ObjectivesScaleUsed", false),
     // Objectives screen, master on VirtualPump only: objectives no longer limit anything. Local only.

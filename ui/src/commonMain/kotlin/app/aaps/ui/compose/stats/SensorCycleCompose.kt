@@ -63,21 +63,20 @@ fun SensorCycleCompose(
     onOffsetChange: (Int) -> Unit,
     formatDate: (Long) -> String,
     modifier: Modifier = Modifier,
-    rawData: SensorRawData? = null
+    /** The same sensors from the raw signal (2026-11-04): Raw is the default and the choice is remembered */
+    rawData: SensorCycleData? = null,
+    raw: Boolean = true,
+    onRawChange: (Boolean) -> Unit = {}
 ) {
-    var raw by remember { mutableStateOf(false) }
     var view by remember { mutableStateOf(SensorCycleView.AMBULATORY) }
     // Flat average lines over each quarter of the graph, as iPhone Health shows averages (2026-11-01, per explicit request)
     var quarters by remember { mutableStateOf(true) }
 
     Column(modifier = modifier) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = !raw, onClick = { raw = false }, label = { Text(stringResource(UiStrings.sensor_signal_bg)) })
-            FilterChip(selected = raw, onClick = { raw = true }, label = { Text(stringResource(UiStrings.sensor_signal_raw)) })
+            FilterChip(selected = raw, onClick = { onRawChange(true) }, label = { Text(stringResource(UiStrings.sensor_signal_raw)) })
+            FilterChip(selected = !raw, onClick = { onRawChange(false) }, label = { Text(stringResource(UiStrings.sensor_signal_bg)) })
         }
-        if (raw) {
-            RawSensorView(rawData, formatDate)
-        } else {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(bottom = 8.dp)
@@ -107,13 +106,15 @@ fun SensorCycleCompose(
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
+        // Raw: the same views from the sensor's raw signal; BG: from the glucose values, as before
+        val shown = if (raw) rawData else data
         when {
-            data == null                         -> NoData(stringResource(UiStrings.sensor_cycle_no_data))
-            view == SensorCycleView.WHOLE_SENSOR -> WholeSensorView(data, formatDate, quarters)
-            view == SensorCycleView.AMBULATORY   -> AmbulatoryView(data, formatDate, quarters)
-            data.changeover == null              -> NoData(stringResource(UiStrings.sensor_changeover_no_data))
-            else                                 -> ChangeoverView(data, data.changeover, formatDate, quarters)
-        }
+            raw && rawData == null && data != null -> NoData(stringResource(UiStrings.sensor_raw_none))
+            shown == null                          -> NoData(stringResource(UiStrings.sensor_cycle_no_data))
+            view == SensorCycleView.WHOLE_SENSOR   -> WholeSensorView(shown, formatDate, quarters)
+            view == SensorCycleView.AMBULATORY     -> AmbulatoryView(shown, formatDate, quarters)
+            shown.changeover == null               -> NoData(stringResource(UiStrings.sensor_changeover_no_data))
+            else                                   -> ChangeoverView(shown, shown.changeover, formatDate, quarters)
         }
 
         // Offset in whole sensors: 1 shows the three sensors before the newest, and so on
@@ -124,48 +125,6 @@ fun SensorCycleCompose(
             onValueChange = onOffsetChange
         )
     }
-}
-
-/** Stored unfiltered values, with a numeric signal axis rather than a glucose axis. */
-@Composable
-private fun RawSensorView(data: SensorRawData?, formatDate: (Long) -> String) {
-    Text(stringResource(UiStrings.sensor_signal_note), style = MaterialTheme.typography.bodySmall)
-    val traces = data?.sensors.orEmpty()
-    val maximum = traces.flatMap { it.hourlyMeans }.filterNotNull().maxOrNull()
-    if (data == null || maximum == null) {
-        NoData(stringResource(UiStrings.sensor_signal_unavailable))
-        return
-    }
-    val top = maximum * 1.05
-    val baseColor = MaterialTheme.colorScheme.primary
-    val gridColor = MaterialTheme.colorScheme.outlineVariant
-    val decimalFormatter = LocalDecimalFormatter.current
-    val description = stringResource(UiStrings.sensor_signal_raw)
-    Text(description, style = MaterialTheme.typography.labelMedium)
-    Row(Modifier.fillMaxWidth()) {
-        Canvas(Modifier.weight(1f).height(LANDSCAPE_SENSOR_CHART_HEIGHT).semantics { contentDescription = description }) {
-            repeat(5) { index ->
-                val y = size.height * index / 4f
-                drawLine(gridColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 0.5.dp.toPx())
-            }
-            traces.forEachIndexed { index, trace ->
-                drawGappedLine(
-                    trace.hourlyMeans,
-                    { hour -> size.width * (hour + 0.5f) / data.windowHours },
-                    { value -> size.height * (1.0 - value / top).toFloat() },
-                    baseColor.copy(alpha = (0.9f - index * 0.25f).coerceAtLeast(0.2f)),
-                    Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
-                )
-            }
-        }
-        Column(Modifier.height(LANDSCAPE_SENSOR_CHART_HEIGHT).padding(start = 8.dp), verticalArrangement = Arrangement.SpaceBetween) {
-            (4 downTo 0).forEach { Text(decimalFormatter.to1Decimal(top * it / 4), style = MaterialTheme.typography.labelSmall) }
-        }
-    }
-    XLabels((0..data.windowHours / 24 step 2).map { it.toString() }, (0..data.windowHours / 24 step 2).map { it * 24f / data.windowHours })
-    Legend(traces.mapIndexed { index, trace ->
-        formatDate(trace.startTimestamp) to baseColor.copy(alpha = (0.9f - index * 0.25f).coerceAtLeast(0.2f))
-    })
 }
 
 @Composable

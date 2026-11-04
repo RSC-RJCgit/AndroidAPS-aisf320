@@ -593,6 +593,7 @@
     <string name="trio_remote_failed" comment="%1$s=the command, %2$s=the reason, often a word from Apple such as BadDeviceToken">Not sent: %1$s. %2$s</string>
     <string name="sensor_signal_bg">BG</string>
     <string name="sensor_signal_raw">Raw signal</string>
+    <string name="sensor_raw_none">No raw signal stored for these sensors. Choose BG to see their glucose.</string>
     <string name="sensor_signal_unavailable">Raw signal unavailable</string>
     <string name="sensor_signal_note">Stored unfiltered channel, hourly means. Missing and identical BG copies are omitted. Older records may not identify the original device signal.</string>
 </resources>

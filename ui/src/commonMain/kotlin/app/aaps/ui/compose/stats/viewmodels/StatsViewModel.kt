@@ -43,8 +43,7 @@ import app.aaps.ui.compose.stats.PodInsulinCache
 import app.aaps.ui.compose.stats.PodInsulin
 import app.aaps.ui.compose.stats.POD_COUNT
 import app.aaps.ui.compose.stats.SensorCycleData
-import app.aaps.ui.compose.stats.SensorRawData
-import app.aaps.ui.compose.stats.calculateSensorRawData
+import app.aaps.ui.compose.stats.sensorRawReadings
 import app.aaps.ui.compose.stats.TddCyclePatternData
 import app.aaps.ui.compose.stats.TddStatsData
 import app.aaps.ui.compose.stats.TirStatsData
@@ -149,6 +148,7 @@ class StatsViewModel(
                 selectedTab = savedTab,
                 tddCycleOffset = preferences.get(IntNonKey.TddCycleOffset),
                 sensorCycleOffset = preferences.get(IntNonKey.SensorCycleOffset),
+                sensorRaw = preferences.get(BooleanNonKey.StatsSensorRaw),
             )
         }
         observeTddInputs()
@@ -514,6 +514,11 @@ class StatsViewModel(
         )
     }
 
+    fun updateSensorRaw(raw: Boolean) {
+        preferences.put(BooleanNonKey.StatsSensorRaw, raw)
+        _uiState.update { it.copy(sensorRaw = raw) }
+    }
+
     fun updateSensorCycleOffset(offset: Int) {
         preferences.put(IntNonKey.SensorCycleOffset, offset)
         _uiState.update { it.copy(sensorCycleOffset = offset) }
@@ -548,7 +553,17 @@ class StatsViewModel(
                     lowMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
                     highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
                 )
-                Triple(bg, calculateSensorRawData(readings, starts, now, windowHours, offset), available)
+                // The same views from the raw signal (2026-11-04, per explicit request)
+                val raw = calculateSensorCycleData(
+                    readings = sensorRawReadings(readings),
+                    starts = starts,
+                    now = now,
+                    windowHours = windowHours,
+                    offset = offset,
+                    lowMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
+                    highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
+                )?.takeIf { data -> data.sensors.any { sensor -> sensor.binMeansMgdl.any { it != null } } }
+                Triple(bg, raw, available)
             }
             _uiState.update { it.copy(sensorCycleData = data, sensorRawData = raw, sensorsAvailable = available, sensorCycleLoading = false) }
         }
@@ -654,7 +669,10 @@ data class StatsUiState(
     val tddCycleSecondaryDays: Int = 0,
     val tddCycleOffset: Int = 0,
     val sensorCycleData: SensorCycleData? = null,
-    val sensorRawData: SensorRawData? = null,
+    /** The Sensor tab's views drawn from the raw signal; null when the shown sensors have none */
+    val sensorRawData: SensorCycleData? = null,
+    /** Raw (the default) or BG on the Sensor tab, remembered */
+    val sensorRaw: Boolean = true,
     val sensorsAvailable: Int = 0,
     val sensorCycleLoading: Boolean = true,
     val sensorCycleOffset: Int = 0,

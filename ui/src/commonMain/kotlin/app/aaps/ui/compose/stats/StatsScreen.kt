@@ -280,6 +280,8 @@ private fun SensorTab(state: StatsUiState, viewModel: StatsViewModel) {
                     SensorCycleCompose(
                         data = state.sensorCycleData,
                         rawData = state.sensorRawData,
+                        raw = state.sensorRaw,
+                        onRawChange = viewModel::updateSensorRaw,
                         sensorsAvailable = state.sensorsAvailable,
                         offset = state.sensorCycleOffset,
                         onOffsetChange = { viewModel.updateSensorCycleOffset(it) },
