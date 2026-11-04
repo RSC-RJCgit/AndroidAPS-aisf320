@@ -39,9 +39,12 @@ import app.aaps.ui.compose.stats.AgpStatsData
 import app.aaps.ui.compose.stats.AgpStatsRange
 import app.aaps.ui.compose.stats.CycleSeries
 import app.aaps.ui.compose.stats.PodInsulinData
+import app.aaps.ui.compose.stats.PodInsulinCache
 import app.aaps.ui.compose.stats.PodInsulin
 import app.aaps.ui.compose.stats.POD_COUNT
 import app.aaps.ui.compose.stats.SensorCycleData
+import app.aaps.ui.compose.stats.SensorRawData
+import app.aaps.ui.compose.stats.calculateSensorRawData
 import app.aaps.ui.compose.stats.TddCyclePatternData
 import app.aaps.ui.compose.stats.TddStatsData
 import app.aaps.ui.compose.stats.TirStatsData
@@ -113,7 +116,8 @@ class StatsViewModel(
     val dateUtil: DateUtil,
     val profileUtil: ProfileUtil,
     private val preferences: Preferences,
-    private val secondaryTddSource: SecondaryTddSource
+    private val secondaryTddSource: SecondaryTddSource,
+    private val podInsulinCache: PodInsulinCache
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StatsUiState())
@@ -525,7 +529,7 @@ class StatsViewModel(
         sensorCycleLoadJob = viewModelScope.launch {
             _uiState.update { it.copy(sensorCycleLoading = it.sensorCycleData == null) }
             val offset = uiState.value.sensorCycleOffset
-            val (data, available) = withContext<Pair<SensorCycleData?, Int>>(aapsIoDispatcher) {
+            val (data, raw, available) = withContext(aapsIoDispatcher) {
                 val now = dateUtil.now()
                 val starts = persistenceLayer.getTherapyEventDataFromTime(now - T.days(SENSOR_HISTORY_DAYS).msecs(), TE.Type.SENSOR_CHANGE, true)
                     .filter { it.isValid && it.timestamp <= now }
@@ -533,9 +537,9 @@ class StatsViewModel(
                 val available = distinctSensorStarts(starts).size
                 // The length of a sensor from the one in use now
                 val windowHours = sensorWindowHours(persistenceLayer.getLastGlucoseValue()?.sourceSensor)
-                val span = sensorCycleReadingSpan(starts, now, windowHours, offset) ?: return@withContext null to available
+                val span = sensorCycleReadingSpan(starts, now, windowHours, offset) ?: return@withContext Triple(null, null, available)
                 val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(span.first, span.last, true)
-                calculateSensorCycleData(
+                val bg = calculateSensorCycleData(
                     readings = readings,
                     starts = starts,
                     now = now,
@@ -543,16 +547,17 @@ class StatsViewModel(
                     offset = offset,
                     lowMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewLowMark)),
                     highMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.OverviewHighMark))
-                ) to available
+                )
+                Triple(bg, calculateSensorRawData(readings, starts, now, windowHours, offset), available)
             }
-            _uiState.update { it.copy(sensorCycleData = data, sensorsAvailable = available, sensorCycleLoading = false) }
+            _uiState.update { it.copy(sensorCycleData = data, sensorRawData = raw, sensorsAvailable = available, sensorCycleLoading = false) }
         }
     }
 
 
     /**
      * Pod tab (2026-11-01, per explicit request): the site changes of the last [POD_HISTORY_DAYS] days, and the insulin
-     * of the ten pods with the highest totals, day by day. Summed as the overview's "insulin since cannula change" is,
+     * of the four pods with the highest totals. Summed as the overview's "insulin since cannula change" is,
      * so the pod in use matches it: whole days from the stored daily totals, the part days at both ends in 5-minute
      * steps. Works the same on a client: the site changes, boluses and temporary basals all come over Nightscout.
      */
@@ -574,7 +579,11 @@ class StatsViewModel(
                     dayStartOf = { MidnightTime.calc(it) },
                     // Found as Android finds them, so a DST day is one day
                     nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
-                    sumUnits = { from, to -> tddCalculator.calculateIntervalWithCachedDays(from, to, allowMissingData = true)?.totalAmount },
+                    sumUnits = { from, to ->
+                        podInsulinCache.getOrCalculate(from, to, to <= MidnightTime.calc(now)) {
+                            tddCalculator.calculateIntervalWithCachedDays(from, to, allowMissingData = true)?.totalAmount
+                        }
+                    },
                     // Days this phone has no records for, from the other phone on the second site: shown only, never stored
                     secondaryUnits = { days -> secondaryTddSource.dailyTdds(days).mapValues { it.value.totalAmount } }
                 )
@@ -601,6 +610,7 @@ class StatsViewModel(
         _uiState.update { it.copy(showRecalculateDialog = false) }
         uel.log(Action.STAT_RESET, Sources.Stats)
         viewModelScope.launch {
+            podInsulinCache.clear()
             persistenceLayer.clearCachedTddData(0)
             loadTddStats()
         }
@@ -644,6 +654,7 @@ data class StatsUiState(
     val tddCycleSecondaryDays: Int = 0,
     val tddCycleOffset: Int = 0,
     val sensorCycleData: SensorCycleData? = null,
+    val sensorRawData: SensorRawData? = null,
     val sensorsAvailable: Int = 0,
     val sensorCycleLoading: Boolean = true,
     val sensorCycleOffset: Int = 0,

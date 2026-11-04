@@ -132,5 +132,5 @@ internal suspend fun calculatePodInsulinData(
     )
 }
 
-internal const val POD_COUNT = 10
+internal const val POD_COUNT = 4
 private const val HOUR_MS = 60L * 60L * 1000L

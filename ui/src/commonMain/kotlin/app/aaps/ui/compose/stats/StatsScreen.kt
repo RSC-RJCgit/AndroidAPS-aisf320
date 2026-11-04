@@ -279,6 +279,7 @@ private fun SensorTab(state: StatsUiState, viewModel: StatsViewModel) {
                 } else {
                     SensorCycleCompose(
                         data = state.sensorCycleData,
+                        rawData = state.sensorRawData,
                         sensorsAvailable = state.sensorsAvailable,
                         offset = state.sensorCycleOffset,
                         onOffsetChange = { viewModel.updateSensorCycleOffset(it) },
@@ -291,7 +292,7 @@ private fun SensorTab(state: StatsUiState, viewModel: StatsViewModel) {
     }
 }
 
-/** The insulin of each pod, day by day and in total, oldest pod first. */
+/** The four highest totals and a date/total list of the latest pods. */
 @Composable
 private fun PodTab(state: StatsUiState, viewModel: StatsViewModel) {
     StatsPage {
@@ -314,13 +315,7 @@ private fun PodTab(state: StatsUiState, viewModel: StatsViewModel) {
                             formatDate = viewModel.dateUtil::dateAndTimeString,
                             modifier = Modifier.fillMaxWidth()
                         )
-                        val secondaryDays = state.podInsulinData?.secondaryDays ?: 0
-                        if (secondaryDays > 0)
-                            Text(
-                                text = stringResource(UiStrings.tdd_cycle_days_from_secondary_ns, secondaryDays),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+
                     }
                 }
             }

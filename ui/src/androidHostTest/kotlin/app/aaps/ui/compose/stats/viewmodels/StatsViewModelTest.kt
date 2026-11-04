@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.stats.viewmodels
 
+import app.aaps.ui.compose.stats.PodInsulinCache
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.EB
@@ -57,6 +58,7 @@ internal class StatsViewModelTest {
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var profileUtil: ProfileUtil
     @Mock private lateinit var preferences: Preferences
+    @Mock private lateinit var podInsulinCache: PodInsulinCache
 
     /** No second Nightscout: these tests are about this phone's own data */
     private val noSecondarySite = object : SecondaryTddSource {
@@ -88,7 +90,7 @@ internal class StatsViewModelTest {
         whenever(persistenceLayer.observeChanges(EPS::class)).thenReturn(emptyFlow())
         sut = StatsViewModel(
             tddCalculator, tirCalculator, dexcomTirCalculator, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite
+            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite, podInsulinCache
         )
     }
 
@@ -112,7 +114,7 @@ internal class StatsViewModelTest {
         whenever(preferences.get(StringNonKey.StatsTab)).thenReturn(StatsTab.GLUCOSE.name)
         val viewModel = StatsViewModel(
             tddCalculator, tirCalculator, dexcomTirCalculator, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite
+            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite, podInsulinCache
         )
         assertThat(viewModel.uiState.value.selectedTab).isEqualTo(StatsTab.GLUCOSE)
     }
@@ -130,7 +132,7 @@ internal class StatsViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         val viewModel = StatsViewModel(
             tddCalculator, tirCalculator, dexcomTirCalculator, persistenceLayer,
-            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite
+            rh, uel, dateUtil, profileUtil, preferences, noSecondarySite, podInsulinCache
         )
         verifyBlocking(tddCalculator, never()) { calculate(any<Long>(), any<Long>(), any<Boolean>()) }
 
