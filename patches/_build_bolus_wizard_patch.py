@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.31.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.32.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -58,16 +58,31 @@ FULL_COPY = [
     "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/MealFpuFromCarbs.kt",
     "ui/src/main/kotlin/app/aaps/ui/dialogs/WizardInfoDialog.kt",
     "ui/src/main/res/layout/dialog_wizardinfo.xml",
+    # Added in patch .32: brand-new file (not in BASE), the Bread / Cake / Pizza meal type used by WizardDialog.kt.
+    "core/data/src/main/kotlin/app/aaps/core/data/model/CarbsType.kt",
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .31, 2026-11-04)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .32, 2026-11-05)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.31.patch
-  git apply bolus-calculator-on-3426-aisf321.31.patch
+  git apply --check bolus-calculator-on-3426-aisf321.32.patch
+  git apply bolus-calculator-on-3426-aisf321.32.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .32 (2026-11-05):
+- The bolus calculator opens on a simple screen: carbs, the meal type (Bread / Cake / Pizza), Use split boluses for
+  FPU, Auto fat/protein, Walking soon and "Detailed settings". Ticking Detailed settings shows the full screen;
+  unticking it returns to the simple one. It always opens simple.
+- From the Insulin dialog (insulin-only mode) the simple screen shows the insulin to give and the carbs. Entering
+  carbs switches to the meal calculator as before.
+- Hidden boxes still count. BG, IOB, superbolus, split FPU, delay FPU, Unreliable SMBs, Small meal and Auto
+  fat/protein start from the last OK of a meal calculation (the last three are saved to "Bolus calculator defaults").
+- Meal type, as upstream's v4 calculator: Bread gives all carbs now. Cake gives 90% now, Pizza 80%. With split FPU
+  unticked, the rest goes in as eCarbs from +60 min over 2 h (cake) or 3 h (pizza), shown on the confirmation.
+  With split FPU and Auto fat/protein ticked, the fat and protein are scaled up instead (cake x1.2, pizza x1.35).
+- QuickWizard buttons are unchanged in this patch (no meal type or simple editor for them yet).
 
 Changes in patch .31 (2026-11-04):
 - Refreshes the bolus calculator and QuickWizard sources from the current v3 checkout (aisf321UK_1282-1285).
@@ -621,6 +636,12 @@ def apply_surgical(staging: Path) -> None:
         '    WizardDefaultUnreliableSmbs("wizard_default_unreliable_smbs", defaultValue = false),\n'
         '    WizardDefaultSmallMeal("wizard_default_small_meal", defaultValue = false),\n'
         '    WizardDefaultAutoFpu("wizard_default_auto_fpu", defaultValue = true),\n'
+        '    // Patch .32: bolus calculator ticks remembered from the last OK (the simple screen uses them).\n'
+        '    WizardIncludeBg("wizard_include_bg", defaultValue = true),\n'
+        '    WizardIncludeIob("wizard_include_iob", defaultValue = true),\n'
+        '    WizardIncludeSuperBolus("wizard_include_super_bolus", defaultValue = false),\n'
+        '    WizardSplitFpuBolus("wizard_split_fpu_bolus", defaultValue = true),\n'
+        '    WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", defaultValue = true),\n'
         '    WizardIncludeCob("wizard_include_cob", defaultValue = false),',
         "BooleanKey wizard defaults",
     )
@@ -1460,6 +1481,17 @@ def apply_surgical(staging: Path) -> None:
         '    <string name="calc_detail_to_split" comment="Row after the total when the dose was more than MaxBolus: the insulin left over, given later in split parts">Over MaxBolus, to split</string>\n'
         '    <string name="calc_detail_profile">Profile: %1$s</string>\n'
         '    <string name="calc_detail_notes">Notes: %1$s</string>\n'
+        # Patch .32: simple screen and meal type in WizardDialog.kt / dialog_wizard.xml (FULL_COPY).
+        '    <string name="wizard_detailed_settings">Detailed settings (untick for simple input)</string>\n'
+        '    <string name="wizard_carbs_type_bread">Bread</string>\n'
+        '    <string name="wizard_carbs_type_cake">Cake</string>\n'
+        '    <string name="wizard_carbs_type_pizza">Pizza</string>\n'
+        '    <string name="wizard_carbs_type_bread_desc">Bread, savory pastries, yogurt, fruit (apple, banana, pear), potatoes, rice, buckwheat, oatmeal, slow and low carb foods, vegetables. All carbs now.</string>\n'
+        '    <string name="wizard_carbs_type_cake_desc">Dumplings, pasta, Asian cuisine rich in carbs and fats, sweet and yeast pastries, cereals, grain porridge, honey, jam.</string>\n'
+        '    <string name="wizard_carbs_type_pizza_desc">Lasagna, pizza, hamburgers, fries, baked potatoes, chips and similar snacks.</string>\n'
+        '    <string name="wizard_carbs_type_split_ecarbs">%1$d g now, %2$d g eCarbs from +%3$d min over %4$d h</string>\n'
+        '    <string name="wizard_carbs_type_split_fpu">%1$d g now, the slow part as bigger fat/protein doses</string>\n'
+        '    <string name="wizard_carbs_type_split_fpu_no_auto">%1$d g now, no eCarbs (tick auto fat/protein to cover the slow part)</string>\n'
         "</resources>",
         "ui strings.xml calc_detail rows",
     )
