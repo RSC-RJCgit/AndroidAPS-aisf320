@@ -61,6 +61,9 @@ jobs:
     # which is the long step (well over an hour), and both apps use the SAME framework. As two matrix jobs each runner built it from
     # scratch; here the second archive finds Gradle's outputs already built. A failure in the first app does not stop the second.
     # A tag name containing `skiptests` (for example ios-testflight-beta1c-skiptests) skips the 30 minute test step.
+    # 2026-11-04: AAPSClient (Client1) is skipped unless the tag name contains `client1` (for example
+    # ios-testflight-x-client1). Run #88 spent 3 h 18 m on its archive and then ran out of the 6 hour limit before the
+    # AAPS master; by default only AAPSClient2 and AAPS are built, and AAPS reuses AAPSClient2's Kotlin build.
 
     # Holds the four secrets. Give it required reviewers and restrict it to the `ios` branch: in a
     # public repository that approval is the thing standing between a workflow edit and the signing
@@ -193,6 +196,8 @@ jobs:
           echo "Distribution certificate imported."
 
       - name: Archive AAPSClient
+        id: archive1
+        if: ${{ contains(github.ref_name, 'client1') }}
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
@@ -214,6 +219,7 @@ jobs:
           bash .github/scripts/ios-add-app-group.sh "$RUNNER_TEMP/AAPSClient.xcarchive"
 
       - name: Export and upload AAPSClient to TestFlight
+        if: ${{ !cancelled() && steps.archive1.outcome == 'success' }}
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}

@@ -15,7 +15,10 @@ import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import kotlin.math.ceil
 
-/** Four highest totals in a wrapping summary, then the latest pods with only their date and total. */
+/**
+ * The previous pod (the last finished one) and the one before it first (2026-11-04, per explicit request), then the four
+ * highest totals in a wrapping summary, then the latest pods with only their date and total.
+ */
 @Composable
 fun PodInsulinCompose(
     data: PodInsulinData?,
@@ -26,6 +29,21 @@ fun PodInsulinCompose(
 ) {
     val decimalFormatter = LocalDecimalFormatter.current
     Column(modifier = modifier) {
+        val finished = summary.filter { !it.inUse }
+        fun line(pod: PodInsulin): String {
+            val units = if (pod.days.any { it.units != null }) "${decimalFormatter.to1Decimal(pod.totalUnits)} U" else "—"
+            return "${formatSummaryDate(pod.startTimestamp)}  $units  ·  ${decimalFormatter.to1Decimal(pod.hours / 24)} d"
+        }
+        finished.lastOrNull()?.let {
+            Text(stringResource(UiStrings.pod_insulin_previous, line(it)), style = MaterialTheme.typography.bodyMedium)
+        }
+        finished.getOrNull(finished.size - 2)?.let {
+            Text(
+                stringResource(UiStrings.pod_insulin_second_last, line(it)),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
         if (data == null) {
             Text(stringResource(UiStrings.pod_insulin_no_data))
         } else {

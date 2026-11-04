@@ -475,6 +475,8 @@
     <string name="stats_tab_pod" comment="Short tab label on the Statistics screen. The tab shows the insulin used by each pod, from one pod change to the next.">Pods</string>
     <string name="pod_insulin_title">Insulin per pod</string>
     <string name="pod_insulin_found" comment="%1$d=pods on the graph, %2$d=pod changes found">%1$d highest-total pods of %2$d · highest first</string>
+    <string name="pod_insulin_previous" comment="%1$s=date, total and days of the last finished pod">Previous pod: %1$s</string>
+    <string name="pod_insulin_second_last" comment="%1$s=date, total and days of the pod before it">2nd last pod: %1$s</string>
     <string name="pod_insulin_no_data">No pod insulin totals are available.</string>
 
     <string-array name="yes_no_positiveonly_negativeonly">
