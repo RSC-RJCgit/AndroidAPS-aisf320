@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.DexcomTirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.ui.R
@@ -63,7 +64,8 @@ class StatsTabs(
     private var sensorView = SensorCycleView.AMBULATORY
     private var sensorOffset = 0
     private var sensorQuarters = true
-    private var sensorRaw = false
+    // Raw (the default) or BG, remembered across visits (2026-11-04, per explicit request)
+    private var sensorRaw = preferences.get(BooleanNonKey.StatsSensorRaw)
     private val request = SerialDisposable()
     private var requestVersion = 0L
 
@@ -117,7 +119,7 @@ class StatsTabs(
         sensorView = SensorCycleView.entries.firstOrNull { it.name == state.getString("stats.sensorView") } ?: SensorCycleView.AMBULATORY
         sensorOffset = state.getInt("stats.sensorOffset").coerceAtLeast(0)
         sensorQuarters = state.getBoolean("stats.sensorQuarters", true)
-        sensorRaw = state.getBoolean("stats.sensorRaw", false)
+        sensorRaw = state.getBoolean("stats.sensorRaw", sensorRaw)
     }
 
     // ---------- Glucose ----------
@@ -302,22 +304,22 @@ class StatsTabs(
             val readings = span?.let { persistenceLayer.getBgReadingsDataFromTimeToTime(it.first, it.last, true) }.orEmpty()
             SensorResult(
                 calculateSensorCycleData(readings, starts, now, window, offset, low, high), available,
-                calculateSensorRawData(readings, starts, now, window, offset)
+                // The same views from the raw signal; null when the shown sensors have none
+                calculateSensorCycleData(sensorRawReadings(readings), starts, now, window, offset, low, high)
+                    ?.takeIf { data -> data.sensors.any { sensor -> sensor.binMeansMgdl.any { it != null } } }
             )
         }) { result -> showSensor(result) }
     }
 
-    private class SensorResult(val data: SensorCycleData?, val available: Int, val raw: SensorRawData?)
+    private class SensorResult(val data: SensorCycleData?, val available: Int, val raw: SensorCycleData?)
 
     private fun showSensor(result: SensorResult) {
         container.removeAllViews()
-        container.addView(choices(listOf(false to rh.gs(R.string.sensor_signal_bg), true to rh.gs(R.string.sensor_signal_raw)), sensorRaw) {
+        container.addView(choices(listOf(true to rh.gs(R.string.sensor_signal_raw), false to rh.gs(R.string.sensor_signal_bg)), sensorRaw) {
             sensorRaw = it
+            preferences.put(BooleanNonKey.StatsSensorRaw, it)
             showSensor(result)
         })
-        if (sensorRaw) {
-            showRawSensor(result.raw)
-        } else {
         container.addView(choices(
             listOf(
                 SensorCycleView.WHOLE_SENSOR to rh.gs(R.string.stats_view_lines),
@@ -326,40 +328,15 @@ class StatsTabs(
             ), sensorView
         ) { sensorView = it; showSensor(result) })
         container.addView(toggle(rh.gs(R.string.stats_quarter_averages), sensorQuarters) { sensorQuarters = it; showSensor(result) })
-        val data = result.data
+        // Raw: the same views from the sensor's raw signal; BG: from the glucose values, as before
+        val data = if (sensorRaw) result.raw else result.data
         when {
+            sensorRaw && data == null && result.data != null -> container.addView(note(rh.gs(R.string.sensor_raw_none)))
             data == null                                  -> container.addView(note(rh.gs(R.string.stats_sensor_no_data)))
             sensorView == SensorCycleView.CHANGEOVER      -> data.changeover?.let { showChangeover(data, it) } ?: container.addView(note(rh.gs(R.string.stats_changeover_no_data)))
             else                                          -> showWholeSensor(data, ambulatory = sensorView == SensorCycleView.AMBULATORY)
         }
-        }
         container.addView(stepper(rh.gs(R.string.stats_sensors_skipped), sensorOffset, (result.available - 1).coerceAtLeast(0)) { sensorOffset = it; loadSensor() })
-    }
-
-    private fun showRawSensor(data: SensorRawData?) {
-        container.addView(note(rh.gs(R.string.sensor_signal_note)))
-        val traces = data?.sensors.orEmpty()
-        val highest = traces.flatMap { it.hourlyMeans }.filterNotNull().maxOrNull()
-        if (data == null || highest == null) {
-            container.addView(note(rh.gs(R.string.sensor_signal_unavailable)))
-            return
-        }
-        val top = highest * 1.05
-        container.addView(note(rh.gs(R.string.sensor_signal_raw)))
-        container.addView(StatsChartView(context).apply {
-            xMax = data.windowHours.toFloat()
-            yMax = top
-            yTicks = (0..4).map { top * it / 4 to String.format(Locale.getDefault(), "%.1f", top * it / 4) }
-            xLabels = (0..data.windowHours / 24 step 2).map { it * 24f to it.toString() }
-            lines = traces.mapIndexed { index, trace ->
-                StatsChartView.Line(trace.hourlyMeans.mapIndexed { hour, value -> hour + 0.5f to value },
-                    Color.argb((230 - index * 64).coerceAtLeast(50), 0x4A, 0x9E, 0xFF))
-            }
-            contentDescription = rh.gs(R.string.sensor_signal_raw)
-        })
-        container.addView(legend(traces.mapIndexed { index, trace ->
-            dateUtil.dateAndTimeString(trace.startTimestamp) to Color.argb((230 - index * 64).coerceAtLeast(50), 0x4A, 0x9E, 0xFF)
-        }))
     }
 
     private fun showWholeSensor(data: SensorCycleData, ambulatory: Boolean) {

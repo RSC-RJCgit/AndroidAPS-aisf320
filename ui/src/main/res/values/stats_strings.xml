@@ -61,6 +61,7 @@
     <string name="stats_failed">Statistics could not be loaded. Select the tab again to retry.</string>
     <string name="sensor_signal_bg">BG</string>
     <string name="sensor_signal_raw">Raw signal</string>
+    <string name="sensor_raw_none">No raw signal stored for these sensors. Choose BG to see their glucose.</string>
     <string name="sensor_signal_unavailable">Raw signal unavailable</string>
     <string name="sensor_signal_note">Stored unfiltered channel, hourly means. Missing and identical BG copies are omitted. Older records may not identify the original device signal.</string>
 </resources>

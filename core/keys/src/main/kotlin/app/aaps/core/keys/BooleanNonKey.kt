@@ -10,6 +10,8 @@ enum class BooleanNonKey(
 ) : BooleanNonPreferenceKey {
 
     SetupWizardIUnderstand("I_understand", false),
+    /** Statistics, Sensor tab (2026-11-04, per explicit request): draw the sensor's raw signal (the default) or BG */
+    StatsSensorRaw("stats_sensor_raw", true),
     ObjectivesLoopUsed("ObjectivesLoopUsed", false),
     ObjectivesActionsUsed("ObjectivesActionsUsed", false),
     ObjectivesScaleUsed("ObjectivesScaleUsed", false),

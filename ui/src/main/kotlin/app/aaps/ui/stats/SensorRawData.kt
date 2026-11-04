@@ -45,3 +45,10 @@ internal fun calculateSensorRawData(
     })
 }
 
+/**
+ * The readings with their raw signal in place of BG (2026-11-04, per explicit request), for the Sensor tab's views when
+ * Raw is chosen: the same lines, bands and changeover, from what the sensor itself reported. Readings without a raw
+ * signal are left out, so they are gaps rather than BG. Display only, like [sensorRawSignal].
+ */
+internal fun sensorRawReadings(readings: List<GV>): List<GV> =
+    readings.mapNotNull { reading -> sensorRawSignal(reading)?.let { reading.copy(value = it) } }
