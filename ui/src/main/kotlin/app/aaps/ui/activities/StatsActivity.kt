@@ -26,6 +26,7 @@ import app.aaps.ui.R
 import app.aaps.ui.activityMonitor.ActivityMonitor
 import app.aaps.ui.databinding.ActivityStatsBinding
 import app.aaps.ui.stats.StatsTabs
+import app.aaps.ui.stats.PodInsulinCache
 import com.google.android.material.tabs.TabLayout
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -47,6 +48,7 @@ class StatsActivity : TranslatedDaggerAppCompatActivity() {
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var aapsLogger: AAPSLogger
+    @Inject lateinit var podInsulinCache: PodInsulinCache
 
     private lateinit var binding: ActivityStatsBinding
     private lateinit var statsTabs: StatsTabs
@@ -75,7 +77,7 @@ class StatsActivity : TranslatedDaggerAppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setDisplayShowHomeEnabled(true)
 
-        statsTabs = StatsTabs(this, binding.tabContent, persistenceLayer, tddCalculator, dexcomTirCalculator, profileUtil, dateUtil, rh, preferences, aapsSchedulers, aapsLogger)
+        statsTabs = StatsTabs(this, binding.tabContent, persistenceLayer, tddCalculator, dexcomTirCalculator, profileUtil, dateUtil, rh, preferences, aapsSchedulers, aapsLogger, podInsulinCache)
         statsTabs.restoreState(savedInstanceState)
         listOf(R.string.stats_tab_overview, R.string.stats_tab_glucose, R.string.stats_tab_cycle, R.string.stats_tab_sensor, R.string.stats_tab_pods).forEach { label ->
             binding.tabs.addTab(binding.tabs.newTab().setText(label))
@@ -96,6 +98,7 @@ class StatsActivity : TranslatedDaggerAppCompatActivity() {
             OKDialog.showConfirmation(this, rh.gs(R.string.do_you_want_recalculate_tdd_stats)) {
                 handler.post {
                     uel.log(Action.STAT_RESET, Sources.Stats)
+                    podInsulinCache.clear()
                     persistenceLayer.clearCachedTddData(0)
                     runOnUiThread { if (!isFinishing && !isDestroyed) recreate() }
                 }

@@ -48,7 +48,8 @@ class StatsTabs(
     private val rh: ResourceHelper,
     private val preferences: Preferences,
     private val aapsSchedulers: AapsSchedulers,
-    private val aapsLogger: AAPSLogger
+    private val aapsLogger: AAPSLogger,
+    private val podInsulinCache: PodInsulinCache
 ) {
 
     enum class Tab { GLUCOSE, CYCLE, SENSOR, PODS }
@@ -62,6 +63,7 @@ class StatsTabs(
     private var sensorView = SensorCycleView.AMBULATORY
     private var sensorOffset = 0
     private var sensorQuarters = true
+    private var sensorRaw = false
     private val request = SerialDisposable()
     private var requestVersion = 0L
 
@@ -103,6 +105,7 @@ class StatsTabs(
         state.putString("stats.sensorView", sensorView.name)
         state.putInt("stats.sensorOffset", sensorOffset)
         state.putBoolean("stats.sensorQuarters", sensorQuarters)
+        state.putBoolean("stats.sensorRaw", sensorRaw)
     }
 
     fun restoreState(state: Bundle?) {
@@ -114,6 +117,7 @@ class StatsTabs(
         sensorView = SensorCycleView.entries.firstOrNull { it.name == state.getString("stats.sensorView") } ?: SensorCycleView.AMBULATORY
         sensorOffset = state.getInt("stats.sensorOffset").coerceAtLeast(0)
         sensorQuarters = state.getBoolean("stats.sensorQuarters", true)
+        sensorRaw = state.getBoolean("stats.sensorRaw", false)
     }
 
     // ---------- Glucose ----------
@@ -294,17 +298,26 @@ class StatsTabs(
                 .filter { it.isValid && it.timestamp <= now }.map { it.timestamp }
             val available = distinctSensorStarts(starts).size
             val window = sensorWindowHours(persistenceLayer.getLastGlucoseValue()?.sourceSensor)
-            val data = sensorCycleReadingSpan(starts, now, window, offset)?.let { span ->
-                calculateSensorCycleData(persistenceLayer.getBgReadingsDataFromTimeToTime(span.first, span.last, true), starts, now, window, offset, low, high)
-            }
-            SensorResult(data, available)
+            val span = sensorCycleReadingSpan(starts, now, window, offset)
+            val readings = span?.let { persistenceLayer.getBgReadingsDataFromTimeToTime(it.first, it.last, true) }.orEmpty()
+            SensorResult(
+                calculateSensorCycleData(readings, starts, now, window, offset, low, high), available,
+                calculateSensorRawData(readings, starts, now, window, offset)
+            )
         }) { result -> showSensor(result) }
     }
 
-    private class SensorResult(val data: SensorCycleData?, val available: Int)
+    private class SensorResult(val data: SensorCycleData?, val available: Int, val raw: SensorRawData?)
 
     private fun showSensor(result: SensorResult) {
         container.removeAllViews()
+        container.addView(choices(listOf(false to rh.gs(R.string.sensor_signal_bg), true to rh.gs(R.string.sensor_signal_raw)), sensorRaw) {
+            sensorRaw = it
+            showSensor(result)
+        })
+        if (sensorRaw) {
+            showRawSensor(result.raw)
+        } else {
         container.addView(choices(
             listOf(
                 SensorCycleView.WHOLE_SENSOR to rh.gs(R.string.stats_view_lines),
@@ -319,7 +332,34 @@ class StatsTabs(
             sensorView == SensorCycleView.CHANGEOVER      -> data.changeover?.let { showChangeover(data, it) } ?: container.addView(note(rh.gs(R.string.stats_changeover_no_data)))
             else                                          -> showWholeSensor(data, ambulatory = sensorView == SensorCycleView.AMBULATORY)
         }
+        }
         container.addView(stepper(rh.gs(R.string.stats_sensors_skipped), sensorOffset, (result.available - 1).coerceAtLeast(0)) { sensorOffset = it; loadSensor() })
+    }
+
+    private fun showRawSensor(data: SensorRawData?) {
+        container.addView(note(rh.gs(R.string.sensor_signal_note)))
+        val traces = data?.sensors.orEmpty()
+        val highest = traces.flatMap { it.hourlyMeans }.filterNotNull().maxOrNull()
+        if (data == null || highest == null) {
+            container.addView(note(rh.gs(R.string.sensor_signal_unavailable)))
+            return
+        }
+        val top = highest * 1.05
+        container.addView(note(rh.gs(R.string.sensor_signal_raw)))
+        container.addView(StatsChartView(context).apply {
+            xMax = data.windowHours.toFloat()
+            yMax = top
+            yTicks = (0..4).map { top * it / 4 to String.format(Locale.getDefault(), "%.1f", top * it / 4) }
+            xLabels = (0..data.windowHours / 24 step 2).map { it * 24f to it.toString() }
+            lines = traces.mapIndexed { index, trace ->
+                StatsChartView.Line(trace.hourlyMeans.mapIndexed { hour, value -> hour + 0.5f to value },
+                    Color.argb((230 - index * 64).coerceAtLeast(50), 0x4A, 0x9E, 0xFF))
+            }
+            contentDescription = rh.gs(R.string.sensor_signal_raw)
+        })
+        container.addView(legend(traces.mapIndexed { index, trace ->
+            dateUtil.dateAndTimeString(trace.startTimestamp) to Color.argb((230 - index * 64).coerceAtLeast(50), 0x4A, 0x9E, 0xFF)
+        }))
     }
 
     private fun showWholeSensor(data: SensorCycleData, ambulatory: Boolean) {
@@ -418,11 +458,13 @@ class StatsTabs(
                 // Found as Android finds them, so a DST day is one day
                 nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
                 sumUnits = { from, to ->
+                    podInsulinCache.getOrCalculate(from, to, to <= MidnightTime.calc(now)) {
                     val midnight = MidnightTime.calc(from)
                     val next = MidnightTime.calc(midnight + T.hours(27).msecs())
                     val wholeDay = from == midnight && to == next && next - midnight == T.hours(24).msecs()
                     val cached = if (wholeDay) persistenceLayer.getCalculatedTotalDailyDose(midnight)?.takeIf { it.isValid } else null
                     cached?.totalAmount ?: tddCalculator.calculateInterval(from, to, allowMissingData = true)?.totalAmount
+                    }
                 }
             )
             val highest = all?.pods.orEmpty()
@@ -438,69 +480,19 @@ class StatsTabs(
 
     private fun showPods(result: PodResult) {
         container.removeAllViews()
-        if (result.summary.isNotEmpty()) {
-            container.addView(HorizontalScrollView(context).apply {
-                addView(note(result.summary.joinToString("  ·  ") { pod ->
-                    val units = if (pod.days.any { it.units != null }) String.format(Locale.getDefault(), "%.1f U", pod.totalUnits) else "—"
-                    "${dateUtil.dateStringShort(pod.startTimestamp)} $units"
-                }).apply { setSingleLine(true) })
-            })
-        }
+        container.addView(title(rh.gs(R.string.stats_pods_title)))
         val data = result.data
         if (data == null) {
             container.addView(note(rh.gs(R.string.stats_pods_no_data)))
         } else {
-            container.addView(title(rh.gs(R.string.stats_pods_title)))
             container.addView(note(rh.gs(R.string.stats_pods_found, data.pods.size, data.podsAvailable)))
-            container.addView(note(rh.gs(R.string.stats_pods_local_totals)))
-            // One bar per day of each pod, with the highest-total pod first; the pod's total over its days
-            val slots = mutableListOf<StatsChartView.Bar>()
-            val labels = mutableListOf<Pair<Float, String>>()
-            var x = 0f
-            data.pods.forEach { pod ->
-                val podStart = x
-                pod.days.forEach { day ->
-                    day.units?.let { units -> slots += StatsChartView.Bar(x, x + 1f, units, if (pod.inUse) averageColor else lineColor) }
-                    x += 1f
-                }
-                labels += (podStart + x) / 2 to String.format(Locale.getDefault(), "%.0f", pod.totalUnits)
-                x += 0.6f
-            }
-            val highest = data.pods.flatMap { pod -> pod.days.mapNotNull { it.units } }.maxOrNull() ?: 0.0
-            val ticks = podAxisTicks(maxOf(highest, data.averageUnitsPerDay ?: 0.0))
-            container.addView(StatsChartView(context).apply {
-                xMax = x.coerceAtLeast(1f)
-                yMin = 0.0
-                yMax = ticks.last()
-                yTicks = ticks.map { it to String.format(Locale.getDefault(), "%.0f", it) }
-                bars = slots
-                xLabels = labels
-                lines = data.averageUnitsPerDay?.let { listOf(StatsChartView.Line(listOf(0f to it, xMax to it), quarterColor, 1.5f, dashed = true)) } ?: emptyList()
-                contentDescription = rh.gs(R.string.stats_pods_title)
-            })
-            container.addView(legend(listOf(rh.gs(R.string.stats_pod_days) to lineColor, rh.gs(R.string.stats_pod_in_use) to averageColor, rh.gs(R.string.stats_pods_average_line) to quarterColor)))
-            container.addView(note(rh.gs(R.string.stats_pods_explanation)))
-            data.pods.forEach { pod ->
-                container.addView(note(
-                    rh.gs(
-                        R.string.stats_pod_row,
-                        dateUtil.dateAndTimeString(pod.startTimestamp),
-                        String.format(Locale.getDefault(), "%.1f", pod.hours / 24),
-                        String.format(Locale.getDefault(), "%.1f", pod.totalUnits),
-                        pod.unitsPerDay?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "-"
-                    ) + if (pod.inUse) " " + rh.gs(R.string.stats_pod_in_use) else ""
-                ))
-                container.addView(note(pod.days.mapIndexed { day, value ->
-                    rh.gs(R.string.stats_pod_day, day + 1, value.units?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "-")
-                }.joinToString(" · ")))
-            }
-            container.addView(note(
-                rh.gs(
-                    R.string.stats_pods_averages,
-                    data.averageTotalUnits?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "-",
-                    data.averageUnitsPerDay?.let { String.format(Locale.getDefault(), "%.1f", it) } ?: "-"
-                )
-            ))
+            container.addView(note(data.pods.joinToString("  ·  ") { pod ->
+                "${dateUtil.dateStringShort(pod.startTimestamp)} ${String.format(Locale.getDefault(), "%.1f U", pod.totalUnits)}"
+            }).apply { setSingleLine(false) })
+        }
+        result.summary.asReversed().forEach { pod ->
+            val units = if (pod.days.any { it.units != null }) String.format(Locale.getDefault(), "%.1f U", pod.totalUnits) else "—"
+            container.addView(note("${dateUtil.dateStringShort(pod.startTimestamp)}   $units"))
         }
     }
 

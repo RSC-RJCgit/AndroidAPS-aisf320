@@ -136,7 +136,7 @@ internal fun calculatePodInsulinData(
     )
 }
 
-internal const val POD_COUNT = 10
+internal const val POD_COUNT = 4
 
 internal fun podAxisTicks(highestUnits: Double): List<Double> {
     val step = if (highestUnits > 60.0) 20.0 else 10.0

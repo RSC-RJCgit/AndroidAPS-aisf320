@@ -57,13 +57,10 @@
     <string name="stats_pods_no_data">No pod insulin totals are available.</string>
     <string name="stats_pods_title">Insulin per pod</string>
     <string name="stats_pods_found">%1$d highest-total pods of %2$d · highest first</string>
-    <string name="stats_pods_local_totals">Insulin records from this phone.</string>
-    <string name="stats_pod_days">Daily insulin (U)</string>
-    <string name="stats_pods_explanation">Bars show daily insulin within each pod. Labels below show pod totals in units. The current pod is highlighted.</string>
-    <string name="stats_pod_row">%1$s — %2$s days · %3$s U total · %4$s U/day</string>
-    <string name="stats_pod_day">Day %1$d: %2$s U</string>
     <string name="stats_pod_in_use">In use</string>
-    <string name="stats_pods_averages">Completed pods: %1$s U per pod · All shown pods: %2$s U/day</string>
-    <string name="stats_pods_average_line">Average U/day</string>
     <string name="stats_failed">Statistics could not be loaded. Select the tab again to retry.</string>
+    <string name="sensor_signal_bg">BG</string>
+    <string name="sensor_signal_raw">Raw signal</string>
+    <string name="sensor_signal_unavailable">Raw signal unavailable</string>
+    <string name="sensor_signal_note">Stored unfiltered channel, hourly means. Missing and identical BG copies are omitted. Older records may not identify the original device signal.</string>
 </resources>
