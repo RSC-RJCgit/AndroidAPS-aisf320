@@ -197,6 +197,14 @@ class BolusWizard @Inject constructor(
     // protein/fat (FPU) part that fails a due-time check is re-checked every 10 min instead of cancelled; unticked, it is
     // cancelled as before. Read when the series is scheduled. Quick-wizard buttons never touch it, so they keep the default.
     var delayFpuInsteadOfCancel: Boolean = true
+
+    // Meal type eCarbs (2026-11-05, per explicit request: v4's Bread / Cake / Pizza). Set by WizardDialog or a QuickWizard
+    // button after doCalc(), like the FPU settings above: the cake/pizza share of the carbs, entered as extended carbs
+    // from [mealECarbsDelayMinutes] over [mealECarbsDurationHours]. 0 when split FPU doses replace eCarbs, or for bread.
+    var mealECarbs: Int = 0
+    var mealECarbsDelayMinutes: Int = 0
+    var mealECarbsDurationHours: Int = 0
+    var mealTypeName: String = ""
     private var splitBolusScheduled = false  // guard against double-callback
     // Guard against double-callback for the combined protein+fat Warsaw-FPU extended dose series (see
     // warsawFpuPlan()/scheduleSplitProteinFatDoses()). Replaced 2026-09-12's separate
@@ -775,6 +783,12 @@ class BolusWizard @Inject constructor(
         if (advisor)
             actions.add(rh.gs(app.aaps.core.ui.R.string.advisoralarm).formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor))
 
+        if (mealECarbs > 0)
+            actions.add(
+                rh.gs(app.aaps.core.ui.R.string.uel_extended_carbs) + ": " +
+                    (rh.gs(app.aaps.core.ui.R.string.format_carbs, mealECarbs) + "/" + mealECarbsDurationHours + "h (+" + mealECarbsDelayMinutes + "min) " + mealTypeName)
+                        .formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor)
+            )
         if (quickWizardEntry != null) {
             val eCarbsYesNo = quickWizardEntry.useEcarbs()
             if (eCarbsYesNo == QuickWizardEntry.YES) {
@@ -1148,6 +1162,7 @@ class BolusWizard @Inject constructor(
             if (quickWizardEntry != null) {
                 scheduleECarbsFromQuickWizard(ctx, quickWizardEntry)
             }
+            scheduleMealECarbs(ctx, quickWizardEntry)
         })
     }
 
@@ -1994,6 +2009,38 @@ class BolusWizard @Inject constructor(
                 })
             }
         }, delayMs)
+    }
+
+    // The meal type's extended carbs (see mealECarbs), after the bolus is confirmed. Same entry as a QuickWizard button's own eCarbs.
+    private fun scheduleMealECarbs(ctx: Context, quickWizardEntry: QuickWizardEntry?) {
+        val grams = mealECarbs
+        if (grams <= 0) return
+        val eventTime = dateUtil.now() + T.mins(mealECarbsDelayMinutes.toLong()).msecs()
+        val note = listOfNotNull(quickWizardEntry?.buttonText(), mealTypeName.ifEmpty { null }).joinToString(" ")
+        val detailedBolusInfo = DetailedBolusInfo()
+        detailedBolusInfo.eventType = TE.Type.CORRECTION_BOLUS
+        detailedBolusInfo.carbs = grams.toDouble()
+        detailedBolusInfo.context = ctx
+        detailedBolusInfo.notes = note
+        detailedBolusInfo.carbsDuration = T.hours(mealECarbsDurationHours.toLong()).msecs()
+        detailedBolusInfo.carbsTimestamp = eventTime
+        uel.log(
+            action = Action.EXTENDED_CARBS,
+            source = if (quickWizardEntry != null) Sources.QuickWizard else Sources.WizardDialog,
+            note = note,
+            listValues = listOfNotNull(
+                ValueWithUnit.Timestamp(eventTime),
+                ValueWithUnit.Gram(grams),
+                ValueWithUnit.Minute(mealECarbsDelayMinutes).takeIf { mealECarbsDelayMinutes != 0 },
+                ValueWithUnit.Hour(mealECarbsDurationHours).takeIf { mealECarbsDurationHours != 0 }
+            )
+        )
+        commandQueue.bolus(detailedBolusInfo, object : Callback() {
+            override fun run() {
+                if (!result.success)
+                    uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
+            }
+        })
     }
 
     private fun scheduleECarbsFromQuickWizard(ctx: Context, quickWizardEntry: QuickWizardEntry) {

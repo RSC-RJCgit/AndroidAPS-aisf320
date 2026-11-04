@@ -2,6 +2,7 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.annotations.OpenForTesting
 import app.aaps.core.data.iob.InMemoryGlucoseValue
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.model.RM
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -164,7 +165,8 @@ class QuickWizardEntry @Inject constructor(
         if (dropTrendCaution) percentage = min(percentage, WizardDropTrendCaution.scaledWizPercent(percentage))
         // Auto fat/protein: only when the button has no protein or fat of its own (like a manual edit in the dialog).
         val (autoFat, autoProtein) =
-            if (autoFpu() && protein() == 0 && fat() == 0) MealFpuFromCarbs.fatProtein(carbs().toDouble(), unreliableSmb(), smallMeal())
+            if (autoFpu() && protein() == 0 && fat() == 0)
+                MealFpuFromCarbs.fatProtein(carbs().toDouble(), unreliableSmb(), smallMeal(), carbsType().eCarbsPercent)
             else fat() to protein()
         // 2026-09-26, per explicit request: partway up a rise the carbs are dated back from the rise onset (CarbTimeFromRise), same as the
         // Bolus Wizard dialog's pre-fill. Only for a button with carbs and no carb time of its own, and only while the Settings -> Overview
@@ -177,7 +179,7 @@ class QuickWizardEntry @Inject constructor(
             profile,
             profileName,
             tempTarget,
-            carbs(),
+            carbsNow(),
             cob,
             bg,
             0.0,
@@ -226,6 +228,12 @@ class QuickWizardEntry @Inject constructor(
         wizard.delayFpuInsteadOfCancel = retryFpuLater()
         // A fourth DelayedBolusWorker reason, as in the dialog: the held-back part can follow once BG rises.
         wizard.dropTrendCautionApplied = dropTrendCaution
+        // Meal type (2026-11-05): with eCarbs (split FPU off) the cake/pizza share is entered as extended carbs on OK.
+        val type = carbsType()
+        wizard.mealECarbs = if (splitFpuBolus()) 0 else type.eCarbs(carbs())
+        wizard.mealECarbsDelayMinutes = type.eCarbsDelayMinutes
+        wizard.mealECarbsDurationHours = type.eCarbsDurationHours
+        wizard.mealTypeName = if (type == CarbsType.BREAD) "" else type.name.lowercase().replaceFirstChar { it.uppercase() }
         return wizard
     }
 
@@ -273,7 +281,16 @@ class QuickWizardEntry @Inject constructor(
 
     fun storedUseEcarbs(): Int = safeGetInt(storage, "useEcarbs", NO)
 
-    fun useEcarbs(): Int = if (splitFpuBolus()) NO else storedUseEcarbs()
+    // A cake or pizza meal type replaces the button's own fixed extended carbs (as v4).
+    fun useEcarbs(): Int = if (splitFpuBolus() || mealTypeApplies()) NO else storedUseEcarbs()
+
+    /** Meal type (2026-11-05, per explicit request: v4's Bread / Cake / Pizza). A button saved before it is Bread. */
+    fun carbsType(): CarbsType = CarbsType.fromName(safeGetString(storage, "carbsType", CarbsType.BREAD.name))
+
+    private fun mealTypeApplies(): Boolean = carbsType() != CarbsType.BREAD
+
+    /** Carbs given and bolused now: the meal type's share. Unreliable SMBs with split FPU doses keep them all, as v4. */
+    fun carbsNow(): Int = if (splitFpuBolus() && unreliableSmb()) carbs() else carbsType().carbsNow(carbs())
 
     fun carbs2(): Int = safeGetInt(storage, "carbs2")
 

@@ -17,6 +17,7 @@ import android.widget.ArrayAdapter
 import android.widget.CompoundButton
 import androidx.fragment.app.FragmentManager
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -145,6 +146,8 @@ class WizardDialog : DaggerDialogFragment() {
     // point a fresh suggestion overwrites it (see autoFillProteinFatFromCarbs()). The autoFpuCheckbox
     // (added same day) is the sticky alternative -- unticking it stops auto-fill outright, surviving
     // carbs edits, so you don't have to keep re-editing the boxes by hand.
+    // Meal type (2026-11-05, per explicit request: v4's Bread / Cake / Pizza). Not remembered: every run starts at Bread.
+    private var carbsType = CarbsType.BREAD
     private var proteinFatManuallyOverridden = false
     private var fatManuallyOverridden = false
     private var proteinManuallyOverridden = false
@@ -200,6 +203,8 @@ class WizardDialog : DaggerDialogFragment() {
         savedInstanceState.putDouble("correction_input", binding.correctionInput.value)
         savedInstanceState.putDouble("carb_time_input", binding.carbTimeInput.value)
         savedInstanceState.putBoolean("meal_calculator_mode", fixedInsulinPassedIntoWizard == null)
+        savedInstanceState.putBoolean("detailed_settings", binding.detailedSettingsCheckbox.isChecked)
+        savedInstanceState.putString("carbs_type", carbsType.name)
         if (fixedInsulinPassedIntoWizard != null) savedInstanceState.putDouble("fixed_insulin_input", binding.fixedInsulinInput.value)
     }
 
@@ -312,16 +317,40 @@ class WizardDialog : DaggerDialogFragment() {
         // between uses: every open starts from these defaults.
         binding.unreliableSmbsCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
         binding.smallMealCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultSmallMeal)
-        binding.splitFpuBolusCheckbox.isChecked = savedInstanceState?.getBoolean("split_fpu_bolus", true) ?: true
+        // 2026-11-05: the last OK's choice, not always ticked.
+        binding.splitFpuBolusCheckbox.isChecked =
+            savedInstanceState?.getBoolean("split_fpu_bolus", true) ?: preferences.get(BooleanKey.WizardSplitFpuBolus)
         binding.fpuIntervalInput.setParams(
             savedInstanceState?.getDouble("fpu_interval_minutes") ?: 30.0,
             30.0, 60.0, 1.0, DecimalFormat("0"), false, binding.okcancel.ok, textWatcher
         )
         binding.fpuIntervalRow.visibility = if (binding.splitFpuBolusCheckbox.isChecked) View.VISIBLE else View.GONE
         binding.splitFpuBolusCheckbox.setOnCheckedChangeListener { _, checked ->
-            binding.fpuIntervalRow.visibility = if (checked) View.VISIBLE else View.GONE
+            binding.fpuIntervalRow.visibility = if (checked && binding.detailedSettingsCheckbox.isChecked) View.VISIBLE else View.GONE
             calculateInsulin()
         }
+        // Meal type: Bread / Cake / Pizza (see CarbsType). A new type re-runs the fat/protein suggestion (cake/pizza scale it).
+        carbsType = CarbsType.fromName(savedInstanceState?.getString("carbs_type"))
+        binding.carbsTypeGroup.check(
+            when (carbsType) {
+                CarbsType.BREAD -> binding.carbsTypeBread.id
+                CarbsType.CAKE  -> binding.carbsTypeCake.id
+                CarbsType.PIZZA -> binding.carbsTypePizza.id
+            }
+        )
+        binding.carbsTypeGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            carbsType = when (checkedId) {
+                binding.carbsTypeCake.id  -> CarbsType.CAKE
+                binding.carbsTypePizza.id -> CarbsType.PIZZA
+                else                      -> CarbsType.BREAD
+            }
+            autoFillProteinFatFromCarbs()
+            calculateInsulin()
+        }
+        // Simple screen first, every time (2026-11-05, per explicit request); a rotation keeps the open screen.
+        binding.detailedSettingsCheckbox.isChecked = savedInstanceState?.getBoolean("detailed_settings", false) ?: false
+        binding.detailedSettingsCheckbox.setOnCheckedChangeListener { _, _ -> applySimpleMode() }
         binding.fpuIntervalInput.setOnValueChangedListener { calculateInsulin() }
         binding.autoFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDefaultAutoFpu)
         binding.unreliableSmbsCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
@@ -405,6 +434,7 @@ class WizardDialog : DaggerDialogFragment() {
             } else {
                 okClicked = true
                 calculateInsulin()
+                saveRememberedTicks()
                 wizard?.manualSplitBolusEnabled = binding.splitBolusCheckbox.isChecked
                 wizard?.manualSplitBolusIntervalMins = binding.splitBolusIntervalInput.value.toInt().coerceIn(1, 60)
                 // Insulin-only mode: the typed dose replaces the suggestion (max bolus and the split still apply)
@@ -448,8 +478,8 @@ class WizardDialog : DaggerDialogFragment() {
         binding.calculationCheckbox.setOnCheckedChangeListener { _, isChecked ->
             run {
                 preferences.put(BooleanKey.WizardCalculationVisible, isChecked)
-                binding.delimiter.visibility = isChecked.toVisibility()
-                binding.result.visibility = isChecked.toVisibility()
+                binding.delimiter.visibility = (isChecked && binding.detailedSettingsCheckbox.isChecked).toVisibility()
+                binding.result.visibility = (isChecked && binding.detailedSettingsCheckbox.isChecked).toVisibility()
                 processEnabledIcons()
             }
         }
@@ -485,6 +515,48 @@ class WizardDialog : DaggerDialogFragment() {
             .subscribe({ calculateInsulin() }, fabricPrivacy::logException)
         setA11yLabels()
         setupInsulinOnlyMode(savedInstanceState)
+        applySimpleMode()
+    }
+
+    // Simple screen (2026-11-05, per explicit request): carbs (or the insulin to give), the meal type, Walking soon, Split FPU,
+    // Auto fat/protein and Detailed settings. Everything hidden still counts, from the last OK's ticks and the automatic
+    // rules. Ticking Detailed settings shows the full screen; unticking it returns here.
+    private fun applySimpleMode() {
+        _binding ?: return
+        val detailed = binding.detailedSettingsCheckbox.isChecked
+        val insulinOnly = fixedInsulinPassedIntoWizard != null
+        val showIf = { show: Boolean -> if (show) View.VISIBLE else View.GONE }
+        listOf(
+            binding.maxBolusOverrideRow, binding.spacer, binding.bgRow, binding.proteinRow, binding.fatRow, binding.mealExtrasRow,
+            binding.warsawDurationRow, binding.warsawWarningRow, binding.pendingWarningRow, binding.correctionRow, binding.carbTimeRow,
+            binding.calculationCheckbox
+        ).forEach { it.visibility = showIf(detailed) }
+        binding.carbTimeRiseRow.visibility = showIf(detailed && carbTimeRiseEstimate != null)
+        binding.fpuIntervalRow.visibility = showIf(detailed && binding.splitFpuBolusCheckbox.isChecked)
+        binding.notesLayout.root.visibility = showIf(detailed && preferences.get(BooleanKey.OverviewShowNotesInDialogs))
+        binding.delimiter.visibility = showIf(detailed && binding.calculationCheckbox.isChecked)
+        binding.result.visibility = showIf(detailed && binding.calculationCheckbox.isChecked)
+        // Insulin only: just the dose on the simple screen; carbs (which switch to the meal calculator) are under Detailed.
+        val mealInputs = detailed || !insulinOnly
+        binding.carbsRow.visibility = showIf(mealInputs)
+        binding.carbsTypeRow.visibility = showIf(!insulinOnly)
+        listOf(binding.splitFpuBolusCheckbox, binding.autoFpuCheckbox, binding.walkingSoonCheckbox)
+            .forEach { it.visibility = showIf(mealInputs) }
+        processEnabledIcons()
+    }
+
+    // The ticks the next run starts from (2026-11-05, per explicit request), saved on OK of a meal calculation. A typed
+    // insulin-only dose turns the meal boxes off, so it saves nothing. Trend and COB are already saved when changed.
+    private fun saveRememberedTicks() {
+        if (fixedInsulin() != null) return
+        preferences.put(BooleanKey.WizardIncludeBg, binding.bgCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardIncludeIob, binding.iobCheckbox.isChecked)
+        if (preferences.get(BooleanKey.OverviewUseSuperBolus)) preferences.put(BooleanKey.WizardIncludeSuperBolus, binding.sbCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardSplitFpuBolus, binding.splitFpuBolusCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardDelayFpuInsteadOfCancel, binding.delayFpuCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, binding.unreliableSmbsCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardDefaultSmallMeal, binding.smallMealCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardDefaultAutoFpu, binding.autoFpuCheckbox.isChecked)
     }
 
     // The typed dose in insulin-only mode, else null
@@ -551,6 +623,7 @@ class WizardDialog : DaggerDialogFragment() {
         } finally {
             switchingToMealCalculator = false
         }
+        applySimpleMode()
     }
 
     private fun setA11yLabels() {
@@ -628,7 +701,7 @@ class WizardDialog : DaggerDialogFragment() {
         binding.trendCheckboxIcon.visibility = binding.calculationCheckbox.isChecked.not().toVisibility()
         binding.iobCheckboxIcon.visibility = binding.calculationCheckbox.isChecked.not().toVisibility()
         binding.cobCheckboxIcon.visibility = binding.calculationCheckbox.isChecked.not().toVisibility()
-        binding.checkboxRow.visibility = binding.calculationCheckbox.isChecked.not().toVisibility()
+        binding.checkboxRow.visibility = (binding.calculationCheckbox.isChecked.not() && binding.detailedSettingsCheckbox.isChecked).toVisibility()
     }
 
     private fun saveCheckedStates() {
@@ -638,6 +711,11 @@ class WizardDialog : DaggerDialogFragment() {
     }
 
     private fun loadCheckedStates() {
+        // 2026-11-05: BG, IOB, superbolus and the FPU retry box start from the last OK, like trend and COB.
+        binding.bgCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeBg)
+        binding.iobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeIob)
+        binding.sbCheckbox.isChecked = preferences.get(BooleanKey.OverviewUseSuperBolus) && preferences.get(BooleanKey.WizardIncludeSuperBolus)
+        binding.delayFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDelayFpuInsteadOfCancel)
         binding.bgTrendCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeTrend)
         binding.cobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeCob)
         // Opens with the % tick on every time (the Corr box then shows the wizard percentage), as requested 8 Oct 2026;
@@ -770,7 +848,7 @@ class WizardDialog : DaggerDialogFragment() {
         if (proteinFatManuallyOverridden || !binding.autoFpuCheckbox.isChecked) return
         // Ratios in MealFpuFromCarbs, shared with QuickWizard buttons.
         val (newFat, newProtein) = MealFpuFromCarbs.fatProtein(
-            binding.carbsInput.value, binding.unreliableSmbsCheckbox.isChecked, binding.smallMealCheckbox.isChecked
+            binding.carbsInput.value, binding.unreliableSmbsCheckbox.isChecked, binding.smallMealCheckbox.isChecked, carbsType.eCarbsPercent
         )
         applyingAutoFpu = true
         binding.fatInput.value = newFat.toDouble()
@@ -827,6 +905,22 @@ class WizardDialog : DaggerDialogFragment() {
             return
         }
 
+        val carbTime = SafeParse.stringToInt(binding.carbTimeInput.text)
+        // Meal type (see CarbsType): the carbs given and bolused now, and with eCarbs (split FPU unticked) the cake/pizza
+        // share entered as extended carbs on OK. Unreliable SMBs with split FPU keep all carbs now, as v4.
+        val splitFpu = binding.splitFpuBolusCheckbox.isChecked
+        val carbsNow = if (splitFpu && binding.unreliableSmbsCheckbox.isChecked) carbsAfterConstraint else carbsType.carbsNow(carbsAfterConstraint)
+        val mealECarbs = if (splitFpu) 0 else carbsType.eCarbs(carbsAfterConstraint)
+        binding.carbsTypeInfo.text = when {
+            carbsType == CarbsType.BREAD -> rh.gs(R.string.wizard_carbs_type_bread_desc)
+            else                         -> rh.gs(if (carbsType == CarbsType.CAKE) R.string.wizard_carbs_type_cake_desc else R.string.wizard_carbs_type_pizza_desc) + " " +
+                when {
+                    !splitFpu                          -> rh.gs(R.string.wizard_carbs_type_split_ecarbs, carbsNow, mealECarbs, carbsType.eCarbsDelayMinutes + carbTime, carbsType.eCarbsDurationHours)
+                    binding.autoFpuCheckbox.isChecked -> rh.gs(R.string.wizard_carbs_type_split_fpu, carbsNow)
+                    else                               -> rh.gs(R.string.wizard_carbs_type_split_fpu_no_auto, carbsNow)
+                }
+        }
+
         bg = if (binding.bgCheckbox.isChecked) bg else 0.0
         val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
 
@@ -836,8 +930,6 @@ class WizardDialog : DaggerDialogFragment() {
             val cobInfo = iobCobCalculator.getCobInfo("Wizard COB")
             cobInfo.displayCob?.let { cob = it }
         }
-
-        val carbTime = SafeParse.stringToInt(binding.carbTimeInput.text)
 
         // unreliableSmbsCheckbox auto-sets wiz% to 90 for THIS calculation only (per explicit request) --
         // does not touch the standing IntKey.OverviewBolusPercentage preference, so every other dose is
@@ -856,7 +948,7 @@ class WizardDialog : DaggerDialogFragment() {
             if (dropTrendCautionActive) WizardDropTrendCaution.scaledMaxBolus(stepperMax, bolusStep) else stepperMax
         )
         wizard = bolusWizardProvider.get().doCalc(
-            specificProfile, profileName, tempTarget, carbsAfterConstraint, cob, bg, correction, wizPercentForThisCalc,
+            specificProfile, profileName, tempTarget, carbsNow, cob, bg, correction, wizPercentForThisCalc,
             binding.bgCheckbox.isChecked,
             binding.cobCheckbox.isChecked,
             binding.iobCheckbox.isChecked,
@@ -884,10 +976,16 @@ class WizardDialog : DaggerDialogFragment() {
             wizard.delayFpuInsteadOfCancel = binding.delayFpuCheckbox.isChecked
             // See dropTrendCautionApplied's own doc comment -- a fourth DelayedBolusWorker trigger reason.
             wizard.dropTrendCautionApplied = dropTrendCautionActive
+            wizard.mealECarbs = mealECarbs
+            wizard.mealECarbsDelayMinutes = carbsType.eCarbsDelayMinutes + carbTime
+            wizard.mealECarbsDurationHours = carbsType.eCarbsDurationHours
+            wizard.mealTypeName = if (carbsType == CarbsType.BREAD) "" else rh.gs(
+                if (carbsType == CarbsType.CAKE) R.string.wizard_carbs_type_cake else R.string.wizard_carbs_type_pizza
+            )
             binding.bg.text = rh.gs(R.string.format_bg_isf, valueToUnitsToString(profileUtil.convertToMgdl(bg, profileFunction.getUnits()), profileFunction.getUnits().asText), wizard.sens)
             binding.bgInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromBG)
 
-            binding.carbs.text = rh.gs(R.string.format_carbs_ic, carbs.toDouble(), wizard.ic)
+            binding.carbs.text = rh.gs(R.string.format_carbs_ic, carbsNow.toDouble(), wizard.ic)
             binding.carbsInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.insulinFromCarbs)
 
             binding.iobInsulin.text = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, -wizard.insulinFromBolusIOB - wizard.insulinFromBasalIOB)
@@ -917,14 +1015,14 @@ class WizardDialog : DaggerDialogFragment() {
                 binding.cobInsulin.text = ""
             }
 
-            if (wizard.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0.0) {
+            if (wizard.calculatedTotalInsulin > 0.0 || carbsNow > 0.0) {
                 val insulinText =
                     if (wizard.calculatedTotalInsulin > 0.0) {
                         val units = rh.gs(app.aaps.core.ui.R.string.format_insulin_units, wizard.calculatedTotalInsulin)
                             .formatColor(context, rh, app.aaps.core.ui.R.attr.bolusColor)
                         units
                     } else ""
-                val carbsText = if (carbsAfterConstraint > 0.0) rh.gs(app.aaps.core.objects.R.string.format_carbs, carbsAfterConstraint).formatColor(
+                val carbsText = if (carbsNow > 0.0) rh.gs(app.aaps.core.objects.R.string.format_carbs, carbsNow).formatColor(
                     context, rh, app.aaps.core.ui.R.attr
                         .carbsColor
                 ) else ""

@@ -10,9 +10,11 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.Window
 import android.view.WindowManager
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.SafeParse
@@ -40,10 +42,13 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
     @Inject lateinit var constraintChecker: ConstraintsChecker
     @Inject lateinit var ctx: Context
     @Inject lateinit var preferences: Preferences
+    @Inject lateinit var rh: ResourceHelper
 
     var position = -1
     private var fromSeconds: Int = 0
     private var toSeconds: Int = 0
+    // Meal type of this button (2026-11-05, per explicit request: v4's Bread / Cake / Pizza)
+    private var carbsType = CarbsType.BREAD
 
     companion object {
 
@@ -137,6 +142,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                     entry.storage.put("protein", binding.proteinInput.value.toInt())
                     entry.storage.put("fat", binding.fatInput.value.toInt())
                     entry.storage.put("warsawDurationHours", binding.warsawDurationInput.value)
+                    entry.storage.put("carbsType", carbsType.name)
                 } catch (e: JSONException) {
                     aapsLogger.error("Unhandled exception", e)
                 }
@@ -317,7 +323,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
             binding.fpuIntervalRow.visibility = if (split) View.VISIBLE else View.GONE
             useECarbs(binding.useEcarbs.isChecked)
         }
-        binding.splitFpuBolusCheckbox.setOnCheckedChangeListener { _, _ -> updateFpuMode() }
+        binding.splitFpuBolusCheckbox.setOnCheckedChangeListener { _, _ -> updateFpuMode(); updateCarbsTypeInfo() }
         updateFpuMode()
         binding.retryFpuLaterCheckbox.isChecked = entry.retryFpuLater()
         binding.unreliableSmbsCheckbox.isChecked = entry.unreliableSmb()
@@ -338,6 +344,58 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
 
         processCob()
         processIOB()
+
+        // Meal type: saved with the button; cake/pizza replace the button's own fixed eCarbs (see QuickWizardEntry.useEcarbs).
+        carbsType = savedInstanceState?.getString("carbs_type")?.let { CarbsType.fromName(it) } ?: entry.carbsType()
+        binding.carbsTypeGroup.check(
+            when (carbsType) {
+                CarbsType.BREAD -> binding.carbsTypeBread.id
+                CarbsType.CAKE  -> binding.carbsTypeCake.id
+                CarbsType.PIZZA -> binding.carbsTypePizza.id
+            }
+        )
+        binding.carbsTypeGroup.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            carbsType = when (checkedId) {
+                binding.carbsTypeCake.id  -> CarbsType.CAKE
+                binding.carbsTypePizza.id -> CarbsType.PIZZA
+                else                      -> CarbsType.BREAD
+            }
+            updateCarbsTypeInfo()
+        }
+        binding.autoFpuCheckbox.setOnCheckedChangeListener { _, _ -> updateCarbsTypeInfo() }
+        // Simple screen first, every time (2026-11-05, per explicit request): name, carbs, meal type, Walking soon, Split FPU,
+        // Auto fat/protein. The hidden settings keep the button's saved values.
+        binding.detailedSettingsCheckbox.isChecked = savedInstanceState?.getBoolean("detailed_settings", false) ?: false
+        binding.detailedSettingsCheckbox.setOnCheckedChangeListener { _, _ -> applySimpleMode() }
+        applySimpleMode()
+    }
+
+    private fun applySimpleMode() {
+        val visibility = if (binding.detailedSettingsCheckbox.isChecked) View.VISIBLE else View.GONE
+        listOf(
+            binding.timeRow, binding.retryFpuLaterCheckbox, binding.correctionRow, binding.carbTimeRow, binding.useForCalcLabel,
+            binding.useForCalcBlock, binding.ecarbsTable
+        ).forEach { it.visibility = visibility }
+        updateCarbsTypeInfo()
+    }
+
+    private fun updateCarbsTypeInfo() {
+        val binding = _binding ?: return
+        val carbs = binding.carbsInput.value.toInt()
+        val split = binding.splitFpuBolusCheckbox.isChecked
+        binding.carbsTypeInfo.text = when (carbsType) {
+            CarbsType.BREAD -> rh.gs(R.string.wizard_carbs_type_bread_desc)
+            else            -> rh.gs(if (carbsType == CarbsType.CAKE) R.string.wizard_carbs_type_cake_desc else R.string.wizard_carbs_type_pizza_desc) + " " +
+                when {
+                    !split                            -> rh.gs(
+                        R.string.wizard_carbs_type_split_ecarbs, carbsType.carbsNow(carbs), carbsType.eCarbs(carbs), carbsType.eCarbsDelayMinutes,
+                        carbsType.eCarbsDurationHours
+                    )
+                    binding.autoFpuCheckbox.isChecked -> rh.gs(R.string.wizard_carbs_type_split_fpu, carbsType.carbsNow(carbs))
+                    else                              -> rh.gs(R.string.wizard_carbs_type_split_fpu_no_auto, carbsType.carbsNow(carbs))
+                }
+        }
     }
 
     private fun processSplitBolus() {
@@ -358,6 +416,10 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt("position", position)
+        _binding?.let {
+            outState.putString("carbs_type", carbsType.name)
+            outState.putBoolean("detailed_settings", it.detailedSettingsCheckbox.isChecked)
+        }
     }
 
     override fun onDestroyView() {
@@ -426,6 +488,7 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         override fun afterTextChanged(s: Editable) {
             _binding?.let {
                 validateInputs()
+                updateCarbsTypeInfo()
             }
         }
 

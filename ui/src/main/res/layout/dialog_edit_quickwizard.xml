@@ -54,6 +54,7 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <LinearLayout
+            android:id="@+id/time_row"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
@@ -236,6 +237,7 @@
             </TableRow>
 
             <TableRow
+                android:id="@+id/correction_row"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_gravity="center_vertical"
@@ -283,6 +285,7 @@
             </TableRow>
 
             <TableRow
+                android:id="@+id/carb_time_row"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_gravity="center_vertical"
@@ -346,7 +349,60 @@
 
         </TableLayout>
 
+        <!-- Meal type (2026-11-05, per explicit request: v4's Bread / Cake / Pizza) and the simple / detailed screen. -->
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/carbs_type_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="10dp"
+            app:checkedButton="@+id/carbs_type_bread"
+            app:selectionRequired="true"
+            app:singleSelection="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/carbs_type_bread"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/wizard_carbs_type_bread" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/carbs_type_cake"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/wizard_carbs_type_cake" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/carbs_type_pizza"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/wizard_carbs_type_pizza" />
+
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
         <TextView
+            android:id="@+id/carbs_type_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="10dp"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+
+        <CheckBox
+            android:id="@+id/detailed_settings_checkbox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="10dp"
+            android:checked="false"
+            android:text="@string/wizard_detailed_settings"
+            android:textAppearance="?android:attr/textAppearanceSmall" />
+
+        <TextView
+            android:id="@+id/use_for_calc_label"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:gravity="center"
@@ -355,6 +411,7 @@
             android:textAppearance="?android:attr/textAppearanceSmall" />
 
         <LinearLayout
+            android:id="@+id/use_for_calc_block"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
@@ -651,6 +708,7 @@
         </LinearLayout>
 
         <TableLayout
+            android:id="@+id/ecarbs_table"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:layout_gravity="center_horizontal"

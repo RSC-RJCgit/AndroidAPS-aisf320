@@ -335,8 +335,15 @@ enum class BooleanKey(
     WizardDelayedBolusEnabled("wizard_split_bolus_enabled", defaultValue = false),
     WizardIncludeCob("wizard_include_cob", defaultValue = false),
     WizardIncludeTrend("wizard_include_trend_bg", defaultValue = false),
-    // Bolus calculator starting state (2026-10-06, per explicit request). Applied every time the wizard opens;
-    // a box ticked/unticked during use is NOT remembered. Settings are under Overview > Bolus calculator defaults.
+    // Bolus calculator ticks remembered from the last OK (2026-11-05, per explicit request: the simple screen uses the
+    // detailed screen's last settings). Unreliable SMBs, Small meal and Auto fat/protein are saved to the defaults below.
+    WizardIncludeBg("wizard_include_bg", defaultValue = true),
+    WizardIncludeIob("wizard_include_iob", defaultValue = true),
+    WizardIncludeSuperBolus("wizard_include_super_bolus", defaultValue = false),
+    WizardSplitFpuBolus("wizard_split_fpu_bolus", defaultValue = true),
+    WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", defaultValue = true),
+    // Bolus calculator starting state (2026-10-06, per explicit request). Settings are under Overview > Bolus calculator
+    // defaults. Since 2026-11-05 the calculator also saves its last ticks here on OK, so the next run starts from them.
     WizardDefaultUnreliableSmbs("wizard_default_unreliable_smbs", defaultValue = false),
     WizardDefaultSmallMeal("wizard_default_small_meal", defaultValue = true),
     WizardDefaultAutoFpu("wizard_default_auto_fpu", defaultValue = false),

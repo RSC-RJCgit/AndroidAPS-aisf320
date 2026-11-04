@@ -17,9 +17,14 @@ object MealFpuFromCarbs {
     /** Wiz% used for one calculation while "Unreliable SMBs" is ticked. */
     const val UNRELIABLE_WIZ_PERCENT = 90
 
-    /** Fat and protein in grams (0-200 each), as (fat, protein). */
-    fun fatProtein(carbs: Double, unreliable: Boolean, smallMeal: Boolean): Pair<Int, Int> {
-        val scale = (if (unreliable) 2.0 else 1.0) * (if (smallMeal) 0.5 else 1.0)
+    /**
+     * Fat and protein in grams (0-200 each), as (fat, protein). [extendedCarbPercent] is the meal type's eCarbs share
+     * (2026-11-05, as v4: cake x1.2, pizza x1.35, bread x1), so the slow part of a cake or pizza meal comes back as
+     * bigger fat and protein doses when split FPU doses replace eCarbs.
+     */
+    fun fatProtein(carbs: Double, unreliable: Boolean, smallMeal: Boolean, extendedCarbPercent: Int = 0): Pair<Int, Int> {
+        val mealTypeScale = 1.0 + extendedCarbPercent.coerceAtLeast(0) / 100.0
+        val scale = (if (unreliable) 2.0 else 1.0) * (if (smallMeal) 0.5 else 1.0) * mealTypeScale
         val fat = (carbs * FAT_PER_CARB * scale).roundToInt().coerceIn(0, 200)
         val protein = (carbs * PROTEIN_PER_CARB * scale).roundToInt().coerceIn(0, 200)
         return fat to protein

@@ -214,4 +214,18 @@
     <string name="calc_detail_to_split" comment="Row after the total when the dose was more than MaxBolus: the insulin left over, given later in split parts">Over MaxBolus, to split</string>
     <string name="calc_detail_profile">Profile: %1$s</string>
     <string name="calc_detail_notes">Notes: %1$s</string>
+    <!-- Bolus calculator simple screen and meal type (2026-11-05). Food lists are upstream's (v4 carbs_type_*). -->
+    <string name="wizard_detailed_settings">Detailed settings (untick for simple input)</string>
+    <string name="wizard_carbs_type_bread">Bread</string>
+    <string name="wizard_carbs_type_cake">Cake</string>
+    <string name="wizard_carbs_type_pizza">Pizza</string>
+    <string name="wizard_carbs_type_bread_desc">Bread, savory pastries, yogurt, fruit (apple, banana, pear), potatoes, rice, buckwheat, oatmeal, slow and low carb foods, vegetables. All carbs now.</string>
+    <string name="wizard_carbs_type_cake_desc">Dumplings, pasta, Asian cuisine rich in carbs and fats, sweet and yeast pastries, cereals, grain porridge, honey, jam.</string>
+    <string name="wizard_carbs_type_pizza_desc">Lasagna, pizza, hamburgers, fries, baked potatoes, chips and similar snacks.</string>
+    <!-- %1$d g now, %2$d g eCarbs, %3$d min delay, %4$d h duration -->
+    <string name="wizard_carbs_type_split_ecarbs">%1$d g now, %2$d g eCarbs from +%3$d min over %4$d h</string>
+    <!-- %1$d g now -->
+    <string name="wizard_carbs_type_split_fpu">%1$d g now, the slow part as bigger fat/protein doses</string>
+    <!-- %1$d g now -->
+    <string name="wizard_carbs_type_split_fpu_no_auto">%1$d g now, no eCarbs (tick auto fat/protein to cover the slow part)</string>
 </resources>
