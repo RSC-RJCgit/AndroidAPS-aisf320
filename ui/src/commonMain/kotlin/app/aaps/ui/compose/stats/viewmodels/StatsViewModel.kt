@@ -29,6 +29,7 @@ import app.aaps.core.interfaces.stats.TIR
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.stats.TirCalculator
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntNonKey
@@ -301,7 +302,7 @@ class StatsViewModel(
             _uiState.update { it.copy(tddLoading = true) }
             val data = withContext(aapsIoDispatcher) {
                 val local = tddCalculator.calculate(7, allowMissingDays = true)
-                val (tdds, secondaryDays) = withSecondaryDays(local, dayStarts(MidnightTime.calcDaysBack(7), 7))
+                val (tdds, secondaryDays) = withSecondaryDays(local, dayStarts(MidnightTime.daysBack(7, SystemTimeZone.current()), 7))
                 val averageTdd = tddCalculator.averageTDD(tdds)
                 val todayTdd = tddCalculator.calculateToday()
                 TddStatsData(tdds = tdds, averageTdd = averageTdd, todayTdd = todayTdd, secondaryDays = secondaryDays)
@@ -329,7 +330,7 @@ class StatsViewModel(
 
                 // One read of 30 days for both ranges; the 7 day figures are the last 7 of those days
                 val (tir30, tit30) = tirCalculator.calculate(30, listOf(lowTirMgdl to highTirMgdl, lowTitMgdl to highTitMgdl))
-                val sevenDaysStart = MidnightTime.calcDaysBack(7)
+                val sevenDaysStart = MidnightTime.daysBack(7, SystemTimeZone.current())
                 val tir7 = tir30.fromDay(sevenDaysStart)
                 val tit7 = tit30.fromDay(sevenDaysStart)
 
@@ -423,7 +424,7 @@ class StatsViewModel(
             // (2026-11-01, per explicit request). Shown only, never stored.
             val missing = withContext(aapsIoDispatcher) {
                 val have = tddList.map { it.timestamp }.toSet()
-                val days = dayStarts(MidnightTime.calcDaysBack(now, CYCLE_DAYS), CYCLE_DAYS).filter { it !in have }
+                val days = dayStarts(MidnightTime.daysBack(now, CYCLE_DAYS, SystemTimeZone.current()), CYCLE_DAYS).filter { it !in have }
                 if (days.isEmpty()) emptyMap() else secondaryTddSource.dailyTdds(days)
             }
             if (missing.isNotEmpty()) {
@@ -437,7 +438,7 @@ class StatsViewModel(
 
     /** [count] local midnights from [first] on, oldest first. Found as Android finds them, so a DST day is one day. */
     private fun dayStarts(first: Long, count: Long): List<Long> =
-        generateSequence(first) { MidnightTime.calc(it + T.hours(27).msecs()) }.take(count.toInt()).toList()
+        generateSequence(first) { MidnightTime.before(it + T.hours(27).msecs(), SystemTimeZone.current()) }.take(count.toInt()).toList()
 
     /**
      * [local] with the days it lacks filled from the second Nightscout, and which days those are (2026-11-01, per
@@ -594,11 +595,11 @@ class StatsViewModel(
                     now = now,
                     offset = 0,
                     podCount = available,
-                    dayStartOf = { MidnightTime.calc(it) },
+                    dayStartOf = { MidnightTime.before(it, SystemTimeZone.current()) },
                     // Found as Android finds them, so a DST day is one day
-                    nextDayStart = { MidnightTime.calc(MidnightTime.calc(it) + T.hours(27).msecs()) },
+                    nextDayStart = { MidnightTime.before(MidnightTime.before(it, SystemTimeZone.current()) + T.hours(27).msecs(), SystemTimeZone.current()) },
                     sumUnits = { from, to ->
-                        podInsulinCache.getOrCalculate(from, to, to <= MidnightTime.calc(now)) {
+                        podInsulinCache.getOrCalculate(from, to, to <= MidnightTime.before(now, SystemTimeZone.current())) {
                             tddCalculator.calculateIntervalWithCachedDays(from, to, allowMissingData = true)?.totalAmount
                         }
                     },

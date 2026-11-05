@@ -1,14 +1,16 @@
 package app.aaps.ios.shell
 
+import app.aaps.core.interfaces.configuration.PLUGIN_SETTLE_WAIT
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAppInitialized
 import app.aaps.ios.shell.di.GeneratedStringOwners
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration.Companion.seconds
 
 /**
  * What has to happen before the first screen is composed - the iOS counterpart of `MainApp`.
@@ -34,6 +36,8 @@ internal class IosAppStartup(
     private val aapsLogger: AAPSLogger,
     private val registry: PluginRegistry,
     private val contributedPlugins: Map<Int, PluginBase>,
+    /** Carries [app.aaps.core.interfaces.rx.events.EventAppInitialized] once the plugins have started. */
+    private val rxBus: RxBus,
     /** Starts the shared periodic housekeeping. A lambda so a test can run this without building it. */
     private val startPeriodicWork: () -> Unit,
     /** Where the wait for the plugins runs. Not the main thread's caller, so the UI is never blocked by it. */
@@ -68,11 +72,17 @@ internal class IosAppStartup(
         // app reported initialized from the start it read the pump, got "No pump selected" and stopped
         // half way (2026-11-01). Bounded like Android's `MainApp`, so one driver that never settles
         // cannot hold the app on the splash screen.
+        //
+        // Then EventAppInitialized, as upstream (2026-11 merge, nightscout/AndroidAPS#5485):
+        // `IobCobCalculatorPlugin` runs the first IOB/COB calculation on it, so without it the graph stayed
+        // empty until the next glucose reading. Sent after `onPluginsStarted`, so a listener already sees
+        // the app as initialized.
         val started = registry.initializeConfig()
         scope.launch {
             if (withTimeoutOrNull(PLUGIN_START_WAIT) { started.joinAll() } == null)
                 aapsLogger.warn(LTag.CORE, "Plugins did not finish starting within $PLUGIN_START_WAIT")
             onPluginsStarted()
+            rxBus.send(EventAppInitialized())
         }
 
         // The periodic housekeeping Android gets from KeepAliveWorker: the missed-reading alarm,
@@ -86,6 +96,6 @@ internal class IosAppStartup(
 
     private companion object {
 
-        val PLUGIN_START_WAIT = 30.seconds
+        val PLUGIN_START_WAIT = PLUGIN_SETTLE_WAIT
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
@@ -40,7 +41,6 @@ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -111,7 +111,7 @@ fun rememberTimeFormatter(minTimestamp: Long): CartesianValueFormatter {
             // Always 24 hour, as SimpleDateFormat("HH") was: on an axis a bare 12 hour label would
             // not say which half of the day it belongs to.
             val local = Instant.fromEpochMilliseconds(timestamp)
-                .toLocalDateTime(TimeZone.currentSystemDefault())
+                .toLocalDateTime(SystemTimeZone.current())
             timeAxisLabel(local.hour, local.minute)
         }
     }
@@ -138,7 +138,7 @@ internal fun timeAxisLabel(hour: Int, minute: Int): String {
 @OptIn(ExperimentalTime::class)
 internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int): Int {
     val minute = Instant.fromEpochMilliseconds(minTimestamp)
-        .toLocalDateTime(TimeZone.currentSystemDefault())
+        .toLocalDateTime(SystemTimeZone.current())
         .minute
     val intoStep = minute % stepMinutes
     return if (intoStep == 0) 0 else stepMinutes - intoStep

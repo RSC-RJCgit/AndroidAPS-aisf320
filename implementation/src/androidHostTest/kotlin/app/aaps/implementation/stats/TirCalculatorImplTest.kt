@@ -5,6 +5,7 @@ import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.utils.MidnightTime
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.test.runTest
@@ -26,8 +27,8 @@ internal class TirCalculatorImplTest {
     private val sut = TirCalculatorImpl(dateUtil, persistenceLayer)
 
     private val hour = 60 * 60 * 1000L
-    private val today = MidnightTime.calc(System.currentTimeMillis())
-    private val yesterday = MidnightTime.calc(today - 12 * hour)
+    private val today = MidnightTime.before(System.currentTimeMillis(), SystemTimeZone.current())
+    private val yesterday = MidnightTime.before(today - 12 * hour, SystemTimeZone.current())
 
     private fun reading(time: Long, value: Double) =
         GV(raw = value, noise = 0.0, value = value, timestamp = time, sourceSensor = SourceSensor.UNKNOWN, trendArrow = TrendArrow.FLAT)
@@ -61,7 +62,7 @@ internal class TirCalculatorImplTest {
 
     @Test
     fun readingsOnTwoDaysGoToTwoDays() = runTest {
-        val twoDaysAgo = MidnightTime.calc(yesterday - 12 * hour)
+        val twoDaysAgo = MidnightTime.before(yesterday - 12 * hour, SystemTimeZone.current())
         givenReadings(reading(twoDaysAgo + hour, 100.0), reading(yesterday + hour, 100.0))
 
         val result = sut.calculate(7, 70.0, 180.0)

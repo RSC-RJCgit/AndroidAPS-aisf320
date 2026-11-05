@@ -45,6 +45,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigationevent.NavigationEventInfo
@@ -83,6 +85,9 @@ import kotlinx.coroutines.launch
  * the shared `CarouselDefaults.CardHeight`.
  */
 private val PROFILE_CARD_HEIGHT = 140.dp
+
+/** Grows with the font, so a large font still has room for the name and the lines under it. */
+internal fun profileCardHeight(fontScale: Float): Dp = PROFILE_CARD_HEIGHT * fontScale.coerceAtLeast(1f)
 
 /**
  * Screen for managing local profiles.
@@ -406,7 +411,7 @@ fun ProfileManagementScreen(
 
                             ManagementCarousel(
                                 state = pagerState,
-                                cardHeight = PROFILE_CARD_HEIGHT,
+                                cardHeight = profileCardHeight(LocalDensity.current.fontScale),
                                 reorder = workingOrder?.let { order ->
                                     CarouselReorderConfig(
                                         isActive = true,

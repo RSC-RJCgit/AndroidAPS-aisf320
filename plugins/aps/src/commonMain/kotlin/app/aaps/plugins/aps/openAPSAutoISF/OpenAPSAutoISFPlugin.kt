@@ -16,6 +16,7 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
+import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
@@ -70,6 +71,7 @@ import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
@@ -95,7 +97,6 @@ import app.aaps.core.objects.wizard.warsawFpuPlan
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.icons.IcPluginOpenAPS
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
-import app.aaps.core.utils.MidnightUtils
 import app.aaps.plugins.aps.ApsStrings
 import app.aaps.plugins.aps.events.EventOpenAPSUpdateGui
 import app.aaps.plugins.aps.events.EventResetOpenAPSGui
@@ -373,7 +374,7 @@ open class OpenAPSAutoISFPlugin(
 
         if (!hardLimits.checkHardLimits(profile.iCfg.dia, InterfacesStrings.profile_dia, hardLimits.diaRange())) return@withContext
         if (!hardLimits.checkHardLimits(
-                profile.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight()),
+                profile.getIcTimeFromMidnight(MidnightTime.secondsFromMidnight(SystemTimeZone.current())),
                 InterfacesStrings.profile_carbs_ratio_value,
                 hardLimits.icRange()
             )

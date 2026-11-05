@@ -11,6 +11,8 @@ import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.Event
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.keys.interfaces.TextRef
@@ -25,6 +27,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlin.reflect.KClass
 
 /**
  * Start up, which is two calls that have to happen in one order.
@@ -55,6 +62,13 @@ class IosAppStartupTest {
         override fun gs(ref: TextRef): String = ""
         override fun gs(ref: TextRef, vararg args: Any?): String = ""
         override fun gsNotLocalised(ref: TextRef): String = ""
+    }
+
+    /** The startup sends EventAppInitialized; this test does not look at it. */
+    private object SilentBus : RxBus {
+
+        override fun send(event: Event) = Unit
+        override fun <T : Event> toFlow(eventType: KClass<T>): Flow<T> = emptyFlow()
     }
 
     private object SilentLogger : AAPSLogger {
@@ -119,7 +133,8 @@ class IosAppStartupTest {
 
     private fun run(plugins: Map<Int, PluginBase>): RecordingRegistry {
         val registry = RecordingRegistry()
-        IosAppStartup(SilentLogger, registry, plugins, startPeriodicWork = {}, scope = TestScope(), onPluginsStarted = {}).run()
+        // A bus that records nothing: this test is about the order of the startup steps.
+        IosAppStartup(SilentLogger, registry, plugins, SilentBus, startPeriodicWork = {}, scope = TestScope(), onPluginsStarted = {}).run()
         return registry
     }
 
@@ -127,7 +142,7 @@ class IosAppStartupTest {
     private fun startWith(scope: TestScope, vararg jobs: CompletableJob): () -> Boolean {
         var initialized = false
         val registry = RecordingRegistry().apply { startJobs = jobs.toList() }
-        IosAppStartup(SilentLogger, registry, mapOf(1 to NamedPlugin("a")), startPeriodicWork = {}, scope = scope, onPluginsStarted = { initialized = true }).run()
+        IosAppStartup(SilentLogger, registry, mapOf(1 to NamedPlugin("a")), SilentBus, startPeriodicWork = {}, scope = scope, onPluginsStarted = { initialized = true }).run()
         return { initialized }
     }
 

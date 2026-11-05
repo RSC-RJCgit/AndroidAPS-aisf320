@@ -161,7 +161,12 @@ class AAPSLoggerIos(
         try {
             val manager = NSFileManager.defaultManager
             rotateIfNeeded(manager, path)
-            if (!manager.fileExistsAtPath(path)) manager.createFileAtPath(path, null, null)
+            if (!manager.fileExistsAtPath(path)) {
+                // The folder is not guaranteed to be there (upstream, 2026-11): a simulator that has just been created has no
+                // Documents yet, and createFileAtPath then fails without saying anything, so every line was dropped.
+                manager.createDirectoryAtPath(path.substringBeforeLast('/'), withIntermediateDirectories = true, attributes = null, error = null)
+                manager.createFileAtPath(path, null, null)
+            }
             val handle = NSFileHandle.fileHandleForWritingAtPath(path) ?: return
             handle.seekToEndOfFile()
             handle.writeData(data)
