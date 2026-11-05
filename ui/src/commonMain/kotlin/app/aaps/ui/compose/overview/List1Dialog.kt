@@ -5,12 +5,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,6 +49,8 @@ fun List1Dialog(viewModel: ChipsViewModel) {
         onApply = viewModel::applyList1,
         queuedText = viewModel.queuedRelayText(),
         onPickProfiles = { pickProfiles = true },
+        canApplyHere = viewModel::canApplyOnThisPhone,
+        onApplyHere = viewModel::applyList1OnThisPhone,
     )
     if (pickProfiles) {
         CodedProfileDialog(viewModel, onDismiss = { pickProfiles = false })
@@ -101,6 +107,10 @@ private fun DirectListDialog(
     onApply: (Double) -> Unit,
     queuedText: String? = null,
     onPickProfiles: () -> Unit = {},
+    // List 1 on a Client (2026-11-05, per explicit request): rows that can also be applied on this phone get "Loop phone" (onApply,
+    // the relay) and "This phone" (onApplyHere) instead of OK, or instead of Down/Up after a Down or Up chip is picked.
+    canApplyHere: (List1Row) -> Boolean = { false },
+    onApplyHere: (Double) -> Unit = {},
 ) {
     if (!open) return
     var picked by remember { mutableStateOf<List1Row?>(null) }
@@ -140,7 +150,9 @@ private fun DirectListDialog(
         }
     }
     val row = picked
-    if (row != null) {
+    if (row != null && canApplyHere(row)) {
+        ApplyHereDialog(row, onDismiss = { picked = null }, onApply = onApply, onApplyHere = onApplyHere)
+    } else if (row != null) {
         val up = row.upMmol
         AlertDialog(
             onDismissRequest = { picked = null },
@@ -172,6 +184,45 @@ private fun DirectListDialog(
             }
         )
     }
+}
+
+/** Client confirm with a choice of where to apply: the loop phone (relay) or this phone's own setting. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ApplyHereDialog(row: List1Row, onDismiss: () -> Unit, onApply: (Double) -> Unit, onApplyHere: (Double) -> Unit) {
+    val up = row.upMmol
+    // Single rows have one code; stepped rows need Down or Up picked first.
+    var chosen by remember(row) { mutableStateOf(if (up == null) row.downMmol else null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(row.label) },
+        text = {
+            Column {
+                // On a Client this list reads this phone's own settings.
+                Text("This phone: ${row.current}")
+                if (up != null) Row(modifier = Modifier.padding(top = 8.dp)) {
+                    FilterChip(selected = chosen == row.downMmol, onClick = { chosen = row.downMmol }, label = { Text("Down") })
+                    Spacer(Modifier.width(8.dp))
+                    FilterChip(selected = chosen == up, onClick = { chosen = up }, label = { Text("Up") })
+                }
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(enabled = chosen != null, onClick = {
+                    chosen?.let(onApply)
+                    onDismiss()
+                }) { Text("Loop phone") }
+                TextButton(enabled = chosen != null, onClick = {
+                    chosen?.let(onApplyHere)
+                    onDismiss()
+                }) { Text("This phone") }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
