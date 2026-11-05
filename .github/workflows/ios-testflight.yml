@@ -122,6 +122,20 @@ jobs:
           fi
           echo "All six signing secrets are present."
 
+      # 2026-11-05, per explicit request: Apple only takes uploads built with the iOS 26 SDK (Xcode 26). The Intel image defaults to an
+      # older Xcode (run 42009728362: "built with the iOS 18.5 SDK", both uploads refused), with Xcode 26 installed beside it. Picks
+      # the newest non-beta Xcode 26 and stops here, before the long build, if there is none.
+      - name: Use the newest Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            echo "::error::No Xcode 26 on this runner. Installed: $(ls -d /Applications/Xcode*.app 2>/dev/null | tr '\n' ' ')"
+            exit 1
+          fi
+          sudo xcode-select -s "$XCODE/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i iphoneos
+
       - name: Load jdk version
         run: |
           JAVA_VERSION=$(jq -r '.default' .github/jdk-map.json)
