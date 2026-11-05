@@ -33,7 +33,19 @@
 name: iOS TestFlight
 
 on:
+  # 2026-11-05, per explicit request: start it from a branch (Run workflow, or `gh workflow run`) to keep the Gradle cache. A
+  # cache saved by a tag run can only be read by that same tag, so every tag run compiled everything again; runs from one
+  # branch reuse each other's cache. The two options do what `skiptests` / `client1` in a tag name do. Tags still work.
   workflow_dispatch:
+    inputs:
+      skiptests:
+        description: Skip the 30 minute iOS shell tests
+        type: boolean
+        default: true
+      client1:
+        description: Also build AAPSClient (Client1), about 3 hours more
+        type: boolean
+        default: false
   push:
     tags:
       - 'ios-testflight-*'
@@ -52,7 +64,10 @@ jobs:
   testflight:
     # Forks have no signing identity and must not run this, even if they somehow held the secrets.
     if: github.repository == 'nightscout/AndroidAPS' || github.repository == 'RSC-RJCgit/AndroidAPS-kmp-aisf321'
-    runs-on: macos-latest
+    # 2026-11-05, per explicit request: the Intel runner, 4 cores and 14 GB (free, like macos-latest). macos-latest has 3 cores and
+    # 7 GB, too little for the Release framework link: run 41998384938 died in it with "Java heap space" (DevirtualizationAnalysis),
+    # and runs that got through spent about 2.5 hours there, short of memory. Kotlin/Native builds the iPhone framework on Intel too.
+    runs-on: macos-15-intel
     # 2026-10-10: was 90. The first run on RSC-RJCgit/AndroidAPS-kmp-aisf321 passed its tests in about 30 minutes, then the Archive step
     # (the Kotlin/Native device build) was still compiling when the 90 minute limit cancelled it, 65 minutes in.
     timeout-minutes: 360   # the hosted-runner maximum; see the note above
@@ -117,21 +132,49 @@ jobs:
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
-          cache: gradle
+
+      # In place of setup-java's `cache: gradle`, which saved one copy per tag and never updated it. This saves the Gradle home,
+      # its build cache included, at the end of every branch run; a tag run only reads (from main), as its copy could not be
+      # reused anyway and the repository's 10 GB cache space was full of them.
+      - name: Set up Gradle with its cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref_type == 'tag' }}
+
+      # 2026-11-05, per explicit request: fit Gradle to this runner (4 cores, 14 GB). The Release framework link needs a big heap (it ran
+      # out at the project's 8 GB), so 10 GB in one JVM (the Kotlin compiler in-process, no separate 4 GB daemon), leaving about 4 GB
+      # for the system and the linker's native (LLVM) memory. The Gradle user-home file below wins over the project's
+      # gradle.properties, on this runner only.
+      - name: Fit Gradle to the runner's memory
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties <<'PROPS'
+          org.gradle.jvmargs=-Xmx10g -XX:+UseParallelGC -Xss4m
+          org.gradle.workers.max=4
+          kotlin.compiler.execution.strategy=in-process
+          PROPS
+          echo "Runner: $(sysctl -n hw.ncpu) cores, $(( $(sysctl -n hw.memsize) / 1073741824 )) GB"
+
+      # One line a minute with swap in use and memory pressure, so a run shows whether memory was the bottleneck. Summed up in
+      # "Memory summary" near the end and kept with the logs.
+      - name: Start the memory log
+        run: |
+          nohup bash -c 'while true; do echo "$(date -u +%H:%M:%S) $(sysctl -n vm.swapusage) | $(memory_pressure -Q 2>/dev/null | tail -1)"; sleep 60; done' > "$GITHUB_WORKSPACE/memory.log" 2>&1 &
 
       - name: Cache Kotlin/Native
         uses: actions/cache@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
-          restore-keys: konan-${{ runner.os }}-
+          # runner.arch too: the Intel runner needs the x64 toolchain, not the arm64 one saved by earlier runs.
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
 
       # Runs the eleven `:ios:shell` tests, which no other job does - see `_docs/ios_blockers.md`.
       # They are here rather than nowhere because this is the workflow that hands a build to people:
       # `GuardedByTest` is what keeps a protected action from running without a prompt, and shipping
       # that untested to testers is worse than shipping it untested to a simulator.
       - name: Test the iOS shell
-        if: ${{ !contains(github.ref_name, 'skiptests') }}
+        if: ${{ !contains(github.ref_name, 'skiptests') && inputs.skiptests != true }}
         run: |
           set -o pipefail
           ./gradlew --console=plain --no-daemon \
@@ -140,7 +183,7 @@ jobs:
       # The task reports SKIPPED off macOS and the build still succeeds, so a green run proves
       # nothing on its own. Fail loudly if these ever stop executing here.
       - name: Assert the iOS tests really ran
-        if: ${{ !contains(github.ref_name, 'skiptests') }}
+        if: ${{ !contains(github.ref_name, 'skiptests') && inputs.skiptests != true }}
         run: |
           if grep -qE '^> Task :ios:shell:iosSimulatorArm64Test (SKIPPED|NO-SOURCE)' ios-test.log; then
             echo "::error::iOS shell tests were skipped - this job is not testing anything."
@@ -197,7 +240,7 @@ jobs:
 
       - name: Archive AAPSClient
         id: archive1
-        if: ${{ contains(github.ref_name, 'client1') }}
+        if: ${{ contains(github.ref_name, 'client1') || inputs.client1 == true }}
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
@@ -407,6 +450,15 @@ jobs:
             exit 1
           fi
 
+      - name: Memory summary
+        if: always()
+        run: |
+          [ -f memory.log ] || { echo "no memory log"; exit 0; }
+          # vm.swapusage reads "total = 2048.00M  used = 1234.56M  free = ...".
+          awk '{ for (i = 1; i < NF; i++) if ($i == "used") { v = $(i + 2); sub(/M/, "", v); if (v + 0 > max) { max = v + 0; at = $1 } } }
+               END { printf "Peak swap in use: %.0f MB at %s UTC\n", max, at }' memory.log
+          tail -n 3 memory.log
+
       # The key is a credential with upload rights; do not leave it on a runner that may be reused.
       - name: Remove the API key and the signing keychain
         if: always()
@@ -427,4 +479,5 @@ jobs:
             export-AAPSClient2.log
             archive-AAPS.log
             export-AAPS.log
+            memory.log
           retention-days: 7
