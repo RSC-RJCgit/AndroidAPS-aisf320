@@ -33,7 +33,6 @@ import app.aaps.implementation.maintenance.migration.InsulinMigration
 import app.aaps.implementation.maintenance.migration.PreferenceMigrations
 import app.aaps.core.interfaces.protection.SecureEncrypt
 import app.aaps.core.keys.interfaces.StringPreferenceKey
-import app.aaps.core.keys.StringNonKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
