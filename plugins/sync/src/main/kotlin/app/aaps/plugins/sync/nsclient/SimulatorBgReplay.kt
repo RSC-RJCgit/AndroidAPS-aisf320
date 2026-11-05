@@ -65,9 +65,14 @@ class SimulatorBgReplay @Inject constructor(
     // 48 hours, or 72 once the 48-hour source ran dry (2026-11-05, per explicit request: travel across time zones
     // leaves the 48-hour source empty at unexpected times). Sticky: no return to 48 until replay is turned off,
     // and full-sync recovery uses the same shift.
+    // Re-run (2026-11-05, per explicit request): another 15-minute gap while on 72 hours replays again from the first reading
+    // used after the switch (the start point), so the shift grows to now minus that point. It re-arms on every later gap.
     private fun longDelay(): Boolean = preferences.get(LongNonKey.NsClientSimulatorBgReplayLongDelaySince) > 0L
-    private fun delayMs(): Long = if (longDelay()) LONG_DELAY_MS else DELAY_MS
-    private fun delayHours(): Long = delayMs() / (60 * 60_000L)
+    private fun delayMs(): Long = if (!longDelay()) DELAY_MS
+        else preferences.get(LongNonKey.NsClientSimulatorBgReplayLongDelayMs).takeIf { it > 0L } ?: LONG_DELAY_MS
+    private fun delayHours(): String = hoursText(delayMs())
+    private fun hoursText(ms: Long): String =
+        if (ms % (60 * 60_000L) == 0L) (ms / (60 * 60_000L)).toString() else "%.1f".format(ms / (60 * 60_000.0))
 
     fun stop() {
         stopped = true
@@ -137,6 +142,8 @@ class SimulatorBgReplay @Inject constructor(
         if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay)) {
             preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, 0L)
             preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelaySince, 0L)
+            preferences.put(LongNonKey.NsClientSimulatorBgReplayStartPoint, 0L)
+            preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, 0L)
             if (lastWarning != null) rxBus.send(EventDismissNotification(Notification.NSCLIENT_SIMULATOR_BG_REPLAY))
             lastWarning = null
             return false
@@ -186,7 +193,7 @@ class SimulatorBgReplay @Inject constructor(
             }
             preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, 0L)
             val delay = delayMs()
-            val hours = delay / (60 * 60_000L)
+            val hours = hoursText(delay)
             val due = now - delay
             stage = "reading secondary site $hours hours ago"
             val from = recoveryFrom?.minus(delay) ?: (due - SAMPLE_WINDOW_MS + 1)
@@ -198,12 +205,25 @@ class SimulatorBgReplay @Inject constructor(
             val sources = if (recoveryFrom == null) listOfNotNull(valid.maxByOrNull { it.optLong("date", 0L) })
                 else valid.distinctBy { it.optLong("date", 0L) }.sortedBy { it.optLong("date", 0L) }
             if (sources.isEmpty()) {
+                val gap = recoveryFrom == null &&
+                    recentTarget.none { it.optBoolean("isValid", true) && it.optLong("date", 0L) in (now - GAP_MS + 1)..now }
                 // Live tick only: no 48-hour reading and no BG on the main site for 15 minutes -> switch to 72 hours.
-                if (recoveryFrom == null && !longDelay() &&
-                    recentTarget.none { it.optBoolean("isValid", true) && it.optLong("date", 0L) in (now - GAP_MS + 1)..now }) {
+                if (gap && !longDelay()) {
                     preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelaySince, now)
+                    preferences.put(LongNonKey.NsClientSimulatorBgReplayStartPoint, 0L)
+                    preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, LONG_DELAY_MS)
                     log("No secondary BG from 48 hours ago and no main-site BG for 15 minutes; switched to 72 hours until replay is turned off")
                     logger.debug(LTag.NSCLIENT, "Simulator BG replay: switched to 72-hour delay")
+                    return runWindow()
+                }
+                // Already switched and another 15-minute gap: replay again from the start point. Only when that moves the shift,
+                // so an empty start point waits for the next tick instead of looping.
+                val startPoint = preferences.get(LongNonKey.NsClientSimulatorBgReplayStartPoint)
+                if (gap && startPoint > 0L && now - startPoint > delay) {
+                    preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, now - startPoint)
+                    log("No secondary BG from $hours hours ago and no main-site BG for 15 minutes; replaying again from the start point " +
+                        "${dateUtil.toISOString(startPoint)}, shift now ${hoursText(now - startPoint)} hours")
+                    logger.debug(LTag.NSCLIENT, "Simulator BG replay: re-run from start point, shift ${hoursText(now - startPoint)} h")
                     return runWindow()
                 }
                 log("No secondary BG between ${dateUtil.toISOString(from)} and ${dateUtil.toISOString(to)}; no substitute reading generated")
@@ -219,6 +239,11 @@ class SimulatorBgReplay @Inject constructor(
                     preferences.get(StringKey.NsClientApiSecret) != secret ||
                     preferences.get(StringKey.NsClientSecondaryAccessToken) != token
                 ) return false
+                // First reading replayed after the switch to 72 hours: the start point for a later re-run.
+                if (recoveryFrom == null && longDelay() && preferences.get(LongNonKey.NsClientSimulatorBgReplayStartPoint) == 0L) {
+                    preferences.put(LongNonKey.NsClientSimulatorBgReplayStartPoint, source.getLong("date"))
+                    log("Start point for a later re-run: ${dateUtil.toISOString(source.getLong("date"))}")
+                }
                 val mgdl = source.getDouble("sgv") * if (source.optString("units").startsWith("mmol", true)) 18.0182 else 1.0
                 // Existing real/main-site BG is never replaced by historical replay.
                 val existing = target.firstOrNull { it.optLong("date", 0L) == at }

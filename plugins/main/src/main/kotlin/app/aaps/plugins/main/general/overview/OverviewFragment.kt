@@ -2430,10 +2430,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         is TtCode.Single  ->
                             androidx.appcompat.app.AlertDialog.Builder(act)
                                 .setTitle(entry.label)
-                                .also { builder -> entry.currentValue?.let { reader -> builder.setMessage(displayedTtCurrentValue(entry, reader)) } }
+                                .also { builder -> entry.currentValue?.let { reader -> builder.setMessage(displayedTtCurrentValue(entry, reader) + thisPhoneValueLine(reader, entry.value)) } }
                                 // Added 2026-08-23: OK used to just apply and drop back to the plain
                                 // Overview screen -- only Cancel returned to this list. Now both do.
-                                .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value); showTtCodesListDialog() }
+                                // Client (2026-11-05, per explicit request): OK becomes "Loop phone" (the relay) and settings rows add "This phone".
+                                .setPositiveButton(if (config.AAPSCLIENT) "Loop phone" else rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value); showTtCodesListDialog() }
+                                .also { builder ->
+                                    if (localListCodeAllowed(entry.value))
+                                        builder.setNeutralButton("This phone") { _, _ -> applyListCodeOnThisPhone(entry.value); showTtCodesListDialog() }
+                                }
                                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                                 // setNegativeButton alone only catches an explicit tap on the Cancel
                                 // button -- back-press or tapping outside the dialog goes through
@@ -2452,7 +2457,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         // (entry.downLabel/upLabel, e.g. "-0.1"/"+0.1"), pulled from the matching
                         // *DownTT/*UpTT block in OpenAPSAutoISFPlugin.kt — see the comment on
                         // TtCode.Stepped below.
-                        is TtCode.Stepped -> showSteppedDialog(act, entry, onApply = { applyTtControl(it) }, onReturn = { showTtCodesListDialog() })
+                        is TtCode.Stepped -> showSteppedDialog(
+                            act, entry, onApply = { applyTtControl(it) }, onReturn = { showTtCodesListDialog() },
+                            onApplyHere = if (localListCodeAllowed(entry.down, entry.up)) { code -> applyListCodeOnThisPhone(code) } else null
+                        )
 
                         // No confirm/cancel wrapper -- showProfileNamesPopup() (the only current use) is
                         // already its own confirm dialog with OK/Cancel, so wrapping it in another one
@@ -2853,6 +2861,20 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // (basal rate icon), not list1 (this one, IOB icon).
     )
 
+    // List 1 "This phone" on a Client (2026-11-05, per explicit request): only the settings rows in ClientLocalListCodes, which
+    // change this phone's own preference (no SMS, note or TT). Everything else is relayed to the loop phone only.
+    private fun localListCodeAllowed(vararg mmol: Double): Boolean = config.AAPSCLIENT && ClientLocalListCodes.supports(*mmol)
+
+    private fun thisPhoneValueLine(reader: () -> String, vararg mmol: Double): String =
+        if (localListCodeAllowed(*mmol)) "\nThis phone: " + reader().removePrefix("Current: ") else ""
+
+    private fun applyListCodeOnThisPhone(mmol: Double) {
+        val changed = ClientLocalListCodes.apply(preferences, mmol) ?: return
+        aapsLogger.info(LTag.CORE, "List 1 code $mmol applied on this phone only: $changed")
+        context?.let { ToastUtils.infoToast(it, "This phone: $changed") }
+        rxBus.send(EventRefreshOverview("List 1 code applied on this phone", true))
+    }
+
     // Pump/Virtual selection: enqueue the matching local handler without making a TT. Client selection:
     // create the relay TT; Client does not alter its own local setting.
     private fun applyTtControl(mmol: Double, origin: String = "IOB double-tap settings") {
@@ -2870,7 +2892,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // from, matching every row's existing cancel/confirm-then-return behaviour (see TtCode.Single's own
     // comment on this in showTtCodesListDialog() for why setOnCancelListener is also needed, not just
     // setNegativeButton).
-    private fun showSteppedDialog(act: androidx.fragment.app.FragmentActivity, entry: TtCode.Stepped, onApply: (Double) -> Unit, onReturn: () -> Unit) {
+    // onApplyHere (List 1 on a Client, 2026-11-05): when set, OK becomes "Loop phone" (onApply, the relay) and a "This phone" button
+    // applies the checked direction to this phone's own setting.
+    private fun showSteppedDialog(
+        act: androidx.fragment.app.FragmentActivity, entry: TtCode.Stepped, onApply: (Double) -> Unit, onReturn: () -> Unit,
+        onApplyHere: ((Double) -> Unit)? = null
+    ) {
         val downBox = CheckBox(act).apply { text = entry.downLabel }
         val upBox = CheckBox(act).apply { text = entry.upLabel }
         downBox.setOnCheckedChangeListener { _, checked -> if (checked) upBox.isChecked = false }
@@ -2880,7 +2907,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             setPadding(48, 24, 48, 0)
             entry.currentValue?.let { reader ->
                 addView(TextView(act).apply {
-                    text = displayedTtCurrentValue(entry, reader)
+                    text = displayedTtCurrentValue(entry, reader) + if (onApplyHere != null) "\nThis phone: " + reader().removePrefix("Current: ") else ""
                     setPadding(0, 0, 0, 16)
                 })
             }
@@ -2893,12 +2920,21 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Added 2026-08-23: OK used to just apply and drop back to the plain Overview screen -- only
             // Cancel returned to the outer list. Now both do (onReturn() after onApply()), matching
             // TtCode.Single's own OK behaviour.
-            .setPositiveButton(rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+            .setPositiveButton(if (onApplyHere != null) "Loop phone" else rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 when {
                     downBox.isChecked -> { onApply(entry.down); onReturn() }
                     upBox.isChecked   -> { onApply(entry.up); onReturn() }
                     // Neither checked: OK with no selection is a no-op, not an error -- still returns.
                     else              -> onReturn()
+                }
+            }
+            .also { builder ->
+                if (onApplyHere != null) builder.setNeutralButton("This phone") { _, _ ->
+                    when {
+                        downBox.isChecked -> onApplyHere(entry.down)
+                        upBox.isChecked   -> onApplyHere(entry.up)
+                    }
+                    onReturn()
                 }
             }
             .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> onReturn() }

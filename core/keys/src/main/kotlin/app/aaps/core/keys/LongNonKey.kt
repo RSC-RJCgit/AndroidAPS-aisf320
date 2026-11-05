@@ -12,6 +12,10 @@ enum class LongNonKey(
     NsClientSimulatorBgReplayPauseUntil("nsclient_simulator_bg_replay_pause_until", 0L, exportable = false),
     // When replay switched from 48 to 72 hours (0 = still 48). Stays on 72 until replay is turned off.
     NsClientSimulatorBgReplayLongDelaySince("nsclient_simulator_bg_replay_long_delay_since", 0L, exportable = false),
+    // Source time of the first reading replayed after the switch (0 = none yet); a later gap replays again from here.
+    NsClientSimulatorBgReplayStartPoint("nsclient_simulator_bg_replay_start_point", 0L, exportable = false),
+    // Current shift in ms once switched (0 = 72 hours); grows on each re-run from the start point.
+    NsClientSimulatorBgReplayLongDelayMs("nsclient_simulator_bg_replay_long_delay_ms", 0L, exportable = false),
     LastLoRebAppliedAt("last_loreb_applied_at", 0L, exportable = false),
     LastHiBrkTwilightTtAt("last_hibrk_twilight_tt_at", 0L, exportable = false),
 
