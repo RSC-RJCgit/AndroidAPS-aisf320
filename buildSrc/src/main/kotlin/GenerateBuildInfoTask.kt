@@ -67,15 +67,6 @@ abstract class GenerateBuildInfoTask : DefaultTask() {
     @get:Input
     abstract val client: Property<Int>
 
-    /**
-     * The short commit this was built from, the same value Android puts in `BuildConfig.HEAD`.
-     *
-     * A crash report is read against a commit: without one, a report from a three month old fork
-     * looks exactly like a report from today's `dev`.
-     */
-    @get:Input
-    abstract val head: Property<String>
-
     /** The clone URL this was built from, shortened for display by `gitRemoteShort`. */
     @get:Input
     abstract val gitRemote: Property<String>
@@ -140,9 +131,6 @@ abstract class GenerateBuildInfoTask : DefaultTask() {
             |     * directory it uses, so two clients never share one database.
             |     */
             |    const val CLIENT: Int = ${client.get()}
-            |
-            |    /** Short commit, the same value Android reports as `BuildConfig.HEAD`. */
-            |    const val HEAD: String = "${head.get()}"
             |
             |    /** Clone URL this was built from. Shorten it with `gitRemoteShort` before showing it. */
             |    const val REMOTE: String = "${gitRemote.get()}"

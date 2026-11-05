@@ -192,7 +192,6 @@ val generateIosBuildInfo = tasks.register<GenerateBuildInfoTask>("generateIosBui
     packageName.set("app.aaps.ios.shell.config")
     // So a crash report names the commit, the repository and whether the tree was clean - the three
     // things that tell an upstream report from a fork's. Android has sent these since 2019.
-    head.set(gitHead())
     gitRemote.set(gitRemoteUrl())
     committed.set(allCommitted())
     outputDir.set(layout.buildDirectory.dir("generated/buildInfo"))
