@@ -62,12 +62,13 @@ class SimulatorBgReplay @Inject constructor(
 
     fun start() { stopped = false }
 
-    // 48 hours, or 72 once the 48-hour source ran dry (2026-11-05, per explicit request: travel across time zones
-    // leaves the 48-hour source empty at unexpected times). Sticky: no return to 48 until replay is turned off,
-    // and full-sync recovery uses the same shift.
+    // 14 days, or 15 once the 14-day source ran dry (2026-11-07, per explicit request; was 48 h / 72 h since 3 and 5 Nov:
+    // travel across time zones leaves the source empty at unexpected times). Sticky: no return to 14 days until replay is
+    // turned off, and full-sync recovery uses the same shift.
     // Gap while on the long delay (2026-11-06, per explicit request; replaces the 5 Nov jump back to a fixed start point, which
     // replayed the same 1 h 25 min of 2 Nov on a loop): skip forward to the next secondary reading within 6 hours, never nearer
-    // than 48 hours ago, so the shift shrinks and no reading is replayed twice. None there: one day earlier (shift + 24 h).
+    // than 14 days ago, so the shift shrinks and no reading is replayed twice. None there: one day earlier (shift + 24 h),
+    // and past 21 days it starts again at 15.
     private fun longDelay(): Boolean = preferences.get(LongNonKey.NsClientSimulatorBgReplayLongDelaySince) > 0L
     private fun delayMs(): Long = if (!longDelay()) DELAY_MS
         else preferences.get(LongNonKey.NsClientSimulatorBgReplayLongDelayMs).takeIf { it > 0L } ?: LONG_DELAY_MS
@@ -207,12 +208,13 @@ class SimulatorBgReplay @Inject constructor(
             if (sources.isEmpty()) {
                 val gap = recoveryFrom == null &&
                     recentTarget.none { it.optBoolean("isValid", true) && it.optLong("date", 0L) in (now - GAP_MS + 1)..now }
-                // Live tick only: no 48-hour reading and no BG on the main site for 15 minutes -> switch to 72 hours.
+                // Live tick only: no 14-day reading and no BG on the main site for 15 minutes -> switch to 15 days.
                 if (gap && !longDelay()) {
                     preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelaySince, now)
                     preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, LONG_DELAY_MS)
-                    log("No secondary BG from 48 hours ago and no main-site BG for 15 minutes; switched to 72 hours until replay is turned off")
-                    logger.debug(LTag.NSCLIENT, "Simulator BG replay: switched to 72-hour delay")
+                    log("No secondary BG from ${hoursText(DELAY_MS)} hours ago and no main-site BG for 15 minutes; " +
+                        "switched to ${hoursText(LONG_DELAY_MS)} hours until replay is turned off")
+                    logger.debug(LTag.NSCLIENT, "Simulator BG replay: switched to ${hoursText(LONG_DELAY_MS)}-hour delay")
                     return runWindow()
                 }
                 // Already switched and another 15-minute gap: skip past it to the next secondary reading (see delayMs()).
@@ -231,11 +233,12 @@ class SimulatorBgReplay @Inject constructor(
                         return runWindow()
                     }
                     // Nothing in reach: one day earlier, tried on the next tick (no immediate retry, so this cannot spin). A long
-                    // outage on the secondary site would otherwise add a day every tick, so past MAX_DELAY_MS it starts again at 72 h.
+                    // outage on the secondary site would otherwise add a day every tick, so past MAX_DELAY_MS it starts again at 15 days.
                     val earlier = if (delay + DAY_MS > MAX_DELAY_MS) LONG_DELAY_MS else delay + DAY_MS
                     preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, earlier)
                     log("No secondary BG in the ${hoursText(maxOf(0L, aheadTo - due))} hours after ${dateUtil.toISOString(due)}; " +
-                        "shift now ${hoursText(earlier)} hours" + if (earlier == LONG_DELAY_MS) " (over 7 days back, starting again at 72)" else " (one day earlier)")
+                        "shift now ${hoursText(earlier)} hours" +
+                        if (earlier == LONG_DELAY_MS) " (over ${MAX_DELAY_MS / DAY_MS} days back, starting again at ${LONG_DELAY_MS / DAY_MS} days)" else " (one day earlier)")
                     logger.debug(LTag.NSCLIENT, "Simulator BG replay: no reading ahead, shift ${hoursText(earlier)} h")
                     return true
                 }
@@ -363,15 +366,16 @@ class SimulatorBgReplay @Inject constructor(
     }
 
     private companion object {
-        const val DELAY_MS = 48 * 60 * 60_000L
-        const val LONG_DELAY_MS = 72 * 60 * 60_000L
+        const val DAY_MS = 24 * 60 * 60_000L
+        // 2026-11-07, per explicit request: 14 days back (was 48 h), 15 days once that source ran dry (was 72 h), at most 21 (was 7 days).
+        const val DELAY_MS = 14 * DAY_MS
+        const val LONG_DELAY_MS = 15 * DAY_MS
         const val GAP_MS = 15 * 60_000L
         const val RECOVERY_SPAN_MS = 48 * 60 * 60_000L
         const val SAMPLE_WINDOW_MS = 5 * 60_000L
         const val PAUSE_MS = 10 * 60_000L
         const val RECOVERY_WINDOW_MS = 6 * 60 * 60_000L
         const val SKIP_AHEAD_MS = 6 * 60 * 60_000L
-        const val DAY_MS = 24 * 60 * 60_000L
-        const val MAX_DELAY_MS = 7 * DAY_MS
+        const val MAX_DELAY_MS = 21 * DAY_MS
     }
 }
