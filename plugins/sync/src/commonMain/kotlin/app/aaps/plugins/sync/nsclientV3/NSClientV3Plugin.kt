@@ -293,7 +293,11 @@ class NSClientV3Plugin(
         scope = CoroutineScope(aapsIoDispatcher + SupervisorJob())
         runningConfigurationPublisher.start(scope)
         trioSimulator.start(scope)
-        preferencesClientPublisher.start(scope)
+        // 2026-11-06, per explicit request: no automatic settings sync in either direction. The master's broadcast settings
+        // already never overwrite a client's preferences (RunningConfigurationImpl.applyCold); the other direction, a client
+        // pushing its own edits of Bidirectional keys to the master, is off too, so a setting changed on a client stays there.
+        // Commands a client sends on purpose (List codes, bolus, TT, profile switch ...) are not affected.
+        // preferencesClientPublisher.start(scope)
         // A one-time convenience: if it fails, log it and go on - it must never stop the plugin from starting.
         if (!config.AAPSCLIENT) scope.launch {
             runCatching { storeClientControlSwitchForPairedClients() }

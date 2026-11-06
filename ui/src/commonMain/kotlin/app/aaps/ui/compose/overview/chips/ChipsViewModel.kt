@@ -428,15 +428,17 @@ class ChipsViewModel(
         notAutoIsfNotice = false
     }
 
-    // List 1 "This phone" on a Client (2026-11-05, per explicit request): only the settings rows in ClientLocalListCodes, which
-    // change this phone's own preference (no SMS, note or TT). Every other row is relayed to the loop phone only.
+    // List 1 / List 2 "This phone" on a Client (List 1 2026-11-05, List 2 2026-11-06, per explicit request): only the settings
+    // rows in ClientLocalListCodes, which change this phone's own preference (no SMS, note or TT; no automatic settings sync
+    // either way, so it stays). Every other row is relayed to the loop phone only.
     fun canApplyOnThisPhone(row: List1Row): Boolean =
         config.AAPSCLIENT && !row.readOnly && !row.pickProfiles && ClientLocalListCodes.supports(*listOfNotNull(row.downMmol, row.upMmol).toDoubleArray())
 
     fun applyList1OnThisPhone(mmol: Double) {
         val changed = ClientLocalListCodes.apply(preferences, mmol) ?: return
-        aapsLogger.info(LTag.CORE, "List 1 code $mmol applied on this phone only: $changed")
+        aapsLogger.info(LTag.CORE, "List code $mmol applied on this phone only: $changed")
         list1Generation++
+        list2Generation++
     }
 
     fun applyList1(mmol: Double) {

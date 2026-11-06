@@ -68,6 +68,9 @@ fun List2Dialog(viewModel: ChipsViewModel) {
         onDismiss = viewModel::closeList2,
         onApply = viewModel::applyList1,
         queuedText = viewModel.queuedRelayText(),
+        // 2026-11-06, per explicit request: the List 2 rows whose settings are not synced (ClientLocalListCodes) offer "This phone" too.
+        canApplyHere = viewModel::canApplyOnThisPhone,
+        onApplyHere = viewModel::applyList1OnThisPhone,
     )
     NotAutoIsfNotice(viewModel)
 }

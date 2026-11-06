@@ -10,10 +10,15 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 /**
- * List 1 "This phone" on a Client (2026-11-05, per explicit request): the settings rows change this phone's own preference
- * only. No SMS, no CarePortal note (it would sync to NS and look as if the loop phone changed) and no TT. Rows that switch a
- * profile, an MJ/Steroid state, a tier, the insulin peak (a profile switch in v4) or anything else are not here and stay
- * relayed to the loop phone. None of these keys is copied from the master by the running configuration, so the change stays.
+ * List 1 / List 2 "This phone" on a Client (List 1 2026-11-05, List 2 2026-11-06, per explicit request): the settings rows
+ * change this phone's own preference only. No SMS, no CarePortal note (it would sync to NS and look as if the loop phone
+ * changed) and no TT. Rows that switch a profile, an MJ/Steroid state, a tier, the insulin peak (a profile switch in v4), an
+ * action (AnyDesk, APK, ADB) or anything else are not here and stay relayed to the loop phone.
+ *
+ * The change really stays on this phone: the master's broadcast settings never overwrite a client's preferences
+ * (RunningConfigurationImpl.applyCold, since chk275), and since 2026-11-06 a client no longer pushes its own edits of
+ * Bidirectional keys to the master either (PreferencesClientPublisher is not started; see NSClientV3Plugin). If either
+ * automatic sync is ever turned back on, synced keys must come out of this list.
  *
  * KEEP IN STEP: each step and limit is copied from its branch in OpenAPSAutoISFPlugin.applyToggleAction (and its nudge
  * helpers). If a step or limit changes there, change it here too.
@@ -24,7 +29,10 @@ internal object ClientLocalListCodes {
         5.002, 5.004, 5.006, 5.008, 5.248, 5.012, 5.014, 5.016, 5.018, 5.022, 5.024, 5.026, 5.028, 5.032, 5.034, 5.036, 5.038,
         5.046, 5.048, 5.052, 5.054, 5.056, 5.058, 5.062, 5.064, 5.068, 5.070, 5.080, 5.082, 5.086, 5.088,
         5.092, 5.094, 5.098, 5.100, 5.104, 5.106, 5.110, 5.112, 5.116, 5.118, 5.122, 5.124, 5.128, 5.130, 5.134, 5.136,
-        5.138, 5.142, 5.156
+        5.138, 5.142, 5.156,
+        // List 2 settings rows
+        5.164, 5.166, 5.182, 5.184, 5.186, 5.188, 5.190, 5.192, 5.194, 5.196, 5.198, 5.206, 5.210, 5.212, 5.214,
+        5.226, 5.228, 5.230, 5.232, 5.234, 5.236,
     )
 
     fun supports(vararg mmol: Double): Boolean = mmol.all { code -> codes.any { abs(it - code) <= 0.0000001 } }
@@ -69,6 +77,13 @@ internal object ClientLocalListCodes {
         val next = if (delta < 0) (current + delta).coerceAtLeast(50) else (current + delta).coerceAtMost(100)
         p.put(IntKey.OverviewBolusPercentage, next)
         return "${IntKey.OverviewBolusPercentage.key} $next"
+    }
+
+    // nudgeBoostIob: 1 to 100 %.
+    private fun boostIob(p: Preferences, delta: Int): String {
+        val next = (p.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent) + delta).coerceIn(1, 100)
+        p.put(IntKey.ApsAutoIsfUamBoostMaxIobPercent, next)
+        return "${IntKey.ApsAutoIsfUamBoostMaxIobPercent.key} $next"
     }
 
     /** Applies the code to this phone's own preferences. Returns a short "what changed" text, or null when not a local code. */
@@ -126,6 +141,28 @@ internal object ClientLocalListCodes {
             near(5.138) -> toggle(p, BooleanKey.ApsAutoIsfShowCarbModelCurve)
             near(5.142) -> toggle(p, BooleanKey.ApsAutoIsfShowGraph5)
             near(5.156) -> toggle(p, BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)
+            // List 2
+            near(5.164) -> toggle(p, BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
+            near(5.166) -> toggle(p, BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
+            near(5.182) -> nudge(p, DoubleKey.ApsAutoIsfUamBoostScale, -0.25, 0.1, 2.9, both = true)
+            near(5.184) -> nudge(p, DoubleKey.ApsAutoIsfUamBoostScale, 0.25, 0.1, 2.9, both = true)
+            near(5.186) -> nudge(p, DoubleKey.ApsAutoIsfUamBoostMaxBolus, -0.25, 0.1, 10.0, both = true)
+            near(5.188) -> nudge(p, DoubleKey.ApsAutoIsfUamBoostMaxBolus, 0.25, 0.1, 10.0, both = true)
+            near(5.190) -> boostIob(p, -5)
+            near(5.192) -> boostIob(p, 5)
+            near(5.194) -> toggle(p, BooleanKey.ApsAutoIsfUamBoostEnabled)
+            near(5.196) -> toggle(p, BooleanKey.ApsAutoIsfUseUkf1ForDosing)
+            near(5.198) -> toggle(p, BooleanKey.AutomationCodedLocationsEnabled)
+            near(5.206) -> toggle(p, BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+            near(5.210) -> toggle(p, BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled)
+            near(5.212) -> toggle(p, BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled)
+            near(5.214) -> toggle(p, BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled)
+            near(5.226) -> toggle(p, BooleanKey.ApsAutoIsfFastRiseEnabled)
+            near(5.228) -> toggle(p, BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
+            near(5.230) -> toggle(p, BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
+            near(5.232) -> toggle(p, BooleanKey.ApsAutoIsfShowInsulinTotals)
+            near(5.234) -> toggle(p, BooleanKey.ApsAutoIsfLoopEveryMinute)
+            near(5.236) -> toggle(p, BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)
             else        -> null
         }
     }
