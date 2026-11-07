@@ -53,6 +53,8 @@ class SimulatorBgReplay @Inject constructor(
     @Volatile private var stopped = true
     private var lastWarning: String? = null
     private var lastStoredAt = 0L
+    /** The newest current secondary reading relayed (0 = none since start); the replay waits GAP_MS after it */
+    private var lastCurrentAt = 0L
     /** The calibrated reading saved at [lastStoredAt], reused if its upload is retried, so it is calibrated only once */
     private var lastStoredGv: GV = GV(timestamp = 0L, value = 0.0, raw = null, noise = null, trendArrow = TrendArrow.NONE, sourceSensor = SourceSensor.UNKNOWN)
     @Volatile private var fullSyncRequested = false
@@ -201,63 +203,82 @@ class SimulatorBgReplay @Inject constructor(
             val delay = delayMs()
             val hours = hoursText(delay)
             val zone = sourceZone()
-            // The source time that replays now (time-zone match, see replayAt()). The window around it is widened by
-            // TZ_MARGIN_MS, because a reading's own UTC offset can differ from the setting's; each reading is then placed
-            // by its own offset and kept only if it lands in this tick's window.
-            val due = sourceTimeFor(now, delay, zone)
-            stage = "reading secondary site $hours hours ago"
-            val from = (recoveryFrom?.let { sourceTimeFor(it, delay, zone) } ?: (due - SAMPLE_WINDOW_MS + 1)) - TZ_MARGIN_MS
-            val to = (recoveryTo?.let { sourceTimeFor(it, delay, zone) } ?: due) + TZ_MARGIN_MS
-            val fetched = entries(secondary, from, to, 1000, token = token)
-            check(fetched.size < 1000) { "Replay window exceeds query limit" }
-            val valid = fetched.filter { it.optBoolean("isValid", true) &&
-                it.optDouble("sgv").let { value -> value.isFinite() && value > 0 } }
-            val windowFrom = recoveryFrom ?: (now - SAMPLE_WINDOW_MS + 1)
-            val windowTo = recoveryTo ?: now
-            val placed = valid.distinctBy { it.optLong("date", 0L) }.map { it to replayAt(it, delay, zone) }
-                .filter { it.second in windowFrom..windowTo }
-            val sources = if (recoveryFrom == null) listOfNotNull(placed.maxByOrNull { it.second }) else placed.sortedBy { it.second }
-            if (sources.isEmpty()) {
-                val gap = recoveryFrom == null &&
-                    recentTarget.none { it.optBoolean("isValid", true) && it.optLong("date", 0L) in (now - GAP_MS + 1)..now }
-                // Live tick only: no 14-day reading and no BG on the main site for 15 minutes -> switch to 15 days.
-                if (gap && !longDelay()) {
-                    preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelaySince, now)
-                    preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, LONG_DELAY_MS)
-                    log("No secondary BG from ${hoursText(DELAY_MS)} hours ago and no main-site BG for 15 minutes; " +
-                        "switched to ${hoursText(LONG_DELAY_MS)} hours until replay is turned off")
-                    logger.debug(LTag.NSCLIENT, "Simulator BG replay: switched to ${hoursText(LONG_DELAY_MS)}-hour delay")
-                    return runWindow()
-                }
-                // Already switched and another 15-minute gap: skip past it to the next secondary reading (see delayMs()).
-                if (gap && longDelay()) {
-                    stage = "looking past a gap in the secondary site"
-                    val aheadTo = minOf(due + SKIP_AHEAD_MS, now - DELAY_MS)
-                    val next = if (aheadTo <= due) null else entries(secondary, due + 1, aheadTo, 1000, token = token)
-                        .filter { it.optBoolean("isValid", true) && it.optDouble("sgv").let { value -> value.isFinite() && value > 0 } }
-                        .minByOrNull { it.optLong("date", 0L) }
-                    if (next != null) {
-                        val nextAt = next.getLong("date")
-                        // Local clock to local clock, so that reading replays now (see replayAt())
-                        val shift = now + here().getOffset(now) - (nextAt + sourceOffsetMs(next, zone))
-                        preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, shift)
-                        log("Gap in the secondary BG after ${dateUtil.toISOString(due)}: skipped ${hoursText(nextAt - due)} hours to " +
-                            "${dateUtil.toISOString(nextAt)}, shift now ${hoursText(shift)} hours")
-                        logger.debug(LTag.NSCLIENT, "Simulator BG replay: skipped a gap, shift ${hoursText(shift)} h")
+            // Current BG first (2026-11-07, per explicit request): the replay is only a stand-in. While the secondary site
+            // has a reading from the last CURRENT_MS, that reading is relayed at its own time (calibrated, saved locally,
+            // uploaded, no shift) and nothing is replayed. The 14-day replay takes over only after GAP_MS without one.
+            val current = if (recoveryFrom != null) null else {
+                stage = "reading current BG on the secondary site"
+                entries(secondary, now - CURRENT_MS, now + 60_000L, 100, token = token)
+                    .filter { it.optBoolean("isValid", true) && it.optDouble("sgv").let { value -> value.isFinite() && value > 0 } }
+                    .maxByOrNull { it.optLong("date", 0L) }
+            }
+            val relayCurrent = current != null
+            if (current != null) lastCurrentAt = current.getLong("date")
+            else if (recoveryFrom == null && now - lastCurrentAt < GAP_MS) {
+                log("No current secondary BG since ${dateUtil.toISOString(lastCurrentAt)}; the replay starts after 15 minutes without one")
+                return true
+            }
+            val sources: List<Pair<JSONObject, Long>>
+            if (current != null) sources = listOf(current to current.getLong("date"))
+            else {
+                // The source time that replays now (time-zone match, see replayAt()). The window around it is widened by
+                // TZ_MARGIN_MS, because a reading's own UTC offset can differ from the setting's; each reading is then placed
+                // by its own offset and kept only if it lands in this tick's window.
+                val due = sourceTimeFor(now, delay, zone)
+                stage = "reading secondary site $hours hours ago"
+                val from = (recoveryFrom?.let { sourceTimeFor(it, delay, zone) } ?: (due - SAMPLE_WINDOW_MS + 1)) - TZ_MARGIN_MS
+                val to = (recoveryTo?.let { sourceTimeFor(it, delay, zone) } ?: due) + TZ_MARGIN_MS
+                val fetched = entries(secondary, from, to, SOURCE_QUERY_LIMIT, token = token)
+                check(fetched.size < SOURCE_QUERY_LIMIT) { "Replay window exceeds query limit" }
+                val valid = fetched.filter { it.optBoolean("isValid", true) &&
+                    it.optDouble("sgv").let { value -> value.isFinite() && value > 0 } }
+                val windowFrom = recoveryFrom ?: (now - SAMPLE_WINDOW_MS + 1)
+                val windowTo = recoveryTo ?: now
+                val placed = valid.distinctBy { it.optLong("date", 0L) }.map { it to replayAt(it, delay, zone) }
+                    .filter { it.second in windowFrom..windowTo }
+                sources = if (recoveryFrom == null) listOfNotNull(placed.maxByOrNull { it.second }) else placed.sortedBy { it.second }
+                if (sources.isEmpty()) {
+                    val gap = recoveryFrom == null &&
+                        recentTarget.none { it.optBoolean("isValid", true) && it.optLong("date", 0L) in (now - GAP_MS + 1)..now }
+                    // Live tick only: no 14-day reading and no BG on the main site for 15 minutes -> switch to 15 days.
+                    if (gap && !longDelay()) {
+                        preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelaySince, now)
+                        preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, LONG_DELAY_MS)
+                        log("No secondary BG from ${hoursText(DELAY_MS)} hours ago and no main-site BG for 15 minutes; " +
+                            "switched to ${hoursText(LONG_DELAY_MS)} hours until replay is turned off")
+                        logger.debug(LTag.NSCLIENT, "Simulator BG replay: switched to ${hoursText(LONG_DELAY_MS)}-hour delay")
                         return runWindow()
                     }
-                    // Nothing in reach: one day earlier, tried on the next tick (no immediate retry, so this cannot spin). A long
-                    // outage on the secondary site would otherwise add a day every tick, so past MAX_DELAY_MS it starts again at 15 days.
-                    val earlier = if (delay + DAY_MS > MAX_DELAY_MS) LONG_DELAY_MS else delay + DAY_MS
-                    preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, earlier)
-                    log("No secondary BG in the ${hoursText(maxOf(0L, aheadTo - due))} hours after ${dateUtil.toISOString(due)}; " +
-                        "shift now ${hoursText(earlier)} hours" +
-                        if (earlier == LONG_DELAY_MS) " (over ${MAX_DELAY_MS / DAY_MS} days back, starting again at ${LONG_DELAY_MS / DAY_MS} days)" else " (one day earlier)")
-                    logger.debug(LTag.NSCLIENT, "Simulator BG replay: no reading ahead, shift ${hoursText(earlier)} h")
+                    // Already switched and another 15-minute gap: skip past it to the next secondary reading (see delayMs()).
+                    if (gap && longDelay()) {
+                        stage = "looking past a gap in the secondary site"
+                        val aheadTo = minOf(due + SKIP_AHEAD_MS, now - DELAY_MS)
+                        val next = if (aheadTo <= due) null else entries(secondary, due + 1, aheadTo, 1000, token = token)
+                            .filter { it.optBoolean("isValid", true) && it.optDouble("sgv").let { value -> value.isFinite() && value > 0 } }
+                            .minByOrNull { it.optLong("date", 0L) }
+                        if (next != null) {
+                            val nextAt = next.getLong("date")
+                            // Local clock to local clock, so that reading replays now (see replayAt())
+                            val shift = now + here().getOffset(now) - (nextAt + sourceOffsetMs(next, zone))
+                            preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, shift)
+                            log("Gap in the secondary BG after ${dateUtil.toISOString(due)}: skipped ${hoursText(nextAt - due)} hours to " +
+                                "${dateUtil.toISOString(nextAt)}, shift now ${hoursText(shift)} hours")
+                            logger.debug(LTag.NSCLIENT, "Simulator BG replay: skipped a gap, shift ${hoursText(shift)} h")
+                            return runWindow()
+                        }
+                        // Nothing in reach: one day earlier, tried on the next tick (no immediate retry, so this cannot spin). A long
+                        // outage on the secondary site would otherwise add a day every tick, so past MAX_DELAY_MS it starts again at 15 days.
+                        val earlier = if (delay + DAY_MS > MAX_DELAY_MS) LONG_DELAY_MS else delay + DAY_MS
+                        preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, earlier)
+                        log("No secondary BG in the ${hoursText(maxOf(0L, aheadTo - due))} hours after ${dateUtil.toISOString(due)}; " +
+                            "shift now ${hoursText(earlier)} hours" +
+                            if (earlier == LONG_DELAY_MS) " (over ${MAX_DELAY_MS / DAY_MS} days back, starting again at ${LONG_DELAY_MS / DAY_MS} days)" else " (one day earlier)")
+                        logger.debug(LTag.NSCLIENT, "Simulator BG replay: no reading ahead, shift ${hoursText(earlier)} h")
+                        return true
+                    }
+                    log("No secondary BG between ${dateUtil.toISOString(from)} and ${dateUtil.toISOString(to)}; no substitute reading generated")
                     return true
                 }
-                log("No secondary BG between ${dateUtil.toISOString(from)} and ${dateUtil.toISOString(to)}; no substitute reading generated")
-                return true
             }
             var uploaded = 0
             for ((source, at) in sources) {
@@ -293,7 +314,8 @@ class SimulatorBgReplay @Inject constructor(
                     persistenceLayer.insertCgmSourceData(Sources.NSClient, mutableListOf(gv), emptyList(), null).blockingGet()
                     lastStoredAt = at
                     lastStoredGv = gv
-                    if (recoveryFrom == null) log("Secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")}: source ${dateUtil.toISOString(source.getLong("date"))} (UTC${offsetText(sourceOffsetMs(source, zone))}), replay ${dateUtil.toISOString(at)} (UTC${offsetText(here().getOffset(at).toLong())}, same local time +$hours hours); result ${"%.0f".format(mgdl)} mg/dl saved locally")
+                    if (relayCurrent) log("Current secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")} at ${dateUtil.toISOString(at)} (relayed, no replay); result ${"%.0f".format(mgdl)} mg/dl saved locally")
+                    else if (recoveryFrom == null) log("Secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")}: source ${dateUtil.toISOString(source.getLong("date"))} (UTC${offsetText(sourceOffsetMs(source, zone))}), replay ${dateUtil.toISOString(at)} (UTC${offsetText(here().getOffset(at).toLong())}, same local time +$hours hours); result ${"%.0f".format(mgdl)} mg/dl saved locally")
                 }
                 if (target.any { it.optLong("date", 0L) == at }) {
                     if (recoveryFrom == null) log("Replay timestamp already present on main site; upload skipped")
@@ -427,7 +449,11 @@ class SimulatorBgReplay @Inject constructor(
         const val SKIP_AHEAD_MS = 6 * 60 * 60_000L
         const val MAX_DELAY_MS = 21 * DAY_MS
         /** Extra source time read either side, for readings whose own UTC offset differs from the setting's */
-        const val TZ_MARGIN_MS = 3 * 60 * 60_000L
+        const val TZ_MARGIN_MS = 13 * 60 * 60_000L
+        /** Up to 26 hours of readings (TZ_MARGIN_MS each side, about one a minute) in one read of the secondary site */
+        const val SOURCE_QUERY_LIMIT = 3000
+        /** A secondary reading this recent counts as current: it is relayed instead of replaying */
+        const val CURRENT_MS = 10 * 60_000L
         /** "+10:30", "-05:00" or "+0100" at the end of an ISO date, not "Z" */
         private val OFFSET_IN_DATE = Regex("T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?([+-])(\\d{2}):?(\\d{2})$")
     }
