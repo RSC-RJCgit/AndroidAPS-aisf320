@@ -38,6 +38,9 @@ object BuiltInSettings {
         ForkDefault.Bool(BooleanKey.GeneralSimpleMode, false),
         ForkDefault.Bool(BooleanKey.ApsAutoIsfAutoCleanGraph, true),
         ForkDefault.NonBool(BooleanNonKey.ObjectivesVirtualPumpBypass, true),
+        // mmol/L and the screen kept on (2026-11-08, per explicit request)
+        ForkDefault.Str(StringKey.GeneralUnits, FreshInstallDefaults.UNITS_MMOL),
+        ForkDefault.Bool(BooleanKey.OverviewKeepScreenOn, true),
     )
 
     /** The overview graph heights, in dp (2026-11-01, per explicit request) */

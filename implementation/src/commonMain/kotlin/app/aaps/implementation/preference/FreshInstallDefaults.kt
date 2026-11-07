@@ -3,6 +3,7 @@ package app.aaps.implementation.preference
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 
 /**
@@ -24,8 +25,16 @@ object FreshInstallDefaults {
             preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
         if (preferences.getIfExists(BooleanKey.ApsAutoIsfAutoCleanGraph) == null)
             preferences.put(BooleanKey.ApsAutoIsfAutoCleanGraph, true)
+        // mmol/L and the screen kept on, on every new install (2026-11-08, per explicit request)
+        if (preferences.getIfExists(StringKey.GeneralUnits) == null)
+            preferences.put(StringKey.GeneralUnits, UNITS_MMOL)
+        if (preferences.getIfExists(BooleanKey.OverviewKeepScreenOn) == null)
+            preferences.put(BooleanKey.OverviewKeepScreenOn, true)
         applyForkDefaults(preferences, config)
     }
+
+    /** The stored value of mmol/L in [StringKey.GeneralUnits] */
+    internal const val UNITS_MMOL = "mmol"
 
     /**
      * This fork's AutoISF settings ([forkAutoIsfDefaults], 2026-11-01, per explicit request), on clients and Virtual-pump

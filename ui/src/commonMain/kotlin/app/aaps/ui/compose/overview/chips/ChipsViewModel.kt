@@ -129,10 +129,24 @@ class ChipsViewModel(
         }
     }.shareIn(viewModelScope, SharingStarted.WhileSubscribed(5000), replay = 1)
 
+    /**
+     * On a client, the master's own IOB from its newest loop result (2026-11-08, per explicit request). A client does not
+     * loop: its own sum from the synced doses uses its own insulin and profile, and can differ from what the master
+     * doses with. Null on a master, or when the master's result is missing or older than [MASTER_IOB_MAX_AGE_MS], so the
+     * client's own sum is shown instead of a stale number.
+     */
+    private fun masterIob(): Double? {
+        if (!config.AAPSCLIENT) return null
+        val data = processedDeviceStatusData.openAPSData
+        val iob = data.suggested?.IOB?.takeIf { it.isFinite() } ?: return null
+        if (dateUtil.now() - data.clockSuggested > MASTER_IOB_MAX_AGE_MS) return null
+        return iob
+    }
+
     val iobUiState: StateFlow<IobUiState> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
         val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
-        val total = bolusIob.iob + basalIob.basaliob
+        val total = masterIob() ?: (bolusIob.iob + basalIob.basaliob)
         IobUiState(
             text = rh.gs(InterfacesStrings.format_insulin_units, total),
             iobTotal = total
@@ -722,12 +736,15 @@ class ChipsViewModel(
         viewModelScope.launch {
             val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
             val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
-            val total = bolusIob.iob + basalIob.basaliob
-            val message = listOf(
+            val master = masterIob()
+            // The master reports only its total, so a client showing it does not show a bolus/basal split of its own
+            val lines = if (master != null) listOf(CoreUiStrings.iob to master)
+            else listOf(
                 CoreUiStrings.bolus_iob_label to bolusIob.iob,
                 CoreUiStrings.treatments_wizard_basaliob_label to basalIob.basaliob,
-                CoreUiStrings.iob to total
-            ).joinToString("\n") { (label, insulin) ->
+                CoreUiStrings.iob to bolusIob.iob + basalIob.basaliob
+            )
+            val message = lines.joinToString("\n") { (label, insulin) ->
                 rh.gs(InterfacesStrings.confirmation_line, rh.gs(label), rh.gs(InterfacesStrings.format_insulin_units, insulin))
             }
             rxBus.send(
@@ -739,3 +756,6 @@ class ChipsViewModel(
         }
     }
 }
+
+/** How old the master's loop result may be before a client shows its own IOB sum again: three missed 5-minute cycles */
+private const val MASTER_IOB_MAX_AGE_MS = 15 * 60 * 1000L

@@ -81,6 +81,22 @@ class FreshInstallDefaultsTest {
         verify(preferences, never()).put(BooleanKey.ApsAutoIsfShowGraphText, true)
     }
 
+    @Test
+    fun everyNewInstallStartsInMmolWithTheScreenKeptOn() {
+        setUp(client = true, wizardDone = false, stored = null)
+        FreshInstallDefaults.apply(preferences, config)
+        verify(preferences).put(StringKey.GeneralUnits, "mmol")
+        verify(preferences).put(BooleanKey.OverviewKeepScreenOn, true)
+    }
+
+    @Test
+    fun storedUnitsAreKept() {
+        setUp(client = true, wizardDone = false, stored = null)
+        whenever(preferences.getIfExists(StringKey.GeneralUnits)).thenReturn("mg/dl")
+        FreshInstallDefaults.apply(preferences, config)
+        verify(preferences, never()).put(StringKey.GeneralUnits, "mmol")
+    }
+
     // The fork's AutoISF settings (2026-11-01)
 
     private fun forkSetUp(client: Boolean, pumpDrivers: Boolean) {
