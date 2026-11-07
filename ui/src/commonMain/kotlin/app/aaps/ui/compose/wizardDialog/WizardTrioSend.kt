@@ -27,6 +27,7 @@ import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.SPLIT_LEFTOVER_DEADLINE_MINUTES
 import app.aaps.core.objects.wizard.TrioLaterTarget
 import app.aaps.core.objects.wizard.WarsawFpuPlan
+import app.aaps.core.objects.wizard.followUpRequirementMilliU
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -139,10 +140,13 @@ internal fun trioLaterTarget(
                 is TrioRemoteResult.Failed                           -> result.reason
             }
         },
+        // Trio's insulinReq less the SMB Trio gives from it in the same loop, as for the pump's own loop (see
+        // followUpRequirementMilliU), so a later dose and Trio's SMB together stay within insulinReq. Trio's SMB is taken
+        // as a fixed share of insulinReq (2026-11-07, per explicit request: not adjustable, not Trio's own SMBratio).
         insulinReq = {
             val at = deviceStatus.openAPSData.clockSuggested
             deviceStatus.openAPSData.suggested?.insulinReq?.takeIf { it.isFinite() }
-                ?.let { current(at) to (max(0.0, it) * 1000).roundToLong() }
+                ?.let { current(at) to followUpRequirementMilliU(it, max(0.0, it) * TRIO_SMB_DELIVERY_BASELINE) }
         },
         lowestPrediction = {
             val at = deviceStatus.openAPSData.clockSuggested
@@ -155,6 +159,9 @@ internal fun trioLaterTarget(
 }
 
 private const val TRIO_LOOP_FRESH_MS = 10 * 60_000L
+
+/** The share of insulinReq Trio is taken to give as an SMB each loop, for the later-dose cap. Fixed, see trioLaterTarget. */
+internal const val TRIO_SMB_DELIVERY_BASELINE = 0.6
 
 /**
  * The later parts of one Send to Trio (2026-11-07, per explicit request), from the bolus calculator or a QuickWizard
