@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
@@ -241,7 +242,8 @@ fun WizardDialogScreen(
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
         onNavigateBack = onNavigateBack,
         onConfirmClick = { showConfirmation = true },
-        onSettingsClick = { showSettings = true }
+        onSettingsClick = { showSettings = true },
+        onSendToTrioClick = viewModel::sendToTrio
     )
 }
 
@@ -284,7 +286,8 @@ internal fun WizardDialogContent(
     onCalculationExpandToggle: () -> Unit,
     onNavigateBack: () -> Unit,
     onConfirmClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onSendToTrioClick: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     // Insulin-only mode (2026-11-01): the boxes keep their values, only max bolus, its split, BG and carbs change
@@ -339,6 +342,23 @@ internal fun WizardDialogContent(
             // amounts here would have them announced twice. This also sidesteps the insulin/carbs
             // branching, which no single template could join without leaving a gap.
             val confirmDescription = stringResource(CoreUiStrings.confirm)
+            Column(modifier = Modifier.fillMaxWidth().bottomBarSafeArea()) {
+            // Send to Trio (2026-11-07, per explicit request): only while Trio remote control is set up. OK stays the
+            // usual path (recorded only, or the AAPS master); this button sends the shown result to Trio instead.
+            if (uiState.trioReady) {
+                OutlinedButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        onSendToTrioClick()
+                    },
+                    enabled = uiState.okVisible,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                ) {
+                    Text(stringResource(UiStrings.wizard_send_to_trio))
+                }
+            }
             Button(
                 onClick = {
                     focusManager.clearFocus()
@@ -347,7 +367,6 @@ internal fun WizardDialogContent(
                 enabled = uiState.okVisible && !uiState.waitsForSmb,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .bottomBarSafeArea()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .semantics { contentDescription = confirmDescription }
             ) {
@@ -372,6 +391,7 @@ internal fun WizardDialogContent(
                 if (!uiState.okVisible) {
                     Text(stringResource(CoreUiStrings.ok))
                 }
+            }
             }
         }
     ) { paddingValues ->

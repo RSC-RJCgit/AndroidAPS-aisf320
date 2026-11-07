@@ -109,7 +109,9 @@ data class WizardDialogUiState(
      * Insulin-only mode (2026-11-01), opened from the Insulin dialog: this typed dose is given, and the calculation
      * only shows what the calculator suggests. Null is the usual calculator.
      */
-    val fixedInsulin: Double? = null
+    val fixedInsulin: Double? = null,
+    /** Trio remote control is on and complete: the Send to Trio button shows (2026-11-07, per explicit request) */
+    val trioReady: Boolean = false
 )
 
 /** A supplied argument always stays in manual mode, including zero or an invalid dose. */

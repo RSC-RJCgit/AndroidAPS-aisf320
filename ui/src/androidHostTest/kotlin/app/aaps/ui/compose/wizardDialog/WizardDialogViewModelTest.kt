@@ -27,6 +27,7 @@ import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.trio.TrioRemoteControl
+import app.aaps.core.interfaces.trio.TrioRemoteSetup
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
@@ -110,6 +111,8 @@ internal class WizardDialogViewModelTest {
         whenever(iobCobCalculator.ads).thenReturn(ads)
         whenever(commandQueue.smbBeingDelivered).thenReturn(smbBeingDelivered)
         whenever(rxBus.toFlow(EventAutosensCalculationFinished::class)).thenReturn(MutableSharedFlow())
+        // Trio remote control off: the calculation reads it for the Send to Trio button
+        whenever(trioRemoteControl.setup()).thenReturn(TrioRemoteSetup(enabled = false, missing = emptyList(), trio = null, overridePresets = emptyList()))
         Dispatchers.setMain(mainDispatcher)
         sut = createViewModel()
     }

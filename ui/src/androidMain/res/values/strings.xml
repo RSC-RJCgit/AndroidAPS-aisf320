@@ -596,6 +596,7 @@
     <string name="trio_remote_failed" comment="%1$s=the command, %2$s=the reason, often a word from Apple such as BadDeviceToken">Not sent: %1$s. %2$s</string>
     <string name="wizard_trio_ecarbs_not_sent" comment="%1$d=grams of extended carbs">%1$d g extended carbs are not sent: Trio has none</string>
     <string name="wizard_trio_carb_time_now">Carb time is later: Trio takes the meal as eaten now</string>
+    <string name="wizard_send_to_trio">Send to Trio</string>
     <string name="sensor_signal_bg">BG</string>
     <string name="sensor_signal_raw">Raw signal</string>
     <string name="sensor_raw_none">No raw signal stored for these sensors. Choose BG to see their glucose.</string>
