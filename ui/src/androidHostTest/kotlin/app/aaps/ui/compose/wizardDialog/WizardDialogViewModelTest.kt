@@ -26,6 +26,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
+import app.aaps.core.interfaces.trio.TrioRemoteControl
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
@@ -84,6 +85,7 @@ internal class WizardDialogViewModelTest {
     @Mock private lateinit var wizardExecutor: WizardExecutor
     @Mock private lateinit var rxBus: RxBus
     @Mock private lateinit var commandQueue: CommandQueue
+    @Mock private lateinit var trioRemoteControl: TrioRemoteControl
 
     private val smbBeingDelivered = MutableStateFlow(false)
     private val bolusWizardProvider: () -> BolusWizard = mock()
@@ -117,7 +119,7 @@ internal class WizardDialogViewModelTest {
             profileRepository, activePlugin, ch, iobCobCalculator, persistenceLayer, preferences, config,
             rh, dateUtil, decimalFormatter, aapsLogger, runningModeGuard, automation, wizardExecutor, rxBus,
             glucoseStatusProvider,
-            CoroutineScope(UnconfinedTestDispatcher()), commandQueue
+            CoroutineScope(UnconfinedTestDispatcher()), commandQueue, trioRemoteControl
         )
 
     @Test

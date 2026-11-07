@@ -11,6 +11,11 @@ import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
+import app.aaps.core.data.ui.ConfirmationRole
+import app.aaps.core.interfaces.trio.TrioRemoteCommand
+import app.aaps.core.interfaces.trio.TrioRemoteControl
+import app.aaps.core.interfaces.trio.TrioRemoteResult
+import app.aaps.ui.UiStrings
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
@@ -107,7 +112,8 @@ class WizardDialogViewModel(
     // Unqualified: @ApplicationScope is a javax qualifier and cannot appear in commonMain. The graph
     // binds the same instance under both names.
     private val appScope: CoroutineScope,
-    private val commandQueue: CommandQueue
+    private val commandQueue: CommandQueue,
+    private val trioRemoteControl: TrioRemoteControl
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WizardDialogUiState())
@@ -899,7 +905,11 @@ class WizardDialogViewModel(
         appScope.launch {
             when (val prepared = wizardExecutor.prepare(WizardExecutor.WizardSource.Manual(inputs), label)) {
                 is ActionProgress.Prepared ->
-                    showWizardBolusConfirmation(
+                    // A read-only client with Trio remote control set up: the result goes to Trio (2026-11-07, per explicit request)
+                    if (readOnlyClient && trioRemoteControl.setup().ready) {
+                        wizardExecutor.discard(prepared.id)
+                        offerTrio(prepared, state)
+                    } else showWizardBolusConfirmation(
                         rxBus, rh, rh.gs(CoreUiStrings.boluswizard), IcCalculator, prepared.advisorApplies, prepared.lines, prepared.advisorLines,
                         closeAt = closeAt,
                         onCancel = { wizardExecutor.discard(prepared.id) }
@@ -934,6 +944,87 @@ class WizardDialogViewModel(
                 else                       -> Unit // Unconfirmed → app modal
             }
         }
+    }
+
+    /**
+     * Send the wizard's result to Trio (2026-11-07, per explicit request): the meal, then the bolus, after one
+     * confirmation. This app's max bolus and max carbs are checked first; Trio checks again with its own limits.
+     * The advisor question is skipped: Trio gets the normal dose.
+     */
+    private fun offerTrio(prepared: ActionProgress.Prepared, state: WizardDialogUiState) {
+        val title = rh.gs(UiStrings.trio_remote_confirm_title)
+        val send = prepared.wizardDetail?.let {
+            wizardTrioSend(it.totalInsulin, it.carbs, state.fat, state.protein, it.eCarbsGrams, it.carbTimeMinutes, dateUtil.now())
+        }
+        val maxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        val maxCarbs = preferences.get(IntKey.SafetyMaxCarbs)
+        val meal = send?.meal
+        val problem = when {
+            send == null || send.isEmpty          -> rh.gs(CoreUiStrings.no_action_selected)
+            (send.bolus?.units ?: 0.0) > maxBolus ->
+                rh.gs(UiStrings.trio_remote_problem_bolus, rh.gs(UiStrings.trio_remote_insulin_value, twoDecimals(maxBolus)))
+
+            meal != null && (meal.carbs > maxCarbs || meal.fat > maxCarbs || meal.protein > maxCarbs) ->
+                rh.gs(UiStrings.trio_remote_problem_carbs, maxCarbs)
+
+            else                                  -> null
+        }
+        if (problem != null || send == null) {
+            rxBus.send(EventShowDialog.Ok(title = title, message = problem ?: ""))
+            return
+        }
+        val setup = trioRemoteControl.setup()
+        val lines = buildList {
+            send.meal?.let { add(ConfirmationLine(ConfirmationRole.CARBS, trioCommandText(it))) }
+            send.bolus?.let { add(ConfirmationLine(ConfirmationRole.BOLUS, trioCommandText(it))) }
+            if (send.eCarbsNotSent > 0) add(ConfirmationLine(ConfirmationRole.WARNING, rh.gs(UiStrings.wizard_trio_ecarbs_not_sent, send.eCarbsNotSent)))
+            if (send.futureCarbTimeIgnored) add(ConfirmationLine(ConfirmationRole.WARNING, rh.gs(UiStrings.wizard_trio_carb_time_now)))
+        }
+        rxBus.send(
+            EventShowDialog.OkCancel(
+                title = title, message = "",
+                secondMessage = rh.gs(if (setup.simulator) UiStrings.trio_simulator_banner else UiStrings.trio_remote_confirm_note),
+                icon = IcCalculator, confirmationLines = lines,
+                onOk = {
+                    _sideEffect.tryEmit(SideEffect.NavigateBack)
+                    appScope.launch { sendToTrio(send, setup.simulator, title) }
+                }
+            )
+        )
+    }
+
+    /** The meal first, then the bolus; stops at the first one not sent, so a bolus never goes without its meal */
+    private suspend fun sendToTrio(send: WizardTrioSend, simulator: Boolean, title: String) {
+        val done = mutableListOf<String>()
+        for (command in listOfNotNull(send.meal, send.bolus)) {
+            val text = trioCommandText(command)
+            when (val result = trioRemoteControl.send(command, expectedSimulator = simulator)) {
+                TrioRemoteResult.Sent         -> done += text
+                is TrioRemoteResult.Simulated -> done += rh.gs(UiStrings.trio_simulator_result, result.detail)
+                is TrioRemoteResult.Failed    -> {
+                    val failed = rh.gs(UiStrings.trio_remote_failed, text, result.reason)
+                    val message = if (done.isEmpty()) failed else rh.gs(UiStrings.trio_remote_sent, done.joinToString(", ")) + "\n" + failed
+                    rxBus.send(EventShowDialog.Ok(title = title, message = message))
+                    return
+                }
+            }
+        }
+        rxBus.send(EventShowDialog.Ok(title = title, message = rh.gs(UiStrings.trio_remote_sent, done.joinToString(", "))))
+    }
+
+    private fun trioCommandText(command: TrioRemoteCommand): String = when (command) {
+        is TrioRemoteCommand.Meal  -> command.eatenAt?.let { eatenAt ->
+            rh.gs(UiStrings.trio_remote_command_meal_earlier, command.carbs, command.fat, command.protein, ((dateUtil.now() - eatenAt) / 60_000L).toInt())
+        } ?: rh.gs(UiStrings.trio_remote_command_meal, command.carbs, command.fat, command.protein)
+
+        is TrioRemoteCommand.Bolus -> rh.gs(UiStrings.trio_remote_command_bolus, rh.gs(UiStrings.trio_remote_insulin_value, twoDecimals(command.units)))
+        else                       -> command.toString()
+    }
+
+    /** Two decimals with a point, the way Trio is sent it (as on the Trio remote screen) */
+    private fun twoDecimals(value: Double): String {
+        val hundredths = kotlin.math.round(value * 100).toLong()
+        return "${hundredths / 100}.${(hundredths % 100).toString().padStart(2, '0')}"
     }
 
     private suspend fun applyWalkingSoonDefault(state: WizardDialogUiState): WizardDialogUiState {
