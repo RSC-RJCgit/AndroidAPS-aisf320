@@ -62,12 +62,20 @@ class LoadProfileStoreRunner(
                     aapsLogger.debug(LTag.NSCLIENT, "PROFILE: $profile")
                     nsClientRepository.addLog("◄ RCV", "1 PROFILE from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
                     nsIncomingDataProcessor.processProfile(profile, nsClientV3Plugin.doingFullSync)
+                    // Trio's profile may be among the downloaded ones without being the last (2026-11-07)
+                    nsIncomingDataProcessor.processTrioPushInfo(profiles)
                 } else {
                     nsClientRepository.addLog("◄ RCV PROFILE END", "No new data from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
                 }
             } else {
                 nsClientRepository.addLog("◄ RCV PROFILE END", "No data from ${dateUtil.dateAndTimeAndSecondsString(lastLoaded)}")
             }
+            // The newest profile by date can be an AAPS one, and Trio's have no date at all, so on a first load or a
+            // full sync look through the most recently saved profiles for Trio's (2026-11-07)
+            if (isFirstLoad || nsClientV3Plugin.doingFullSync)
+                runCatching { nsAndroidClient.getRecentProfiles(TRIO_PROFILE_SEARCH).values }
+                    .onSuccess { nsIncomingDataProcessor.processTrioPushInfo(it.asReversed()) }
+                    .onFailure { aapsLogger.error(LTag.NSCLIENT, "Looking for Trio's profile failed", it) }
         } catch (error: Exception) {
             aapsLogger.error("Error: ", error)
             nsClientRepository.addLog("◄ ERROR", error.message)
@@ -77,4 +85,9 @@ class LoadProfileStoreRunner(
         return WorkOutcome.Success
     }
 
+    private companion object {
+
+        /** How many of the most recently saved profiles are searched for Trio's */
+        const val TRIO_PROFILE_SEARCH = 20
+    }
 }

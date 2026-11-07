@@ -267,6 +267,14 @@ internal class NightscoutApi(
         }
     }
 
+    /** The profiles the server saved most recently, newest first (2026-11-07). Trio's profiles have no `date`. */
+    suspend fun getRecentProfiles(limit: Int) = call(HttpMethod.Get, jsonObjectListSerializer) {
+        nsUrl("v3", "profile") {
+            encodedParameters.append("sort\$desc", "srvModified")
+            encodedParameters.append("limit", limit.toString())
+        }
+    }
+
     suspend fun createProfile(profile: JsonObject) =
         call(HttpMethod.Post, RemoteCreateUpdateResponse.serializer()) {
             nsUrl("v3", "profile"); jsonBody(profile)

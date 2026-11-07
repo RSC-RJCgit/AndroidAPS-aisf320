@@ -12,6 +12,8 @@ import app.aaps.core.interfaces.sync.DataSyncSelector
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.nssdk.localmodel.entry.Direction
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.entry.NsUnits
@@ -31,7 +33,9 @@ import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolusWizard
 import app.aaps.shared.tests.TestBaseWithProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -41,6 +45,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -483,6 +488,29 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         // Profiles arrive from the master over the sync channel; taking the Nightscout copy as well
         // would give one list two writers, fighting through LocalProfileLastChange.
         verifyBlocking(profileRepository, never()) { loadFromNs(any()) }
+    }
+
+    /** rsnrjc, 7 Nov 2026: an AAPS phone re-saved its profile after Trio's, and the Client lost Trio */
+    @Test
+    fun `a profile that is not Trio's keeps the Trio details`() = runTest {
+        whenever(preferences.get(StringKey.NsClientUrl)).thenReturn("https://trio.example.com")
+
+        processor.processProfile(Json.parseToJsonElement("""{"defaultProfile":"Profile70"}""").jsonObject, doFullSync = false)
+
+        verify(preferences, never()).put(eq(StringNonKey.NsClientTrioPushInfo), any<String>())
+    }
+
+    @Test
+    fun `the newest Trio profile among several is kept`() {
+        whenever(preferences.get(StringKey.NsClientUrl)).thenReturn("https://trio.example.com")
+        fun trio(token: String) = Json.parseToJsonElement(
+            """{"defaultProfile":"default","deviceToken":"$token","bundleIdentifier":"org.nightscout.TEAM123456.tai","teamID":"TEAM123456"}"""
+        ).jsonObject
+        val aaps = Json.parseToJsonElement("""{"defaultProfile":"Profile70"}""").jsonObject
+
+        processor.processTrioPushInfo(listOf(trio("old"), trio("new"), aaps))
+
+        verify(preferences).put(eq(StringNonKey.NsClientTrioPushInfo), argThat<String> { contains("\"deviceToken\":\"new\"") })
     }
 
     @Test

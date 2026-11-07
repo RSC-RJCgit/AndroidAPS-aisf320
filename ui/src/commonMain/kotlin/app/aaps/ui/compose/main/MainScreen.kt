@@ -96,6 +96,7 @@ import app.aaps.ui.compose.scenesSheet.ScenesBottomSheet
 import app.aaps.ui.compose.scenesSheet.ScenesViewModel
 import app.aaps.ui.compose.treatmentsSheet.TreatmentBottomSheet
 import app.aaps.ui.compose.treatmentsSheet.TreatmentViewModel
+import app.aaps.ui.compose.trioRemote.missingTexts
 import app.aaps.ui.search.SearchIndexEntry
 import app.aaps.ui.search.SearchResults
 import app.aaps.ui.search.SearchUiState
@@ -612,6 +613,7 @@ fun MainScreen(
     // Treatment bottom sheet
     if (showTreatmentSheet) {
         val treatmentState by treatmentViewModel.uiState.collectAsStateWithLifecycle()
+        val trioSetup = remember { mainViewModel.trioSetup() }
         TreatmentBottomSheet(
             onDismiss = { showTreatmentSheet = false },
             showCgm = treatmentState.showCgm,
@@ -625,7 +627,9 @@ fun MainScreen(
             quickWizardItems = treatmentState.quickWizardItems,
             onNavigate = onNavigate,
             treatmentButtonsDef = treatmentButtonsDef,
-            onQuickWizardTrio = if (mainViewModel.trioReady()) mainViewModel::sendQuickWizardToTrio else null,
+            // Shown while Trio remote control is on; greyed out with what is missing until it is complete (2026-11-07)
+            onQuickWizardTrio = if (trioSetup.enabled) mainViewModel::sendQuickWizardToTrio else null,
+            quickWizardTrioMissing = if (trioSetup.enabled) trioSetup.missingTexts() else emptyList(),
         )
     }
 

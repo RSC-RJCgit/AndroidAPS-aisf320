@@ -370,6 +370,20 @@ class NsIncomingDataProcessor(
     }
 
     /**
+     * Keep how to reach Trio from the newest Trio profile in [profiles] (oldest first).
+     *
+     * A profile that is not Trio's leaves the stored details alone (2026-11-07): an AAPS phone uploading its own
+     * profile to the same site must not cut the Client off from Trio. Details stored for another site are never used,
+     * because [trioPushInfo] checks the site, so changing the Nightscout URL still drops them.
+     */
+    fun processTrioPushInfo(profiles: List<JsonObject>) {
+        val site = preferences.get(StringKey.NsClientUrl)
+        val pushInfo = profiles.asReversed().firstNotNullOfOrNull { trioPushInfoRecord(it, site) } ?: return
+        if (preferences.get(StringNonKey.NsClientTrioPushInfo) != pushInfo)
+            preferences.put(StringNonKey.NsClientTrioPushInfo, pushInfo)
+    }
+
+    /**
      * Take over a profile store from Nightscout.
      *
      * A **paired client** does not: its profiles come from the master over the client-control sync
@@ -384,10 +398,8 @@ class NsIncomingDataProcessor(
             val units = trioProfileUnitsRecord(profileJson, preferences.get(StringKey.NsClientUrl)).orEmpty()
             if (preferences.get(StringNonKey.NsClientTrioProfileUnits) != units)
                 preferences.put(StringNonKey.NsClientTrioProfileUnits, units)
-            // How to reach this Trio by a remote command (2026-10-29). Emptied by a profile that is not Trio's.
-            val pushInfo = trioPushInfoRecord(profileJson, preferences.get(StringKey.NsClientUrl)).orEmpty()
-            if (preferences.get(StringNonKey.NsClientTrioPushInfo) != pushInfo)
-                preferences.put(StringNonKey.NsClientTrioPushInfo, pushInfo)
+            // How to reach this Trio by a remote command (2026-10-29)
+            processTrioPushInfo(listOf(profileJson))
         }
         val accept = when {
             fromSecondary -> true

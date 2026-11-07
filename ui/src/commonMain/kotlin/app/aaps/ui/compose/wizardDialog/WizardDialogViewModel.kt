@@ -59,6 +59,7 @@ import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.icons.IcCalculator
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.trioRemote.missingTexts
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
@@ -762,6 +763,7 @@ class WizardDialogViewModel(
             rh.gs(CoreUiStrings.wizard_trend_detail, signedTrendValue, profileUtil.unitLabel)
         } else ""
 
+        val trioSetup = trioRemoteControl.setup()
         _uiState.update {
             it.copy(
                 // Calculation results
@@ -788,7 +790,9 @@ class WizardDialogViewModel(
                 targetBGLow = 0.0, // not exposed directly
                 targetBGHigh = 0.0,
                 hasResult = true,
-                trioReady = trioReady(),
+                trioReady = trioSetup.ready,
+                trioShown = trioSetup.enabled,
+                trioMissing = trioSetup.missingTexts(),
                 okVisible = (it.fixedInsulin ?: w.data.calculatedTotalInsulin) > 0.0 || carbsAfterConstraint > 0 || w.warsawPlan != null,
                 hasTempTarget = hasTT,
                 effectiveCarbs = effectiveCarbs,

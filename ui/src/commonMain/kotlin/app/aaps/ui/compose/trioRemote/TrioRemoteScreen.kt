@@ -136,21 +136,7 @@ private fun SetupCard(setup: TrioRemoteSetup) {
             }
             if (setup.missing.isNotEmpty()) {
                 Text(stringResource(UiStrings.trio_remote_missing_title), color = MaterialTheme.colorScheme.error)
-                setup.missing.forEach { missing ->
-                    Text(
-                        stringResource(
-                            when (missing) {
-                                TrioRemoteSetup.Missing.USER          -> UiStrings.trio_remote_missing_user
-                                TrioRemoteSetup.Missing.SHARED_SECRET -> if (setup.simulator) UiStrings.trio_simulator_missing_secret else UiStrings.trio_remote_missing_shared_secret
-                                TrioRemoteSetup.Missing.KEY_ID        -> UiStrings.trio_remote_missing_key_id
-                                TrioRemoteSetup.Missing.APNS_KEY      -> UiStrings.trio_remote_missing_apns_key
-                                TrioRemoteSetup.Missing.TRIO_PROFILE  -> UiStrings.trio_remote_missing_trio_profile
-                                TrioRemoteSetup.Missing.TEAM_ID       -> UiStrings.trio_remote_missing_team_id
-                                TrioRemoteSetup.Missing.SIMULATOR_ID  -> UiStrings.trio_simulator_missing_id
-                            }
-                        )
-                    )
-                }
+                setup.missingTexts().forEach { Text(stringResource(it)) }
             }
         }
     }

@@ -3,6 +3,7 @@ package app.aaps.ui.compose.wizardDialog
 import androidx.compose.runtime.Immutable
 import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.keys.interfaces.TextRef
 
 @Immutable
 data class WizardDialogUiState(
@@ -110,8 +111,12 @@ data class WizardDialogUiState(
      * only shows what the calculator suggests. Null is the usual calculator.
      */
     val fixedInsulin: Double? = null,
-    /** Trio remote control is on and complete: the Send to Trio button shows (2026-11-07, per explicit request) */
-    val trioReady: Boolean = false
+    /** Trio remote control is on and complete: the Send to Trio button works (2026-11-07, per explicit request) */
+    val trioReady: Boolean = false,
+    /** Trio remote control is switched on: the Send to Trio button shows, greyed out until [trioReady] (2026-11-07) */
+    val trioShown: Boolean = false,
+    /** What Trio remote control still lacks, shown under the greyed-out button (2026-11-07) */
+    val trioMissing: List<TextRef> = emptyList()
 )
 
 /** A supplied argument always stays in manual mode, including zero or an invalid dose. */

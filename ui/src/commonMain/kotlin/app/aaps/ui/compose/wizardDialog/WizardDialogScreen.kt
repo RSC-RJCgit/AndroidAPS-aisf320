@@ -343,28 +343,37 @@ internal fun WizardDialogContent(
             // branching, which no single template could join without leaving a gap.
             val confirmDescription = stringResource(CoreUiStrings.confirm)
             Column(modifier = Modifier.fillMaxWidth().bottomBarSafeArea()) {
-            // Send to Trio (2026-11-07, per explicit request): only while Trio remote control is set up. OK stays the
-            // usual path (recorded only, or the AAPS master); this button sends the shown result to Trio instead.
-            if (uiState.trioReady) {
+            // Send to Trio (2026-11-07, per explicit request): shown while Trio remote control is switched on, greyed out
+            // with what is missing until it is complete. OK stays the usual path (recorded only, or the AAPS master);
+            // this button sends the shown result to Trio instead.
+            if (uiState.trioShown) {
                 OutlinedButton(
                     onClick = {
                         focusManager.clearFocus()
                         onSendToTrioClick()
                     },
-                    enabled = uiState.okVisible,
+                    enabled = uiState.trioReady && uiState.okVisible,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                 ) {
                     Text(stringResource(UiStrings.wizard_send_to_trio))
                 }
-                // Later parts are sent by this phone, so it must keep running (2026-11-07, per explicit request)
-                Text(
-                    text = stringResource(UiStrings.wizard_trio_later_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
+                if (uiState.trioReady)
+                    // Later parts are sent by this phone, so it must keep running (2026-11-07, per explicit request)
+                    Text(
+                        text = stringResource(UiStrings.wizard_trio_later_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                else
+                    Text(
+                        text = stringResource(UiStrings.trio_not_ready, uiState.trioMissing.map { stringResource(it) }.joinToString("; ")),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
             }
             Button(
                 onClick = {

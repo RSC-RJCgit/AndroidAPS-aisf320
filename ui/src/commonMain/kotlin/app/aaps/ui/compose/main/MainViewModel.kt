@@ -59,6 +59,7 @@ import app.aaps.core.interfaces.scenes.SceneChainResolver
 import app.aaps.core.interfaces.scenes.SceneStore
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.trio.TrioRemoteControl
+import app.aaps.core.interfaces.trio.TrioRemoteSetup
 import app.aaps.core.interfaces.ui.UrlOpener
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
@@ -518,6 +519,9 @@ class MainViewModel(
 
     /** Trio remote control is on and complete: each QuickWizard entry shows a Trio button (2026-11-07, per explicit request) */
     fun trioReady(): Boolean = trioRemoteControl.setup().ready
+
+    /** How far Trio remote control is set up, for the QuickWizard Trio buttons (2026-11-07) */
+    fun trioSetup(): TrioRemoteSetup = trioRemoteControl.setup()
 
     /**
      * A QuickWizard entry's Trio button (2026-11-07, per explicit request): works the entry out on this phone (never on an

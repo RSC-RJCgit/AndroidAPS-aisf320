@@ -118,6 +118,12 @@ class NsSdkUrlContractTest {
             .isEqualTo("/api/v3/profile?sort\$desc=date&limit=1")
     }
 
+    @Test
+    fun `getRecentProfiles sorts by server change, newest first`() = runTest {
+        assertThat(pathOf { client.getRecentProfiles(20) })
+            .isEqualTo("/api/v3/profile?sort\$desc=srvModified&limit=20")
+    }
+
     /** `limit=10` comes from a default on the interface and is invisible at the call site. */
     @Test
     fun `getProfileModifiedSince sends the interface default limit`() = runTest {

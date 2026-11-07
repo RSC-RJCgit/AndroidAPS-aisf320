@@ -62,6 +62,9 @@ interface NSAndroidClient {
     suspend fun getProfileModifiedSince(from: Long): ReadResponse<List<JsonObject>>
     suspend fun getLastProfileStore(): ReadResponse<List<JsonObject>>
 
+    /** The [limit] profiles the server saved most recently, newest first. Used to find Trio's among others (2026-11-07). */
+    suspend fun getRecentProfiles(limit: Int): ReadResponse<List<JsonObject>>
+
     suspend fun createTreatment(nsTreatment: NSTreatment): CreateUpdateResponse
     suspend fun updateTreatment(nsTreatment: NSTreatment): CreateUpdateResponse
     suspend fun getFoods(limit: Int): ReadResponse<List<NSFood>>

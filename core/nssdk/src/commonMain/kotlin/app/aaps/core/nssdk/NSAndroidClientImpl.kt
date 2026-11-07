@@ -626,6 +626,17 @@ class NSAndroidClientImpl(
             throw UnsuccessfulNightscoutException("Unsuccessful")
     }
 
+    override suspend fun getRecentProfiles(limit: Int): NSAndroidClient.ReadResponse<List<JsonObject>> = callWrapper(dispatcher) {
+
+        val response = api.getRecentProfiles(limit)
+        if (response.isSuccessful) {
+            return@callWrapper NSAndroidClient.ReadResponse(code = response.code, lastServerModified = null, values = response.body()?.result.toNotNull())
+        } else if (response.code in 400..499)
+            throw InvalidParameterNightscoutException(response.errorBody() ?: response.message())
+        else
+            throw UnsuccessfulNightscoutException("Unsuccessful")
+    }
+
     override suspend fun getProfileModifiedSince(from: Long): NSAndroidClient.ReadResponse<List<JsonObject>> = callWrapper(dispatcher) {
 
         val response = api.getProfileModifiedSince(from)
