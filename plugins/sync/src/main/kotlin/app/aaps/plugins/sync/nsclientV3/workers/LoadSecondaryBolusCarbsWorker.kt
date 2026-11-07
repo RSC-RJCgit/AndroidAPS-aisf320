@@ -105,7 +105,13 @@ class LoadSecondaryBolusCarbsWorker(
         if (!activePlugin.isFollowerPhone(config) || !preferences.get(BooleanKey.NsClientBgFromLiveSite)) return
         try {
             val cursor = preferences.get(LongKey.NsClientSecondaryBgLastModified)
-            val from = if (cursor == 0L) dateUtil.now() - T.hours(24).msecs() else (cursor - T.mins(10).msecs()).coerceAtLeast(0L)
+            // 2026-11-07, per explicit request: current BG first. A mark more than 3 hours old (a long break, e.g. while replay
+            // was on or the site was down) starts at the last 3 hours, not at the mark: walking forward 500 readings a run
+            // left the phone days behind. The older gap is for a full sync. A short break is still filled from the mark.
+            val now = dateUtil.now()
+            // (A first load starts at 3 hours too: 24 hours is more than the 500 a run reads, so it began 24 hours back.)
+            val from = if (cursor == 0L || cursor < now - T.hours(3).msecs()) now - T.hours(3).msecs()
+                else (cursor - T.mins(10).msecs()).coerceAtLeast(0L)
             val response = client.getSgvsModifiedSince(from, 500)
             val sgvs = response.values
             response.lastServerModified?.takeIf { it > cursor }?.let { preferences.put(LongKey.NsClientSecondaryBgLastModified, it) }

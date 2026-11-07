@@ -8,6 +8,9 @@ import android.os.IBinder
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceManager
 import androidx.preference.PreferenceScreen
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
+import androidx.work.WorkManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.configuration.Config
@@ -53,6 +56,7 @@ import app.aaps.plugins.sync.nsclient.data.AlarmAck
 import app.aaps.plugins.sync.nsclient.extensions.toJson
 import app.aaps.plugins.sync.nsclient.services.NSClientService
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryBolusCarbsWorker
 import com.google.common.hash.Hashing
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -116,6 +120,18 @@ class NSClientPlugin @Inject constructor(
                 if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
                     (isAllowed && !preferences.get(NsclientBooleanKey.NsPaused))) {
                     safe("simulatorBgReplay") { simulatorBgReplay.run() }
+                }
+                // 2026-11-07, per explicit request: with "Get BG from this connection" on and replay off, the secondary site is
+                // this phone's only BG. Legacy NSClient used to load it only when the main site sent treatments, so a quiet main
+                // site left the phone without current BG. Now it is loaded every minute (the worker skips glucose while replay is on).
+                if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay) && preferences.get(BooleanKey.NsClientSecondaryEnabled) &&
+                    preferences.get(BooleanKey.NsClientBgFromLiveSite) && isAllowed && !preferences.get(NsclientBooleanKey.NsPaused)) {
+                    safe("secondaryBgEveryMinute") {
+                        WorkManager.getInstance(context).enqueueUniqueWork(
+                            "LoadSecondaryBolusCarbs", ExistingWorkPolicy.KEEP,
+                            OneTimeWorkRequest.Builder(LoadSecondaryBolusCarbsWorker::class.java).build()
+                        )
+                    }
                 }
             }, fabricPrivacy::logException)
         disposable += rxBus.toObservable(EventPreferenceChange::class.java)
