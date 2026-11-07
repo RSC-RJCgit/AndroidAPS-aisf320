@@ -22,8 +22,9 @@ internal class BuildDefaultsResetTest {
     private val preferences: Preferences = mock()
     private val config: Config = mock()
 
-    private fun given(client: Boolean = false, doneFor: String = "") {
+    private fun given(client: Boolean = false, doneFor: String = "", pumpDrivers: Boolean = true) {
         whenever(config.AAPSCLIENT).thenReturn(client)
+        whenever(config.PUMPDRIVERS).thenReturn(pumpDrivers)
         whenever(config.VERSION_NAME).thenReturn("4.0.0-rc1")
         whenever(config.HEAD).thenReturn("abc123")
         whenever(preferences.get(StringNonKey.DefaultsResetBuild)).thenReturn(doneFor)
@@ -57,6 +58,21 @@ internal class BuildDefaultsResetTest {
         assertThat(BuildDefaultsReset.apply(preferences, config, "DanaRSPlugin")).isEmpty()
         verify(preferences, never()).put(any<BooleanKey>(), any<Boolean>())
         verify(preferences, never()).put(eq(StringNonKey.DefaultsResetBuild), anyOrNull())
+    }
+
+    @Test
+    fun aFreshMasterWithoutPumpDriversCountsAsVirtualBeforeAPumpIsChosen() {
+        given(pumpDrivers = false)
+        whenever(preferences.get(BooleanKey.ApsUseAutosens)).thenReturn(true)
+        assertThat(BuildDefaultsReset.apply(preferences, config, "")).containsExactly(BooleanKey.ApsUseAutosens)
+        verify(preferences).put(BooleanKey.ApsUseAutosens, false)
+    }
+
+    @Test
+    fun aFreshAndroidMasterWithNoPumpChosenYetIsLeftAlone() {
+        given()
+        whenever(preferences.get(BooleanKey.ApsUseAutosens)).thenReturn(true)
+        assertThat(BuildDefaultsReset.apply(preferences, config, "")).isEmpty()
     }
 
     @Test

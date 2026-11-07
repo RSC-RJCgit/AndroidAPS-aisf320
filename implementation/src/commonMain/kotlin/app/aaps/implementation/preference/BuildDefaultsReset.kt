@@ -74,9 +74,14 @@ object BuildDefaultsReset {
     /** The pump plugin id a Virtual master runs (`PluginBase.pluginId`, the class name). */
     private const val VIRTUAL_PUMP = "VirtualPumpPlugin"
 
-    /** Returns changed switches on a fresh install. Existing installs and real-pump masters are left alone. */
+    /**
+     * Returns changed switches on a fresh install. Existing installs and real-pump masters are left alone.
+     *
+     * A build without pump drivers (iOS, desktop) can only run the Virtual pump, so it counts as Virtual even while
+     * [activePump] is still empty, as it is on a brand-new install before the pump plugin is first chosen.
+     */
     fun apply(preferences: Preferences, config: Config, activePump: String): List<BooleanKey> {
-        if (!config.AAPSCLIENT && activePump != VIRTUAL_PUMP) return emptyList()
+        if (!config.AAPSCLIENT && config.PUMPDRIVERS && activePump != VIRTUAL_PUMP) return emptyList()
         if (preferences.get(StringNonKey.DefaultsResetBuild).isNotEmpty() ||
             preferences.get(BooleanNonKey.GeneralSetupWizardProcessed)
         ) return emptyList()

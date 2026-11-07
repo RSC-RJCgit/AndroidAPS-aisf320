@@ -38,6 +38,7 @@ import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.resources.LanguageTag
 import app.aaps.core.interfaces.resources.TextRefValueRegistry
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.objects.di.CoreObjectsGraph
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalMetroViewModelFactory
@@ -52,6 +53,7 @@ import app.aaps.desktop.shell.secure.KeyVaultUnavailableException
 import app.aaps.implementation.logging.AAPSLoggerDesktop
 import app.aaps.desktop.shell.platform.chooseFolder
 import app.aaps.implementation.maintenance.DesktopFolders
+import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import app.aaps.shared.clientbindings.ClientViewModelFactory
@@ -220,6 +222,8 @@ private fun startApp(storage: DesktopStorage.Opened): DesktopAppGraph {
     // A new install starts with the fork's settings, as on Android and iOS (2026-11-01, per explicit request). Before the
     // plugins start, so they read them.
     FreshInstallDefaults.apply(graph.preferences, graph.config)
+    // The agreed switches too, as on Android and iOS. Once only, on a fresh install.
+    BuildDefaultsReset.apply(graph.preferences, graph.config, graph.preferences.get(StringNonKey.ActivePluginPump))
     startPlugins(graph)
     // Said in the app, not only in the log: the user is the one who can fix it, by installing a keyring.
     if (storage.fallbackReason != null)
