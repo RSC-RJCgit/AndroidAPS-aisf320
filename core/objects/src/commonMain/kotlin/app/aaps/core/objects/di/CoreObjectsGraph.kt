@@ -12,6 +12,7 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.resources.TextResolver
@@ -72,10 +73,12 @@ object CoreObjectsGraph {
         persistence: PersistenceLayer,
         dates: DateUtil,
         glucose: GlucoseStatusProvider,
+        cfg: Config,
+        plugins: ActivePlugin,
         wizard: () -> BolusWizard,
         quick: () -> QuickWizard
     ): QuickWizardEntry = QuickWizardEntry(
-        logger, prefs, profile, loopRef, iobCob, persistence, dates, glucose, { wizard() }, { quick() }
+        logger, prefs, profile, loopRef, iobCob, persistence, dates, glucose, cfg, plugins, { wizard() }, { quick() }
     )
 
     @Suppress("LongParameterList")
@@ -100,9 +103,10 @@ object CoreObjectsGraph {
         guard: RunningModeGuard,
         ch: ConcentrationHelper,
         executor: MasterActionExecutor,
+        plugins: ActivePlugin,
         scope: CoroutineScope
     ): BolusWizard = BolusWizard(
         logger, text, bus, prefs, profile, profileU, constraints, loopRef, iobCob, dates, cfg,
-        entryLogger, automationRef, eatReminder, glucose, persistence, guard, ch, executor, scope
+        entryLogger, automationRef, eatReminder, glucose, persistence, guard, ch, executor, plugins, scope
     )
 }
