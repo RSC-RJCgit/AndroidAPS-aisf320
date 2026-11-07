@@ -34,6 +34,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.overview.graph.ProfileDisplayData
 import app.aaps.core.interfaces.overview.graph.RunningModeDisplayData
@@ -57,12 +58,14 @@ import app.aaps.core.interfaces.scenes.SceneActions
 import app.aaps.core.interfaces.scenes.SceneChainResolver
 import app.aaps.core.interfaces.scenes.SceneStore
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.interfaces.trio.TrioRemoteControl
 import app.aaps.core.interfaces.ui.UrlOpener
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.keys.interfaces.Preferences
@@ -93,7 +96,11 @@ import app.aaps.ui.compose.quickLaunch.ResolvedQuickLaunchItem
 import app.aaps.ui.compose.scenes.SceneIcons
 import app.aaps.ui.compose.scenes.revertSummaries
 import app.aaps.ui.compose.tempTarget.toTTPresetsWithDisplayName
+import app.aaps.ui.compose.wizardDialog.TrioLaterParts
+import app.aaps.ui.compose.wizardDialog.TrioLaterPlan
+import app.aaps.ui.compose.wizardDialog.offerWizardTrioSend
 import app.aaps.ui.compose.wizardDialog.showWizardBolusConfirmation
+import app.aaps.ui.compose.wizardDialog.wizardTrioSend
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
@@ -159,7 +166,9 @@ class MainViewModel(
     // binds the same instance under both names.
     private val appScope: CoroutineScope,
     private val eatReminder: EatReminder,
-    private val clientControlDispatcher: ClientControlActionDispatcher
+    private val clientControlDispatcher: ClientControlActionDispatcher,
+    private val trioRemoteControl: TrioRemoteControl,
+    private val processedDeviceStatusData: ProcessedDeviceStatusData
 ) : ViewModel() {
 
     // Event-driven state (drawer, dialogs, simple-mode preference). Imperative .update{} calls
@@ -505,6 +514,64 @@ class MainViewModel(
             return QuickWizardItem(guid = guid, buttonText = buttonText, mode = entry.mode().value, detail = detail, disabledReason = rh.gs(UiStrings.insulin_constraint_violation))
 
         return QuickWizardItem(guid = guid, buttonText = buttonText, mode = entry.mode().value, detail = detail, isEnabled = true)
+    }
+
+    /** Trio remote control is on and complete: each QuickWizard entry shows a Trio button (2026-11-07, per explicit request) */
+    fun trioReady(): Boolean = trioRemoteControl.setup().ready
+
+    /**
+     * A QuickWizard entry's Trio button (2026-11-07, per explicit request): works the entry out on this phone (never on an
+     * AAPS master) and sends it to Trio after one confirmation, the meal and then the bolus (see [offerWizardTrioSend]).
+     * Insulin-only entries send their bolus, carbs-only entries their carbs; the normal tap is unchanged.
+     */
+    fun sendQuickWizardToTrio(guid: String) {
+        viewModelScope.launch {
+            val entry = quickWizard.get(guid) ?: return@launch
+            if (!entry.isActive() || !trioReady()) return@launch
+            // Later parts too (2026-11-07, per explicit request), as in the bolus calculator: extended carbs, and for a
+            // calculator entry the split leftover and the fat/protein doses. Fat and protein with a dose plan go as doses
+            // (not also as grams); without one, the grams go to Trio, which spreads them itself.
+            val eCarbsDelay = entry.eCarbsDelayMinutes() + entry.carbTime()
+            val (send, plan) = when (entry.mode()) {
+                QuickWizardMode.INSULIN -> wizardTrioSend(entry.insulin(), 0, 0, 0, 0, 0, dateUtil.now()) to null
+                QuickWizardMode.CARBS   ->
+                    wizardTrioSend(0.0, entry.carbs(), entry.fat(), entry.protein(), 0, entry.carbTime(), dateUtil.now()) to
+                        TrioLaterPlan(null, 0.0, false, null, entry.eCarbsGrams(), eCarbsDelay, entry.eCarbsDurationHours(), Sources.QuickWizard)
+
+                QuickWizardMode.WIZARD  -> {
+                    val lastBG = iobCobCalculator.ads.lastBg()
+                    val profile = profileFunction.getProfile()
+                    if (lastBG == null || profile == null) {
+                        rxBus.send(EventShowDialog.Ok(title = entry.buttonText(),
+                            message = rh.gs(if (lastBG == null) CoreUiStrings.wizard_no_actual_bg else CoreUiStrings.noprofile)))
+                        return@launch
+                    }
+                    // The entry's own max bolus counts, as when the button is tapped (0 = the saved max bolus)
+                    val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+                    val ownMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
+                    if (ownMax != null) preferences.put(DoubleKey.SafetyMaxBolus, ownMax)
+                    val wizard = try {
+                        entry.doCalc(profile, profileFunction.getProfileName(), lastBG)
+                    } finally {
+                        if (ownMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+                    }
+                    wizard.splitOverMax = entry.splitOverMax()
+                    wizard.splitIntervalMinutes = entry.splitIntervalMinutes()
+                    val fpuDoses = wizard.warsawPlan != null
+                    val bolusNow = wizard.insulinAfterConstraints
+                    wizardTrioSend(bolusNow, entry.carbs(), if (fpuDoses) 0 else entry.fat(), if (fpuDoses) 0 else entry.protein(), 0, entry.carbTime(), dateUtil.now()) to
+                        TrioLaterPlan(wizard, bolusNow, true, wizard.warsawPlan, entry.eCarbsGrams(), eCarbsDelay, entry.eCarbsDurationHours(), Sources.QuickWizard)
+                }
+            }
+            offerWizardTrioSend(
+                send, IcQuickwizard, trioRemoteControl, preferences, rh, rxBus, dateUtil, appScope,
+                laterLines = plan?.lines(rh, dateUtil, TrioLaterParts.keepAwakeNeeded(config, preferences)).orEmpty(),
+                afterSent = {
+                    if (plan != null) TrioLaterParts.start(plan, trioRemoteControl, processedDeviceStatusData, preferences, config, rh, rxBus, dateUtil, appScope)
+                    else TrioLaterParts.cancel()
+                }
+            )
+        }
     }
 
     /**

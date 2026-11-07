@@ -21,6 +21,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +53,7 @@ import app.aaps.core.ui.compose.preference.PreferenceSheetContent
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
+import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.main.QuickWizardItem
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,6 +75,8 @@ fun TreatmentBottomSheet(
     onNavigate: (NavigationRequest) -> Unit,
     // For settings screen
     treatmentButtonsDef: PreferenceSubScreenDef? = null,
+    // Trio button on each QuickWizard entry, null when Trio remote control is not set up (2026-11-07, per explicit request)
+    onQuickWizardTrio: ((String) -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSettings by remember { mutableStateOf(false) }
@@ -92,6 +96,7 @@ fun TreatmentBottomSheet(
                 onDismiss = onDismiss,
                 onNavigate = onNavigate,
                 quickWizardItems = quickWizardItems,
+                onQuickWizardTrio = onQuickWizardTrio,
                 showCgm = showCgm,
                 showCalibration = showCalibration,
                 showTreatment = showTreatment,
@@ -122,7 +127,8 @@ internal fun TreatmentSelectionContent(
     showCalculator: Boolean,
     isDexcomSource: Boolean,
     showSettingsIcon: Boolean,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onQuickWizardTrio: ((String) -> Unit)? = null
 ) {
     // Keep the scroll viewport finite while the iOS sheet is opening or rotating.
     val windowHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
@@ -211,6 +217,16 @@ internal fun TreatmentSelectionContent(
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = disabledAlpha),
                         enabled = itemEnabled
                     )
+                },
+                // Trio button (2026-11-07, per explicit request): sends this entry to Trio instead, worked out on this
+                // phone. Shown whenever Trio remote control is set up, even when the AAPS route is disabled.
+                trailingContent = onQuickWizardTrio?.let { sendToTrio ->
+                    {
+                        TextButton(onClick = {
+                            onDismiss()
+                            sendToTrio(item.guid)
+                        }) { Text(stringResource(UiStrings.quickwizard_trio)) }
+                    }
                 },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = if (itemEnabled) Modifier.clickable {

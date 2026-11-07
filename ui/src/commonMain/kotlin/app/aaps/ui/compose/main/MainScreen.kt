@@ -625,6 +625,7 @@ fun MainScreen(
             quickWizardItems = treatmentState.quickWizardItems,
             onNavigate = onNavigate,
             treatmentButtonsDef = treatmentButtonsDef,
+            onQuickWizardTrio = if (mainViewModel.trioReady()) mainViewModel::sendQuickWizardToTrio else null,
         )
     }
 

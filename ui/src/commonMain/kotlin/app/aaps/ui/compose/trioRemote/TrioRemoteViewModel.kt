@@ -14,6 +14,7 @@ import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.ui.compose.wizardDialog.TrioLaterParts
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
@@ -102,6 +103,14 @@ class TrioRemoteViewModel(
             _uiState.update { it.copy(sending = false, result = SendOutcome(command, result)) }
         }
     }
+
+    /** About when the last later part from a Send to Trio can be sent; 0 when none is waiting (2026-11-07) */
+    val laterUntil: StateFlow<Long> = TrioLaterParts.until
+
+    /** The "Cancel later parts" button: the split parts, fat/protein doses and extended carbs still waiting */
+    fun cancelLaterParts() = TrioLaterParts.cancel()
+
+    fun timeText(at: Long): String = dateUtil.timeString(at)
 
     /** A target in mg/dL, in the user's unit with the unit */
     fun targetText(mgdl: Double): String = profileUtil.fromMgdlToStringWithUnits(mgdl)

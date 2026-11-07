@@ -358,6 +358,13 @@ internal fun WizardDialogContent(
                 ) {
                     Text(stringResource(UiStrings.wizard_send_to_trio))
                 }
+                // Later parts are sent by this phone, so it must keep running (2026-11-07, per explicit request)
+                Text(
+                    text = stringResource(UiStrings.wizard_trio_later_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
             }
             Button(
                 onClick = {

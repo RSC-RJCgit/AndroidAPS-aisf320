@@ -457,7 +457,7 @@ class BolusWizard(
      * "Remaining x U, one part every n min" for the insulin over max bolus and the insulin held back for walking soon.
      * The confirm screen shows these lines and the calculation note saves them. Empty when no part will follow.
      */
-    private fun splitLeftoverTexts(): List<String> {
+    fun splitLeftoverTexts(): List<String> {
         if (!::profile.isInitialized || useSuperBolus || profileSwitchPercent(profile) < 100) return emptyList()
         val step = ch.bolusStep(max(insulinAfterConstraints, walkingSoonHeldUnits).coerceAtLeast(0.05))
         val aboveMax = if (splitOverMax) splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, step) ?: 0.0 else 0.0
@@ -608,21 +608,49 @@ class BolusWizard(
         val capRemaining = Round.roundTo(max(0.0, walkingPlanned - dose), 0.001)
         if (walkFactor < 1.0)
             aapsLogger.info(LTag.CORE, "Warsaw dose: ${delayedDoseWalkingLevel(walkFactor)} (steps), dose x$walkFactor, ${Round.roundTo(planned - walkingPlanned, 0.001)} U dropped")
-        masterActionExecutor.deliverInsulin(
-            insulin = dose,
-            note = null,
-            source = source,
-            onError = { failure -> aapsLogger.info(LTag.CORE, "Warsaw dose not delivered: ${failure.comment}") },
-            treatmentNote = rh.gs(InterfacesStrings.wizard_warsaw_dose),
-            onSuccess = {
-                preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
-                if (capRemaining >= step / 2.0) onCappedRemainder(capRemaining, liveIob + dose)
-            },
-        )
+        deliverLaterDose(dose, source, rh.gs(InterfacesStrings.wizard_warsaw_dose), "Warsaw dose") {
+            preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
+            if (capRemaining >= step / 2.0) onCappedRemainder(capRemaining, liveIob + dose)
+        }
         return null
     }
 
+    /**
+     * Later doses to Trio (2026-11-07, per explicit request): set before scheduling, and every later dose of this calculation
+     * then goes to Trio by its remote command instead of the pump or an AAPS master, after the same checks. See [TrioLaterTarget].
+     */
+    var trioLater: TrioLaterTarget? = null
+
+    /** Hands a later dose over: to Trio when [trioLater] is set, else to the pump or AAPS master as before */
+    private suspend fun deliverLaterDose(dose: Double, source: Sources, treatmentNote: String, what: String, onSuccess: () -> Unit) {
+        val trio = trioLater
+        if (trio == null) {
+            masterActionExecutor.deliverInsulin(
+                insulin = dose,
+                note = null,
+                source = source,
+                onError = { failure -> aapsLogger.info(LTag.CORE, "$what not delivered: ${failure.comment}") },
+                treatmentNote = treatmentNote,
+                onSuccess = onSuccess,
+            )
+            return
+        }
+        val failed = trio.sendBolus(dose)
+        if (failed == null) {
+            aapsLogger.info(LTag.CORE, "$what: $dose U sent to Trio")
+            onSuccess()
+        } else {
+            aapsLogger.info(LTag.CORE, "$what not sent to Trio: $failed")
+            warsawNote("C", dose, "not sent to Trio: $failed", source, "$what of ${ofBolus()}: ${warsawNoteAmount(dose)} U")
+        }
+    }
+
     private fun cappedFollowUpDose(candidate: Double, step: Double): Double? {
+        // Trio's own insulinReq, from the loop status it uploads, when the doses go to Trio
+        trioLater?.let { trio ->
+            val (at, requirement) = trio.insulinReq() ?: return null
+            return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
+        }
         val at = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)
         val requirement = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqMilliU)
         if (at != preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)) return null
@@ -645,6 +673,11 @@ class BolusWizard(
     }
 
     private suspend fun recordCancelledDose(label: String, amount: Double, reason: String, iobBaseline: Double, source: Sources, useIobRise: Boolean = true) {
+        // Doses for Trio: the care portal note says it; no 0 U pump bolus row is written to Trio's Nightscout site
+        if (trioLater != null) {
+            aapsLogger.info(LTag.CORE, "Trio later dose cancelled, no 0 U row: $label $amount U, $reason")
+            return
+        }
         val profile = profileFunction.getProfile() ?: run {
             aapsLogger.info(LTag.CORE, "Cancelled dose row not written, no profile: $label $amount U, $reason")
             return
@@ -756,6 +789,11 @@ class BolusWizard(
         SplitScheduleGate.next()
     }
 
+    /** Cancels the fat/protein doses still waiting (2026-11-07, per explicit request: Cancel later Trio parts) */
+    fun cancelWarsawDoses() {
+        WarsawScheduleGate.next()
+    }
+
     suspend fun scheduleLeftoverSplit(
         requested: Double,
         delivered: Double,
@@ -864,14 +902,16 @@ class BolusWizard(
                 holdThisCheck("profile missing or under 100%")
                 return@launch
             }
-            if (loop.runningMode() == RM.Mode.SUPER_BOLUS || runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null) {
+            // No pump on this phone when the doses go to Trio: only the superbolus check applies
+            if (loop.runningMode() == RM.Mode.SUPER_BOLUS || (trioLater == null && runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null)) {
                 holdThisCheck("pump will not take a bolus")
                 return@launch
             }
             val hpAt = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)
             val hpValue = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
-            val hpCheck = if (hpAt == preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At))
-                splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
+            // For Trio: the lowest of Trio's own predictions over the next hour stands in for HP1
+            val hpCheck = trioLater?.let { trio -> trio.lowestPrediction()?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait }
+                ?: if (hpAt == preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)) splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
             when (hpCheck) {
                 SplitHpCheck.Hold -> {
                     holdThisCheck("HP1 below 4.0 mmol/L")
@@ -930,33 +970,26 @@ class BolusWizard(
                     if (walkFactor < 1.0)
                         aapsLogger.info(LTag.CORE, "Split leftover part: ${delayedDoseWalkingLevel(walkFactor)} (steps), part x$walkFactor, $walkingCut U dropped")
                     val leftAfterPart = Round.roundTo(max(0.0, reducedRemaining - dose - walkingCut), 0.001)
-                    masterActionExecutor.deliverInsulin(
-                        insulin = dose,
-                        note = null,
-                        source = source,
-                        onError = { failure -> aapsLogger.info(LTag.CORE, "Split leftover part not delivered: ${failure.comment}") },
-                        treatmentNote = rh.gs(InterfacesStrings.wizard_split_leftover, leftAfterPart, intervalMinutes),
-                        onSuccess = {
-                            preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
-                            val left = leftAfterPart
-                            if (left >= step / 2.0) {
-                                launchSplitPart(
-                                    remaining = left,
-                                    // The next part keeps the size it had before the walking cut.
-                                    previousPart = dose + walkingCut,
-                                    iobBaseline = liveIob + dose,
-                                    token = token,
-                                    source = source,
-                                    deliverAt = dateUtil.now() + intervalMinutes * 60_000L,
-                                    deadline = deadline,
-                                    unsafeCount = 0,
-                                    intervalMinutes = intervalMinutes,
-                                    unsafeLimit = unsafeLimit,
-                                    walkingCutAllowed = walkingCutAllowed,
-                                )
-                            }
-                        },
-                    )
+                    deliverLaterDose(dose, source, rh.gs(InterfacesStrings.wizard_split_leftover, leftAfterPart, intervalMinutes), "Split leftover part") {
+                        preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
+                        val left = leftAfterPart
+                        if (left >= step / 2.0) {
+                            launchSplitPart(
+                                remaining = left,
+                                // The next part keeps the size it had before the walking cut.
+                                previousPart = dose + walkingCut,
+                                iobBaseline = liveIob + dose,
+                                token = token,
+                                source = source,
+                                deliverAt = dateUtil.now() + intervalMinutes * 60_000L,
+                                deadline = deadline,
+                                unsafeCount = 0,
+                                intervalMinutes = intervalMinutes,
+                                unsafeLimit = unsafeLimit,
+                                walkingCutAllowed = walkingCutAllowed,
+                            )
+                        }
+                    }
                 }
             }
         }

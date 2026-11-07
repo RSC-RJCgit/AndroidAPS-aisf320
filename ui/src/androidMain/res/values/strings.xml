@@ -597,6 +597,15 @@
     <string name="wizard_trio_ecarbs_not_sent" comment="%1$d=grams of extended carbs">%1$d g extended carbs are not sent: Trio has none</string>
     <string name="wizard_trio_carb_time_now">Carb time is later: Trio takes the meal as eaten now</string>
     <string name="wizard_send_to_trio">Send to Trio</string>
+    <string name="wizard_trio_later" comment="%1$s=what follows later, for example Remaining 1.20 U, one part every 30 min">Later, sent to Trio after the usual checks: %1$s</string>
+    <string name="wizard_trio_ecarbs_later" comment="%1$d=grams of extended carbs, %2$d=number of hourly parts, %3$d=minutes until the first part">%1$d g extended carbs sent to Trio as %2$d hourly parts, the first in %3$d min</string>
+    <string name="wizard_trio_later_until" comment="%1$s=a time of day">Later parts are sent by this phone until about %1$s: keep this app running until then.</string>
+    <string name="wizard_trio_keep_awake_ios">On this iPhone the OrangeLink heartbeat is switched off and silent sound on until then, then set back.</string>
+    <string name="wizard_trio_later_hint">Later parts (split, fat/protein, extended carbs) are sent by this phone: keep the app running until they are done.</string>
+    <string name="trio_remote_later_waiting" comment="%1$s=a time of day">Later parts from Send to Trio are waiting on this phone, until about %1$s.</string>
+    <string name="trio_remote_cancel_later">Cancel later parts</string>
+    <string name="wizard_trio_part_late">more than 10 minutes late, so Trio would refuse it (the app was not running)</string>
+    <string name="quickwizard_trio" comment="Button on each QuickWizard entry that sends it to Trio">Trio</string>
     <string name="sensor_signal_bg">BG</string>
     <string name="sensor_signal_raw">Raw signal</string>
     <string name="sensor_raw_none">No raw signal stored for these sensors. Choose BG to see their glucose.</string>

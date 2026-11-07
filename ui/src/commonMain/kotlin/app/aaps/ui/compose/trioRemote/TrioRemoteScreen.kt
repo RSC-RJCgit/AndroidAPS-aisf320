@@ -82,6 +82,16 @@ fun TrioRemoteScreen(
             verticalArrangement = Arrangement.spacedBy(AapsSpacing.extraLarge)
         ) {
             SetupCard(state.setup)
+            // Later parts from a Send to Trio, waiting on this phone (2026-11-07, per explicit request)
+            val laterUntil by viewModel.laterUntil.collectAsStateWithLifecycle()
+            if (laterUntil > 0L) {
+                AapsCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(AapsSpacing.extraLarge), verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
+                        Text(stringResource(UiStrings.trio_remote_later_waiting, viewModel.timeText(laterUntil)))
+                        OutlinedButton(onClick = viewModel::cancelLaterParts) { Text(stringResource(UiStrings.trio_remote_cancel_later)) }
+                    }
+                }
+            }
             if (state.setup.ready) {
                 state.problem?.let { ProblemText(it, viewModel) }
                 state.result?.let { ResultText(it, viewModel) }

@@ -52,6 +52,14 @@ class WizardTrioSendTest {
     }
 
     @Test
+    fun extendedCarbsGoInHourlyParts() {
+        assertEquals(listOf(10, 10, 10), trioECarbsParts(30, 3))
+        assertEquals(listOf(9, 8, 8), trioECarbsParts(25, 3))
+        assertEquals(listOf(20), trioECarbsParts(20, 0))
+        assertEquals(listOf(1, 1), trioECarbsParts(2, 4))
+    }
+
+    @Test
     fun extendedCarbsAreNotSent() {
         val send = wizardTrioSend(insulin = 0.0, carbs = 0, fat = 0, protein = 0, eCarbs = 25, carbTimeMinutes = 0, now = now)
         assertTrue(send.isEmpty)

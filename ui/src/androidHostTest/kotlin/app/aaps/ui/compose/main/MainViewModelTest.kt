@@ -23,6 +23,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.overview.graph.ProfileDisplayData
 import app.aaps.core.interfaces.overview.graph.RunningModeDisplayData
@@ -41,6 +42,7 @@ import app.aaps.core.interfaces.scenes.SceneActions
 import app.aaps.core.interfaces.scenes.SceneChainResolver
 import app.aaps.core.interfaces.scenes.SceneStore
 import app.aaps.core.interfaces.sync.NsClient
+import app.aaps.core.interfaces.trio.TrioRemoteControl
 import app.aaps.core.interfaces.ui.UrlOpener
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
@@ -88,6 +90,8 @@ import org.mockito.kotlin.whenever
 internal class MainViewModelTest {
 
     @Mock private lateinit var activePlugin: ActivePlugin
+    @Mock private lateinit var trioRemoteControl: TrioRemoteControl
+    @Mock private lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
     @Mock private lateinit var config: Config
     @Mock private lateinit var urlOpener: UrlOpener
     @Mock private lateinit var preferences: Preferences
@@ -174,7 +178,7 @@ internal class MainViewModelTest {
             override val paused = MutableStateFlow(false)
             override fun setPaused(paused: Boolean) {}
         },
-        CoroutineScope(UnconfinedTestDispatcher()), eatReminder, clientControlDispatcher
+        CoroutineScope(UnconfinedTestDispatcher()), eatReminder, clientControlDispatcher, trioRemoteControl, processedDeviceStatusData
     )
 
     @Test

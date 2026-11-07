@@ -11,11 +11,8 @@ import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
-import app.aaps.core.data.ui.ConfirmationRole
-import app.aaps.core.interfaces.trio.TrioRemoteCommand
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.trio.TrioRemoteControl
-import app.aaps.core.interfaces.trio.TrioRemoteResult
-import app.aaps.ui.UiStrings
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
@@ -61,6 +58,7 @@ import app.aaps.core.objects.wizard.walkingSoonDefault
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.icons.IcCalculator
+import app.aaps.ui.UiStrings
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
@@ -113,7 +111,8 @@ class WizardDialogViewModel(
     // binds the same instance under both names.
     private val appScope: CoroutineScope,
     private val commandQueue: CommandQueue,
-    private val trioRemoteControl: TrioRemoteControl
+    private val trioRemoteControl: TrioRemoteControl,
+    private val processedDeviceStatusData: ProcessedDeviceStatusData
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WizardDialogUiState())
@@ -949,84 +948,38 @@ class WizardDialogViewModel(
 
     /**
      * The Send to Trio button (2026-11-07, per explicit request): sends the result shown on this screen to Trio, the
-     * meal and then the bolus, after one confirmation. It is worked out on this phone, as the screen shows it, and never
-     * goes to an AAPS master. This app's max bolus and max carbs are checked first; Trio checks again with its own limits.
+     * meal and then the bolus, after one confirmation (see [offerWizardTrioSend]). It is worked out on this phone, as the
+     * screen shows it, and never goes to an AAPS master.
      */
     fun sendToTrio() {
         val state = uiState.value
-        if (!state.hasResult || !trioReady()) return
-        val title = rh.gs(UiStrings.trio_remote_confirm_title)
-        val send = wizardTrioSend(state.deliveredInsulin, state.effectiveCarbs, state.fat, state.protein, state.eCarbs, state.carbTime, dateUtil.now())
-        val maxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
-        val maxCarbs = preferences.get(IntKey.SafetyMaxCarbs)
-        val meal = send.meal
-        val problem = when {
-            send.isEmpty                          -> rh.gs(CoreUiStrings.no_action_selected)
-            (send.bolus?.units ?: 0.0) > maxBolus ->
-                rh.gs(UiStrings.trio_remote_problem_bolus, rh.gs(UiStrings.trio_remote_insulin_value, twoDecimals(maxBolus)))
-
-            meal != null && (meal.carbs > maxCarbs || meal.fat > maxCarbs || meal.protein > maxCarbs) ->
-                rh.gs(UiStrings.trio_remote_problem_carbs, maxCarbs)
-
-            else                                  -> null
-        }
-        if (problem != null) {
-            rxBus.send(EventShowDialog.Ok(title = title, message = problem))
-            return
-        }
-        saveRememberedTicks()
-        val setup = trioRemoteControl.setup()
-        val lines = buildList {
-            send.meal?.let { add(ConfirmationLine(ConfirmationRole.CARBS, trioCommandText(it))) }
-            send.bolus?.let { add(ConfirmationLine(ConfirmationRole.BOLUS, trioCommandText(it))) }
-            if (send.eCarbsNotSent > 0) add(ConfirmationLine(ConfirmationRole.WARNING, rh.gs(UiStrings.wizard_trio_ecarbs_not_sent, send.eCarbsNotSent)))
-            if (send.futureCarbTimeIgnored) add(ConfirmationLine(ConfirmationRole.WARNING, rh.gs(UiStrings.wizard_trio_carb_time_now)))
-        }
-        rxBus.send(
-            EventShowDialog.OkCancel(
-                title = title, message = "",
-                secondMessage = rh.gs(if (setup.simulator) UiStrings.trio_simulator_banner else UiStrings.trio_remote_confirm_note),
-                icon = IcCalculator, confirmationLines = lines,
-                onOk = {
-                    _sideEffect.tryEmit(SideEffect.NavigateBack)
-                    appScope.launch { sendToTrio(send, setup.simulator, title) }
-                }
-            )
+        val w = wizard
+        if (!state.hasResult || w == null || !trioReady()) return
+        // Later parts go to Trio too (2026-11-07, per explicit request), with the usual checks before each: the split
+        // leftover (over max bolus, held for walking soon), the fat/protein doses (with "give rest later") and the
+        // extended carbs. With Split FPU ticked, fat and protein are given as those doses, so they are not also sent to
+        // Trio as grams (Trio would count them twice); unticked, the grams go to Trio, which spreads them itself.
+        val fpuDoses = state.splitFpuBolus
+        val fixed = state.fixedInsulin
+        // Over this phone's max bolus, the part above it follows as split parts, as with the pump
+        val bolusNow = fixed ?: w.insulinAfterConstraints
+        val send = wizardTrioSend(bolusNow, state.effectiveCarbs, if (fpuDoses) 0 else state.fat, if (fpuDoses) 0 else state.protein, 0, state.carbTime, dateUtil.now())
+        w.splitOverMax = state.splitOverMax
+        w.splitIntervalMinutes = state.splitIntervalMinutes.coerceIn(1, 60)
+        val plan = TrioLaterPlan(
+            w, bolusNow, splitLeftover = fixed == null, fpuPlan = if (fpuDoses) w.warsawPlan else null,
+            eCarbs = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime,
+            eCarbsDurationHours = state.eCarbsDurationHours, source = Sources.WizardDialog,
         )
-    }
-
-    /** The meal first, then the bolus; stops at the first one not sent, so a bolus never goes without its meal */
-    private suspend fun sendToTrio(send: WizardTrioSend, simulator: Boolean, title: String) {
-        val done = mutableListOf<String>()
-        for (command in listOfNotNull(send.meal, send.bolus)) {
-            val text = trioCommandText(command)
-            when (val result = trioRemoteControl.send(command, expectedSimulator = simulator)) {
-                TrioRemoteResult.Sent         -> done += text
-                is TrioRemoteResult.Simulated -> done += rh.gs(UiStrings.trio_simulator_result, result.detail)
-                is TrioRemoteResult.Failed    -> {
-                    val failed = rh.gs(UiStrings.trio_remote_failed, text, result.reason)
-                    val message = if (done.isEmpty()) failed else rh.gs(UiStrings.trio_remote_sent, done.joinToString(", ")) + "\n" + failed
-                    rxBus.send(EventShowDialog.Ok(title = title, message = message))
-                    return
-                }
-            }
-        }
-        rxBus.send(EventShowDialog.Ok(title = title, message = rh.gs(UiStrings.trio_remote_sent, done.joinToString(", "))))
-    }
-
-    private fun trioCommandText(command: TrioRemoteCommand): String = when (command) {
-        is TrioRemoteCommand.Meal  -> command.eatenAt?.let { eatenAt ->
-            rh.gs(UiStrings.trio_remote_command_meal_earlier, command.carbs, command.fat, command.protein, ((dateUtil.now() - eatenAt) / 60_000L).toInt())
-        } ?: rh.gs(UiStrings.trio_remote_command_meal, command.carbs, command.fat, command.protein)
-
-        is TrioRemoteCommand.Bolus -> rh.gs(UiStrings.trio_remote_command_bolus, rh.gs(UiStrings.trio_remote_insulin_value, twoDecimals(command.units)))
-        else                       -> command.toString()
-    }
-
-    /** Two decimals with a point, the way Trio is sent it (as on the Trio remote screen) */
-    private fun twoDecimals(value: Double): String {
-        val hundredths = kotlin.math.round(value * 100).toLong()
-        return "${hundredths / 100}.${(hundredths % 100).toString().padStart(2, '0')}"
+        offerWizardTrioSend(
+            send, IcCalculator, trioRemoteControl, preferences, rh, rxBus, dateUtil, appScope,
+            laterLines = plan.lines(rh, dateUtil, TrioLaterParts.keepAwakeNeeded(config, preferences)),
+            onConfirmed = {
+                saveRememberedTicks()
+                _sideEffect.tryEmit(SideEffect.NavigateBack)
+            },
+            afterSent = { TrioLaterParts.start(plan, trioRemoteControl, processedDeviceStatusData, preferences, config, rh, rxBus, dateUtil, appScope) }
+        )
     }
 
     private suspend fun applyWalkingSoonDefault(state: WizardDialogUiState): WizardDialogUiState {
