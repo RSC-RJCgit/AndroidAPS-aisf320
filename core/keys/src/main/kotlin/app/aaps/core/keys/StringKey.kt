@@ -76,6 +76,8 @@ enum class StringKey(
     NsClientWifiSsids("ns_wifi_ssids", "", dependency = BooleanKey.NsClientUseWifi),
     NsClientAccessToken("nsclient_token", "", isPassword = true),
     NsClientSecondaryUrl("nsclient_secondary_url", ""),
+    /** Time zone of the replay source readings when they carry none themselves (2026-11-07, per explicit request) */
+    NsClientSimulatorBgReplaySourceTimeZone("nsclient_simulator_bg_replay_source_tz", "Australia/Adelaide"),
     NsClientSecondaryAccessToken("nsclient_secondary_token", "", isPassword = true),
     // Tertiary ("3y") NS site (2026-09-30, per explicit request): a genuinely separate third connection,
     // used only to carry raw BG (from an xDrip/GDH broadcast) out as its own SGV entry -- unrelated to the

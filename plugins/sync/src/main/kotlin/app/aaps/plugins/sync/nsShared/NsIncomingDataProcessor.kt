@@ -144,75 +144,7 @@ class NsIncomingDataProcessor @Inject constructor(
         }
         if (glucoseValues.isNotEmpty()) {
             // Apply FSL calibration + smoothing if enabled (e.g. Juggluco uploading raw data via NS)
-            if (preferences.get(BooleanKey.FslApplySmoothing)) {
-                val slope = preferences.get(DoubleKey.FslCalSlope)
-                val offset = preferences.get(DoubleKey.FslCalOffset)
-                val factor = preferences.get(DoubleKey.FslSmoothAlpha)
-                val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
-                val useRawUkf = preferences.get(BooleanKey.FslUseUkfSmoothing) &&
-                    !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) &&
-                    activePlugin.activePump is VirtualPump &&
-                    !config.AAPSCLIENT
-                val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
-                glucoseValues.sortBy { it.timestamp }
-                for (gv in glucoseValues) {
-                    val calibrated = max(40.0, gv.value * slope + offset * unitFactor)
-                    val smooth: Double
-                    if (useRawUkf) {
-                        // UnscentedKalmanFilterPlugin.smoothRawRealtime() -- incremental, own persisted
-                        // state (see that function's doc comment), replaces the fsl_exp1 EMA below
-                        // entirely when this toggle is on. Same calibrated-value input either way.
-                        smooth = ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
-                        // LibreSpecial shadow: completes the live pair (after UKFset1's own shadow call
-                        // in the else branch below), added 2026-08-16 (UKF3426 branch). Never assigned
-                        // to smooth; dosing stays on UKFset1. No G7 distinction here (matches this
-                        // file's own live LibreSpecial branch, which also always uses 1.0), unlike
-                        // XdripSourcePlugin.kt.
-                        //
-                        // The returned raw EMA value is now ALSO fed through smoothLibreSpecialRealtime()
-                        // (added 2026-08-16, fixing a real gap -- see the identical fix/comment in
-                        // XdripSourcePlugin.kt): that's the only call that persists
-                        // ukf_librespecial_refined_history, the always-on UKF2 graph line's actual data
-                        // source, which otherwise went stale and disappeared whenever UKFset1 (not
-                        // LibreSpecial) was the live/dosing engine.
-                        val libreSpecialShadow = ukfSmoothing.smoothLibreSpecialShadow(gv.timestamp, calibrated, factor, maxGap)
-                        ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecialShadow)
-                        aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration (UKF): raw=${gv.value} calibrated=$calibrated smooth=$smooth")
-                    } else {
-                        val lastSmooth = preferences.get(DoubleKey.FslLastSmooth)
-                        val lastTimeRaw = preferences.get(LongKey.FslSmoothLastTimeRaw)
-                        val elapsedMinutes = (gv.timestamp - lastTimeRaw) / 60000.0
-                        val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
-                        val libreSpecial = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
-                        // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF so
-                        // its separate graph history can be retested, but deliberately keep the live
-                        // main-BG/dosing value on plain LibreSpecial during this comparison.
-                        // Unconditional as of 2026-08-15 (UKF3426 branch) -- was gated on
-                        // useLibreSpecialUkf, which meant ukf_librespecial_refined_history went stale
-                        // the moment that toggle was off; now always kept current so UKF2's own
-                        // delta5/delta15 stay meaningful regardless of the display toggle. Same
-                        // always-on-cost tradeoff as the identical change in XdripSourcePlugin.kt.
-                        ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
-                        // UKFset1 shadow: same "call for its side effect, discard the return value"
-                        // idiom as the UKF2 line above, added 2026-08-15 (UKF3426 branch) so UKFset1's
-                        // own Kalman state/history (ukf_rawrt_* -- see
-                        // UnscentedKalmanFilterPlugin.rawRealtimeHistory()) stays warm and current even
-                        // while LibreSpecial is the actual live/dosing source. Same calibrated input the
-                        // live branch above uses. Never assigned to smooth; dosing stays on LibreSpecial.
-                        ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
-                        smooth = libreSpecial
-                        preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
-                        preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
-                        aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration: raw=${gv.value} calibrated=$calibrated libreSpecial=$libreSpecial smooth=$smooth alpha=$effectiveAlpha")
-                    }
-                    // Keep the upstream channels (NS unfiltered/filtered), including Live's
-                    // Libre reference and calibrated unsmoothed values. Derive local fallbacks
-                    // only when that channel was absent from the incoming entry.
-                    gv.noise = gv.noise ?: gv.value
-                    gv.raw = gv.raw ?: calibrated
-                    gv.value = smooth       // final smoothed value
-                }
-            }
+            applyFslCalibration(glucoseValues)
             activePlugin.activeNsClient?.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
             // Was that sgv more less 5 mins ago ?
             if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {
@@ -222,6 +154,89 @@ class NsIncomingDataProcessor @Inject constructor(
             storeDataForDb.addToGlucoseValues(glucoseValues)
         }
         return glucoseValues.isNotEmpty()
+    }
+
+    /**
+     * FSL calibration + smoothing for BG that arrives through Nightscout (e.g. Juggluco uploading raw data), when
+     * "apply smoothing" is on. Shared with SimulatorBgReplay (2026-11-07, per explicit request), so replayed BG gets the
+     * same Libre slope/offset and smoothing as BG received the usual way. [smoothing] false applies only the slope and
+     * offset and leaves the smoothing state alone (replay backfill, older than the live readings).
+     */
+    fun applyFslCalibration(glucoseValues: MutableList<GV>, smoothing: Boolean = true) {
+        if (!preferences.get(BooleanKey.FslApplySmoothing)) return
+        val slope = preferences.get(DoubleKey.FslCalSlope)
+        val offset = preferences.get(DoubleKey.FslCalOffset)
+        val factor = preferences.get(DoubleKey.FslSmoothAlpha)
+        val maxGap = preferences.get(IntKey.FslMaxSmoothGap).toDouble()
+        val useRawUkf = preferences.get(BooleanKey.FslUseUkfSmoothing) &&
+            !preferences.get(BooleanKey.FslUseUkfLibreSpecialSmoothing) &&
+            activePlugin.activePump is VirtualPump &&
+            !config.AAPSCLIENT
+        val unitFactor = if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
+        glucoseValues.sortBy { it.timestamp }
+        for (gv in glucoseValues) {
+            val calibrated = max(40.0, gv.value * slope + offset * unitFactor)
+            if (!smoothing) {
+                gv.noise = gv.noise ?: gv.value
+                gv.raw = gv.raw ?: calibrated
+                gv.value = calibrated
+                continue
+            }
+            val smooth: Double
+            if (useRawUkf) {
+                // UnscentedKalmanFilterPlugin.smoothRawRealtime() -- incremental, own persisted
+                // state (see that function's doc comment), replaces the fsl_exp1 EMA below
+                // entirely when this toggle is on. Same calibrated-value input either way.
+                smooth = ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
+                // LibreSpecial shadow: completes the live pair (after UKFset1's own shadow call
+                // in the else branch below), added 2026-08-16 (UKF3426 branch). Never assigned
+                // to smooth; dosing stays on UKFset1. No G7 distinction here (matches this
+                // file's own live LibreSpecial branch, which also always uses 1.0), unlike
+                // XdripSourcePlugin.kt.
+                //
+                // The returned raw EMA value is now ALSO fed through smoothLibreSpecialRealtime()
+                // (added 2026-08-16, fixing a real gap -- see the identical fix/comment in
+                // XdripSourcePlugin.kt): that's the only call that persists
+                // ukf_librespecial_refined_history, the always-on UKF2 graph line's actual data
+                // source, which otherwise went stale and disappeared whenever UKFset1 (not
+                // LibreSpecial) was the live/dosing engine.
+                val libreSpecialShadow = ukfSmoothing.smoothLibreSpecialShadow(gv.timestamp, calibrated, factor, maxGap)
+                ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecialShadow)
+                aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration (UKF): raw=${gv.value} calibrated=$calibrated smooth=$smooth")
+            } else {
+                val lastSmooth = preferences.get(DoubleKey.FslLastSmooth)
+                val lastTimeRaw = preferences.get(LongKey.FslSmoothLastTimeRaw)
+                val elapsedMinutes = (gv.timestamp - lastTimeRaw) / 60000.0
+                val effectiveAlpha = min(1.0, factor + (1.0 - factor) * ((max(0.0, elapsedMinutes - 1.0) / (maxGap - 1.0)).pow(2.0)))
+                val libreSpecial = if (lastSmooth > 0.0) lastSmooth + effectiveAlpha * (calibrated - lastSmooth) else calibrated
+                // UKFset2 comparison: run LibreSpecial's EMA through the full-history UKF so
+                // its separate graph history can be retested, but deliberately keep the live
+                // main-BG/dosing value on plain LibreSpecial during this comparison.
+                // Unconditional as of 2026-08-15 (UKF3426 branch) -- was gated on
+                // useLibreSpecialUkf, which meant ukf_librespecial_refined_history went stale
+                // the moment that toggle was off; now always kept current so UKF2's own
+                // delta5/delta15 stay meaningful regardless of the display toggle. Same
+                // always-on-cost tradeoff as the identical change in XdripSourcePlugin.kt.
+                ukfSmoothing.smoothLibreSpecialRealtime(gv.timestamp, libreSpecial)
+                // UKFset1 shadow: same "call for its side effect, discard the return value"
+                // idiom as the UKF2 line above, added 2026-08-15 (UKF3426 branch) so UKFset1's
+                // own Kalman state/history (ukf_rawrt_* -- see
+                // UnscentedKalmanFilterPlugin.rawRealtimeHistory()) stays warm and current even
+                // while LibreSpecial is the actual live/dosing source. Same calibrated input the
+                // live branch above uses. Never assigned to smooth; dosing stays on LibreSpecial.
+                ukfSmoothing.smoothRawRealtime(gv.timestamp, calibrated)
+                smooth = libreSpecial
+                preferences.put(DoubleKey.FslLastSmooth, libreSpecial)
+                preferences.put(LongKey.FslSmoothLastTimeRaw, gv.timestamp)
+                aapsLogger.debug(LTag.NSCLIENT, "FSL NS calibration: raw=${gv.value} calibrated=$calibrated libreSpecial=$libreSpecial smooth=$smooth alpha=$effectiveAlpha")
+            }
+            // Keep the upstream channels (NS unfiltered/filtered), including Live's
+            // Libre reference and calibrated unsmoothed values. Derive local fallbacks
+            // only when that channel was absent from the incoming entry.
+            gv.noise = gv.noise ?: gv.value
+            gv.raw = gv.raw ?: calibrated
+            gv.value = smooth       // final smoothed value
+        }
     }
 
     /**

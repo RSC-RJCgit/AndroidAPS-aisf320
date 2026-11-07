@@ -153,6 +153,9 @@ private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
  *  not fire (2026-10-28, per explicit request). */
 private const val MEAL_BOOST_CAP_MINUTES = 45
 
+/** With BG replay on, Live steps missing this long: Virtual loops with 0 steps instead of skipping (2026-11-07, per explicit request) */
+private const val LIVE_STEPS_REPLAY_FALLBACK_MS = 2 * 60_000L
+
 /**
  * The raw-spike check (2026-10-29, per explicit request). A raw Libre reading that jumps 0.9 mmol or more in 5 min and falls
  * back 1.5 mmol or more within the next 10 min is a sensor fault: real glucose does not do that. 28 Oct Live (sensor day 4)
@@ -485,6 +488,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // unlabelled APSResult as a substitute while mirroring. Missing buckets stay null in the
     // sample and diagnostics; legacy numeric dosing inputs receive 0 when unavailable.
     private var liveStepsForCycle: LiveStepsMirror.Sample? = null
+    /** When this phone first found Live steps missing or stale (0 = they are fresh); see the BG-replay fallback in invoke() */
+    private var liveStepsMissingSince = 0L
+    private var liveStepsFallbackNotified = false
 
     // Published text belongs to an invocation, never to a later NS update or UI refresh.
     @Volatile var stepsCalculationSummary: String = ""
@@ -5005,13 +5011,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         lastAPSResult = null
         preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, 0L)
         if (useLiveStepsOnVirtual() && liveStepsForCycle?.hasDosingBuckets() != true) {
-            aapsLogger.debug(LTag.APS, "LiveStepsMirror: skipping Virtual loop; core step buckets missing or stale")
+            if (liveStepsMissingSince == 0L) liveStepsMissingSince = stepsCapturedAt
             preferences.put(BooleanKey.ActivityMonitorStepsActive, false)
             preferences.put(BooleanKey.ActivityMonitorStepsInactive, false)
             preferences.put(DoubleKey.ActivityMonitorRatio, 1.0)
-            stepsCalculationSummary += "\nCalculation skipped: Live steps missing or older than 20 minutes.\nMissing buckets: ${missingStepsForDisplay.joinToString()} min"
-            rxBus.send(EventResetOpenAPSGui("Live steps missing or stale; calculation skipped"))
-            return
+            // With BG replay on (2026-11-07, per explicit request): the loop phone can be offline for days, so after
+            // LIVE_STEPS_REPLAY_FALLBACK_MS without Live steps this loops with 0 steps instead of never looping. No sample
+            // means every step bucket reads 0 and the activity monitor stays neutral (ratio 1.0). Step import stays on, and
+            // Live's steps are used again as soon as they arrive. With replay off, the skip below stays as it was.
+            val replayFallback = preferences.get(BooleanKey.NsClientSimulatorBgReplay) &&
+                stepsCapturedAt - liveStepsMissingSince >= LIVE_STEPS_REPLAY_FALLBACK_MS
+            if (!replayFallback) {
+                aapsLogger.debug(LTag.APS, "LiveStepsMirror: skipping Virtual loop; core step buckets missing or stale")
+                stepsCalculationSummary += "\nCalculation skipped: Live steps missing or older than 20 minutes.\nMissing buckets: ${missingStepsForDisplay.joinToString()} min"
+                rxBus.send(EventResetOpenAPSGui("Live steps missing or stale; calculation skipped"))
+                return
+            }
+            liveStepsForCycle = null
+            val since = dateUtil.timeString(liveStepsMissingSince)
+            aapsLogger.debug(LTag.APS, "LiveStepsMirror: Live steps missing since $since; BG replay on, looping with 0 steps")
+            stepsCalculationSummary += "\nLive steps missing since $since: looping with 0 steps (BG replay on)."
+            if (!liveStepsFallbackNotified) {
+                uiInteraction.addNotification(id = 9016, text = "Live steps missing since $since: looping with 0 steps (BG replay on)", level = Notification.NORMAL)
+                liveStepsFallbackNotified = true
+            }
+        } else if (liveStepsMissingSince != 0L) {
+            liveStepsMissingSince = 0L
+            if (liveStepsFallbackNotified) uiInteraction.dismissNotification(9016)
+            liveStepsFallbackNotified = false
         }
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
         val profile = profileFunction.getProfile()

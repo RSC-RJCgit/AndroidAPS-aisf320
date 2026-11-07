@@ -23,6 +23,7 @@ import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.sync.R
+import app.aaps.plugins.sync.nsShared.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import org.json.JSONArray
 import org.json.JSONObject
@@ -31,6 +32,7 @@ import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,11 +47,14 @@ class SimulatorBgReplay @Inject constructor(
     private val uiInteraction: UiInteraction,
     private val rxBus: RxBus,
     private val rh: ResourceHelper,
-    private val persistenceLayer: PersistenceLayer
+    private val persistenceLayer: PersistenceLayer,
+    private val nsIncomingDataProcessor: NsIncomingDataProcessor
 ) {
     @Volatile private var stopped = true
     private var lastWarning: String? = null
     private var lastStoredAt = 0L
+    /** The calibrated reading saved at [lastStoredAt], reused if its upload is retried, so it is calibrated only once */
+    private var lastStoredGv: GV = GV(timestamp = 0L, value = 0.0, raw = null, noise = null, trendArrow = TrendArrow.NONE, sourceSensor = SourceSensor.UNKNOWN)
     @Volatile private var fullSyncRequested = false
     private data class Recovery(val from: Long, val to: Long, val primary: String, val secondary: String)
     private var recovery: Recovery? = null
@@ -195,16 +200,23 @@ class SimulatorBgReplay @Inject constructor(
             preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, 0L)
             val delay = delayMs()
             val hours = hoursText(delay)
-            val due = now - delay
+            val zone = sourceZone()
+            // The source time that replays now (time-zone match, see replayAt()). The window around it is widened by
+            // TZ_MARGIN_MS, because a reading's own UTC offset can differ from the setting's; each reading is then placed
+            // by its own offset and kept only if it lands in this tick's window.
+            val due = sourceTimeFor(now, delay, zone)
             stage = "reading secondary site $hours hours ago"
-            val from = recoveryFrom?.minus(delay) ?: (due - SAMPLE_WINDOW_MS + 1)
-            val to = recoveryTo?.minus(delay) ?: due
+            val from = (recoveryFrom?.let { sourceTimeFor(it, delay, zone) } ?: (due - SAMPLE_WINDOW_MS + 1)) - TZ_MARGIN_MS
+            val to = (recoveryTo?.let { sourceTimeFor(it, delay, zone) } ?: due) + TZ_MARGIN_MS
             val fetched = entries(secondary, from, to, 1000, token = token)
             check(fetched.size < 1000) { "Replay window exceeds query limit" }
             val valid = fetched.filter { it.optBoolean("isValid", true) &&
                 it.optDouble("sgv").let { value -> value.isFinite() && value > 0 } }
-            val sources = if (recoveryFrom == null) listOfNotNull(valid.maxByOrNull { it.optLong("date", 0L) })
-                else valid.distinctBy { it.optLong("date", 0L) }.sortedBy { it.optLong("date", 0L) }
+            val windowFrom = recoveryFrom ?: (now - SAMPLE_WINDOW_MS + 1)
+            val windowTo = recoveryTo ?: now
+            val placed = valid.distinctBy { it.optLong("date", 0L) }.map { it to replayAt(it, delay, zone) }
+                .filter { it.second in windowFrom..windowTo }
+            val sources = if (recoveryFrom == null) listOfNotNull(placed.maxByOrNull { it.second }) else placed.sortedBy { it.second }
             if (sources.isEmpty()) {
                 val gap = recoveryFrom == null &&
                     recentTarget.none { it.optBoolean("isValid", true) && it.optLong("date", 0L) in (now - GAP_MS + 1)..now }
@@ -226,10 +238,12 @@ class SimulatorBgReplay @Inject constructor(
                         .minByOrNull { it.optLong("date", 0L) }
                     if (next != null) {
                         val nextAt = next.getLong("date")
-                        preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, now - nextAt)
+                        // Local clock to local clock, so that reading replays now (see replayAt())
+                        val shift = now + here().getOffset(now) - (nextAt + sourceOffsetMs(next, zone))
+                        preferences.put(LongNonKey.NsClientSimulatorBgReplayLongDelayMs, shift)
                         log("Gap in the secondary BG after ${dateUtil.toISOString(due)}: skipped ${hoursText(nextAt - due)} hours to " +
-                            "${dateUtil.toISOString(nextAt)}, shift now ${hoursText(now - nextAt)} hours")
-                        logger.debug(LTag.NSCLIENT, "Simulator BG replay: skipped a gap, shift ${hoursText(now - nextAt)} h")
+                            "${dateUtil.toISOString(nextAt)}, shift now ${hoursText(shift)} hours")
+                        logger.debug(LTag.NSCLIENT, "Simulator BG replay: skipped a gap, shift ${hoursText(shift)} h")
                         return runWindow()
                     }
                     // Nothing in reach: one day earlier, tried on the next tick (no immediate retry, so this cannot spin). A long
@@ -246,8 +260,7 @@ class SimulatorBgReplay @Inject constructor(
                 return true
             }
             var uploaded = 0
-            for (source in sources) {
-                val at = source.getLong("date") + delay
+            for ((source, at) in sources) {
                 if (!eligible() || !preferences.get(BooleanKey.NsClientSimulatorBgReplay) ||
                     !preferences.get(BooleanKey.NsClientSecondaryEnabled) ||
                     preferences.get(StringKey.NsClientUrl).trim().trimEnd('/') != primary ||
@@ -255,28 +268,32 @@ class SimulatorBgReplay @Inject constructor(
                     preferences.get(StringKey.NsClientApiSecret) != secret ||
                     preferences.get(StringKey.NsClientSecondaryAccessToken) != token
                 ) return false
-                val mgdl = source.getDouble("sgv") * if (source.optString("units").startsWith("mmol", true)) 18.0182 else 1.0
+                val sourceMgdl = source.getDouble("sgv") * if (source.optString("units").startsWith("mmol", true)) 18.0182 else 1.0
+                // The BG result, not the raw source value (2026-11-07, per explicit request): the reading goes through the
+                // same Libre slope/offset and smoothing as BG received through Nightscout, once per reading. That result is
+                // saved locally (what the loop uses) and uploaded to the main site. Backfill gets the slope and offset only,
+                // so older readings never disturb the live smoothing state.
+                val gv = if (lastStoredAt == at) lastStoredGv else GV(timestamp = at, value = sourceMgdl, raw = null, noise = null,
+                    trendArrow = TrendArrow.fromString(source.optString("direction")), sourceSensor = SourceSensor.UNKNOWN)
+                        .also { nsIncomingDataProcessor.applyFslCalibration(mutableListOf(it), smoothing = recoveryFrom == null) }
+                val mgdl = Math.round(gv.value).toDouble()
                 // Existing real/main-site BG is never replaced by historical replay.
                 val existing = target.firstOrNull { it.optLong("date", 0L) == at }
                 if (existing != null && existing.optDouble("sgv") != mgdl) continue
                 val entry = JSONObject().put("type", "sgv").put("date", at)
                     .put("dateString", dateUtil.toISOString(at)).put("sgv", mgdl).put("units", "mg/dl")
-                for (key in listOf("device", "direction", "noise", "filtered", "unfiltered")) {
+                // Device and arrow only: the source's noise/filtered/unfiltered are its raw channels, not this result.
+                for (key in listOf("device", "direction")) {
                     if (source.has(key) && !source.isNull(key)) entry.put(key, source.get(key))
                 }
                 // Save locally as well: a successful REST upload need not be echoed by the socket,
                 // and the selected BG-source receive setting can otherwise discard that echo.
                 stage = "saving replay BG locally"
                 if (lastStoredAt != at) {
-                    persistenceLayer.insertCgmSourceData(
-                        Sources.NSClient,
-                        mutableListOf(GV(timestamp = at, value = mgdl, raw = null, noise = null,
-                            trendArrow = TrendArrow.fromString(source.optString("direction")),
-                            sourceSensor = SourceSensor.UNKNOWN)),
-                        emptyList(), null
-                    ).blockingGet()
+                    persistenceLayer.insertCgmSourceData(Sources.NSClient, mutableListOf(gv), emptyList(), null).blockingGet()
                     lastStoredAt = at
-                    if (recoveryFrom == null) log("Secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")}: source ${dateUtil.toISOString(source.getLong("date"))}, replay ${dateUtil.toISOString(at)} (+$hours hours); saved locally")
+                    lastStoredGv = gv
+                    if (recoveryFrom == null) log("Secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")}: source ${dateUtil.toISOString(source.getLong("date"))} (UTC${offsetText(sourceOffsetMs(source, zone))}), replay ${dateUtil.toISOString(at)} (UTC${offsetText(here().getOffset(at).toLong())}, same local time +$hours hours); result ${"%.0f".format(mgdl)} mg/dl saved locally")
                 }
                 if (target.any { it.optLong("date", 0L) == at }) {
                     if (recoveryFrom == null) log("Replay timestamp already present on main site; upload skipped")
@@ -307,6 +324,38 @@ class SimulatorBgReplay @Inject constructor(
             logger.warn(LTag.NSCLIENT, "Simulator BG replay failed while $stage ($detail)")
             return false
         }
+    }
+
+    // Time-zone match (2026-11-07, per explicit request): a reading replays at the same LOCAL clock time, the delay later, in
+    // this phone's current zone, not exactly the delay later in UTC. Its original zone is its own UTC offset (utcOffset, or an
+    // explicit offset in dateString/sysTime), else the "Replay source time zone" setting at that moment, with its daylight saving.
+    private fun here(): TimeZone = TimeZone.getDefault()
+    private fun sourceZone(): TimeZone = TimeZone.getTimeZone(preferences.get(StringKey.NsClientSimulatorBgReplaySourceTimeZone).trim())
+
+    private fun sourceOffsetMs(source: JSONObject, zone: TimeZone): Long {
+        if (source.has("utcOffset") && !source.isNull("utcOffset")) return source.optLong("utcOffset") * 60_000L
+        for (key in listOf("dateString", "sysTime")) {
+            OFFSET_IN_DATE.find(source.optString(key))?.let { match ->
+                val minutes = match.groupValues[2].toLong() * 60 + match.groupValues[3].toLong()
+                return (if (match.groupValues[1] == "-") -minutes else minutes) * 60_000L
+            }
+        }
+        return zone.getOffset(source.optLong("date", 0L)).toLong()
+    }
+
+    /** When [source] replays: its local clock time plus [delay], as a moment in this phone's current zone */
+    private fun replayAt(source: JSONObject, delay: Long, zone: TimeZone): Long =
+        fromLocal(source.getLong("date") + sourceOffsetMs(source, zone) + delay, here())
+
+    /** The source moment, in [zone], whose local clock time plus [delay] is [at]'s local clock time here */
+    private fun sourceTimeFor(at: Long, delay: Long, zone: TimeZone): Long = fromLocal(at + here().getOffset(at) - delay, zone)
+
+    /** A local clock time (epoch millis as if UTC) to the real moment in [zone] */
+    private fun fromLocal(local: Long, zone: TimeZone): Long = local - zone.getOffset(local - zone.getOffset(local)).toLong()
+
+    private fun offsetText(ms: Long): String {
+        val minutes = kotlin.math.abs(ms) / 60_000L
+        return "%s%02d:%02d".format(if (ms < 0) "-" else "+", minutes / 60, minutes % 60)
     }
 
     private fun siteKey(url: String): String {
@@ -377,5 +426,9 @@ class SimulatorBgReplay @Inject constructor(
         const val RECOVERY_WINDOW_MS = 6 * 60 * 60_000L
         const val SKIP_AHEAD_MS = 6 * 60 * 60_000L
         const val MAX_DELAY_MS = 21 * DAY_MS
+        /** Extra source time read either side, for readings whose own UTC offset differs from the setting's */
+        const val TZ_MARGIN_MS = 3 * 60 * 60_000L
+        /** "+10:30", "-05:00" or "+0100" at the end of an ISO date, not "Z" */
+        private val OFFSET_IN_DATE = Regex("T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d+)?)?([+-])(\\d{2}):?(\\d{2})$")
     }
 }

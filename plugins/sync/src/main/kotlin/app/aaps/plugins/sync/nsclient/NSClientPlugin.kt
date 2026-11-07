@@ -460,6 +460,9 @@ class NSClientPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSimulatorBgReplay, summary = R.string.ns_simulator_bg_replay_summary, title = R.string.ns_simulator_bg_replay_title).also {
                     it.isVisible = dataSyncSelectorV1.fullAapsOnVirtualPump
                 })
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSimulatorBgReplaySourceTimeZone, summary = R.string.ns_simulator_bg_replay_source_tz_summary, title = R.string.ns_simulator_bg_replay_source_tz_title).also {
+                    it.isVisible = dataSyncSelectorV1.fullAapsOnVirtualPump
+                })
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientSecondaryAcceptTherapyEvent, summary = R.string.ns_secondary_receive_therapy_events_summary, title = R.string.ns_secondary_receive_therapy_events))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryUrl, summary = R.string.ns_secondary_url_summary, title = R.string.ns_secondary_url))
                 addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientSecondaryAccessToken, summary = R.string.ns_secondary_token_summary, title = R.string.ns_secondary_token))
