@@ -6,10 +6,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.trio.TrioRemoteControl
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
@@ -19,6 +22,7 @@ import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.ConcentrationHelper
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -33,10 +37,14 @@ import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.wizard.walkingSoonStepCounts
+import app.aaps.core.objects.wizard.dropTrendCautionNow
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.objects.extensions.valueToUnits
@@ -44,9 +52,14 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.WizardDropTrendCaution
+import app.aaps.core.objects.wizard.mealExtra
+import app.aaps.core.objects.wizard.walkingSoonDefault
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.icons.IcCalculator
+import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.trioRemote.missingTexts
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
@@ -55,6 +68,8 @@ import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.binding
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactory
 import dev.zacsweers.metrox.viewmodel.ViewModelAssistedFactoryKey
+import kotlin.math.abs
+import kotlin.math.min
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -65,8 +80,9 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.time.TimeSource
+
+/** BG rise window for the drop-trend caution: the lowest BG in the last hour. */
 
 @Stable
 @AssistedInject
@@ -91,10 +107,13 @@ class WizardDialogViewModel(
     private val automation: Automation,
     private val wizardExecutor: WizardExecutor,
     private val rxBus: RxBus,
+    private val glucoseStatusProvider: GlucoseStatusProvider,
     // Unqualified: @ApplicationScope is a javax qualifier and cannot appear in commonMain. The graph
     // binds the same instance under both names.
     private val appScope: CoroutineScope,
-    private val commandQueue: CommandQueue
+    private val commandQueue: CommandQueue,
+    private val trioRemoteControl: TrioRemoteControl,
+    private val processedDeviceStatusData: ProcessedDeviceStatusData
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WizardDialogUiState())
@@ -116,6 +135,18 @@ class WizardDialogViewModel(
     val sideEffect: SharedFlow<SideEffect> = _sideEffect.asSharedFlow()
 
     private var wizard: BolusWizard? = null
+    private var savedSafetyMaxBolus: Double? = null
+    private var maxBolusOverridden = false
+    private var maxBolusTouched = false
+    private var walkingSoonTouched = false
+    private var mealBeforeExtra: Triple<Int, Int, Int>? = null
+    private var manualExtraFat: Int? = null
+    private var manualExtraProtein: Int? = null
+
+    override fun onCleared() {
+        if (maxBolusOverridden) savedSafetyMaxBolus?.let { preferences.put(DoubleKey.SafetyMaxBolus, it) }
+        super.onCleared()
+    }
 
     /**
      * The stored bolus percentage this dialog has already taken into its own state.
@@ -173,13 +204,21 @@ class WizardDialogViewModel(
     private suspend fun initialize() {
         val initialCarbs = savedStateHandle.get<String>("carbs")?.toIntOrNull()
         val initialNotes = savedStateHandle.get<String>("notes")
+        // The insulin button opens this mode directly at zero; the suggestion never selects the manual dose.
+        val fixedInsulin = parseFixedInsulin(savedStateHandle.get<String>("insulin"))
+        if (fixedInsulin != null) {
+            walkingSoonTouched = true
+            // Keep manual mode even while the profile is unavailable; a later refresh must not select a calculated dose.
+            _uiState.update {
+                it.copy(fixedInsulin = fixedInsulin, carbs = initialCarbs ?: 0, notes = initialNotes ?: "", fpuInstead = false, smallMeal = false, giveRestLater = false, walkingSoon = false)
+            }
+        }
 
         val profileStore = profileRepository.profile.value ?: return
 
         val units = profileFunction.getUnits()
 
         val maxCarbs = constraintChecker.getMaxCarbsAllowed().value()
-        val maxBolus = constraintChecker.getMaxBolusAllowed().value()
         val bolusStep = activePlugin.activePump.pumpDescription.bolusStep
         val tempTarget = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
 
@@ -192,6 +231,13 @@ class WizardDialogViewModel(
         val useCOB = preferences.get(BooleanNonKey.WizardIncludeCob)
         val showNotes = preferences.get(BooleanKey.OverviewShowNotesInDialogs)
         val useBolusAdvisor = preferences.get(BooleanKey.OverviewUseBolusAdvisor)
+        // Starting state of the three meal-extra boxes (2026-10-06, per explicit request): every open starts from the
+        // Overview settings defaults, nothing is remembered from the last use. Unreliable SMBs and Auto fat/protein are
+        // two calculation modes. Automatic FPU off keeps both modes off on opening; Unreliable selects the ratio when on.
+        val autoFpuEnabled = preferences.get(BooleanKey.WizardDefaultAutoFpu)
+        val defaultUnreliable = autoFpuEnabled && preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+        val defaultSmallMeal = preferences.get(BooleanKey.WizardDefaultSmallMeal)
+        val defaultAutoFpu = autoFpuEnabled && !defaultUnreliable
 
         val storedPercentage = preferences.get(IntKey.OverviewBolusPercentage)
         val percentage = bolusPercentageFor(storedPercentage)
@@ -203,6 +249,8 @@ class WizardDialogViewModel(
         val hasBgData = actualBg != null
         val currentBg = actualBg?.valueToUnits(units) ?: 0.0
         val bgAgeMinutes = if (actualBg != null) ((dateUtil.now() - actualBg.timestamp) / 60000).toInt() else 0
+        val startingMaxBolus = suggestedMaxBolus()
+        applyWizardMaxBolus(startingMaxBolus)
 
         // IOB for display
         val bolusIob = iobCobCalculator.calculateIobFromBolus().round()
@@ -226,16 +274,26 @@ class WizardDialogViewModel(
                 notes = initialNotes ?: "",
                 selectedProfileIndex = 0,
                 // Toggles
-                useBg = true,
-                useTT = true,
+                // 2026-11-05: BG, TT, IOB and the FPU boxes start from the last confirmed meal calculation, like trend and COB.
+                useBg = preferences.get(BooleanNonKey.WizardIncludeBg),
+                useTT = preferences.get(BooleanNonKey.WizardIncludeTt),
                 useTrend = useTrend,
-                useIOB = true,
+                useIOB = preferences.get(BooleanNonKey.WizardIncludeIob) || useCOB,
                 useCOB = useCOB,
+                splitFpuBolus = preferences.get(BooleanNonKey.WizardSplitFpuBolus),
+                delayFpuInsteadOfCancel = preferences.get(BooleanNonKey.WizardDelayFpuInsteadOfCancel),
+                // Insulin-only mode: the meal extras and the later parts are off, only max bolus and its split apply
+                fpuInstead = defaultAutoFpu && fixedInsulin == null,
+                smallMeal = defaultSmallMeal && fixedInsulin == null,
+                giveRestLater = fixedInsulin == null && preferences.get(BooleanNonKey.WizardGiveRestLater),
+                fixedInsulin = fixedInsulin,
+                splitOverMax = preferences.get(BooleanKey.WizardSplitOverMaxBolus),
+                splitIntervalMinutes = preferences.get(IntKey.WizardSplitIntervalMinutes),
                 alarmChecked = false,
                 calculationExpanded = false,
                 // Config
                 maxCarbs = maxCarbs,
-                maxBolus = maxBolus,
+                maxBolus = startingMaxBolus,
                 bolusStep = bolusStep,
                 units = units,
                 profileNames = profileList,
@@ -255,7 +313,9 @@ class WizardDialogViewModel(
             )
         }
 
-        recalculate()
+        // Unreliable SMBs as a starting state goes through the same path as ticking it by hand (it also lifts the max
+        // bolus back to the safety limit and sets the unreliable ratios), then recalculates.
+        if (defaultUnreliable && fixedInsulin == null) enableMealExtra(unreliable = true) else recalculate()
     }
 
     // --- Input update methods ---
@@ -269,26 +329,170 @@ class WizardDialogViewModel(
         recalculate()
     }
 
+    /** The dose to give in insulin-only mode. The calculation does not change with it. */
+    fun updateFixedInsulin(value: Double) {
+        _uiState.update { it.withFixedInsulin(value) }
+    }
+
     fun updateCarbs(value: Int) {
         val state = uiState.value
         val clamped = value.coerceIn(0, state.maxCarbs)
-        _uiState.update { it.copy(carbs = clamped) }
+        if (state.insulinOnly && clamped > 0) {
+            val autoFpu = preferences.get(BooleanKey.WizardDefaultAutoFpu)
+            val unreliable = autoFpu && preferences.get(BooleanKey.WizardDefaultUnreliableSmbs)
+            val small = preferences.get(BooleanKey.WizardDefaultSmallMeal)
+            walkingSoonTouched = false
+            savedStateHandle.remove<String>("insulin")
+            _uiState.update { it.withMealCarbs(clamped, autoFpu, unreliable, small) }
+            // Use the same setup as opening the usual calculator, including the unreliable SMB defaults.
+            if (unreliable) {
+                enableMealExtra(unreliable = true)
+                return
+            }
+        } else {
+            _uiState.update { it.copy(carbs = clamped) }
+        }
         recalculate()
+    }
+
+    fun updateFpuInterval(value: Int) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(fpuIntervalMinutes = value.coerceIn(30, 60)) }
+        recalculate()
+    }
+
+    fun toggleSplitFpuBolus(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(splitFpuBolus = checked) }
+        recalculate()
+    }
+
+    fun toggleFpuInstead(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        if (checked) enableMealExtra(unreliable = false) else disableMealExtra()
+    }
+
+    fun toggleDelayFpuInsteadOfCancel(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(delayFpuInsteadOfCancel = checked) }
+        recalculate()
+    }
+
+    fun toggleSplitOverMax(checked: Boolean) {
+        _uiState.update { it.copy(splitOverMax = checked) }
+    }
+
+    fun updateSplitIntervalMinutes(value: Int) {
+        _uiState.update { it.copy(splitIntervalMinutes = value.coerceIn(1, 60)) }
+    }
+
+    fun toggleGiveRestLater(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(giveRestLater = checked) }
+        recalculate()
+    }
+
+    fun toggleUnreliableSmb(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        if (checked) enableMealExtra(unreliable = true) else disableMealExtra()
+    }
+
+    fun toggleSmallMeal(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(smallMeal = checked) }
+        recalculate()
+    }
+
+    private fun enableMealExtra(unreliable: Boolean) {
+        manualExtraFat = null
+        manualExtraProtein = null
+        val state = uiState.value
+        if (!state.fpuInstead && !state.unreliableSmb) {
+            mealBeforeExtra = Triple(state.fat, state.protein, state.percentage)
+        }
+        var maxBolus = state.maxBolus
+        if (unreliable && !maxBolusTouched) {
+            val saved = savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
+            applyWizardMaxBolus(saved)
+            maxBolus = saved
+        }
+        _uiState.update {
+            it.copy(
+                fpuInstead = !unreliable,
+                unreliableSmb = unreliable,
+                maxBolus = maxBolus,
+            )
+        }
+        recalculate()
+    }
+
+    private fun disableMealExtra() {
+        val saved = mealBeforeExtra
+        mealBeforeExtra = null
+        _uiState.update {
+            it.withoutMealExtra(saved, manualExtraFat, manualExtraProtein)
+        }
+        manualExtraFat = null
+        manualExtraProtein = null
+        recalculate()
+    }
+
+    fun updateProtein(value: Int) {
+        if (uiState.value.insulinOnly) return
+        if (uiState.value.fpuInstead || uiState.value.unreliableSmb) manualExtraProtein = value.coerceIn(0, 250)
+        _uiState.update { it.copy(protein = value.coerceIn(0, 250)) }
+        recalculate()
+    }
+
+    fun updateFat(value: Int) {
+        if (uiState.value.insulinOnly) return
+        if (uiState.value.fpuInstead || uiState.value.unreliableSmb) manualExtraFat = value.coerceIn(0, 250)
+        _uiState.update { it.copy(fat = value.coerceIn(0, 250)) }
+        recalculate()
+    }
+
+    fun updateWarsawDuration(value: Double) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(warsawDurationHours = value.coerceIn(0.0, 24.0)) }
+        recalculate()
+    }
+
+    fun updateMaxBolus(value: Double) {
+        maxBolusTouched = true
+        val clamped = value.coerceIn(0.1, 60.0)
+        applyWizardMaxBolus(clamped)
+        _uiState.update { it.copy(maxBolus = clamped) }
+        recalculate()
+    }
+
+    // 2026-10-18, per explicit request: the max bolus field always starts at the SafetyMaxBolus setting. The low-BG
+    // default (BG < 6.0 mmol -> 2.0 U, x0.8 after a recent entry, x0.5 on a drop trend) is removed.
+    private fun suggestedMaxBolus(): Double =
+        savedSafetyMaxBolus ?: preferences.get(DoubleKey.SafetyMaxBolus).also { savedSafetyMaxBolus = it }
+
+    // Shared with QuickWizard (2026-10-21), see WizardLiveChecks
+    private suspend fun dropTrendCautionApplies(bgMgdl: Double): Boolean =
+        dropTrendCautionNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+
+    private fun applyWizardMaxBolus(value: Double) {
+        val saved = savedSafetyMaxBolus ?: return
+        if (!maxBolusOverridden && abs(saved - value) < 0.001) return
+        preferences.put(DoubleKey.SafetyMaxBolus, value)
+        maxBolusOverridden = true
     }
 
     fun addCarbs(increment: Int) {
-        val state = uiState.value
-        val newValue = (state.carbs + increment).coerceIn(0, state.maxCarbs)
-        _uiState.update { it.copy(carbs = newValue) }
-        recalculate()
+        updateCarbs(uiState.value.carbs + increment)
     }
 
     fun updatePercentage(value: Int) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(percentage = value) }
         recalculate()
     }
 
     fun updateDirectCorrection(value: Double) {
+        if (uiState.value.insulinOnly) return
         val state = uiState.value
         val clamped = value.coerceIn(-state.maxBolus, state.maxBolus)
         _uiState.update { it.copy(directCorrection = clamped) }
@@ -323,6 +527,7 @@ class WizardDialogViewModel(
     // --- Toggle methods ---
 
     fun toggleBg(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update {
             it.copy(
                 useBg = checked,
@@ -334,17 +539,20 @@ class WizardDialogViewModel(
     }
 
     fun toggleTT(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(useTT = checked) }
         recalculate()
     }
 
     fun toggleTrend(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(useTrend = checked) }
         savePreferences()
         recalculate()
     }
 
     fun toggleIOB(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update {
             it.copy(
                 useIOB = checked,
@@ -356,7 +564,15 @@ class WizardDialogViewModel(
         recalculate()
     }
 
+    fun toggleWalkingSoon(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        walkingSoonTouched = true
+        _uiState.update { it.copy(walkingSoon = checked) }
+        recalculate()
+    }
+
     fun toggleCOB(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update {
             it.copy(
                 useCOB = checked,
@@ -369,6 +585,7 @@ class WizardDialogViewModel(
     }
 
     fun toggleAlarm(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(alarmChecked = checked) }
         recalculate()
     }
@@ -422,7 +639,16 @@ class WizardDialogViewModel(
 
     private suspend fun recalculateSuspend() {
         val calculation = ++calculations
-        val state = uiState.value
+        var state = uiState.value
+        if (!maxBolusTouched) {
+            val suggested = suggestedMaxBolus()
+            if (abs(state.maxBolus - suggested) >= 0.001) {
+                applyWizardMaxBolus(suggested)
+                _uiState.update { it.copy(maxBolus = suggested) }
+                state = uiState.value
+            }
+        }
+        state = applyWalkingSoonDefault(state)
         val profileStore = profileRepository.profile.value ?: return
 
         // Resolve profile
@@ -451,19 +677,45 @@ class WizardDialogViewModel(
             cobInfo.displayCob?.let { cob = it }
         }
 
-        // Carbs type split: effective carbs for wizard, eCarbs for later scheduling
+        // Carbs now stay at the meal type's share. Extended carbs are off when a meal extra
+        // sends fat and protein as later doses instead.
         val carbsType = state.carbsType
-        val effectiveCarbs = carbsType.carbsNow(state.carbs)
-        val eCarbs = carbsType.eCarbs(state.carbs)
+        val extra = mealExtra(
+            fpuInstead = state.splitFpuBolus && state.fpuInstead,
+            unreliableSmb = state.splitFpuBolus && state.unreliableSmb,
+            smallMeal = state.smallMeal,
+            carbs = state.carbs,
+            typedFat = state.fat,
+            typedProtein = state.protein,
+            percentage = state.percentage,
+            extendedCarbPercent = carbsType.eCarbsPercent,
+        ).let { extra ->
+            if (state.splitFpuBolus && (state.fpuInstead || state.unreliableSmb)) extra.copy(
+                fatGrams = manualExtraFat ?: extra.fatGrams,
+                proteinGrams = manualExtraProtein ?: extra.proteinGrams
+            ) else extra
+        }
+        val immediatePercent = extra.immediateCarbPercent ?: carbsType.carbsPercent
+        val effectiveCarbs = state.carbs * immediatePercent / 100
+        val eCarbs = if (state.splitFpuBolus) 0 else extra.extendedCarbs
+        val liveBg = glucoseStatusProvider.getGlucoseStatusData()?.glucose
+        val bgMgdlForCaution = if (state.bg > 0.0) profileUtil.convertToMgdl(state.bg, state.units) else liveBg ?: 999.0
+        val percentForCalc = if (dropTrendCautionApplies(bgMgdlForCaution)) {
+            min(extra.percentage, WizardDropTrendCaution.scaledWizPercent(extra.percentage))
+        } else {
+            extra.percentage
+        }
+        if (state.fat != extra.fatGrams || state.protein != extra.proteinGrams || state.percentage != extra.percentage) {
+            _uiState.update {
+                it.copy(fat = extra.fatGrams, protein = extra.proteinGrams, percentage = extra.percentage)
+            }
+        }
 
         // Carbs constraint check (on effective carbs only)
         val carbsAfterConstraint = constraintChecker.applyCarbsConstraints(ConstraintObject(effectiveCarbs, aapsLogger)).value()
 
         // Direct correction value
         val correctionValue = state.directCorrection
-
-        // Percentage is always applied
-        val percentageCorrection = state.percentage
 
         val w = bolusWizardProvider().doCalc(
             specificProfile,
@@ -473,7 +725,7 @@ class WizardDialogViewModel(
             cob,
             bgInput,
             correctionValue,
-            percentageCorrection,
+            percentForCalc,
             state.useBg,
             state.useCOB,
             state.useIOB,
@@ -483,12 +735,23 @@ class WizardDialogViewModel(
             state.useTrend,
             state.alarmChecked,
             state.notes,
-            state.carbTime
+            state.carbTime,
+            protein = if (state.splitFpuBolus) extra.proteinGrams else 0,
+            fat = if (state.splitFpuBolus) extra.fatGrams else 0,
+            warsawDurationHours = state.warsawDurationHours,
+            fpuIntervalMinutes = state.fpuIntervalMinutes,
+            walkingSoon = state.walkingSoon,
         )
 
+        w.warsawRetryLater = state.delayFpuInsteadOfCancel
         // A newer calculation started meanwhile: its result counts, not this one
         if (calculation != calculations) return
         wizard = w
+        if (state.giveRestLater && extra.percentage > percentForCalc) {
+            val scaled = w.insulinFromBG + w.insulinFromTrend + w.insulinFromCarbs + w.insulinFromCOB
+            val later = scaled * (extra.percentage - percentForCalc) / 100.0
+            w.addLaterUnits(later)
+        }
 
         // Update temp target availability
         val hasTT = tempTarget != null
@@ -500,6 +763,7 @@ class WizardDialogViewModel(
             rh.gs(CoreUiStrings.wizard_trend_detail, signedTrendValue, profileUtil.unitLabel)
         } else ""
 
+        val trioSetup = trioRemoteControl.setup()
         _uiState.update {
             it.copy(
                 // Calculation results
@@ -526,7 +790,10 @@ class WizardDialogViewModel(
                 targetBGLow = 0.0, // not exposed directly
                 targetBGHigh = 0.0,
                 hasResult = true,
-                okVisible = w.data.calculatedTotalInsulin > 0.0 || carbsAfterConstraint > 0,
+                trioReady = trioSetup.ready,
+                trioShown = trioSetup.enabled,
+                trioMissing = trioSetup.missingTexts(),
+                okVisible = (it.fixedInsulin ?: w.data.calculatedTotalInsulin) > 0.0 || carbsAfterConstraint > 0 || w.warsawPlan != null,
                 hasTempTarget = hasTT,
                 effectiveCarbs = effectiveCarbs,
                 eCarbs = eCarbs,
@@ -539,7 +806,7 @@ class WizardDialogViewModel(
     // --- Action methods ---
 
     fun hasAction(): Boolean =
-        wizard?.let { it.insulinAfterConstraints > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 } ?: false
+        wizard?.let { (uiState.value.fixedInsulin ?: it.insulinAfterConstraints) > 0 || it.carbs > 0 || uiState.value.eCarbs > 0 || it.warsawPlan != null } ?: false
 
     fun getConfirmationSummary(): List<ConfirmationLine> {
         val state = uiState.value
@@ -559,6 +826,7 @@ class WizardDialogViewModel(
      * appScope: the screen pops on confirm, which would cancel viewModelScope before the write runs.
      */
     fun recordOnly() {
+        saveRememberedTicks()
         val state = uiState.value
         appScope.launch {
             wizard?.executeNormal(
@@ -584,6 +852,25 @@ class WizardDialogViewModel(
     }
 
     /**
+     * The ticks the next run starts from (2026-11-05, per explicit request), saved when a meal calculation is confirmed.
+     * Insulin-only mode turns the meal boxes off, so it saves nothing.
+     */
+    private fun saveRememberedTicks() {
+        val state = uiState.value
+        if (state.insulinOnly) return
+        savePreferences()
+        preferences.put(BooleanNonKey.WizardIncludeBg, state.useBg)
+        preferences.put(BooleanNonKey.WizardIncludeTt, state.useTT)
+        preferences.put(BooleanNonKey.WizardIncludeIob, state.useIOB)
+        preferences.put(BooleanNonKey.WizardSplitFpuBolus, state.splitFpuBolus)
+        preferences.put(BooleanNonKey.WizardDelayFpuInsteadOfCancel, state.delayFpuInsteadOfCancel)
+        preferences.put(BooleanNonKey.WizardGiveRestLater, state.giveRestLater)
+        preferences.put(BooleanKey.WizardDefaultAutoFpu, state.fpuInstead || state.unreliableSmb)
+        preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, state.unreliableSmb)
+        preferences.put(BooleanKey.WizardDefaultSmallMeal, state.smallMeal)
+    }
+
+    /**
      * Deliver the manual wizard bolus role-transparently via [WizardExecutor]: the master recomputes the dose on its
      * OWN profile (the dialog's profile selection travels), temp target, COB and IOB, caps it, and authors the
      * confirmation. Both roles render the master's EXACT lines via the shared [showWizardBolusConfirmation]; the user's
@@ -591,9 +878,11 @@ class WizardDialogViewModel(
      * path; a master that can't deliver records locally via [recordOnly] (master-only — a client always delivers).
      * appScope, not viewModelScope: the screen pops right after this call.
      */
+
     fun deliverManualWizard() {
+        saveRememberedTicks()
         val state = uiState.value
-        val effectiveCarbs = state.carbsType.carbsNow(state.carbs)
+        val effectiveCarbs = state.effectiveCarbs
         // null → recompute on the master's active profile (index 0 = "Active"); else the selected stored profile by name.
         val profileName = if (state.selectedProfileIndex == 0) null else state.profileNames.getOrNull(state.selectedProfileIndex)
         val inputs = MasterActionExecutor.WizardInputs(
@@ -601,13 +890,22 @@ class WizardDialogViewModel(
             carbTime = state.carbTime, useBg = state.useBg, useCob = state.useCOB, useIob = state.useIOB,
             useTt = state.useTT, useTrend = state.useTrend, alarm = state.alarmChecked, notes = state.notes,
             eCarbsGrams = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime, eCarbsDurationHours = state.eCarbsDurationHours,
-            profileName = profileName
+            profileName = profileName,
+            protein = if (state.splitFpuBolus) state.protein else 0,
+            fat = if (state.splitFpuBolus) state.fat else 0,
+            warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
+            fpuIntervalMinutes = state.fpuIntervalMinutes,
+            walkingSoon = state.walkingSoon,
+            giveRestLater = state.giveRestLater, retryFpuLater = state.delayFpuInsteadOfCancel,
+            splitOverMax = state.splitOverMax, splitIntervalMinutes = state.splitIntervalMinutes,
+            fixedInsulin = state.fixedInsulin?.let { Round.floorTo(it, ch.bolusStep(it)) },
         )
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         // Counted from before the prepare, so on a client the confirmation closes before the master's pause ends.
         val closeAt = TimeSource.Monotonic.markNow() + SmbPause.MAX_DURATION
         appScope.launch {
             when (val prepared = wizardExecutor.prepare(WizardExecutor.WizardSource.Manual(inputs), label)) {
+                // OK never goes to Trio: that is the separate Send to Trio button (2026-11-07, per explicit request)
                 is ActionProgress.Prepared ->
                     showWizardBolusConfirmation(
                         rxBus, rh, rh.gs(CoreUiStrings.boluswizard), IcCalculator, prepared.advisorApplies, prepared.lines, prepared.advisorLines,
@@ -640,6 +938,60 @@ class WizardDialogViewModel(
             }
         }
     }
+
+    /** Trio remote control is on and complete, so the Send to Trio button shows (2026-11-07, per explicit request) */
+    private fun trioReady(): Boolean = trioRemoteControl.setup().ready
+
+    /**
+     * The Send to Trio button (2026-11-07, per explicit request): sends the result shown on this screen to Trio, the
+     * meal and then the bolus, after one confirmation (see [offerWizardTrioSend]). It is worked out on this phone, as the
+     * screen shows it, and never goes to an AAPS master.
+     */
+    fun sendToTrio() {
+        val state = uiState.value
+        val w = wizard
+        if (!state.hasResult || w == null || !trioReady()) return
+        // Later parts go to Trio too (2026-11-07, per explicit request), with the usual checks before each: the split
+        // leftover (over max bolus, held for walking soon), the fat/protein doses (with "give rest later") and the
+        // extended carbs. With Split FPU ticked, fat and protein are given as those doses, so they are not also sent to
+        // Trio as grams (Trio would count them twice); unticked, the grams go to Trio, which spreads them itself.
+        val fpuDoses = state.splitFpuBolus
+        val fixed = state.fixedInsulin
+        // Over this phone's max bolus, the part above it follows as split parts, as with the pump
+        val bolusNow = fixed ?: w.insulinAfterConstraints
+        val send = wizardTrioSend(bolusNow, state.effectiveCarbs, if (fpuDoses) 0 else state.fat, if (fpuDoses) 0 else state.protein, 0, state.carbTime, dateUtil.now())
+        w.splitOverMax = state.splitOverMax
+        w.splitIntervalMinutes = state.splitIntervalMinutes.coerceIn(1, 60)
+        val plan = TrioLaterPlan(
+            w, bolusNow, splitLeftover = fixed == null, fpuPlan = if (fpuDoses) w.warsawPlan else null,
+            eCarbs = state.eCarbs, eCarbsDelayMinutes = state.eCarbsDelayMinutes + state.carbTime,
+            eCarbsDurationHours = state.eCarbsDurationHours, source = Sources.WizardDialog,
+        )
+        offerWizardTrioSend(
+            send, IcCalculator, trioRemoteControl, preferences, rh, rxBus, dateUtil, appScope,
+            laterLines = plan.lines(rh, dateUtil, TrioLaterParts.keepAwakeNeeded(config, preferences)),
+            onConfirmed = {
+                saveRememberedTicks()
+                _sideEffect.tryEmit(SideEffect.NavigateBack)
+            },
+            afterSent = { TrioLaterParts.start(plan, trioRemoteControl, processedDeviceStatusData, preferences, config, rh, rxBus, dateUtil, appScope) }
+        )
+    }
+
+    private suspend fun applyWalkingSoonDefault(state: WizardDialogUiState): WizardDialogUiState {
+        if (walkingSoonTouched) return state
+        val (steps5, steps30, steps15) = stepCountsForWalkingSoon()
+        val glucose = glucoseStatusProvider.getGlucoseStatusData()
+        val bgMgdl = if (state.bg > 0.0) profileUtil.convertToMgdl(state.bg, state.units) else glucose?.glucose ?: 999.0
+        val want = walkingSoonDefault(steps5, steps30, bgMgdl, glucose?.delta ?: 0.0, steps15) ?: return state
+        if (want == state.walkingSoon) return state
+        _uiState.update { it.copy(walkingSoon = want) }
+        return uiState.value
+    }
+
+    // Shared with QuickWizard (2026-10-21), see WizardLiveChecks
+    private suspend fun stepCountsForWalkingSoon(): Triple<Int?, Int?, Int?> =
+        walkingSoonStepCounts(config, preferences, activePlugin, persistenceLayer, dateUtil)
 
     /**
      * The same split assisted injection expresses everywhere: [SavedStateHandle] comes from the

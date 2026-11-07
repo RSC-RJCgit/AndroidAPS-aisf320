@@ -377,7 +377,14 @@ class ClientControlRoundTrip(
                 is ClientControlActionDispatcher.Command.BolusPrepare   -> ClientControlMessage.BolusPrepare(command.guid)
                 is ClientControlActionDispatcher.Command.BolusCommit    -> ClientControlMessage.BolusCommit(command.bolusId, command.asAdvisor, command.correctionU)
                 is ClientControlActionDispatcher.Command.WizardPrepare  -> with(command.inputs) {
-                    ClientControlMessage.WizardPrepare(bg, carbs, percentage, directCorrection, carbTime, useBg, useCob, useIob, useTt, useTrend, alarm, notes, eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours, profileName)
+                    ClientControlMessage.WizardPrepare(
+                        bg, carbs, percentage, directCorrection, carbTime, useBg, useCob, useIob, useTt, useTrend, alarm, notes,
+                        eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours, profileName, walkingSoon,
+                        protein = protein, fat = fat, warsawDurationHours = warsawDurationHours, maxBolus = maxBolus,
+                        fpuIntervalMinutes = fpuIntervalMinutes,
+                        giveRestLater = giveRestLater, retryFpuLater = retryFpuLater, splitOverMax = splitOverMax,
+                        splitIntervalMinutes = splitIntervalMinutes, fixedInsulin = fixedInsulin,
+                    )
                 }
 
                 is ClientControlActionDispatcher.Command.BatchPrepare   -> ClientControlMessage.BatchPrepare(command.actions.map { it.toDto() })

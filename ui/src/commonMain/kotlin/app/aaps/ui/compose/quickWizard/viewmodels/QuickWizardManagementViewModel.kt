@@ -13,7 +13,9 @@ import app.aaps.core.interfaces.rx.collectResilient
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.QuickWizardMode
@@ -69,6 +71,9 @@ class QuickWizardManagementViewModel(
      */
     fun getMaxCarbs(): Double = constraintChecker.getMaxCarbsAllowed().value().toDouble()
     fun getMaxInsulin(): Double = constraintChecker.getMaxBolusAllowed().value().coerceAtLeast(25.0)
+
+    /** The max bolus setting, which a button without its own max bolus (0) uses when it runs. */
+    fun savedMaxBolus(): Double = preferences.get(DoubleKey.SafetyMaxBolus)
 
     private val _sideEffect = MutableSharedFlow<SideEffect>(
         replay = 0,
@@ -159,6 +164,10 @@ class QuickWizardManagementViewModel(
             editorButtonText = entry.buttonText(),
             editorInsulin = entry.insulin(),
             editorCarbs = entry.carbs(),
+            editorProtein = entry.protein(),
+            editorFat = entry.fat(),
+            editorWarsawDurationHours = entry.warsawDurationHours(),
+            editorMaxBolus = entry.maxBolus(),
             editorCarbTime = entry.carbTime(),
             editorValidFrom = entry.validFrom(),
             editorValidTo = entry.validTo(),
@@ -173,10 +182,23 @@ class QuickWizardManagementViewModel(
             editorPercentage = entry.percentage(),
             editorDevicePhone = entry.device() == QuickWizardEntry.DEVICE_PHONE || entry.device() == QuickWizardEntry.DEVICE_ALL,
             editorDeviceWatch = entry.device() == QuickWizardEntry.DEVICE_WATCH || entry.device() == QuickWizardEntry.DEVICE_ALL,
-            editorUseEcarbs = entry.useEcarbs() == QuickWizardEntry.ALWAYS,
+            editorUseEcarbs = entry.storedUseEcarbs() == QuickWizardEntry.ALWAYS,
             editorTime = entry.time(),
             editorDuration = entry.duration(),
             editorCarbs2 = entry.carbs2(),
+            editorAutoFpu = entry.autoFpu(),
+            editorSplitFpuBolus = entry.splitFpuBolus(),
+            editorFpuIntervalMinutes = entry.fpuIntervalMinutes(),
+            editorSmallMeal = entry.smallMeal(),
+            editorCarbsType = entry.carbsType(),
+            editorUnreliableSmb = entry.unreliableSmb(),
+            editorWalkingSoonAuto = entry.walkingSoon() == QuickWizardEntry.AUTO,
+            editorWalkingSoon = entry.walkingSoon() == QuickWizardEntry.ALWAYS,
+            editorRetryFpuLater = entry.retryFpuLater(),
+            editorGiveRestLater = entry.giveRestLater(),
+            editorDirectCorrection = entry.directCorrection(),
+            editorSplitOverMax = entry.splitOverMax(),
+            editorSplitIntervalMinutes = entry.splitIntervalMinutes(),
             hasUnsavedChanges = false
         )
     }
@@ -310,7 +332,8 @@ class QuickWizardManagementViewModel(
     /**
      * Save current entry
      */
-    fun saveCurrentEntry() {
+    /** [onSaved] runs after a successful save, for example to run the button once its changes are stored. */
+    fun saveCurrentEntry(onSaved: (() -> Unit)? = null) {
         viewModelScope.launch {
             try {
                 val currentState = uiState.value
@@ -323,7 +346,9 @@ class QuickWizardManagementViewModel(
                 val mode = currentState.editorMode
                 when (mode) {
                     QuickWizardMode.WIZARD, QuickWizardMode.CARBS -> {
-                        if (currentState.editorCarbs <= 0 && (!currentState.editorUseEcarbs || currentState.editorCarbs2 <= 0)) {
+                        if (currentState.editorCarbs <= 0 &&
+                            (currentState.editorSplitFpuBolus || !currentState.editorUseEcarbs || currentState.editorCarbs2 <= 0) &&
+                            (!currentState.editorSplitFpuBolus || (currentState.editorProtein <= 0 && currentState.editorFat <= 0))) {
                             rxBus.send(EventShowSnackbar("Carbs must be greater than 0", EventShowSnackbar.Type.Error))
                             return@launch
                         }
@@ -352,6 +377,10 @@ class QuickWizardManagementViewModel(
                     buttonText = currentState.editorButtonText,
                     insulin = currentState.editorInsulin,
                     carbs = currentState.editorCarbs,
+                    protein = currentState.editorProtein,
+                    fat = currentState.editorFat,
+                    warsawDurationHours = currentState.editorWarsawDurationHours,
+                    maxBolus = currentState.editorMaxBolus,
                     carbTime = currentState.editorCarbTime,
                     useAlarm = booleanToRadioNumber(currentState.editorUseAlarm),
                     validFrom = currentState.editorValidFrom,
@@ -368,7 +397,23 @@ class QuickWizardManagementViewModel(
                     useEcarbs = booleanToRadioNumber(currentState.editorUseEcarbs),
                     time = currentState.editorTime,
                     duration = currentState.editorDuration,
-                    carbs2 = currentState.editorCarbs2
+                    carbs2 = currentState.editorCarbs2,
+                    autoFpu = currentState.editorAutoFpu,
+                    splitFpuBolus = currentState.editorSplitFpuBolus,
+                    fpuIntervalMinutes = currentState.editorFpuIntervalMinutes,
+                    smallMeal = currentState.editorSmallMeal,
+                    carbsType = currentState.editorCarbsType.name,
+                    unreliableSmb = currentState.editorUnreliableSmb,
+                    walkingSoon = when {
+                        currentState.editorWalkingSoonAuto -> QuickWizardEntry.AUTO
+                        currentState.editorWalkingSoon     -> QuickWizardEntry.ALWAYS
+                        else                               -> QuickWizardEntry.NEVER
+                    },
+                    retryFpuLater = currentState.editorRetryFpuLater,
+                    giveRestLater = currentState.editorGiveRestLater,
+                    directCorrection = currentState.editorDirectCorrection,
+                    splitOverMax = currentState.editorSplitOverMax,
+                    splitIntervalMinutes = currentState.editorSplitIntervalMinutes
                 )
 
                 quickWizard.addOrUpdate(entry)
@@ -382,6 +427,7 @@ class QuickWizardManagementViewModel(
                     val base = state.copy(entries = updatedEntries, hasUnsavedChanges = false)
                     if (savedEntry != null) loadEntryIntoEditor(base, savedEntry) else base
                 }
+                onSaved?.invoke()
             } catch (e: Exception) {
                 aapsLogger.error(LTag.UI, "Failed to save QuickWizard entry", e)
                 rxBus.send(EventShowSnackbar(e.message ?: "Failed to save entry", EventShowSnackbar.Type.Error))
@@ -481,6 +527,22 @@ class QuickWizardManagementViewModel(
         _uiState.update { it.copy(editorCarbs = value, hasUnsavedChanges = true) }
     }
 
+    fun updateProtein(value: Int) {
+        _uiState.update { it.copy(editorProtein = value.coerceIn(0, 250), hasUnsavedChanges = true) }
+    }
+
+    fun updateFat(value: Int) {
+        _uiState.update { it.copy(editorFat = value.coerceIn(0, 250), hasUnsavedChanges = true) }
+    }
+
+    fun updateWarsawDuration(value: Double) {
+        _uiState.update { it.copy(editorWarsawDurationHours = value.coerceIn(0.0, 24.0), hasUnsavedChanges = true) }
+    }
+
+    fun updateMaxBolus(value: Double) {
+        _uiState.update { it.copy(editorMaxBolus = value.coerceIn(0.0, 60.0), hasUnsavedChanges = true) }
+    }
+
     fun updateCarbTime(value: Int) {
         _uiState.update {
             it.copy(
@@ -538,6 +600,59 @@ class QuickWizardManagementViewModel(
 
     fun updateUseTempTarget(value: Boolean) {
         _uiState.update { it.copy(editorUseTempTarget = value, hasUnsavedChanges = true) }
+    }
+
+    // Automatic FPU is the master switch; unreliable SMBs choose its larger ratios.
+    fun updateFpuInterval(value: Int) {
+        _uiState.update { it.copy(editorFpuIntervalMinutes = value.coerceIn(30, 60), hasUnsavedChanges = true) }
+    }
+
+    fun updateSplitFpuBolus(value: Boolean) {
+        _uiState.update { it.copy(editorSplitFpuBolus = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateAutoFpu(value: Boolean) {
+        _uiState.update { it.copy(editorAutoFpu = value, editorUnreliableSmb = if (value) it.editorUnreliableSmb else false, hasUnsavedChanges = true) }
+    }
+
+    fun updateUnreliableSmb(value: Boolean) {
+        _uiState.update { it.copy(editorUnreliableSmb = value, editorAutoFpu = if (value) true else it.editorAutoFpu, hasUnsavedChanges = true) }
+    }
+
+    fun updateSmallMeal(value: Boolean) {
+        _uiState.update { it.copy(editorSmallMeal = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateCarbsType(value: CarbsType) {
+        _uiState.update { it.copy(editorCarbsType = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateWalkingSoonAuto(value: Boolean) {
+        _uiState.update { it.copy(editorWalkingSoonAuto = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateWalkingSoon(value: Boolean) {
+        _uiState.update { it.copy(editorWalkingSoon = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateRetryFpuLater(value: Boolean) {
+        _uiState.update { it.copy(editorRetryFpuLater = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateGiveRestLater(value: Boolean) {
+        _uiState.update { it.copy(editorGiveRestLater = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateSplitOverMax(value: Boolean) {
+        _uiState.update { it.copy(editorSplitOverMax = value, hasUnsavedChanges = true) }
+    }
+
+    fun updateSplitIntervalMinutes(value: Int) {
+        _uiState.update { it.copy(editorSplitIntervalMinutes = value.coerceIn(1, 60), hasUnsavedChanges = true) }
+    }
+
+    fun updateDirectCorrection(value: Double) {
+        _uiState.update { it.copy(editorDirectCorrection = value, hasUnsavedChanges = true) }
     }
 
     fun updateUseAlarm(value: Boolean) {

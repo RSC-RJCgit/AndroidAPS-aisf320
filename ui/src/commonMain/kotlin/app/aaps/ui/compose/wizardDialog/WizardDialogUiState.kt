@@ -3,6 +3,7 @@ package app.aaps.ui.compose.wizardDialog
 import androidx.compose.runtime.Immutable
 import app.aaps.core.data.model.CarbsType
 import app.aaps.core.data.model.GlucoseUnit
+import app.aaps.core.keys.interfaces.TextRef
 
 @Immutable
 data class WizardDialogUiState(
@@ -15,6 +16,9 @@ data class WizardDialogUiState(
     // User inputs
     val bg: Double = 0.0,
     val carbs: Int = 0,
+    val protein: Int = 0,
+    val fat: Int = 0,
+    val warsawDurationHours: Double = 5.0,
     val carbsType: CarbsType = CarbsType.BREAD,
     val percentage: Int = 100,
     val directCorrection: Double = 0.0,
@@ -28,6 +32,22 @@ data class WizardDialogUiState(
     val useTrend: Boolean = false,
     val useIOB: Boolean = true,
     val useCOB: Boolean = false,
+    val walkingSoon: Boolean = false,
+    /** Ticked accepts automatic fat and protein later. Fat is 0.35 times the carb grams. Protein is 0.4 times. Unticked leaves typed grams. Grams above 0 still schedule hourly doses. Off by default. */
+    val fpuInstead: Boolean = false,
+    val splitFpuBolus: Boolean = true,
+    val fpuIntervalMinutes: Int = 30,
+    /** Ticked: a protein or fat dose that is not safe at its hour is checked again every 10 minutes and given when it is, until 10 minutes before the next dose. Unticked: it is cancelled. On by default. */
+    val delayFpuInsteadOfCancel: Boolean = true,
+    /** Ticked delays the part of the bolus the fall caution removed, as hourly boluses. On by default. Unticked, that part is not given. */
+    val giveRestLater: Boolean = true,
+    /** Same later doses, with larger fat and protein, wizard percent 90, and the saved max bolus. */
+    val unreliableSmb: Boolean = false,
+    /** Halves the automatic fat and protein. With unreliableSmb ticked too, the two cancel to the average. */
+    val smallMeal: Boolean = true,
+    /** v3's split box (2026-10-22): give the dose over max bolus later, in parts, every [splitIntervalMinutes]. */
+    val splitOverMax: Boolean = true,
+    val splitIntervalMinutes: Int = 7,
     val alarmChecked: Boolean = false,
     val calculationExpanded: Boolean = false,
 
@@ -85,8 +105,66 @@ data class WizardDialogUiState(
     /** An SMB is being delivered on this phone (always false on a client: its master decides). */
     val smbBeingDelivered: Boolean = false,
     /** The user has changed the BG field. From then on it keeps their value and no longer follows new readings. */
-    val bgEdited: Boolean = false
+    val bgEdited: Boolean = false,
+    /**
+     * Insulin-only mode (2026-11-01), opened from the Insulin dialog: this typed dose is given, and the calculation
+     * only shows what the calculator suggests. Null is the usual calculator.
+     */
+    val fixedInsulin: Double? = null,
+    /** Trio remote control is on and complete: the Send to Trio button works (2026-11-07, per explicit request) */
+    val trioReady: Boolean = false,
+    /** Trio remote control is switched on: the Send to Trio button shows, greyed out until [trioReady] (2026-11-07) */
+    val trioShown: Boolean = false,
+    /** What Trio remote control still lacks, shown under the greyed-out button (2026-11-07) */
+    val trioMissing: List<TextRef> = emptyList()
 )
+
+/** A supplied argument always stays in manual mode, including zero or an invalid dose. */
+internal fun parseFixedInsulin(argument: String?): Double? =
+    argument?.let { it.toDoubleOrNull()?.takeIf { dose -> dose.isFinite() && dose >= 0.0 } ?: 0.0 }
+
+/** Editing the manual dose changes the confirm state without replacing the calculator's suggestion. */
+internal fun WizardDialogUiState.withFixedInsulin(value: Double): WizardDialogUiState {
+    if (!insulinOnly) return this
+    val dose = value.takeIf { it.isFinite() }?.coerceIn(0.0, 60.0) ?: 0.0
+    return copy(fixedInsulin = dose, okVisible = hasResult && (dose > 0.0 || effectiveCarbs > 0 || eCarbs > 0))
+}
+
+/** Positive carbs leave manual mode for the rest of this calculator session. */
+internal fun WizardDialogUiState.withMealCarbs(value: Int, autoFpu: Boolean, unreliable: Boolean, small: Boolean): WizardDialogUiState {
+    val carbs = value.coerceIn(0, maxCarbs)
+    if (!insulinOnly || carbs == 0) return copy(carbs = carbs)
+    return copy(
+        carbs = carbs,
+        fixedInsulin = null,
+        fpuInstead = autoFpu && !unreliable,
+        unreliableSmb = unreliable,
+        smallMeal = small,
+        giveRestLater = true,
+        hasResult = false,
+        okVisible = false
+    )
+}
+
+val WizardDialogUiState.insulinOnly: Boolean
+    get() = fixedInsulin != null
+
+/** Remove automatic grams while keeping manual entries or restoring those saved before autofill. */
+internal fun WizardDialogUiState.withoutMealExtra(
+    previous: Triple<Int, Int, Int>?,
+    manualFat: Int?,
+    manualProtein: Int?
+): WizardDialogUiState = copy(
+    fpuInstead = false,
+    unreliableSmb = false,
+    fat = manualFat ?: previous?.first ?: 0,
+    protein = manualProtein ?: previous?.second ?: 0,
+    percentage = previous?.third ?: percentage
+)
+
+/** The insulin OK gives: the typed dose in insulin-only mode, else the calculated one. */
+val WizardDialogUiState.deliveredInsulin: Double
+    get() = fixedInsulin ?: totalInsulin
 
 /**
  * A new sensor reading came in. The BG field follows it until the user has edited the field: the BG is sent to the
@@ -100,7 +178,7 @@ fun WizardDialogUiState.withNewReading(bg: Double, ageMinutes: Int): WizardDialo
  * the dose after the SMB has finished, with the SMB in IOB.
  */
 val WizardDialogUiState.waitsForSmb: Boolean
-    get() = smbBeingDelivered && totalInsulin > 0.0 && !forcedRecordOnly
+    get() = smbBeingDelivered && deliveredInsulin > 0.0 && !forcedRecordOnly
 
 val WizardDialogUiState.isMgdl: Boolean
     get() = units == GlucoseUnit.MGDL

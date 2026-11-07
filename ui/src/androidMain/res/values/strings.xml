@@ -382,4 +382,54 @@
     <string name="cal_precheck_mark_sensor_change">Mark sensor change</string>
     <string name="graph_therapy_event_bg_with_note" comment="Shown when the user taps a BG check in the overview graph. %1$s = glucose with its unit, %2$s = the note the user wrote. Example: 6.1 mmol/L, before lunch">%1$s, %2$s</string>
 
+    <!-- Bolus calculator patch (fork customisations) -->
+    <string name="quickwizard_save_before_run">This button has changes that are not saved. Save them and run the button?</string>
+    <string name="quickwizard_trio" comment="Button on each QuickWizard entry that sends it to Trio">Trio</string>
+    <string name="quickwizard_walking_soon_auto" comment="Switch in the QuickWizard editor. On: when the button is used, Walking soon is set from the steps, the same way the bolus calculator sets its box.">Walking soon: set from the steps</string>
+    <string name="trio_not_ready">Trio is not ready. Still missing: %1$s</string>
+    <string name="trio_remote_command_bolus" comment="%1$s=insulin with its unit. Example: Bolus 1.50 U">Bolus %1$s</string>
+    <string name="trio_remote_command_meal" comment="%1$d=carbs, %2$d=fat, %3$d=protein, all in grams">Carbs %1$d g, fat %2$d g, protein %3$d g</string>
+    <string name="trio_remote_command_meal_earlier" comment="%1$d=carbs, %2$d=fat, %3$d=protein, all in grams, %4$d=minutes ago">Carbs %1$d g, fat %2$d g, protein %3$d g, eaten %4$d min ago</string>
+    <string name="trio_remote_confirm_note">Trio checks it again with its own limits before it acts.</string>
+    <string name="trio_remote_confirm_title">Send to Trio?</string>
+    <string name="trio_remote_failed" comment="%1$s=the command, %2$s=the reason, often a word from Apple such as BadDeviceToken">Not sent: %1$s. %2$s</string>
+    <string name="trio_remote_insulin_value" comment="%1$s=insulin amount. Example: 1.50 U">%1$s U</string>
+    <string name="trio_remote_missing_apns_key">APNS Key: the text of the .p8 key file</string>
+    <string name="trio_remote_missing_key_id">APNS Key ID: 10 capital letters or digits</string>
+    <string name="trio_remote_missing_shared_secret">Shared secret</string>
+    <string name="trio_remote_missing_team_id">Team ID: the Trio profile has none</string>
+    <string name="trio_remote_missing_title">Still missing:</string>
+    <string name="trio_remote_missing_trio_profile">Details of Trio: no Trio profile has been read from this Nightscout site yet</string>
+    <string name="trio_remote_missing_user">User: your name</string>
+    <string name="trio_remote_problem_bolus" comment="%1$s=the max bolus setting with its unit. Example: 3.00 U">The bolus must be more than 0 and at most %1$s.</string>
+    <string name="trio_remote_problem_carbs" comment="%1$d=most grams, the max carbs setting">Carbs, fat and protein must each be from 0 to %1$d g, and not all 0.</string>
+    <string name="trio_remote_sent" comment="%1$s=the command, for example Bolus 1.50 U">Sent: %1$s. Trio shows the result in Nightscout a little later.</string>
+    <string name="trio_simulator_banner">SIMULATOR — encrypted test transport, no Apple push or pump actions.</string>
+    <string name="trio_simulator_missing_id">Enter a valid simulator ID in NSClientV3 → Trio connection simulator.</string>
+    <string name="trio_simulator_missing_secret">Enter the simulator shared secret in NSClientV3 → Trio connection simulator.</string>
+    <string name="trio_simulator_result">Simulator confirmed: %1$s</string>
+    <string name="wizard_delay_fpu_instead_of_cancel" comment="Checkbox, on by default. A protein or fat dose that is not safe at its hour is checked again every 10 minutes instead of being cancelled.">Delay protein and fat doses instead of cancelling</string>
+    <string name="wizard_delay_fpu_instead_of_cancel_hint" comment="Small text under the Delay protein and fat doses checkbox.">A protein or fat dose that is not safe at its hour (glucose, insulin on board, profile, pump) is checked again every 10 minutes and given when it is safe, until 10 minutes before the next dose is due. Unticked: it is cancelled.</string>
+    <string name="wizard_detailed_settings">Detailed settings (untick for simple input)</string>
+    <string name="wizard_fpu_instead" comment="Checkbox. Ticked accepts automatic fat and protein from the carb grams. Fat is 0.35 times the carbs. Protein is 0.4 times the carbs. Those are later hourly doses. Extended carbs are off. Unticked leaves the typed fat and protein. Grams above 0 still schedule hourly doses.">Accept automatic fat and protein later</string>
+    <string name="wizard_fpu_interval">FPU interval</string>
+    <string name="wizard_give_rest_later" comment="Checkbox, on by default. The fall caution removes part of the bolus now. Ticked gives that part later as hourly boluses. The first dose waits an hour. Unticked, that part is not given.">Delay part of the bolus (safety)</string>
+    <string name="wizard_give_rest_later_hint" comment="Small text under the Delay part of the bolus checkbox. Says why part of the dose is held back and what the box does.">For safety the calculator can give only part of the dose now, when glucose is falling or you will walk soon. Ticked: the held-back part is given later, in hourly doses, if glucose allows. Unticked: it is not given.</string>
+    <string name="wizard_insulin_only_title" comment="Title of the bolus calculator when it is opened from the Insulin dialog: the typed dose is given, the calculation only shows the suggestion.">Bolus calculator: insulin only</string>
+    <string name="wizard_insulin_to_give" comment="Insulin-only mode of the bolus calculator: the dose that is given, typed by the user.">Insulin to give</string>
+    <string name="wizard_send_to_trio">Send to Trio</string>
+    <string name="wizard_small_meal" comment="Checkbox. Halves the automatic fat and protein from the carb grams (average is fat 0.35 and protein 0.4 times the carbs). With the unreliable box ticked as well, the two cancel out.">Fast carbs, if fat/protein auto on, half amounts</string>
+    <string name="wizard_split_fpu_bolus">Use split boluses for FPU</string>
+    <string name="wizard_split_interval">Minutes between parts</string>
+    <string name="wizard_split_over_max" comment="Checkbox in the bolus calculator and switch in a QuickWizard button. Ticked: max bolus is given now and the rest over max bolus later, in parts, while BG is 7.0 or more and not falling.">Give the rest over max bolus later, in parts</string>
+    <string name="wizard_trio_carb_time_now">Carb time is later: Trio takes the meal as eaten now</string>
+    <string name="wizard_trio_ecarbs_later" comment="%1$d=grams of extended carbs, %2$d=number of hourly parts, %3$d=minutes until the first part">%1$d g extended carbs sent to Trio as %2$d hourly parts, the first in %3$d min</string>
+    <string name="wizard_trio_ecarbs_not_sent" comment="%1$d=grams of extended carbs">%1$d g extended carbs are not sent: Trio has none</string>
+    <string name="wizard_trio_keep_awake_ios">On this iPhone the OrangeLink heartbeat is switched off and silent sound on until then, then set back.</string>
+    <string name="wizard_trio_later" comment="%1$s=what follows later, for example Remaining 1.20 U, one part every 30 min">Later, sent to Trio after the usual checks: %1$s</string>
+    <string name="wizard_trio_later_hint">Later parts (split, fat/protein, extended carbs) are sent by this phone: keep the app running until they are done.</string>
+    <string name="wizard_trio_later_until" comment="%1$s=a time of day">Later parts are sent by this phone until about %1$s: keep this app running until then.</string>
+    <string name="wizard_trio_part_late">more than 10 minutes late, so Trio would refuse it (the app was not running)</string>
+    <string name="wizard_unreliable_smb" comment="Checkbox. Used when SMB cannot be trusted. Wizard percent is 90. Fat and protein are double the average: fat 0.7 and protein 0.8 times the carb grams. Later doses. Max bolus stays at the saved limit.">Unreliable SMB / bad sensor / high protein</string>
+    <string name="wizard_walking_soon" comment="Checkbox on the bolus calculator. Ticked means the user will walk soon, so the immediate dose is cut to 70 percent.">Walking soon</string>
 </resources>

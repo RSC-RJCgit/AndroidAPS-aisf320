@@ -19,7 +19,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
+import app.aaps.core.ui.compose.AapsTheme
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
@@ -32,7 +34,9 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,7 +54,6 @@ import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TooltipAnchorPosition
@@ -103,9 +106,6 @@ import app.aaps.core.ui.compose.bottomBarSafeArea
 import app.aaps.core.ui.compose.clearFocusOnTap
 import app.aaps.core.ui.compose.consumeOverscroll
 import app.aaps.core.ui.compose.dialogs.ElementConfirmationDialog
-import app.aaps.core.ui.compose.icons.IcBread
-import app.aaps.core.ui.compose.icons.IcCake
-import app.aaps.core.ui.compose.icons.IcPizza
 import app.aaps.core.ui.compose.icons.IcTtManual
 import app.aaps.core.ui.compose.metroViewModel
 import app.aaps.core.ui.compose.navigation.color
@@ -211,6 +211,11 @@ fun WizardDialogScreen(
         unitsLabel = uiState.units.displayLabel,
         onBgChange = { viewModel.updateBg(it) },
         onCarbsChange = { viewModel.updateCarbs(it.toInt()) },
+        onProteinChange = { viewModel.updateProtein(it.toInt()) },
+        onFatChange = { viewModel.updateFat(it.toInt()) },
+        onWarsawDurationChange = { viewModel.updateWarsawDuration(it) },
+        onMaxBolusChange = { viewModel.updateMaxBolus(it) },
+        onFixedInsulinChange = { viewModel.updateFixedInsulin(it) },
         onAddCarbs = viewModel::addCarbs,
         onCarbsTypeChange = viewModel::updateCarbsType,
         onPercentageChange = { viewModel.updatePercentage(it.toInt()) },
@@ -223,11 +228,22 @@ fun WizardDialogScreen(
         onTrendToggle = viewModel::toggleTrend,
         onIOBToggle = viewModel::toggleIOB,
         onCOBToggle = viewModel::toggleCOB,
+        onWalkingSoonToggle = viewModel::toggleWalkingSoon,
+        onFpuInsteadToggle = viewModel::toggleFpuInstead,
+        onSplitFpuBolusToggle = viewModel::toggleSplitFpuBolus,
+        onFpuIntervalChange = viewModel::updateFpuInterval,
+        onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
+        onSplitOverMaxToggle = viewModel::toggleSplitOverMax,
+        onSplitIntervalChange = viewModel::updateSplitIntervalMinutes,
+        onDelayFpuInsteadOfCancelToggle = viewModel::toggleDelayFpuInsteadOfCancel,
+        onUnreliableSmbToggle = viewModel::toggleUnreliableSmb,
+        onSmallMealToggle = viewModel::toggleSmallMeal,
         onAlarmToggle = viewModel::toggleAlarm,
         onCalculationExpandToggle = viewModel::toggleCalculationExpanded,
         onNavigateBack = onNavigateBack,
         onConfirmClick = { showConfirmation = true },
-        onSettingsClick = { showSettings = true }
+        onSettingsClick = { showSettings = true },
+        onSendToTrioClick = viewModel::sendToTrio
     )
 }
 
@@ -239,6 +255,11 @@ internal fun WizardDialogContent(
     unitsLabel: String,
     onBgChange: (Double) -> Unit,
     onCarbsChange: (Double) -> Unit,
+    onProteinChange: (Double) -> Unit = {},
+    onFatChange: (Double) -> Unit = {},
+    onWarsawDurationChange: (Double) -> Unit = {},
+    onMaxBolusChange: (Double) -> Unit = {},
+    onFixedInsulinChange: (Double) -> Unit = {},
     onAddCarbs: (Int) -> Unit,
     onCarbsTypeChange: (CarbsType) -> Unit,
     onPercentageChange: (Double) -> Unit,
@@ -251,19 +272,48 @@ internal fun WizardDialogContent(
     onTrendToggle: (Boolean) -> Unit,
     onIOBToggle: (Boolean) -> Unit,
     onCOBToggle: (Boolean) -> Unit,
+    onWalkingSoonToggle: (Boolean) -> Unit = {},
+    onFpuInsteadToggle: (Boolean) -> Unit = {},
+    onSplitFpuBolusToggle: (Boolean) -> Unit = {},
+    onFpuIntervalChange: (Int) -> Unit = {},
+    onGiveRestLaterToggle: (Boolean) -> Unit = {},
+    onSplitOverMaxToggle: (Boolean) -> Unit = {},
+    onSplitIntervalChange: (Int) -> Unit = {},
+    onDelayFpuInsteadOfCancelToggle: (Boolean) -> Unit = {},
+    onUnreliableSmbToggle: (Boolean) -> Unit = {},
+    onSmallMealToggle: (Boolean) -> Unit = {},
     onAlarmToggle: (Boolean) -> Unit,
     onCalculationExpandToggle: () -> Unit,
     onNavigateBack: () -> Unit,
     onConfirmClick: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onSendToTrioClick: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
+    // Insulin-only mode (2026-11-01): the boxes keep their values, only max bolus, its split, BG and carbs change
+    val locked = uiState.insulinOnly
+    // Simple screen first, every time (2026-11-05, per explicit request): carbs (or the insulin to give), the meal type,
+    // Split FPU, Auto fat/protein, Walking soon and Detailed settings. Everything hidden still counts, from the last
+    // confirmed calculation's ticks and the automatic rules. Ticking Detailed settings shows the full screen.
+    var detailed by rememberSaveable { mutableStateOf(false) }
+    // Insulin only: the dose and the carbs (entering carbs switches to the meal calculator); the meal boxes come back then.
+    val mealInputs = detailed || !locked
+    // Outline in the insulin or carbs colour around the main input (2026-11-05, per explicit request)
+    val inputOutline = Modifier
+        .fillMaxWidth()
+        .border(2.dp, if (locked) AapsTheme.elementColors.insulin else AapsTheme.elementColors.carbs, RoundedCornerShape(8.dp))
+        .padding(horizontal = 8.dp, vertical = 4.dp)
 
     Scaffold(
         topBar = {
             Column {
                 AapsTopAppBar(
-                    title = { Text((stringResourceOrNull(ElementType.BOLUS_WIZARD.label()) ?: "")) },
+                    title = {
+                        Text(
+                            if (locked) stringResource(UiStrings.wizard_insulin_only_title)
+                            else stringResourceOrNull(ElementType.BOLUS_WIZARD.label()) ?: ""
+                        )
+                    },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
@@ -292,6 +342,39 @@ internal fun WizardDialogContent(
             // amounts here would have them announced twice. This also sidesteps the insulin/carbs
             // branching, which no single template could join without leaving a gap.
             val confirmDescription = stringResource(CoreUiStrings.confirm)
+            Column(modifier = Modifier.fillMaxWidth().bottomBarSafeArea()) {
+            // Send to Trio (2026-11-07, per explicit request): shown while Trio remote control is switched on, greyed out
+            // with what is missing until it is complete. OK stays the usual path (recorded only, or the AAPS master);
+            // this button sends the shown result to Trio instead.
+            if (uiState.trioShown) {
+                OutlinedButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        onSendToTrioClick()
+                    },
+                    enabled = uiState.trioReady && uiState.okVisible,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                ) {
+                    Text(stringResource(UiStrings.wizard_send_to_trio))
+                }
+                if (uiState.trioReady)
+                    // Later parts are sent by this phone, so it must keep running (2026-11-07, per explicit request)
+                    Text(
+                        text = stringResource(UiStrings.wizard_trio_later_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                else
+                    Text(
+                        text = stringResource(UiStrings.trio_not_ready, uiState.trioMissing.map { stringResource(it) }.joinToString("; ")),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+            }
             Button(
                 onClick = {
                     focusManager.clearFocus()
@@ -300,7 +383,6 @@ internal fun WizardDialogContent(
                 enabled = uiState.okVisible && !uiState.waitsForSmb,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .bottomBarSafeArea()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .semantics { contentDescription = confirmDescription }
             ) {
@@ -310,10 +392,10 @@ internal fun WizardDialogContent(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                if (uiState.totalInsulin > 0.0) {
-                    Text(stringResource(InterfacesStrings.format_insulin_units, uiState.totalInsulin))
+                if (uiState.deliveredInsulin > 0.0) {
+                    Text(stringResource(InterfacesStrings.format_insulin_units, uiState.deliveredInsulin))
                 }
-                if (uiState.totalInsulin > 0.0 && (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0)) {
+                if (uiState.deliveredInsulin > 0.0 && (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0)) {
                     Spacer(modifier = Modifier.width(4.dp))
                 }
                 if (uiState.effectiveCarbs > 0 || uiState.eCarbs > 0) {
@@ -325,6 +407,7 @@ internal fun WizardDialogContent(
                 if (!uiState.okVisible) {
                     Text(stringResource(CoreUiStrings.ok))
                 }
+            }
             }
         }
     ) { paddingValues ->
@@ -434,108 +517,181 @@ internal fun WizardDialogContent(
                         )
                     }
 
-                    // Toggle buttons row (always visible)
-                    Row(
-                        modifier = Modifier.padding(top = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        MultiChoiceSegmentedButtonRow(
-                            modifier = Modifier.weight(1f)
+                    if (detailed) {
+                        // Toggle buttons row (always visible)
+                        Row(
+                            modifier = Modifier.padding(top = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // BG
-                            SegmentedButton(
-                                checked = uiState.useBg,
-                                onCheckedChange = onBgToggle,
-                                shape = SegmentedButtonDefaults.itemShape(0, 5),
-                                icon = {}
+                            MultiChoiceSegmentedButtonRow(
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Icon(
-                                    imageVector = ElementType.BG_CHECK.icon(),
-                                    contentDescription = stringResource(CoreUiStrings.wizard_include_bg),
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                // BG
+                                SegmentedButton(
+                                    enabled = !locked,
+                                    checked = uiState.useBg,
+                                    onCheckedChange = onBgToggle,
+                                    shape = SegmentedButtonDefaults.itemShape(0, 5),
+                                    icon = {}
+                                ) {
+                                    Icon(
+                                        imageVector = ElementType.BG_CHECK.icon(),
+                                        contentDescription = stringResource(CoreUiStrings.wizard_include_bg),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                // TT
+                                SegmentedButton(
+                                    checked = uiState.useTT && uiState.hasTempTarget && uiState.useBg,
+                                    onCheckedChange = onTTToggle,
+                                    shape = SegmentedButtonDefaults.itemShape(1, 5),
+                                    enabled = uiState.hasTempTarget && uiState.useBg && !locked,
+                                    icon = {}
+                                ) {
+                                    Icon(
+                                        imageVector = IcTtManual,
+                                        contentDescription = stringResource(CoreUiStrings.wizard_include_tt),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                // Trend
+                                SegmentedButton(
+                                    enabled = !locked,
+                                    checked = uiState.useTrend,
+                                    onCheckedChange = onTrendToggle,
+                                    shape = SegmentedButtonDefaults.itemShape(2, 5),
+                                    icon = {}
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.TrendingUp,
+                                        contentDescription = stringResource(CoreUiStrings.wizard_include_trend),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                // IOB
+                                SegmentedButton(
+                                    enabled = !locked,
+                                    checked = uiState.useIOB,
+                                    onCheckedChange = onIOBToggle,
+                                    shape = SegmentedButtonDefaults.itemShape(3, 5),
+                                    icon = {}
+                                ) {
+                                    Icon(
+                                        imageVector = ElementType.INSULIN.icon(),
+                                        contentDescription = stringResource(CoreUiStrings.wizard_include_iob),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                // COB
+                                SegmentedButton(
+                                    enabled = !locked,
+                                    checked = uiState.useCOB,
+                                    onCheckedChange = onCOBToggle,
+                                    shape = SegmentedButtonDefaults.itemShape(4, 5),
+                                    icon = {}
+                                ) {
+                                    Icon(
+                                        imageVector = ElementType.COB.icon(),
+                                        contentDescription = stringResource(CoreUiStrings.wizard_include_cob),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
                             }
-                            // TT
-                            SegmentedButton(
-                                checked = uiState.useTT && uiState.hasTempTarget && uiState.useBg,
-                                onCheckedChange = onTTToggle,
-                                shape = SegmentedButtonDefaults.itemShape(1, 5),
-                                enabled = uiState.hasTempTarget && uiState.useBg,
-                                icon = {}
+
+                            val includeTooltipState = rememberTooltipState()
+                            val includeScope = rememberCoroutineScope()
+                            TooltipBox(
+                                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
+                                tooltip = {
+                                    PlainTooltip {
+                                        Text(stringResource(UiStrings.wizard_include_info))
+                                    }
+                                },
+                                state = includeTooltipState
                             ) {
-                                Icon(
-                                    imageVector = IcTtManual,
-                                    contentDescription = stringResource(CoreUiStrings.wizard_include_tt),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                            // Trend
-                            SegmentedButton(
-                                checked = uiState.useTrend,
-                                onCheckedChange = onTrendToggle,
-                                shape = SegmentedButtonDefaults.itemShape(2, 5),
-                                icon = {}
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.TrendingUp,
-                                    contentDescription = stringResource(CoreUiStrings.wizard_include_trend),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                            // IOB
-                            SegmentedButton(
-                                checked = uiState.useIOB,
-                                onCheckedChange = onIOBToggle,
-                                shape = SegmentedButtonDefaults.itemShape(3, 5),
-                                icon = {}
-                            ) {
-                                Icon(
-                                    imageVector = ElementType.INSULIN.icon(),
-                                    contentDescription = stringResource(CoreUiStrings.wizard_include_iob),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-                            // COB
-                            SegmentedButton(
-                                checked = uiState.useCOB,
-                                onCheckedChange = onCOBToggle,
-                                shape = SegmentedButtonDefaults.itemShape(4, 5),
-                                icon = {}
-                            ) {
-                                Icon(
-                                    imageVector = ElementType.COB.icon(),
-                                    contentDescription = stringResource(CoreUiStrings.wizard_include_cob),
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                IconButton(
+                                    onClick = { includeScope.launch { includeTooltipState.show() } },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Info,
+                                        contentDescription = stringResource(CoreUiStrings.carousel_show_card),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
 
-                        val includeTooltipState = rememberTooltipState()
-                        val includeScope = rememberCoroutineScope()
-                        TooltipBox(
-                            positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-                            tooltip = {
-                                PlainTooltip {
-                                    Text(stringResource(UiStrings.wizard_include_info))
-                                }
-                            },
-                            state = includeTooltipState
+                    }
+                    if (mealInputs) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconButton(
-                                onClick = { includeScope.launch { includeTooltipState.show() } },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Info,
-                                    contentDescription = stringResource(CoreUiStrings.carousel_show_card),
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
+                            Checkbox(
+                                enabled = !locked,
+                                checked = uiState.splitFpuBolus,
+                                onCheckedChange = onSplitFpuBolusToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_split_fpu_bolus),
+                                modifier = Modifier.clickable(enabled = !locked) { onSplitFpuBolusToggle(!uiState.splitFpuBolus) }
+                            )
                         }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                enabled = !locked,
+                                checked = uiState.fpuInstead || uiState.unreliableSmb,
+                                onCheckedChange = onFpuInsteadToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_fpu_instead),
+                                modifier = Modifier.clickable(enabled = !locked) { onFpuInsteadToggle(!(uiState.fpuInstead || uiState.unreliableSmb)) }
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                enabled = !locked,
+                                checked = uiState.walkingSoon,
+                                onCheckedChange = onWalkingSoonToggle
+                            )
+                            Text(
+                                text = stringResource(UiStrings.wizard_walking_soon),
+                                modifier = Modifier.clickable(enabled = !locked) { onWalkingSoonToggle(!uiState.walkingSoon) }
+                            )
+                        }
+
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = detailed,
+                            onCheckedChange = { detailed = it }
+                        )
+                        Text(
+                            text = stringResource(UiStrings.wizard_detailed_settings),
+                            modifier = Modifier.clickable { detailed = !detailed }
+                        )
                     }
 
                     AnimatedVisibility(
-                        visible = uiState.calculationExpanded,
+                        visible = uiState.calculationExpanded && detailed,
                         enter = expandVertically(),
                         exit = shrinkVertically()
                     ) {
@@ -666,200 +822,324 @@ internal fun WizardDialogContent(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     // Carbs Input
                     Column(modifier = itemModifier) {
-                        NumberInputRow(
-                            labelRef = InterfacesStrings.carbs,
-                            value = uiState.carbs.toDouble(),
-                            onValueChange = onCarbsChange,
-                            valueRange = 0.0..uiState.maxCarbs.toDouble(),
-                            step = 1.0,
-                            unitLabel = TextRef.Literal("g")
-                        )
-                        QuickAddButtons(
-                            increment1 = uiState.carbsButtonIncrement1,
-                            increment2 = uiState.carbsButtonIncrement2,
-                            increment3 = uiState.carbsButtonIncrement3,
-                            onAddCarbs = onAddCarbs
-                        )
-
-                        // Carbs type selector
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            SingleChoiceSegmentedButtonRow(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                CarbsType.entries.forEachIndexed { index, type ->
-                                    SegmentedButton(
-                                        selected = uiState.carbsType == type,
-                                        onClick = { onCarbsTypeChange(type) },
-                                        shape = SegmentedButtonDefaults.itemShape(index, CarbsType.entries.size),
-                                        icon = {}
-                                    ) {
-                                        Icon(
-                                            imageVector = when (type) {
-                                                CarbsType.BREAD -> IcBread
-                                                CarbsType.CAKE  -> IcCake
-                                                CarbsType.PIZZA -> IcPizza
-                                            },
-                                            // Was the enum name ("BREAD"), untranslated and saying
-                                            // nothing about what the choice does to the carbs.
-                                            contentDescription = carbsTypeEffect(type),
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            val tooltipState = rememberTooltipState()
-                            val scope = rememberCoroutineScope()
-                            TooltipBox(
-                                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-                                tooltip = {
-                                    PlainTooltip {
-                                        Column {
-                                            Text(
-                                                text = when (uiState.carbsType) {
-                                                    CarbsType.BREAD -> stringResource(CoreUiStrings.carbs_type_bread)
-                                                    CarbsType.CAKE  -> stringResource(CoreUiStrings.carbs_type_cake)
-                                                    CarbsType.PIZZA -> stringResource(CoreUiStrings.carbs_type_pizza)
-                                                }
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = carbsTypeEffect(uiState.carbsType),
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                },
-                                state = tooltipState
-                            ) {
-                                IconButton(onClick = { scope.launch { tooltipState.show() } }) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Info,
-                                        contentDescription = stringResource(CoreUiStrings.carousel_show_card),
-                                        modifier = Modifier.size(20.dp)
+                        uiState.fixedInsulin?.let { fixed ->
+                            Column(modifier = inputOutline) {
+                                NumberInputRow(
+                                    labelRef = UiStrings.wizard_insulin_to_give,
+                                    value = fixed,
+                                    onValueChange = onFixedInsulinChange,
+                                    valueRange = 0.0..60.0,
+                                    step = if (uiState.bolusStep > 0.0) uiState.bolusStep else 0.05,
+                                    unitLabel = TextRef.Literal("U"),
+                                    decimalPlaces = 2
+                                )
+                                if (uiState.hasResult)
+                                    Text(
+                                        text = stringResource(InterfacesStrings.wizard_direct_insulin, fixed, uiState.totalInsulin),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                }
                             }
                         }
-                    }
+                        if (detailed) {
+                            NumberInputRow(
+                                labelRef = InterfacesStrings.wizard_max_bolus_this_bolus,
+                                value = uiState.maxBolus,
+                                onValueChange = onMaxBolusChange,
+                                valueRange = 0.1..60.0,
+                                step = if (uiState.bolusStep > 0.0) uiState.bolusStep else 0.05,
+                                unitLabel = TextRef.Literal("U"),
+                                decimalPlaces = 2
+                            )
+                        }
+                        // v3's split box (2026-10-22): shown when the dose is over max bolus
+                        if (uiState.deliveredInsulin > uiState.maxBolus + 0.005) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = uiState.splitOverMax,
+                                    onCheckedChange = onSplitOverMaxToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_split_over_max),
+                                    modifier = Modifier.clickable { onSplitOverMaxToggle(!uiState.splitOverMax) }
+                                )
+                            }
+                            if (uiState.splitOverMax) {
+                                NumberInputRow(
+                                    labelRef = UiStrings.wizard_split_interval,
+                                    value = uiState.splitIntervalMinutes.toDouble(),
+                                    onValueChange = { onSplitIntervalChange(it.toInt()) },
+                                    valueRange = 1.0..60.0,
+                                    step = 1.0,
+                                    unitLabel = TextRef.Literal("min")
+                                )
+                            }
+                        }
+                        // Carbs always show, also in insulin-only mode: entering carbs there switches to the meal calculator.
+                        Column(
+                            modifier = if (locked) Modifier.fillMaxWidth() else inputOutline,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            NumberInputRow(
+                                labelRef = InterfacesStrings.carbs,
+                                value = uiState.carbs.toDouble(),
+                                onValueChange = onCarbsChange,
+                                valueRange = 0.0..uiState.maxCarbs.toDouble(),
+                                step = 1.0,
+                                unitLabel = TextRef.Literal("g")
+                            )
+                            QuickAddButtons(
+                                increment1 = uiState.carbsButtonIncrement1,
+                                increment2 = uiState.carbsButtonIncrement2,
+                                increment3 = uiState.carbsButtonIncrement3,
+                                onAddCarbs = onAddCarbs
+                            )
+                            if (!locked) {
+                                CarbsTypeSelector(
+                                    selected = uiState.carbsType,
+                                    onChange = onCarbsTypeChange,
+                                    enabled = !locked,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                        if (detailed) {
+                            NumberInputRow(
+                                labelRef = InterfacesStrings.wizard_protein,
+                                enabled = !locked,
+                                value = uiState.protein.toDouble(),
+                                onValueChange = onProteinChange,
+                                valueRange = 0.0..250.0,
+                                step = 1.0,
+                                unitLabel = TextRef.Literal("g")
+                            )
+                            NumberInputRow(
+                                labelRef = InterfacesStrings.wizard_fat,
+                                enabled = !locked,
+                                value = uiState.fat.toDouble(),
+                                onValueChange = onFatChange,
+                                valueRange = 0.0..250.0,
+                                step = 1.0,
+                                unitLabel = TextRef.Literal("g")
+                            )
+                            NumberInputRow(
+                                labelRef = InterfacesStrings.wizard_fpu_duration,
+                                enabled = !locked,
+                                value = uiState.warsawDurationHours,
+                                onValueChange = onWarsawDurationChange,
+                                valueRange = 0.0..24.0,
+                                step = 0.5,
+                                unitLabel = TextRef.Literal("h"),
+                                decimalPlaces = 1
+                            )
+                            if (uiState.splitFpuBolus) {
+                                NumberInputRow(
+                                    labelRef = UiStrings.wizard_fpu_interval,
+                                    enabled = !locked,
+                                    value = uiState.fpuIntervalMinutes.toDouble(),
+                                    onValueChange = { onFpuIntervalChange(it.toInt()) },
+                                    valueRange = 30.0..60.0,
+                                    step = 1.0,
+                                    unitLabel = TextRef.Literal("min")
+                                )
+                            }
 
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    enabled = !locked,
+                                    checked = uiState.giveRestLater,
+                                    onCheckedChange = onGiveRestLaterToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_give_rest_later),
+                                    modifier = Modifier.clickable { onGiveRestLaterToggle(!uiState.giveRestLater) }
+                                )
+                            }
+                            Text(
+                                text = stringResource(UiStrings.wizard_give_rest_later_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    enabled = !locked,
+                                    checked = uiState.delayFpuInsteadOfCancel,
+                                    onCheckedChange = onDelayFpuInsteadOfCancelToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel),
+                                    modifier = Modifier.clickable { onDelayFpuInsteadOfCancelToggle(!uiState.delayFpuInsteadOfCancel) }
+                                )
+                            }
+                            Text(
+                                text = stringResource(UiStrings.wizard_delay_fpu_instead_of_cancel_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    enabled = !locked,
+                                    checked = uiState.unreliableSmb,
+                                    onCheckedChange = onUnreliableSmbToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_unreliable_smb),
+                                    modifier = Modifier.clickable { onUnreliableSmbToggle(!uiState.unreliableSmb) }
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    enabled = !locked,
+                                    checked = uiState.smallMeal,
+                                    onCheckedChange = onSmallMealToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_small_meal),
+                                    modifier = Modifier.clickable { onSmallMealToggle(!uiState.smallMeal) }
+                                )
+                            }
+
+                        }
+
+                        }
                     // Direct Correction: collapsed, so there is no second open field under the carbs
                     // one. They looked alike, and grams typed into this one were bolused as units
                     // (reported on Discord). Nudging still works from the collapsed row; the pencil
                     // opens the field for a value that would take too many steps.
-                    ExpandableNumberInputRow(
-                        labelRef = CoreUiStrings.wizard_correction,
-                        value = uiState.directCorrection,
-                        onValueChange = onDirectCorrectionChange,
-                        valueRange = -uiState.maxBolus..uiState.maxBolus,
-                        step = uiState.bolusStep,
-                        unitLabel = CoreUiStrings.insulin_unit_shortname,
-                        decimalPlaces = 2,
-                        modifier = itemModifier
-                    )
+                    if (detailed) {
+                        ExpandableNumberInputRow(
+                            labelRef = CoreUiStrings.wizard_correction,
+                            enabled = !locked,
+                            value = uiState.directCorrection,
+                            onValueChange = onDirectCorrectionChange,
+                            valueRange = -uiState.maxBolus..uiState.maxBolus,
+                            step = uiState.bolusStep,
+                            unitLabel = CoreUiStrings.insulin_unit_shortname,
+                            decimalPlaces = 2,
+                            modifier = itemModifier
+                        )
 
-                    // Carb Time (compact row with popup dialog)
-                    TimeOffsetRow(
-                        labelRef = CoreUiStrings.wizard_carb_time,
-                        offsetMinutes = uiState.carbTime,
-                        onOffsetChange = { onCarbTimeChange(it.toDouble()) },
-                        alarmChecked = uiState.alarmChecked,
-                        onAlarmChange = onAlarmToggle,
-                        modifier = itemModifier
-                    )
-                    // BG (collapsible, auto-expand when old/missing)
-                    val bgExpandRequester = rememberBringIntoViewOnExpand(bgExpandedByUser)
-                    ExpandableNumberInputRow(
-                        labelRef = CoreUiStrings.wizard_bg_label,
-                        value = uiState.bg,
-                        onValueChange = onBgChange,
-                        valueRange = uiState.bgRange,
-                        step = uiState.bgStep,
-                        unitLabel = TextRef.Literal(unitsLabel),
-                        decimalPlaces = if (uiState.isMgdl) 0 else 1,
-                        expanded = bgExpanded,
-                        onExpandedChange = {
-                            bgExpanded = it
-                            if (it) bgExpandedByUser = true
-                        },
-                        modifier = itemModifier.bringIntoViewRequester(bgExpandRequester),
-                        // More than the number: how old the reading is, red and spoken when stale,
-                        // and a plain "not available" when there is none.
-                        valueContent = {
-                            if (uiState.hasBgData) {
-                                val bgFormat = if (uiState.isMgdl) NumberFormat.INTEGER else NumberFormat.DECIMAL_1
-                                Text(
-                                    text = stringResource(CoreUiStrings.value_with_unit, bgFormat.format(uiState.bg), unitsLabel),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                val ageText = stringResource(CoreUiStrings.value_in_parentheses, stringResource(CoreUiStrings.format_mins, uiState.bgAgeMinutes))
-                                // Old is only the red colour on screen; a screen reader says it.
-                                val ageSpoken = if (bgIsOld) stringResource(UiStrings.a11y_bg_age_old, ageText, stringResource(UiStrings.a11y_bg_old_reading)) else ageText
-                                Text(
-                                    text = ageText,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (bgIsOld) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.semantics { contentDescription = ageSpoken }
-                                )
-                            } else {
-                                Text(
-                                    text = stringResource(CoreUiStrings.not_available_full),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            }
-                        }
-                    )
-
-                    // Percentage (collapsible)
-                    val percentageExpandRequester = rememberBringIntoViewOnExpand(percentageExpanded)
-                    ExpandableNumberInputRow(
-                        labelRef = CoreUiStrings.wizard_use_percentage,
-                        value = uiState.percentage.toDouble(),
-                        onValueChange = onPercentageChange,
-                        valueRange = Constants.WIZARD_PERCENTAGE_RANGE,
-                        step = 5.0,
-                        unitLabel = TextRef.Literal("%"),
-                        decimalPlaces = 0,
-                        expanded = percentageExpanded,
-                        onExpandedChange = { percentageExpanded = it },
-                        modifier = itemModifier.bringIntoViewRequester(percentageExpandRequester),
-                        // The percent sign sits in its own format resource here, not after the number.
-                        valueContent = {
-                            Text(
-                                text = stringResource(CoreUiStrings.units_format_percent, uiState.percentage),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    )
-
-                    // Profile (hidden in simple mode)
-                    if (!uiState.simpleMode) {
-                        ProfileRow(
-                            profileNames = uiState.profileNames,
-                            selectedIndex = uiState.selectedProfileIndex,
-                            onSelect = onProfileSelect,
+                        // Carb Time (compact row with popup dialog)
+                        TimeOffsetRow(
+                            labelRef = CoreUiStrings.wizard_carb_time,
+                            offsetMinutes = uiState.carbTime,
+                            onOffsetChange = { onCarbTimeChange(it.toDouble()) },
+                            alarmChecked = uiState.alarmChecked,
+                            onAlarmChange = onAlarmToggle,
                             modifier = itemModifier
                         )
                     }
-                    // Notes
-                    if (uiState.showNotes) {
-                        TextField(
-                            value = uiState.notes,
-                            onValueChange = onNotesChange,
-                            label = { Text(stringResource(CoreUiStrings.notes_label)) },
-                            modifier = itemModifier,
-                            singleLine = false,
-                            maxLines = 3
+                    // BG (collapsible, auto-expand when old/missing)
+                    if (detailed || bgIsOld) {
+                        val bgExpandRequester = rememberBringIntoViewOnExpand(bgExpandedByUser)
+                        ExpandableNumberInputRow(
+                            labelRef = CoreUiStrings.wizard_bg_label,
+                            value = uiState.bg,
+                            onValueChange = onBgChange,
+                            valueRange = uiState.bgRange,
+                            step = uiState.bgStep,
+                            unitLabel = TextRef.Literal(unitsLabel),
+                            decimalPlaces = if (uiState.isMgdl) 0 else 1,
+                            expanded = bgExpanded,
+                            onExpandedChange = {
+                                bgExpanded = it
+                                if (it) bgExpandedByUser = true
+                            },
+                            modifier = itemModifier.bringIntoViewRequester(bgExpandRequester),
+                            // More than the number: how old the reading is, red and spoken when stale,
+                            // and a plain "not available" when there is none.
+                            valueContent = {
+                                if (uiState.hasBgData) {
+                                    val bgFormat = if (uiState.isMgdl) NumberFormat.INTEGER else NumberFormat.DECIMAL_1
+                                    Text(
+                                        text = stringResource(CoreUiStrings.value_with_unit, bgFormat.format(uiState.bg), unitsLabel),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    val ageText = stringResource(CoreUiStrings.value_in_parentheses, stringResource(CoreUiStrings.format_mins, uiState.bgAgeMinutes))
+                                    // Old is only the red colour on screen; a screen reader says it.
+                                    val ageSpoken = if (bgIsOld) stringResource(UiStrings.a11y_bg_age_old, ageText, stringResource(UiStrings.a11y_bg_old_reading)) else ageText
+                                    Text(
+                                        text = ageText,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (bgIsOld) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.semantics { contentDescription = ageSpoken }
+                                    )
+                                } else {
+                                    Text(
+                                        text = stringResource(CoreUiStrings.not_available_full),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
                         )
+
+                    }
+                    // Percentage (collapsible)
+                    if (detailed) {
+                        val percentageExpandRequester = rememberBringIntoViewOnExpand(percentageExpanded)
+                        ExpandableNumberInputRow(
+                            labelRef = CoreUiStrings.wizard_use_percentage,
+                            enabled = !locked,
+                            value = uiState.percentage.toDouble(),
+                            onValueChange = onPercentageChange,
+                            valueRange = Constants.WIZARD_PERCENTAGE_RANGE,
+                            step = 5.0,
+                            unitLabel = TextRef.Literal("%"),
+                            decimalPlaces = 0,
+                            expanded = percentageExpanded,
+                            onExpandedChange = { percentageExpanded = it },
+                            modifier = itemModifier.bringIntoViewRequester(percentageExpandRequester),
+                            // The percent sign sits in its own format resource here, not after the number.
+                            valueContent = {
+                                Text(
+                                    text = stringResource(CoreUiStrings.units_format_percent, uiState.percentage),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        )
+
+                        // Profile (hidden in simple mode)
+                        if (!uiState.simpleMode) {
+                            ProfileRow(
+                                profileNames = uiState.profileNames,
+                                selectedIndex = uiState.selectedProfileIndex,
+                                onSelect = onProfileSelect,
+                                modifier = itemModifier
+                            )
+                        }
+                        // Notes
+                        if (uiState.showNotes) {
+                            TextField(
+                                value = uiState.notes,
+                                onValueChange = onNotesChange,
+                                label = { Text(stringResource(CoreUiStrings.notes_label)) },
+                                modifier = itemModifier,
+                                singleLine = false,
+                                maxLines = 3
+                            )
+                        }
                     }
                 }
             }
@@ -994,15 +1274,3 @@ private fun ProfileRow(
         }
     }
 }
-
-/** What a carbs type does to the entered carbs, said on its button and shown in the info tooltip. */
-@Composable
-private fun carbsTypeEffect(type: CarbsType): String =
-    if (type == CarbsType.BREAD) stringResource(UiStrings.wizard_carbs_type_bread_desc)
-    else stringResource(
-        UiStrings.wizard_carbs_type_desc,
-        100 - type.carbsPercent,
-        type.eCarbsPercent,
-        type.eCarbsDelayMinutes,
-        type.eCarbsDurationHours
-    )

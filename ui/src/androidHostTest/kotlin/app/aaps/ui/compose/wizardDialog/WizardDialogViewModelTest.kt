@@ -6,12 +6,14 @@ import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.bolus.WizardExecutor
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.insulin.ConcentrationHelper
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -24,6 +26,9 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.trio.TrioRemoteControl
+import app.aaps.core.interfaces.trio.TrioRemoteSetup
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
@@ -69,6 +74,7 @@ internal class WizardDialogViewModelTest {
     @Mock private lateinit var activePlugin: ActivePlugin
     @Mock private lateinit var ch: ConcentrationHelper
     @Mock private lateinit var iobCobCalculator: IobCobCalculator
+    @Mock private lateinit var glucoseStatusProvider: GlucoseStatusProvider
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var preferences: Preferences
     @Mock private lateinit var config: Config
@@ -81,6 +87,8 @@ internal class WizardDialogViewModelTest {
     @Mock private lateinit var wizardExecutor: WizardExecutor
     @Mock private lateinit var rxBus: RxBus
     @Mock private lateinit var commandQueue: CommandQueue
+    @Mock private lateinit var trioRemoteControl: TrioRemoteControl
+    @Mock private lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
 
     private val smbBeingDelivered = MutableStateFlow(false)
     private val bolusWizardProvider: () -> BolusWizard = mock()
@@ -99,19 +107,134 @@ internal class WizardDialogViewModelTest {
         // Stubbed before construction: init { } queues initialize() on the shared scheduler, so it runs
         // before any test body. With no profile store it returns straight away, which is all these tests need.
         whenever(profileRepository.profile).thenReturn(MutableStateFlow(null))
+        // The max bolus suggestion reads the last glucose from the autosens store when the dialog has none. In the app
+        // that store always exists; here an empty one stands in, so "no glucose" is the case these tests run.
+        val ads = mock<AutosensDataStore>()
+        whenever(iobCobCalculator.ads).thenReturn(ads)
         whenever(commandQueue.smbBeingDelivered).thenReturn(smbBeingDelivered)
         whenever(rxBus.toFlow(EventAutosensCalculationFinished::class)).thenReturn(MutableSharedFlow())
+        // Trio remote control off: the calculation reads it for the Send to Trio button
+        whenever(trioRemoteControl.setup()).thenReturn(TrioRemoteSetup(enabled = false, missing = emptyList(), trio = null, overridePresets = emptyList()))
         Dispatchers.setMain(mainDispatcher)
-        sut = WizardDialogViewModel(
-            SavedStateHandle(), bolusWizardProvider, constraintChecker, profileFunction, profileUtil,
-            profileRepository, activePlugin, ch, iobCobCalculator, persistenceLayer, preferences, config,
-            rh, dateUtil, decimalFormatter, aapsLogger, runningModeGuard, automation, wizardExecutor, rxBus,
-            CoroutineScope(UnconfinedTestDispatcher()), commandQueue
-        )
+        sut = createViewModel()
     }
 
-    // The BG field is sent to the master with the other inputs. Filled once when the wizard opened, it dosed on a BG
-    // from minutes ago when the user came back to the wizard later.
+    private fun createViewModel(state: SavedStateHandle = SavedStateHandle()) = WizardDialogViewModel(
+            state, bolusWizardProvider, constraintChecker, profileFunction, profileUtil,
+            profileRepository, activePlugin, ch, iobCobCalculator, persistenceLayer, preferences, config,
+            rh, dateUtil, decimalFormatter, aapsLogger, runningModeGuard, automation, wizardExecutor, rxBus,
+            glucoseStatusProvider,
+            CoroutineScope(UnconfinedTestDispatcher()), commandQueue, trioRemoteControl, processedDeviceStatusData
+        )
+
+    @Test
+    fun `turning default auto FPU off removes suggested grams`() {
+        val state = WizardDialogUiState(carbs = 40, fat = 14, protein = 16, fpuInstead = true)
+        val cleared = state.withoutMealExtra(null, null, null)
+        assertThat(cleared.fat).isEqualTo(0)
+        assertThat(cleared.protein).isEqualTo(0)
+        assertThat(cleared.fpuInstead).isFalse()
+        assertThat(cleared.carbs).isEqualTo(40)
+    }
+
+    @Test
+    fun `turning auto FPU off keeps manual protein and removes suggested fat`() {
+        val state = WizardDialogUiState(fat = 14, protein = 25, fpuInstead = true)
+        val cleared = state.withoutMealExtra(null, null, 25)
+        assertThat(cleared.fat).isEqualTo(0)
+        assertThat(cleared.protein).isEqualTo(25)
+    }
+
+    @Test
+    fun `turning auto FPU off restores earlier manual grams and percentage`() {
+        val state = WizardDialogUiState(fat = 14, protein = 16, percentage = 90, unreliableSmb = true)
+        val restored = state.withoutMealExtra(Triple(5, 10, 100), null, null)
+        assertThat(restored.fat).isEqualTo(5)
+        assertThat(restored.protein).isEqualTo(10)
+        assertThat(restored.percentage).isEqualTo(100)
+        assertThat(restored.unreliableSmb).isFalse()
+    }
+
+    @Test
+    fun `manual entry is retained while the profile is unavailable`() {
+        val manual = createViewModel(SavedStateHandle(mapOf("carbs" to "0", "insulin" to "0.0")))
+        mainDispatcher.scheduler.advanceUntilIdle()
+        assertThat(manual.uiState.value.insulinOnly).isTrue()
+        assertThat(manual.uiState.value.deliveredInsulin).isEqualTo(0.0)
+        assertThat(manual.uiState.value.okVisible).isFalse()
+    }
+
+    @Test
+    fun `zero manual insulin stays zero even when the calculator suggests a dose`() {
+        val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin("0.0"), totalInsulin = 3.5)
+        assertThat(state.insulinOnly).isTrue()
+        assertThat(state.deliveredInsulin).isEqualTo(0.0)
+        assertThat(state.carbs).isEqualTo(0)
+        assertThat(state.okVisible).isFalse()
+    }
+
+    @Test
+    fun `a missing manual insulin argument keeps the usual calculator`() {
+        val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin(null), totalInsulin = 3.5)
+        assertThat(state.insulinOnly).isFalse()
+        assertThat(state.deliveredInsulin).isEqualTo(3.5)
+    }
+
+    @Test
+    fun `an invalid manual insulin argument cannot fall back to the calculated dose`() {
+        for (argument in listOf("-1", "NaN", "Infinity", "invalid")) {
+            val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin(argument), totalInsulin = 3.5)
+            assertThat(state.insulinOnly).isTrue()
+            assertThat(state.deliveredInsulin).isEqualTo(0.0)
+        }
+    }
+
+    @Test
+    fun `a positive manual dose is kept instead of the calculator suggestion`() {
+        val state = WizardDialogUiState(fixedInsulin = parseFixedInsulin("1.25"), totalInsulin = 3.5)
+        assertThat(state.deliveredInsulin).isEqualTo(1.25)
+    }
+
+    @Test
+    fun `typing a manual dose enables confirm and clearing it disables confirm`() {
+        val opened = WizardDialogUiState(fixedInsulin = 0.0, totalInsulin = 3.5, hasResult = true)
+        val typed = opened.withFixedInsulin(1.25)
+        assertThat(typed.okVisible).isTrue()
+        assertThat(typed.deliveredInsulin).isEqualTo(1.25)
+        assertThat(typed.totalInsulin).isEqualTo(3.5)
+        assertThat(typed.withFixedInsulin(0.0).okVisible).isFalse()
+        assertThat(opened.copy(hasResult = false).withFixedInsulin(1.25).okVisible).isFalse()
+    }
+
+    @Test
+    fun `positive carbs leave manual mode and restore meal defaults`() {
+        val manual = WizardDialogUiState(fixedInsulin = 1.25, maxCarbs = 100, totalInsulin = 3.5, hasResult = true, okVisible = true, giveRestLater = false)
+        val meal = manual.withMealCarbs(30, autoFpu = true, unreliable = false, small = true)
+        assertThat(meal.insulinOnly).isFalse()
+        assertThat(meal.deliveredInsulin).isEqualTo(3.5)
+        assertThat(meal.carbs).isEqualTo(30)
+        assertThat(meal.fpuInstead).isTrue()
+        assertThat(meal.smallMeal).isTrue()
+        assertThat(meal.giveRestLater).isTrue()
+        // Wait for the meal calculation before allowing confirmation.
+        assertThat(meal.hasResult).isFalse()
+        assertThat(meal.okVisible).isFalse()
+        assertThat(meal.withMealCarbs(0, autoFpu = false, unreliable = false, small = false).insulinOnly).isFalse()
+    }
+
+    @Test
+    fun `zero carbs keep the entered dose and positive carbs respect unreliable defaults`() {
+        val manual = WizardDialogUiState(fixedInsulin = 1.25, maxCarbs = 100, giveRestLater = false)
+        assertThat(manual.withMealCarbs(0, true, true, true)).isEqualTo(manual)
+        val meal = manual.withMealCarbs(200, autoFpu = true, unreliable = true, small = false)
+        assertThat(meal.carbs).isEqualTo(100)
+        assertThat(meal.unreliableSmb).isTrue()
+        assertThat(meal.fpuInstead).isFalse()
+        assertThat(meal.smallMeal).isFalse()
+        assertThat(manual.copy(maxCarbs = 0).withMealCarbs(30, true, true, true).insulinOnly).isTrue()
+    }
+
+    // The BG field follows readings until the user edits it.
     @Test
     fun `the BG field follows new readings until the user edits it`() {
         val opened = WizardDialogUiState(bg = 6.1, bgAgeMinutes = 4, hasBgData = true)
@@ -232,7 +355,7 @@ internal class WizardDialogViewModelTest {
         mockingDetails(wizard).invocations.single { it.method.name == "doCalc" }.arguments
 
     @Test
-    fun `updateNotes and toggleAlarm update the state`() {
+    fun updateNotesAndToggleAlarmUpdateTheState() {
         sut.updateNotes("wizard note")
         sut.toggleAlarm(true)
 
