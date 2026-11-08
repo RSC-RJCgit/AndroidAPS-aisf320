@@ -21,6 +21,7 @@ import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
 import app.aaps.plugins.sync.nsShared.extensions.onlyNsIdAdded
 import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
 import app.aaps.plugins.sync.nsShared.warnIfVirtualUploads
+import app.aaps.plugins.sync.nsShared.ProfileStoreOwner
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import javax.inject.Inject
@@ -727,8 +728,10 @@ class DataSyncSelectorV3 @Inject constructor(
             // add for v3
             if (JsonHelper.safeGetLongAllowNull(profileJson, "date") == null)
                 profileJson.put("date", profileStore.getStartDate())
+            // Owner tag, so the fork's clients can tell this master's store from another master's (2026-11-08)
+            val taggedJson = ProfileStoreOwner.tagForUpload(profileJson, preferences)
             val now = dateUtil.now()
-            if (activePlugin.activeNsClient?.nsAdd("profile", DataSyncSelector.PairProfileStore(profileJson, now), "") == true)
+            if (activePlugin.activeNsClient?.nsAdd("profile", DataSyncSelector.PairProfileStore(taggedJson, now), "") == true)
                 confirmLastProfileStore(now)
         }
     }

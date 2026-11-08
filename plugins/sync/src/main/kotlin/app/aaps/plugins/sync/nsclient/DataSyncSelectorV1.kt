@@ -23,6 +23,7 @@ import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
 import app.aaps.plugins.sync.nsShared.extensions.onlyNsIdAdded
 import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
 import app.aaps.plugins.sync.nsShared.warnIfVirtualUploads
+import app.aaps.plugins.sync.nsShared.ProfileStoreOwner
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientBooleanKey
 import app.aaps.plugins.sync.nsclientV3.keys.NsclientLongKey
 import kotlinx.coroutines.CoroutineScope
@@ -858,7 +859,8 @@ class DataSyncSelectorV1 @Inject constructor(
             // add for v3
             if (JsonHelper.safeGetLongAllowNull(profileJson, "date") == null)
                 profileJson.put("date", profileStore.getStartDate())
-            val dataPair = DataSyncSelector.PairProfileStore(profileJson, dateUtil.now())
+            // Owner tag, so the fork's clients can tell this master's store from another master's (2026-11-08)
+            val dataPair = DataSyncSelector.PairProfileStore(ProfileStoreOwner.tagForUpload(profileJson, preferences), dateUtil.now())
             activePlugin.activeNsClient?.nsAdd("profile", dataPair, "")
             synchronized(dataPair) { dataPair.waitMillis(60000) }
             val now = dateUtil.now()

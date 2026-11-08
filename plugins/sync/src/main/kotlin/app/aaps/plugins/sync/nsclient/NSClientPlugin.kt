@@ -455,6 +455,9 @@ class NSClientPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.BgSourceUploadToNs, title = app.aaps.core.ui.R.string.do_ns_upload_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptCgmData, summary = R.string.ns_receive_cgm_summary, title = R.string.ns_receive_cgm))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptProfileStore, summary = R.string.ns_receive_profile_store_summary, title = R.string.ns_receive_profile_store))
+                // Profile-store owner (2026-11-08): who this master is, and whose profile store this phone takes.
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientProfileOwnerId, summary = R.string.ns_profile_owner_id_summary, title = R.string.ns_profile_owner_id))
+                addPreference(AdaptiveStringPreference(ctx = context, stringKey = StringKey.NsClientProfileAcceptFrom, summary = R.string.ns_profile_accept_from_summary, title = R.string.ns_profile_accept_from))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptTempTarget, summary = R.string.ns_receive_temp_target_summary, title = R.string.ns_receive_temp_target))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptProfileSwitch, summary = R.string.ns_receive_profile_switch_summary, title = R.string.ns_receive_profile_switch))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptInsulin, summary = R.string.ns_receive_insulin_summary, title = R.string.ns_receive_insulin))

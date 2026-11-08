@@ -32,6 +32,8 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.food.NSFood
@@ -410,16 +412,43 @@ class NsIncomingDataProcessor @Inject constructor(
             aapsLogger.debug(LTag.PROFILE, "Ignoring primary NS profile store: the secondary NS site provides it on this Virtual phone")
             return
         }
-        if (preferences.get(BooleanKey.NsClientAcceptProfileStore) || config.AAPSCLIENT || doFullSync) {
+        // 2026-11-08, per explicit request: a full sync no longer overrides "Receive profile store" on a master, so a store
+        // another master uploaded to the same site cannot replace this master's profiles.
+        if (preferences.get(BooleanKey.NsClientAcceptProfileStore) || config.AAPSCLIENT) {
             val store = profileStoreProvider.get().with(profileJson)
             val createdAt = store.getStartDate()
             val lastLocalChange = preferences.get(LongNonKey.LocalProfileLastChange)
             aapsLogger.debug(LTag.PROFILE, "Received profileStore: createdAt: $createdAt Local last modification: $lastLocalChange")
             if (createdAt > lastLocalChange || createdAt % 1000 == 0L) { // whole second means edited in NS
+                // Taken only from one uploader (ProfileStoreOwner, 2026-11-08); the secondary site keeps its own rule.
+                val owner = ProfileStoreOwner.identify(profileJson)
+                val decision =
+                    if (fromSecondary) ProfileStoreOwner.Decision.ACCEPT
+                    else ProfileStoreOwner.decide(owner, preferences.get(StringKey.NsClientProfileAcceptFrom))
+                if (decision == ProfileStoreOwner.Decision.IGNORE) {
+                    ignoreProfileStore(owner)
+                    return
+                }
                 profileSource.loadFromStore(store)
+                if (decision == ProfileStoreOwner.Decision.ACCEPT_AND_LEARN) {
+                    preferences.put(StringKey.NsClientProfileAcceptFrom, owner)
+                    aapsLogger.debug(LTag.PROFILE, "Profile store owner learned: $owner")
+                }
                 activePlugin.activeNsClient?.dataSyncSelector?.profileReceived(store.getStartDate())
                 aapsLogger.debug(LTag.PROFILE, "Received profileStore: $profileJson")
             }
+        }
+    }
+
+    /** A profile store from another uploader: logged every time, the notification once per uploader. */
+    private fun ignoreProfileStore(owner: String) {
+        val wanted = preferences.get(StringKey.NsClientProfileAcceptFrom).trim()
+        val text = "Profile store from $owner ignored: profiles are taken only from $wanted. " +
+            "Change \"Accept profile store only from\" in NSClient settings to switch."
+        aapsLogger.warn(LTag.PROFILE, text)
+        if (preferences.get(StringNonKey.NsClientProfileOwnerLastIgnored) != owner) {
+            preferences.put(StringNonKey.NsClientProfileOwnerLastIgnored, owner)
+            uiInteraction.addNotification(Notification.NS_PROFILE_OWNER_IGNORED, text, Notification.NORMAL)
         }
     }
 }

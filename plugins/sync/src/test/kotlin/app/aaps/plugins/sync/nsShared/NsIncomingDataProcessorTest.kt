@@ -11,6 +11,8 @@ import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.nssdk.localmodel.entry.Direction
 import app.aaps.core.nssdk.localmodel.entry.NSSgvV3
 import app.aaps.core.nssdk.localmodel.entry.NsUnits
@@ -297,6 +299,42 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         whenever(preferences.get(LongNonKey.LocalProfileLastChange)).thenReturn(localProfileTime)
 
         processor.processProfile(profileJson, doFullSync = false)
+        verify(profileSource, never()).loadFromStore(any())
+    }
+
+    /** nsnewrsc, 8 Nov 2026: a plain upstream phone uploaded its "Default" store and the clients lost their profiles */
+    @Test
+    fun `a profile store from another uploader is ignored`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileStore)).thenReturn(true)
+        whenever(preferences.get(LongNonKey.LocalProfileLastChange)).thenReturn(now - T.days(1).msecs())
+        whenever(preferences.get(StringKey.NsClientProfileAcceptFrom)).thenReturn("Live-A36")
+        whenever(preferences.get(StringNonKey.NsClientProfileOwnerLastIgnored)).thenReturn("")
+
+        processor.processProfile(JSONObject().put("defaultProfile", "Default").put("subject", "aaps-a15"), doFullSync = false)
+
+        verify(profileSource, never()).loadFromStore(any())
+        verify(preferences).put(StringNonKey.NsClientProfileOwnerLastIgnored, "ns:aaps-a15")
+    }
+
+    @Test
+    fun `the first profile store loaded teaches whose stores are taken`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileStore)).thenReturn(true)
+        whenever(preferences.get(LongNonKey.LocalProfileLastChange)).thenReturn(now - T.days(1).msecs())
+        whenever(preferences.get(StringKey.NsClientProfileAcceptFrom)).thenReturn("")
+
+        processor.processProfile(JSONObject().put("defaultProfile", "Default").put("aisfOwner", "Live-A36"), doFullSync = false)
+
+        verify(profileSource).loadFromStore(any())
+        verify(preferences).put(StringKey.NsClientProfileAcceptFrom, "Live-A36")
+    }
+
+    @Test
+    fun `a master with receive profile store off ignores it on a full sync too`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileStore)).thenReturn(false)
+        whenever(preferences.get(LongNonKey.LocalProfileLastChange)).thenReturn(now - T.days(1).msecs())
+
+        processor.processProfile(JSONObject(), doFullSync = true)
+
         verify(profileSource, never()).loadFromStore(any())
     }
 

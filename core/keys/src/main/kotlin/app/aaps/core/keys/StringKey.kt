@@ -75,6 +75,10 @@ enum class StringKey(
     NsClientApiSecret("nsclientinternal_api_secret", "", isPassword = true),
     NsClientWifiSsids("ns_wifi_ssids", "", dependency = BooleanKey.NsClientUseWifi),
     NsClientAccessToken("nsclient_token", "", isPassword = true),
+    // Profile-store owner (2026-11-08, per explicit request): this master tags its profile uploads with the ID (made on the
+    // first upload when empty); a receiver takes a store only from "accept from" (empty learns the first, "*" takes any).
+    NsClientProfileOwnerId("ns_profile_owner_id", ""),
+    NsClientProfileAcceptFrom("ns_profile_accept_from", ""),
     NsClientSecondaryUrl("nsclient_secondary_url", ""),
     /** Time zone of the replay source readings when they carry none themselves (2026-11-07, per explicit request) */
     NsClientSimulatorBgReplaySourceTimeZone("nsclient_simulator_bg_replay_source_tz", "Australia/Adelaide"),

@@ -147,6 +147,8 @@ open class Notification {
         // Primary NS v3 access token rejected (LoadStatus / WS auth). Throttled 24h in NSClientV3Plugin.
         const val NSCLIENT_TOKEN_FAILED = 96
         const val NSCLIENT_SIMULATOR_BG_REPLAY = 97
+        // A profile store from another uploader than the one this phone takes profiles from was ignored (2026-11-08)
+        const val NS_PROFILE_OWNER_IGNORED = 98
 
         const val USER_MESSAGE = 1000
 

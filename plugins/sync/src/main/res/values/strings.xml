@@ -77,6 +77,10 @@
     <string name="ns_upload">Upload data to NS</string>
     <string name="ns_receive_profile_store">Receive profile store</string>
     <string name="ns_receive_profile_store_summary">Synchronize profiles from NS profile editor</string>
+    <string name="ns_profile_owner_id">Profile owner ID</string>
+    <string name="ns_profile_owner_id_summary">This master marks its profile uploads with this ID. Filled in on the first upload; you can rename it.</string>
+    <string name="ns_profile_accept_from">Accept profile store only from</string>
+    <string name="ns_profile_accept_from_summary">Profiles are taken only from this uploader. Empty: learn the first one received. * : take any upload.</string>
     <string name="ns_receive_temp_target">Receive temporary targets</string>
     <string name="ns_receive_temp_target_summary">Accept temporary targets entered through NS or AAPSClient</string>
     <string name="ns_receive_profile_switch">Receive profile switches</string>

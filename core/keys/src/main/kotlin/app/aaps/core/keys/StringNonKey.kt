@@ -9,6 +9,8 @@ enum class StringNonKey(
 ) : StringNonPreferenceKey {
 
     NsClientSimulatorBgReplayRecovery("nsclient_simulator_bg_replay_recovery", "", exportable = false),
+    // The last profile-store identity that was ignored, so its notification is posted once (2026-11-08).
+    NsClientProfileOwnerLastIgnored("nsclient_profile_owner_last_ignored", "", exportable = false),
     NsClientSimulatorBgReplayUploadSkips("nsclient_simulator_bg_replay_upload_skips", "{}", exportable = false),
     NsClientSimulatorBgReplayUploads("nsclient_simulator_bg_replay_uploads", "[]", exportable = false),
     QuickWizard(key = "QuickWizard", defaultValue = "[]"),
