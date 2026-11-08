@@ -47,6 +47,7 @@ fun OverviewChipsColumn(
     tempTargetReason: TT.Reason?,
     tempTargetSceneManaged: Boolean = false,
     tbrState: TbrState,
+    tbrRate: Double? = null,
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
@@ -90,6 +91,7 @@ fun OverviewChipsColumn(
             tempTargetReason = tempTargetReason,
             tempTargetSceneManaged = tempTargetSceneManaged,
             tbrState = tbrState,
+            tbrRate = tbrRate,
             onNavigate = onNavigate,
             onTbrChipClick = onTbrChipClick,
             onTbrChipLongClick = onTbrChipLongClick,
@@ -129,6 +131,7 @@ private fun NarrowChips(
     tempTargetReason: TT.Reason?,
     tempTargetSceneManaged: Boolean,
     tbrState: TbrState,
+    tbrRate: Double? = null,
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     onTbrChipLongClick: () -> Unit = {},
@@ -181,6 +184,7 @@ private fun NarrowChips(
         // The "Client2-v4" label moved to the fixed corner line (VersionOverlay) on 2026-10-21, as in 3426.
         TbrChip(
             state = tbrState,
+            rate = tbrRate,
             onClick = onTbrChipClick,
             onLongClick = onTbrChipLongClick,
             onDoubleClick = onTbrChipDoubleClick

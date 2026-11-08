@@ -296,7 +296,9 @@ fun SecondaryGraphCompose(
     val needsActivity = primaryType == SeriesType.ACTIVITY || (activityOverlay && hasIob)
     val activityData = if (needsActivity) viewModel.activityGraphFlow.collectAsStateWithLifecycle().value else null
     // Basal overlay only when IOB is primary and single-axis (no room for basal with dual-axis)
-    val basalData = if (hasIob && !isDualAxis) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
+    // Fork: not here when Settings > AutoISF "Basal on the BG graph (as v3)" draws it on the BG graph instead.
+    val basalOnBgGraph = viewModel.graphDisplay.collectAsStateWithLifecycle().value.basalOnBgGraph
+    val basalData = if (hasIob && !isDualAxis && !basalOnBgGraph) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
 
     // Collect flow for secondary (right axis) series - (emptyList() if DEV and BGI together)
     val secondaryLineData = if (!isDualAxis) emptyList() else when (secondaryType) {

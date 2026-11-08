@@ -156,6 +156,7 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
         whenever(screen.preferences.observe(UnitDoubleKey.OverviewHighMark)).thenReturn(MutableStateFlow(180.0))
         whenever(screen.preferences.observe(UnitDoubleKey.OverviewLowMark)).thenReturn(MutableStateFlow(72.0))
         whenever(screen.preferences.observe(BooleanKey.VirtualShowStepText)).thenReturn(MutableStateFlow(true))
+        whenever(screen.preferences.observe(BooleanKey.OverviewBasalOnBgGraph)).thenReturn(MutableStateFlow(false))
         whenever(graphConfigRepository.graphConfigFlow).thenReturn(MutableStateFlow(GraphConfig()))
 
         // ----- ChipsViewModel: the three chip flows evaluate as soon as a composable collects them,

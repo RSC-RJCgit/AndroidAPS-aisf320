@@ -873,7 +873,9 @@ class OverviewDataCacheImpl(
         _tbrFlow.value = TbrDisplayData(
             state = state,
             timestamp = activeTb?.timestamp ?: 0L,
-            duration = activeTb?.duration ?: 0L
+            duration = activeTb?.duration ?: 0L,
+            rate = if (basalData.isTempBasalRunning) basalData.tempBasalAbsolute else basalData.basal,
+            computedAt = now
         )
     }
 

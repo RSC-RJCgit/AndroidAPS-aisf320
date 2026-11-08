@@ -110,9 +110,13 @@ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlin.math.roundToLong
 
 /** Series identifiers */
-/** Basal on BG graph — deprecated, now shown as flipped overlay on IOB graph. Set to true to restore. */
-@Deprecated("Basal moved to IOB graph as flipped overlay")
-private const val showBasalOnBgGraph = false
+
+/**
+ * Fork: share of the BG graph's height the highest basal reaches when "Basal on the BG graph (as v3)" is on. 3426 tops
+ * basal out just under the low mark (low mark / 1.2), which is about a fifth of a usual BG graph, so the columns stay
+ * below the BG readings. (The IOB graph's flipped basal keeps [BASAL_HEIGHT_FRACTION].)
+ */
+private const val BG_GRAPH_BASAL_HEIGHT_FRACTION = 0.22
 
 /** The announcement text Live writes for its Tier 3 UAM boost, drawn over the BG as on Live's main graph. */
 private const val UAM_BOOST_GRAPH_MARK = "B"
@@ -354,9 +358,9 @@ fun BgGraphCompose(
     val rawBasalData by viewModel.basalGraphFlow.collectAsStateWithLifecycle()
     val targetData by viewModel.targetLineFlow.collectAsStateWithLifecycle()
 
-    // Basal on BG graph is deprecated — now shown as flipped overlay on IOB graph instead.
+    // Basal is a flipped overlay on the IOB graph, unless Settings > AutoISF "Basal on the BG graph (as v3)" is on (fork).
     // Keep the layer structure intact (dummy data) to avoid chart restructuring.
-    @Suppress("DEPRECATION")
+    val showBasalOnBgGraph = graphDisplay.basalOnBgGraph
     val basalData = if (showBasalOnBgGraph) rawBasalData else BasalGraphData(emptyList(), emptyList(), 0.0)
     val epsPoints by viewModel.epsGraphFlow.collectAsStateWithLifecycle()
     val showActivity = SeriesType.ACTIVITY in bgOverlays && !automaticCleanGraph
@@ -1072,7 +1076,7 @@ fun BgGraphCompose(
 
     // Basal Y-axis range: maxBasal / BASAL_HEIGHT_FRACTION so basal occupies that fraction of chart height
     val basalMaxY = remember(basalData.maxBasal) {
-        if (basalData.maxBasal > 0.0) basalData.maxBasal / BASAL_HEIGHT_FRACTION else 1.0
+        if (basalData.maxBasal > 0.0) basalData.maxBasal / BG_GRAPH_BASAL_HEIGHT_FRACTION else 1.0
     }
 
     // =========================================================================
@@ -1296,7 +1300,7 @@ fun BgGraphCompose(
             lowMark = lowMark,
         )
     }
-    val basalPeaks = remember(basalData, nowTimestamp) {
+    val basalPeaks = remember(basalData, nowTimestamp, showBasalOnBgGraph) {
         if (showBasalOnBgGraph) hourlyPeaks(basalData.actualBasal, nowTimestamp, stepped = true) else emptyList()
     }
     val basalPeakLabel = remember(basalPeaks, minTimestamp, smbText, basalColor) {

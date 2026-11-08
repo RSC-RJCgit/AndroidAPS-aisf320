@@ -1,6 +1,7 @@
 package app.aaps.plugins.sync.nsclientV3
 
 import app.aaps.core.data.model.BCR
+import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.insulin.InsulinType
@@ -29,6 +30,7 @@ import app.aaps.core.nssdk.localmodel.treatment.NSProfileSwitch
 import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryBasal
 import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryTarget
 import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
+import app.aaps.core.objects.extensions.toJsonObject
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolusWizard
 import app.aaps.shared.tests.TestBaseWithProfile
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -379,6 +381,58 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         processor.processTreatments(treatments, doFullSync = false)
 
         verify(storeDataForDb).addToBoluses(argThat { iCfg == InsulinType.OREF_RAPID_ACTING.iCfg })
+    }
+
+    // Fork: a read-only client of a v3 master gets no insulin on any record. The insulin chosen in Insulin settings
+    // on that phone is used ahead of the running profile's, which is itself only an earlier guess there.
+    @Test
+    fun `read-only client stamps a bolus without an iCfg with the insulin chosen on this phone`() {
+        val chosen = ICfg(insulinLabel = "Lyumjev 45m 7h", peak = 45, dia = 7.0, concentration = 1.0)
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(StringNonKey.ReadOnlyClientInsulin)).thenReturn(chosen.toJsonObject().toString())
+
+        processor.processTreatments(listOf<NSTreatment>(bolusWithoutICfg()), doFullSync = false)
+
+        verify(storeDataForDb).addToBoluses(argThat { iCfg == chosen })
+    }
+
+    // A bolus that carries its own insulin (from a v4 master) keeps it, chosen insulin or not.
+    @Test
+    fun `read-only client keeps the insulin a bolus brings with it`() {
+        val chosen = ICfg(insulinLabel = "Lyumjev 45m 7h", peak = 45, dia = 7.0, concentration = 1.0)
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(StringNonKey.ReadOnlyClientInsulin)).thenReturn(chosen.toJsonObject().toString())
+
+        processor.processTreatments(listOf<NSTreatment>(bolusWithoutICfg().copy(iCfg = nsiCfg)), doFullSync = false)
+
+        verify(storeDataForDb).addToBoluses(argThat { iCfg.insulinLabel == "Fake" })
+    }
+
+    // Only a read-only client uses it: a normal client follows its master.
+    @Test
+    fun `client that is not read-only ignores a stored chosen insulin`() {
+        val chosen = ICfg(insulinLabel = "Lyumjev 45m 7h", peak = 45, dia = 7.0, concentration = 1.0)
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(false)
+        whenever(preferences.get(StringNonKey.ReadOnlyClientInsulin)).thenReturn(chosen.toJsonObject().toString())
+
+        processor.processTreatments(listOf<NSTreatment>(bolusWithoutICfg()), doFullSync = false)
+
+        verify(storeDataForDb).addToBoluses(argThat { iCfg == someICfg })
+    }
+
+    // A bad stored value must never stamp records; the running profile's insulin is used instead.
+    @Test
+    fun `read-only client with a bad stored insulin falls back to the running profile`() {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(StringNonKey.ReadOnlyClientInsulin)).thenReturn("not json")
+
+        processor.processTreatments(listOf<NSTreatment>(bolusWithoutICfg()), doFullSync = false)
+
+        verify(storeDataForDb).addToBoluses(argThat { iCfg == someICfg })
     }
 
     private fun bolusWithoutICfg() = NSBolus(

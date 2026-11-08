@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
@@ -42,6 +44,8 @@ import app.aaps.core.ui.compose.stringResourceOrNull
 fun TbrChip(
     state: TbrState,
     onClick: () -> Unit,
+    // Fork: the rate delivered now (U/h). When known the chip shows just this number, as 3426 does; null keeps the icon.
+    rate: Double? = null,
     onLongClick: () -> Unit = {},
     onDoubleClick: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -74,7 +78,12 @@ fun TbrChip(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier.padding(horizontal = AapsSpacing.medium)
             ) {
-                Icon(
+                if (rate != null) Text(
+                    text = formatBasalRate(rate),
+                    color = iconColor,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1
+                ) else Icon(
                     imageVector = state.toIcon(),
                     contentDescription = stringResourceOrNull(ElementType.TEMP_BASAL.label()),
                     tint = iconColor,
@@ -83,6 +92,12 @@ fun TbrChip(
             }
         }
     }
+}
+
+/** Fork: a basal rate with two decimals, e.g. 0.85 or 1.20. Locale-free, so it reads the same on every platform. */
+internal fun formatBasalRate(rate: Double): String {
+    val cents = kotlin.math.round(rate.coerceAtLeast(0.0) * 100).toLong()
+    return "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
 }
 
 /**

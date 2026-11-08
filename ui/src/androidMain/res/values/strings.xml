@@ -167,6 +167,7 @@
     <string name="insulin_external_update_message">A paired client changed the insulin configuration. Tap OK to load their changes and discard your unsaved edits, or Cancel to keep editing (your next save will overwrite theirs).</string>
     <string name="insulin_edit_target_gone">This insulin was removed elsewhere, so your edit could not be saved. The list has been reloaded.</string>
     <string name="insulin_activation_applied">Insulin activation applied</string>
+    <string name="insulin_saved_on_this_phone">%1$s saved on this phone. New records from the master use it. To restamp past records, reset the database in Maintenance.</string>
     <!-- Client→master round-trip pending dialog -->
     <string name="clientcontrol_pending_working_title">Applying…</string>
     <string name="clientcontrol_pending_working_text">Waiting for the master to confirm…</string>

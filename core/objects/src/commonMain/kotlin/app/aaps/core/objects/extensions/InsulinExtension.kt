@@ -4,6 +4,7 @@ import app.aaps.core.data.model.ICfg
 import app.aaps.core.utils.lenientDouble
 import app.aaps.core.utils.lenientLong
 import app.aaps.core.utils.lenientString
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -37,4 +38,15 @@ fun ICfg.Companion.fromJsonObject(json: JsonObject): ICfg {
     icfg.insulinNickname = json.lenientString("insulinNickname")
 
     return icfg
+}
+
+/**
+ * Reads one insulin stored as a JSON object in a String preference.
+ * Null when the text is blank or not a JSON object, or when the curve has no peak or no DIA, so a bad value can never
+ * stamp records with DIA 0.
+ */
+fun ICfg.Companion.fromStoredJson(json: String): ICfg? {
+    if (json.isBlank()) return null
+    val obj = runCatching { Json.parseToJsonElement(json) as? JsonObject }.getOrNull() ?: return null
+    return fromJsonObject(obj).takeIf { it.insulinEndTime > 0 && it.insulinPeakTime > 0 }
 }

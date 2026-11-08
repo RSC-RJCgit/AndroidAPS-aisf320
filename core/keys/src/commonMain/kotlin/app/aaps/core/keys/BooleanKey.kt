@@ -619,6 +619,14 @@ enum class BooleanKey(
         KeysStrings.pref_summary_show_graph_text,
         defaultedBySM = true
     ),
+    // Fork: basal drawn upright at the bottom of the BG graph, as in 3426, instead of hanging from the top of the IOB graph.
+    // Off by default (the v4 way). A display choice for this phone only.
+    OverviewBasalOnBgGraph(
+        "overview_basal_on_bg_graph",
+        false,
+        KeysStrings.pref_title_basal_on_bg_graph,
+        KeysStrings.pref_summary_basal_on_bg_graph
+    ),
     VirtualShowStepText(
         "virtual_show_step_text",
         true,

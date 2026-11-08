@@ -16,8 +16,11 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.HardLimits
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.extensions.fromStoredJson
+import app.aaps.core.objects.extensions.toJsonObject
 import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
@@ -258,6 +261,48 @@ internal class InsulinManagementViewModelTest {
         // and the active card still cannot be deleted
         assertThat(sut.deleteCurrentInsulin()).isFalse()
         verify(insulinManager, never()).removeInsulin(any())
+    }
+
+    // --- Fork: a read-only client keeps the activated insulin on this phone ---
+
+    @Test
+    fun activateOnAReadOnlyClientKeepsTheInsulinOnThisPhoneAndSendsNothing() = runBlocking {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(StringNonKey.ReadOnlyClientInsulin)).thenReturn("")
+        loadTwoInsulinsOnCard(1)
+
+        sut.prepareActivation()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val stored = argumentCaptor<String>()
+        verify(preferences).put(eq(StringNonKey.ReadOnlyClientInsulin), stored.capture())
+        assertThat(ICfg.fromStoredJson(stored.firstValue)?.insulinLabel).isEqualTo("B 75m 5h")
+        verify(batchExecutor, never()).prepare(any(), any(), any())
+    }
+
+    @Test
+    fun aReadOnlyClientShowsItsChosenInsulinAsTheActiveOne() {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(true)
+        whenever(preferences.get(StringNonKey.ReadOnlyClientInsulin)).thenReturn(icfg(1.0, "B").toJsonObject().toString())
+        loadTwoInsulinsOnCard(0)
+
+        assertThat(sut.uiState.value.activeInsulinLabel).isEqualTo("B 75m 5h")
+    }
+
+    @Test
+    fun activateOnANormalClientStillAsksTheMaster() = runBlocking {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientReadOnlyClient)).thenReturn(false)
+        whenever(batchExecutor.prepare(any(), any(), any())).thenReturn(app.aaps.core.interfaces.clientcontrol.ActionProgress.Unconfirmed(app.aaps.core.interfaces.clientcontrol.FailureReason.ReadOnlyClient))
+        loadTwoInsulinsOnCard(1)
+
+        sut.prepareActivation()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        verify(batchExecutor).prepare(any(), any(), any())
+        verify(preferences, never()).put(eq(StringNonKey.ReadOnlyClientInsulin), any<String>())
     }
 
     private fun icfg(concentration: Double, nickname: String = "Rapid"): ICfg =

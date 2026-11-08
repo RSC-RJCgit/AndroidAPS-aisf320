@@ -30,7 +30,9 @@ import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.extensions.fromStoredJson
 import app.aaps.core.objects.extensions.observeChange
+import app.aaps.core.objects.extensions.toJsonObject
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.clientcontrol.failText
 import app.aaps.core.ui.compose.ScreenMode
@@ -122,7 +124,7 @@ class InsulinManagementViewModel(
         viewModelScope.launch {
             if (reload) insulinManager.loadSettings()
             val insulins = insulinManager.insulins.map { it.deepClone() }
-            val activeICfg = profileFunction.getProfile()?.iCfg
+            val activeICfg = readOnlyClientICfg() ?: profileFunction.getProfile()?.iCfg
             // Only insulin with the currently-active concentration can be activated from Insulin Management.
             // null = no/unknown active profile → never matches a real concentration (avoids a defaulted 1.0
             // masquerading as U100 and lighting the Activate FAB for a just-saved U100 card).
@@ -176,7 +178,7 @@ class InsulinManagementViewModel(
 
     private suspend fun updateRunningInsulin() {
         val now = dateUtil.now()
-        val activeIcfg = persistenceLayer.getEffectiveProfileSwitchActiveAt(now)?.iCfg
+        val activeIcfg = readOnlyClientICfg() ?: persistenceLayer.getEffectiveProfileSwitchActiveAt(now)?.iCfg
         _uiState.update {
             it.copy(
                 activeInsulinLabel = it.insulins.labelOfInsulin(activeIcfg),
@@ -242,7 +244,7 @@ class InsulinManagementViewModel(
             // Refresh label AND concentration from the same active iCfg so the two active-* fields can
             // never describe different insulins (the FAB gate reads activeConcentration, isCurrentActive
             // reads activeInsulinLabel).
-            val activeICfg = profileFunction.getProfile()?.iCfg
+            val activeICfg = readOnlyClientICfg() ?: profileFunction.getProfile()?.iCfg
             _uiState.update {
                 it.copy(
                     insulins = insulins,
@@ -505,6 +507,10 @@ class InsulinManagementViewModel(
             try {
                 val state = uiState.value
                 val iCfg = state.insulins.getOrNull(state.currentCardIndex) ?: return@launch
+                if (readOnlyClient) {
+                    activateOnThisPhone(iCfg)
+                    return@launch
+                }
                 val label = rh.gs(CoreUiStrings.activate_insulin)
                 when (val prepared = batchExecutor.prepare(listOf(BatchAction.InsulinActivate(iCfg)), Sources.Insulin, label)) {
                     is ActionProgress.Prepared -> _sideEffect.emit(SideEffect.ShowConfirmation(prepared.id, prepared.lines))
@@ -537,6 +543,24 @@ class InsulinManagementViewModel(
                 result is ActionProgress.Rejected && !config.AAPSCLIENT                          -> result.detail?.let { showSnackbar(it) }
             }
         }
+    }
+
+    /**
+     * Fork: a read-only client sends no commands, and its master (v3) sends no insulin with its records. So Activate
+     * here keeps the choice on this phone ([StringNonKey.ReadOnlyClientInsulin]); NsIncomingDataProcessor stamps the
+     * master's records that come without an insulin with it.
+     */
+    private val readOnlyClient: Boolean
+        get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
+
+    /** The insulin chosen on this read-only client, or null (not read-only, nothing chosen, or a bad value). */
+    private fun readOnlyClientICfg(): ICfg? =
+        if (readOnlyClient) ICfg.fromStoredJson(preferences.get(StringNonKey.ReadOnlyClientInsulin)) else null
+
+    private fun activateOnThisPhone(iCfg: ICfg) {
+        preferences.put(StringNonKey.ReadOnlyClientInsulin, iCfg.toJsonObject().toString())
+        showSnackbar(rh.gs(UiStrings.insulin_saved_on_this_phone, iCfg.insulinLabel), EventShowSnackbar.Type.Info)
+        refreshData()
     }
 
     // Helpers

@@ -292,6 +292,7 @@ class MainViewModel(
             runningModeProgress = chip.runningModeProgress,
             runningModeRecordId = chip.runningModeRecordId,
             tbrState = chip.tbrState,
+            tbrRate = chip.tbrRate,
             smbEnabled = ev.smbEnabled,
             quickWizardItems = chip.quickWizardItems
         )
@@ -337,7 +338,9 @@ class MainViewModel(
 
         val tbrExpired = tbrData != null && tbrData.state != TbrState.NONE && tbrData.duration > 0
             && now >= tbrData.timestamp + tbrData.duration
-        if (tbrExpired) overviewDataCache.refreshTbr()
+        // Fork: the chip shows the rate, and the profile basal moves on with the clock, not with a DB change.
+        val tbrRateStale = tbrData != null && now - tbrData.computedAt >= TBR_RATE_REFRESH_MS
+        if (tbrExpired || tbrRateStale) overviewDataCache.refreshTbr()
 
         // TT progress and display text
         val ttProgress = if (ttIsFinite && !ttExpired) {
@@ -407,6 +410,7 @@ class MainViewModel(
             runningModeProgress = rmProgress,
             runningModeRecordId = if (rmExpired) 0 else rmData?.recordId ?: 0,
             tbrState = if (tbrExpired) TbrState.NONE else tbrData?.state ?: TbrState.NONE,
+            tbrRate = if (tbrExpired) null else tbrData?.rate,
             quickWizardItems = computeQuickWizardItems(rmData?.mode)
         )
     }
@@ -1193,5 +1197,9 @@ private data class ChipState(
     val runningModeProgress: Float = 0f,
     val runningModeRecordId: Long = 0,
     val tbrState: TbrState = TbrState.NONE,
+    val tbrRate: Double? = null,
     val quickWizardItems: List<QuickWizardItem> = emptyList()
 )
+
+/** Fork: how often the basal-rate chip re-reads the rate when nothing in the DB changed. */
+private const val TBR_RATE_REFRESH_MS = 5 * 60 * 1000L

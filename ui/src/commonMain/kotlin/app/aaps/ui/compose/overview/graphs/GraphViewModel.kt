@@ -57,6 +57,8 @@ data class GraphDisplay(
     /** False hides the text lines on the main graph and graph 5 (the hypoprediction line stays). Settings > AutoISF, or List 3. */
     val showTextLines: Boolean = true,
     val showStepText: Boolean = true,
+    /** Fork: Settings > AutoISF "Basal on the BG graph (as v3)": basal upright on the BG graph instead of on the IOB graph. */
+    val basalOnBgGraph: Boolean = false,
 ) {
     val showSmbArrows: Boolean get() = basalToggleIndex == 0
     val uniformGreenBg: Boolean get() = basalToggleIndex == 2
@@ -251,6 +253,9 @@ class GraphViewModel(
             .launchIn(viewModelScope)
         preferences.observe(BooleanKey.VirtualShowStepText)
             .onEach { show -> _graphDisplay.update { it.copy(showStepText = show) } }
+            .launchIn(viewModelScope)
+        preferences.observe(BooleanKey.OverviewBasalOnBgGraph)
+            .onEach { onBg -> _graphDisplay.update { it.copy(basalOnBgGraph = onBg) } }
             .launchIn(viewModelScope)
     }
 

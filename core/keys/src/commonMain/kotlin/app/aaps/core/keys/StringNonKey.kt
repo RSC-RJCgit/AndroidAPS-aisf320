@@ -107,6 +107,9 @@ enum class StringNonKey(
     CodedAutomationDecisions(key = "automation_coded_decisions", defaultValue = ""),
     QuickLaunchActions(key = "quick_launch_actions", defaultValue = "[{\"type\":\"bolus_wizard\"},{\"type\":\"plugin\",\"id\":\"NSClientSourcePlugin\"},{\"type\":\"quick_launch_config\"}]"),
     InsulinConfiguration("insulin_configuration", "{}", sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // Fork: the insulin a read-only client chose in Insulin settings (one ICfg as JSON, "" = none). This phone only, never
+    // synced: it stamps the master's records that arrive with no insulin (a v3 master sends none).
+    ReadOnlyClientInsulin(key = "read_only_client_insulin", defaultValue = ""),
     ComposeGraphConfig("compose_graphconfig", ""),
     // The tab the Statistics screen opens on: the last one used (per-device UI state, not a user-facing preference)
     StatsTab(key = "stats_tab", defaultValue = "", exportable = false),

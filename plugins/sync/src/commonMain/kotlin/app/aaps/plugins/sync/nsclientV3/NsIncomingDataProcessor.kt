@@ -51,6 +51,7 @@ import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryBasal
 import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryTarget
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
+import app.aaps.core.objects.extensions.fromStoredJson
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toBolusCalculatorResult
@@ -107,7 +108,14 @@ class NsIncomingDataProcessor(
      * install seeds. Read per record, not hoisted, so records later in a batch pick up a profile switch that
      * landed earlier in it.
      */
-    private fun fallbackICfg(): ICfg = profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.iCfg
+    // Fork: on a read-only client the insulin chosen in Insulin settings comes first. Its master (v3) sends no insulin
+    // at all, so the running profile's insulin here is itself only an earlier guess.
+    private fun fallbackICfg(): ICfg = readOnlyClientICfg() ?: profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.iCfg
+
+    private fun readOnlyClientICfg(): ICfg? =
+        if (config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient))
+            ICfg.fromStoredJson(preferences.get(StringNonKey.ReadOnlyClientInsulin))
+        else null
 
     /**
      * Whether BG from Nightscout is taken: when Nightscout is the BG source, when the user accepts CGM data
