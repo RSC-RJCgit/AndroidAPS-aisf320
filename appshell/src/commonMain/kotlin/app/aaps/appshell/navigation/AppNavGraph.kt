@@ -339,6 +339,11 @@ fun NavGraphBuilder.appNavGraph(
             onNavigateBack = { navController.safePopBackStack() },
             onShowDeliveryError = { comment ->
                 onShowDeliveryError(comment, CoreUiStrings.treatmentdeliveryerror)
+            },
+            // A pump bolus goes on in the calculator's insulin-only mode, which takes the Insulin dialog's place
+            onOpenCalculator = { insulin, notes ->
+                navController.safePopBackStack()
+                navController.navigate(AppRoute.WizardDialog.createRoute(notes = notes.ifEmpty { null }, insulin = insulin))
             }
         )
     }
@@ -388,6 +393,11 @@ fun NavGraphBuilder.appNavGraph(
                 defaultValue = null
             },
             navArgument("notes") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument("insulin") {
                 type = NavType.StringType
                 nullable = true
                 defaultValue = null
