@@ -165,6 +165,8 @@ enum class NotificationId(
     NSCLIENT_PAIRING_ORPHAN(NORMAL, SYNC),
     // A Virtual-pump master whose main site is its BG source: nothing is uploaded (2026-10-30)
     NSCLIENT_UPLOAD_TO_BG_SITE(IMPORTANT, SYNC),
+    // A profile store from another uploader than the one this phone takes profiles from was ignored (2026-11-08)
+    NS_PROFILE_OWNER_IGNORED(IMPORTANT, SYNC),
     OPEN_HUMANS_SIGNED_OUT(NORMAL, SYNC),
 
     // Sync — SMS

@@ -14,6 +14,7 @@
     <string name="ns_upload_stopped_real_looper_notification">Upload stopped: a real looper uses this Nightscout site. Use a separate site for uploading.</string>
     <string name="ns_upload_waiting_site_check">Upload waits for the site check</string>
     <string name="ns_upload_stopped_bg_site_notification">Upload stopped: the main Nightscout site is the BG source. Read BG from the second site and use a separate site for uploading.</string>
+    <string name="ns_profile_owner_ignored_notification">Profile store from %1$s ignored: profiles are taken only from %2$s. Change \"Accept profile store only from\" in NSClient settings to switch.</string>
 
     <!-- AAPSClient -->
 

@@ -169,6 +169,8 @@ enum class StringNonKey(
      * presets, scoped to the Nightscout URL it came from. Read again with each Trio profile, so not exported.
      */
     NsClientTrioPushInfo(key = "nsclient_trio_push_info", defaultValue = "", exportable = false),
+    // The last profile-store identity that was ignored, so its notification is posted once (2026-11-08).
+    NsClientProfileOwnerLastIgnored(key = "nsclient_profile_owner_last_ignored", defaultValue = "", exportable = false),
     SettingsMasterPasswordSecret(key = "settings_master_password_secret", defaultValue = "", exportable = false),
 
     // Role names saved before a stuck-high tier C escalation. Local only.

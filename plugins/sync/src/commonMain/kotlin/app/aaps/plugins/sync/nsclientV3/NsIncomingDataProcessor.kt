@@ -33,6 +33,8 @@ import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.TextRef.Companion.withArgs
+import app.aaps.plugins.sync.SyncStrings
 import app.aaps.plugins.sync.nsclientV3.data.trioProfileUnitsRecord
 import app.aaps.plugins.sync.nsclientV3.data.trioPushInfoRecord
 import app.aaps.core.utils.calibratedLibre
@@ -398,8 +400,12 @@ class NsIncomingDataProcessor(
      * channel, and accepting the Nightscout copy as well would give two writers for one list, fighting
      * through [LongNonKey.LocalProfileLastChange]. An **unpaired client** has no other source and needs
      * profiles to display and calculate with, so it keeps accepting them (read-only — it cannot edit).
-     * A **master** is unchanged: the user's `ns_receive_profile_store` setting decides.
+     * A **master** takes it only when the user's `ns_receive_profile_store` setting is on; a full sync no longer
+     * overrides that (2026-11-08), so a store another master uploaded cannot replace this master's profiles.
      * While a secondary Nightscout is on, the profile store comes from that site only.
+     *
+     * A store from the main site is also taken only from one uploader ([ProfileStoreOwner], 2026-11-08): the one in
+     * "Accept profile store only from", learned from the first store loaded when that is empty.
      */
     suspend fun processProfile(profileJson: JsonObject, doFullSync: Boolean, fromSecondary: Boolean = false) {
         if (!fromSecondary) {
@@ -413,7 +419,7 @@ class NsIncomingDataProcessor(
             fromSecondary -> true
             preferences.get(BooleanKey.NsClientSecondaryEnabled) -> false
             config.AAPSCLIENT -> !nsClient.masterOrPairedClientFlow.value
-            else -> preferences.get(BooleanKey.NsClientAcceptProfileStore) || doFullSync
+            else -> preferences.get(BooleanKey.NsClientAcceptProfileStore)
         }
         if (accept) {
             val store = profileStoreProvider().with(profileJson)
@@ -421,17 +427,41 @@ class NsIncomingDataProcessor(
             val lastLocalChange = preferences.get(LongNonKey.LocalProfileLastChange)
             aapsLogger.debug(LTag.PROFILE, "Received profileStore: createdAt: $createdAt Local last modification: $lastLocalChange")
             if (createdAt > lastLocalChange || createdAt % 1000 == 0L) { // whole second means edited in NS
+                val owner = ProfileStoreOwner.identify(profileJson)
+                val decision =
+                    if (fromSecondary) ProfileStoreOwner.Decision.ACCEPT
+                    else ProfileStoreOwner.decide(owner, preferences.get(StringKey.NsClientProfileAcceptFrom))
+                if (decision == ProfileStoreOwner.Decision.IGNORE) {
+                    ignoreProfileStore(owner)
+                    return
+                }
                 // Only acknowledge the profile to NS after a successful import. If the import
                 // fails (storage exception), leave NS believing the profile wasn't synced so it
                 // re-pushes on the next sync round.
                 val result = profileRepository.loadFromNs(store)
                 if (result.isSuccess) {
+                    if (decision == ProfileStoreOwner.Decision.ACCEPT_AND_LEARN) {
+                        preferences.put(StringKey.NsClientProfileAcceptFrom, owner)
+                        aapsLogger.debug(LTag.PROFILE, "Profile store owner learned: $owner")
+                    }
                     nsClient.dataSyncSelector.profileReceived(store.getStartDate())
                 } else {
                     aapsLogger.error(LTag.PROFILE, "loadFromNs failed; not acknowledging profile to NS", result.exceptionOrNull())
                 }
                 aapsLogger.debug(LTag.PROFILE, "Received profileStore: $profileJson")
             }
+        }
+    }
+
+    /** A profile store from another uploader: logged every time, the notification once per uploader. */
+    private fun ignoreProfileStore(owner: String) {
+        val wanted = preferences.get(StringKey.NsClientProfileAcceptFrom).trim()
+        val text = "Profile store from $owner ignored: profiles are taken only from $wanted"
+        aapsLogger.warn(LTag.PROFILE, text)
+        nsClientRepository.addLog("● IGNORED", text)
+        if (preferences.get(StringNonKey.NsClientProfileOwnerLastIgnored) != owner) {
+            preferences.put(StringNonKey.NsClientProfileOwnerLastIgnored, owner)
+            notificationManager.post(NotificationId.NS_PROFILE_OWNER_IGNORED, SyncStrings.ns_profile_owner_ignored_notification.withArgs(owner, wanted))
         }
     }
 

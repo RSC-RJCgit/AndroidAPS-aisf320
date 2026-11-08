@@ -465,6 +465,10 @@
     <string name="ns_bg_from_live_site_summary">On by default. BG comes from the site above, so it stays the Live site. Turn off to use this phone\'s own main NS site. One source, not a mix.</string>
     <string name="ns_secondary_receive_therapy_events">Also download device events from secondary NS</string>
     <string name="ns_secondary_receive_therapy_events_summary">Also pull sensor, site, insulin, and pump-battery changes from the secondary Nightscout, so cannula and sensor age on this phone stay correct. Turn off if this phone should not receive those events.</string>
+    <string name="ns_profile_owner_id">Profile owner ID</string>
+    <string name="ns_profile_owner_id_summary">This master marks its profile uploads with this ID. Filled in on the first upload; you can rename it.</string>
+    <string name="ns_profile_accept_from">Accept profile store only from</string>
+    <string name="ns_profile_accept_from_summary">Profiles are taken only from this uploader. Empty: learn the first one received. * : take any upload.</string>
     <string name="ns_secondary_url">Secondary NS URL</string>
     <string name="ns_secondary_url_summary" comment="Example of a Nightscout address.">Nightscout URL to download bolus and carbs from (for example https://mymainns.herokuapp.com)</string>
     <string name="ns_secondary_token">Secondary NS access token</string>

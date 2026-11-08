@@ -346,6 +346,21 @@ enum class StringKey(
         isPassword = true,
         validator = StringValidator.minLength(17)
     ),
+    // Profile-store owner (2026-11-08, per explicit request). A master tags its profile uploads with this ID; filled in
+    // on the first upload when empty. See ProfileStoreOwner in :plugins:sync.
+    NsClientProfileOwnerId(
+        key = "ns_profile_owner_id",
+        defaultValue = "",
+        title = KeysStrings.ns_profile_owner_id,
+        summary = KeysStrings.ns_profile_owner_id_summary
+    ),
+    // Which uploader's profile store this phone takes: empty learns the first one loaded, "*" takes any.
+    NsClientProfileAcceptFrom(
+        key = "ns_profile_accept_from",
+        defaultValue = "",
+        title = KeysStrings.ns_profile_accept_from,
+        summary = KeysStrings.ns_profile_accept_from_summary
+    ),
     NsClientSecondaryUrl(
         key = "nsclient_secondary_url",
         defaultValue = "",

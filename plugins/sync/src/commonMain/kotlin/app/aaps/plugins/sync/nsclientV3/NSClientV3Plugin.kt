@@ -1414,6 +1414,9 @@ class NSClientV3Plugin(
                     BooleanKey.BgSourceUploadToNs,
                     BooleanKey.NsClientAcceptCgmData,
                     BooleanKey.NsClientAcceptProfileStore,
+                    // Profile-store owner (2026-11-08): who this master is, and whose profile store this phone takes.
+                    StringKey.NsClientProfileOwnerId,
+                    StringKey.NsClientProfileAcceptFrom,
                     BooleanKey.NsClientAcceptTempTarget,
                     BooleanKey.NsClientAcceptProfileSwitch,
                     BooleanKey.NsClientAcceptInsulin,

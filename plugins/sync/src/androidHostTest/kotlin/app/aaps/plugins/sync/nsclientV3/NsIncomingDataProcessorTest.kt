@@ -544,6 +544,44 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         verifyBlocking(profileRepository, never()) { loadFromNs(any()) }
     }
 
+    /** nsnewrsc, 8 Nov 2026: a plain upstream phone uploaded its "Default" store and the clients lost their profiles */
+    @Test
+    fun `a profile store from another uploader is ignored`() = runTest {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(nsClient.masterOrPairedClientFlow).thenReturn(MutableStateFlow(false))
+        whenever(preferences.get(LongNonKey.LocalProfileLastChange)).thenReturn(now - T.days(1).msecs())
+        whenever(preferences.get(StringKey.NsClientProfileAcceptFrom)).thenReturn("Live-A36")
+        whenever(preferences.get(StringNonKey.NsClientProfileOwnerLastIgnored)).thenReturn("")
+
+        processor.processProfile(Json.parseToJsonElement("""{"defaultProfile":"Default","subject":"aaps-a15"}""").jsonObject, doFullSync = false)
+
+        verifyBlocking(profileRepository, never()) { loadFromNs(any()) }
+        verify(preferences).put(StringNonKey.NsClientProfileOwnerLastIgnored, "ns:aaps-a15")
+    }
+
+    @Test
+    fun `the first profile store loaded teaches whose stores are taken`() = runTest {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(nsClient.masterOrPairedClientFlow).thenReturn(MutableStateFlow(false))
+        whenever(preferences.get(LongNonKey.LocalProfileLastChange)).thenReturn(now - T.days(1).msecs())
+        whenever(preferences.get(StringKey.NsClientProfileAcceptFrom)).thenReturn("")
+
+        processor.processProfile(Json.parseToJsonElement("""{"defaultProfile":"Default","aisfOwner":"Live-A36"}""").jsonObject, doFullSync = false)
+
+        verifyBlocking(profileRepository) { loadFromNs(any()) }
+        verify(preferences).put(StringKey.NsClientProfileAcceptFrom, "Live-A36")
+    }
+
+    @Test
+    fun `a master with receive profile store off ignores it on a full sync too`() = runTest {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileStore)).thenReturn(false)
+        whenever(preferences.get(LongNonKey.LocalProfileLastChange)).thenReturn(now - T.days(1).msecs())
+
+        processor.processProfile(JsonObject(emptyMap()), doFullSync = true)
+
+        verifyBlocking(profileRepository, never()) { loadFromNs(any()) }
+    }
+
     /** rsnrjc, 7 Nov 2026: an AAPS phone re-saved its profile after Trio's, and the Client lost Trio */
     @Test
     fun `a profile that is not Trio's keeps the Trio details`() = runTest {

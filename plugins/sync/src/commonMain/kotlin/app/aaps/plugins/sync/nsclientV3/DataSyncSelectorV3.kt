@@ -1113,7 +1113,12 @@ class DataSyncSelectorV3(
             // v3 needs `date`, and the store always carries one - it is written unconditionally by the
             // single producer, ProfileRepositoryImpl.createAndStoreConvertedProfile, and pinned by a
             // test there. This used to patch it in when missing, which could never fire.
-            val profileJson = profileStore.getData()
+            // Mark the upload with this master's owner ID, so the fork's clients can tell it from another master's
+            // upload to the same site (2026-11-08). The ID is made on the first upload when the setting is empty.
+            val ownerId = preferences.get(StringKey.NsClientProfileOwnerId).trim().ifEmpty {
+                ProfileStoreOwner.newOwnerId().also { preferences.put(StringKey.NsClientProfileOwnerId, it) }
+            }
+            val profileJson = ProfileStoreOwner.tag(profileStore.getData(), ownerId)
             val now = dateUtil.now()
             if (nsClientV3Plugin().nsAdd("profile", DataSyncSelector.PairProfileStore(profileJson, now), "") == true)
                 confirmLastProfileStore(now)
