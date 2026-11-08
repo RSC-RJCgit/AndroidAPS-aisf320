@@ -1,0 +1,13 @@
+package app.aaps.pump.tandem.common.data.defs
+
+enum class RefreshData {
+    SEMAPHORE_HISTORY,
+    SEMAPHORE_EVENTS,
+    SEMAPHORE_NOTIFICATIONS,
+    PUMP_CANNULA_CHANGED,
+    PUMP_SITE_CHANGED,
+    PUMP_STATE_CHANGED,
+    REMINDER_CHANGED,
+    START_ACTIONS,
+    START_DATA
+}

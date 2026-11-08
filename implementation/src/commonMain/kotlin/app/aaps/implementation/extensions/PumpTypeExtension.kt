@@ -23,5 +23,6 @@ fun PumpType.Source.toUeSource(): Sources =
         PumpType.Source.Medtrum     -> Sources.Medtrum
         PumpType.Source.MDI         -> Sources.MDI
         PumpType.Source.VirtualPump -> Sources.VirtualPump
+        PumpType.Source.Tandem      -> Sources.Tandem
         else                        -> Sources.Unknown
     }

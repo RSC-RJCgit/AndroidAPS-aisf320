@@ -282,7 +282,7 @@ abstract class PumpPluginAbstract protected constructor(
         return try {
             deliverBolus(detailedBolusInfo)
         } finally {
-            triggerUIChange()
+            //triggerUIChange()
         }
     }
 
@@ -316,12 +316,16 @@ abstract class PumpPluginAbstract protected constructor(
                     .comment(app.aaps.core.ui.R.string.ok)
             }
         } finally {
-            triggerUIChange()
+            //triggerUIChange()
         }
     }
 
     protected fun refreshCustomActionsList() {
         rxBus.send(EventCustomActionsChanged())
+    }
+
+    protected open fun doCustomScheduledActions() {
+
     }
 
     override fun manufacturer(): ManufacturerType = pumpType.manufacturer()
@@ -330,7 +334,7 @@ abstract class PumpPluginAbstract protected constructor(
 
     protected abstract fun deliverBolus(detailedBolusInfo: DetailedBolusInfo): PumpEnactResult
 
-    protected abstract fun triggerUIChange()
+    //protected abstract fun triggerUIChange()
 
     private fun getOperationNotSupportedWithCustomText(resourceId: Int): PumpEnactResult =
         pumpEnactResultProvider().success(false).enacted(false).comment(resourceId)
@@ -374,8 +378,10 @@ abstract class PumpPluginAbstract protected constructor(
                 try {
                     if (isDriverInitialized && !isInPreventConnectMode()) {
                         val statusRefresh = workWithStatusRefresh(PumpDataRefreshAction.GetData, null, null)
-                        if (doWeHaveAnyStatusNeededRefereshing(statusRefresh) && !commandQueue.statusInQueue())
+                        if (doWeHaveAnyStatusNeededRefereshing(statusRefresh) && !commandQueue.statusInQueue()) {
                             commandQueue.readStatus("Scheduled Status Refresh")
+                        }
+                        doCustomScheduledActions()
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -420,10 +426,10 @@ abstract class PumpPluginAbstract protected constructor(
 
 
     protected fun doWeHaveAnyStatusNeededRefereshing(statusRefresh: Map<PumpDataRefreshType?, Long?>?): Boolean {
-        aapsLogger.debug(LTag.PUMP, "Do we have status needed to refresh: $statusRefresh, currentTime=${System.currentTimeMillis()}")
+        //aapsLogger.debug(LTag.PUMP, "Do we have status needed to refresh: $statusRefresh, currentTime=${System.currentTimeMillis()}")
         for ((key, value) in statusRefresh!!) {
             if (value == null) {
-                aapsLogger.error(LTag.PUMP, "We got key ($key}) with value null.")
+                //aapsLogger.error(LTag.PUMP, "We got key ($key}) with value null.")
                 continue
             }
             if (value > 0 && System.currentTimeMillis() > value) {

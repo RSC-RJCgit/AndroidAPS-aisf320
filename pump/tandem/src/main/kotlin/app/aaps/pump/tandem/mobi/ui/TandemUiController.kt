@@ -1,0 +1,227 @@
+package app.aaps.pump.tandem.mobi.ui
+
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.notifications.NotificationManager
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.pump.tandem.common.comm.ui.TandemUICommunication
+import app.aaps.pump.tandem.common.data.defs.RefreshData
+import app.aaps.pump.tandem.common.database.data.DbDataHandler
+import app.aaps.pump.tandem.common.database.data.defs.DatabaseQueryParameters
+import app.aaps.pump.tandem.common.database.data.defs.DatabaseTarget
+import app.aaps.pump.tandem.common.database.data.dto.TandemQualifyingEventDto
+import app.aaps.pump.tandem.common.driver.TandemPumpStatus
+import app.aaps.pump.tandem.common.driver.connector.TandemPumpConnector
+import app.aaps.pump.tandem.common.driver.tandemUiDataStore
+import app.aaps.pump.tandem.common.keys.TandemLongNonPreferenceKey
+import app.aaps.pump.tandem.common.util.TandemPumpUtil
+import com.jwoglom.pumpx2.pump.messages.Message
+import com.jwoglom.pumpx2.pump.messages.response.qualifyingEvent.QualifyingEvent
+import dev.zacsweers.metro.AppScope
+import java.time.LocalDateTime
+import java.time.ZoneId
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
+
+@SingleIn(AppScope::class)
+@Inject
+class TandemUiController(
+    var aapsLogger: AAPSLogger,
+    var tandemPumpStatus: TandemPumpStatus,
+    var tandemPumpUtil: TandemPumpUtil,
+    var preferences: Preferences,
+    var uiInteraction: app.aaps.core.interfaces.ui.UiInteraction,
+    var dbDataHandler: DbDataHandler,
+    var notificationManager: NotificationManager,
+    var tandemPumpConnector: TandemPumpConnector
+)   {
+
+    // TODO fix logs (I set a lot of them to error so that I can easily see what is happening)
+
+    companion object {
+        var TAG = LTag.PUMPCOMM
+    }
+
+    val ds = tandemUiDataStore
+    val setOfActions : MutableSet<RefreshData> = mutableSetOf()
+    lateinit var tandemUICommunication: TandemUICommunication
+
+
+    fun createTandemUiCommunication() {
+        tandemUICommunication = TandemUICommunication(dataStore = tandemUiDataStore,
+                                                      pumpStatus = tandemPumpStatus,
+                                                      aapsLogger= aapsLogger,
+                                                      uiInteraction = uiInteraction,
+                                                      notificationManager = notificationManager)
+
+        this.tandemUICommunication.tandemPumpCommunicationManager = tandemPumpConnector.getCommunicationManager()
+    }
+
+
+    fun disposeTandemUiCommunication(disposeType: AdditionalConfigurationScreens) {
+        aapsLogger.debug(
+            LTag.PUMP,
+            "disposeTandemUiCommunication($disposeType): preventQueueExecution before=${tandemPumpStatus.preventQueueExecution}"
+        )
+        if (disposeType==AdditionalConfigurationScreens.Actions) {
+            aapsLogger.info(LTag.PUMP, "Actions window was closed. Sending event to refresh.")
+
+            val list: MutableList<RefreshData> = mutableListOf()
+            list.addAll(setOfActions)
+
+            tandemPumpUtil.refreshPumpStatus(list)
+
+            setOfActions.clear()
+
+        } else if (disposeType== AdditionalConfigurationScreens.Data) {
+            aapsLogger.info(LTag.PUMP, "Data Activity was closed. Sending event to refresh.")
+            tandemPumpUtil.refreshPumpStatus(listOf(RefreshData.SEMAPHORE_EVENTS))
+        }
+
+        this.tandemUICommunication.tandemPumpCommunicationManager = null
+        tandemPumpStatus.preventQueueExecution = false
+        aapsLogger.debug(TAG, "disposeTandemUiCommunication($disposeType): done, preventQueueExecution=false")
+    }
+
+
+    enum class AdditionalConfigurationScreens {
+        Actions,
+        Data
+    }
+
+
+    fun sendPumpCommands(messages: List<Message>): Boolean {
+
+        if (tandemUiDataStore.pumpConnected.value==false) {
+            aapsLogger.warn(TAG, "sendPumpCommands not possible, because pump is not yet connected")
+            return false
+        }
+
+        val sb = StringBuilder()
+
+        for (msg in messages) {
+            sb.append(", ${msg.javaClass.name}")
+        }
+
+        val listText = sb.substring(2)
+
+        aapsLogger.warn(TAG, "PumpCommands to Send [commands=${listText}]")
+
+        if (!::tandemUICommunication.isInitialized) {
+            createTandemUiCommunication()
+        } else {
+            if (this.tandemUICommunication.tandemPumpCommunicationManager==null) {
+                this.tandemUICommunication.tandemPumpCommunicationManager = tandemPumpConnector.getCommunicationManager()
+            }
+        }
+
+        for (msg in messages) {
+            this.tandemUICommunication.sendCommand(msg)
+        }
+
+        return true
+
+    }
+
+
+    fun refreshMainAppData(refreshData: RefreshData) {
+        when(refreshData) {
+            RefreshData.SEMAPHORE_HISTORY       -> {
+                tandemPumpStatus.semaphoreHistory = false
+                tandemPumpStatus.semaphoreNeedsRefresh = true
+            }
+            RefreshData.SEMAPHORE_EVENTS        -> {
+                tandemPumpStatus.semaphoreEvents = false
+                tandemPumpStatus.semaphoreNeedsRefresh = true
+            }
+            RefreshData.SEMAPHORE_NOTIFICATIONS -> {
+                tandemPumpStatus.semaphoreNotifications = false
+                tandemPumpStatus.semaphoreNeedsRefresh = true
+            }
+            RefreshData.PUMP_STATE_CHANGED,
+            RefreshData.PUMP_SITE_CHANGED,
+            RefreshData.PUMP_CANNULA_CHANGED -> {
+                setOfActions.add(refreshData)
+            }
+            RefreshData.REMINDER_CHANGED -> {
+
+                if (ds.reminderDateTimeUpdated.value!=null && ds.reminderDateTimeUpdated.value!!) {
+
+                    val value = ds.reminderDateTime.value
+                    tandemPumpStatus.tandemSiteReminder = value
+
+                    aapsLogger.info(TAG, "Reminder Changed. Saving value in preferences: $value")
+
+                    if (value != null) {
+                        preferences.put(TandemLongNonPreferenceKey.SiteReminderDateTime, value)
+                    }
+                } else {
+                    aapsLogger.debug(TAG, "Reminder Hasn't updated")
+                }
+            }
+            RefreshData.START_ACTIONS       -> {
+                aapsLogger.debug(TAG, "UI workflow latch: preventQueueExecution = true (Actions screen started)")
+                tandemPumpStatus.preventQueueExecution = true
+                ds.reminderDateTime.value = tandemPumpStatus.tandemSiteReminder
+            }
+            RefreshData.START_DATA       -> {
+                aapsLogger.debug(TAG, "UI workflow latch: preventQueueExecution = true (Data screen started)")
+                tandemPumpStatus.preventQueueExecution = true
+            }
+        }
+    }
+
+
+    fun refreshDatabase(databaseTarget: DatabaseTarget, queryParameters: DatabaseQueryParameters) {
+        val jsonParamVal = tandemPumpUtil.gson.toJson(queryParameters)
+
+        aapsLogger.debug(TAG, "refreshDatabase: called with target=${databaseTarget.name} and parameters=$jsonParamVal")
+
+        when(databaseTarget) {
+            DatabaseTarget.QUALIFYING_EVENTS -> {
+
+                val currentQEItemsBlocking = dbDataHandler.getCurrentQEItemsBlocking()
+
+                val list: MutableList<TandemQualifyingEventDto> = mutableListOf()
+
+                for (entity in currentQEItemsBlocking) {
+                    val instantTime = java.time.Instant.ofEpochMilli(entity.dateTime)
+
+                    val eventDto = TandemQualifyingEventDto(
+                        dateTime = LocalDateTime.ofInstant(instantTime, ZoneId.systemDefault()),
+                        name = QualifyingEvent.valueOf(entity.name),
+                        description = if (entity.description==null) "" else  entity.description!!
+                    )
+
+                    list.add(eventDto)
+                }
+
+
+                val list2 = ds.dataQE.value!!
+
+                list2.clear()
+                list2.addAll(list)
+
+                ds.dataQELoaded.value = true
+
+                aapsLogger.debug(TAG, "QE Items ${list2.size}")
+
+            }
+            DatabaseTarget.PUMP_HISTORY      -> {
+
+                val list = dbDataHandler.getHistoryRecords(queryParameters)
+
+                val list2 = ds.dataHistory.value!!
+
+                list2.clear()
+                list2.addAll(list)
+
+                aapsLogger.debug(TAG, "History Items ${list2.size}")
+
+                ds.dataHistoryLoaded.value = true
+            }
+        }
+
+    }
+
+}

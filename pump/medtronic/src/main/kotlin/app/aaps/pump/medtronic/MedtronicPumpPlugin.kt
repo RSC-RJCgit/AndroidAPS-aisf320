@@ -248,7 +248,6 @@ class MedtronicPumpPlugin(
 
     override fun initPumpStatusData() {
         medtronicPumpStatus.lastConnection = preferences.get(RileyLinkLongKey.LastGoodDeviceCommunicationTime)
-        medtronicPumpStatus.lastDataTime = medtronicPumpStatus.lastConnection
         medtronicPumpStatus.previousConnection = medtronicPumpStatus.lastConnection
 
         aapsLogger.debug(LTag.PUMP, "initPumpStatusData: $medtronicPumpStatus")
@@ -619,7 +618,7 @@ class MedtronicPumpPlugin(
     override val baseBasalRate: PumpRate
         get() = PumpRate(medtronicPumpStatus.basalProfileForHour)
 
-    override fun triggerUIChange() {
+    fun triggerUIChange() {
         rxBus.send(EventMedtronicPumpValuesChanged())
     }
 

@@ -1,0 +1,229 @@
+package app.aaps.pump.tandem.common.driver
+
+import androidx.compose.runtime.compositionLocalOf
+import app.aaps.core.data.pump.defs.PumpDescription
+import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.pump.tandem.common.data.defs.TandemPumpApiVersion
+import app.aaps.pump.common.data.PumpStatus
+import app.aaps.pump.common.defs.BasalProfileStatus
+import app.aaps.core.interfaces.sharedPreferences.SP
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.pump.common.defs.BolusData
+import app.aaps.pump.common.defs.PumpConfigurationTypeInterface
+import app.aaps.pump.common.defs.PumpDriverMode
+import app.aaps.pump.tandem.common.comm.data.DisconnectDataDto
+import app.aaps.pump.tandem.common.comm.ui.TandemUIDataStore
+import app.aaps.pump.tandem.common.comm.ui.TandemUiStateWriter
+import app.aaps.pump.tandem.common.data.SemaphoreInfoDto
+import app.aaps.pump.tandem.common.driver.connector.response.HomeScreenMirrorDto
+import app.aaps.pump.tandem.common.driver.connector.response.PumpVersionDto
+import app.aaps.pump.tandem.common.events.TandemPairingStatus
+import com.jwoglom.pumpx2.pump.messages.response.currentStatus.AlarmStatusResponse
+import com.jwoglom.pumpx2.pump.messages.response.currentStatus.AlertStatusResponse
+import com.jwoglom.pumpx2.pump.messages.response.currentStatus.ApiVersionResponse
+import com.jwoglom.pumpx2.pump.messages.response.currentStatus.PumpFeaturesV1Response
+import com.jwoglom.pumpx2.pump.messages.response.currentStatus.PumpFeaturesV2Response
+import dev.zacsweers.metro.AppScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.*
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
+
+// Single concrete UI datastore instance. UI / UI-feed code uses this (read + write) via
+// [tandemUiDataStore] or the [LocalTandemDataStore] composition local.
+val tandemUiDataStore = TandemUIDataStore()
+
+// Backend (non-UI) handle — write-only view. Backend code references this, so accidental reads
+// of UI state from non-UI code do not compile. See TandemUiStateWriter / TandemUiState.
+var tandemDataStore: TandemUiStateWriter = tandemUiDataStore
+
+var LocalTandemDataStore = compositionLocalOf { tandemUiDataStore }
+
+@SingleIn(AppScope::class)
+@Inject
+class TandemPumpStatus(val rxBus: RxBus,
+                       val preferences: Preferences,
+                       private val aapsLogger: AAPSLogger
+) : PumpStatus(PumpType.TANDEM_MOBI_BT) {
+
+    companion object {
+        // Safety backstop: the UI workflow latch (preventQueueExecution / preventConnect) is
+        // released on navigation-leave, tab dispose and lifecycle events. If every release path
+        // is missed, this latch locked the Loop out overnight (2026-09-06: ~5.4h, no SMBs,
+        // PumpActivityFab stuck on, scheduled status refresh suppressed) because the latch
+        // carried no timestamp and its release is wired only to UI navigation/lifecycle events.
+        // Auto-release latches older than this TTL.
+        private const val UI_WORKFLOW_LATCH_TTL_MS = 30 * 60_000L
+    }
+
+    lateinit var pumpDescription: PumpDescription
+
+    // tandem pump firmware
+    val tandemPumpFirmwareFlow = MutableStateFlow(TandemPumpApiVersion.Unknown)
+    var tandemPumpFirmware: TandemPumpApiVersion
+        get() = tandemPumpFirmwareFlow.value
+        set(value) {
+            tandemPumpFirmwareFlow.value = value
+        }
+
+    // Connection state — backend source of truth for delivery availability.
+    // Mirrored to tandemDataStore.pumpConnected for the UI.
+    val pumpConnectedFlow = MutableStateFlow(false)
+
+
+    // serial Number
+    val serialNumberFlow = MutableStateFlow<Long>(0)
+    var serialNumber: Long
+        get() = serialNumberFlow.value
+        set(value) {
+            serialNumberFlow.value = value
+        }
+
+    // semaphore info
+    val semaphoreInfoFlow = MutableStateFlow(SemaphoreInfoDto())
+    var semaphoreInfo: SemaphoreInfoDto
+        get() = semaphoreInfoFlow.value
+        set(value) {
+            semaphoreInfoFlow.value = value
+        }
+
+    var pumpDriverMode : PumpDriverMode? = null
+
+    var baseBasalRate = 0.0
+    var basalProfileStatus = BasalProfileStatus.NotInitialized
+    var basalProfile: Profile? = null
+
+    override var basalsByHour: DoubleArray? = null
+        set(value) {
+            field = value
+            basalProfileStatus = BasalProfileStatus.ProfileOK
+        }
+
+
+    // UI workflow latch: latched by TandemUiController.refreshMainAppData(START_ACTIONS/START_DATA)
+    // when the Actions/Data screens start, released on navigation-leave / tab dispose /
+    // lifecycle events. preventQueueExecutionSinceMs records when it was latched so a missed
+    // release can be detected (and bounded by isQueueExecutionPrevented()).
+    // NOTE: preventConnect is deliberately NOT part of this latch — it belongs to the
+    // cartridge-change workflow only (setCartridgeChangeMode), per the b14f1abb52 narrowing.
+    var preventQueueExecutionSinceMs = 0L
+        private set
+
+    var preventQueueExecution = false
+        set(value) {
+            if (value != field) {
+                aapsLogger.info(LTag.PUMP, "preventQueueExecution -> $value")
+            }
+            if (value && !field) preventQueueExecutionSinceMs = System.currentTimeMillis()
+            if (!value) preventQueueExecutionSinceMs = 0L
+            field = value
+        }
+
+    /**
+     * Latch state with TTL backstop. Returns true while the UI workflow latch is active; a latch
+     * older than [UI_WORKFLOW_LATCH_TTL_MS] is auto-released so a missed unlatch cannot lock the
+     * Loop out indefinitely. The caller (TandemMobiPumpPlugin.isBusy) clears any latched
+     * preventConnect it observes alongside a stale release.
+     */
+    fun isQueueExecutionPrevented(): Boolean {
+        if (!preventQueueExecution) return false
+        val sinceMs = preventQueueExecutionSinceMs
+        if (sinceMs > 0L && System.currentTimeMillis() - sinceMs > UI_WORKFLOW_LATCH_TTL_MS) {
+            aapsLogger.error(
+                LTag.PUMP,
+                "UI workflow latch stale (${(System.currentTimeMillis() - sinceMs) / 60000} min) - auto-releasing preventQueueExecution (paired preventConnect must also be cleared by caller)"
+            )
+            preventQueueExecution = false
+        }
+        return preventQueueExecution
+    }
+
+    // Tandem specific
+    var pumpStatusMirror: HomeScreenMirrorDto? = null
+    var settings: MutableMap<PumpConfigurationTypeInterface, Any>? = null
+    var featuresV2: PumpFeaturesV2Response? = null
+    var featuresV1: PumpFeaturesV1Response? = null
+    var tandemPumpVersion : PumpVersionDto? = null
+    var tandemAlerts : Set<AlertStatusResponse.AlertResponseType>? = null
+    var tandemAlarms : Set<AlarmStatusResponse.AlarmResponseType>? = null
+    var tandemLastBolus: BolusData? = null
+    var tandemSiteReminder: Long? = null
+    var apiVersionResponse: ApiVersionResponse? = null
+
+    var semaphoreNotifications: Boolean = false
+        set(value) {
+            field = value
+            semaphoreInfo = SemaphoreInfoDto(value, semaphoreEvents, semaphoreHistory, semaphoreNeedsRefresh)
+        }
+    var semaphoreEvents = false
+        set(value) {
+            field = value
+            semaphoreInfo = SemaphoreInfoDto(semaphoreNotifications, value, semaphoreHistory, semaphoreNeedsRefresh)
+        }
+    var semaphoreHistory = false
+        set(value) {
+            field = value
+            semaphoreInfo = SemaphoreInfoDto(semaphoreNotifications, semaphoreEvents, value, semaphoreNeedsRefresh)
+        }
+    var semaphoreNeedsRefresh = false
+        set(value) {
+            field = value
+            semaphoreInfo = SemaphoreInfoDto(semaphoreNotifications, semaphoreEvents, semaphoreHistory, value)
+        }
+
+    var disconnectData: DisconnectDataDto? = null
+
+
+    fun initSettings() {
+        activeProfileName = "UNKNOWN"
+        reservoirRemainingUnits = 0.0
+        basalProfileStatus = BasalProfileStatus.NotInitialized
+        reservoirFullUnits = when {
+            pumpType == PumpType.TANDEM_MOBI_BT -> 200
+            else -> 300
+        }
+        batteryRemaining = 0
+        lastConnection = 0L //sp.getLong(TandemPumpConst.Statistics.LastGoodPumpCommunicationTime, 0L)
+        //lastDataTime = lastConnection
+    }
+
+    fun resetPumpSettings() {
+        // we are storing some pump settings which need to be deleted if pump changes (is unpaired)
+        initSettings()
+        pumpStatusMirror = null
+        tandemPumpFirmware = TandemPumpApiVersion.Unknown
+        basalProfile = null
+        basalProfileStatus = BasalProfileStatus.NotInitialized
+        serialNumber = 0
+        //errorDescription = null
+        basalsByHour = null
+    }
+
+
+    val basalProfileForHour: Double
+        get() {
+            if (basalsByHour != null) {
+                val c = GregorianCalendar()
+                val hour = c[Calendar.HOUR_OF_DAY]
+                return basalsByHour!![hour]
+            }
+            return 0.0
+        }
+
+    var lastPairingStatus: TandemPairingStatus = TandemPairingStatus.Unknown
+
+    override val errorInfo: String
+        get() = "-"
+
+
+    override fun updateLastConnectionInFragment() {
+    }
+
+    init {
+        initSettings()
+    }
+}

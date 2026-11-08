@@ -17,6 +17,11 @@ dependencies {
     implementation(project(":core:interfaces"))
     implementation(project(":core:utils"))
     implementation(project(":core:ui"))
+    implementation(project(":implementation"))
+
+    testImplementation(project(":shared:tests"))
+    testImplementation(project(":shared:impl"))
+    testImplementation(project(":core:objects"))
 
     // XStream is gone: PumpSyncStorage was its only user in the whole repo, and it needed
     // AnyTypePermission.ANY to work, which switches off the type allowlist entirely.

@@ -31,6 +31,7 @@ composeUi = "1.12.1"
 # composeBom still decides the Android versions.
 composeMultiplatform = "1.12.2"
 jetbrainsLifecycle = "2.11.0"
+navigationCompose = "2.9.8"
 
 [plugins]
 android-library = { id = "com.android.library" }
@@ -233,6 +234,7 @@ androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-te
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 sh-calvin-reorderable = { group = "sh.calvin.reorderable", name = "reorderable", version = "3.1.0" }
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version = "1.2.0" }
+androidx-compose-navigation = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 
 # Compose Multiplatform. Explicit coordinates rather than the `compose.xxx` DSL accessors, which
 # are deprecated since 1.11.1.
@@ -254,4 +256,12 @@ jetbrains-androidx-compose-navigation = { module = "org.jetbrains.androidx.navig
 jetbrains-androidx-navigationevent-compose = { module = "org.jetbrains.androidx.navigationevent:navigationevent-compose", version = "1.1.0" }
 jetbrains-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version = "1.9.0" }
 jetbrains-compose-material-icons-extended = { module = "org.jetbrains.compose.material:material-icons-extended", version = "1.7.3" }
+
+# Tandem
+com-jakewharton-timber = { group = "com.jakewharton.timber", name = "timber", version="5.0.1" }
+com-github-weliem-blessed-android = { group = "com.github.weliem", name = "blessed-android", version="2.4.0" }
+io-github-vanpra-compose-dialogs-datetime = { group = "io.github.vanpra.compose-material-dialogs", name = "datetime", version="0.9.0" }
+com-github-jwoglom-pumpx2-android = { group = "com.github.jwoglom.pumpX2", name = "pumpx2-android", version="v1.9.3" }
+androidx-compose-runtime-livedata = { group = "androidx.compose.runtime", name = "runtime-livedata" }
+androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 

@@ -60,7 +60,6 @@ class MedtronicPumpStatus(
         if (medtronicPumpMap.isEmpty()) createMedtronicPumpMap()
         if (medtronicDeviceTypeMap.isEmpty()) createMedtronicDeviceTypeMap()
         lastConnection = preferences.get(MedtronicLongNonKey.LastGoodPumpCommunicationTime)
-        lastDataTime = lastConnection
         this.tempBasalLegacyMode = true
     }
 

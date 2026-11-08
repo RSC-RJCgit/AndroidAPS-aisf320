@@ -63,6 +63,7 @@
     <string name="time_frame_minutes" comment="A duration in minutes, short. The mark after the number means minutes. %1$d=minutes. Example: 30'">%1$d\'</string>
     <string name="time_frame_in_parentheses" comment="A duration in brackets. %1$s=the duration. Example: (1h 30')">(%1$s)</string>
     <string name="time_value_with_unit" comment="%1$s=a number, %2$s=the time unit, like minutes or days. Example: 5 minutes">%1$s %2$s</string>
+    <string name="now">Now</string>
 
     <!-- Rx -->
     <string name="connecting_for">Connecting for %1$d s</string>

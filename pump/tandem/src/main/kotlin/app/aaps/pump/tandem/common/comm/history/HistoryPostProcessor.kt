@@ -1,0 +1,160 @@
+package app.aaps.pump.tandem.common.comm.history
+
+import app.aaps.core.data.model.TE
+import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.pump.PumpInsulin
+import app.aaps.core.interfaces.pump.PumpSync
+import app.aaps.pump.tandem.common.database.data.DbDataHandler
+import app.aaps.pump.tandem.common.database.data.entity.TandemSiteChangeEntity
+import app.aaps.pump.tandem.common.driver.TandemPumpStatus
+import app.aaps.pump.tandem.common.util.TandemPumpUtil
+import com.jwoglom.pumpx2.pump.messages.response.historyLog.BolusCompletedHistoryLog
+import com.jwoglom.pumpx2.pump.messages.response.historyLog.CannulaFilledHistoryLog
+import com.jwoglom.pumpx2.pump.messages.response.historyLog.CartridgeFilledHistoryLog
+import com.jwoglom.pumpx2.pump.messages.response.historyLog.HistoryLog
+import dev.zacsweers.metro.AppScope
+import kotlinx.coroutines.runBlocking
+import dev.zacsweers.metro.Inject
+import dev.zacsweers.metro.SingleIn
+
+import kotlin.math.abs
+
+@SingleIn(AppScope::class)
+@Inject
+class HistoryPostProcessor(
+    val pumpStatus: TandemPumpStatus,
+    val aapsLogger: AAPSLogger,
+    val pumpSync: PumpSync,
+    val persistenceLayer: PersistenceLayer,
+    val dbDataHandler: DbDataHandler,
+    val tandemPumpUtil: TandemPumpUtil
+) {
+
+    var historyPrefix = ""
+
+    companion object {
+        val TAG = LTag.PUMPCOMM
+    }
+
+
+    fun setupHistoryPostProcessor(debugHistory: Boolean) {
+        historyPrefix = if (debugHistory) "HST: " else ""
+    }
+
+
+    fun postProcessHistory(historyLogs: MutableCollection<HistoryLog>) {
+
+        for (historyLog in historyLogs) {
+
+            when(historyLog) {
+
+                is CannulaFilledHistoryLog -> {
+
+                    aapsLogger.debug(TAG, "${historyPrefix}PostProcess - NS Cannula Change -> CannulaFilledHistoryLog")
+
+                    runBlocking {
+
+                        val listSiteChanges = dbDataHandler.getUnassignedSiteChanges()
+                        val timestamp = historyLog.pumpTimeSecInstant.toEpochMilli()
+                        val siteChangeRecord = findSiteChangeNearestToHistory(timestamp, listSiteChanges)
+
+                        aapsLogger.debug(TAG, "debug: TimeStamp Of History Log: ${historyLog.pumpTimeSecInstant}" )
+
+                        pumpSync.insertTherapyEventIfNewWithTimestamp(
+                            timestamp = timestamp,
+                            type = TE.Type.CANNULA_CHANGE,
+                            note = null,
+                            pumpId = historyLog.sequenceNum,
+                            pumpType = pumpStatus.pumpType,
+                            pumpSerial = pumpStatus.serialNumber.toString()
+                        )
+
+                        if (siteChangeRecord!=null) {
+
+                            aapsLogger.debug(TAG, "Site change Record found: $siteChangeRecord")
+
+                            val location = siteChangeRecord.siteLocation?.let {
+                                runCatching { TE.Location.valueOf(it) }.getOrNull()
+                            }
+
+                            val arrow = siteChangeRecord.siteArrow?.let {
+                                runCatching { TE.Arrow.valueOf(it) }.getOrNull()
+                            }
+
+                            val therapyEventDataFromTimeList = persistenceLayer.getTherapyEventDataFromTime(
+                                timestamp = timestamp,
+                                type = TE.Type.CANNULA_CHANGE,
+                                ascending = true
+                            )
+
+                            val te = therapyEventDataFromTimeList[0]
+
+                            aapsLogger.debug(TAG, "Found Theraphy Event and updating it: $te")
+
+                            persistenceLayer.insertOrUpdateTherapyEvent(te.copy(location = location, arrow = arrow))
+
+                            dbDataHandler.updateSiteChangeWithStoredTrue(siteChangeRecord)
+
+                        }
+                    }
+                }
+
+                is CartridgeFilledHistoryLog -> {
+
+                    aapsLogger.debug(TAG, "${historyPrefix}PostProcess - NS Insulin Change -> CartridgeFilledHistoryLog")
+
+                    runBlocking {
+                        pumpSync.insertTherapyEventIfNewWithTimestamp(
+                            timestamp = historyLog.pumpTimeSecInstant.toEpochMilli(),
+                            type = TE.Type.INSULIN_CHANGE,
+                            note = null,
+                            pumpId = historyLog.sequenceNum,
+                            pumpType = pumpStatus.pumpType,
+                            pumpSerial = pumpStatus.serialNumber.toString()
+                        )
+                    }
+                }
+
+                is BolusCompletedHistoryLog -> {
+                    runBlocking {
+
+                        aapsLogger.debug(TAG, "${historyPrefix}PostProcess - Bolus - $historyLog")
+
+                        pumpSync.syncBolusWithPumpId(
+                            timestamp = historyLog.pumpTimeSecInstant.toEpochMilli(),
+                            amount = PumpInsulin(historyLog.insulinDelivered.toDouble()),
+                            pumpId = tandemPumpUtil.getPrefixedIdForDb(pumpEventId = historyLog.bolusId.toLong(), isBolus = true),
+                            pumpType = pumpStatus.pumpType,
+                            pumpSerial = pumpStatus.serialNumber.toString(),
+                            type = null
+                        )
+                    }
+                }
+
+                else -> {
+                    // only if needed for debugging
+                    //aapsLogger.error(TAG, "${historyPrefix}Ignored Entry ${historyLog}")
+                }
+            }
+        }
+    }
+
+
+    fun findSiteChangeNearestToHistory(targetTime: Long, items: List<TandemSiteChangeEntity>?): TandemSiteChangeEntity? {
+
+        if (!items.isNullOrEmpty()) {
+            val item = items
+                .minByOrNull { abs(it.dateTime - targetTime) }
+                ?.takeIf {
+                    abs(it.dateTime - targetTime) <= 30_000L
+                }
+
+            return item
+        }
+        return null
+    }
+
+
+}
