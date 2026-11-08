@@ -173,3 +173,4 @@ wear/pumpcontrol/*
 /doc_review_work/careportal_complete_0815/page-17.png
 /doc_review_work/careportal_complete_0815/page-18.png
 /tools/replace_manual_appendix_d.py
+__pycache__/
