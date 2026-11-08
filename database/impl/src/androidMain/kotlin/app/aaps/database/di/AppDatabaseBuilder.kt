@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase.Callback
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import app.aaps.database.AppDatabase
+import app.aaps.database.V3ForkDatabaseRepair
 
 /**
  * Builds the Room database. Not a DI module any more - `DatabaseBindings` provides the instance and
@@ -17,8 +18,9 @@ import app.aaps.database.AppDatabase
  */
 open class AppDatabaseBuilder {
 
-    internal fun provideAppDatabase(context: Context, fileName: String) =
-        Room
+    internal fun provideAppDatabase(context: Context, fileName: String): AppDatabase {
+        repairV3ForkDatabase(context, fileName)
+        return Room
             .databaseBuilder(context, AppDatabase::class.java, fileName)
             // Bundled SQLite driver: ships its own SQLite compiled from source instead of the
             // device's framework SQLite. This is Google's recommended driver (consistent engine
@@ -32,10 +34,34 @@ open class AppDatabaseBuilder {
                 override fun onOpen(connection: SQLiteConnection) {
                     super.onOpen(connection)
                     createCustomIndexes(connection)
+                    // Fork: bring the v3 AutoISF history across after a v3 fork database was upgraded in place.
+                    V3ForkDatabaseRepair.copyKeptRowsAfterOpen(connection)
                 }
             })
             .fallbackToDestructiveMigration(false)
             .build()
+    }
+
+    /**
+     * Fork (2026-11-08): a database left by the v3 AutoISF fork (3426) is set back to the version v4 shares with it,
+     * so Room can upgrade it with v4's own steps. See [V3ForkDatabaseRepair]. Any error here is only reported: Room
+     * then opens the file as before and shows its own error.
+     */
+    private fun repairV3ForkDatabase(context: Context, fileName: String) {
+        val file = context.getDatabasePath(fileName)
+        if (!file.exists()) return
+        try {
+            val connection = BundledSQLiteDriver().open(file.absolutePath)
+            try {
+                if (V3ForkDatabaseRepair.repairBeforeOpen(connection))
+                    android.util.Log.i("AAPS-DB", "v3 fork database set back to version ${V3ForkDatabaseRepair.REWIND_VERSION} for v4's upgrade")
+            } finally {
+                connection.close()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AAPS-DB", "v3 fork database check failed", e)
+        }
+    }
 
     /**
      * In-memory copy of the same database, used by the instrumented tests.
