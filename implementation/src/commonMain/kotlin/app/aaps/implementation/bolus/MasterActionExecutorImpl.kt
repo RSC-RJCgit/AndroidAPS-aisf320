@@ -550,7 +550,6 @@ class MasterActionExecutorImpl(
         )
     }
 
-    override suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller?): MasterActionExecutor.PrepareResult {
     /** "Direct 2.00 U, calculator suggested 1.40 U" for a dose typed in the calculator's insulin-only mode. */
     private fun directInsulinText(wizard: BolusWizard): String =
         rh.gs(InterfacesStrings.wizard_direct_insulin, wizard.calculatedTotalInsulin, wizard.suggestedInsulin ?: 0.0)
@@ -558,6 +557,7 @@ class MasterActionExecutorImpl(
     private fun directInsulinNote(wizard: BolusWizard, note: String): String =
         if (note.isEmpty()) directInsulinText(wizard) else rh.gs(InterfacesStrings.wizard_notes_join, directInsulinText(wizard), note)
 
+    override suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller?): MasterActionExecutor.PrepareResult {
         val bolus = actions.filterIsInstance<BatchAction.Bolus>().firstOrNull()
         val tt = actions.filterIsInstance<BatchAction.TempTarget>().firstOrNull() // ≤1 by construction
         val ps = actions.filterIsInstance<BatchAction.ProfileSwitch>().firstOrNull() // ≤1 by construction
