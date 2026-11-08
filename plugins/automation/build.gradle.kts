@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.metro)
+    // The compiler plugin that generates serializers. CodedLocations' SlotState is @Serializable, and without this
+    // the first save of a location state crashed the app (Flip5, 8 Nov 2026: "Serializer for class 'SlotState' is
+    // not found").
+    id("kotlinx-serialization")
 }
 
 registerKeyStrings("automation")
