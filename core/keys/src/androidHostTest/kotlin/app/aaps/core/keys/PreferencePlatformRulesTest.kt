@@ -75,6 +75,7 @@ class PreferencePlatformRulesTest {
             "ios_keep_running_in_background", setOf(AppPlatform.Ios),
             "ios_reload_when_no_bg", setOf(AppPlatform.Ios),
             "ios_rileylink_heartbeat", setOf(AppPlatform.Ios),
+            "ios_heartbeat_show_on_overview", setOf(AppPlatform.Ios),
             "ios_rileylink_status", setOf(AppPlatform.Ios),
             "ios_heartbeat_check_others", setOf(AppPlatform.Ios),
             "ios_heartbeat_check_device", setOf(AppPlatform.Ios),
