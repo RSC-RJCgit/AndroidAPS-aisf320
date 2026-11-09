@@ -3,6 +3,7 @@ package app.aaps.core.objects.notes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class NoteSmsTextsTest {
@@ -33,5 +34,18 @@ class NoteSmsTextsTest {
     @Test
     fun brokenJsonGivesNoTexts() {
         assertTrue(NoteSmsTexts.parse("not json").isEmpty())
+    }
+
+    @Test
+    fun taggedSmsGivesBackNoteTimeAndText() {
+        val noteTime = 1794187459472L
+        val sms = NoteSmsTexts.tagged("Shower12 raw +1.2: g=7.8 iobTH=12", noteTime)
+        assertEquals(noteTime to "Shower12 raw +1.2: g=7.8 iobTH=12", NoteSmsTexts.untag(sms))
+    }
+
+    @Test
+    fun smsWithoutTagIsNotANoteSms() {
+        assertNull(NoteSmsTexts.untag("BG 7.8 mmol/L"))
+        assertNull(NoteSmsTexts.untag("#nmhb2k3fk"))
     }
 }
