@@ -7,7 +7,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import kotlin.math.abs
 
 /**
- * List 1 "This phone" on a Client (2026-11-05, per explicit request): the settings rows change this phone's own preference
+ * List 1 and List 2 "This phone" on a Client (2026-11-05, per explicit request): the settings rows change this phone's own preference
  * only. No SMS, no CarePortal note (it would sync to NS and look as if the loop phone changed) and no TT. Rows that switch a
  * profile, an MJ/Steroid state, a tier or anything else are not here and stay relayed to the loop phone.
  *
@@ -19,7 +19,7 @@ internal object ClientLocalListCodes {
     private sealed class Change {
         class Toggle(val key: BooleanKey) : Change()
         // live: the setting that follows the baseline. Moved too when it equals the baseline, as in the handler.
-        class Nudge(val key: DoubleKey, val delta: Double, val min: Double, val max: Double, val live: DoubleKey? = null) : Change()
+        class Nudge(val key: DoubleKey, val delta: Double, val min: Double, val max: Double, val live: DoubleKey? = null, val clampBoth: Boolean = false) : Change()
         class IntNudge(val key: IntKey, val delta: Int, val min: Int, val max: Int) : Change()
         class Both(val first: Nudge, val second: Nudge) : Change()
     }
@@ -62,11 +62,34 @@ internal object ClientLocalListCodes {
         put(5.138, Change.Toggle(BooleanKey.ApsAutoIsfShowCarbModelCurve))
         put(5.142, Change.Toggle(BooleanKey.ApsAutoIsfShowGraph5))
         put(5.156, Change.Toggle(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled))
+
+        put(5.164, Change.Toggle(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled))
+        put(5.166, Change.Toggle(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled))
+        pair(5.182, 5.184, DoubleKey.ApsAutoIsfUamBoostScale, 0.25, 0.1, 2.9)
+        val boostCap = DoubleKey.ApsAutoIsfUamBoostMaxBolus
+        put(5.186, Change.Nudge(boostCap, -0.25, boostCap.min, boostCap.max, clampBoth = true))
+        put(5.188, Change.Nudge(boostCap, 0.25, boostCap.min, boostCap.max, clampBoth = true))
+        pair(5.190, 5.192, DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, 5.0, 1.0, 100.0)
+        put(5.194, Change.Toggle(BooleanKey.ApsAutoIsfUamBoostEnabled))
+        put(5.196, Change.Toggle(BooleanKey.ApsAutoIsfUseUkf1ForDosing))
+        put(5.198, Change.Toggle(BooleanKey.AutomationCodedLocationsEnabled))
+        put(5.206, Change.Toggle(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual))
+        put(5.210, Change.Toggle(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled))
+        put(5.212, Change.Toggle(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled))
+        put(5.214, Change.Toggle(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled))
+        put(5.226, Change.Toggle(BooleanKey.ApsAutoIsfFastRiseEnabled))
+        put(5.228, Change.Toggle(BooleanKey.ApsAutoIsfLowReboundGuardEnabled))
+        put(5.230, Change.Toggle(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled))
+        put(5.232, Change.Toggle(BooleanKey.ApsAutoIsfShowInsulinTotals))
+        put(5.234, Change.Toggle(BooleanKey.ApsAutoIsfLoopEveryMinute))
     }
 
     private fun find(mmol: Double): Change? = changes.entries.firstOrNull { abs(it.key - mmol) <= 0.0000001 }?.value
 
     fun supports(vararg mmol: Double): Boolean = mmol.all { find(it) != null }
+
+    fun toggleValue(preferences: Preferences, mmol: Double): Boolean? =
+        (find(mmol) as? Change.Toggle)?.let { preferences.get(it.key) }
 
     /** Applies the code to this phone's own preferences. Returns a short "what changed" text, or null when not a local code. */
     fun apply(preferences: Preferences, mmol: Double): String? {
@@ -87,7 +110,8 @@ internal object ClientLocalListCodes {
 
         is Change.Nudge    -> {
             val current = preferences.get(change.key)
-            val updated = step(current, change.delta, change.min, change.max)
+            val updated = if (change.clampBoth) (current + change.delta).coerceIn(change.min, change.max)
+            else step(current, change.delta, change.min, change.max)
             preferences.put(change.key, updated)
             change.live?.let { live ->
                 val currentLive = preferences.get(live)

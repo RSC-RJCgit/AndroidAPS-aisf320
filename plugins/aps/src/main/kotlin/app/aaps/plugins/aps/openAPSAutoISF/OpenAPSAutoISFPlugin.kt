@@ -10608,6 +10608,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     }
                 }
                 rt.autoIsfSettingsSnapshot = autoIsfSettingsSnapshot()
+                rt.autoIsfListValues = autoIsfListValues(preferences, profileFunction.getOriginalProfileName())
                 // Dedicated, unconditional reason lines for the client-sync fallback (see
                 // NSDeviceStatusHandler.kt). Unlike the existing consoleLog.add() text for these
                 // same values (which is conditional on which branch fired, and consoleLog doesn't

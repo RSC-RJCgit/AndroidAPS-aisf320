@@ -122,9 +122,9 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.LongKey
-import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
-import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.readTier
+import app.aaps.core.keys.tierSummary
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.directionToIcon
@@ -167,6 +167,7 @@ import javax.inject.Provider
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import org.json.JSONObject
 
 class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickListener {
 
@@ -1882,41 +1883,49 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     // that value is never touched (the *TogTT handlers that actually flip it only run inside invoke(),
     // which never executes on Client) -- so it showed Client's own stale value instead of Live's real
     // one. mirroredOrLocalBoolean() below mirrors mirroredListSetting's own AAPSCLIENT branching.
-    private fun basalDirectActionCurrentValue(action: BasalDirectAction): String? = when (action) {
-        BasalDirectAction.MJ_BUTTONS_TOGGLE      -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
-        BasalDirectAction.STEROID_BUTTON_TOGGLE  -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
-        BasalDirectAction.TIER3_BOOST_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostEnabled)
-        BasalDirectAction.PROFILE_BATCH_AUTO_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
-        BasalDirectAction.PROFILE_BATCH_REVERT_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
-        BasalDirectAction.PROFILE_BATCH_REVERT_C_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
-        BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
-        BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
-        BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
-        BasalDirectAction.FAST_RISE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfFastRiseEnabled)
-        BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
-        BasalDirectAction.T3_UNRESTRICTED_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
-        BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfShowInsulinTotals)
-        BasalDirectAction.LOOP_INTERVAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLoopEveryMinute)
-            .replace("OFF", "every 5 min").replace("ON", "every 1 min")
-        BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
-            if (config.AAPSCLIENT) {
-                val designated = mirroredAutoIsfSettings()[StringKey.AutomationLocationSmsDeviceModel.key]
-                    ?: return "Pump current: unavailable"
-                val state = if (designated.isBlank()) "OFF (no phone sends)" else "ON ($designated)"
-                "Pump current: $state${mirroredSettingsAge()}"
-            } else {
-                val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
-                val model = Build.MODEL.orEmpty().trim().ifBlank { "(unknown model)" }
-                if (designated.isEmpty()) "Current: OFF (no phone sends). This loop phone model: $model"
-                else "Current: ON ($designated). This loop phone model: $model"
-            }
+    private fun basalDirectActionCurrentValue(action: BasalDirectAction): String? {
+        if (config.AAPSCLIENT && ClientLocalListCodes.supports(action.clientRelayMmol)) {
+            loopListLine(action.clientRelayMmol.toString())?.let { return it }
         }
-        // profileFunction.getProfileName() is unaffected by the above -- it reflects real NS-synced
-        // ProfileSwitch treatments (normal sync), not a bespoke preference, so it's already correct on Client.
-        BasalDirectAction.STEROID_START, BasalDirectAction.STEROID_INCREASE_130, BasalDirectAction.STEROID_INCREASE_150,
-        BasalDirectAction.STEROID_INCREASE_190, BasalDirectAction.STEROID_INCREASE_250, BasalDirectAction.STEROID_TURN_OFF ->
-            "Current profile: ${profileFunction.getProfileName()}"
-        else -> null
+        return when (action) {
+            BasalDirectAction.MJ_BUTTONS_TOGGLE      -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
+            BasalDirectAction.STEROID_BUTTON_TOGGLE  -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
+            BasalDirectAction.TIER3_BOOST_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostEnabled)
+            BasalDirectAction.PROFILE_BATCH_AUTO_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
+            BasalDirectAction.PROFILE_BATCH_REVERT_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
+            BasalDirectAction.PROFILE_BATCH_REVERT_C_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
+            BasalDirectAction.UKF1_DOSING_TOGGLE     -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
+            BasalDirectAction.LOCATION_SMS_TOGGLE    -> mirroredOrLocalBoolean(BooleanKey.AutomationCodedLocationsEnabled)
+            BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+            BasalDirectAction.FAST_RISE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfFastRiseEnabled)
+            BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
+            BasalDirectAction.T3_UNRESTRICTED_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
+            BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfShowInsulinTotals)
+            BasalDirectAction.LOOP_INTERVAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLoopEveryMinute)
+                .replace("OFF", "every 5 min").replace("ON", "every 1 min")
+            BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
+                if (config.AAPSCLIENT) {
+                    val designated = mirroredAutoIsfSettings()[StringKey.AutomationLocationSmsDeviceModel.key]
+                        ?: return loopListLine(action.clientRelayMmol.toString()) ?: loopValueUnavailable()
+                    val state = if (designated.isBlank()) "OFF (no phone sends)" else "ON ($designated)"
+                    loopValueLine(state)
+                } else {
+                    val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
+                    val model = Build.MODEL.orEmpty().trim().ifBlank { "(unknown model)" }
+                    if (designated.isEmpty()) "Current: OFF (no phone sends). This loop phone model: $model"
+                    else "Current: ON ($designated). This loop phone model: $model"
+                }
+            }
+            // profileFunction.getProfileName() is unaffected by the above -- it reflects real NS-synced
+            // ProfileSwitch treatments (normal sync), not a bespoke preference, so it's already correct on Client.
+            BasalDirectAction.STEROID_START, BasalDirectAction.STEROID_INCREASE_130, BasalDirectAction.STEROID_INCREASE_150,
+            BasalDirectAction.STEROID_INCREASE_190, BasalDirectAction.STEROID_INCREASE_250, BasalDirectAction.STEROID_TURN_OFF -> {
+                val current = "Current profile: ${profileFunction.getProfileName()}"
+                val target = if (config.AAPSCLIENT) loopListValue(action.clientRelayMmol.toString()) else null
+                if (target == null) current else "$current\n" + rh.gs(R.string.direct_list_loop_target_profile, target)
+            }
+            else -> null
+        }
     }
 
     private fun mirroredOrLocalBoolean(key: BooleanKey): String =
@@ -1931,9 +1940,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         return Aaps333NewestApk.cheapNewestNnn(ctx.packageManager, ctx.packageName, cache)?.toLong()
     }
 
-    private fun newestApkSummaryForList2(): String {
+    private fun newestApkSummaryForList2(code: Double): String {
         if (config.AAPSCLIENT) {
             val mirrored = mirroredAutoIsfSettings()
+            if (mirrored.isEmpty()) loopListLine(code.toString())?.let { return it }
             val newest = mirrored[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
             val running = Aaps333NewestApk.featureNumber(mirrored["configuration_version"])
             val age = mirroredSettingsAge()
@@ -1974,14 +1984,14 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 "$current\n\nTurn ON or OFF whether THIS loop phone may send location SMS, CarePortal notes and AnyDesk. ON stores this phone's Android model; OFF clears it so nobody sends."
         }
         if (action == BasalDirectAction.STAGE_AAPS333_NEWEST) {
-            val newest = newestApkSummaryForList2()
+            val newest = newestApkSummaryForList2(action.clientRelayMmol)
             return if (config.AAPSCLIENT)
                 "$newest\n\nRelay TT 5.202 to Live: copy the newest pump APK to that phone's AAPS3 or AAPS333 newest/ folder and delete older archive APKs so 20 remain. Does not install. If AAPS cannot see the folder, Live also asks Tasker (StageAapsNewestApk) to copy. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
             else
                 "$newest\n\nIf Drive is authorised, try Drive/AAPS for the newest pump APK. Then copy from AAPS3 or AAPS333 / ApkDownload to newest/ (keep 20). Tasker StageAapsNewestApk copies if AAPS cannot see the folder. Does not install or need Shizuku."
         }
         if (action == BasalDirectAction.INSTALL_AAPS333_SHIZUKU) {
-            val newest = newestApkSummaryForList2()
+            val newest = newestApkSummaryForList2(action.clientRelayMmol)
             return if (config.AAPSCLIENT)
                 "$newest\n\nRelay TT 5.200 to Live: stage the newest pump APK (keep 20), then Shizuku pm install -r. No system Install sheet if Shizuku is running and AAPS is granted. Live AAPS will restart. If a temporary target is already on, this waits 5 minutes and retries instead of replacing it."
             else
@@ -2020,27 +2030,48 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(if (config.AAPSCLIENT) "Actions - relay to pump" + queuedRelayTitleSuffix() else "Direct actions")
+                .setTitle("Direct actions" + if (config.AAPSCLIENT) queuedRelayTitleSuffix() else "")
                 .setAdapter(adapter) { _, which ->
                     if (which < actionEntries.size) {
                         val action = actionEntries[which]
-                        OKDialog.showConfirmation(
-                            act,
-                            act.getString(app.aaps.core.ui.R.string.confirmation),
-                            basalDirectActionConfirmation(action),
-                            // Added 2026-08-23: OK used to just run the action and drop back to the plain
-                            // Overview screen -- only Cancel returned to this list. Now both do, so e.g.
-                            // toggling Tier 3 Boost then UKF1-dosing back to back doesn't need a fresh
-                            // double-tap each time.
-                            Runnable { runBasalDirectAction(action); showBasalDirectActionListDialog() },
-                            Runnable { showBasalDirectActionListDialog() }
-                        )
+                        val code = action.clientRelayMmol
+                        val localValue = if (config.AAPSCLIENT) ClientLocalListCodes.toggleValue(preferences, code) else null
+                        if (localValue == null) {
+                            OKDialog.showConfirmation(
+                                act,
+                                act.getString(app.aaps.core.ui.R.string.confirmation),
+                                basalDirectActionConfirmation(action),
+                                Runnable { runBasalDirectAction(action); showBasalDirectActionListDialog() },
+                                Runnable { showBasalDirectActionListDialog() }
+                            )
+                        } else {
+                            val value = if (action == BasalDirectAction.LOOP_INTERVAL_TOGGLE) {
+                                if (localValue) "every 1 min" else "every 5 min"
+                            } else if (localValue) "ON" else "OFF"
+                            val localLine = rh.gs(R.string.direct_list_this_phone_value, value)
+                            val remoteLine = basalDirectActionCurrentValue(action) ?: loopValueUnavailable()
+                            androidx.appcompat.app.AlertDialog.Builder(act)
+                                .setTitle(action.label)
+                                .setMessage("$remoteLine\n$localLine")
+                                .setPositiveButton(R.string.direct_list_loop_phone) { _, _ ->
+                                    runBasalDirectAction(action)
+                                    showBasalDirectActionListDialog()
+                                }
+                                .setNeutralButton(R.string.direct_list_this_phone) { _, _ ->
+                                    applyListCodeOnThisPhone(code)
+                                    showBasalDirectActionListDialog()
+                                }
+                                .setNegativeButton(app.aaps.core.ui.R.string.cancel) { _, _ -> showBasalDirectActionListDialog() }
+                                .setOnCancelListener { showBasalDirectActionListDialog() }
+                                .show()
+                        }
                     } else if (which < actionEntries.size + list2SteppedEntries.size) {
                         val entry = list2SteppedEntries[which - actionEntries.size]
                         showSteppedDialog(
                             act, entry,
                             onApply = { applyTtControl(it, origin = "basal double-tap action") },
-                            onReturn = { showBasalDirectActionListDialog() }
+                            onReturn = { showBasalDirectActionListDialog() },
+                            onApplyHere = if (localListCodeAllowed(entry.down, entry.up)) ::applyListCodeOnThisPhone else null
                         )
                     } else {
                         val entry = graphToggleEntries[which - actionEntries.size - list2SteppedEntries.size]
@@ -2050,7 +2081,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                             isEnabled = entry.calibKey != null
                         }
                         val showBox = CheckBox(act).apply {
-                            text = "Graph on"
+                            text = if (config.AAPSCLIENT) rh.gs(R.string.direct_list_local_graph_on) else "Graph on"
                             isChecked = preferences.get(entry.showKey)
                         }
                         val container = LinearLayout(act).apply {
@@ -2422,7 +2453,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             androidx.appcompat.app.AlertDialog.Builder(act)
-                .setTitle(if (config.AAPSCLIENT) "Settings - relay to pump" + queuedRelayTitleSuffix() else "Direct AutoISF settings")
+                .setTitle("Direct AutoISF settings" + if (config.AAPSCLIENT) queuedRelayTitleSuffix() else "")
                 .setAdapter(adapter) { _, which ->
                     // The mmol number (and, for Stepped, which direction) only ever surface here, never
                     // in the outer list -- picking a button both chooses and confirms.
@@ -2434,10 +2465,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 // Added 2026-08-23: OK used to just apply and drop back to the plain
                                 // Overview screen -- only Cancel returned to this list. Now both do.
                                 // Client (2026-11-05, per explicit request): OK becomes "Loop phone" (the relay) and settings rows add "This phone".
-                                .setPositiveButton(if (config.AAPSCLIENT) "Loop phone" else rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value); showTtCodesListDialog() }
+                                .setPositiveButton(if (config.AAPSCLIENT) rh.gs(R.string.direct_list_loop_phone) else rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ -> applyTtControl(entry.value); showTtCodesListDialog() }
                                 .also { builder ->
                                     if (localListCodeAllowed(entry.value))
-                                        builder.setNeutralButton("This phone") { _, _ -> applyListCodeOnThisPhone(entry.value); showTtCodesListDialog() }
+                                        builder.setNeutralButton(R.string.direct_list_this_phone) { _, _ -> applyListCodeOnThisPhone(entry.value); showTtCodesListDialog() }
                                 }
                                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                                 // setNegativeButton alone only catches an explicit tap on the Cancel
@@ -2507,18 +2538,38 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         class Action(label: String, val onSelect: () -> Unit) : TtCode(label)
     }
 
-    private fun mirroredAutoIsfSettings(): Map<String, String> =
-        preferences.get(StringNonKey.MirroredAutoIsfSettings)
-            .lineSequence()
+    private fun mirroredAutoIsfSettings(
+        snapshot: String? = processedDeviceStatusData.openAPSData.suggested?.autoIsfSettingsSnapshot
+    ): Map<String, String> =
+        snapshot.orEmpty().lineSequence()
             .mapNotNull { line ->
                 val separator = line.indexOf(" = ")
                 if (separator <= 0) null else line.substring(0, separator) to line.substring(separator + 3)
             }
             .toMap()
 
-    private fun mirroredSettingsAge(): String {
-        val timestamp = preferences.get(LongNonKey.MirroredAutoIsfSettingsTimestamp)
-        return if (timestamp > 0L) " (${dateUtil.minOrSecAgo(rh, timestamp)})" else ""
+    private fun mirroredSettingsAge(timestamp: Long? = processedDeviceStatusData.openAPSData.suggested?.timestamp): String =
+        if (timestamp == null) "" else " (${dateUtil.minOrSecAgo(rh, timestamp)})"
+
+    private fun loopListValue(key: String): String? =
+        processedDeviceStatusData.openAPSData.suggested?.autoIsfListValue(key)
+
+    private fun loopListLine(key: String): String? {
+        val suggestion = processedDeviceStatusData.openAPSData.suggested ?: return null
+        val value = suggestion.autoIsfListValue(key) ?: return null
+        return loopValueLine(value, suggestion.timestamp)
+    }
+
+    private fun loopValueLine(value: String, timestamp: Long? = processedDeviceStatusData.openAPSData.suggested?.timestamp): String =
+        rh.gs(R.string.direct_list_loop_phone_value, value + mirroredSettingsAge(timestamp))
+
+    private fun loopValueUnavailable(): String = rh.gs(R.string.direct_list_loop_phone_unavailable)
+
+    private fun loopAutomationState(name: String): String {
+        val states = processedDeviceStatusData.openAPSData.suggested?.automationStatesCurrent
+        val state = states?.let { runCatching { JSONObject(it).optString(name) }.getOrNull() }
+        return state?.takeIf { it.isNotBlank() }?.let { loopValueLine(it) }
+            ?: mirroredListSetting("automation_state_$name")
     }
 
     /**
@@ -2529,8 +2580,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         key: String,
         remoteValue: (String) -> String = { it }
     ): String {
-        val value = mirroredAutoIsfSettings()[key] ?: return "Pump current: unavailable"
-        return "Pump current: ${remoteValue(value)}${mirroredSettingsAge()}"
+        val suggestion = processedDeviceStatusData.openAPSData.suggested ?: return loopValueUnavailable()
+        val value = mirroredAutoIsfSettings(suggestion.autoIsfSettingsSnapshot)[key] ?: return loopValueUnavailable()
+        return loopValueLine(remoteValue(value), suggestion.timestamp)
     }
 
     private fun mirroredListSettingPair(
@@ -2539,11 +2591,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         secondLabel: String,
         secondKey: String
     ): String {
-        val mirrored = mirroredAutoIsfSettings()
+        val suggestion = processedDeviceStatusData.openAPSData.suggested ?: return loopValueUnavailable()
+        val mirrored = mirroredAutoIsfSettings(suggestion.autoIsfSettingsSnapshot)
         val first = mirrored[firstKey]
         val second = mirrored[secondKey]
-        if (first == null && second == null) return "Pump current: unavailable"
-        return "Pump current: $firstLabel=${first ?: "?"}, $secondLabel=${second ?: "?"}${mirroredSettingsAge()}"
+        if (first == null && second == null) return loopValueUnavailable()
+        return loopValueLine("$firstLabel=${first ?: "?"}, $secondLabel=${second ?: "?"}", suggestion.timestamp)
     }
 
     private fun mirroredBoolean(value: String): String = when (value.lowercase(Locale.ROOT)) {
@@ -2554,13 +2607,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun mirroredProfileSetting(): String {
         val mirrored = mirroredAutoIsfSettings()
-        val name = mirrored["configuration_profile"] ?: return "Pump current: unavailable"
+        val name = mirrored["configuration_profile"] ?: return loopValueUnavailable()
         val roleLabel = when (name) {
             mirrored[StringKey.ApsAutoIsfStandardProfileName.key] -> "Standard"
             mirrored[StringKey.ApsAutoIsfLowProfileName.key]      -> "Low"
             else                                                   -> "neither"
         }
-        return "Pump current: $roleLabel ($name)${mirroredSettingsAge()}"
+        return loopValueLine("$roleLabel ($name)")
     }
 
     private fun displayedTtCurrentValue(entry: TtCode, localValue: () -> String): String {
@@ -2575,6 +2628,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             is TtCode.Stepped -> entry.down
             is TtCode.Action  -> return localValue()
         }
+        loopListLine(code.toString())?.let { return it }
         return when (code) {
             5.002 -> mirroredListSettingPair(
                 "base", DoubleKey.ApsAutoIsfSmbDeliveryBaseline.key,
@@ -2617,7 +2671,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             5.182 -> mirroredListSetting(DoubleKey.ApsAutoIsfUamBoostScale.key)
             5.186 -> mirroredListSetting(DoubleKey.ApsAutoIsfUamBoostMaxBolus.key) { "${it}U" }
             5.190 -> mirroredListSetting(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent.key) { "$it%" }
-            else  -> localValue()
+            else  -> localValue().let { if (it.startsWith("Current: ")) loopValueUnavailable() else it }
         }
     }
 
@@ -2667,7 +2721,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (drifted && !tierActive)
                     "\nLive differs from baseline but no tier is marked active -- worth a look."
                 else ""
-            OKDialog.show(act, "Live Libre calibration", msg, runOnDismiss = true, runnable = Runnable { showTtCodesListDialog() })
+            val message = if (config.AAPSCLIENT) {
+                val remote = loopListLine("libreLive") ?: loopValueUnavailable()
+                "$remote\n\n" + rh.gs(R.string.direct_list_this_phone_value, msg)
+            } else msg
+            OKDialog.show(act, "Live Libre calibration", message, runOnDismiss = true, runnable = Runnable { showTtCodesListDialog() })
         },
         TtCode.Stepped("SMB offset", 5.036, 5.038, "-0.1", "+0.1", currentValue = { "Current: ${"%.2f".format(preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride))}" }),
         TtCode.Single(
@@ -2712,7 +2770,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // and 5.224 (MJ2) match MjStateActiveTT/MjStateMj2TT in OpenAPSAutoISFPlugin.kt; the original
         // two codes are unchanged so nothing that already relays 5.144/5.146 needs to change.
         TtCode.Action("MJ state (manual override)") {
-            val current = if (config.AAPSCLIENT) mirroredListSetting("automation_state_MJ")
+            val current = if (config.AAPSCLIENT) loopAutomationState("MJ")
             else "Current: ${automationStateService.getState("MJ").ifEmpty { "unset" }}"
             val options = arrayOf("MJ active", "MJ2", "MJ3", "NOMJremains")
             val codes = doubleArrayOf(5.222, 5.224, 5.146, 5.144)
@@ -2742,11 +2800,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // the live comparison below -- a Single's fixed relay value or a Stepped's fixed pair can't
         // express "whichever one it currently isn't."
         TtCode.Action("Switch to Standard/Low profile now") {
-            val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-            val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
-            val currentName = profileFunction.getProfileName()
-            val onStandard = currentName == standardName
-            val onLow = currentName == lowName
+            val remote = if (config.AAPSCLIENT) mirroredAutoIsfSettings() else emptyMap()
+            val standardName = if (config.AAPSCLIENT)
+                loopListValue("5.148") ?: remote[StringKey.ApsAutoIsfStandardProfileName.key].orEmpty()
+            else preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+            val lowName = if (config.AAPSCLIENT)
+                loopListValue("5.15") ?: remote[StringKey.ApsAutoIsfLowProfileName.key].orEmpty()
+            else preferences.get(StringKey.ApsAutoIsfLowProfileName)
+            val currentName = if (config.AAPSCLIENT)
+                remote["configuration_profile"] ?: profileFunction.getProfileName()
+            else profileFunction.getProfileName()
+            val onStandard = standardName.isNotBlank() && currentName == standardName
+            val onLow = lowName.isNotBlank() && currentName == lowName
             when {
                 onStandard -> androidx.appcompat.app.AlertDialog.Builder(act)
                     .setTitle("Switch active profile")
@@ -2767,9 +2832,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 // guessing which one the user means.
                 else -> androidx.appcompat.app.AlertDialog.Builder(act)
                     .setTitle("Switch active profile")
-                    .setMessage("Currently on neither role ($currentName). Pick one:")
-                    .setPositiveButton("Standard ($standardName)") { _, _ -> applyTtControl(5.148, origin = "List 1 profile switch") }
-                    .setNegativeButton("Low ($lowName)") { _, _ -> applyTtControl(5.150, origin = "List 1 profile switch") }
+                    .setMessage(if (config.AAPSCLIENT) loopValueLine(currentName) else "Currently on neither role ($currentName). Pick one:")
+                    .setPositiveButton(if (standardName.isBlank()) "Standard" else "Standard ($standardName)") { _, _ -> applyTtControl(5.148, origin = "List 1 profile switch") }
+                    .setNegativeButton(if (lowName.isBlank()) "Low" else "Low ($lowName)") { _, _ -> applyTtControl(5.150, origin = "List 1 profile switch") }
                     .setNeutralButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                     .setOnCancelListener { showTtCodesListDialog() }
                     .show()
@@ -2791,7 +2856,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // 2026-10-07: read with the shared readTier()/tierSummary() (core:keys) instead of the old "either role on B or C" guess,
             // so this shows the Standard letter, the Low letter and the running profile, and says "Mixed" when they differ.
             val runningName = profileFunction.getOriginalProfileName()
-            val reading = app.aaps.core.keys.readTier(
+            val reading = readTier(
                 standardName = standardName,
                 lowName = lowName,
                 runningName = runningName,
@@ -2806,9 +2871,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     preferences.get(StringKey.ApsAutoIsfLow90ProfileName),
                 ),
             )
+            val currentTier = if (config.AAPSCLIENT)
+                loopListLine("tierNow") ?: loopValueUnavailable()
+            else "Currently: ${tierSummary(reading, standardName, lowName, runningName)}"
             androidx.appcompat.app.AlertDialog.Builder(act)
                 .setTitle("Set Standard+Low tier")
-                .setMessage("Currently: ${app.aaps.core.keys.tierSummary(reading, standardName, lowName, runningName)}. Pick a tier for both roles:")
+                .setMessage("$currentTier\nPick a tier for both roles:")
                 .setPositiveButton("Tier A") { _, _ -> applyTtControl(5.216, origin = "List 1 tier set A") }
                 .setNegativeButton("Tier B") { _, _ -> applyTtControl(5.218, origin = "List 1 tier set B") }
                 .setNeutralButton("Tier C") { _, _ -> applyTtControl(5.220, origin = "List 1 tier set C") }
@@ -2842,11 +2910,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             "Tog UKFset1 (Virtual live comparison) on/off", 5.152,
             currentValue = { "Current: ${if (preferences.get(BooleanKey.FslUseUkfSmoothing)) "ON" else "OFF"}" }
         ),
-        TtCode.Single("Run SensorAge code on/off", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" }),
+        TtCode.Single("Sensor age code", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" }),
         // 2026-10-09, per explicit request: sets or clears the AlarmHypo state by hand. Setting also writes the saved alarm time (now),
         // because the stale-state clear removes AlarmRecent whose alarm time is missing or old. Relays 5.240 (set) and 5.242 (clear).
         TtCode.Action("Hypo alarm state (manual)") {
-            val current = if (config.AAPSCLIENT) mirroredListSetting("automation_state_AlarmHypo")
+            val current = if (config.AAPSCLIENT) loopAutomationState("AlarmHypo")
             else "Current: ${automationStateService.getState("AlarmHypo").ifEmpty { "unset" }}"
             val options = arrayOf("AlarmRecent (set)", "NoAlarmRecent (clear)")
             val codes = doubleArrayOf(5.240, 5.242)
@@ -2861,18 +2929,18 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // (basal rate icon), not list1 (this one, IOB icon).
     )
 
-    // List 1 "This phone" on a Client (2026-11-05, per explicit request): only the settings rows in ClientLocalListCodes, which
+    // List 1 and List 2 "This phone" on a Client (2026-11-05, per explicit request): only the settings rows in ClientLocalListCodes, which
     // change this phone's own preference (no SMS, note or TT). Everything else is relayed to the loop phone only.
     private fun localListCodeAllowed(vararg mmol: Double): Boolean = config.AAPSCLIENT && ClientLocalListCodes.supports(*mmol)
 
     private fun thisPhoneValueLine(reader: () -> String, vararg mmol: Double): String =
-        if (localListCodeAllowed(*mmol)) "\nThis phone: " + reader().removePrefix("Current: ") else ""
+        if (localListCodeAllowed(*mmol)) "\n" + rh.gs(R.string.direct_list_this_phone_value, reader().removePrefix("Current: ")) else ""
 
     private fun applyListCodeOnThisPhone(mmol: Double) {
         val changed = ClientLocalListCodes.apply(preferences, mmol) ?: return
-        aapsLogger.info(LTag.CORE, "List 1 code $mmol applied on this phone only: $changed")
+        aapsLogger.info(LTag.CORE, "List code $mmol applied on this phone only: $changed")
         context?.let { ToastUtils.infoToast(it, "This phone: $changed") }
-        rxBus.send(EventRefreshOverview("List 1 code applied on this phone", true))
+        rxBus.send(EventRefreshOverview("List code applied on this phone", true))
     }
 
     // Pump/Virtual selection: enqueue the matching local handler without making a TT. Client selection:
@@ -2907,7 +2975,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             setPadding(48, 24, 48, 0)
             entry.currentValue?.let { reader ->
                 addView(TextView(act).apply {
-                    text = displayedTtCurrentValue(entry, reader) + if (onApplyHere != null) "\nThis phone: " + reader().removePrefix("Current: ") else ""
+                    text = displayedTtCurrentValue(entry, reader) + if (onApplyHere != null) thisPhoneValueLine(reader, entry.down, entry.up) else ""
                     setPadding(0, 0, 0, 16)
                 })
             }
@@ -2920,7 +2988,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // Added 2026-08-23: OK used to just apply and drop back to the plain Overview screen -- only
             // Cancel returned to the outer list. Now both do (onReturn() after onApply()), matching
             // TtCode.Single's own OK behaviour.
-            .setPositiveButton(if (onApplyHere != null) "Loop phone" else rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
+            .setPositiveButton(if (onApplyHere != null) rh.gs(R.string.direct_list_loop_phone) else rh.gs(app.aaps.core.ui.R.string.ok)) { _, _ ->
                 when {
                     downBox.isChecked -> { onApply(entry.down); onReturn() }
                     upBox.isChecked   -> { onApply(entry.up); onReturn() }
@@ -2929,7 +2997,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 }
             }
             .also { builder ->
-                if (onApplyHere != null) builder.setNeutralButton("This phone") { _, _ ->
+                if (onApplyHere != null) builder.setNeutralButton(R.string.direct_list_this_phone) { _, _ ->
                     when {
                         downBox.isChecked -> onApplyHere(entry.down)
                         upBox.isChecked   -> onApplyHere(entry.up)

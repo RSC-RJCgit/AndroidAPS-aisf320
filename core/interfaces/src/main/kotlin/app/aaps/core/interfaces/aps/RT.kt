@@ -9,6 +9,9 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.joda.time.DateTime
 import org.joda.time.format.ISODateTimeFormat
 import java.text.DateFormat
@@ -74,10 +77,18 @@ data class RT(
 
 
     var consoleLog: MutableList<String>? = null,
-    var consoleError: MutableList<String>? = null
+    var consoleError: MutableList<String>? = null,
+    // Kept as JSON so bad display data cannot reject the rest of this result.
+    var autoIsfListValues: JsonElement? = null
 ) {
 
     fun serialize() = Json.encodeToString(serializer(), this)
+
+    fun autoIsfListValue(key: String): String? {
+        val values = autoIsfListValues as? JsonObject ?: return null
+        val value = values[key] as? JsonPrimitive ?: return null
+        return value.content.takeIf { value.isString && it.isNotBlank() }
+    }
 
     object StringBuilderSerializer : KSerializer<StringBuilder> {
 
