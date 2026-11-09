@@ -71,6 +71,7 @@ class KeepAliveWorker(
     @Inject lateinit var dstHelperPlugin: DstHelperPlugin
     @Inject lateinit var workManager: WorkManager
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
+    @Inject lateinit var apkStorageMaintenance: ApkStorageMaintenance
 
     companion object {
 
@@ -140,6 +141,7 @@ class KeepAliveWorker(
         }
         lastRun = dateUtil.now()
 
+        apkStorageMaintenance.check(context)
         if (config.APS) (activePlugin.activeAPS as? OpenAPSAutoISFPlugin)?.checkLiveLowStorage()
         dstHelperPlugin.dstCheck()
         localAlertUtils.shortenSnoozeInterval()

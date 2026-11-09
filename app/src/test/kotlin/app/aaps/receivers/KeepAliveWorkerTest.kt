@@ -46,6 +46,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
     @Mock private lateinit var listenableFuture: ListenableFuture<List<WorkInfo>>
     @Mock private lateinit var mockedRxBus: RxBus
     @Mock private lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
+    @Mock private lateinit var apkStorageMaintenance: ApkStorageMaintenance
 
     @BeforeEach
     fun setUp() {
@@ -77,6 +78,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
             it.workManager = workManager
             it.rh = rh
             it.autoIsfHistoryExporter = autoIsfHistoryExporter
+            it.apkStorageMaintenance = apkStorageMaintenance
         }
 
     @Test

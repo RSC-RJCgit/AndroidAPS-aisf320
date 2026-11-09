@@ -21,6 +21,7 @@ enum class LongNonKey(
     BtWatchdogLastBark("bt_watchdog_last", 0L),
     ActivePumpChangeTimestamp("active_pump_change_timestamp", 0L),
     LastCleanupRun("last_cleanup_run", 0L),
+    LastWeeklyApkCleanupDay("last_weekly_apk_cleanup_day", 0L, exportable = false),
     LastCloudLogExport("last_cloud_log_export", 0L),
     LastCloudLogSuccessNote("last_cloud_log_success_note", 0L, exportable = false),
     LastAutoIsfHistoryExport("last_autoisf_history_export", 0L),
