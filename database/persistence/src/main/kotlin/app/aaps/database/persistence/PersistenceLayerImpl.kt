@@ -33,6 +33,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.database.AppRepository
 import app.aaps.database.ValueWrapper
+import app.aaps.database.entities.AutoIsfValues
 import app.aaps.database.entities.TherapyEvent
 import app.aaps.database.persistence.converters.fromDb
 import app.aaps.database.persistence.converters.toDb
@@ -109,6 +110,7 @@ import app.aaps.database.transactions.VersionChangeTransaction
 import dagger.Reusable
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Maybe
+import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.core.Single
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
@@ -1936,6 +1938,9 @@ class PersistenceLayerImpl @Inject constructor(
 
     override fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV> =
         repository.getAutoIsfValuesFromTimeToTime(startTime, endTime).map { list -> list.asSequence().map { it.fromDb() }.toList() }.blockingGet()
+
+    override fun observeAutoIsfHistoryChanges(): Observable<Unit> =
+        repository.changeObservable().filter { entries -> entries.any { it is AutoIsfValues } }.map { Unit }
 
     override fun insertOrUpdateAutoIsfValues(autoIsfValues: AIV): Single<PersistenceLayer.TransactionResult<AIV>> =
         repository.runTransactionForResult(InsertOrUpdateAutoIsfValuesTransaction( autoIsfValues.toDb()))

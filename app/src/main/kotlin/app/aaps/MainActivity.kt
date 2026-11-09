@@ -355,6 +355,28 @@ class MainActivity : DaggerAppCompatActivityWithResult() {
 
     override fun onResume() {
         super.onResume()
+        if (config.AAPSCLIENT) {
+            if (clientNoteSmsPermissionMissing()) {
+                uiInteraction.addNotificationWithAction(
+                    id = Notification.PERMISSION_SMS,
+                    text = rh.gs(R.string.client_note_sms_permission),
+                    level = Notification.INFO,
+                    buttonText = R.string.client_note_sms_allow,
+                    action = { androidPermission.askForPermission(this, Manifest.permission.RECEIVE_SMS) },
+                    validityCheck = ::clientNoteSmsPermissionMissing
+                )
+            } else uiInteraction.dismissNotification(Notification.PERMISSION_SMS)
+            if (clientNoteSmsInboxPermissionMissing()) {
+                uiInteraction.addNotificationWithAction(
+                    id = Notification.PERMISSION_NOTE_SMS_INBOX,
+                    text = rh.gs(R.string.client_note_sms_inbox_permission),
+                    level = Notification.INFO,
+                    buttonText = R.string.client_note_sms_inbox_allow,
+                    action = { androidPermission.askForPermission(this, Manifest.permission.READ_SMS) },
+                    validityCheck = ::clientNoteSmsInboxPermissionMissing
+                )
+            } else uiInteraction.dismissNotification(Notification.PERMISSION_NOTE_SMS_INBOX)
+        }
         if (config.appInitialized) binding.splash.visibility = View.GONE
         if (!isProtectionCheckActive) {
             isProtectionCheckActive = true
@@ -364,6 +386,14 @@ class MainActivity : DaggerAppCompatActivityWithResult() {
             )
         }
     }
+
+    private fun clientNoteSmsPermissionMissing(): Boolean =
+        preferences.get(StringKey.ClientNoteSmsSender).isNotBlank() &&
+            androidPermission.permissionNotGranted(this, Manifest.permission.RECEIVE_SMS)
+
+    private fun clientNoteSmsInboxPermissionMissing(): Boolean =
+        preferences.get(StringKey.ClientNoteSmsSender).isNotBlank() &&
+            androidPermission.permissionNotGranted(this, Manifest.permission.READ_SMS)
 
     private fun setWakeLock() {
         val keepScreenOn = preferences.get(BooleanKey.OverviewKeepScreenOn)

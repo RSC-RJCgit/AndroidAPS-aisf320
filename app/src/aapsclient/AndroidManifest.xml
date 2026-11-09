@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.READ_SMS" />
+
     <!-- Another AAPS app on the same phone (the KMP full app, or 3426 full) already defines this signature
          permission. A Client must not define it again, or Android refuses the install (duplicate permission),
          as full2 already avoids in app/src/full2/AndroidManifest.xml. -->

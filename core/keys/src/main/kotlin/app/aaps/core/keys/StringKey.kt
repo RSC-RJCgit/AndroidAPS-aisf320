@@ -75,6 +75,7 @@ enum class StringKey(
     NsClientApiSecret("nsclientinternal_api_secret", "", isPassword = true),
     NsClientWifiSsids("ns_wifi_ssids", "", dependency = BooleanKey.NsClientUseWifi),
     NsClientAccessToken("nsclient_token", "", isPassword = true),
+    ClientNoteSmsSender("client_note_sms_sender", "", showInApsMode = false, showInPumpControlMode = false, exportable = false),
     // Profile-store owner (2026-11-08, per explicit request): this master tags its profile uploads with the ID (made on the
     // first upload when empty); a receiver takes a store only from "accept from" (empty learns the first, "*" takes any).
     NsClientProfileOwnerId("ns_profile_owner_id", ""),

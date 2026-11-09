@@ -22,9 +22,18 @@ import app.aaps.core.interfaces.logging.ExportScriptDebugStatus
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.ImportExportPrefs
 import app.aaps.core.interfaces.resources.ResourceHelper
+import app.aaps.core.interfaces.rx.AapsSchedulers
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
+import app.aaps.core.interfaces.rx.events.EventTherapyEventChange
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.ui.databinding.DialogAutoisfHistoryBinding
 import dagger.android.support.DaggerDialogFragment
+import io.reactivex.rxjava3.core.Observable
+import io.reactivex.rxjava3.disposables.CompositeDisposable
 import java.text.DecimalFormat
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -38,6 +47,10 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var importExportPrefs: ImportExportPrefs
+    @Inject lateinit var preferences: Preferences
+    @Inject lateinit var rxBus: RxBus
+    @Inject lateinit var aapsSchedulers: AapsSchedulers
+    private val historySubscriptions = CompositeDisposable()
 
     private var _binding: DialogAutoisfHistoryBinding? = null
     private val binding get() = _binding!!
@@ -101,18 +114,21 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             if (binding.headerHscroll.scrollX != scrollX) binding.headerHscroll.scrollTo(scrollX, 0)
         }
 
-        val now = System.currentTimeMillis()
-        val sixHoursAgo = now - TimeUnit.HOURS.toMillis(6)
-        allRecords = persistenceLayer.getAutoIsfValuesFromTimeToTime(sixHoursAgo, now)
-            .sortedByDescending { it.timestamp }
-        allApsResults = persistenceLayer.getApsResults(sixHoursAgo, now)
-        allStepsCounts = persistenceLayer.getStepsCountFromTimeToTime(sixHoursAgo, now)
-        allSmbBoluses = persistenceLayer.getBolusesFromTimeToTime(sixHoursAgo, now, ascending = false).filter { it.type == BS.Type.SMB }
-        allCarePortalNotes = autoIsfHistoryExporter.carePortalNotesFrom(sixHoursAgo)
-        // Raw BG readings (noise = raw Libre) for the rΔ columns; 20-min lead-in for the oldest rows
-        allRawReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(sixHoursAgo - 20 * 60_000L, now, ascending = false)
-
-        rebuildTable()
+        val now = dateUtil.now()
+        val initial = loadHistory(now)
+        showHistory(initial)
+        historySubscriptions.add(
+            Observable.mergeArray(
+                persistenceLayer.observeAutoIsfHistoryChanges(),
+                rxBus.toObservable(EventTherapyEventChange::class.java).map { Unit },
+                rxBus.toObservable(EventPreferenceChange::class.java)
+                    .filter { it.isChanged(StringNonKey.CarePortalNoteSmsTexts.key) }.map { Unit }
+            ).startWithItem(Unit)
+                .debounce(250, TimeUnit.MILLISECONDS, aapsSchedulers.io)
+                .map { loadHistory(dateUtil.now()) }
+                .observeOn(aapsSchedulers.main)
+                .subscribe(::showHistory) { aapsLogger.error(LTag.UI, "Could not refresh AutoISF history", it) }
+        )
         // Opening the dialog also writes the export files (CSV / text / settings), off the UI thread —
         // but only on first creation, not on every rotation (savedInstanceState != null on re-create),
         // so rotating doesn't spam duplicate export files. The automatic 6-hourly export runs from
@@ -121,7 +137,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         // own write); doing it here too just means an open dialog doesn't wait up to 6h to see it.
         if (savedInstanceState == null) {
             Executors.newSingleThreadExecutor().execute {
-                val writtenFiles = autoIsfHistoryExporter.writeExport(allRecords, allApsResults, allStepsCounts, allSmbBoluses, allCarePortalNotes, allRawReadings, now)
+                val writtenFiles = autoIsfHistoryExporter.writeExport(initial.records, initial.apsResults, initial.steps, initial.smbs, initial.notes, initial.raw, now)
                 autoIsfHistoryExporter.buildCombinedExport(now)
                 val expect = AutoIsfHistoryExporter.AIV_EXPORT_FILE_COUNT
                 if (writtenFiles.size == expect)
@@ -139,6 +155,38 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             }
         }
     }
+
+    private fun loadHistory(now: Long): HistoryData {
+        val from = now - TimeUnit.HOURS.toMillis(6)
+        return HistoryData(
+            records = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).sortedByDescending { it.timestamp },
+            apsResults = persistenceLayer.getApsResults(from, now),
+            steps = persistenceLayer.getStepsCountFromTimeToTime(from, now),
+            smbs = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB },
+            notes = autoIsfHistoryExporter.carePortalNotesFrom(from),
+            raw = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
+        )
+    }
+
+    private fun showHistory(data: HistoryData) {
+        if (_binding == null) return
+        allRecords = data.records
+        allApsResults = data.apsResults
+        allStepsCounts = data.steps
+        allSmbBoluses = data.smbs
+        allCarePortalNotes = data.notes
+        allRawReadings = data.raw
+        rebuildTable()
+    }
+
+    private data class HistoryData(
+        val records: List<AIV>,
+        val apsResults: List<APSResult>,
+        val steps: List<SC>,
+        val smbs: List<BS>,
+        val notes: List<TE>,
+        val raw: List<GV>
+    )
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -167,8 +215,15 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         }
 
         val cobTByTimestamp = autoIsfHistoryExporter.calculatedCobT(allRecords)
+        val smsTexts = NoteSmsTexts.all(preferences)
+        val notesWithSms = allCarePortalNotes.filter { it.isValid && it.timestamp in smsTexts }
         for (r in records) {
             val sc = autoIsfHistoryExporter.stepsAt(r.timestamp, stepsCountList)
+            val fullNote = if (notesWithSms.isEmpty()) "" else
+                autoIsfHistoryExporter.carePortalNotesForRow(r.timestamp, notesWithSms, allRecords)
+                    .asReversed().distinctBy { it.timestamp }
+                    .mapNotNull { smsTexts[it.timestamp] }
+                    .joinToString(" | ") { it.replace('\r', ' ').replace('\n', ' ') }
             // Cell 0 (Time) goes into the frozen left column; cells 1.. into the scrolling body.
             addSplitRow(
                 binding.historyTime, table, cells = listOf(
@@ -215,7 +270,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 60)?.toString()  ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.stepsValue(sc, r.timestamp, apsResults, 180)?.toString() ?: "--", colorHeader),
                     Cell(autoIsfHistoryExporter.mjStateStr(r.timestamp, allCarePortalNotes), colorTime),
-                    Cell(autoIsfHistoryExporter.notesWithRawTag(r.timestamp, allCarePortalNotes, allRecords, allRawReadings), colorTime)
+                    Cell(autoIsfHistoryExporter.notesWithRawTag(r.timestamp, allCarePortalNotes, allRecords, allRawReadings), colorTime),
+                    Cell(fullNote.ifBlank { "--" }, colorTime)
                 )
             )
         }
@@ -285,7 +341,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("Insulin", colorInsulin, span = 10, bold = true),
                 Cell("Steps", colorHeader, span = 5, bold = true),
                 Cell("MJ", colorTime, bold = true),
-                Cell("Notes", colorTime, bold = true)
+                Cell("Notes", colorTime, span = 2, bold = true)
             )
         )
 
@@ -335,7 +391,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("S60",    colorHeader, bold = true),
                 Cell("S180",   colorHeader, bold = true),
                 Cell("MJ",     colorTime, bold = true),
-                Cell("Notes",  colorTime, bold = true)
+                Cell("Notes",  colorTime, bold = true),
+                Cell("Full note", colorTime, bold = true)
             )
         )
     }
@@ -391,6 +448,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     }
 
     override fun onDestroyView() {
+        historySubscriptions.clear()
         super.onDestroyView()
         _binding = null
     }

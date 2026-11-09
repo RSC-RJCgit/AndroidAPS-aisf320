@@ -956,6 +956,12 @@ class NSClientV3Plugin @Inject constructor(
             )
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClient3UseWs, summary = R.string.ns_use_ws_summary, title = R.string.ns_use_ws_title))
             if (config.AAPSCLIENT) {
+                addPreference(
+                    AdaptiveStringPreference(
+                        ctx = context, stringKey = StringKey.ClientNoteSmsSender,
+                        title = R.string.client_note_sms_sender, summary = R.string.client_note_sms_sender_summary
+                    )
+                )
                 // Libre calibration/smoothing for the NS BGL result (follower is NS-only; no xDrip source)
                 addPreference(PreferenceCategory(context).also { cat ->
                     cat.key = "aapsclient_libre_settings"

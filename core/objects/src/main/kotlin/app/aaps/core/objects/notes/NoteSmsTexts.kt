@@ -23,19 +23,35 @@ object NoteSmsTexts {
     private val lock = Any()
     private var cachedRaw: String? = null
     private var cached: Map<Long, String> = emptyMap()
+    private val senderPattern = Regex("\\+?[0-9]+")
+
+    fun normaliseSender(number: String): String? =
+        number.filterNot { it.isWhitespace() || it in "-()" }.takeIf(senderPattern::matches)
 
     /** Saves [smsText] for the note at [noteTimestamp]. Nothing is saved when it is blank or the same as [note]. */
     fun save(preferences: Preferences, noteTimestamp: Long, note: String, smsText: String?, now: Long) {
         val text = smsText?.trim().orEmpty()
         if (text.isEmpty() || text == note.trim()) return
         synchronized(lock) {
-            val all = parse(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).toMutableMap()
-            all[noteTimestamp] = text
-            val kept = prune(all, now)
-            val json = JSONObject()
-            kept.forEach { (timestamp, value) -> json.put(timestamp.toString(), value) }
-            preferences.put(StringNonKey.CarePortalNoteSmsTexts, json.toString())
+            val existing = all(preferences)
+            if (existing[noteTimestamp] != text) write(preferences, prune(existing + (noteTimestamp to text), now))
         }
+    }
+
+    /** Fills gaps from the inbox without replacing live SMS texts. Returns true if anything was saved. */
+    fun saveMissing(preferences: Preferences, texts: Map<Long, String>, now: Long): Boolean = synchronized(lock) {
+        if (texts.isEmpty()) return@synchronized false
+        val existing = all(preferences)
+        val kept = prune(texts + existing, now)
+        if (kept == existing) return@synchronized false
+        write(preferences, kept)
+        true
+    }
+
+    private fun write(preferences: Preferences, texts: Map<Long, String>) {
+        val json = JSONObject()
+        texts.forEach { (timestamp, value) -> json.put(timestamp.toString(), value) }
+        preferences.put(StringNonKey.CarePortalNoteSmsTexts, json.toString())
     }
 
     /** All saved texts by note time. Parsed once for each new stored value, so a list can call it for every row. */
@@ -50,8 +66,7 @@ object NoteSmsTexts {
 
     /**
      * The SMS sent with a note ends with this tag, the note's time in base 36 (for example ` #nmhb2k3fk`), so a full AAPS
-     * that receives the SMS can save the text for the same note when Nightscout brings it (2026-11-09, per explicit
-     * request). An AAPSClient has no SMS Communicator, so it never reads it.
+     * or AAPSClient that receives the SMS can save the text for the same note when Nightscout brings it.
      */
     fun tagged(text: String, noteTimestamp: Long): String = "$text $TAG_PREFIX${noteTimestamp.toString(36)}"
 

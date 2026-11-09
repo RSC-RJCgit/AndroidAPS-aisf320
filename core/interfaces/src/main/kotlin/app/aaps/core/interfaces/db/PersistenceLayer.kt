@@ -27,6 +27,7 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.APSResult
 import io.reactivex.rxjava3.core.Completable
 import io.reactivex.rxjava3.core.Maybe
+import io.reactivex.rxjava3.core.Observable
 import io.reactivex.rxjava3.core.Single
 
 interface PersistenceLayer {
@@ -1389,6 +1390,8 @@ interface PersistenceLayer {
      * @return list of autoisf values records
      */
     fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV>
+
+    fun observeAutoIsfHistoryChanges(): Observable<Unit>
 
     /**
      * Insert or update if exists record

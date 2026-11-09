@@ -1189,7 +1189,16 @@ class AutoIsfHistoryExporter @Inject constructor(
      *  previous "nearest row within 90s" rule could also pin a note onto the previous minute's row
      *  when that save happened to be closer in wall-clock than this minute's). 10 min: wide enough for
      *  a GPS/loop gap, still one row (nearest) per orphan. */
-    fun carePortalNotesStr(timestamp: Long, notes: List<TE>, allRecords: List<AIV> = emptyList()): String {
+    fun carePortalNotesStr(timestamp: Long, notes: List<TE>, allRecords: List<AIV> = emptyList()): String =
+        carePortalNotesForRow(timestamp, notes, allRecords).asSequence()
+            .mapNotNull { it.note?.trim()?.takeIf(String::isNotEmpty) }
+            .map { it.replace(Regex("[\\r\\n]+"), " ") }
+            .distinct()
+            .toList()
+            .asReversed()
+            .joinToString("|")
+
+    internal fun carePortalNotesForRow(timestamp: Long, notes: List<TE>, allRecords: List<AIV>): List<TE> {
         val minuteMs = TimeUnit.MINUTES.toMillis(1)
         val minuteStart = timestamp - (timestamp % minuteMs)
         val minuteEnd = minuteStart + minuteMs
@@ -1203,13 +1212,7 @@ class AutoIsfHistoryExporter @Inject constructor(
                 kotlin.math.abs(n.timestamp - timestamp) <= orphanToleranceMs &&
                 allRecords.minByOrNull { kotlin.math.abs(it.timestamp - n.timestamp) }?.timestamp == timestamp
         }
-        return (exact + fallback).asSequence()
-            .mapNotNull { it.note?.trim()?.takeIf(String::isNotEmpty) }
-            .map { it.replace(Regex("[\\r\\n]+"), " ") }
-            .distinct()
-            .toList()
-            .asReversed()
-            .joinToString("|")
+        return exact + fallback
     }
 
     /** "RawMiss" tag for the Notes column, VirtualPump only (added 2026-09-20 at explicit request). The fork's

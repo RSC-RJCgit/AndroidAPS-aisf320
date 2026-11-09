@@ -60,6 +60,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -228,12 +229,34 @@ class SmsCommunicatorPlugin @Inject constructor(
             val format = bundle.getString("format")
                 ?: return Result.failure(workDataOf("Error" to "missing format in input data"))
             @Suppress("DEPRECATION") val pdus = bundle["pdus"] as Array<*>
-            for (pdu in pdus) {
-                val message = SmsMessage.createFromPdu(pdu as ByteArray, format)
-                smsCommunicatorPlugin.processSms(Sms(message))
-            }
+            val parts = pdus.map { pdu -> Sms(SmsMessage.createFromPdu(pdu as ByteArray, format)) }
+            smsCommunicatorPlugin.processSmsParts(parts)
             return Result.success()
         }
+    }
+
+    private fun processSmsParts(parts: List<Sms>) {
+        val first = parts.firstOrNull() ?: return
+        val joined = if (parts.all { it.phoneNumber == first.phoneNumber }) {
+            Sms(first).apply { text = parts.joinToString("") { it.text } }
+        } else null
+
+        if (config.AAPSCLIENT) {
+            // Clients only accept tagged note text from their configured sender.
+            val sender = NoteSmsTexts.normaliseSender(preferences.get(StringKey.ClientNoteSmsSender))
+            if (joined != null && sender != null && NoteSmsTexts.normaliseSender(joined.phoneNumber) == sender) {
+                NoteSmsTexts.untag(joined.text)?.let { (timestamp, text) -> saveNoteSms(timestamp, text) }
+            }
+            return
+        }
+
+        if (joined != null && NoteSmsTexts.untag(joined.text) != null) processSms(joined)
+        else parts.forEach(::processSms)
+    }
+
+    private fun saveNoteSms(timestamp: Long, text: String) {
+        NoteSmsTexts.save(preferences, timestamp, "", text, dateUtil.now())
+        rxBus.send(EventPreferenceChange(StringNonKey.CarePortalNoteSmsTexts.key))
     }
 
     private fun processSettings(ev: EventPreferenceChange?) {
@@ -289,7 +312,7 @@ class SmsCommunicatorPlugin @Inject constructor(
         // A note tag from another AAPS (2026-11-09, per explicit request): save the full text for that CarePortal note, so
         // Treatments > CarePortal shows it when Nightscout brings the note. Not a command, so no reply.
         NoteSmsTexts.untag(receivedSms.text)?.let { (noteTimestamp, text) ->
-            NoteSmsTexts.save(preferences, noteTimestamp, "", text, dateUtil.now())
+            saveNoteSms(noteTimestamp, text)
             aapsLogger.debug(LTag.SMS, "Saved note SMS text for note at $noteTimestamp")
             rxBus.send(EventSmsCommunicatorUpdateGui())
             return
