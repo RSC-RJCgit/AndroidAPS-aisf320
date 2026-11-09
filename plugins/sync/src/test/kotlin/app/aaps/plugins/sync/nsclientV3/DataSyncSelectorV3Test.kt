@@ -269,6 +269,52 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
     }
 
     @Test
+    fun doUploadBgOnlyWhenUploadDataOffTest() = runBlocking {
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.BgSourceUploadToNs)).thenReturn(true)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        whenever(persistenceLayer.getLastGlucoseValueId()).thenReturn(10L)
+        whenever(preferences.get(NsclientLongKey.GlucoseValueLastSyncedId)).thenReturn(0L)
+        whenever(persistenceLayer.getNextSyncElementGlucoseValue(0)).thenReturn(Maybe.empty())
+
+        sut.doUpload()
+
+        // BG is processed, nothing else is
+        verify(persistenceLayer).getNextSyncElementGlucoseValue(0)
+        verify(persistenceLayer, Times(0)).getLastBolusId()
+        verify(persistenceLayer, Times(0)).getLastDeviceStatusId()
+        Unit
+    }
+
+    @Test
+    fun doUploadNoBgWhenUploadDataAndBgUploadOffTest() = runBlocking {
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.BgSourceUploadToNs)).thenReturn(false)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+
+        sut.doUpload()
+
+        verify(persistenceLayer, Times(0)).getNextSyncElementGlucoseValue(any())
+        verify(persistenceLayer, Times(0)).getLastBolusId()
+        Unit
+    }
+
+    @Test
+    fun doUploadNoBgOnlyWhenPausedTest() = runBlocking {
+        whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(false)
+        whenever(preferences.get(BooleanKey.BgSourceUploadToNs)).thenReturn(true)
+        whenever(config.AAPSCLIENT).thenReturn(false)
+
+        sut.doUpload()
+
+        verify(persistenceLayer, Times(0)).getNextSyncElementGlucoseValue(any())
+        Unit
+    }
+
+    @Test
     fun doUploadCalculatesQueueCountersTest() = runBlocking {
         whenever(preferences.get(NsclientBooleanKey.NsPaused)).thenReturn(false)
         whenever(preferences.get(BooleanKey.NsClientUploadData)).thenReturn(true)

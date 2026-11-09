@@ -88,7 +88,16 @@ class DataSyncSelectorV3 @Inject constructor(
     override suspend fun doUpload() {
         rxBus.send(EventNSClientUpdateGuiStatus())
         warnIfVirtualUploads(activePlugin, config, preferences, rxBus, dateUtil)
-        if ((config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused) {
+        val uploadAll = (config.AAPSCLIENT || preferences.get(BooleanKey.NsClientUploadData)) && !isPaused
+        if (!uploadAll && !isPaused && bgUploadEnabled) {
+            // BG only (2026-11-09, per explicit request): "Upload data to NS" off but "Upload BG data to NS" on sends BG and
+            // nothing else. Before, "Upload data to NS" off stopped the BG upload too, so a BG-only uploader was not possible.
+            queueCounter.gvsRemaining = (persistenceLayer.getLastGlucoseValueId() ?: 0L) - preferences.get(NsclientLongKey.GlucoseValueLastSyncedId)
+            rxBus.send(EventNSClientUpdateGuiQueue())
+            processChangedGlucoseValues()
+            storeDataForDb.updateNsIds()
+        }
+        if (uploadAll) {
             queueCounter.bolusesRemaining = (persistenceLayer.getLastBolusId() ?: 0L) - preferences.get(NsclientLongKey.BolusLastSyncedId)
             queueCounter.carbsRemaining = (persistenceLayer.getLastCarbsId() ?: 0L) - preferences.get(NsclientLongKey.CarbsLastSyncedId)
             queueCounter.bcrRemaining = (persistenceLayer.getLastBolusCalculatorResultId() ?: 0L) - preferences.get(NsclientLongKey.BolusCalculatorLastSyncedId)
