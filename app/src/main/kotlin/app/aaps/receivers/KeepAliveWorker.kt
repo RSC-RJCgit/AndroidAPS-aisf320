@@ -37,6 +37,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.workflow.LoggingWorker
+import app.aaps.plugins.aps.openAPSAutoISF.OpenAPSAutoISFPlugin
 import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
 import app.aaps.plugins.configuration.maintenance.cloud.CloudConstants
 import app.aaps.plugins.configuration.maintenance.cloud.CloudStorageManager
@@ -139,6 +140,7 @@ class KeepAliveWorker(
         }
         lastRun = dateUtil.now()
 
+        if (config.APS) (activePlugin.activeAPS as? OpenAPSAutoISFPlugin)?.checkLiveLowStorage()
         dstHelperPlugin.dstCheck()
         localAlertUtils.shortenSnoozeInterval()
         localAlertUtils.checkStaleBGAlert()

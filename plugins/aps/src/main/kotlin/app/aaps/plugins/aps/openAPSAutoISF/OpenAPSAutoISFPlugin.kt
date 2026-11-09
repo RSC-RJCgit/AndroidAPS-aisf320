@@ -3278,6 +3278,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val noteTimestamp = if (paired && lastSmsNoteTimestamp > 0L) lastSmsNoteTimestamp else NoteTimestampAllocator.next(now)
         if (paired) lastSmsNoteTimestamp = 0L
         if (paired) NoteSmsTexts.save(preferences, noteTimestamp, note, smsText, now)
+        saveCarePortalNote(note, noteTimestamp, durationInMinutes)
+    }
+
+    private fun saveCarePortalNote(note: String, noteTimestamp: Long, durationInMinutes: Int = 1) {
         val therapyEvent = TE(
             timestamp = noteTimestamp,
             type = TE.Type.NOTE,
@@ -5019,7 +5023,60 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
     }
 
+    private fun batteryAlertSmsTargets(): List<String> =
+        preferences.get(StringKey.SmsBattAlertNumbers).split(";")
+            .map { it.filterNot(Char::isWhitespace) }
+            .filter { it.isNotEmpty() }
+            .distinct()
+
+    private fun sendLowStorageSms(note: String, targets: List<String>, noteTimestamp: Long? = null): Boolean {
+        val message = if (noteTimestamp == null) note else NoteSmsTexts.tagged(note, noteTimestamp)
+        val accepted = targets.count { smsCommunicator.sendSMS(Sms(it, message)) }
+        if (accepted != targets.size) aapsLogger.warn(LTag.APS, "Low storage SMS accepted for $accepted of ${targets.size} Battery-alert numbers")
+        return accepted > 0
+    }
+
+    private var lastLowStorageSmsAttemptAt = 0L
+
+    // KeepAlive also calls this when the loop is disabled or waiting for data.
+    @Synchronized
+    fun checkLiveLowStorage() {
+        if (!isEnabled() || !isRealLoopPhone()) return
+        val filesDir = context.filesDir
+        if (!filesDir.isDirectory) return
+        val freeGiB = filesDir.usableSpace / (1024.0 * 1024.0 * 1024.0)
+        val notified = preferences.get(BooleanKey.ApsAutoIsfLowStorageNotified)
+        val sent = preferences.get(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent)
+        if (freeGiB >= 10.5) {
+            if (notified) preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, false)
+            if (sent) preferences.put(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent, false)
+            lastLowStorageSmsAttemptAt = 0L
+            return
+        }
+        if (freeGiB >= 10.0 || (notified && sent)) return
+
+        val note = String.format(Locale.US, "StLow %.1fGB free", freeGiB)
+        val now = dateUtil.now()
+        val noteTimestamp = if (notified) null else NoteTimestampAllocator.next(now)
+        val targets = batteryAlertSmsTargets()
+        val smsDue = now - lastLowStorageSmsAttemptAt !in 0 until T.mins(15).msecs()
+        var accepted = false
+        if (!sent && targets.isNotEmpty() && smsDue) {
+            lastLowStorageSmsAttemptAt = now
+            accepted = sendLowStorageSms(note, targets, noteTimestamp)
+            if (accepted) preferences.put(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent, true)
+        }
+        if (noteTimestamp != null) {
+            preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, true)
+            uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
+            if (targets.isEmpty()) aapsLogger.warn(LTag.APS, "Low storage SMS skipped: Battery-alert numbers is empty")
+            if (accepted) NoteSmsTexts.save(preferences, noteTimestamp, note, note, now)
+            saveCarePortalNote(note, noteTimestamp)
+        }
+    }
+
     override fun invoke(initiator: String, tempBasalFallback: Boolean) {
+        checkLiveLowStorage()
         val stepsCapturedAt = dateUtil.now()
         liveStepsForCycle = if (useLiveStepsOnVirtual()) liveStepsMirror.at(stepsCapturedAt) else null
         val stepsSourceForDisplay = if (useLiveStepsOnVirtual())
@@ -5614,28 +5671,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
         }
 
-        // The real-pump phone owns the storage check. It publishes a plain Note so Nightscout can
-        // relay the warning to the Virtual Pump phone without putting anything on the pump graph.
-        // The Virtual Pump does not inspect its own storage here; it reacts once to each relayed Note
-        // and adds the graph announcement locally. The real-phone latch re-arms only above 10.5 GiB.
-        if (activePlugin.activePump !is VirtualPump) {
-            val bytesPerGiB = 1024.0 * 1024.0 * 1024.0
-            val freeBytes = context.filesDir.usableSpace
-            val freeGiB = freeBytes / bytesPerGiB
-            val notified = preferences.get(BooleanKey.ApsAutoIsfLowStorageNotified)
-            when {
-                freeBytes > 0L && freeGiB < 10.0 && !notified -> {
-                    val note = String.format(Locale.US, "StLow %.1fGB free", freeGiB)
-                    uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
-                    sendSms(note, noteTag = true)
-                    addCarePortalNote(note, smsText = lastSmsText)
-                    preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, true)
-                }
-
-                freeGiB >= 10.5 && notified ->
-                    preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, false)
-            }
-        } else {
+        // The Virtual Pump reacts to recent storage notes from the real-pump phone.
+        if (activePlugin.activePump is VirtualPump) {
             val lastHandled = preferences.get(LongKey.ApsAutoIsfLowStorageNsNoteHandledAt)
             val now = dateUtil.now()
             val searchFrom = if (lastHandled > 0L) lastHandled + 1L else now - T.days(7).msecs()
@@ -5653,7 +5690,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // either way; only warnings created recently enough to still be actionable are relayed.
                 if (it.timestamp >= now - T.hours(1).msecs()) {
                     uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
-                    sendSms(note)
+                    val targets = batteryAlertSmsTargets()
+                    if (targets.isNotEmpty()) sendLowStorageSms(note, targets)
                     addGraphAnnouncement(note)
                 }
                 preferences.put(LongKey.ApsAutoIsfLowStorageNsNoteHandledAt, it.timestamp)
