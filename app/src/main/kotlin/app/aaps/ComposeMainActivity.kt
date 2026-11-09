@@ -663,6 +663,13 @@ class ComposeMainActivity : MetroAppCompatActivity() {
         lifecycleScope.launch {
             preferences.observe(BooleanKey.OverviewKeepScreenOn).collect { setupWakeLock() }
         }
+        if (config.AAPSCLIENT) {
+            lifecycleScope.launch {
+                preferences.observe(StringKey.ClientNoteSmsSender).drop(1).collect {
+                    if (config.appInitialized) permissionsViewModel.refresh()
+                }
+            }
+        }
         // A rebuild asked for by code that cannot reach this activity: `MainApp` once Android has applied a
         // new language, an import applying its settings. Android answers it by recreating; the view models
         // go too, see onDestroy.

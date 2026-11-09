@@ -225,6 +225,7 @@ class SmsCommunicatorPlugin(
         aapsLogger: AAPSLogger,
         fabricPrivacy: FabricPrivacy,
         private val smsCommunicatorPlugin: SmsCommunicatorPlugin,
+        private val clientNoteSmsReceiver: ClientNoteSmsReceiver,
         private val dataInbox: DataInbox
     ) : LoggingWorker(context, params, Dispatchers.IO, aapsLogger, fabricPrivacy) {
 
@@ -257,9 +258,14 @@ class SmsCommunicatorPlugin(
                 return
             }
             @Suppress("DEPRECATION") val pdus = bundle["pdus"] as Array<*>
-            for (pdu in pdus) {
-                val message = SmsMessage.createFromPdu(pdu as ByteArray, format)
-                smsCommunicatorPlugin.processSms(smsFromMessage(message))
+            val parts = pdus.map { pdu -> smsFromMessage(SmsMessage.createFromPdu(pdu as ByteArray, format)) }
+            val joined = joinSmsParts(parts)
+            if (clientNoteSmsReceiver.handleIfClient(joined)) return
+
+            if (joined != null && NoteSmsTexts.untag(joined.text) != null) {
+                smsCommunicatorPlugin.processSms(joined)
+            } else {
+                for (part in parts) smsCommunicatorPlugin.processSms(part)
             }
         }
 

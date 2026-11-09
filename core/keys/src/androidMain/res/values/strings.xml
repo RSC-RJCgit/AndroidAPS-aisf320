@@ -431,6 +431,8 @@
     <string name="automation_location_gps">Use GPS location</string>
 
     <!-- StringKey: SMS preferences -->
+    <string name="pref_title_client_note_sms_sender">Loop phone SMS number</string>
+    <string name="pref_summary_client_note_sms_sender">Show full Careportal notes from this number. Use the same number format as the SMS inbox. Leave blank to turn off.</string>
     <string name="smscommunicator_allowednumbers">Allowed phone numbers</string>
     <string name="smscommunicator_allowednumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY</string>
     <string name="smscommunicator_broadcastexcludenumbers">Exclude from general SMS</string>

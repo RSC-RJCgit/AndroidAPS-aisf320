@@ -342,5 +342,6 @@
     <string name="a11y_otp_qr_code">QR Code for setup one time password</string>
     <string name="permission_sms_title">SMS</string>
     <string name="permission_sms_description">Application needs SMS permission for remote control via text messages</string>
+    <string name="permission_client_note_sms_description">Receive full Careportal notes from the loop phone.</string>
 
 </resources>

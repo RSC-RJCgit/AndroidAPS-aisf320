@@ -2621,6 +2621,8 @@ class PersistenceLayerImpl(
         repository.getAutoIsfValuesFromTimeToTime(startTime, endTime).map { it.fromDb() }
     }
 
+    override fun observeAutoIsfHistoryChanges(): Flow<Unit> = repository.observeAutoIsfHistoryChanges()
+
     override suspend fun insertOrUpdateStepsCounts(stepsCounts: List<SC>): PersistenceLayer.TransactionResult<SC> = withContext(aapsIoDispatcher) {
         if (stepsCounts.isEmpty()) return@withContext PersistenceLayer.TransactionResult<SC>()
         try {

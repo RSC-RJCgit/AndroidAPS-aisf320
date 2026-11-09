@@ -19,6 +19,7 @@ import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.db.observeChanges
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -58,12 +59,17 @@ import app.aaps.ui.UiStrings
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -220,16 +226,25 @@ class ChipsViewModel(
         private set
     private var autoIsfHistoryJob: Job? = null
 
+    @OptIn(FlowPreview::class)
     fun openAutoIsfHistory(endTime: Long? = null) {
         autoIsfHistoryJob?.cancel()
-        val selectedEnd = (endTime ?: dateUtil.now()).coerceAtMost(dateUtil.now())
+        val selectedEnd = endTime?.coerceAtMost(dateUtil.now())
         autoIsfHistoryJob = viewModelScope.launch {
-            autoIsfHistoryRows = loadAutoIsfHistory(selectedEnd)
-            autoIsfHistoryEndTime = selectedEnd
-            autoIsfHistoryOpen = true
-            // The table is already open. A slow cloud upload must not hold it back.
-            // Browsing an old window reads stored rows only; it must not export today's data.
-            if (endTime == null) runCatching { maintenance.exportCoordinated("ISF_LONG_PRESS") }
+            var firstLoad = true
+            merge(
+                persistenceLayer.observeAutoIsfHistoryChanges(),
+                persistenceLayer.observeChanges<TE>().map { Unit },
+                preferences.observe(StringNonKey.CarePortalNoteSmsTexts).map { Unit }
+            ).onStart { emit(Unit) }.debounce(200L).collect {
+                val end = selectedEnd ?: dateUtil.now()
+                autoIsfHistoryRows = loadAutoIsfHistory(end)
+                autoIsfHistoryEndTime = end
+                autoIsfHistoryOpen = true
+                // Export once on opening the live table, without holding up later updates.
+                if (firstLoad && selectedEnd == null) launch { runCatching { maintenance.exportCoordinated("ISF_LONG_PRESS") } }
+                firstLoad = false
+            }
         }
     }
 
@@ -240,7 +255,7 @@ class ChipsViewModel(
 
     /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
     suspend fun loadAutoIsfHistory(endTime: Long = dateUtil.now()): List<AutoIsfHistoryRow> =
-        loadAutoIsfHistoryRows(endTime, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin)
+        loadAutoIsfHistoryRows(endTime, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin, includeFullNotes = true)
 
     var list1Open by mutableStateOf(false)
         private set

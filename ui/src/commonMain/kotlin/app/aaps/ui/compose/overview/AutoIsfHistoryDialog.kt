@@ -44,7 +44,7 @@ import app.aaps.ui.UiStrings
 
 /**
  * Six hours of stored AutoISF loop rows ending at the chosen graph time.
- * Only columns that this app stores are shown.
+ * The last column shows full Careportal note text saved on this device.
  */
 @Composable
 fun AutoIsfHistoryDialog(
@@ -108,10 +108,11 @@ fun AutoIsfHistoryDialog(
                     val density = LocalDensity.current
                     val gap = AapsTheme.spacing.medium
                     val widths: List<Dp> = remember(shown, headers, style, density) {
-                        val table = listOf(listOf(timeHeader) + headers) + shown.map { listOf(it.time) + it.scrollingCells() }
+                        val table = listOf(listOf(timeHeader) + headers) + shown.map { listOf(it.time) + it.historyCells() }
                         List(table.first().size) { column ->
                             val widest = table.maxOf { line -> measurer.measure(line[column], style).size.width }
-                            with(density) { widest.toDp() } + gap
+                            val width = with(density) { widest.toDp() } + gap
+                            if (column == table.first().lastIndex) width.coerceAtMost(320.dp) else width
                         }
                     }
                     // Header row stays fixed above the vertical scroll; it shares the horizontal scroll with the data rows.
@@ -133,7 +134,7 @@ fun AutoIsfHistoryDialog(
                                 Row(modifier = Modifier.fillMaxWidth()) {
                                     HistoryCell(row.time, colors.first(), bold = false, width = widths.first())
                                     HistoryLine(
-                                        values = row.scrollingCells(),
+                                        values = row.historyCells(),
                                         colors = colors.drop(1),
                                         bold = false,
                                         scroll = horizontal,
@@ -184,8 +185,11 @@ private fun historyHeaders(): List<String> = listOf(
     stringResource(UiStrings.autoisf_history_steps_15),
     stringResource(UiStrings.autoisf_history_steps_30),
     stringResource(UiStrings.autoisf_history_steps_60),
-    stringResource(UiStrings.autoisf_history_steps_180)
+    stringResource(UiStrings.autoisf_history_steps_180),
+    stringResource(UiStrings.autoisf_history_full_note)
 )
+
+private fun AutoIsfHistoryRow.historyCells(): List<String> = scrollingCells() + fullNote.ifBlank { "--" }
 
 @Composable
 private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
@@ -220,6 +224,7 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
         insulin,
         insulin,
         insulin,
+        time,
         time,
         time,
         time,

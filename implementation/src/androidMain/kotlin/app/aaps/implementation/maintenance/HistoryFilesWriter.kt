@@ -51,7 +51,7 @@ class HistoryFilesWriter(
 ) {
 
     suspend fun writeAndUpload(trigger: String, now: Long = dateUtil.now()) {
-        // The same rows and columns as the table on screen (2026-10-21, per explicit request)
+        // The same rows as the table on screen. Full SMS text stays local to the table.
         val rows = loadAutoIsfHistoryRows(now, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin)
             .map { it.cells() }
         val entries = persistenceLayer.getUserEntryFilteredDataFromTime(now - USER_ENTRIES_EXPORT_WINDOW_MS)

@@ -60,6 +60,7 @@ class PreferencePlatformRulesTest {
      *   added without it)
      * - steps from this phone: the step sensor is read on Android only, and the iOS app is a client (2026-10-30)
      * - raw from the secondary NS: only iOS takes every reading from Nightscout with no raw of its own (2026-10-30)
+     * - loop phone SMS number: only Android clients can receive SMS directly
      */
     @Test
     fun `restrictions are the exception`() {
@@ -70,6 +71,7 @@ class PreferencePlatformRulesTest {
             "keep_screen_on", setOf(AppPlatform.Android, AppPlatform.Ios),
             "ns_allow_roaming", AppPlatform.ANDROID_ONLY,
             "autoisf_steps_from_phone", AppPlatform.ANDROID_ONLY,
+            "client_note_sms_sender", AppPlatform.ANDROID_ONLY,
             "ios_keep_running_in_background", setOf(AppPlatform.Ios),
             "ios_reload_when_no_bg", setOf(AppPlatform.Ios),
             "ios_rileylink_heartbeat", setOf(AppPlatform.Ios),

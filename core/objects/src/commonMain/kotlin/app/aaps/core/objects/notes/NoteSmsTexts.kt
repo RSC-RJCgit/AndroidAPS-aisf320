@@ -2,6 +2,8 @@ package app.aaps.core.objects.notes
 
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -26,36 +28,34 @@ object NoteSmsTexts {
     /** At most this many texts are kept, the newest ones */
     const val MAX_ENTRIES = 3000
 
-    @Volatile private var cachedRaw: String? = null
-    @Volatile private var cached: Map<Long, String> = emptyMap()
+    private val writeLock = Mutex()
+    @Volatile private var cache: Pair<String, Map<Long, String>>? = null
 
     /**
      * Saves [smsText] for the note at [noteTimestamp]. Nothing is saved when it is blank or the same as [note].
-     * Called from one place only (the AutoISF note helper, one loop at a time), so no lock is needed.
+     * Sending a note and receiving a tagged SMS can both write to the same preference.
      */
-    fun save(preferences: Preferences, noteTimestamp: Long, note: String, smsText: String?, now: Long) {
+    suspend fun save(preferences: Preferences, noteTimestamp: Long, note: String, smsText: String?, now: Long) {
         val text = smsText?.trim().orEmpty()
         if (text.isEmpty() || text == note.trim()) return
-        val all = parse(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).toMutableMap()
-        all[noteTimestamp] = text
-        val kept = prune(all, now)
-        preferences.put(StringNonKey.CarePortalNoteSmsTexts, JsonObject(kept.entries.associate { it.key.toString() to JsonPrimitive(it.value) }).toString())
+        writeLock.withLock {
+            val all = all(preferences).toMutableMap()
+            if (all[noteTimestamp] == text) return
+            all[noteTimestamp] = text
+            val kept = prune(all, now)
+            preferences.put(StringNonKey.CarePortalNoteSmsTexts, JsonObject(kept.entries.associate { it.key.toString() to JsonPrimitive(it.value) }).toString())
+        }
     }
 
     /** All saved texts by note time. Parsed once for each new stored value. */
     fun all(preferences: Preferences): Map<Long, String> {
         val raw = preferences.get(StringNonKey.CarePortalNoteSmsTexts)
-        if (raw != cachedRaw) {
-            cached = parse(raw)
-            cachedRaw = raw
-        }
-        return cached
+        return cache?.takeIf { it.first == raw }?.second ?: parse(raw).also { cache = raw to it }
     }
 
     /**
      * The SMS sent with a note ends with this tag, the note's time in base 36 (for example ` #nmhb2k3fk`), so a full AAPS
-     * that receives the SMS can save the text for the same note when Nightscout brings it (2026-11-09, per explicit
-     * request). An AAPSClient has no SMS Communicator, so it never reads it.
+     * or Android client that receives the SMS can save the text for the same note when Nightscout brings it.
      */
     fun tagged(text: String, noteTimestamp: Long): String = "$text $TAG_PREFIX${noteTimestamp.toString(36)}"
 

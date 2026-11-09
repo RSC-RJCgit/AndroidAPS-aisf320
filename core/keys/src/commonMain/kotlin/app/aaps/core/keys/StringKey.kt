@@ -236,6 +236,15 @@ enum class StringKey(
     AutomationAddress4("automation_address_4", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     AutomationAddress5("automation_address_5", "-", KeysStrings.pref_title_location_slot, KeysStrings.pref_summary_location_slot, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 
+    ClientNoteSmsSender(
+        key = "client_note_sms_sender",
+        defaultValue = "",
+        title = KeysStrings.pref_title_client_note_sms_sender,
+        summary = KeysStrings.pref_summary_client_note_sms_sender,
+        validator = StringValidator.phone(),
+        visibility = ElementVisibility { it.isClient },
+        platforms = AppPlatform.ANDROID_ONLY
+    ),
     SmsAllowedNumbers(
         key = "smscommunicator_allowednumbers",
         defaultValue = "",

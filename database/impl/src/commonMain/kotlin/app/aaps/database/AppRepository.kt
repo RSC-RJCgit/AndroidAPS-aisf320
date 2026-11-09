@@ -5,6 +5,7 @@ import androidx.room.useWriterConnection
 import app.aaps.database.daos.ApsResultVariableSens
 import app.aaps.database.entities.APSResult
 import app.aaps.database.entities.AutoIsfValues
+import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
 import app.aaps.database.entities.Bolus
 import app.aaps.database.entities.BolusCalculatorResult
 import app.aaps.database.entities.CalibrationEntry
@@ -969,6 +970,9 @@ class AppRepository internal constructor(
 
     suspend fun insertAutoIsfValue(entry: AutoIsfValues): Long =
         database.autoIsfValuesDao.insert(entry)
+
+    fun observeAutoIsfHistoryChanges(): Flow<Unit> =
+        database.invalidationTracker.createFlow(TABLE_AUTO_ISF_VALUES, emitInitialState = false).map { Unit }
 
     suspend fun getAutoIsfValuesFromTimeToTime(startMillis: Long, endMillis: Long): List<AutoIsfValues> =
         database.autoIsfValuesDao.getFromTimeToTime(startMillis, endMillis)

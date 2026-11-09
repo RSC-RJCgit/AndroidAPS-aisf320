@@ -16,10 +16,10 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.notes.NoteSmsTexts
 import kotlin.math.abs
 
-// The table is here, not in :ui, so the exported files have the same columns as the screen (2026-10-21, per explicit
-// request: the export had only 13 of them).
+// The screen and exported files share these rows. Full SMS text is shown only on the phone that has it.
 
 /** How far back the history table looks. */
 const val AUTO_ISF_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
@@ -81,10 +81,11 @@ data class AutoIsfHistoryRow(
     val steps15: String,
     val steps30: String,
     val steps60: String,
-    val steps180: String
+    val steps180: String,
+    val fullNote: String = ""
 )
 
-/** Column names for the exported files, in the order of [cells]. Same columns as the screen. */
+/** Column names for the exported files, in the order of [cells]. */
 val AUTO_ISF_HISTORY_EXPORT_HEADER = listOf(
     "Time", "BGL", "UKF", "UKFd5", "UKFd15", "Final", "acce", "bg", "pp", "dura",
     "Accel", "Delta", "Short", "Long", "IOB", "IOd5", "IOBth", "SMB",
@@ -160,12 +161,11 @@ fun ukfDeltaText(rows: List<AIV>, index: Int, minutesBack: Int, deltaText: (Doub
     return deltaText((row.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0)
 }
 
-/** The notes written after the next older row and up to this row (rows newest first). Empty when there are none. */
-internal fun notesForRow(rows: List<AIV>, index: Int, notes: List<Pair<Long, String>>): String {
-    if (notes.isEmpty()) return ""
+/** The notes written after the next older row and up to this row (rows newest first). */
+private fun carePortalNotesForRow(rows: List<AIV>, index: Int, notes: List<Pair<Long, String>>): List<Pair<Long, String>> {
     val until = rows[index].timestamp
     val from = rows.getOrNull(index + 1)?.timestamp ?: (until - 5 * 60_000L)
-    return notes.filter { it.first > from && it.first <= until }.joinToString(" ") { it.second }
+    return notes.filter { it.first > from && it.first <= until }
 }
 
 fun List<AIV>.autoIsfHistoryRows(
@@ -178,10 +178,12 @@ fun List<AIV>.autoIsfHistoryRows(
     notes: List<Pair<Long, String>> = emptyList(),
     fromLivePhone: Boolean = false,
     ownDevice: String = "",
+    smsTexts: Map<Long, String> = emptyMap(),
     profileBasalAt: (Long) -> Double? = { null }
 ): List<AutoIsfHistoryRow> = mapIndexed { index, row ->
     val factor = dominantAutoIsfFactor(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)
     val sample = LiveSteps.sampleFor(row.timestamp, steps, fromLivePhone, ownDevice)
+    val rowNotes = carePortalNotesForRow(this, index, notes)
     AutoIsfHistoryRow(
         time = timeText(row.timestamp),
         glucose = glucoseText(row.glucose),
@@ -211,7 +213,7 @@ fun List<AIV>.autoIsfHistoryRows(
         cob = autoIsfAmountText(row.cob, format2),
         basal = autoIsfAmountText(row.basal, format2),
         profileBasal = profileBasalAt(row.timestamp)?.let { format2(it) } ?: "--",
-        note = row.note.ifBlank { notesForRow(this, index, notes) }.ifBlank { "--" },
+        note = row.note.ifBlank { rowNotes.joinToString(" ") { it.second } }.ifBlank { "--" },
         mj = mjAt(row.timestamp, notes),
         smbFactor = if (row.smbDelivered == 0.0) AutoIsfFactor.NONE else factor,
         hasSmb = row.smbDelivered > 0.0,
@@ -219,7 +221,8 @@ fun List<AIV>.autoIsfHistoryRows(
         steps15 = sample?.steps15min?.toString() ?: "--",
         steps30 = sample?.steps30min?.toString() ?: "--",
         steps60 = sample?.steps60min?.toString() ?: "--",
-        steps180 = sample?.steps180min?.toString() ?: "--"
+        steps180 = sample?.steps180min?.toString() ?: "--",
+        fullNote = rowNotes.asSequence().map { it.first }.distinct().mapNotNull { smsTexts[it] }.joinToString("\n")
     )
 }
 
@@ -236,7 +239,8 @@ suspend fun loadAutoIsfHistoryRows(
     decimalFormatter: DecimalFormatter,
     config: Config,
     preferences: Preferences,
-    activePlugin: ActivePlugin
+    activePlugin: ActivePlugin,
+    includeFullNotes: Boolean = false
 ): List<AutoIsfHistoryRow> {
     val from = now - AUTO_ISF_HISTORY_WINDOW_MS
     val units = profileFunction.getUnits()
@@ -262,6 +266,7 @@ suspend fun loadAutoIsfHistoryRows(
         steps = steps,
         notes = notes,
         fromLivePhone = fromLivePhone,
-        ownDevice = "openaps://${config.deviceModelForUpload}"
+        ownDevice = "openaps://${config.deviceModelForUpload}",
+        smsTexts = if (includeFullNotes) NoteSmsTexts.all(preferences) else emptyMap()
     )
 }

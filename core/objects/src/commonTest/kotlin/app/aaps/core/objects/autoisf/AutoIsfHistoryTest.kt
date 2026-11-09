@@ -49,10 +49,20 @@ class AutoIsfHistoryTest {
         val minute = 60_000L
         val rows = listOf(sample(smb = 0.0, time = 10 * minute), sample(smb = 0.0, time = 5 * minute))
         val notes = listOf(4 * minute to "Old", 6 * minute to "MoreMJ", 9 * minute to "Db10")
-        assertEquals("MoreMJ Db10", notesForRow(rows, 0, notes))
-        assertEquals("Old", notesForRow(rows, 1, notes))
         val shown = rows.autoIsfHistoryRows(timeText = { "" }, glucoseText = { "" }, deltaText = { "" }, format2 = { "" }, notes = notes)
-        assertEquals("MoreMJ Db10", shown[0].note)
+        assertEquals(listOf("MoreMJ Db10", "Old"), shown.map { it.note })
+    }
+
+    @Test
+    fun fullTextsUseExactNoteTimesAndStayOutOfExportedCells() {
+        val rows = listOf(sample(smb = 0.0, time = 600_000L), sample(smb = 0.0, time = 300_000L))
+        val shown = rows.autoIsfHistoryRows(
+            timeText = { "" }, glucoseText = { "" }, deltaText = { "" }, format2 = { "" },
+            notes = listOf(300_000L to "Old", 400_000L to "New", 500_000L to "Other"),
+            smsTexts = mapOf(300_000L to "Old full", 400_000L to "New full", 500_001L to "Unpaired")
+        )
+        assertEquals(listOf("New full", "Old full"), shown.map { it.fullNote })
+        assertFalse("New full" in shown.first().cells())
     }
 
     @Test

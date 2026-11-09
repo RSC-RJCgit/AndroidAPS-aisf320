@@ -16,6 +16,7 @@ import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -53,6 +54,7 @@ internal class CareportalViewModelTest {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         whenever(persistenceLayer.observeChanges(TE::class)).thenReturn(emptyFlow())
         whenever(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).thenReturn("{}")
+        whenever(preferences.observe(StringNonKey.CarePortalNoteSmsTexts)).thenReturn(MutableStateFlow("{}"))
         sut = CareportalViewModel(persistenceLayer, generatedTextResolver(), dateUtil, aapsLogger, rxBus, batchExecutor, config, preferences)
     }
 

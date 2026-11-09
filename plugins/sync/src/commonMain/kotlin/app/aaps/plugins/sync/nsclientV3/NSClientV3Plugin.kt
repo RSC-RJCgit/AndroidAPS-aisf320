@@ -1405,6 +1405,7 @@ class NSClientV3Plugin(
             StringKey.NsClientAccessToken,
             BooleanKey.NsClient3UseWs,
             BooleanKey.NsClientReadOnlyClient,
+            StringKey.ClientNoteSmsSender,
             libreSpecialSettings("ns_libre_special_settings"),
             PreferenceSubScreenDef(
                 key = "ns_client_synchronization",

@@ -1822,6 +1822,8 @@ interface PersistenceLayer {
     /** Stores one AutoISF loop row. */
     suspend fun insertAutoIsfValue(value: AIV)
 
+    fun observeAutoIsfHistoryChanges(): Flow<Unit>
+
     /** AutoISF loop rows whose time is inside the interval, oldest first. */
     suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<AIV>
 }

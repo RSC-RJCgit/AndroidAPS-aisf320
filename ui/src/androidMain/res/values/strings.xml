@@ -309,6 +309,7 @@
     <string name="autoisf_history_steps_30" comment="Steps in the last 30 minutes.">S30</string>
     <string name="autoisf_history_steps_60" comment="Steps in the last 60 minutes.">S60</string>
     <string name="autoisf_history_steps_180" comment="Steps in the last 180 minutes.">S180</string>
+    <string name="autoisf_history_full_note">Full note</string>
     <string name="coded_profiles">Coded profiles</string>
     <string name="coded_profiles_help">Pick the profile name for each role. A name that contains steroid or % cannot be Standard or Low.</string>
     <string name="coded_profiles_empty">Add a profile first.</string>
