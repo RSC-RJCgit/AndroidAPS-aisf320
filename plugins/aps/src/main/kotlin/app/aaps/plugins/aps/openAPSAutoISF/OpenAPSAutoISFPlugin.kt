@@ -5031,8 +5031,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     private fun sendLowStorageSms(note: String, targets: List<String>, noteTimestamp: Long? = null): Boolean {
         val message = if (noteTimestamp == null) note else NoteSmsTexts.tagged(note, noteTimestamp)
-        val accepted = targets.count { smsCommunicator.sendSMS(Sms(it, message)) }
-        if (accepted != targets.size) aapsLogger.warn(LTag.APS, "Low storage SMS accepted for $accepted of ${targets.size} Battery-alert numbers")
+        val accepted = targets.count { number ->
+            try {
+                smsCommunicator.sendSMS(Sms(number, message))
+            } catch (error: Exception) {
+                aapsLogger.error(LTag.APS, "Could not send low storage SMS", error)
+                false
+            }
+        }
+        val result = "Low storage SMS accepted for $accepted of ${targets.size} Battery-alert numbers"
+        if (accepted == targets.size) aapsLogger.info(LTag.APS, result) else aapsLogger.warn(LTag.APS, result)
         return accepted > 0
     }
 
@@ -5048,7 +5056,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val notified = preferences.get(BooleanKey.ApsAutoIsfLowStorageNotified)
         val sent = preferences.get(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent)
         if (freeGiB >= 10.5) {
-            if (notified) preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, false)
+            if (notified) {
+                preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, false)
+                uiInteraction.dismissNotification(9012)
+            }
             if (sent) preferences.put(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent, false)
             lastLowStorageSmsAttemptAt = 0L
             return
@@ -5060,17 +5071,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val noteTimestamp = if (notified) null else NoteTimestampAllocator.next(now)
         val targets = batteryAlertSmsTargets()
         val smsDue = now - lastLowStorageSmsAttemptAt !in 0 until T.mins(15).msecs()
-        var accepted = false
         if (!sent && targets.isNotEmpty() && smsDue) {
             lastLowStorageSmsAttemptAt = now
-            accepted = sendLowStorageSms(note, targets, noteTimestamp)
-            if (accepted) preferences.put(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent, true)
+            if (sendLowStorageSms(note, targets, noteTimestamp)) {
+                preferences.put(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent, true)
+            }
         }
         if (noteTimestamp != null) {
             preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, true)
             uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
             if (targets.isEmpty()) aapsLogger.warn(LTag.APS, "Low storage SMS skipped: Battery-alert numbers is empty")
-            if (accepted) NoteSmsTexts.save(preferences, noteTimestamp, note, note, now)
             saveCarePortalNote(note, noteTimestamp)
         }
     }

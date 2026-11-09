@@ -1273,14 +1273,15 @@ class SmsCommunicatorPlugin @Inject constructor(
     }
 
     override fun sendSMS(sms: Sms): Boolean {
+        val manager = smsManager ?: return false
         sms.text = stripAccents(sms.text)
 
         try {
             aapsLogger.debug(LTag.SMS, "Sending SMS to " + sms.phoneNumber + ": " + sms.text)
-            if (sms.text.toByteArray().size <= 140) smsManager?.sendTextMessage(sms.phoneNumber, null, sms.text, null, null)
+            if (sms.text.toByteArray().size <= 140) manager.sendTextMessage(sms.phoneNumber, null, sms.text, null, null)
             else {
-                val parts = smsManager?.divideMessage(sms.text)
-                smsManager?.sendMultipartTextMessage(
+                val parts = manager.divideMessage(sms.text)
+                manager.sendMultipartTextMessage(
                     sms.phoneNumber, null, parts,
                     null, null
                 )

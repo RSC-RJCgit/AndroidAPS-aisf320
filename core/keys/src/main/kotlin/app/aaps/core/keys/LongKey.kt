@@ -81,7 +81,7 @@ enum class LongKey(
     ApsAutoIsfBatchUkf14SinceTs("autoisf_batch_ukf14_since_ts", 0, defaultedBySM = true),
     // Virtual-Pump phone cursor for the newest StLow/legacy StorageLow Note already alerted. A later NS Note has a
     // new timestamp and is handled once, including across app restarts.
-    ApsAutoIsfLowStorageNsNoteHandledAt("autoisf_low_storage_ns_note_handled_at", 0, defaultedBySM = true),
+    ApsAutoIsfLowStorageNsNoteHandledAt("autoisf_low_storage_ns_note_handled_at", 0),
     // Secondary-NS server revision of the newest ADesk command, and the newest revision already sent
     // to Tasker on the real-pump phone. Separate values make the hand-off persistent across restarts.
     ApsAutoIsfAnyDeskSecondaryCommandAt("autoisf_anydesk_secondary_command_at", 0, defaultedBySM = true),

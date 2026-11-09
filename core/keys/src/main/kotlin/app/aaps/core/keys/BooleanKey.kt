@@ -237,9 +237,8 @@ enum class BooleanKey(
     // the same 2h+ high stretch). Reset to false in lockstep with that timestamp resetting to 0. Not
     // shown in any preference screen.
     ApsAutoIsfUnexplainedHighMealSeen("autoisf_unexplained_high_meal_seen", false, defaultedBySM = true, exportable = false),
-    // Real-pump phone latch for its low-storage alert/SMS/NS Note. It prevents one set per APS cycle;
-    // re-armed only after that phone's storage recovers above the hysteresis threshold.
-    ApsAutoIsfLowStorageNotified("autoisf_low_storage_notified", false, defaultedBySM = true, exportable = false),
+    // Real-pump phone latch for the local alert and Nightscout note. Re-arms after storage recovers.
+    ApsAutoIsfLowStorageNotified("autoisf_low_storage_notified", false, exportable = false),
     // Separate from the existing alert latch so a phone already low can send to the new recipients.
     ApsAutoIsfLowStorageTargetedSmsSent("autoisf_low_storage_targeted_sms_sent", false, exportable = false),
     // Internal-only, one-shot cross-module signal: set true by the CleanGraphTT trigger (see
