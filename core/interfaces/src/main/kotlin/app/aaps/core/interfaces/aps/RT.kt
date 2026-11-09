@@ -87,7 +87,7 @@ data class RT(
     fun autoIsfListValue(key: String): String? {
         val values = autoIsfListValues as? JsonObject ?: return null
         val value = values[key] as? JsonPrimitive ?: return null
-        return value.content.takeIf { value.isString && it.isNotBlank() }
+        return value.content.takeIf { value.isString }
     }
 
     object StringBuilderSerializer : KSerializer<StringBuilder> {

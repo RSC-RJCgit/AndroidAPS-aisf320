@@ -20,7 +20,7 @@ internal fun autoIsfListValues(preferences: Preferences, runningProfile: String)
     fun toggle(code: Double, key: BooleanKey) = put(code.toString(), onOff(preferences.get(key)))
     fun number(code: Double, key: DoubleKey) = put(code.toString(), decimal(preferences.get(key)))
     fun profile(code: Double, key: StringKey) {
-        preferences.get(key).takeIf { it.isNotBlank() }?.let { put(code.toString(), it) }
+        put(code.toString(), preferences.get(key))
     }
 
     val smbBase = decimal(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
@@ -56,6 +56,7 @@ internal fun autoIsfListValues(preferences: Preferences, runningProfile: String)
     profile(5.15, StringKey.ApsAutoIsfLowProfileName)
     toggle(5.152, BooleanKey.FslUseUkfSmoothing)
     toggle(5.156, BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
+    put("unsupported:5.248", "true")
 
     profile(5.162, StringKey.ApsAutoIsfSteroid110ProfileName)
     toggle(5.164, BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
@@ -76,8 +77,11 @@ internal fun autoIsfListValues(preferences: Preferences, runningProfile: String)
     val apk = newestApk?.let { "Newest: $it" } ?: "Newest: unknown"
     put("5.2", apk)
     put("5.202", apk)
+    put("5.208", if (preferences.get(IntKey.ApsAutoIsfAdbConnectPort) > 0) "Port configured" else "Port not set")
     put("5.204", onOff(preferences.get(StringKey.AutomationLocationSmsDeviceModel).isNotBlank()))
     toggle(5.206, BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+    toggle(5.236, BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)
+    put("unsupported:5.236", "true")
     toggle(5.21, BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
     toggle(5.212, BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
     toggle(5.214, BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
@@ -93,6 +97,24 @@ internal fun autoIsfListValues(preferences: Preferences, runningProfile: String)
     val baseOffset = decimal(preferences.get(DoubleKey.ApsAutoIsfLibreOffsetOrig))
     val tier = onOff(preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjActive))
     put("libreLive", "Live slope $liveSlope, offset $liveOffset. Baseline slope $baseSlope, offset $baseOffset. Sensor age tier $tier.")
+
+    listOf(
+        StringKey.ApsAutoIsfStandardProfileName,
+        StringKey.ApsAutoIsfLowProfileName,
+        StringKey.ApsAutoIsfStandard100ProfileName,
+        StringKey.ApsAutoIsfStandard105ProfileName,
+        StringKey.ApsAutoIsfStandard110ProfileName,
+        StringKey.ApsAutoIsfLow70ProfileName,
+        StringKey.ApsAutoIsfLow80ProfileName,
+        StringKey.ApsAutoIsfLow90ProfileName,
+        StringKey.ApsAutoIsfSteroid100ProfileName,
+        StringKey.ApsAutoIsfSteroid110ProfileName,
+        StringKey.ApsAutoIsfSteroid130ProfileName,
+        StringKey.ApsAutoIsfSteroid150ProfileName,
+        StringKey.ApsAutoIsfSteroid190ProfileName,
+        StringKey.ApsAutoIsfSteroid250ProfileName
+    ).forEach { key -> put("role:${key.key}", preferences.get(key)) }
+    put("runningProfile", runningProfile)
 
     val standard = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
     val low = preferences.get(StringKey.ApsAutoIsfLowProfileName)

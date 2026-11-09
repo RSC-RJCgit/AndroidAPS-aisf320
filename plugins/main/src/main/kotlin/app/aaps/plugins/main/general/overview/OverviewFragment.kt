@@ -1967,7 +1967,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
         val newest = if (config.AAPSCLIENT) {
             val mirrored = mirroredAutoIsfSettings()
-            mirrored[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
+            loopListValue(action.clientRelayMmol.toString())?.substringAfter("Newest: ", "")?.toLongOrNull()
+                ?: mirrored[LongKey.ApsAutoIsfApkNewestNnn.key]?.toLongOrNull()?.takeIf { it > 0 }
                 ?: Aaps333NewestApk.featureNumber(mirrored["configuration_version"])?.toLong()
         } else {
             list2NewestNnn()?.also { preferences.put(LongKey.ApsAutoIsfApkNewestNnn, it) }
@@ -2557,7 +2558,37 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun loopListLine(key: String): String? {
         val suggestion = processedDeviceStatusData.openAPSData.suggested ?: return null
         val value = suggestion.autoIsfListValue(key) ?: return null
-        return loopValueLine(value, suggestion.timestamp)
+        return loopValueLine(value.ifBlank { rh.gs(R.string.direct_list_value_not_set) }, suggestion.timestamp)
+    }
+
+    private fun loopLibreCalibration(): String? {
+        loopListLine("libreLive")?.let { return it }
+        val legacy = mirroredAutoIsfSettings()
+        val slope = legacy[DoubleKey.FslCalSlope.key] ?: return null
+        val offset = legacy[DoubleKey.FslCalOffset.key] ?: return null
+        val baseSlope = legacy[DoubleKey.ApsAutoIsfLibreSlopeOrig.key] ?: return null
+        val baseOffset = legacy[DoubleKey.ApsAutoIsfLibreOffsetOrig.key] ?: return null
+        val active = legacy[BooleanKey.ApsAutoIsfOldSensorAdjActive.key] ?: return null
+        return loopValueLine("Live slope $slope, offset $offset. Baseline slope $baseSlope, offset $baseOffset. Sensor age tier ${mirroredBoolean(active)}.")
+    }
+
+    private fun loopTier(): String? {
+        loopListLine("tierNow")?.let { return it }
+        val legacy = mirroredAutoIsfSettings()
+        val running = legacy["configuration_profile"] ?: return null
+        val standard = legacy[StringKey.ApsAutoIsfStandardProfileName.key] ?: return null
+        val low = legacy[StringKey.ApsAutoIsfLowProfileName.key] ?: return null
+        val standardRungs = listOf(
+            legacy[StringKey.ApsAutoIsfStandard100ProfileName.key] ?: return null,
+            legacy[StringKey.ApsAutoIsfStandard105ProfileName.key] ?: return null,
+            legacy[StringKey.ApsAutoIsfStandard110ProfileName.key] ?: return null,
+        )
+        val lowRungs = listOf(
+            legacy[StringKey.ApsAutoIsfLow70ProfileName.key] ?: return null,
+            legacy[StringKey.ApsAutoIsfLow80ProfileName.key] ?: return null,
+            legacy[StringKey.ApsAutoIsfLow90ProfileName.key] ?: return null,
+        )
+        return loopValueLine(tierSummary(readTier(standard, low, running, standardRungs, lowRungs), standard, low, running))
     }
 
     private fun loopValueLine(value: String, timestamp: Long? = processedDeviceStatusData.openAPSData.suggested?.timestamp): String =
@@ -2567,8 +2598,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun loopAutomationState(name: String): String {
         val states = processedDeviceStatusData.openAPSData.suggested?.automationStatesCurrent
-        val state = states?.let { runCatching { JSONObject(it).optString(name) }.getOrNull() }
-        return state?.takeIf { it.isNotBlank() }?.let { loopValueLine(it) }
+        val state = states?.let { raw ->
+            runCatching { JSONObject(raw).takeIf { it.has(name) }?.optString(name) }.getOrNull()
+        }
+        return state?.let { loopValueLine(it.ifBlank { rh.gs(R.string.direct_list_value_not_set) }) }
             ?: mirroredListSetting("automation_state_$name")
     }
 
@@ -2582,7 +2615,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     ): String {
         val suggestion = processedDeviceStatusData.openAPSData.suggested ?: return loopValueUnavailable()
         val value = mirroredAutoIsfSettings(suggestion.autoIsfSettingsSnapshot)[key] ?: return loopValueUnavailable()
-        return loopValueLine(remoteValue(value), suggestion.timestamp)
+        return loopValueLine(remoteValue(value).ifBlank { rh.gs(R.string.direct_list_value_not_set) }, suggestion.timestamp)
     }
 
     private fun mirroredListSettingPair(
@@ -2722,7 +2755,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     "\nLive differs from baseline but no tier is marked active -- worth a look."
                 else ""
             val message = if (config.AAPSCLIENT) {
-                val remote = loopListLine("libreLive") ?: loopValueUnavailable()
+                val remote = loopLibreCalibration() ?: loopValueUnavailable()
                 "$remote\n\n" + rh.gs(R.string.direct_list_this_phone_value, msg)
             } else msg
             OKDialog.show(act, "Live Libre calibration", message, runOnDismiss = true, runnable = Runnable { showTtCodesListDialog() })
@@ -2808,7 +2841,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 loopListValue("5.15") ?: remote[StringKey.ApsAutoIsfLowProfileName.key].orEmpty()
             else preferences.get(StringKey.ApsAutoIsfLowProfileName)
             val currentName = if (config.AAPSCLIENT)
-                remote["configuration_profile"] ?: profileFunction.getProfileName()
+                loopListValue("runningProfile") ?: remote["configuration_profile"] ?: profileFunction.getProfileName()
             else profileFunction.getProfileName()
             val onStandard = standardName.isNotBlank() && currentName == standardName
             val onLow = lowName.isNotBlank() && currentName == lowName
@@ -2872,7 +2905,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 ),
             )
             val currentTier = if (config.AAPSCLIENT)
-                loopListLine("tierNow") ?: loopValueUnavailable()
+                loopTier() ?: loopValueUnavailable()
             else "Currently: ${tierSummary(reading, standardName, lowName, runningName)}"
             androidx.appcompat.app.AlertDialog.Builder(act)
                 .setTitle("Set Standard+Low tier")
@@ -3310,8 +3343,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             return spinner
         }
 
-        val currents = roleSpecs.map { spec ->
-            if (relayOnly) liveRoles[spec.key.key].orEmpty() else preferences.get(spec.key)
+        val reports = if (relayOnly) roleSpecs.map { spec ->
+            loopListValue("role:${spec.key.key}") ?: liveRoles[spec.key.key]
+        } else emptyList()
+        val currents = roleSpecs.mapIndexed { index, spec ->
+            if (relayOnly) reports[index].orEmpty() else preferences.get(spec.key)
         }
         val spinners = roleSpecs.mapIndexed { i, spec ->
             val current = currents[i]
@@ -3329,8 +3365,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 setPadding(0, 0, 0, 24)
             })
             roleSpecs.forEachIndexed { i, spec ->
-                val live = currents[i]
-                val label = if (relayOnly && live.isNotBlank()) "${spec.label}  [Live: $live]" else spec.label
+                val label = if (relayOnly) {
+                    val reported = reports[i]
+                    val state = reported?.let { rh.gs(R.string.direct_list_loop_phone_value, it.ifBlank { rh.gs(R.string.direct_list_value_not_set) }) }
+                        ?: loopValueUnavailable()
+                    "${spec.label}  [$state]"
+                } else spec.label
                 addView(TextView(act).apply { text = label; if (i > 0) setPadding(0, 32, 0, 0) })
                 addView(spinners[i])
             }
