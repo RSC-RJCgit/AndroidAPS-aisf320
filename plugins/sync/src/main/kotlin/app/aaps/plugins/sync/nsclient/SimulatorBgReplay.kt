@@ -60,6 +60,8 @@ class SimulatorBgReplay @Inject constructor(
     @Volatile private var fullSyncRequested = false
     private data class Recovery(val from: Long, val to: Long, val primary: String, val secondary: String)
     private var recovery: Recovery? = null
+    /** Times of BG readings this replay saved locally in the last PAUSE_MS, so they are not taken for real CGM BG */
+    private val storedDates = mutableListOf<Long>()
 
     fun requestFullSync() {
         if (!preferences.get(BooleanKey.NsClientSimulatorBgReplay)) return
@@ -162,7 +164,20 @@ class SimulatorBgReplay @Inject constructor(
         }
         val now = dateUtil.now()
         val paused = preferences.get(LongNonKey.NsClientSimulatorBgReplayPauseUntil) > now
-        warn(paused)
+        // Local CGM BG first (2026-11-09, per explicit request): the main-site check below only sees v3 uploads, so BG
+        // from xDrip on this phone never stopped the replay, and both were saved and uploaded (two BG lines). While replay
+        // is on, the normal v1 BG upload is blocked (DataSyncSelectorV1.replayBgOnly), so the local reading is uploaded
+        // here instead of the secondary one, and nothing is relayed or replayed.
+        val local = if (paused) emptyList() else realBgReadings(
+            persistenceLayer.getBgReadingsDataFromTimeToTime(now - PAUSE_MS, now + 60_000L, false), replayDates(now)
+        )
+        warn(
+            when {
+                paused            -> R.string.ns_simulator_bg_replay_paused
+                local.isNotEmpty() -> R.string.ns_simulator_bg_replay_local
+                else              -> R.string.ns_simulator_bg_replay_active
+            }
+        )
         if (paused) return false
         if (!preferences.get(BooleanKey.NsClientSecondaryEnabled)) {
             log("Not running: secondary Nightscout connection is disabled")
@@ -195,11 +210,30 @@ class SimulatorBgReplay @Inject constructor(
                     row.optLong("date", 0L) in (now - PAUSE_MS + 1)..now &&
                     ownUploads.none { own -> own.optLong("date") == row.optLong("date") && own.optDouble("sgv") == row.optDouble("sgv") } }) {
                 preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, now + PAUSE_MS)
-                warn(true)
+                warn(R.string.ns_simulator_bg_replay_paused)
                 log("Paused for 10 minutes: main site returned a recent BG with srvModified")
                 return false
             }
             preferences.put(LongNonKey.NsClientSimulatorBgReplayPauseUntil, 0L)
+            if (local.isNotEmpty()) {
+                // No recovery either while local BG arrives: it would add replay readings between the local ones.
+                if (recoveryFrom != null) return false
+                stage = "uploading local CGM BG to main site"
+                val send = localToUpload(local, recentTarget.map { it.optLong("date", 0L) }.toSet())
+                for (gv in send) {
+                    val mgdl = Math.round(gv.value).toDouble()
+                    val entry = JSONObject().put("type", "sgv").put("date", gv.timestamp)
+                        .put("dateString", dateUtil.toISOString(gv.timestamp)).put("sgv", mgdl).put("units", "mg/dl")
+                        .put("device", "AAPS")
+                    if (gv.trendArrow != TrendArrow.NONE) entry.put("direction", gv.trendArrow.text)
+                    rememberUpload(primary, gv.timestamp, mgdl, local = true)
+                    request(primary + "/api/v1/entries.json", hash, JSONArray().put(entry).toString())
+                }
+                val newest = local.last()
+                log("Local CGM BG ${"%.0f".format(newest.value)} mg/dl at ${dateUtil.toISOString(newest.timestamp)}: " +
+                    if (send.isEmpty()) "already on main site; no relay or replay" else "${send.size} uploaded to main site in place of the secondary BG; no relay or replay")
+                return false
+            }
             val delay = delayMs()
             val hours = hoursText(delay)
             val zone = sourceZone()
@@ -314,6 +348,7 @@ class SimulatorBgReplay @Inject constructor(
                     persistenceLayer.insertCgmSourceData(Sources.NSClient, mutableListOf(gv), emptyList(), null).blockingGet()
                     lastStoredAt = at
                     lastStoredGv = gv
+                    storedDates += at
                     if (relayCurrent) log("Current secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")} at ${dateUtil.toISOString(at)} (relayed, no replay); result ${"%.0f".format(mgdl)} mg/dl saved locally")
                     else if (recoveryFrom == null) log("Secondary BG ${source.getDouble("sgv")} ${source.optString("units", "mg/dl")}: source ${dateUtil.toISOString(source.getLong("date"))} (UTC${offsetText(sourceOffsetMs(source, zone))}), replay ${dateUtil.toISOString(at)} (UTC${offsetText(here().getOffset(at).toLong())}, same local time +$hours hours); result ${"%.0f".format(mgdl)} mg/dl saved locally")
                 }
@@ -324,15 +359,7 @@ class SimulatorBgReplay @Inject constructor(
                 stage = "uploading replay BG to main site"
                 // Keep identification on this installation, without altering the uploaded v1 payload.
                 // Record before POST so a lost response cannot cause a false pause after server acceptance.
-                val uploads = JSONArray()
-                val previous = JSONArray(preferences.get(StringNonKey.NsClientSimulatorBgReplayUploads))
-                for (index in 0 until previous.length()) {
-                    val item = previous.getJSONObject(index)
-                    if (item.optString("site") == primary && item.optLong("date") > dateUtil.now() - PAUSE_MS &&
-                        item.optLong("date") != at) uploads.put(item)
-                }
-                uploads.put(JSONObject().put("site", primary).put("date", at).put("sgv", mgdl))
-                preferences.put(StringNonKey.NsClientSimulatorBgReplayUploads, uploads.toString())
+                rememberUpload(primary, at, mgdl, local = false)
                 request(primary + "/api/v1/entries.json", hash, JSONArray().put(entry).toString())
                 uploaded++
                 if (recoveryFrom == null) log("One replay BG uploaded to main Nightscout using v1")
@@ -427,16 +454,49 @@ class SimulatorBgReplay @Inject constructor(
         rxBus.send(EventNSClientNewLog("● BG REPLAY", message))
     }
 
-    private fun warn(paused: Boolean) {
+    /** Times of the BG this replay made in the last PAUSE_MS: saved here, or uploaded (and maybe received back from the main site).
+     *  Local CGM readings it uploaded are not included: they stay real BG. */
+    private fun replayDates(now: Long): Set<Long> {
+        storedDates.removeAll { it <= now - PAUSE_MS }
+        val uploaded = runCatching {
+            val rows = JSONArray(preferences.get(StringNonKey.NsClientSimulatorBgReplayUploads))
+            (0 until rows.length()).map { rows.getJSONObject(it) }.filter { !it.optBoolean("local", false) }.map { it.optLong("date") }
+        }.getOrDefault(emptyList())
+        return (storedDates + uploaded).toSet()
+    }
+
+    /** Records an upload before it is sent, so the srvModified check does not pause on it and it is not taken for real BG */
+    private fun rememberUpload(primary: String, at: Long, mgdl: Double, local: Boolean) {
+        val uploads = JSONArray()
+        val previous = JSONArray(preferences.get(StringNonKey.NsClientSimulatorBgReplayUploads))
+        for (index in 0 until previous.length()) {
+            val item = previous.getJSONObject(index)
+            if (item.optString("site") == primary && item.optLong("date") > dateUtil.now() - PAUSE_MS &&
+                item.optLong("date") != at) uploads.put(item)
+        }
+        uploads.put(JSONObject().put("site", primary).put("date", at).put("sgv", mgdl).put("local", local))
+        preferences.put(StringNonKey.NsClientSimulatorBgReplayUploads, uploads.toString())
+    }
+
+    private fun warn(textId: Int) {
         if (stopped || !preferences.get(BooleanKey.NsClientSimulatorBgReplay)) return
-        val text = rh.gs(if (paused) R.string.ns_simulator_bg_replay_paused else R.string.ns_simulator_bg_replay_active)
+        val text = rh.gs(textId)
         if (text != lastWarning) {
             uiInteraction.addNotification(Notification.NSCLIENT_SIMULATOR_BG_REPLAY, text, Notification.NORMAL)
             lastWarning = text
         }
     }
 
-    private companion object {
+    internal companion object {
+        /** Valid readings that this replay did not make, i.e. real CGM BG (xDrip or another uploader), oldest first */
+        fun realBgReadings(readings: List<GV>, replayDates: Set<Long>): List<GV> =
+            readings.filter { it.isValid && it.timestamp !in replayDates }.sortedBy { it.timestamp }
+
+        /** Local readings the main site does not have yet. An entry with another value is not replaced: with Libre
+         *  calibration on, the site's echo is calibrated again on receipt, and a replace would then repeat every minute. */
+        fun localToUpload(local: List<GV>, onSiteDates: Set<Long>): List<GV> =
+            local.filter { it.timestamp !in onSiteDates }
+
         const val DAY_MS = 24 * 60 * 60_000L
         // 2026-11-07, per explicit request: 14 days back (was 48 h), 15 days once that source ran dry (was 72 h), at most 21 (was 7 days).
         const val DELAY_MS = 14 * DAY_MS
