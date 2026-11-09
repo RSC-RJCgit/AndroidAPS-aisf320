@@ -55,6 +55,7 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
     private lateinit var worker: KeepAliveWorker
 
     @Mock private lateinit var loop: Loop
+    @Mock private lateinit var lowStorageAlert: LowStorageAlert
     @Mock private lateinit var maintenance: Maintenance
     @Mock private lateinit var automaticExport: AutomaticExport
     @Mock private lateinit var dstHelper: DstHelper
@@ -109,7 +110,8 @@ class KeepAliveWorkerTest : TestBaseWithProfile() {
             preferences = preferences,
             dstHelper = dstHelper,
             workManager = workManager,
-            ch = ch
+            ch = ch,
+            lowStorageAlert = lowStorageAlert
         )
 
     private fun resetWorkerStaticState() {

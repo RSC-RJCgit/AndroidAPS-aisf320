@@ -70,7 +70,8 @@ class KeepAliveWorker(
     private val preferences: Preferences,
     private val dstHelper: DstHelper,
     private val workManager: WorkManager,
-    private val ch: ConcentrationHelper
+    private val ch: ConcentrationHelper,
+    private val lowStorageAlert: LowStorageAlert
 ) : LoggingWorker(context, params, Dispatchers.Default, aapsLogger, fabricPrivacy) {
 
     @AssistedFactory
@@ -154,6 +155,7 @@ class KeepAliveWorker(
         }
         lastRun = dateUtil.now()
 
+        lowStorageAlert.check(applicationContext)
         dstHelper.dstCheck()
         // The platform-neutral half - missed-reading alarm, snooze shortening, log and database
         // trimming - lives in PeriodicMaintenance so iOS and desktop run the same code instead of
