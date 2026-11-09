@@ -13,14 +13,19 @@ import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.implementation.maintenance.deleteOldApks
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneId
 import java.util.Locale
 
-/** Warns on the real-pump phone even when closed loop has stopped. */
+/** Cleans up old APKs and reports storage on the real-pump phone. */
 @SingleIn(AppScope::class)
 @Inject
 class LowStorageAlert(
@@ -40,7 +45,21 @@ class LowStorageAlert(
         if (!config.APS || config.AAPSCLIENT || activePlugin.activePumpInternal is VirtualPump) return
         val filesDir = context.filesDir
         if (!filesDir.isDirectory) return
-        val freeGiB = filesDir.usableSpace / (1024.0 * 1024.0 * 1024.0)
+        val now = dateUtil.now()
+        val localTime = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
+        val localDay = localTime.toLocalDate().toEpochDay()
+        val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
+            localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)
+        val freeBefore = filesDir.usableSpace / BYTES_PER_GIB
+        if (freeBefore < 10.0 || weeklyDue) {
+            deleteOldApks(context, preferences.get(StringKey.AapsDirectoryUri), aapsLogger)
+        }
+        val freeGiB = filesDir.usableSpace / BYTES_PER_GIB
+        if (weeklyDue) {
+            preferences.put(LongNonKey.LastWeeklyApkCleanupDay, localDay)
+            sendStorageSms(String.format(Locale.US, "Weekly storage: %.1fGB free", freeGiB), smsTargets(), "Weekly storage")
+        }
+
         val notified = preferences.get(BooleanNonKey.LowStorageNotified)
         val sent = preferences.get(BooleanNonKey.LowStorageTargetedSmsSent)
         if (freeGiB >= 10.5) {
@@ -55,29 +74,43 @@ class LowStorageAlert(
         if (freeGiB >= 10.0 || (notified && sent)) return
 
         val text = String.format(Locale.US, "StLow %.1fGB free", freeGiB)
-        val targets = preferences.get(StringKey.SmsBattAlertNumbers).split(";")
-            .map { it.filterNot(Char::isWhitespace) }
-            .filter { it.isNotEmpty() }
-            .distinct()
+        val targets = smsTargets()
         if (!notified) {
             notificationManager.post(NotificationId.LOW_STORAGE, text = text, validMinutes = 0)
             preferences.put(BooleanNonKey.LowStorageNotified, true)
             if (targets.isEmpty()) aapsLogger.warn(LTag.CORE, "Low storage SMS skipped: Battery-alert numbers is empty")
         }
-        val now = dateUtil.now()
         if (sent || targets.isEmpty() || now - lastSmsAttemptAt in 0 until T.mins(15).msecs()) return
 
         lastSmsAttemptAt = now
+        if (sendStorageSms(text, targets, "Low storage") > 0) preferences.put(BooleanNonKey.LowStorageTargetedSmsSent, true)
+    }
+
+    private fun smsTargets(): List<String> = preferences.get(StringKey.SmsBattAlertNumbers).split(";")
+        .map { it.filterNot(Char::isWhitespace) }
+        .filter { it.isNotEmpty() }
+        .distinct()
+
+    private fun sendStorageSms(text: String, targets: List<String>, label: String): Int {
+        if (targets.isEmpty()) {
+            aapsLogger.warn(LTag.CORE, "$label SMS skipped: Battery-alert numbers is empty")
+            return 0
+        }
         val accepted = targets.count { number ->
             try {
                 smsCommunicator.sendSMS(Sms(number, text))
             } catch (error: Exception) {
-                aapsLogger.error(LTag.CORE, "Could not send low storage SMS", error)
+                aapsLogger.error(LTag.CORE, "Could not send $label SMS", error)
                 false
             }
         }
-        if (accepted > 0) preferences.put(BooleanNonKey.LowStorageTargetedSmsSent, true)
-        val result = "Low storage SMS accepted for $accepted of ${targets.size} Battery-alert numbers"
+        val result = "$label SMS accepted for $accepted of ${targets.size} Battery-alert numbers"
         if (accepted == targets.size) aapsLogger.info(LTag.CORE, result) else aapsLogger.warn(LTag.CORE, result)
+        return accepted
+    }
+
+    private companion object {
+
+        const val BYTES_PER_GIB = 1024.0 * 1024.0 * 1024.0
     }
 }
