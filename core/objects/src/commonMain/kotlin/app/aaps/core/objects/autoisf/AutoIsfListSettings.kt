@@ -12,6 +12,28 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.readTier
 import app.aaps.core.keys.tierSummary
 
+internal val standardTierRoleKeys = listOf(
+    StringKey.ApsAutoIsfStandard100ProfileName,
+    StringKey.ApsAutoIsfStandard105ProfileName,
+    StringKey.ApsAutoIsfStandard110ProfileName,
+)
+internal val lowTierRoleKeys = listOf(
+    StringKey.ApsAutoIsfLow70ProfileName,
+    StringKey.ApsAutoIsfLow80ProfileName,
+    StringKey.ApsAutoIsfLow90ProfileName,
+)
+internal val autoIsfProfileRoleKeys = listOf(
+    StringKey.ApsAutoIsfStandardProfileName,
+    StringKey.ApsAutoIsfLowProfileName,
+) + standardTierRoleKeys + lowTierRoleKeys + listOf(
+    StringKey.ApsAutoIsfSteroid100ProfileName,
+    StringKey.ApsAutoIsfSteroid110ProfileName,
+    StringKey.ApsAutoIsfSteroid130ProfileName,
+    StringKey.ApsAutoIsfSteroid150ProfileName,
+    StringKey.ApsAutoIsfSteroid190ProfileName,
+    StringKey.ApsAutoIsfSteroid250ProfileName
+)
+
 /** List 1 row that opens the coded profile picker. */
 private val CODED_PROFILES_ROW = List1Row("Re-pick coded profiles", "Standard, Low, Steroid", 0.0, null, pickProfiles = true, loopValueKey = null)
 
@@ -118,9 +140,9 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
             List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
             List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
-            List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null, loopValueKey = null),
-            List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null, loopValueKey = null),
-            List1Row("ADB wireless: attempt Shizuku start", adbPortText(), 5.208, null, loopValueKey = null),
+            List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null),
+            List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null),
+            List1Row("ADB wireless: attempt Shizuku start", adbPortText(), 5.208, null),
         ))
     }
 
@@ -128,6 +150,10 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
         (list1Rows(insulinPeakText, runningProfileName) + list2Rows()).forEach { row ->
             row.loopValueKey?.let { put(it, row.current) }
         }
+        // Publish only whether ADB has a port, not the port number.
+        put("5.208", if (preferences.get(IntKey.ApsAutoIsfAdbConnectPort) > 0) "Port configured" else "Port not set")
+        autoIsfProfileRoleKeys.forEach { key -> put("role:${key.key}", preferences.get(key)) }
+        put("runningProfile", runningProfileName)
     }
 
     // The Standard and Low roles and the running profile, each placed on the A, B, C ladders the same way the loop reads them.
@@ -139,16 +165,8 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             standardName = standardName,
             lowName = lowName,
             runningName = runningName,
-            standardRungs = listOf(
-                preferences.get(StringKey.ApsAutoIsfStandard100ProfileName),
-                preferences.get(StringKey.ApsAutoIsfStandard105ProfileName),
-                preferences.get(StringKey.ApsAutoIsfStandard110ProfileName),
-            ),
-            lowRungs = listOf(
-                preferences.get(StringKey.ApsAutoIsfLow70ProfileName),
-                preferences.get(StringKey.ApsAutoIsfLow80ProfileName),
-                preferences.get(StringKey.ApsAutoIsfLow90ProfileName),
-            ),
+            standardRungs = standardTierRoleKeys.map { preferences.get(it) },
+            lowRungs = lowTierRoleKeys.map { preferences.get(it) },
         )
         return tierSummary(reading, standardName, lowName, runningName)
     }

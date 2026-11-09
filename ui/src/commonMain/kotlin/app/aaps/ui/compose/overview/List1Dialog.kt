@@ -224,14 +224,26 @@ private fun DirectListDialog(
 @Composable
 private fun ListSettingValues(row: List1Row, snapshot: AutoIsfListSnapshot?, reportedAt: String? = null) {
     val notSet = stringResource(UiStrings.direct_list_value_not_set)
-    val value = row.loopValueKey?.let { snapshot?.values?.get(it) }?.ifBlank { notSet }
-        ?: stringResource(UiStrings.direct_list_value_unavailable)
+    val value = loopSettingValue(snapshot, row.loopValueKey)
     Column {
         Text(stringResource(UiStrings.direct_list_this_phone_value, row.current.ifBlank { notSet }))
         Text(stringResource(UiStrings.direct_list_loop_phone_value, value))
         if (reportedAt != null) Text(stringResource(UiStrings.direct_list_loop_reported_at, reportedAt))
     }
 }
+
+@Composable
+private fun loopSettingValue(snapshot: AutoIsfListSnapshot?, key: String?): String {
+    val reported = key?.let { snapshot?.values?.get(it) }
+    return when {
+        reported != null -> if (reported.isBlank()) stringResource(UiStrings.direct_list_value_not_set) else reported
+        !loopCommandSupported(snapshot, key) -> stringResource(UiStrings.direct_list_value_unsupported)
+        else -> stringResource(UiStrings.direct_list_value_unavailable)
+    }
+}
+
+private fun loopCommandSupported(snapshot: AutoIsfListSnapshot?, key: String?): Boolean =
+    key == null || snapshot?.values?.get("unsupported:$key") != "true"
 
 /** Client confirm with a choice of where to apply: the loop phone (relay) or this phone's own setting. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -247,12 +259,16 @@ private fun ApplyHereDialog(
     val up = row.upMmol
     // Single rows have one code; stepped rows need Down or Up picked first.
     var chosen by remember(row.label) { mutableStateOf(if (up == null) row.downMmol else null) }
+    val canApplyOnLoop = loopCommandSupported(snapshot, row.loopValueKey)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(row.label) },
         text = {
             Column {
                 ListSettingValues(row, snapshot, reportedAt)
+                if (!canApplyOnLoop && row.loopValueKey?.let { snapshot?.values?.containsKey(it) } == true) {
+                    Text(stringResource(UiStrings.direct_list_loop_command_unsupported))
+                }
                 if (up != null) Row(modifier = Modifier.padding(top = 8.dp)) {
                     FilterChip(selected = chosen == row.downMmol, onClick = { chosen = row.downMmol }, label = { Text("Down") })
                     Spacer(Modifier.width(8.dp))
@@ -262,7 +278,7 @@ private fun ApplyHereDialog(
         },
         confirmButton = {
             Row {
-                TextButton(enabled = chosen != null, onClick = {
+                TextButton(enabled = chosen != null && canApplyOnLoop, onClick = {
                     chosen?.let(onApply)
                     onDismiss()
                 }) { Text(stringResource(UiStrings.direct_list_loop_phone)) }
@@ -282,6 +298,7 @@ private fun ApplyHereDialog(
 private fun CodedProfileDialog(viewModel: ChipsViewModel, onDismiss: () -> Unit) {
     var role by remember { mutableStateOf<CodedProfileRole?>(null) }
     var refuse by remember { mutableStateOf("") }
+    val snapshot = if (viewModel.isClient) viewModel.loopListSnapshot.collectAsState().value else null
     val chosen = role
     if (chosen == null) {
         AlertDialog(
@@ -297,7 +314,12 @@ private fun CodedProfileDialog(viewModel: ChipsViewModel, onDismiss: () -> Unit)
                         }) {
                             Column {
                                 Text(item.title)
-                                Text(if (value.isBlank()) "(not set)" else value)
+                                if (viewModel.isClient) {
+                                    Text(stringResource(UiStrings.direct_list_loop_phone_value, loopSettingValue(snapshot, "role:${item.key.key}")))
+                                    Text(stringResource(UiStrings.direct_list_this_phone_value, value.ifBlank { stringResource(UiStrings.direct_list_value_not_set) }))
+                                } else {
+                                    Text(value.ifBlank { stringResource(UiStrings.direct_list_value_not_set) })
+                                }
                             }
                         }
                     }
@@ -317,6 +339,9 @@ private fun CodedProfileDialog(viewModel: ChipsViewModel, onDismiss: () -> Unit)
         text = {
             Column {
                 if (refuse.isNotEmpty()) Text(refuse)
+                if (viewModel.isClient) {
+                    Text(stringResource(UiStrings.direct_list_loop_phone_value, loopSettingValue(snapshot, "role:${chosen.key.key}")))
+                }
                 if (names.isEmpty()) {
                     Text("No profiles to pick.")
                 } else {

@@ -29,6 +29,7 @@ import app.aaps.core.utils.safeGetString
 import app.aaps.core.utils.safeGetStringAllowNull
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import app.aaps.plugins.sync.nsclientV3.workers.stepsFromPrimarySite
+import app.aaps.core.objects.autoisf.legacyAutoIsfListValues
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -335,13 +336,15 @@ class NSDeviceStatusHandler(
                 mirrorAutomationStates(suggested)
                 nsDeviceStatus.device?.let { storeReceivedSteps(it, clock, suggested.reason.toString()) }
                 processedDeviceStatusData.openAPSData.clockSuggested = clock
-                val values = nsDeviceStatus.openaps?.suggested?.get("autoIsfListValues") as? JsonObject
+                val report = nsDeviceStatus.openaps?.suggested
+                val legacy = (report?.get("autoIsfSettingsSnapshot") as? JsonPrimitive)?.takeIf { it.isString }?.content
+                val values = report?.get("autoIsfListValues") as? JsonObject
                 // This display field is optional. A malformed entry must not affect the loop result.
                 val snapshot = ProcessedDeviceStatusData.AutoIsfListSnapshot(
                     clock,
-                    values?.mapNotNull { (key, element) ->
+                    legacyAutoIsfListValues(legacy) + (values?.mapNotNull { (key, element) ->
                         (element as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { key to it }
-                    }?.toMap().orEmpty()
+                    }?.toMap().orEmpty())
                 )
                 processedDeviceStatusData.openAPSData.autoIsfListSnapshot.update { previous ->
                     if (previous == null || previous.timestamp < clock) snapshot else previous

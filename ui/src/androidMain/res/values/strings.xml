@@ -542,7 +542,9 @@
     <string name="direct_list_this_phone_value" comment="%1$s is the value on this phone, for example ON.">This phone: %1$s</string>
     <string name="direct_list_loop_phone_value" comment="%1$s is the last value sent by the loop phone, for example OFF.">Loop phone: %1$s</string>
     <string name="direct_list_loop_reported_at" comment="%1$s is the date and time of the loop phone report.">Loop phone last reported %1$s</string>
-    <string name="direct_list_value_unavailable">Unavailable</string>
+    <string name="direct_list_value_unavailable">No value reported</string>
+    <string name="direct_list_value_unsupported">Unsupported by the loop phone</string>
+    <string name="direct_list_loop_command_unsupported">This loop phone cannot change this setting remotely.</string>
     <string name="direct_list_value_not_set">Not set</string>
     <string name="direct_list_loop_phone_only">Applies to the loop phone</string>
     <string name="direct_list_loop_phone">Loop phone</string>

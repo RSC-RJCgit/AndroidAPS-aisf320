@@ -302,15 +302,30 @@ internal class NSDeviceStatusHandlerTest {
         val status = deviceStatusAt(TIME_2).copy(openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
             put("timestamp", TIME_2)
             put("runningDynamicIsf", false)
+            put("autoIsfSettingsSnapshot", """
+                configuration_version = 3426
+                autoisf_old_sensor_adj_enabled = true
+                autoisf_sensor_age_code_enabled = true
+            """.trimIndent())
             putJsonObject("autoIsfListValues") {
                 put("5.156", "OFF")
-                put("5.006", true) // A malformed display value is ignored.
+                put("5.006", true) // A malformed display value must not replace the legacy value.
+                put("role:autoisf_standard_profile_name", "")
             }
         }))
 
         sut.handleNewData(arrayOf(status))
         sut.handleNewData(arrayOf(deviceStatusAt(TIME_1)))
-        assertEquals(mapOf("5.156" to "OFF"), openAPSData.autoIsfListSnapshot.value?.values)
+        assertEquals(
+            mapOf(
+                "5.006" to "ON",
+                "5.156" to "OFF",
+                "role:autoisf_standard_profile_name" to "",
+                "unsupported:5.236" to "true",
+                "unsupported:5.248" to "true",
+            ),
+            openAPSData.autoIsfListSnapshot.value?.values
+        )
         assertEquals(6_000L, openAPSData.autoIsfListSnapshot.value?.timestamp)
         verify(preferences, never()).put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, false)
 
