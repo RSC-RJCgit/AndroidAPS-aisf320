@@ -213,11 +213,6 @@ android {
             kotlin.directories.add("src/aapsclient/kotlin")
             manifest.srcFile("src/aapsclient/AndroidManifest.xml")
         }
-        // The Virtual master too (2026-10-30), for the same reason: it installs beside the real AAPS.
-        getByName("virtual") {
-            manifest.srcFile("src/aapsclient/AndroidManifest.xml")
-        }
-
         // Instrumented tests that drive one pump, added only where that pump is in the build. An e2e
         // test for a Dana emulator has nothing to test without :pump:dana:danar, so it should not compile
         // there - and before this it did not compile for a follower either, it just failed unnoticed

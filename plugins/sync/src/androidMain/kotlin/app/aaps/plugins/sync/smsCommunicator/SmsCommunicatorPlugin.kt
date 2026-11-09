@@ -5,6 +5,11 @@ import android.content.Context
 import android.os.Bundle
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.configuration.Constants
@@ -107,6 +112,7 @@ import org.apache.commons.lang3.Strings
 import org.joda.time.DateTime
 import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import kotlin.math.max
 import kotlin.math.min
@@ -230,6 +236,7 @@ class SmsCommunicatorPlugin(
     ) : LoggingWorker(context, params, Dispatchers.IO, aapsLogger, fabricPrivacy) {
 
         override suspend fun doWorkAndLog(): Result {
+            if (inputData.getBoolean(CLIENT_INBOX_RECOVERY, false)) return recoverClientInbox()
             val bundles = dataInbox.drain(SmsInbox)
             if (bundles.isEmpty()) return Result.success(workDataOf("Result" to "no data"))
             var hadFailure = false
@@ -252,6 +259,18 @@ class SmsCommunicatorPlugin(
             return if (hadFailure) Result.failure(workDataOf("Error" to "one or more bundles failed")) else Result.success()
         }
 
+        private suspend fun recoverClientInbox(): Result {
+            try {
+                clientNoteSmsReceiver.recoverFromInbox(applicationContext)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.SMS, "Could not recover Careportal SMS notes", e)
+                return Result.failure()
+            }
+            return Result.success()
+        }
+
         private suspend fun processBundle(bundle: Bundle) {
             val format = bundle.getString("format") ?: run {
                 aapsLogger.warn(LTag.SMS, "Skipping SMS bundle: missing format")
@@ -272,6 +291,33 @@ class SmsCommunicatorPlugin(
         /** Metro builds the worker through this - WorkManager supplies context and params. */
         @AssistedFactory
         abstract class Factory : WorkerInstanceFactory<SmsCommunicatorWorker>()
+
+        companion object {
+
+            private const val CLIENT_INBOX_RECOVERY = "client-note-sms-inbox"
+            private const val CLIENT_INBOX_RECOVERY_NOW = "client-note-sms-inbox-now"
+
+            fun scheduleClientInboxRecovery(context: Context, enabled: Boolean) {
+                val workManager = WorkManager.getInstance(context)
+                if (enabled) {
+                    val request = PeriodicWorkRequestBuilder<SmsCommunicatorWorker>(15, TimeUnit.MINUTES)
+                        .setInputData(workDataOf(CLIENT_INBOX_RECOVERY to true))
+                        .build()
+                    workManager.enqueueUniquePeriodicWork(CLIENT_INBOX_RECOVERY, ExistingPeriodicWorkPolicy.KEEP, request)
+                    recoverClientInboxNow(context)
+                } else {
+                    workManager.cancelUniqueWork(CLIENT_INBOX_RECOVERY)
+                    workManager.cancelUniqueWork(CLIENT_INBOX_RECOVERY_NOW)
+                }
+            }
+
+            fun recoverClientInboxNow(context: Context) {
+                val request = OneTimeWorkRequestBuilder<SmsCommunicatorWorker>()
+                    .setInputData(workDataOf(CLIENT_INBOX_RECOVERY to true))
+                    .build()
+                WorkManager.getInstance(context).enqueueUniqueWork(CLIENT_INBOX_RECOVERY_NOW, ExistingWorkPolicy.KEEP, request)
+            }
+        }
     }
 
     private fun processSettings() {

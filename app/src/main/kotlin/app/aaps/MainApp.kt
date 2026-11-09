@@ -60,6 +60,7 @@ import app.aaps.implementation.receivers.ChargingStateReceiver
 import app.aaps.implementation.receivers.KeepAliveWorker
 import app.aaps.implementation.receivers.NetworkChangeReceiver
 import app.aaps.implementation.receivers.TimeDateOrTZChangeReceiver
+import app.aaps.plugins.sync.smsCommunicator.SmsCommunicatorPlugin.SmsCommunicatorWorker
 import app.aaps.settingsstore.AndroidStorage
 import app.aaps.settingsstore.IdleWorkerFactory
 import app.aaps.settingsstore.SettingsUnreadableNotification
@@ -525,6 +526,13 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         )
         postSetupNotifications()
         KeepAliveWorker.schedule(this@MainApp)
+        if (config.AAPSCLIENT) {
+            appScope.launch {
+                preferences.observe(BooleanKey.ClientNoteSmsInboxRecovery).collect {
+                    SmsCommunicatorWorker.scheduleClientInboxRecovery(this@MainApp, it)
+                }
+            }
+        }
         localAlertUtils.shortenSnoozeInterval()
         localAlertUtils.preSnoozeAlarms()
 

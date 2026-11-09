@@ -433,6 +433,8 @@
     <!-- StringKey: SMS preferences -->
     <string name="pref_title_client_note_sms_sender">Loop phone SMS number</string>
     <string name="pref_summary_client_note_sms_sender">Show full Careportal notes from this number. Use the same number format as the SMS inbox. Leave blank to turn off.</string>
+    <string name="pref_title_client_note_sms_inbox_recovery">Recover missed SMS notes</string>
+    <string name="pref_summary_client_note_sms_inbox_recovery">Read tagged texts from the loop phone in this phone’s SMS inbox since yesterday at midnight.</string>
     <string name="smscommunicator_allowednumbers">Allowed phone numbers</string>
     <string name="smscommunicator_allowednumbers_summary">+XXXXXXXXXX;+YYYYYYYYYY</string>
     <string name="smscommunicator_broadcastexcludenumbers">Exclude from general SMS</string>

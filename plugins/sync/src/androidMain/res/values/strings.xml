@@ -343,5 +343,7 @@
     <string name="permission_sms_title">SMS</string>
     <string name="permission_sms_description">Application needs SMS permission for remote control via text messages</string>
     <string name="permission_client_note_sms_description">Receive full Careportal notes from the loop phone.</string>
+    <string name="permission_client_note_sms_inbox_title">SMS inbox</string>
+    <string name="permission_client_note_sms_inbox_description">Recover tagged Careportal texts from the loop phone since yesterday at midnight.</string>
 
 </resources>

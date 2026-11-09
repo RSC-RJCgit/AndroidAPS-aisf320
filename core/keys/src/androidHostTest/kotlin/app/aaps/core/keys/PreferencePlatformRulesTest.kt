@@ -72,6 +72,7 @@ class PreferencePlatformRulesTest {
             "ns_allow_roaming", AppPlatform.ANDROID_ONLY,
             "autoisf_steps_from_phone", AppPlatform.ANDROID_ONLY,
             "client_note_sms_sender", AppPlatform.ANDROID_ONLY,
+            "client_note_sms_inbox_recovery", AppPlatform.ANDROID_ONLY,
             "ios_keep_running_in_background", setOf(AppPlatform.Ios),
             "ios_reload_when_no_bg", setOf(AppPlatform.Ios),
             "ios_rileylink_heartbeat", setOf(AppPlatform.Ios),

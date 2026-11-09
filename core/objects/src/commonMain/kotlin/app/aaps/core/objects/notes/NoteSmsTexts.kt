@@ -42,9 +42,23 @@ object NoteSmsTexts {
             val all = all(preferences).toMutableMap()
             if (all[noteTimestamp] == text) return
             all[noteTimestamp] = text
-            val kept = prune(all, now)
-            preferences.put(StringNonKey.CarePortalNoteSmsTexts, JsonObject(kept.entries.associate { it.key.toString() to JsonPrimitive(it.value) }).toString())
+            write(preferences, prune(all, now))
         }
+    }
+
+    /** Fill gaps from the inbox in one write, keeping any text already saved on this phone. */
+    suspend fun recoverMissing(preferences: Preferences, texts: Map<Long, String>, now: Long) {
+        if (texts.isEmpty()) return
+        writeLock.withLock {
+            val saved = all(preferences)
+            if (texts.keys.all { it in saved }) return
+            val kept = prune(texts + saved, now)
+            if (kept != saved) write(preferences, kept)
+        }
+    }
+
+    private fun write(preferences: Preferences, texts: Map<Long, String>) {
+        preferences.put(StringNonKey.CarePortalNoteSmsTexts, JsonObject(texts.entries.associate { it.key.toString() to JsonPrimitive(it.value) }).toString())
     }
 
     /** All saved texts by note time. Parsed once for each new stored value. */

@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-permission android:name="android.permission.READ_SMS" />
+
     <!-- The full app on the same phone already defines this. A Client signed with
          another key cannot define it again, or the install is refused. -->
     <permission
