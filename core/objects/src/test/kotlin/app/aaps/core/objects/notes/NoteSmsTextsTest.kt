@@ -32,4 +32,17 @@ class NoteSmsTextsTest {
     fun brokenJsonGivesNoTexts() {
         assertThat(NoteSmsTexts.parse("not json")).isEmpty()
     }
+
+    @Test
+    fun taggedSmsGivesBackNoteTimeAndText() {
+        val noteTime = 1794187459472L
+        val sms = NoteSmsTexts.tagged("Shower12 raw +1.2: g=7.8 iobTH=12", noteTime)
+        assertThat(NoteSmsTexts.untag(sms)).isEqualTo(noteTime to "Shower12 raw +1.2: g=7.8 iobTH=12")
+    }
+
+    @Test
+    fun smsWithoutTagIsNotANoteSms() {
+        assertThat(NoteSmsTexts.untag("BG 7.8 mmol/L")).isNull()
+        assertThat(NoteSmsTexts.untag("#nmhb2k3fk")).isNull()
+    }
 }

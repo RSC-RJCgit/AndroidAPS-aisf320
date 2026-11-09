@@ -553,7 +553,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // is handled by the existing 5.196 block on the pump phone.
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
                         preferences.put(BooleanKey.ApsAutoIsfUseUkf1ForDosing, newState)
-                        sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}")
+                        sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("U1D${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local AutoISF UKF1-dosing toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
@@ -563,7 +563,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // TT to the pump, where the invoke-time 5.198 block below consumes it.
                         val newState = !preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
                         preferences.put(BooleanKey.AutomationCodedLocationsEnabled, newState)
-                        sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}")
+                        sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("Loc${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local coded-location toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Coded locations toggled", true))
@@ -572,7 +572,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // immediately from List 2 -- VirtualPump-only, no effect on any other pump type.
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
                         preferences.put(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, newState)
-                        sendSms("Stepcount import from remote main AAPS phone: ${if (newState) "ON" else "OFF"}")
+                        sendSms("Stepcount import from remote main AAPS phone: ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("LSt${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local live-steps-on-Virtual toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Live steps on VirtualPump toggled", true))
@@ -581,7 +581,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // like 5.196/5.198; Client relays the TT to the loop phone (FastRiseToggleTT below).
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)
                         preferences.put(BooleanKey.ApsAutoIsfFastRiseEnabled, newState)
-                        sendSms("FastRise tiers: ${if (newState) "ON" else "OFF"} (test toggle)")
+                        sendSms("FastRise tiers: ${if (newState) "ON" else "OFF"} (test toggle)", noteTag = true)
                         addCarePortalNote("FRt${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local FastRise toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("FastRise tiers toggled", true))
@@ -589,21 +589,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // Test toggle (2026-09-20): post-low rebound guard (LoReb) on/off. Same shape as 5.226 above.
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
                         preferences.put(BooleanKey.ApsAutoIsfLowReboundGuardEnabled, newState)
-                        sendSms("LoReb guard: ${if (newState) "ON" else "OFF"} (test toggle)")
+                        sendSms("LoReb guard: ${if (newState) "ON" else "OFF"} (test toggle)", noteTag = true)
                         addCarePortalNote("LRb${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local LoReb toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.230) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
                         preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
-                        sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}")
+                        sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("T3u${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local T3 unrestricted toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.232) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
                         preferences.put(BooleanKey.ApsAutoIsfShowInsulinTotals, newState)
-                        sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}")
+                        sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("ITt${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local insulin totals row toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
@@ -612,7 +612,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         // reacts to the preference change and restarts the calculation.
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
                         preferences.put(BooleanKey.ApsAutoIsfLoopEveryMinute, newState)
-                        sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}")
+                        sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}", noteTag = true)
                         addCarePortalNote(if (newState) "Loop1m" else "Loop5m", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local loop interval toggle immediately: every ${if (newState) 1 else 5} min")
                         rxBus.send(EventRefreshOverview("Loop interval toggled", true))
@@ -633,19 +633,19 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     } else if (kotlin.math.abs(event.mmol - 5.210) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
                         preferences.put(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, newState)
-                        sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}")
+                        sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("Bt1${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         rxBus.send(EventRefreshOverview("Profile batch auto toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.212) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
                         setProfileBatchRevertA(newState, "List2 Toggle2")
-                        sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
+                        sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("Bt2${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.214) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
                         setProfileBatchRevertC(newState, "List2 Toggle3")
-                        sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}")
+                        sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}", noteTag = true)
                         addCarePortalNote("Bt3${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         rxBus.send(EventRefreshOverview("Profile batch revert TierC toggled", true))
                     } else {
@@ -816,7 +816,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
 
             EventSteroidUserAction.Action.INCREASE_130 -> {
-                sendSms("Steroids 110% are ON.. press to increase? to 130")
+                sendSms("Steroids 110% are ON.. press to increase? to 130", noteTag = true)
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 78)   // retuned 2026-08-27, was 73
                 setBgAccelIsfWeight(0.70)
@@ -824,7 +824,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
 
             EventSteroidUserAction.Action.INCREASE_150 -> {
-                sendSms("Steroids 130% are ON.. press to increase? to 150")
+                sendSms("Steroids 130% are ON.. press to increase? to 150", noteTag = true)
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 81)   // retuned 2026-08-27, was 74
                 setBgAccelIsfWeight(0.70)
@@ -832,7 +832,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
 
             EventSteroidUserAction.Action.INCREASE_190 -> {
-                sendSms("Steroids 150% are ON.. press to increase? to 190")
+                sendSms("Steroids 150% are ON.. press to increase? to 190", noteTag = true)
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 84)   // retuned 2026-08-27, was 75
                 setBgAccelIsfWeight(0.70)
@@ -840,7 +840,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             }
 
             EventSteroidUserAction.Action.INCREASE_250 -> {
-                sendSms("Steroids 190% are ON.. press to increase? to 250")
+                sendSms("Steroids 190% are ON.. press to increase? to 250", noteTag = true)
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 88)   // retuned 2026-08-27, was 76
                 setBgAccelIsfWeight(0.70)
@@ -849,7 +849,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             EventSteroidUserAction.Action.TURN_OFF -> {
                 switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName))
-                sendSms("Steroids are ON.. press to turn OFF? 71_0.71")
+                sendSms("Steroids are ON.. press to turn OFF? 71_0.71", noteTag = true)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 71)
                 setBgAccelIsfWeight(0.71)
                 setAutomationState("Steroids", "Steroids Off")
@@ -1356,7 +1356,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (currentLow == targetLow && currentStandard == targetStandard) return false
         if (!readyToRun(throttleKey, throttleMinutes)) return false
         if (!applySharedRoleRung(0, reason, announce = false)) return false
-        sendSms("$reason: Low=$targetLow Standard=$targetStandard")
+        sendSms("$reason: Low=$targetLow Standard=$targetStandard", noteTag = true)
         addCarePortalNote(note, smsText = lastSmsText)
         markRun(throttleKey)
         return true
@@ -3191,16 +3191,24 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private fun startTempTargetIfNeeded(targetMgdl: Double, durationInMinutes: Int): Boolean =
         startTempTargetIfNeededAt(targetMgdl, durationInMinutes) != null
 
-    // Mirrors ActionSendSMS. Also keeps the text for the CarePortal note that follows it (see addCarePortalNote).
-    private fun sendSms(text: String): Boolean {
+    /**
+     * Mirrors ActionSendSMS. Also keeps the text for the CarePortal note that follows it (see addCarePortalNote).
+     * [noteTag]: a note follows this SMS. Its time is taken now and added to the SMS as a tag ([NoteSmsTexts.tagged]), so a
+     * full AAPS that receives the SMS can save the text for the same note (2026-11-09, per explicit request).
+     */
+    private fun sendSms(text: String, noteTag: Boolean = false): Boolean {
+        val now = dateUtil.now()
         lastSmsText = text
-        lastSmsAt = dateUtil.now()
-        return smsCommunicator.sendNotificationToAllNumbers(text)
+        lastSmsAt = now
+        lastSmsNoteTimestamp = if (noteTag) NoteTimestampAllocator.next(now) else 0L
+        return smsCommunicator.sendNotificationToAllNumbers(if (noteTag) NoteSmsTexts.tagged(text, lastSmsNoteTimestamp) else text)
     }
 
     /** The last SMS text and its time. A note call written just after its SMS passes it on with `smsText = lastSmsText`. */
     private var lastSmsText: String? = null
     private var lastSmsAt = 0L
+    /** The note time already sent in the last SMS's tag, 0 when none is waiting. The next note with [lastSmsText] uses it. */
+    private var lastSmsNoteTimestamp = 0L
 
     // List 2 / 5.204: store this loop phone's Build.MODEL so only that device sends location SMS.
     // Client relays the TT here and never writes its own model. Blank = nobody sends.
@@ -3209,7 +3217,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val designated = preferences.get(StringKey.AutomationLocationSmsDeviceModel).trim()
         val nowOn = designated.isEmpty() || !designated.equals(model, ignoreCase = true)
         preferences.put(StringKey.AutomationLocationSmsDeviceModel, if (nowOn) model else "")
-        sendSms("Location SMS this phone ($model): ${if (nowOn) "ON" else "OFF"}")
+        sendSms("Location SMS this phone ($model): ${if (nowOn) "ON" else "OFF"}", noteTag = true)
         addCarePortalNote(if (nowOn) "LocPhOn" else "LocPhOff", smsText = lastSmsText)
         aapsLogger.info(LTag.APS, "Location SMS this-phone toggle: ${if (nowOn) "ON" else "OFF"} model=$model")
         rxBus.send(EventRefreshOverview("Location SMS this-phone toggled", true))
@@ -3265,8 +3273,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
      */
     private fun addCarePortalNote(note: String, durationInMinutes: Int = 1, smsText: String? = null) {
         val now = dateUtil.now()
-        val noteTimestamp = NoteTimestampAllocator.next(now)
-        if (smsText != null && now - lastSmsAt <= NOTE_SMS_PAIR_MS) NoteSmsTexts.save(preferences, noteTimestamp, note, smsText, now)
+        val paired = smsText != null && now - lastSmsAt <= NOTE_SMS_PAIR_MS
+        // A tagged SMS already told other phones this note's time: use that time, once
+        val noteTimestamp = if (paired && lastSmsNoteTimestamp > 0L) lastSmsNoteTimestamp else NoteTimestampAllocator.next(now)
+        if (paired) lastSmsNoteTimestamp = 0L
+        if (paired) NoteSmsTexts.save(preferences, noteTimestamp, note, smsText, now)
         val therapyEvent = TE(
             timestamp = noteTimestamp,
             type = TE.Type.NOTE,
@@ -3843,7 +3854,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
-            sendSms("SmbDeliveryDown: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
+            sendSms("SmbDeliveryDown: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true), smsText = lastSmsText)
             addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("SmbDeliveryDownTT")
@@ -3860,7 +3871,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryBaseline, newBaseline)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
-            sendSms("SmbDeliveryUp: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}")
+            sendSms("SmbDeliveryUp: baseline=${round(newBaseline, 2)} mildBoost=${round(newMildBoost, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("SB", newBaseline, 2, omitLeadingZero = true), smsText = lastSmsText)
             addCarePortalNote(compactSettingNote("SM", newMildBoost, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("SmbDeliveryUpTT")
@@ -3879,7 +3890,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // moves, leaving whatever's currently overriding it undisturbed until it next restores.
             if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive - 0.01).coerceAtLeast(0.0))
             cancelCurrentTempTarget()
-            sendSms("PpWeightDown: ppISFwt_orig=${round(newPp, 2)}")
+            sendSms("PpWeightDown: ppISFwt_orig=${round(newPp, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("PpWeightDownTT")
         }
@@ -3893,7 +3904,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfPpWeightNormal, newPp)
             if (fuzzyEquals(currentLive, currentPp)) preferences.put(DoubleKey.ApsAutoIsfPpWeight, (currentLive + 0.01).coerceAtMost(0.15))
             cancelCurrentTempTarget()
-            sendSms("PpWeightUp: ppISFwt_orig=${round(newPp, 2)}")
+            sendSms("PpWeightUp: ppISFwt_orig=${round(newPp, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("PP", newPp, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("PpWeightUpTT")
         }
@@ -3909,7 +3920,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newPpHigh = (currentPpHigh - 0.01).coerceAtLeast(0.0)
             preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
             cancelCurrentTempTarget()
-            sendSms("PpWeightHighDown: ppISFwt_high=${round(newPpHigh, 2)}")
+            sendSms("PpWeightHighDown: ppISFwt_high=${round(newPpHigh, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("PpWeightHighDownTT")
         }
@@ -3921,7 +3932,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newPpHigh = (currentPpHigh + 0.01).coerceAtMost(0.15)
             preferences.put(DoubleKey.ApsAutoIsfPpWeightHigh, newPpHigh)
             cancelCurrentTempTarget()
-            sendSms("PpWeightHighUp: ppISFwt_high=${round(newPpHigh, 2)}")
+            sendSms("PpWeightHighUp: ppISFwt_high=${round(newPpHigh, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("PH", newPpHigh, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("PpWeightHighUpTT")
         }
@@ -3993,7 +4004,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     ppNeedsRevert                    -> "ppISFwt=${round(baselinePp, 2)}"
                     else                              -> "acceISFwt=${round(baselineAcce, 2)}"
                 }
-                sendSms("PpWeightRevert: $what ($reason)")
+                sendSms("PpWeightRevert: $what ($reason)", noteTag = true)
                 val note = if (ppNeedsRevert && acceNeedsRevert) "PArv" else if (ppNeedsRevert) "PPrv" else "ACrv"
                 addCarePortalNote(note, smsText = lastSmsText)
                 markRun("PpWeightRevertUnder8_5")
@@ -4010,7 +4021,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
             if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive - 0.05).coerceAtLeast(0.55))
             cancelCurrentTempTarget()
-            sendSms("AcceWeightDown: acceISFwt_orig=${round(newAcce, 2)}")
+            sendSms("AcceWeightDown: acceISFwt_orig=${round(newAcce, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("AcceWeightDownTT")
         }
@@ -4024,7 +4035,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightNormal, newAcce)
             if (fuzzyEquals(currentLive, currentAcce)) preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, (currentLive + 0.05).coerceAtMost(1.00))
             cancelCurrentTempTarget()
-            sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}")
+            sendSms("AcceWeightUp: acceISFwt_orig=${round(newAcce, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("AC", newAcce, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("AcceWeightUpTT")
         }
@@ -4040,7 +4051,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newAcceHigh = (currentAcceHigh - 0.01).coerceAtLeast(0.0)
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
             cancelCurrentTempTarget()
-            sendSms("AcceWeightHighDown: acceISFwt_high=${round(newAcceHigh, 2)}")
+            sendSms("AcceWeightHighDown: acceISFwt_high=${round(newAcceHigh, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("AcceWeightHighDownTT")
         }
@@ -4053,7 +4064,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newAcceHigh = (currentAcceHigh + 0.01).coerceAtMost(1.00)
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeightHigh, newAcceHigh)
             cancelCurrentTempTarget()
-            sendSms("AcceWeightHighUp: acceISFwt_high=${round(newAcceHigh, 2)}")
+            sendSms("AcceWeightHighUp: acceISFwt_high=${round(newAcceHigh, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("AH", newAcceHigh, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("AcceWeightHighUpTT")
         }
@@ -4066,7 +4077,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newHigh = (currentHigh - 0.1).coerceAtLeast(0.0)
             preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
             cancelCurrentTempTarget()
-            sendSms("HigherIsfRangeWeightDown: higher_ISFrange_weight=${round(newHigh, 2)}")
+            sendSms("HigherIsfRangeWeightDown: higher_ISFrange_weight=${round(newHigh, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("HI", newHigh, 1), smsText = lastSmsText)
             markRun("HigherIsfRangeWeightDownTT")
         }
@@ -4078,7 +4089,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newHigh = (currentHigh + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfHighBgWeight, newHigh)
             cancelCurrentTempTarget()
-            sendSms("HigherIsfRangeWeightUp: higher_ISFrange_weight=${round(newHigh, 2)}")
+            sendSms("HigherIsfRangeWeightUp: higher_ISFrange_weight=${round(newHigh, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("HI", newHigh, 1), smsText = lastSmsText)
             markRun("HigherIsfRangeWeightUpTT")
         }
@@ -4090,7 +4101,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newPeak = (preferences.get(IntKey.InsulinOrefPeak) - 5).coerceAtLeast(35)
             preferences.put(IntKey.InsulinOrefPeak, newPeak)
             cancelCurrentTempTarget()
-            sendSms("PeakInsulinTimeDown: insulinPeak=$newPeak")
+            sendSms("PeakInsulinTimeDown: insulinPeak=$newPeak", noteTag = true)
             addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak), smsText = lastSmsText)
             markRun("PeakInsulinTimeDownTT")
         }
@@ -4101,7 +4112,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newPeak = (preferences.get(IntKey.InsulinOrefPeak) + 5).coerceAtMost(120)
             preferences.put(IntKey.InsulinOrefPeak, newPeak)
             cancelCurrentTempTarget()
-            sendSms("PeakInsulinTimeUp: insulinPeak=$newPeak")
+            sendSms("PeakInsulinTimeUp: insulinPeak=$newPeak", noteTag = true)
             addCarePortalNote(String.format(Locale.US, "IP%03d", newPeak), smsText = lastSmsText)
             markRun("PeakInsulinTimeUpTT")
         }
@@ -4114,7 +4125,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) - 0.1).coerceAtLeast(1.0)
             preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
             cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxLowDown: autoISF_max_low=${round(newMaxLow, 2)}")
+            sendSms("AutoIsfMaxLowDown: autoISF_max_low=${round(newMaxLow, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("ML", newMaxLow, 1), smsText = lastSmsText)
             markRun("AutoIsfMaxLowDownTT")
         }
@@ -4125,7 +4136,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newMaxLow = (preferences.get(DoubleKey.ApsAutoIsfMaxLow) + 0.1).coerceAtMost(3.0)
             preferences.put(DoubleKey.ApsAutoIsfMaxLow, newMaxLow)
             cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxLowUp: autoISF_max_low=${round(newMaxLow, 2)}")
+            sendSms("AutoIsfMaxLowUp: autoISF_max_low=${round(newMaxLow, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("ML", newMaxLow, 1), smsText = lastSmsText)
             markRun("AutoIsfMaxLowUpTT")
         }
@@ -4138,7 +4149,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) - 0.1).coerceAtLeast(1.0)
             preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
             cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxNormalDown: autoISF_max=${round(newMax, 2)}")
+            sendSms("AutoIsfMaxNormalDown: autoISF_max=${round(newMax, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("MN", newMax, 1), smsText = lastSmsText)
             markRun("AutoIsfMaxNormalDownTT")
         }
@@ -4149,7 +4160,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newMax = (preferences.get(DoubleKey.ApsAutoIsfMax) + 0.1).coerceAtMost(3.0)
             preferences.put(DoubleKey.ApsAutoIsfMax, newMax)
             cancelCurrentTempTarget()
-            sendSms("AutoIsfMaxNormalUp: autoISF_max=${round(newMax, 2)}")
+            sendSms("AutoIsfMaxNormalUp: autoISF_max=${round(newMax, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("MN", newMax, 1), smsText = lastSmsText)
             markRun("AutoIsfMaxNormalUpTT")
         }
@@ -4163,7 +4174,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0002Down: tod_offset_0002=${round(newVal, 2)}")
+            sendSms("TodOffset0002Down: tod_offset_0002=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0002DownTT")
         }
@@ -4171,7 +4182,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0002) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0002, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0002Up: tod_offset_0002=${round(newVal, 2)}")
+            sendSms("TodOffset0002Up: tod_offset_0002=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0002UpTT")
         }
@@ -4179,7 +4190,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0204Down: tod_offset_0204=${round(newVal, 2)}")
+            sendSms("TodOffset0204Down: tod_offset_0204=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0204DownTT")
         }
@@ -4187,7 +4198,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0204) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0204, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0204Up: tod_offset_0204=${round(newVal, 2)}")
+            sendSms("TodOffset0204Up: tod_offset_0204=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0204UpTT")
         }
@@ -4195,7 +4206,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0406Down: tod_offset_0406=${round(newVal, 2)}")
+            sendSms("TodOffset0406Down: tod_offset_0406=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0406DownTT")
         }
@@ -4203,7 +4214,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0406) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0406, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0406Up: tod_offset_0406=${round(newVal, 2)}")
+            sendSms("TodOffset0406Up: tod_offset_0406=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0406UpTT")
         }
@@ -4211,7 +4222,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0609Down: tod_offset_0609=${round(newVal, 2)}")
+            sendSms("TodOffset0609Down: tod_offset_0609=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0609DownTT")
         }
@@ -4219,7 +4230,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0609) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0609, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0609Up: tod_offset_0609=${round(newVal, 2)}")
+            sendSms("TodOffset0609Up: tod_offset_0609=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0609UpTT")
         }
@@ -4227,7 +4238,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0912Down: tod_offset_0912=${round(newVal, 2)}")
+            sendSms("TodOffset0912Down: tod_offset_0912=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0912DownTT")
         }
@@ -4235,7 +4246,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset0912) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset0912, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset0912Up: tod_offset_0912=${round(newVal, 2)}")
+            sendSms("TodOffset0912Up: tod_offset_0912=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset0912UpTT")
         }
@@ -4243,7 +4254,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset1218Down: tod_offset_1218=${round(newVal, 2)}")
+            sendSms("TodOffset1218Down: tod_offset_1218=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset1218DownTT")
         }
@@ -4251,7 +4262,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1218) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1218, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset1218Up: tod_offset_1218=${round(newVal, 2)}")
+            sendSms("TodOffset1218Up: tod_offset_1218=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset1218UpTT")
         }
@@ -4259,7 +4270,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset1822Down: tod_offset_1822=${round(newVal, 2)}")
+            sendSms("TodOffset1822Down: tod_offset_1822=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset1822DownTT")
         }
@@ -4267,7 +4278,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset1822) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset1822, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset1822Up: tod_offset_1822=${round(newVal, 2)}")
+            sendSms("TodOffset1822Up: tod_offset_1822=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset1822UpTT")
         }
@@ -4275,7 +4286,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) - 0.1).coerceAtLeast(-2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset2200Down: tod_offset_2200=${round(newVal, 2)}")
+            sendSms("TodOffset2200Down: tod_offset_2200=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset2200DownTT")
         }
@@ -4283,7 +4294,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newVal = (preferences.get(DoubleKey.ApsAutoIsfTodOffset2200) + 0.1).coerceAtMost(2.0)
             preferences.put(DoubleKey.ApsAutoIsfTodOffset2200, newVal)
             cancelCurrentTempTarget()
-            sendSms("TodOffset2200Up: tod_offset_2200=${round(newVal, 2)}")
+            sendSms("TodOffset2200Up: tod_offset_2200=${round(newVal, 2)}", noteTag = true)
             addCarePortalNote(todOffsetCarePortalNote(newVal), smsText = lastSmsText)
             markRun("TodOffset2200UpTT")
         }
@@ -4298,7 +4309,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)
             preferences.put(BooleanKey.ApsAutoIsfShowCarbModelCurve, newState)
             cancelCurrentTempTarget()
-            sendSms("Graph2Toggle: ${if (newState) "ON" else "OFF"}")
+            sendSms("Graph2Toggle: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("G2${if (newState) "On" else "Off"}", smsText = lastSmsText)
             markRun("Graph2ToggleTT")
         }
@@ -4312,7 +4323,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfShowGraph5)
             preferences.put(BooleanKey.ApsAutoIsfShowGraph5, newState)
             cancelCurrentTempTarget()
-            sendSms("Graph5Toggle: ${if (newState) "ON" else "OFF"}")
+            sendSms("Graph5Toggle: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("G5${if (newState) "On" else "Off"}", smsText = lastSmsText)
             markRun("Graph5ToggleTT")
         }
@@ -4333,7 +4344,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("MjStateNoMjTT", 2) && activeTtNear(5.144, 0.0001)) {
             setAutomationState("MJ", "NOMJremains")
             cancelCurrentTempTarget()
-            sendSms("MJstate: NOMJremains")
+            sendSms("MJstate: NOMJremains", noteTag = true)
             addCarePortalNote("MJsNO", smsText = lastSmsText)
             markRun("MjStateNoMjTT")
         }
@@ -4341,7 +4352,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("MjStateMj3TT", 2) && activeTtNear(5.146, 0.0001)) {
             setAutomationState("MJ", "MJ3")
             cancelCurrentTempTarget()
-            sendSms("MJstate: MJ3")
+            sendSms("MJstate: MJ3", noteTag = true)
             addCarePortalNote("MJs3", smsText = lastSmsText)
             markRun("MjStateMj3TT")
         }
@@ -4352,7 +4363,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("MjStateActiveTT", 2) && activeTtNear(5.222, 0.0001)) {
             setAutomationState("MJ", "MJ active")
             cancelCurrentTempTarget()
-            sendSms("MJstate: MJ active")
+            sendSms("MJstate: MJ active", noteTag = true)
             addCarePortalNote("MJsAc", smsText = lastSmsText)
             markRun("MjStateActiveTT")
         }
@@ -4360,7 +4371,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("MjStateMj2TT", 2) && activeTtNear(5.224, 0.0001)) {
             setAutomationState("MJ", "MJ2")
             cancelCurrentTempTarget()
-            sendSms("MJstate: MJ2")
+            sendSms("MJstate: MJ2", noteTag = true)
             addCarePortalNote("MJs2", smsText = lastSmsText)
             markRun("MjStateMj2TT")
         }
@@ -4376,7 +4387,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
             switchToStandardAtSharedTier()
             cancelCurrentTempTarget()
-            sendSms("Profile: Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})")
+            sendSms("Profile: Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})", noteTag = true)
             addCarePortalNote("PrSt", smsText = lastSmsText)
             markRun("ProfileStandardTT")
         }
@@ -4384,7 +4395,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
             switchToLowAtSharedTier()
             cancelCurrentTempTarget()
-            sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})")
+            sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})", noteTag = true)
             addCarePortalNote("PrLow", smsText = lastSmsText)
             markRun("ProfileLowTT")
         }
@@ -4406,7 +4417,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     val roleKey = setRoleKeyForIndex(roleIndex)
                     if (roleKey != null && applySetRole(roleKey, activePs.profileName)) {
                         reassertProfileIndefinite(activePs.profileName)   // supersede the coded short switch so it can't expire/revert
-                        sendSms("SetRole(dur): ${roleKey.key} -> ${activePs.profileName}")
+                        sendSms("SetRole(dur): ${roleKey.key} -> ${activePs.profileName}", noteTag = true)
                         addCarePortalNote("RoleSet", smsText = lastSmsText)
                     }
                 }
@@ -4429,11 +4440,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (virtualComparisonAllowed) {
                 val newState = !preferences.get(BooleanKey.FslUseUkfSmoothing)
                 preferences.put(BooleanKey.FslUseUkfSmoothing, newState)
-                sendSms("LibreUKFset1 Virtual: ${if (newState) "ON" else "OFF"}")
+                sendSms("LibreUKFset1 Virtual: ${if (newState) "ON" else "OFF"}", noteTag = true)
                 addCarePortalNote("UKF1V${if (newState) "On" else "Off"}", smsText = lastSmsText)
             } else {
                 preferences.put(BooleanKey.FslUseUkfSmoothing, false)
-                sendSms("LibreUKFset1 blocked: Virtual Pump only")
+                sendSms("LibreUKFset1 blocked: Virtual Pump only", noteTag = true)
                 addCarePortalNote("UKF1Block", smsText = lastSmsText)
             }
             cancelCurrentTempTarget()
@@ -4446,7 +4457,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
             preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}")
+            sendSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("SAC${if (newState) "On" else "Off"}", smsText = lastSmsText)
             markRun("SensorAgeCodeToggleTT")
         }
@@ -4577,7 +4588,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
             preferences.put(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("MJ Kotlin buttons: ${if (newState) "ON" else "OFF"}")
+            sendSms("MJ Kotlin buttons: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("MJB${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("MJ Kotlin buttons toggled", true))
             markRun("MjKotlinButtonsToggleTT")
@@ -4587,7 +4598,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)
             preferences.put(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("Steroid Kotlin button: ${if (newState) "ON" else "OFF"}")
+            sendSms("Steroid Kotlin button: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("StB${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Steroid Kotlin button toggled", true))
             markRun("SteroidKotlinButtonToggleTT")
@@ -4601,7 +4612,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
             preferences.put(BooleanKey.ApsAutoIsfUamBoostEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("Tier 3 UAM Boost: ${if (newState) "ON" else "OFF"}")
+            sendSms("Tier 3 UAM Boost: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("T3B${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Tier 3 UAM Boost toggled", true))
             markRun("Tier3BoostToggleTT")
@@ -4611,7 +4622,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled)
             preferences.put(BooleanKey.ApsAutoIsfProfileBatchAutoEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}")
+            sendSms("Profile batch auto (Toggle1): ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("Bt1${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Profile batch auto toggled", true))
             markRun("ProfileBatchAutoToggleTT")
@@ -4620,7 +4631,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertEnabled)
             setProfileBatchRevertA(newState, "List2 Toggle2")
             cancelCurrentTempTarget()
-            sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}")
+            sendSms("Profile batch revert (Toggle2): ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("Bt2${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Profile batch revert toggled", true))
             markRun("ProfileBatchRevertToggleTT")
@@ -4629,7 +4640,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfProfileBatchRevertCEnabled)
             setProfileBatchRevertC(newState, "List2 Toggle3")
             cancelCurrentTempTarget()
-            sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}")
+            sendSms("Profile batch revert TierC (Toggle3): ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("Bt3${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Profile batch revert TierC toggled", true))
             markRun("ProfileBatchRevertCToggleTT")
@@ -4676,7 +4687,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)
             preferences.put(BooleanKey.ApsAutoIsfUseUkf1ForDosing, newState)
             cancelCurrentTempTarget()
-            sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}")
+            sendSms("AutoISF calcs UKF1: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("U1D${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("AutoISF UKF1-dosing toggled", true))
             markRun("Ukf1DosingToggleTT")
@@ -4688,7 +4699,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)
             preferences.put(BooleanKey.ApsAutoIsfFastRiseEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("FastRise tiers: ${if (newState) "ON" else "OFF"} (test toggle)")
+            sendSms("FastRise tiers: ${if (newState) "ON" else "OFF"} (test toggle)", noteTag = true)
             addCarePortalNote("FRt${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("FastRise tiers toggled", true))
             markRun("FastRiseToggleTT")
@@ -4697,7 +4708,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
             preferences.put(BooleanKey.ApsAutoIsfLowReboundGuardEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("LoReb guard: ${if (newState) "ON" else "OFF"} (test toggle)")
+            sendSms("LoReb guard: ${if (newState) "ON" else "OFF"} (test toggle)", noteTag = true)
             addCarePortalNote("LRb${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
             markRun("LowReboundGuardToggleTT")
@@ -4706,7 +4717,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
             preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}")
+            sendSms("T3 unrestricted compare: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("T3u${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("T3 unrestricted compare toggled", true))
             markRun("T3UnrestrictedToggleTT")
@@ -4715,7 +4726,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
             preferences.put(BooleanKey.ApsAutoIsfShowInsulinTotals, newState)
             cancelCurrentTempTarget()
-            sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}")
+            sendSms("Insulin totals row: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("ITt${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Insulin totals row toggled", true))
             markRun("InsulinTotalsToggleTT")
@@ -4728,7 +4739,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.AutomationCodedLocationsEnabled)
             preferences.put(BooleanKey.AutomationCodedLocationsEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}")
+            sendSms("Location SMS + CarePortal notes: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("Loc${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Coded locations toggled", true))
             markRun("LocationSmsToggleTT")
@@ -4752,7 +4763,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("CloudLogsUploadTT", 2) && activeTtNear(5.140, 0.0001)) {
             importExportPrefs.sendLogs(trigger = "REMOTE_TT")
             cancelCurrentTempTarget()
-            sendSms("CloudLogsUpload: triggered")
+            sendSms("CloudLogsUpload: triggered", noteTag = true)
             addCarePortalNote("CLup", smsText = lastSmsText)
             markRun("CloudLogsUploadTT")
         }
@@ -4767,7 +4778,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
             if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive - 0.1).coerceAtLeast(0.00))
             cancelCurrentTempTarget()
-            sendSms("DuraWeightDown: duraISFwt_orig=${round(newDura, 2)}")
+            sendSms("DuraWeightDown: duraISFwt_orig=${round(newDura, 2)}", noteTag = true)
             // 3 trailing chars (not 2) — Dura's 0-3.00 range needs the whole-number digit too, e.g. "Dd2.4"
             addCarePortalNote(compactSettingNote("D", newDura, 2), smsText = lastSmsText)
             markRun("DuraWeightDownTT")
@@ -4782,7 +4793,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, newDura)
             if (fuzzyEquals(currentLive, currentDura)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (currentLive + 0.1).coerceAtMost(3.00))
             cancelCurrentTempTarget()
-            sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}")
+            sendSms("DuraWeightUp: duraISFwt_orig=${round(newDura, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("D", newDura, 2), smsText = lastSmsText)
             markRun("DuraWeightUpTT")
         }
@@ -4794,7 +4805,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) - 0.1).coerceAtLeast(0.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
-            sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}")
+            sendSms("SmbOffsetDown: SMBoffset=${round(newOffset, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("SO", newOffset, 1), smsText = lastSmsText)
             markRun("SmbOffsetDownTT")
         }
@@ -4805,7 +4816,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newOffset = (preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) + 0.1).coerceAtMost(1.50)
             preferences.put(DoubleKey.ApsAutoIsfSmbOffsetOverride, newOffset)
             cancelCurrentTempTarget()
-            sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}")
+            sendSms("SmbOffsetUp: SMBoffset=${round(newOffset, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("SO", newOffset, 1), smsText = lastSmsText)
             markRun("SmbOffsetUpTT")
         }
@@ -4821,7 +4832,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
             if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive - 0.01).coerceAtLeast(0.60))
             cancelCurrentTempTarget()
-            sendSms("LibreSlopeDown: LibreSlope_orig=${round(newSlope, 2)}")
+            sendSms("LibreSlopeDown: LibreSlope_orig=${round(newSlope, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("LibreSlopeDownTT")
         }
@@ -4835,7 +4846,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfLibreSlopeOrig, newSlope)
             if (fuzzyEquals(currentLive, currentSlopeOrig)) preferences.put(DoubleKey.FslCalSlope, (currentLive + 0.01).coerceAtMost(1.00))
             cancelCurrentTempTarget()
-            sendSms("LibreSlopeUp: LibreSlope_orig=${round(newSlope, 2)}")
+            sendSms("LibreSlopeUp: LibreSlope_orig=${round(newSlope, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("LS", newSlope, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("LibreSlopeUpTT")
         }
@@ -4853,7 +4864,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
             if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive - 0.05).coerceAtLeast(1.20))
             cancelCurrentTempTarget()
-            sendSms("LibreOffsetDown: LibreOffset_orig=${round(newOffsetOrig, 2)}")
+            sendSms("LibreOffsetDown: LibreOffset_orig=${round(newOffsetOrig, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2), smsText = lastSmsText)
             markRun("LibreOffsetDownTT")
         }
@@ -4867,7 +4878,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(DoubleKey.ApsAutoIsfLibreOffsetOrig, newOffsetOrig)
             if (fuzzyEquals(currentLive, currentOffsetOrig)) preferences.put(DoubleKey.FslCalOffset, (currentLive + 0.05).coerceAtMost(1.60))
             cancelCurrentTempTarget()
-            sendSms("LibreOffsetUp: LibreOffset_orig=${round(newOffsetOrig, 2)}")
+            sendSms("LibreOffsetUp: LibreOffset_orig=${round(newOffsetOrig, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("L", newOffsetOrig, 2), smsText = lastSmsText)
             markRun("LibreOffsetUpTT")
         }
@@ -4882,7 +4893,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("CleanGraphTT", 2) && activeTtNear(5.042, 0.0001)) {
             preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, true)
             cancelCurrentTempTarget()
-            sendSms("CleanGraph: no SMBs/arrows, solid green")
+            sendSms("CleanGraph: no SMBs/arrows, solid green", noteTag = true)
             addCarePortalNote("CGrph", smsText = lastSmsText)
             markRun("CleanGraphTT")
         }
@@ -4894,7 +4905,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newPct = (preferences.get(IntKey.OverviewBolusPercentage) - 5).coerceAtLeast(50)
             preferences.put(IntKey.OverviewBolusPercentage, newPct)
             cancelCurrentTempTarget()
-            sendSms("WizardPctDown: BolusPct=$newPct")
+            sendSms("WizardPctDown: BolusPct=$newPct", noteTag = true)
             addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct), smsText = lastSmsText)
             markRun("WizardPctDownTT")
         }
@@ -4905,7 +4916,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newPct = (preferences.get(IntKey.OverviewBolusPercentage) + 5).coerceAtMost(100)
             preferences.put(IntKey.OverviewBolusPercentage, newPct)
             cancelCurrentTempTarget()
-            sendSms("WizardPctUp: BolusPct=$newPct")
+            sendSms("WizardPctUp: BolusPct=$newPct", noteTag = true)
             addCarePortalNote(String.format(Locale.US, "W%03d%%", newPct), smsText = lastSmsText)
             markRun("WizardPctUpTT")
         }
@@ -4920,7 +4931,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) - 0.25).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
-            sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}")
+            sendSms("MildBoostDown: mildBoost=${round(newMildBoost, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("MildBoostDownTT")
         }
@@ -4932,7 +4943,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newMildBoost = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.25).coerceAtMost(1.0)
             preferences.put(DoubleKey.ApsAutoIsfMildBoostRatio, newMildBoost)
             cancelCurrentTempTarget()
-            sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}")
+            sendSms("MildBoostUp: mildBoost=${round(newMildBoost, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("MB", newMildBoost, 2, omitLeadingZero = true), smsText = lastSmsText)
             markRun("MildBoostUpTT")
         }
@@ -4947,7 +4958,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) - 0.25).coerceAtLeast(0.1)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
             cancelCurrentTempTarget()
-            sendSms("BoostScaleDown: boost_scale=${round(newScale, 2)}")
+            sendSms("BoostScaleDown: boost_scale=${round(newScale, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("BS", newScale, 2), smsText = lastSmsText)
             markRun("BoostScaleDownTT")
         }
@@ -4956,7 +4967,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newScale = (preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) + 0.25).coerceAtMost(2.9)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostScale, newScale)
             cancelCurrentTempTarget()
-            sendSms("BoostScaleUp: boost_scale=${round(newScale, 2)}")
+            sendSms("BoostScaleUp: boost_scale=${round(newScale, 2)}", noteTag = true)
             addCarePortalNote(compactSettingNote("BS", newScale, 2), smsText = lastSmsText)
             markRun("BoostScaleUpTT")
         }
@@ -4969,7 +4980,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
             cancelCurrentTempTarget()
-            sendSms("BoostMaxDown: boost_max=${round(newBoostMax, 2)}U")
+            sendSms("BoostMaxDown: boost_max=${round(newBoostMax, 2)}U", noteTag = true)
             addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2), smsText = lastSmsText)
             markRun("BoostMaxDownTT")
         }
@@ -4979,7 +4990,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 .coerceIn(DoubleKey.ApsAutoIsfUamBoostMaxBolus.min, DoubleKey.ApsAutoIsfUamBoostMaxBolus.max)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxBolus, newBoostMax)
             cancelCurrentTempTarget()
-            sendSms("BoostMaxUp: boost_max=${round(newBoostMax, 2)}U")
+            sendSms("BoostMaxUp: boost_max=${round(newBoostMax, 2)}U", noteTag = true)
             addCarePortalNote(compactSettingNote("BMx", newBoostMax, 2), smsText = lastSmsText)
             markRun("BoostMaxUpTT")
         }
@@ -4993,7 +5004,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) - 5.0).coerceAtLeast(1.0)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
             cancelCurrentTempTarget()
-            sendSms("BoostIobMaxDown: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
+            sendSms("BoostIobMaxDown: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%", noteTag = true)
             addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1), smsText = lastSmsText)
             markRun("BoostIobMaxDownTT")
         }
@@ -5002,7 +5013,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newIobMaxPct = (preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent) + 5.0).coerceAtMost(100.0)
             preferences.put(DoubleKey.ApsAutoIsfUamBoostMaxIobPercent, newIobMaxPct)
             cancelCurrentTempTarget()
-            sendSms("BoostIobMaxUp: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%")
+            sendSms("BoostIobMaxUp: boostMaxIOBPercent=${round(newIobMaxPct, 1)}%", noteTag = true)
             addCarePortalNote(compactSettingNote("BIm", newIobMaxPct, 1), smsText = lastSmsText)
             markRun("BoostIobMaxUpTT")
         }
@@ -5616,7 +5627,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 freeBytes > 0L && freeGiB < 10.0 && !notified -> {
                     val note = String.format(Locale.US, "StLow %.1fGB free", freeGiB)
                     uiInteraction.addNotification(id = 9012, text = note, level = Notification.URGENT)
-                    sendSms(note)
+                    sendSms(note, noteTag = true)
                     addCarePortalNote(note, smsText = lastSmsText)
                     preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, true)
                 }
@@ -5676,7 +5687,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val roleKey = setRoleKeyForToken(body.substring(0, eq).trim())
                 val profileName = body.substring(eq + 1).trim()
                 if (roleKey != null && applySetRole(roleKey, profileName)) {
-                    sendSms("SetRole(note): ${roleKey.key} -> $profileName")
+                    sendSms("SetRole(note): ${roleKey.key} -> $profileName", noteTag = true)
                     addCarePortalNote("RoleSet", smsText = lastSmsText)
                 }
             }
@@ -5904,7 +5915,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- MJ2 old: advances MJ state from "MJ active" → MJ2 at 02:10–03:10 AM ---
         if (readyToRun("MJ2old", 5) && checkAutomationState("MJ", "MJ active") && isTimeBetween(2, 10, 3, 10)) {
-            sendSms("MJ2")
+            sendSms("MJ2", noteTag = true)
             setAutomationState("MJ", "MJ2")
             addCarePortalNote("MJ2", smsText = lastSmsText)
             markRun("MJ2old")
@@ -5912,7 +5923,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         // --- MJ3 old: advances MJ state from MJ2 → MJ3 at 01:05–02:05 AM ---
         if (readyToRun("MJ3old", 5) && checkAutomationState("MJ", "MJ2") && isTimeBetween(1, 5, 2, 5)) {
-            sendSms("MJ3")
+            sendSms("MJ3", noteTag = true)
             setAutomationState("MJ", "MJ3")
             addCarePortalNote("MJ3", smsText = lastSmsText)
             markRun("MJ3old")
@@ -5926,7 +5937,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val mjB2 = isTimeBetween(0, 0, 1, 0)
             val mjBlock = when { mjB1 -> "1"; mjB2 -> "2"; else -> null }
             if (mjBlock != null) {
-                sendSms("MJoff [b$mjBlock]: g=${String.format("%.1f", g / 18.016)}")
+                sendSms("MJoff [b$mjBlock]: g=${String.format("%.1f", g / 18.016)}", noteTag = true)
                 setAutomationState("MJ", "NOMJremains")
                 addCarePortalNote("MJoff-$mjBlock", smsText = lastSmsText)
                 markRun("MJoff")
@@ -5968,7 +5979,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 startProfilePercentFor(50, 360, lowNameForRunningTier())   // force onto the MJ/night profile, then hold 50% for 360 min as usual
                 setAutomationState("LowBG", "50recent")
-                sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
                 addCarePortalNote("Set50-$p50block", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "prepare50 block $p50block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} steps30=$recentSteps30Minutes")
                 markRun("PrepareSet50")
@@ -6312,12 +6323,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val lowInsulinReqDespiteHigh = insReqNow != null && insReqNow < 0.10 * oapsProfile.max_iob
             val boostActive = preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive)
             if (!boostActive && podOldBoost && highSustainedBoost && lowInsulinReqDespiteHigh) {
-                sendSms("OldPodInsReqBoost: cannula ${String.format("%.1f", cannulaHBoost ?: 0.0)}h insulinReq ${String.format("%.2f", insReqNow ?: 0.0)} -> SMB x1.3, TierC")
+                sendSms("OldPodInsReqBoost: cannula ${String.format("%.1f", cannulaHBoost ?: 0.0)}h insulinReq ${String.format("%.2f", insReqNow ?: 0.0)} -> SMB x1.3, TierC", noteTag = true)
                 addCarePortalNote("OldPodBst", smsText = lastSmsText)
                 preferences.put(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive, true)
             } else if (boostActive && gBoost < 144.1 /* 8.0 mmol */ && (dBoost < 0 || podFreshBoost)) {
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
-                sendSms("OldPodInsReqBoost off: BGL ${String.format("%.1f", gBoost / 18.016)}")
+                sendSms("OldPodInsReqBoost off: BGL ${String.format("%.1f", gBoost / 18.016)}", noteTag = true)
                 addCarePortalNote("OldPodBstOff", smsText = lastSmsText)
                 preferences.put(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive, false)
             }
@@ -6362,7 +6373,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfOldSensorAdjEnabled)
             preferences.put(BooleanKey.ApsAutoIsfOldSensorAdjEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("SensorAgeToggle: ${if (newState) "ON" else "OFF"}")
+            sendSms("SensorAgeToggle: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("STg${if (newState) "On" else "Off"}", smsText = lastSmsText)
             markRun("SensorAgeToggleTT")
         }
@@ -6375,7 +6386,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)
             preferences.put(BooleanKey.ApsAutoIsfBoostAutomationsEnabled, newState)
             cancelCurrentTempTarget()
-            sendSms("BoostToggle: ${if (newState) "ON" else "OFF"}")
+            sendSms("BoostToggle: ${if (newState) "ON" else "OFF"}", noteTag = true)
             addCarePortalNote("BTg${if (newState) "On" else "Off"}", smsText = lastSmsText)
             markRun("BoostToggleTT")
         }
@@ -6479,7 +6490,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 !nomjRemains -> "NOT_NOMJremains"
                 else -> "HP2=${round(todResetHp ?: 0.0, 2)}<4.0+SD=${round(todResetSdeltaMmol, 2)}<0.1"
             }
-            sendSms("TodOffsetsZero: $reason; $resetValues")
+            sendSms("TodOffsetsZero: $reason; $resetValues", noteTag = true)
             addCarePortalNote("TOD0 $reason", smsText = lastSmsText)
             markRun("TodOffsetsZero")
         }
@@ -6609,7 +6620,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 applyCurrentProfileAt100()
                 setBgAccelIsfWeight(0.50)
                 setAutomationState("LowBG", "NO50rec")
-                sendSms("PP50.Off [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                sendSms("PP50.Off [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
                 addCarePortalNote("50ff-$p50block", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "PP50.Off block $p50block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} cannula=${String.format("%.1f", cannulaH)}h acce=$acceWeight")
                 markRun("PP50Off")
@@ -6665,7 +6676,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "50recent")
-                sendSms("Skittles $block: hypo risk — TT 5.7 set")
+                sendSms("Skittles $block: hypo risk — TT 5.7 set", noteTag = true)
                 addCarePortalNote("TT3-$block", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "Skittles block $block: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()} pct=$profile_percentage")
                 markRun("SkittlesHypoRisk")
@@ -6680,7 +6691,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("50SetRecent", 5) && readyToRun("PP50Off", 15)
             && profile_percentage == 50 && checkAutomationState("LowBG", "NO50rec")) {
             setAutomationState("LowBG", "50recent")
-            sendSms("50%Recently")
+            sendSms("50%Recently", noteTag = true)
             addCarePortalNote("50Rec", smsText = lastSmsText)
             markRun("50SetRecent")
         }
@@ -6731,7 +6742,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ) {
             val prevTh = iobThresholdPercent
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-            sendSms("iobTHfloor: iobTH ${prevTh}->70%")
+            sendSms("iobTHfloor: iobTH ${prevTh}->70%", noteTag = true)
             addCarePortalNote("THfloor", smsText = lastSmsText)
             aapsLogger.debug(LTag.APS, "iobTHDaytimeFloor: restored iobTH $prevTh -> 70 (g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}mmol)")
             markRun("iobTHDaytimeFloor")
@@ -6757,7 +6768,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "50recent")
-                sendSms("Extra50% [b$xBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                sendSms("Extra50% [b$xBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
                 addCarePortalNote("X50-$xBlock", smsText = lastSmsText)
                 markRun("Extra50")
             }
@@ -6819,7 +6830,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (rescueOk) {
                 switchToStandardAtSharedTier(60)
                 preferences.put(LongKey.ApsAutoIsfOvernightRescueUntil, dateUtil.now() + T.mins(60).msecs())
-                sendSms("OvernightDuraRescue: g=${round(g / 18.0182, 1)} duraISF=${round(duraIsf, 2)} finalISF=${round(finalIsf, 2)} -> Standard 60min")
+                sendSms("OvernightDuraRescue: g=${round(g / 18.0182, 1)} duraISF=${round(duraIsf, 2)} finalISF=${round(finalIsf, 2)} -> Standard 60min", noteTag = true)
                 addCarePortalNote("DuraRsc", smsText = lastSmsText)
                 markRun("OvernightDuraRescue")
             }
@@ -6926,7 +6937,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         smbBoostHoldUntilMs = dateUtil.now() + 30 * 60_000L
                         startTempTargetIfNeeded(targetBg, 30)
                         escalateToStuckHighTierC()
-                        sendSms("StuckHighRescue [ratio]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} SMBdel -> ${round(boosted, 2)}")
+                        sendSms("StuckHighRescue [ratio]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} SMBdel -> ${round(boosted, 2)}", noteTag = true)
                         addCarePortalNote("SHRto", smsText = lastSmsText)
                         markRun("StuckHighRescue")
                     }
@@ -6937,7 +6948,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     val rescueTargetMgdl = (targetBg - 36.0 /* 2.0 mmol */).coerceAtLeast(72.1 /* 4.0 mmol */)
                     startTempTargetIfNeeded(rescueTargetMgdl, 30)
                     escalateToStuckHighTierC()
-                    sendSms("StuckHighRescue [target]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} target=${round(targetMmol, 1)} -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol 30min")
+                    sendSms("StuckHighRescue [target]: g=${round(g / 18.0182, 1)} HP2=${round(hp, 2)} target=${round(targetMmol, 1)} -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol 30min", noteTag = true)
                     addCarePortalNote("SHTgt", smsText = lastSmsText)
                     markRun("StuckHighRescue")
                 }
@@ -7043,7 +7054,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (!fuzzyEquals(smb_delivery_ratio, boosted)) {
                     setSmbDeliveryRatio(boosted)
                     startTempTargetIfNeeded(targetBg, 20)
-                    sendSms("PoorResponseRescue [stage1]: ${round(minutesSinceDose, 1)}min post-dose, rise ${round(riseSinceMgdl / 18.0182, 2)}mmol, SMBdel -> ${round(boosted, 2)}")
+                    sendSms("PoorResponseRescue [stage1]: ${round(minutesSinceDose, 1)}min post-dose, rise ${round(riseSinceMgdl / 18.0182, 2)}mmol, SMBdel -> ${round(boosted, 2)}", noteTag = true)
                     addCarePortalNote("PRR1", smsText = lastSmsText)
                     markRun("PoorResponseRescueStage1")
                 }
@@ -7053,7 +7064,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setSmbDeliveryRatio(boosted)
                 startTempTargetIfNeeded(rescueTargetMgdl, 30)
                 escalateToStuckHighTierC()
-                sendSms("PoorResponseRescue [stage2]: ${round(minutesSinceDose, 1)}min post-dose, rise ${round(riseSinceMgdl / 18.0182, 2)}mmol, SMBdel -> ${round(boosted, 2)}, target -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol")
+                sendSms("PoorResponseRescue [stage2]: ${round(minutesSinceDose, 1)}min post-dose, rise ${round(riseSinceMgdl / 18.0182, 2)}mmol, SMBdel -> ${round(boosted, 2)}, target -> ${round(rescueTargetMgdl / 18.0182, 1)}mmol", noteTag = true)
                 addCarePortalNote("PRR2", smsText = lastSmsText)
                 markRun("PoorResponseRescueStage2")
             }
@@ -7104,7 +7115,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val highSustained = highSinceTs != 0L && (dateUtil.now() - highSinceTs) >= T.hours(2).msecs()
             if (highSustained && !mealSeen && readyToRun("UnexplainedHighTierC", 30)) {
                 escalateToStuckHighTierC()
-                sendSms("UnexplainedHighTierC: g=${round(g / 18.0182, 1)} high 2h+, no meal/UAM seen -> TierC")
+                sendSms("UnexplainedHighTierC: g=${round(g / 18.0182, 1)} high 2h+, no meal/UAM seen -> TierC", noteTag = true)
                 addCarePortalNote("UnHTC", smsText = lastSmsText) // 5 chars -- no Graph4NoteLabel truncation collision, see that file
                 markRun("UnexplainedHighTierC")
             }
@@ -7165,7 +7176,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.ApsAutoIsfStuckHighTierCActive, false)
             preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevLowRole, "")
             preferences.put(StringKey.ApsAutoIsfStuckHighTierCPrevStandardRole, "")
-            sendSms("StuckHighTierC off: BGL ${round(g / 18.0182, 1)} -> Standard=${restoredStandard.ifBlank { escalatedStandard }} Low=${restoredLow.ifBlank { escalatedLow }}")
+            sendSms("StuckHighTierC off: BGL ${round(g / 18.0182, 1)} -> Standard=${restoredStandard.ifBlank { escalatedStandard }} Low=${restoredLow.ifBlank { escalatedLow }}", noteTag = true)
             addCarePortalNote("STCOf", smsText = lastSmsText) // 5 chars -- no Graph4NoteLabel truncation collision, see that file
         }
 
@@ -7210,7 +7221,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
             if (fire) {
                 markRun("NightFrSkip")
-                sendSms("NightFrSkip: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} d=${String.format(Locale.getDefault(), "%.2f", d / 18.016)} iob=${round(iobNow, 2)}")
+                sendSms("NightFrSkip: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} d=${String.format(Locale.getDefault(), "%.2f", d / 18.016)} iob=${round(iobNow, 2)}", noteTag = true)
                 addCarePortalNote("NtFRSk", smsText = lastSmsText)
             }
         }
@@ -7267,7 +7278,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.18)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 18)
                 if (nightHighAmTag) setAutomationState("Profile", "C100")
-                sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP2=${hpNow?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("OffHighProf [b$ohBlock]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} HP2=${hpNow?.let { String.format("%.1f", it) } ?: "--"}", noteTag = true)
                 addCarePortalNote("OffP-$ohBlock", smsText = lastSmsText)
                 markRun("OffHighProf")
             }
@@ -7329,7 +7340,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfSafetyProfileName)
             && receiverStatusStore.batteryLevel > 1) {
             switchToStandardAtSharedTier(0)
-            sendSms("AllOK Batt")
+            sendSms("AllOK Batt", noteTag = true)
             setAutomationState("Profile", "AllOK")
             addCarePortalNote("bat>1", smsText = lastSmsText)
             markRun("BatteryOver1pc")
@@ -7405,7 +7416,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && (tt == null || tt <= 127.9 /* 7.1 mmol */)) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 12)
                 val rawText = rawJump?.let { " raw +${String.format(Locale.getDefault(), "%.1f", it / 18.016)}" } ?: ""
-                sendSms("Shower12$rawText: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=${iobThresholdPercent}")
+                sendSms("Shower12$rawText: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} iobTH=${iobThresholdPercent}", noteTag = true)
                 addCarePortalNote("Shwr12$rawText", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the iobTH 12 drop
                 markRun("Shower12")
             }
@@ -7454,7 +7465,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (baseOk) {
                 switchToStandardAtSharedTier(30)
                 setAutomationState("Profile", "HnAM")
-                sendSms("HighNight00AM: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} d=${String.format(Locale.getDefault(), "%.2f", d / 18.016)} sd=${String.format(Locale.getDefault(), "%.2f", sd / 18.016)} ld=${String.format(Locale.getDefault(), "%.2f", ld / 18.016)}")
+                sendSms("HighNight00AM: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} d=${String.format(Locale.getDefault(), "%.2f", d / 18.016)} sd=${String.format(Locale.getDefault(), "%.2f", sd / 18.016)} ld=${String.format(Locale.getDefault(), "%.2f", ld / 18.016)}", noteTag = true)
                 addCarePortalNote("HnAM", smsText = lastSmsText)
                 markRun("HighNight00AM")
             }
@@ -7473,7 +7484,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val tt = activeTtMgdl()
             if (tt != null && fuzzyEquals(tt, mmolToMgdl(6.8))
                 && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */ && glucoseStatus.delta <= 1.8 /* 0.1 mmol */) {
-                sendSms("ActivityProf50% Acce")
+                sendSms("ActivityProf50% Acce", noteTag = true)
                 setBgAccelIsfWeight(0.02)
                 applyCurrentProfileAt100()
                 startProfilePercentFor(50, 180)
@@ -7508,7 +7519,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 switchToStandardAtSharedTier()
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-                sendSms("Activity 70_0.70 0.35 Acce")
+                sendSms("Activity 70_0.70 0.35 Acce", noteTag = true)
                 addCarePortalNote("ActOff", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the Activity 50% exit (TT cancel, profile 100, acce 0.35, iobTH 70)
                 markRun("ActivityOff")
             }
@@ -7808,7 +7819,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val anyCautionFactor = !checkAutomationState("MJ", "NOMJremains") || onStandardTierC || recentSteps30Minutes > 200
             val boostIncrement = if (anyCautionFactor) 0.075 else 0.15
             applyBMildOutcomeFactors(g, deliveryBoostIncrement = boostIncrement)
-            sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} (+$boostIncrement)")
+            sendSms("BolusGivenMild: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} (+$boostIncrement)", noteTag = true)
             addCarePortalNote("BMild", smsText = lastSmsText)
             markRun("BolusGivenMild")
         }
@@ -7848,7 +7859,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Flat delivery boost, matching BolusGivenMild above (2026-08-31, was the same 3-way
                 // BGL-tiered when). One value on every fire.
                 applyBMildOutcomeFactors(g)
-                sendSms("BolusGivenMildFailsafe: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} IOB=${round(iobNow, 2)} (no SMB in 20min despite confirmed rise)")
+                sendSms("BolusGivenMildFailsafe: g=${String.format(Locale.getDefault(), "%.1f", g / 18.016)} IOB=${round(iobNow, 2)} (no SMB in 20min despite confirmed rise)", noteTag = true)
                 addCarePortalNote("BMildFS", smsText = lastSmsText)
                 markRun("BolusGivenMildFailsafe")
             }
@@ -8001,7 +8012,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setBgAccelIsfWeight(0.50)
                 applyCurrentProfileAt100()
                 setAutomationState("LowBG", "NO50rec")
-                sendSms("TT 5.7 ended [$which]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                sendSms("TT 5.7 ended [$which]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
                 addCarePortalNote("TToff-$which", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "TT reversal [$which]: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)} sd=${String.format("%.2f", sd / 18.016)} iob=${String.format("%.2f", iob)} cob=${cob.toInt()}")
                 markRun("TT57Reversal")
@@ -8013,7 +8024,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val whichNew = when { new2 -> "TT5.8New2"; new3 -> "TT5.8New3"; mildConfirmed -> "TT5.7MildOff"; else -> null }
                 if (whichNew != null) {
                     cancelCurrentTempTarget()
-                    sendSms(whichNew)
+                    sendSms(whichNew, noteTag = true)
                     addCarePortalNote("TToff-${if (new2) "N2" else if (new3) "N3" else "Mld"}", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the 5.7 TT reversal
                     markRun("TT57Reversal")
                 }
@@ -8114,12 +8125,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             if (new1) {
                 cancelCurrentTempTarget()
-                sendSms("TT6.0New")
+                sendSms("TT6.0New", noteTag = true)
                 addCarePortalNote("ActTToff1", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the Activity (6.5-7.6) TT reversal
                 markRun("ActivityTTReversal")
             } else if (new2) {
                 cancelCurrentTempTarget()
-                sendSms("TT6.0New2")
+                sendSms("TT6.0New2", noteTag = true)
                 addCarePortalNote("ActTToff2", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the Activity (6.5-7.6) TT reversal
                 markRun("ActivityTTReversal")
             }
@@ -8151,7 +8162,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             if (stepsOk && riseOk) {
                 cancelCurrentTempTarget()
-                sendSms("TT8.0lf")
+                sendSms("TT8.0lf", noteTag = true)
                 addCarePortalNote("TT8.0off", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the 8.0 "hyp" TT reversal
                 markRun("T80Off3ok")
             }
@@ -8167,7 +8178,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val d = glucoseStatus.delta
             if (g < 90.1 && d <= -0.9) {   // < 5.0 mmol, delta <= -0.05 mmol
                 startTempTargetIfNeeded(102.7, 150)   // 5.7 mmol for 150 min
-                sendSms("50pc makes5.7: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}")
+                sendSms("50pc makes5.7: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
                 addCarePortalNote("50pcTT", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "50pc makes5.7: g=${String.format("%.1f", g / 18.016)}mmol d=${String.format("%.2f", d / 18.016)}")
                 markRun("50pcMakes5.7")
@@ -8192,7 +8203,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 cancelCurrentTempTarget()
                 setBgAccelIsfWeight(0.50)
                 applyCurrentProfileAt100()
-                sendSms("carbsStopTT1: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)}")
+                sendSms("carbsStopTT1: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)}", noteTag = true)
                 addCarePortalNote("Coff4", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "carbsStopTT1: g=${String.format("%.1f", g / 18.016)}mmol tt=${String.format("%.1f", tt / 18.016)} d=${String.format("%.2f", d / 18.016)} iob=${String.format("%.2f", iob)}")
                 markRun("CarbsStopTT1")
@@ -8228,7 +8239,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     applyCurrentProfileAt100()
                     setBgAccelIsfWeight(0.50)
                     setAutomationState("LowBG", "NO50rec")
-                    sendSms("CarbsStopTT [b$cBlock]: g=${String.format("%.1f", g / 18.016)} tt=${String.format("%.1f", tt / 18.016)}")
+                    sendSms("CarbsStopTT [b$cBlock]: g=${String.format("%.1f", g / 18.016)} tt=${String.format("%.1f", tt / 18.016)}", noteTag = true)
                     addCarePortalNote("Coff2-$cBlock", smsText = lastSmsText)
                     aapsLogger.debug(LTag.APS, "CarbsStopTT block $cBlock: g=${String.format("%.1f", g / 18.016)}mmol tt=${String.format("%.1f", tt / 18.016)} cob=${cob.toInt()} iob=${String.format("%.2f", iob)} d=${String.format("%.2f", d / 18.016)}")
                     markRun("CarbsStopTT57")
@@ -8302,7 +8313,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 setAutomationState("LowBG", "NO50rec")
                 applyCurrentProfileAt100()
-                sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
+                sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH", noteTag = true)
                 addCarePortalNote("UsuIP-$u2block", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "Usual2forTH block $u2block: g=${String.format("%.1f", g / 18.016)}mmol iobTH=$iobTH steps60=$steps60 steps180=$steps180 cob=${cob.toInt()} sd=${String.format("%.2f", sd / 18.016)}")
                 markRun("Usual2forTH")
@@ -8337,7 +8348,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
                 restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // daytime recovery restores delivery baseline
                 setAutomationState("LowBG", "NO50rec")
-                sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH")
+                sendSms("CarbsTHoff [b$ctBlock]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH", noteTag = true)
                 addCarePortalNote("COff1-$ctBlock", smsText = lastSmsText)
                 markRun("CarbsTHoff")
             }
@@ -8448,7 +8459,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // exists for is preserved whether or not a low is predicted.
                 val hpMj = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iobData.iob, mealData.mealCOB, bgAcce)
                 if ((isTimeBetween(22, 0, 6, 0) || (hpMj != null && hpMj < 5.0)) && !rescueActive) switchToLowAtSharedTier()
-                sendSms("MJ recent CurrProf Acce HP2=${hpMj?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("MJ recent CurrProf Acce HP2=${hpMj?.let { String.format("%.1f", it) } ?: "--"}", noteTag = true)
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 addCarePortalNote("MJrec", smsText = lastSmsText)
@@ -8492,7 +8503,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && onLowFamily) {
                 switchToStandardAtSharedTier()
                 setBgAccelIsfWeight(0.50)
-                sendSms("BasalUp Acce")
+                sendSms("BasalUp Acce", noteTag = true)
                 addCarePortalNote("BsUp", smsText = lastSmsText)
                 markRun("BasalUp")
             } else if (g >= 81.1 && !cannulaOrStateOk
@@ -8586,12 +8597,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // keeps landing at MJ3 exactly as before. If both happen to be true at once, the
             // hypoalarm path's more cautious MJ2 takes priority.
             if (existingConditionsMet) {
-                sendSms("MoreMJ2 (hypoalarm)")
+                sendSms("MoreMJ2 (hypoalarm)", noteTag = true)
                 setAutomationState("MJ", "MJ2")
                 addCarePortalNote("MoreMJ2", smsText = lastSmsText)
                 markRun("MoreMJ")
             } else if (noRecentHighTrigger) {
-                sendSms("MoreMJ")
+                sendSms("MoreMJ", noteTag = true)
                 setAutomationState("MJ", "MJ3")
                 addCarePortalNote("MoreMJ", smsText = lastSmsText)
                 markRun("MoreMJ")
@@ -8623,7 +8634,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (h6b1 || h6b2 || h6b3) {
                 startProfilePercentFor(120, 5)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
-                sendSms("High6PP Acce")
+                sendSms("High6PP Acce", noteTag = true)
                 addCarePortalNote("P120", smsText = lastSmsText)
                 markRun("High6PP")
             }
@@ -8640,7 +8651,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && profile_percentage == 120 && d <= 3.6 /* 0.2 mmol */
             if (off1 || off2) {
                 switchToStandardAtSharedTier()
-                sendSms("High6PPoff Acce")
+                sendSms("High6PPoff Acce", noteTag = true)
                 addCarePortalNote("off120", smsText = lastSmsText)
                 markRun("High6PPoff")
             }
@@ -8665,7 +8676,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setAutomationState("Profile", "C100")
                 startProfilePercentFor(130, 60)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
-                sendSms("PodChangeHighPP130 Acce")
+                sendSms("PodChangeHighPP130 Acce", noteTag = true)
                 addCarePortalNote("Pod130", smsText = lastSmsText)
                 markRun("PodChangeHighPP130")
             }
@@ -8685,7 +8696,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && boosted && activeTtMgdl() != null
             val off3 = activeTtMgdl() == null && boosted
             if (off1 || off2 || off3) {
-                sendSms("HighPP130Off")
+                sendSms("HighPP130Off", noteTag = true)
                 setAutomationState("Profile", "C100")
                 switchToStandardAtSharedTier()
                 addCarePortalNote("130Off", smsText = lastSmsText)
@@ -8716,7 +8727,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && activeTtMgdl() == null
                 && (checkAutomationState("MJ", "NOMJremains") || checkAutomationState("Steroids", "SteroidsON"))) {
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
-                sendSms("AcceUp")
+                sendSms("AcceUp", noteTag = true)
                 addCarePortalNote("Acce", smsText = lastSmsText)
                 markRun("AcceUp0.5")
             }
@@ -8748,7 +8759,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (fuzzyEquals(acceW, acceHigh) && activeTtMgdl() == null && podBoostRecent) {
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 switchToStandardAtSharedTier()
-                sendSms("RecentPodOff Acce")
+                sendSms("RecentPodOff Acce", noteTag = true)
                 addCarePortalNote("pTTOff", smsText = lastSmsText)
                 markRun("RecentPodOff")
             }
@@ -8791,7 +8802,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 5)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh))
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
-                sendSms("RecentPod Acce")
+                sendSms("RecentPod Acce", noteTag = true)
                 addCarePortalNote("RecPod", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the 130% + 4.2 TT + boosted-acce fresh/stale-pod boost
                 markRun("RecentPod")
             }
@@ -8871,7 +8882,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && iobThresholdPercent > eveCap
             ) {
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, eveCap)
-                sendSms("EveningIobCeiling: iobTH ${iobThresholdPercent} -> $eveCap${if (cobSustainedRelax) " (COB-relaxed)" else ""}")
+                sendSms("EveningIobCeiling: iobTH ${iobThresholdPercent} -> $eveCap${if (cobSustainedRelax) " (COB-relaxed)" else ""}", noteTag = true)
                 addCarePortalNote(if (cobSustainedRelax) "EvCapR" else "EvCap", smsText = lastSmsText)
                 markRun("EveningIobCeiling")
             }
@@ -8956,7 +8967,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     val prevIob = iobThresholdPercent
                     if (iobWrite != null) preferences.put(IntKey.ApsAutoIsfIobThPercent, iobWrite)
                     if (capAcce) setBgAccelIsfWeight(0.35)
-                    sendSms("NightIobCeiling: iobTH $prevIob->${iobWrite ?: "unchanged"}${if (cobSustainedRelax) " (COB-relaxed)" else ""} acce ${round(nightAcceW, 2)}->${if (capAcce) "0.35" else "unchanged"}")
+                    sendSms("NightIobCeiling: iobTH $prevIob->${iobWrite ?: "unchanged"}${if (cobSustainedRelax) " (COB-relaxed)" else ""} acce ${round(nightAcceW, 2)}->${if (capAcce) "0.35" else "unchanged"}", noteTag = true)
                     addCarePortalNote(if (cobSustainedRelax) "NtCapR" else "NtCap", smsText = lastSmsText)
                     markRun("NightIobCeiling")
                 }
@@ -9044,7 +9055,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     && glucoseStatus.longAvgDelta < 5.4 /* < 0.3 mmol */
                 if (iobChange5 >= 1.0 || !deltasStillPlateaued) {
                     cancelCurrentTempTarget()
-                    sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
+                    sendSms("HighEveNightBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)", noteTag = true)
                     addCarePortalNote("HiBrkCut", smsText = lastSmsText)
                 }
             } else if (highEveNightBrakeEnabled && readyToRun("HighEveNightBrake", 30)   // was 2 min; never more than one fire per 30 min (2026-09-19)
@@ -9088,7 +9099,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     // The 4.0 mmol TT is 2 min, and HiBrkCut can still cancel it early.
                     preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
                     startTempTargetIfNeeded(72.1 /* 4.0 mmol */, 2)
-                    sendSms("HighEveNightBrake: TT 4.0mmol@2min + ppWeight high, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    sendSms("HighEveNightBrake: TT 4.0mmol@2min + ppWeight high, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}", noteTag = true)
                     addCarePortalNote("HiBrk", smsText = lastSmsText)
                     markRun("HighEveNightBrake")
                 } else {
@@ -9145,7 +9156,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     && glucoseStatus.longAvgDelta < 5.4 /* < 0.3 mmol */
                 if (iobChange5 >= 1.0 || !deltasStillPlateaued) {
                     cancelCurrentTempTarget()
-                    sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)")
+                    sendSms("HighDaytimeBrake: TT cut short (iobChange5=${round(iobChange5, 2)} deltasInRange=$deltasStillPlateaued)", noteTag = true)
                     addCarePortalNote("HiBrkDayCut", smsText = lastSmsText)
                 }
             } else if (highDaytimeBrakeEnabled && readyToRun("HighDaytimeBrake", highDaytimeBrakeRearmMinutes)
@@ -9280,7 +9291,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // Match the existing HiBrk early-exit conditions; raw deltas are entry-only.
                 if (!deltasInRange || iobChange5 >= 1.0) {
                     cancelCurrentTempTarget()
-                    sendSms("HiBrkTwilight: TT cut short (iobChange5=${round(iobChange5, 2)}, deltasInRange=$deltasInRange)")
+                    sendSms("HiBrkTwilight: TT cut short (iobChange5=${round(iobChange5, 2)}, deltasInRange=$deltasInRange)", noteTag = true)
                     addCarePortalNote("HiBrkTwilightCut", smsText = lastSmsText)
                 }
             } else if (isTimeBetween(4, 0, 7, 0) && activeTarget == null
@@ -9301,7 +9312,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 startTempTargetIfNeededAt(4.2 * 18.0, 2)?.let { createdAt ->
                     preferences.put(LongNonKey.LastHiBrkTwilightTtAt, createdAt)
                     markRun("HiBrkTwilight")
-                    sendSms("HiBrkTwilight: TT 4.2mmol@2min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}")
+                    sendSms("HiBrkTwilight: TT 4.2mmol@2min, g=${convert_bg(glucoseStatus.glucose)} iobChange5=${round(iobChange5, 2)}", noteTag = true)
                     addCarePortalNote("HiBrkTwilight", smsText = lastSmsText)
                     aapsLogger.debug(LTag.APS, "HiBrkTwilight: TT 4.2mmol@2min requested; ratio and ppWeight unchanged")
                 }
@@ -9388,7 +9399,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     ld > 0.0 && ld < 2.7
                 if (g > 117.1 /* 6.5 mmol */ && slowSustainedRise) {
                     startTempTargetIfNeeded(4.4 * 18.0, 5)
-                    sendSms("EarlyDawnSlowRise: TT 4.4mmol@5min, g=${convert_bg(g)}")
+                    sendSms("EarlyDawnSlowRise: TT 4.4mmol@5min, g=${convert_bg(g)}", noteTag = true)
                     addCarePortalNote("EDSR", smsText = lastSmsText)
                     markRun("EarlyDawnSlowRise")
                 }
@@ -9654,7 +9665,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // starts, which is what an unconditional overnight switch achieves. Window starts at 22:00
                 // rather than midnight because the first burst began at 23:10.
                 if (isTimeBetween(22, 0, 6, 0) || (hpEve != null && hpEve < 5.0)) switchToLowAtSharedTier()
-                sendSms("EveningTH CurrProf 50_0.45 Acce HP2=${hpEve?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("EveningTH CurrProf 50_0.45 Acce HP2=${hpEve?.let { String.format("%.1f", it) } ?: "--"}", noteTag = true)
                 addCarePortalNote("Eve", smsText = lastSmsText)
                 markRun("EveningTH")
             }
@@ -9677,7 +9688,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 15)
                 setBgAccelIsfWeight(0.50)
                 switchToLowAtSharedTier()
-                sendSms("TwilightTH15Acce0.50")
+                sendSms("TwilightTH15Acce0.50", noteTag = true)
                 addCarePortalNote("TWi", smsText = lastSmsText)
                 markRun("TwilightTH15Acce")
             }
@@ -9711,7 +9722,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // overnight reset restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 exportSettingsFor("AutoExport")
-                sendSms("NightAcce_0.35TH22 HP2=${hpNight?.let { String.format("%.1f", it) } ?: "--"}")
+                sendSms("NightAcce_0.35TH22 HP2=${hpNight?.let { String.format("%.1f", it) } ?: "--"}", noteTag = true)
                 addCarePortalNote("Night", smsText = lastSmsText)
                 markRun("NightAcce")
             }
@@ -9742,7 +9753,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 16)
                 restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // morning recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
-                sendSms("SemiTwilightAcce_0.50TH16")
+                sendSms("SemiTwilightAcce_0.50TH16", noteTag = true)
                 addCarePortalNote("Semi", smsText = lastSmsText)
                 markRun("SemiTwilightAcce")
             }
@@ -9791,7 +9802,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && cob >= 4.0 && g <= 126.1 /* 7.0 mmol */
             if (b1 || b2) {
                 startTempTargetIfNeeded(122.5 /* 6.8 mmol */, 5)
-                sendSms("BolusTTfor10mins Acce")
+                sendSms("BolusTTfor10mins Acce", noteTag = true)
                 addCarePortalNote("Bol2", smsText = lastSmsText)
                 setAutomationState("Profile", "Bolus")
                 markRun("Bolus2")
@@ -10141,7 +10152,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // readyToRun() gates the trigger itself (not just markRun's own effect) so the note/SMS fires
         // once per 10-min window, not every single cycle the condition happens to stay true.
         if (glucoseStatus.glucose < 135.1 /* 7.5 mmol */ && smbSum10Min() > 1.5 && readyToRun("Sub75HeavyDelivery", 10)) {
-            sendSms("sc7.5: SMB cooldown armed (10min=${round(smbSum10Min(), 2)}U, g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)})")
+            sendSms("sc7.5: SMB cooldown armed (10min=${round(smbSum10Min(), 2)}U, g=${String.format(Locale.getDefault(), "%.1f", glucoseStatus.glucose / 18.016)})", noteTag = true)
             addCarePortalNote("sc7.5", smsText = lastSmsText)
             markRun("Sub75HeavyDelivery")
         }
@@ -10526,7 +10537,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // just sets this flag; this is the one place that reads it back and fires the actual
         // notification, matching this file's own established pattern of owning all side effects.
         if (determineBasalAutoISF.uamBoostFiredThisCycle) {
-            sendSms("UamBoost: SMB boosted, IOB ${round(iobData.iob, 2)}U")
+            sendSms("UamBoost: SMB boosted, IOB ${round(iobData.iob, 2)}U", noteTag = true)
             addCarePortalNote("UamBst", smsText = lastSmsText)
             addGraphAnnouncement("B")   // graph-only marker alongside the note above; no extra SMS/alert
             markRun("UamBst")
@@ -10733,7 +10744,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val newState = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
             preferences.put(BooleanKey.ApsAutoIsfLoopEveryMinute, newState)
             cancelCurrentTempTarget()
-            sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}")
+            sendSms("Loop interval: ${if (newState) "every 1 min" else "every 5 min"}", noteTag = true)
             addCarePortalNote(if (newState) "Loop1m" else "Loop5m", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("Loop interval toggled", true))
             markRun("LoopIntervalToggleTT")
@@ -10900,7 +10911,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             cancelCurrentTempTarget()
             setAutomationState("AlarmHypo", "AlarmRecent")
             preferences.put(LongKey.ApsAutoIsfLastAlarmHypoAt, dateUtil.now())
-            sendSms("AlarmHypo state set by List 1: AlarmRecent")
+            sendSms("AlarmHypo state set by List 1: AlarmRecent", noteTag = true)
             addCarePortalNote("AHSet", smsText = lastSmsText)
             markRun("AlarmHypoStateSetTT")
         }
@@ -10908,7 +10919,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             cancelCurrentTempTarget()
             setAutomationState("AlarmHypo", "NoAlarmRecent")
             if (preferences.get(LongKey.ApsAutoIsfAlarmStatePendingAt) > 0L) preferences.put(LongKey.ApsAutoIsfAlarmStateStepsBlocked, 1L)
-            sendSms("AlarmHypo state cleared by List 1: NoAlarmRecent")
+            sendSms("AlarmHypo state cleared by List 1: NoAlarmRecent", noteTag = true)
             addCarePortalNote("AHClr", smsText = lastSmsText)
             markRun("AlarmHypoStateClearTT")
         }
@@ -10923,7 +10934,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.ApsAutoIsfCleanGraphRequested, true)
             preferences.put(BooleanKey.ApsAutoIsfShowGraphText, false)
             cancelCurrentTempTarget()
-            sendSms("CleanGraph: no SMBs/arrows, solid green, text lines off")
+            sendSms("CleanGraph: no SMBs/arrows, solid green, text lines off", noteTag = true)
             addCarePortalNote("CGrTx", smsText = lastSmsText)
             markRun("CleanGraphNoTextTT")
         }
@@ -10933,7 +10944,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.put(BooleanKey.ApsAutoIsfGraphResetRequested, true)
             preferences.put(BooleanKey.ApsAutoIsfShowGraphText, true)
             cancelCurrentTempTarget()
-            sendSms("Graph back to normal: SMB labels/arrows, line colours, text lines on")
+            sendSms("Graph back to normal: SMB labels/arrows, line colours, text lines on", noteTag = true)
             addCarePortalNote("CGrOn", smsText = lastSmsText)
             markRun("GraphResetTT")
         }

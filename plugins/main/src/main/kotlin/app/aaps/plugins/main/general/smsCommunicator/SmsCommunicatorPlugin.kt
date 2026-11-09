@@ -65,6 +65,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.generateCOBString
 import app.aaps.core.objects.extensions.round
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import app.aaps.core.validators.DefaultEditTextValidator
@@ -285,6 +286,14 @@ class SmsCommunicatorPlugin @Inject constructor(
         }
         messages.add(receivedSms)
         aapsLogger.debug(LTag.SMS, receivedSms.toString())
+        // A note tag from another AAPS (2026-11-09, per explicit request): save the full text for that CarePortal note, so
+        // Treatments > CarePortal shows it when Nightscout brings the note. Not a command, so no reply.
+        NoteSmsTexts.untag(receivedSms.text)?.let { (noteTimestamp, text) ->
+            NoteSmsTexts.save(preferences, noteTimestamp, "", text, dateUtil.now())
+            aapsLogger.debug(LTag.SMS, "Saved note SMS text for note at $noteTimestamp")
+            rxBus.send(EventSmsCommunicatorUpdateGui())
+            return
+        }
         val divided = receivedSms.text.trim().split(Regex("\\s+")).toTypedArray()
         val remoteCommandsAllowed = preferences.get(BooleanKey.SmsAllowRemoteCommands)
 

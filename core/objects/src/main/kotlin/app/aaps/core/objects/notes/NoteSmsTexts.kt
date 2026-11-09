@@ -48,6 +48,23 @@ object NoteSmsTexts {
         cached
     }
 
+    /**
+     * The SMS sent with a note ends with this tag, the note's time in base 36 (for example ` #nmhb2k3fk`), so a full AAPS
+     * that receives the SMS can save the text for the same note when Nightscout brings it (2026-11-09, per explicit
+     * request). An AAPSClient has no SMS Communicator, so it never reads it.
+     */
+    fun tagged(text: String, noteTimestamp: Long): String = "$text $TAG_PREFIX${noteTimestamp.toString(36)}"
+
+    /** The note time and the text without its tag, or null when [text] carries no note tag */
+    fun untag(text: String): Pair<Long, String>? {
+        val match = TAG_REGEX.find(text.trim()) ?: return null
+        val timestamp = match.groupValues[2].toLongOrNull(36) ?: return null
+        return timestamp to match.groupValues[1].trim()
+    }
+
+    private const val TAG_PREFIX = "#n"
+    private val TAG_REGEX = Regex("""^([\s\S]*\S)\s+#n([0-9a-z]{6,12})$""")
+
     /** Drops texts older than [KEEP_MS], then keeps the newest [MAX_ENTRIES] */
     fun prune(texts: Map<Long, String>, now: Long): Map<Long, String> =
         texts.filterKeys { it >= now - KEEP_MS }.entries.sortedByDescending { it.key }.take(MAX_ENTRIES).associate { it.key to it.value }
