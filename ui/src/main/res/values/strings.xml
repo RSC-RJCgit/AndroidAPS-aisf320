@@ -228,4 +228,5 @@
     <string name="wizard_carbs_type_split_fpu">%1$d g now, the slow part as bigger fat/protein doses</string>
     <!-- %1$d g now -->
     <string name="wizard_carbs_type_split_fpu_no_auto">%1$d g now, no eCarbs (tick auto fat/protein to cover the slow part)</string>
+    <string name="careportal_note_with_sms" comment="%1$s=short note code, %2$s=full SMS text sent with it, on the next line. Example: Shwr12 / Shower12: g=7.8 iobTH=12">%1$s\n%2$s</string>
 </resources>

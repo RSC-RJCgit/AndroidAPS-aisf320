@@ -2950,8 +2950,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     companion object {
         private val pendingRelayTts = ArrayDeque<PendingRelayTt>()
 
-        // A graph that shows more hours than this is drawn clean (no text rows), see updateGraph().
+        // A graph that shows more hours than this is drawn clean (no text rows), see updateGraph(). Portrait uses
+        // CLEAN_GRAPH_PORTRAIT_ABOVE_HOURS (2026-11-09, per explicit request: more than 3 hours there, the screen is narrower).
         private const val CLEAN_GRAPH_ABOVE_HOURS = 6L
+        private const val CLEAN_GRAPH_PORTRAIT_ABOVE_HOURS = 3L
     }
 
     private val relayTtRetryRunnable = Runnable { tryFlushPendingRelayTts() }
@@ -3477,7 +3479,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // wheel zoom past the chosen range switched it on, so on a phone (no mouse wheel) a 12 or 24 h graph was never clean.
         // The chosen range counts, not the drawn width, which also holds up to 1 h of predictions.
         val shownMs = graphZoomWidth ?: TimeUnit.HOURS.toMillis(overviewData.rangeToDisplay.toLong()).toDouble()
-        PointsWithLabelGraphSeries.automaticCleanGraph = shownMs > TimeUnit.HOURS.toMillis(CLEAN_GRAPH_ABOVE_HOURS).toDouble()
+        val portrait = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        val cleanAboveHours = if (portrait) CLEAN_GRAPH_PORTRAIT_ABOVE_HOURS else CLEAN_GRAPH_ABOVE_HOURS
+        PointsWithLabelGraphSeries.automaticCleanGraph = shownMs > TimeUnit.HOURS.toMillis(cleanAboveHours).toDouble()
         graphData.addInRangeArea(
             graphFromTime, graphEndTime,
             preferences.get(UnitDoubleKey.OverviewLowMark),
@@ -3491,7 +3495,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphData.addEps(context, 0.95)
         if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
             graphData.addTherapyEvents()
-        // 2026-10-23, per explicit request: the automatic clean graph (more than CLEAN_GRAPH_ABOVE_HOURS shown) also leaves out
+        // 2026-10-23, per explicit request: the automatic clean graph (more than CLEAN_GRAPH_ABOVE_HOURS, or CLEAN_GRAPH_PORTRAIT_ABOVE_HOURS in portrait, shown) also leaves out
         // the insulin activity and carbs model curves and Raw and smoothed raw BG
         val cleanGraph = PointsWithLabelGraphSeries.automaticCleanGraph
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal] && !cleanGraph)

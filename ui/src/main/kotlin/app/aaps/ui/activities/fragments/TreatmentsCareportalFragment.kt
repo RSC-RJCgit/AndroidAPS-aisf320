@@ -30,6 +30,8 @@ import app.aaps.core.interfaces.rx.events.EventTherapyEventChange
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.objects.ui.ActionModeHelper
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.toVisibility
@@ -57,6 +59,7 @@ class TreatmentsCareportalFragment : DaggerFragment(), MenuProvider {
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var uel: UserEntryLogger
     @Inject lateinit var profileUtil: ProfileUtil
+    @Inject lateinit var preferences: Preferences
 
     private var _binding: TreatmentsCareportalFragmentBinding? = null
 
@@ -148,7 +151,10 @@ class TreatmentsCareportalFragment : DaggerFragment(), MenuProvider {
             holder.binding.date.text = if (newDay) dateUtil.dateStringRelative(therapyEvent.timestamp, rh) else ""
             holder.binding.time.text = dateUtil.timeString(therapyEvent.timestamp)
             holder.binding.duration.text = if (therapyEvent.duration == 0L) "" else dateUtil.niceTimeScalar(therapyEvent.duration, rh)
-            holder.binding.note.text = therapyEvent.note
+            // The full SMS text of an AutoISF note, if this phone sent it (2026-11-09, per explicit request; see NoteSmsTexts)
+            val smsText = NoteSmsTexts.all(preferences)[therapyEvent.timestamp]
+            holder.binding.note.text =
+                if (smsText == null) therapyEvent.note else rh.gs(R.string.careportal_note_with_sms, therapyEvent.note ?: "", smsText)
             if (therapyEvent.type == TE.Type.FINGER_STICK_BG_VALUE)
                 therapyEvent.glucose?.let { holder.binding.bg.text = profileUtil.stringInCurrentUnitsDetect(it) }
             holder.binding.type.text = translator.translate(therapyEvent.type)
