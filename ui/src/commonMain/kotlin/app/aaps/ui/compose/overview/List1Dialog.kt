@@ -20,6 +20,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,19 +31,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData.AutoIsfListSnapshot
+import app.aaps.core.objects.autoisf.List1Row
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.chips.CodedProfileRole
-import app.aaps.ui.compose.overview.chips.List1Row
 
 @Composable
 fun List1Dialog(viewModel: ChipsViewModel) {
     val rows = remember(viewModel.list1Generation, viewModel.list1Open) { viewModel.list1Rows() }
+    val loopSnapshot = if (viewModel.isClient && viewModel.list1Open) viewModel.loopListSnapshot.collectAsState().value else null
     var pickProfiles by remember { mutableStateOf(false) }
     DirectListDialog(
         open = viewModel.list1Open,
+        showLoopValues = viewModel.isClient,
+        loopSnapshot = loopSnapshot,
+        loopReportedAt = loopSnapshot?.takeIf { it.values.isNotEmpty() }?.let { viewModel.loopListTime(it.timestamp) },
         title = "Direct AutoISF settings",
         rows = rows,
         onDismiss = viewModel::closeList1,
@@ -61,8 +67,12 @@ fun List1Dialog(viewModel: ChipsViewModel) {
 @Composable
 fun List2Dialog(viewModel: ChipsViewModel) {
     val rows = remember(viewModel.list2Generation, viewModel.list2Open) { viewModel.list2Rows() }
+    val loopSnapshot = if (viewModel.isClient && viewModel.list2Open) viewModel.loopListSnapshot.collectAsState().value else null
     DirectListDialog(
         open = viewModel.list2Open,
+        showLoopValues = viewModel.isClient,
+        loopSnapshot = loopSnapshot,
+        loopReportedAt = loopSnapshot?.takeIf { it.values.isNotEmpty() }?.let { viewModel.loopListTime(it.timestamp) },
         title = "Direct actions",
         rows = rows,
         onDismiss = viewModel::closeList2,
@@ -106,6 +116,9 @@ private fun DirectListDialog(
     open: Boolean,
     title: String,
     rows: List<List1Row>,
+    showLoopValues: Boolean = false,
+    loopSnapshot: AutoIsfListSnapshot? = null,
+    loopReportedAt: String? = null,
     onDismiss: () -> Unit,
     onApply: (Double) -> Unit,
     queuedText: String? = null,
@@ -116,7 +129,7 @@ private fun DirectListDialog(
     onApplyHere: (Double) -> Unit = {},
 ) {
     if (!open) return
-    var picked by remember { mutableStateOf<List1Row?>(null) }
+    var pickedLabel by remember { mutableStateOf<String?>(null) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -130,17 +143,26 @@ private fun DirectListDialog(
                     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
                     // Codes sent from a client that wait for a running TT to end (2026-10-08).
                     if (queuedText != null) Text(queuedText, modifier = Modifier.padding(bottom = 8.dp))
+                    if (showLoopValues && loopReportedAt != null) {
+                        Text(stringResource(UiStrings.direct_list_loop_reported_at, loopReportedAt))
+                    }
                     LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
                         items(rows, key = { it.label }) { row ->
-                            Text(
-                                text = if (row.current.isBlank()) row.label else stringResource(UiStrings.direct_list_setting_value, row.label, row.current),
-                                fontSize = 15.sp,
+                            Column(
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                                     .clickable(role = Role.Button) {
-                                        if (row.pickProfiles) onPickProfiles() else picked = row
+                                        if (row.pickProfiles) onPickProfiles() else pickedLabel = row.label
                                     }
                                     .padding(horizontal = 8.dp, vertical = 6.dp)
-                            )
+                            ) {
+                                val showValues = showLoopValues && row.loopValueKey != null
+                                Text(
+                                    text = if (showValues || row.current.isBlank()) row.label
+                                    else stringResource(UiStrings.direct_list_setting_value, row.label, row.current),
+                                    fontSize = 15.sp
+                                )
+                                if (showValues) ListSettingValues(row, loopSnapshot)
+                            }
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -152,57 +174,85 @@ private fun DirectListDialog(
             }
         }
     }
-    val row = picked
+    val row = rows.firstOrNull { it.label == pickedLabel }
     if (row != null && canApplyHere(row)) {
-        ApplyHereDialog(row, onDismiss = { picked = null }, onApply = onApply, onApplyHere = onApplyHere)
+        ApplyHereDialog(
+            row, loopSnapshot, loopReportedAt, onDismiss = { pickedLabel = null }, onApply = onApply, onApplyHere = onApplyHere
+        )
     } else if (row != null) {
         val up = row.upMmol
         AlertDialog(
-            onDismissRequest = { picked = null },
+            onDismissRequest = { pickedLabel = null },
             title = { Text(row.label) },
-            text = { Text("Current: ${row.current}") },
+            text = {
+                Column {
+                    if (showLoopValues && row.loopValueKey != null) ListSettingValues(row, loopSnapshot, loopReportedAt)
+                    else Text(row.current)
+                    if (showLoopValues && !row.readOnly && row.upMmol != null) {
+                        Text(stringResource(UiStrings.direct_list_loop_phone_only))
+                    }
+                }
+            },
             confirmButton = {
                 if (row.readOnly) {
-                    TextButton(onClick = { picked = null }) { Text("Close") }
+                    TextButton(onClick = { pickedLabel = null }) { Text("Close") }
                 } else if (up == null) {
                     TextButton(onClick = {
                         onApply(row.downMmol)
-                        picked = null
-                    }) { Text("OK") }
+                        pickedLabel = null
+                    }) { Text(if (showLoopValues) stringResource(UiStrings.direct_list_loop_phone) else "OK") }
                 } else {
                     Row {
                         TextButton(onClick = {
                             onApply(row.downMmol)
-                            picked = null
+                            pickedLabel = null
                         }) { Text("Down") }
                         TextButton(onClick = {
                             onApply(up)
-                            picked = null
+                            pickedLabel = null
                         }) { Text("Up") }
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { picked = null }) { Text("Cancel") }
+                TextButton(onClick = { pickedLabel = null }) { Text("Cancel") }
             }
         )
+    }
+}
+
+@Composable
+private fun ListSettingValues(row: List1Row, snapshot: AutoIsfListSnapshot?, reportedAt: String? = null) {
+    val notSet = stringResource(UiStrings.direct_list_value_not_set)
+    val value = row.loopValueKey?.let { snapshot?.values?.get(it) }?.ifBlank { notSet }
+        ?: stringResource(UiStrings.direct_list_value_unavailable)
+    Column {
+        Text(stringResource(UiStrings.direct_list_this_phone_value, row.current.ifBlank { notSet }))
+        Text(stringResource(UiStrings.direct_list_loop_phone_value, value))
+        if (reportedAt != null) Text(stringResource(UiStrings.direct_list_loop_reported_at, reportedAt))
     }
 }
 
 /** Client confirm with a choice of where to apply: the loop phone (relay) or this phone's own setting. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ApplyHereDialog(row: List1Row, onDismiss: () -> Unit, onApply: (Double) -> Unit, onApplyHere: (Double) -> Unit) {
+private fun ApplyHereDialog(
+    row: List1Row,
+    snapshot: AutoIsfListSnapshot?,
+    reportedAt: String?,
+    onDismiss: () -> Unit,
+    onApply: (Double) -> Unit,
+    onApplyHere: (Double) -> Unit
+) {
     val up = row.upMmol
     // Single rows have one code; stepped rows need Down or Up picked first.
-    var chosen by remember(row) { mutableStateOf(if (up == null) row.downMmol else null) }
+    var chosen by remember(row.label) { mutableStateOf(if (up == null) row.downMmol else null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(row.label) },
         text = {
             Column {
-                // On a Client this list reads this phone's own settings.
-                Text("This phone: ${row.current}")
+                ListSettingValues(row, snapshot, reportedAt)
                 if (up != null) Row(modifier = Modifier.padding(top = 8.dp)) {
                     FilterChip(selected = chosen == row.downMmol, onClick = { chosen = row.downMmol }, label = { Text("Down") })
                     Spacer(Modifier.width(8.dp))
@@ -215,7 +265,7 @@ private fun ApplyHereDialog(row: List1Row, onDismiss: () -> Unit, onApply: (Doub
                 TextButton(enabled = chosen != null, onClick = {
                     chosen?.let(onApply)
                     onDismiss()
-                }) { Text("Loop phone") }
+                }) { Text(stringResource(UiStrings.direct_list_loop_phone)) }
                 TextButton(enabled = chosen != null, onClick = {
                     chosen?.let(onApplyHere)
                     onDismiss()

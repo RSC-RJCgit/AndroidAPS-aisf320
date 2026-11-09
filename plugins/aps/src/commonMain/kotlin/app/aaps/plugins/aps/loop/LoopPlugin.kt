@@ -53,6 +53,7 @@ import app.aaps.core.interfaces.rx.events.EventPumpStatusChanged
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.HardLimits
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
@@ -62,6 +63,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.aps.IsfForCarbs
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.asAnnouncement
+import app.aaps.core.objects.autoisf.AutoIsfListSettings
 import app.aaps.core.objects.extensions.convertedToAbsolute
 import app.aaps.core.objects.extensions.convertedToPercent
 import app.aaps.core.objects.extensions.jsonObject
@@ -80,6 +82,7 @@ import dev.zacsweers.metro.ContributesIntoMap
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metro.binding
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -129,6 +132,7 @@ class LoopPlugin(
     private val loopNotifier: LoopNotifier,
     private val runningModeReconciler: RunningModeReconciler,
     private val smbPause: SmbPause,
+    decimalFormatter: DecimalFormatter,
 
     @ApplicationScope private val appScope: CoroutineScope
 ) : PluginBase(
@@ -1056,6 +1060,8 @@ class LoopPlugin(
         }
     }
 
+    private val listSettings = AutoIsfListSettings(preferences, decimalFormatter)
+
     suspend fun buildAndStoreDeviceStatus(reason: String) {
         aapsLogger.debug(LTag.NSCLIENT, "Building DeviceStatus for $reason")
         val profile = profileFunction.getProfile() ?: return
@@ -1070,9 +1076,26 @@ class LoopPlugin(
                 // (IsfForCarbs). The finished value stays in the device status for older clients.
                 val now = dateUtil.now()
                 val isfMgdlForCarbs = IsfForCarbs.load(persistenceLayer, now, now).isfMgdl(profile, now)
-                apsResult = lastRun.request?.json()?.with {
+                val request = lastRun.request
+                val listValues = if (request?.algorithm == APSResult.Algorithm.AUTO_ISF) {
+                    try {
+                        listSettings.snapshot(
+                            profileFunction.getRunningOrRequestedICfg()?.peak?.toString() ?: "--",
+                            profileFunction.getOriginalProfileName()
+                        )
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        aapsLogger.warn(LTag.NSCLIENT, "Could not read the Auto ISF list values: ${error.message}")
+                        emptyMap()
+                    }
+                } else emptyMap()
+                apsResult = request?.json()?.with {
                     put("timestamp", dateUtil.toISOString(lastRun.lastAPSRun))
                     put("isfMgdlForCarbs", isfMgdlForCarbs)
+                    if (listValues.isNotEmpty()) putJsonObject("autoIsfListValues") {
+                        listValues.forEach { (key, value) -> put(key, value) }
+                    }
                 }
                 iob = lastRun.request?.iob?.jsonObject(dateUtil)?.with {
                     put("time", dateUtil.toISOString(lastRun.lastAPSRun))

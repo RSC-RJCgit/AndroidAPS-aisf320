@@ -35,7 +35,9 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.update
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.max
@@ -333,6 +335,17 @@ class NSDeviceStatusHandler(
                 mirrorAutomationStates(suggested)
                 nsDeviceStatus.device?.let { storeReceivedSteps(it, clock, suggested.reason.toString()) }
                 processedDeviceStatusData.openAPSData.clockSuggested = clock
+                val values = nsDeviceStatus.openaps?.suggested?.get("autoIsfListValues") as? JsonObject
+                // This display field is optional. A malformed entry must not affect the loop result.
+                val snapshot = ProcessedDeviceStatusData.AutoIsfListSnapshot(
+                    clock,
+                    values?.mapNotNull { (key, element) ->
+                        (element as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { key to it }
+                    }?.toMap().orEmpty()
+                )
+                processedDeviceStatusData.openAPSData.autoIsfListSnapshot.update { previous ->
+                    if (previous == null || previous.timestamp < clock) snapshot else previous
+                }
             }
             // Stored also when older than the newest one, see storeApsResults
             if (clock != null) {

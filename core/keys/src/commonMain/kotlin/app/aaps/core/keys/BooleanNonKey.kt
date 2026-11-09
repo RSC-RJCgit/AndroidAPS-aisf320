@@ -74,8 +74,6 @@ enum class BooleanNonKey(
     ApsAutoIsfProfileBatchRevertEnabled("autoisf_profile_batch_revert_enabled", false, exportable = false),
     ApsAutoIsfProfileBatchRevertCEnabled("autoisf_profile_batch_revert_c_enabled", false, exportable = false),
 
-    // Sensor-age dosing code. On until a pod over 80 hours or a sensor over 15 days turns it off.
-    ApsAutoIsfSensorAgeCodeEnabled("autoisf_sensor_age_code_enabled", true, exportable = false),
     ApsAutoIsfSensorAgeAutoOffLatched("autoisf_sensor_age_auto_off_latched", false, exportable = false),
 
     // Master switch for the old-sensor slope tiers. On until something turns it off. Local only.

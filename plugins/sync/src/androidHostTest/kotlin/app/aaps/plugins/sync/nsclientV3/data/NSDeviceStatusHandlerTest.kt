@@ -33,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
@@ -292,6 +293,29 @@ internal class NSDeviceStatusHandlerTest {
         verifyBlocking(persistenceLayer) { insertOrUpdateApsResult(results.getValue(5_000L)) }
         verifyBlocking(iobCobCalculator) { apsResultsStored(5_000L) }
         assertThat(openAPSData.clockSuggested).isEqualTo(5_000L)
+    }
+
+    @Test
+    fun readsLoopListValuesWithoutChangingClientSettings() {
+        givenResults(APSResult.Algorithm.AUTO_ISF)
+        whenever(preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)).thenReturn(true)
+        val status = deviceStatusAt(TIME_2).copy(openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
+            put("timestamp", TIME_2)
+            put("runningDynamicIsf", false)
+            putJsonObject("autoIsfListValues") {
+                put("5.156", "OFF")
+                put("5.006", true) // A malformed display value is ignored.
+            }
+        }))
+
+        sut.handleNewData(arrayOf(status))
+        sut.handleNewData(arrayOf(deviceStatusAt(TIME_1)))
+        assertEquals(mapOf("5.156" to "OFF"), openAPSData.autoIsfListSnapshot.value?.values)
+        assertEquals(6_000L, openAPSData.autoIsfListSnapshot.value?.timestamp)
+        verify(preferences, never()).put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, false)
+
+        sut.handleNewData(arrayOf(deviceStatusAt(TIME_3)))
+        assertEquals(emptyMap(), openAPSData.autoIsfListSnapshot.value?.values)
     }
 
     /**

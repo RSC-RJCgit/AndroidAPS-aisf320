@@ -27,7 +27,8 @@ enum class BooleanKey(
     override val visibility: ElementVisibility = ElementVisibility.ALWAYS,
     override val enabledCondition: PreferenceEnabledCondition = PreferenceEnabledCondition.ALWAYS,
     override val sync: SyncSpec? = null,
-    override val defaultedByHardenedMode: Boolean = false
+    override val defaultedByHardenedMode: Boolean = false,
+    override val exportable: Boolean = true
 ) : BooleanPreferenceKey {
 
     // Not synced (2026-10-29, per explicit request): it only changes how one screen looks, so each device keeps its own.
@@ -376,6 +377,14 @@ enum class BooleanKey(
         KeysStrings.pref_title_aps_coded_automations,
         KeysStrings.pref_summary_aps_coded_automations,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
+    ApsAutoIsfSensorAgeCodeEnabled(
+        "autoisf_sensor_age_code_enabled",
+        true,
+        KeysStrings.pref_title_sensor_age_code,
+        KeysStrings.pref_summary_sensor_age_code,
+        showInPumpControlMode = false,
+        exportable = false
     ),
     ApsAutoIsfCustomAutomationsEnabled(
         "autoisf_custom_automations_enabled",

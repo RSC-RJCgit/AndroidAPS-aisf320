@@ -1683,6 +1683,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual,
             BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual,
             BooleanKey.ApsAutoIsfCodedAutomationsEnabled,
+            BooleanKey.ApsAutoIsfSensorAgeCodeEnabled,
             BooleanKey.ApsAutoIsfBoostAutomationsEnabled,
             BooleanKey.ApsAutoIsfCustomAutomationsEnabled,
             DoubleKey.ApsAutoIsfSmbDeliveryBaseline,
@@ -3499,12 +3500,12 @@ open class OpenAPSAutoISFPlugin(
         }
         val sensorDays = hoursSinceSensor(now)?.div(24.0)
         if (sensorAgeShouldTurnOff(
-                codeEnabled = preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled),
+                codeEnabled = preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled),
                 podHours = pod,
                 sensorDays = sensorDays,
             )
         ) {
-            preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled, false)
+            preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, false)
             preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeAutoOffLatched, true)
             if (runMarks.ready(RunMark.SENSOR_AGE_AUTO_OFF, 60, now)) {
                 runMarks.mark(RunMark.SENSOR_AGE_AUTO_OFF, now)
@@ -3516,13 +3517,13 @@ open class OpenAPSAutoISFPlugin(
                 carePortalNote("SaAutoOff")
             }
         } else if (sensorAgeShouldTurnOn(
-                codeEnabled = preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled),
+                codeEnabled = preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled),
                 latched = preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeAutoOffLatched),
                 podHours = pod,
                 sensorDays = sensorDays,
             )
         ) {
-            preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled, true)
+            preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, true)
             preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeAutoOffLatched, false)
             if (runMarks.ready(RunMark.SENSOR_AGE_AUTO_ON, 60, now)) {
                 runMarks.mark(RunMark.SENSOR_AGE_AUTO_ON, now)
@@ -3592,7 +3593,7 @@ open class OpenAPSAutoISFPlugin(
         val currentSlope = preferences.get(DoubleKey.FslCalSlope)
         val currentOffset = preferences.get(DoubleKey.FslCalOffset)
         val active = preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjActive)
-        if (!preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)) {
+        if (!preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) {
             if (active || slopesDiffer(currentSlope, slopeBase) || slopesDiffer(currentOffset, offsetBase)) {
                 if (slopeRestoreDeferred(bg, delta, shortDelta)) {
                     aapsLogger.debug(LTag.APS, "Sensor age slope restore deferred")
@@ -4029,8 +4030,8 @@ open class OpenAPSAutoISFPlugin(
                 carePortalNote("PrLow", smsText = lastSmsText)
             }
             RemoteToggleCode.SENSOR_AGE_CODE -> {
-                val newState = !preferences.get(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)
-                preferences.put(BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled, newState)
+                val newState = !preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
+                preferences.put(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled, newState)
                 sendAutoSms("SensorAgeCode: ${if (newState) "ON" else "OFF"}", noteTag = true)
                 carePortalNote("SAC${if (newState) "On" else "Off"}", smsText = lastSmsText)
             }

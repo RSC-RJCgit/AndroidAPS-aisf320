@@ -29,7 +29,7 @@ internal object ClientLocalListCodes {
         5.002, 5.004, 5.006, 5.008, 5.248, 5.012, 5.014, 5.016, 5.018, 5.022, 5.024, 5.026, 5.028, 5.032, 5.034, 5.036, 5.038,
         5.046, 5.048, 5.052, 5.054, 5.056, 5.058, 5.062, 5.064, 5.068, 5.070, 5.080, 5.082, 5.086, 5.088,
         5.092, 5.094, 5.098, 5.100, 5.104, 5.106, 5.110, 5.112, 5.116, 5.118, 5.122, 5.124, 5.128, 5.130, 5.134, 5.136,
-        5.138, 5.142, 5.156,
+        5.138, 5.142, 5.152, 5.156,
         // List 2 settings rows
         5.164, 5.166, 5.182, 5.184, 5.186, 5.188, 5.190, 5.192, 5.194, 5.196, 5.198, 5.206, 5.210, 5.212, 5.214,
         5.226, 5.228, 5.230, 5.232, 5.234, 5.236,
@@ -140,7 +140,8 @@ internal object ClientLocalListCodes {
             near(5.136) -> nudge(p, DoubleKey.ApsAutoIsfTodOffset2200, 0.1, -2.0, 2.0)
             near(5.138) -> toggle(p, BooleanKey.ApsAutoIsfShowCarbModelCurve)
             near(5.142) -> toggle(p, BooleanKey.ApsAutoIsfShowGraph5)
-            near(5.156) -> toggle(p, BooleanNonKey.ApsAutoIsfSensorAgeCodeEnabled)
+            near(5.152) -> toggle(p, BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)
+            near(5.156) -> toggle(p, BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
             // List 2
             near(5.164) -> toggle(p, BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)
             near(5.166) -> toggle(p, BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)

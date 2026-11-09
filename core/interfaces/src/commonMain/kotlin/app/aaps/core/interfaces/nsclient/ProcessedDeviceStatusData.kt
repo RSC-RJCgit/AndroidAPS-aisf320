@@ -3,6 +3,7 @@ package app.aaps.core.interfaces.nsclient
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
+import kotlinx.coroutines.flow.MutableStateFlow
 
 interface ProcessedDeviceStatusData {
 
@@ -45,7 +46,10 @@ interface ProcessedDeviceStatusData {
 
     val uploaderMap: HashMap<String, Uploader>
 
+    data class AutoIsfListSnapshot(val timestamp: Long, val values: Map<String, String>)
+
     class OpenAPSData {
+        val autoIsfListSnapshot = MutableStateFlow<AutoIsfListSnapshot?>(null)
 
         var clockSuggested = 0L
         var clockEnacted = 0L
