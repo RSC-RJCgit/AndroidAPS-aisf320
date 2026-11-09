@@ -962,6 +962,12 @@ class NSClientV3Plugin @Inject constructor(
                         title = R.string.client_note_sms_sender, summary = R.string.client_note_sms_sender_summary
                     )
                 )
+                addPreference(
+                    AdaptiveSwitchPreference(
+                        ctx = context, booleanKey = BooleanKey.ClientNoteSmsInboxRecovery,
+                        title = R.string.client_note_sms_inbox_recovery, summary = R.string.client_note_sms_inbox_recovery_summary
+                    )
+                )
                 // Libre calibration/smoothing for the NS BGL result (follower is NS-only; no xDrip source)
                 addPreference(PreferenceCategory(context).also { cat ->
                     cat.key = "aapsclient_libre_settings"

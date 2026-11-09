@@ -45,6 +45,7 @@ import app.aaps.plugins.constraints.dstHelper.DstHelperPlugin
 import app.aaps.ui.dialogs.AutoIsfHistoryExporter
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import kotlin.math.abs
@@ -72,6 +73,7 @@ class KeepAliveWorker(
     @Inject lateinit var workManager: WorkManager
     @Inject lateinit var autoIsfHistoryExporter: AutoIsfHistoryExporter
     @Inject lateinit var apkStorageMaintenance: ApkStorageMaintenance
+    @Inject lateinit var clientNoteSmsInbox: ClientNoteSmsInbox
 
     companion object {
 
@@ -141,6 +143,9 @@ class KeepAliveWorker(
         }
         lastRun = dateUtil.now()
 
+        if (config.AAPSCLIENT && inputData.getString("schedule") == KA_0) {
+            withContext(Dispatchers.IO) { clientNoteSmsInbox.recover(context) }
+        }
         apkStorageMaintenance.check(context)
         if (config.APS) (activePlugin.activeAPS as? OpenAPSAutoISFPlugin)?.checkLiveLowStorage()
         dstHelperPlugin.dstCheck()

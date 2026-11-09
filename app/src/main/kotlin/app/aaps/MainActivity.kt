@@ -392,7 +392,8 @@ class MainActivity : DaggerAppCompatActivityWithResult() {
             androidPermission.permissionNotGranted(this, Manifest.permission.RECEIVE_SMS)
 
     private fun clientNoteSmsInboxPermissionMissing(): Boolean =
-        preferences.get(StringKey.ClientNoteSmsSender).isNotBlank() &&
+        preferences.get(BooleanKey.ClientNoteSmsInboxRecovery) &&
+            preferences.get(StringKey.ClientNoteSmsSender).isNotBlank() &&
             androidPermission.permissionNotGranted(this, Manifest.permission.READ_SMS)
 
     private fun setWakeLock() {

@@ -61,6 +61,8 @@
     <string name="ns_client_v3_title">NSClientV3</string>
     <string name="client_note_sms_sender">Loop phone SMS number</string>
     <string name="client_note_sms_sender_summary">Show full Careportal notes from this number. Use the same number format as the SMS inbox. Leave blank to turn off.</string>
+    <string name="client_note_sms_inbox_recovery">Recover missed SMS notes</string>
+    <string name="client_note_sms_inbox_recovery_summary">Check the inbox for tagged Careportal texts from the loop phone since yesterday at midnight.</string>
     <string name="ns_client_url_title">Nightscout URL</string>
     <string name="ns_client_url_dialog_message">Enter your Nightscout URL (i.e. https://yoursitename.yourplatform.dom)</string>
     <string name="ns_client_secret_title">Nightscout API secret</string>
