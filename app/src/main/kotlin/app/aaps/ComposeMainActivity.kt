@@ -98,6 +98,7 @@ import app.aaps.plugins.automation.AutomationRuntime
 import app.aaps.plugins.configuration.setupwizard.SWDefinition
 import app.aaps.plugins.source.DexcomPlugin
 import app.aaps.plugins.source.activities.RequestDexcomPermissionActivity
+import app.aaps.plugins.sync.smsCommunicator.SmsCommunicatorPlugin.SmsCommunicatorWorker
 import app.aaps.settingsstore.AndroidStorage
 import app.aaps.settingsstore.SettingsUnreadableActivity
 import app.aaps.ui.compose.configuration.ConfigurationViewModel

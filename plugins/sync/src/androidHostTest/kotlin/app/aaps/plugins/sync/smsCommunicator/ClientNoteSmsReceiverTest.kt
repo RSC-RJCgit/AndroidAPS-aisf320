@@ -4,6 +4,7 @@ import android.Manifest
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -18,6 +19,8 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.time.Instant
+import java.time.ZoneId
 
 class ClientNoteSmsReceiverTest {
 
@@ -64,5 +67,43 @@ class ClientNoteSmsReceiverTest {
 
         assertThat(receiver.handleIfClient(Sms(sender, "BG"))).isFalse()
         assertThat(receiver.requiredPermissions()).isEmpty()
+    }
+
+    @Test
+    fun `inbox permission is separate from live SMS and is only shown when enabled`() {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        whenever(preferences.get(StringKey.ClientNoteSmsSender)).thenReturn(sender)
+
+        assertThat(receiver.requiredPermissions().map { it.permissions }).containsExactly(listOf(Manifest.permission.RECEIVE_SMS))
+        whenever(preferences.get(BooleanKey.ClientNoteSmsInboxRecovery)).thenReturn(true)
+        assertThat(receiver.requiredPermissions().map { it.permissions }).containsExactly(
+            listOf(Manifest.permission.RECEIVE_SMS),
+            listOf(Manifest.permission.READ_SMS)
+        )
+    }
+
+    @Test
+    fun `inbox recovery starts at yesterday's local midnight even across a clock change`() {
+        val zone = ZoneId.of("America/New_York")
+        val now = Instant.parse("2026-03-09T16:30:00Z")
+
+        assertThat(inboxRecoveryStart(now.toEpochMilli(), zone))
+            .isEqualTo(Instant.parse("2026-03-08T05:00:00Z").toEpochMilli())
+    }
+
+    @Test
+    fun `inbox recovery fills gaps in one write and keeps saved text at the same time`() = runTest {
+        whenever(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).thenReturn("""{"${now - 1}":"Live note"}""")
+        val inbox = mapOf(now - 1 to "Inbox copy", now - 2 to "Recovered note", now - 3 to "Another note")
+
+        NoteSmsTexts.recoverMissing(preferences, inbox, now)
+
+        val stored = argumentCaptor<String>()
+        verify(preferences).put(eq(StringNonKey.CarePortalNoteSmsTexts), stored.capture())
+        assertThat(NoteSmsTexts.parse(stored.firstValue)).containsExactly(
+            now - 1, "Live note",
+            now - 2, "Recovered note",
+            now - 3, "Another note"
+        )
     }
 }
