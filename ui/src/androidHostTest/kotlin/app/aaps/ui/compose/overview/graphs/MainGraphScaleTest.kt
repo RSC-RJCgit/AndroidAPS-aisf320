@@ -20,4 +20,15 @@ class MainGraphScaleTest {
         assertThat(scale.min).isWithin(1e-9).of(2.0 * Constants.MMOLL_TO_MGDL)
         assertThat(scale.max).isWithin(1e-9).of(12.0 * Constants.MMOLL_TO_MGDL)
     }
+
+    // With basal on the BG graph the axis starts at 0, so the basal columns stand on 0 as on v3 (2026-11-09)
+    @Test
+    fun basalOnBgGraphStartsAtZero() {
+        val mmol = mainGraphScale(mgdl = false, fromZero = true)
+        assertThat(mmol.min).isEqualTo(0.0)
+        assertThat(mmol.max).isEqualTo(12.0)
+        val mgdl = mainGraphScale(mgdl = true, fromZero = true)
+        assertThat(mgdl.min).isEqualTo(0.0)
+        assertThat(mgdl.max).isWithin(1e-9).of(12.0 * Constants.MMOLL_TO_MGDL)
+    }
 }

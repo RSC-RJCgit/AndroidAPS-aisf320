@@ -10,6 +10,8 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,7 @@ internal class CareportalViewModelTest {
     @Mock private lateinit var rxBus: RxBus
     @Mock private lateinit var batchExecutor: BatchExecutor
     @Mock private lateinit var config: Config
+    @Mock private lateinit var preferences: Preferences
 
     private lateinit var sut: CareportalViewModel
 
@@ -49,7 +52,8 @@ internal class CareportalViewModelTest {
         MockitoAnnotations.openMocks(this)
         Dispatchers.setMain(UnconfinedTestDispatcher())
         whenever(persistenceLayer.observeChanges(TE::class)).thenReturn(emptyFlow())
-        sut = CareportalViewModel(persistenceLayer, generatedTextResolver(), dateUtil, aapsLogger, rxBus, batchExecutor, config)
+        whenever(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).thenReturn("{}")
+        sut = CareportalViewModel(persistenceLayer, generatedTextResolver(), dateUtil, aapsLogger, rxBus, batchExecutor, config, preferences)
     }
 
     @AfterEach

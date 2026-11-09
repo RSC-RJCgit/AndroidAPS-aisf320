@@ -246,10 +246,14 @@ private const val MAIN_GRAPH_MIN_MMOL = 2.0
 private const val MAIN_GRAPH_MAX_MMOL = 12.0
 private const val MAIN_GRAPH_STEP_MMOL = 2.0
 
-/** The main graph's fixed axis, 2.0 to 12.0 mmol/L, in the units the graph is drawn in. */
-internal fun mainGraphScale(mgdl: Boolean): NiceScale {
+/**
+ * The main graph's fixed axis, 2.0 to 12.0 mmol/L, in the units the graph is drawn in. [fromZero] starts it at 0 instead
+ * (2026-11-09, per explicit request): with basal on the BG graph the columns stand on 0, as on v3.
+ */
+internal fun mainGraphScale(mgdl: Boolean, fromZero: Boolean = false): NiceScale {
     val factor = if (mgdl) Constants.MMOLL_TO_MGDL else 1.0
-    return NiceScale(MAIN_GRAPH_MIN_MMOL * factor, MAIN_GRAPH_MAX_MMOL * factor, MAIN_GRAPH_STEP_MMOL * factor)
+    val min = if (fromZero) 0.0 else MAIN_GRAPH_MIN_MMOL * factor
+    return NiceScale(min, MAIN_GRAPH_MAX_MMOL * factor, MAIN_GRAPH_STEP_MMOL * factor)
 }
 
 private class MutableYRangeProvider(
@@ -358,9 +362,10 @@ fun BgGraphCompose(
     val rawBasalData by viewModel.basalGraphFlow.collectAsStateWithLifecycle()
     val targetData by viewModel.targetLineFlow.collectAsStateWithLifecycle()
 
-    // Basal is a flipped overlay on the IOB graph, unless Settings > AutoISF "Basal on the BG graph (as v3)" is on (fork).
+    // Basal is a flipped overlay on the IOB graph. Settings > AutoISF "Basal on the BG graph (as v3)" also puts it on the
+    // main graph (fork). Graph 5 always shows it (2026-11-09, per explicit request), whatever that setting says.
     // Keep the layer structure intact (dummy data) to avoid chart restructuring.
-    val showBasalOnBgGraph = graphDisplay.basalOnBgGraph
+    val showBasalOnBgGraph = graphDisplay.basalOnBgGraph || topBandLines
     val basalData = if (showBasalOnBgGraph) rawBasalData else BasalGraphData(emptyList(), emptyList(), 0.0)
     val epsPoints by viewModel.epsGraphFlow.collectAsStateWithLifecycle()
     val showActivity = SeriesType.ACTIVITY in bgOverlays && !automaticCleanGraph
@@ -702,7 +707,7 @@ fun BgGraphCompose(
     val rebuildInputs = listOf<Any?>(
         bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity,
         showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData,
-        topBandLines, topBandLines5
+        topBandLines, topBandLines5, showBasalOnBgGraph
     )
     val latestRebuildInputs by rememberUpdatedState(rebuildInputs)
     val latestRebuild by rememberUpdatedState<suspend () -> Unit>({
@@ -761,7 +766,9 @@ fun BgGraphCompose(
         // Graph 5: raise the top so the four top band lanes sit above the green range and the curve, not on them.
         // Main graph (2026-10-16, per explicit request): always 2.0 to 12.0 mmol/L, readings outside are cut off.
         // Graph 5 keeps the range that follows the data.
-        val niceBgScale = if (topBandLines) axisWithTopBand(dataMin, axisDataMax, BG_TOP_BAND_FRACTION) else mainGraphScale(chartConfig.lowMark > 30.0)
+        // With basal on this graph the axis starts at 0 (2026-11-09, per explicit request), so the columns stand on 0 as on v3.
+        val niceBgScale = if (topBandLines) axisWithTopBand(if (showBasalOnBgGraph) 0.0 else dataMin, axisDataMax, BG_TOP_BAND_FRACTION)
+        else mainGraphScale(chartConfig.lowMark > 30.0, fromZero = showBasalOnBgGraph)
         startAxisRangeProvider.maxX = maxX
         startAxisRangeProvider.minY = niceBgScale.min
         startAxisRangeProvider.maxY = niceBgScale.max

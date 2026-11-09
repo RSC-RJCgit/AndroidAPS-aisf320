@@ -6,8 +6,8 @@ internal fun useCleanGraphForWindow(visibleMinutes: Double?, defaultMinutes: Dou
         visibleMinutes > maxOf(180.0, defaultMinutes) + 0.01
 
 /**
- * Phones (2026-10-19, per explicit request): the clean graph only when the view is crowded. Portrait: more than 6 hours
- * shown, or more than 40 SMBs in view. Landscape has about twice the width: more than 12 hours, or more than 80 SMBs.
+ * Phones (2026-10-19, per explicit request): the clean graph only when the view is crowded. Portrait: more than 3 hours
+ * shown (2026-11-09, per explicit request; was 6 hours), or more than 40 SMBs in view. Landscape has about twice the width: more than 12 hours, or more than 80 SMBs.
  * Desktop keeps [useCleanGraphForDesktopWindow].
  */
 internal fun useCleanGraphForPhone(visibleMinutes: Double?, smbsInView: Int, landscape: Boolean): Boolean {
@@ -17,7 +17,7 @@ internal fun useCleanGraphForPhone(visibleMinutes: Double?, smbsInView: Int, lan
     return visibleMinutes > maxMinutes + 0.01 || smbsInView > maxSmbs
 }
 
-internal const val PHONE_PORTRAIT_CLEAN_MINUTES = 6 * 60.0
+internal const val PHONE_PORTRAIT_CLEAN_MINUTES = 3 * 60.0
 internal const val PHONE_PORTRAIT_CLEAN_SMBS = 40
 internal const val PHONE_LANDSCAPE_CLEAN_MINUTES = 12 * 60.0
 internal const val PHONE_LANDSCAPE_CLEAN_SMBS = 80

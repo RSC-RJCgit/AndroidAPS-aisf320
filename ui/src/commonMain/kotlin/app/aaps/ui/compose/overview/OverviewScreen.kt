@@ -56,7 +56,6 @@ import app.aaps.core.ui.compose.smallestScreenWidthDp
 import app.aaps.ui.compose.main.TempTargetChipState
 import app.aaps.ui.compose.manageSheet.ManageViewModel
 import app.aaps.ui.compose.notificationsSheet.NotificationBottomSheet
-import app.aaps.ui.compose.notificationsSheet.NotificationFab
 import app.aaps.ui.compose.overview.chips.ChipsViewModel
 import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
@@ -400,15 +399,8 @@ fun OverviewScreen(
                 .padding(end = 16.dp, bottom = 128.dp + fabBottomOffset)
         )
 
-        NotificationFab(
-            notificationCount = notifications.size,
-            highestLevel = notifications.minByOrNull { it.level.ordinal }?.level,
-            onClick = { showNotificationSheet = true },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(paddingValues)
-                .padding(end = 16.dp, bottom = 72.dp + fabBottomOffset)
-        )
+        // No bell button for the alerts (2026-11-09, per explicit request). The sheet below still opens by itself when an
+        // important alert arrives (autoShowNotificationSheet).
     }
 
     if (showPumpActivityDialog) {

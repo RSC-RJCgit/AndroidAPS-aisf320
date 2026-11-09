@@ -180,4 +180,7 @@ enum class StringNonKey(
     // Profile used when the phone battery is at 1% or below. Local only.
     ApsAutoIsfSafetyProfileName(key = "autoisf_safety_profile_name", defaultValue = "Current Profile50", exportable = false),
 
+    // Full SMS text of AutoISF CarePortal notes, by note time, kept on this phone only (2026-11-09, see NoteSmsTexts)
+    CarePortalNoteSmsTexts(key = "careportal_note_sms_texts", defaultValue = "{}", exportable = false),
+
 }

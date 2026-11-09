@@ -97,6 +97,7 @@ fun CareportalScreen(
                     itemContent = { te ->
                         TherapyEventItem(
                             therapyEvent = te,
+                            smsText = uiState.smsTexts[te.timestamp],
                             isRemovingMode = uiState.isRemovingMode,
                             isSelected = te in uiState.selectedItems,
                             onClick = {
@@ -129,6 +130,8 @@ fun CareportalScreen(
 @Composable
 private fun TherapyEventItem(
     therapyEvent: TE,
+    /** The full SMS text sent with this AutoISF note, when this phone sent it, shown under the note (2026-11-09) */
+    smsText: String?,
     isRemovingMode: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
@@ -229,7 +232,8 @@ private fun TherapyEventItem(
                 // Note
                 if (!therapyEvent.note.isNullOrEmpty()) {
                     Text(
-                        text = therapyEvent.note!!,
+                        text = if (smsText == null) therapyEvent.note!!
+                        else stringResource(UiStrings.careportal_note_with_sms, therapyEvent.note!!, smsText),
                         modifier = Modifier
                             .padding(start = 16.dp)
                             .weight(1f),

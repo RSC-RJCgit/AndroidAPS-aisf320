@@ -18,6 +18,8 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.ui.clientcontrol.RecordRemoval
 import app.aaps.core.ui.compose.MenuItemData
 import app.aaps.core.ui.compose.SelectableListToolbar
@@ -46,7 +48,8 @@ class CareportalViewModel(
     private val aapsLogger: AAPSLogger,
     private val rxBus: RxBus,
     batchExecutor: BatchExecutor,
-    config: Config
+    config: Config,
+    private val preferences: Preferences
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(CareportalUiState())
@@ -81,6 +84,8 @@ class CareportalViewModel(
                 _uiState.update {
                     it.copy(
                         therapyEvents = therapyEvents,
+                        // Full SMS texts of AutoISF notes made on this phone (2026-11-09, per explicit request)
+                        smsTexts = NoteSmsTexts.all(preferences),
                         isLoading = false
                     )
                 }
@@ -201,5 +206,7 @@ data class CareportalUiState(
     val isLoading: Boolean = true,
     val showInvalidated: Boolean = false,
     val isRemovingMode: Boolean = false,
-    val selectedItems: Set<TE> = emptySet()
+    val selectedItems: Set<TE> = emptySet(),
+    /** The full SMS text of a note, by the note's time, when this phone sent it (see NoteSmsTexts) */
+    val smsTexts: Map<Long, String> = emptyMap()
 )

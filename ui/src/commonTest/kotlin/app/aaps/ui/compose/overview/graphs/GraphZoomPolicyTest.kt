@@ -27,9 +27,9 @@ class GraphZoomPolicyTest {
     }
 
     @Test
-    fun phonePortraitCleanAboveSixHoursOrFortySmbs() {
-        assertFalse(useCleanGraphForPhone(360.0, 40, landscape = false))
-        assertTrue(useCleanGraphForPhone(361.0, 0, landscape = false))
+    fun phonePortraitCleanAboveThreeHoursOrFortySmbs() {
+        assertFalse(useCleanGraphForPhone(180.0, 40, landscape = false))
+        assertTrue(useCleanGraphForPhone(181.0, 0, landscape = false))
         assertTrue(useCleanGraphForPhone(180.0, 41, landscape = false))
     }
 
