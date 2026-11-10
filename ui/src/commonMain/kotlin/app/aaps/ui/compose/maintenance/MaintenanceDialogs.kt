@@ -39,6 +39,7 @@ fun MaintenanceDialogs(
     showMaintenanceSheet: Boolean,
     onMaintenanceSheetDismiss: () -> Unit,
     onDirectoryClick: () -> Unit,
+    onAddArchiveFolder: (() -> Unit)? = null,
     onImportSettingsNavigate: (ImportSource) -> Unit,
     onRecreateActivity: () -> Unit,
     onLaunchBrowser: (String) -> Unit,
@@ -90,6 +91,7 @@ fun MaintenanceDialogs(
                 maintenanceViewModel.logSelectDirectory()
                 onDirectoryClick()
             },
+            onAddArchiveFolder = onAddArchiveFolder,
             onCloudDirectoryClick = { maintenanceViewModel.showCloudDirectory() },
             onClearCloudClick = { maintenanceViewModel.requestClearCloud() },
             onExportSettingsClick = { maintenanceViewModel.startExport() },

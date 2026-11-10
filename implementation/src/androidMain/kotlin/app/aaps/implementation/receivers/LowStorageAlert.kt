@@ -17,8 +17,9 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.implementation.maintenance.deleteOldApks
+import app.aaps.implementation.maintenance.deleteOldInstallers
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -53,7 +54,10 @@ class LowStorageAlert(
         val freeBefore = if (weeklyDue) null else freeStorageGiB()
         val cleanupDue = weeklyDue || (freeBefore != null && freeBefore < 10.0)
         if (cleanupDue) {
-            deleteOldApks(context, preferences.get(StringKey.AapsDirectoryUri), aapsLogger)
+            deleteOldInstallers(
+                context, preferences.get(StringKey.AapsDirectoryUri),
+                preferences.get(StringNonKey.InstallerArchiveFolders), aapsLogger
+            )
         }
         val freeGiB = if (cleanupDue) freeStorageGiB() else freeBefore
         if (weeklyDue) {

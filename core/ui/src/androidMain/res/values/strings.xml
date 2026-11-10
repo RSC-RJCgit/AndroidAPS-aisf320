@@ -1165,6 +1165,10 @@
     <string name="delete_logs">Delete Logs</string>
     <string name="logs_deleted">Logs deleted</string>
     <string name="aaps_directory">AAPS directory</string>
+    <string name="add_installer_archive_folder">Add archive folder</string>
+    <string name="add_installer_archive_folder_desc">Allow automatic removal of older APK, DMG and MSI files in this folder and its subfolders.</string>
+    <string name="installer_archive_folder_added">Archive folder added</string>
+    <string name="installer_archive_folder_access_error">Could not add archive folder. Select a folder on device storage.</string>
     <string name="import_setting">Import settings</string>
 
     <!-- Import settings screen -->

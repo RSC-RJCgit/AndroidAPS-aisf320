@@ -182,6 +182,7 @@ enum class StringNonKey(
 
     // Full SMS text of AutoISF CarePortal notes, by note time, kept on this phone only (2026-11-09, see NoteSmsTexts)
     CarePortalNoteSmsTexts(key = "careportal_note_sms_texts", defaultValue = "{}", exportable = false),
+    InstallerArchiveFolders("installer_archive_folders", "", exportable = false),
     ClientGraphMasterTimeZone(key = "client_graph_master_time_zone", defaultValue = "", exportable = false),
 
 }

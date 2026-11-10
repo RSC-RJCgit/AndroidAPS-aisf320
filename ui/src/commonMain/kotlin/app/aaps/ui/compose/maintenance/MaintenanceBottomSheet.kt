@@ -52,6 +52,7 @@ fun MaintenanceBottomSheet(
     onSendLogsClick: () -> Unit,
     onDeleteLogsClick: () -> Unit,
     onDirectoryClick: () -> Unit,
+    onAddArchiveFolder: (() -> Unit)? = null,
     onCloudDirectoryClick: () -> Unit,
     onClearCloudClick: () -> Unit,
     onExportSettingsClick: () -> Unit,
@@ -84,6 +85,7 @@ fun MaintenanceBottomSheet(
             onSendLogsClick = onSendLogsClick,
             onDeleteLogsClick = onDeleteLogsClick,
             onDirectoryClick = onDirectoryClick,
+            onAddArchiveFolder = onAddArchiveFolder,
             onCloudDirectoryClick = onCloudDirectoryClick,
             onClearCloudClick = onClearCloudClick,
             onExportSettingsClick = onExportSettingsClick,
@@ -116,6 +118,7 @@ internal fun MaintenanceBottomSheetContent(
     onSendLogsClick: () -> Unit = {},
     onDeleteLogsClick: () -> Unit = {},
     onDirectoryClick: () -> Unit = {},
+    onAddArchiveFolder: (() -> Unit)? = null,
     onCloudDirectoryClick: () -> Unit = {},
     onClearCloudClick: () -> Unit = {},
     onExportSettingsClick: () -> Unit = {},
@@ -207,6 +210,16 @@ internal fun MaintenanceBottomSheetContent(
                 )
             }
         )
+        if (onAddArchiveFolder != null) {
+            MaintenanceItem(
+                text = stringResource(CoreUiStrings.add_installer_archive_folder),
+                description = stringResource(CoreUiStrings.add_installer_archive_folder_desc),
+                icon = Icons.Default.Folder,
+                color = primaryColor,
+                onDismiss = onDismiss,
+                onClick = onAddArchiveFolder
+            )
+        }
         MaintenanceItem(
             text = stringResource(CoreUiStrings.cloud_directory),
             description = stringResource(CoreUiStrings.maintenance_cloud_directory_desc),

@@ -6,8 +6,10 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.Settings
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -82,6 +84,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.objects.crypto.CryptoUtil
@@ -180,6 +183,7 @@ class ComposeMainActivity : MetroAppCompatActivity() {
     @Inject lateinit var overviewDataCache: OverviewDataCache
 
     private var accessTree: ActivityResultLauncher<Uri?>? = null
+    private var addArchiveTree: ActivityResultLauncher<Uri?>? = null
     private var requestMultiplePermissions: ActivityResultLauncher<Array<String>>? = null
     private var onPermissionResultDenied: ((List<String>) -> Unit)? = null
 
@@ -277,6 +281,21 @@ class ComposeMainActivity : MetroAppCompatActivity() {
                 }
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 preferences.put(StringKey.AapsDirectoryUri, uri.toString())
+            }
+        }
+        addArchiveTree = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                val added = runCatching {
+                    require(uri.authority == "com.android.externalstorage.documents" && DocumentsContract.isTreeUri(uri))
+                    require(DocumentsContract.getTreeDocumentId(uri).substringAfter(':', "").isNotBlank())
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                    val key = StringNonKey.InstallerArchiveFolders
+                    val folders = preferences.get(key).lineSequence().filter(String::isNotBlank).toMutableSet()
+                    if (folders.add(uri.toString())) preferences.put(key, folders.joinToString("\n"))
+                }.isSuccess
+                val message = if (added) app.aaps.core.ui.R.string.installer_archive_folder_added
+                else app.aaps.core.ui.R.string.installer_archive_folder_access_error
+                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
             }
         }
         requestMultiplePermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
@@ -563,6 +582,9 @@ class ComposeMainActivity : MetroAppCompatActivity() {
                                 maintenanceViewModel.emitError("Unable to launch activity. This is an Android issue")
                             }
                         },
+                        onAddArchiveFolder = if (config.APS && !config.AAPSCLIENT) {
+                            { addArchiveTree?.launch(null) }
+                        } else null,
                         onLaunchBrowser = { url ->
                             try {
                                 val customTabsIntent = CustomTabsIntent.Builder()
@@ -653,6 +675,7 @@ class ComposeMainActivity : MetroAppCompatActivity() {
         if (rebuildingForRestart) viewModelStore.clear()
         disposable.clear()
         accessTree = null
+        addArchiveTree = null
         requestMultiplePermissions = null
         onPermissionResultDenied = null
         super.onDestroy()

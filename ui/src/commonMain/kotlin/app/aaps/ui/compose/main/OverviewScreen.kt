@@ -104,6 +104,7 @@ fun OverviewScreen(
     onImportSettingsNavigate: (ImportSource) -> Unit,
     // Platform actions
     onDirectoryClick: () -> Unit,
+    onAddArchiveFolder: (() -> Unit)? = null,
     onLaunchBrowser: (String) -> Unit,
     onBringToForeground: () -> Unit,
     onRecreateActivity: () -> Unit,
@@ -209,6 +210,7 @@ fun OverviewScreen(
         onOpenBatteryHelp = if (mainViewModel.showBatteryHelp) ({ mainViewModel.openBatteryHelp() }) else null,
         onMaintenanceSheetDismiss = { mainViewModel.setShowMaintenanceSheet(false) },
         onDirectoryClick = onDirectoryClick,
+        onAddArchiveFolder = onAddArchiveFolder,
         onLaunchBrowser = onLaunchBrowser,
         onBringToForeground = onBringToForeground,
         onImportSettingsNavigate = onImportSettingsNavigate,
