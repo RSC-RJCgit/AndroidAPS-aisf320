@@ -644,7 +644,7 @@
 				// multitasking, and a multitasking app has to survive being any shape.
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -686,7 +686,7 @@
 				// multitasking, and a multitasking app has to survive being any shape.
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -728,7 +728,7 @@
 				// multitasking, and a multitasking app has to survive being any shape.
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -791,7 +791,7 @@
 				// multitasking, and a multitasking app has to survive being any shape.
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -833,7 +833,7 @@
 				// multitasking, and a multitasking app has to survive being any shape.
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -875,7 +875,7 @@
 				// multitasking, and a multitasking app has to survive being any shape.
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -900,7 +900,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				// Must start with the app's own id, as iOS requires for an extension it carries.
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -927,7 +927,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				// Must start with the app's own id, as iOS requires for an extension it carries.
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -954,7 +954,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				// Must start with the app's own id, as iOS requires for an extension it carries.
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -981,7 +981,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				// Must start with the app's own id, as iOS requires for an extension it carries.
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1008,7 +1008,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				// Must start with the app's own id, as iOS requires for an extension it carries.
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aapsclient2.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1035,7 +1035,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.0)";
+				MARKETING_VERSION = "$(AAPS_MARKETING_VERSION:default=4.0.1)";
 				// Must start with the app's own id, as iOS requires for an extension it carries.
 				PRODUCT_BUNDLE_IDENTIFIER = com.rscgit.aaps.LiveActivity;
 				PRODUCT_NAME = "$(TARGET_NAME)";

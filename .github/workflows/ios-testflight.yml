@@ -231,6 +231,7 @@ jobs:
       # The one distribution certificate, into a keychain that only lives for this run. The export steps sign with it and
       # only fetch provisioning profiles (which have no limit); without it Xcode made a new certificate on every run.
       - name: Import the distribution certificate
+        id: signing_setup
         env:
           P12: ${{ secrets.IOS_DISTRIBUTION_P12 }}
           P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
@@ -309,7 +310,7 @@ jobs:
 
       - name: Archive AAPSClient2
         id: archive2
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.signing_setup.outcome == 'success' }}
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
@@ -360,7 +361,7 @@ jobs:
 
       - name: Archive AAPS
         id: archive3
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.signing_setup.outcome == 'success' }}
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
