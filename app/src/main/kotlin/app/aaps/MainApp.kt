@@ -527,11 +527,7 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         postSetupNotifications()
         KeepAliveWorker.schedule(this@MainApp)
         if (config.AAPSCLIENT) {
-            appScope.launch {
-                preferences.observe(BooleanKey.ClientNoteSmsInboxRecovery).collect {
-                    SmsCommunicatorWorker.scheduleClientInboxRecovery(this@MainApp, it)
-                }
-            }
+            SmsCommunicatorWorker.cancelLegacyClientInboxRecovery(this@MainApp)
         }
         localAlertUtils.shortenSnoozeInterval()
         localAlertUtils.preSnoozeAlarms()

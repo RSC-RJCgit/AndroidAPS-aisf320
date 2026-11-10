@@ -4891,8 +4891,8 @@ open class OpenAPSAutoISFPlugin(
     private var lastSmsNoteTimestamp = 0L
 
     /**
-     * [smsText]: the full SMS text sent with this note (2026-11-09, per explicit request). It is kept on this phone only
-     * ([NoteSmsTexts]) and shown under the code in Treatments > CarePortal. The note stays the short code. A text more than
+     * [smsText]: the full text saved for display under the short code in Treatments > CarePortal ([NoteSmsTexts]).
+     * The note stays the short code. A text more than
      * [NOTE_SMS_PAIR_MS] old is not used, so an SMS from an earlier run can never be shown with this note.
      */
     private suspend fun carePortalNote(text: String, smsText: String? = null) {

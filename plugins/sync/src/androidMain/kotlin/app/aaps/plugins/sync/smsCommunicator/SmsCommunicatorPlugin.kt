@@ -5,10 +5,6 @@ import android.content.Context
 import android.os.Bundle
 import android.telephony.SmsManager
 import android.telephony.SmsMessage
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -112,7 +108,6 @@ import org.apache.commons.lang3.Strings
 import org.joda.time.DateTime
 import java.text.Normalizer
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import kotlin.math.max
 import kotlin.math.min
@@ -231,13 +226,12 @@ class SmsCommunicatorPlugin(
         aapsLogger: AAPSLogger,
         fabricPrivacy: FabricPrivacy,
         private val smsCommunicatorPlugin: SmsCommunicatorPlugin,
-        private val clientNoteSmsReceiver: ClientNoteSmsReceiver,
         private val dataInbox: DataInbox
     ) : LoggingWorker(context, params, Dispatchers.IO, aapsLogger, fabricPrivacy) {
 
         override suspend fun doWorkAndLog(): Result {
-            if (inputData.getBoolean(CLIENT_INBOX_RECOVERY, false)) return recoverClientInbox()
             val bundles = dataInbox.drain(SmsInbox)
+            if (smsCommunicatorPlugin.config.AAPSCLIENT) return Result.success()
             if (bundles.isEmpty()) return Result.success(workDataOf("Result" to "no data"))
             var hadFailure = false
             for (bundle in bundles) {
@@ -259,18 +253,6 @@ class SmsCommunicatorPlugin(
             return if (hadFailure) Result.failure(workDataOf("Error" to "one or more bundles failed")) else Result.success()
         }
 
-        private suspend fun recoverClientInbox(): Result {
-            try {
-                clientNoteSmsReceiver.recoverFromInbox(applicationContext)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                aapsLogger.error(LTag.SMS, "Could not recover Careportal SMS notes", e)
-                return Result.failure()
-            }
-            return Result.success()
-        }
-
         private suspend fun processBundle(bundle: Bundle) {
             val format = bundle.getString("format") ?: run {
                 aapsLogger.warn(LTag.SMS, "Skipping SMS bundle: missing format")
@@ -278,9 +260,9 @@ class SmsCommunicatorPlugin(
             }
             @Suppress("DEPRECATION") val pdus = bundle["pdus"] as Array<*>
             val parts = pdus.map { pdu -> smsFromMessage(SmsMessage.createFromPdu(pdu as ByteArray, format)) }
-            val joined = joinSmsParts(parts)
-            if (clientNoteSmsReceiver.handleIfClient(joined)) return
-
+            val joined = parts.firstOrNull()
+                ?.takeIf { first -> parts.size > 1 && parts.all { it.phoneNumber == first.phoneNumber } }
+                ?.let { first -> Sms(first).apply { text = parts.joinToString("") { it.text } } }
             if (joined != null && NoteSmsTexts.untag(joined.text) != null) {
                 smsCommunicatorPlugin.processSms(joined)
             } else {
@@ -294,28 +276,11 @@ class SmsCommunicatorPlugin(
 
         companion object {
 
-            private const val CLIENT_INBOX_RECOVERY = "client-note-sms-inbox"
-            private const val CLIENT_INBOX_RECOVERY_NOW = "client-note-sms-inbox-now"
-
-            fun scheduleClientInboxRecovery(context: Context, enabled: Boolean) {
+            /** Remove work left on clients by builds that offered SMS inbox recovery. */
+            fun cancelLegacyClientInboxRecovery(context: Context) {
                 val workManager = WorkManager.getInstance(context)
-                if (enabled) {
-                    val request = PeriodicWorkRequestBuilder<SmsCommunicatorWorker>(15, TimeUnit.MINUTES)
-                        .setInputData(workDataOf(CLIENT_INBOX_RECOVERY to true))
-                        .build()
-                    workManager.enqueueUniquePeriodicWork(CLIENT_INBOX_RECOVERY, ExistingPeriodicWorkPolicy.KEEP, request)
-                    recoverClientInboxNow(context)
-                } else {
-                    workManager.cancelUniqueWork(CLIENT_INBOX_RECOVERY)
-                    workManager.cancelUniqueWork(CLIENT_INBOX_RECOVERY_NOW)
-                }
-            }
-
-            fun recoverClientInboxNow(context: Context) {
-                val request = OneTimeWorkRequestBuilder<SmsCommunicatorWorker>()
-                    .setInputData(workDataOf(CLIENT_INBOX_RECOVERY to true))
-                    .build()
-                WorkManager.getInstance(context).enqueueUniqueWork(CLIENT_INBOX_RECOVERY_NOW, ExistingWorkPolicy.KEEP, request)
+                workManager.cancelUniqueWork("client-note-sms-inbox")
+                workManager.cancelUniqueWork("client-note-sms-inbox-now")
             }
         }
     }

@@ -36,8 +36,10 @@ import app.aaps.core.keys.StringNonKey
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.clientcontrol.AuthorizedClient
 import app.aaps.core.nssdk.localmodel.clientcontrol.ClientState
+import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.nssdk.localmodel.treatment.CreateUpdateResponse
 import app.aaps.core.nssdk.remotemodel.LastModified
+import app.aaps.core.objects.notes.CareportalNoteStatus
 import app.aaps.plugins.sync.SyncStringsValues
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.AuthorizedClientsRepository
 import app.aaps.plugins.sync.nsclientV3.clientcontrol.OrphanDetector
@@ -162,6 +164,32 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
         whenever(nsAndroidClient.createDeviceStatus(anyOrNull())).thenReturn(CreateUpdateResponse(200, "aaa"))
         sut.nsAdd("devicestatus", dataPair, "1/3")
         assertThat(storeDataForDb.nsIdDeviceStatuses.snapshot()).hasSize(2) // still only 1
+    }
+
+    @Test
+    fun uploadsOnlyMatchingFullNoteTextWithoutChangingStoredDeviceStatus() = runTest {
+        val noteTime = now - 1
+        whenever(config.APS).thenReturn(true)
+        whenever(config.appInitialized).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientSyncFullCareportalNoteText)).thenReturn(true)
+        whenever(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).thenReturn(
+            """{"$noteTime":"Full note", "$now":"No matching note"}"""
+        )
+        whenever(persistenceLayer.getTherapyEventDataFromTime(now - CareportalNoteStatus.WINDOW_MS, TE.Type.NOTE, false)).thenReturn(
+            listOf(TE(timestamp = noteTime, type = TE.Type.NOTE, note = "Short", glucoseUnit = GlucoseUnit.MGDL))
+        )
+        var uploaded: NSDeviceStatus? = null
+        whenever(nsAndroidClient.createDeviceStatus(anyOrNull())).thenAnswer {
+            uploaded = it.getArgument(0)
+            CreateUpdateResponse(201, "aaa")
+        }
+        val status = DS(timestamp = now, suggested = """{"reason":"Original"}""", uploaderBattery = 0, isCharging = null)
+
+        assertThat(sut.nsAdd("devicestatus", DataSyncSelector.PairDeviceStatus(status, 1000), "1/1")).isTrue()
+
+        val field = uploaded?.openaps?.suggested?.get(CareportalNoteStatus.FIELD)
+        assertThat(CareportalNoteStatus.decode(field, now)).containsExactly(noteTime, "Full note")
+        assertThat(status.suggested).isEqualTo("""{"reason":"Original"}""")
     }
 
     // ---- masterReachable (client→master edit/control gating) ----

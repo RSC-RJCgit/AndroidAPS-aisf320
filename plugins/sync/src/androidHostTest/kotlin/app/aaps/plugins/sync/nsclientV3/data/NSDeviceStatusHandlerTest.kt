@@ -25,6 +25,8 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.StringNonPreferenceKey
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
+import app.aaps.core.objects.notes.CareportalNoteStatus
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
@@ -331,6 +333,33 @@ internal class NSDeviceStatusHandlerTest {
 
         sut.handleNewData(arrayOf(deviceStatusAt(TIME_3)))
         assertEquals(emptyMap(), openAPSData.autoIsfListSnapshot.value?.values)
+    }
+
+    @Test
+    fun importsFullNoteTextFromOlderLoopStatusWithoutReplacingLocalText() {
+        givenResults(APSResult.Algorithm.AUTO_ISF)
+        whenever(dateUtil.now()).thenReturn(9_000L)
+        whenever(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).thenReturn("""{"3000":"Local SMS"}""")
+        openAPSData.clockSuggested = 8_000L
+        val status = deviceStatusAt(TIME_2).copy(openaps = NSDeviceStatus.OpenAps(suggested = buildJsonObject {
+            put("timestamp", TIME_2)
+            put("runningDynamicIsf", false)
+            putJsonObject(CareportalNoteStatus.FIELD) {
+                put("3000", "Nightscout copy")
+                put("4000", "Full text from Nightscout")
+                put("4500", 123)
+            }
+        }))
+
+        sut.handleNewData(arrayOf(status))
+
+        val saved = argumentCaptor<String>()
+        verify(preferences).put(eq(StringNonKey.CarePortalNoteSmsTexts), saved.capture())
+        assertThat(NoteSmsTexts.parse(saved.firstValue)).containsExactly(
+            3_000L, "Local SMS",
+            4_000L, "Full text from Nightscout"
+        )
+        assertThat(openAPSData.clockSuggested).isEqualTo(8_000L)
     }
 
     /**

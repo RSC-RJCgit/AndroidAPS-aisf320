@@ -4,6 +4,7 @@ import androidx.annotation.VisibleForTesting
 import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.HasIDs
 import app.aaps.core.data.model.SC
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.InterfacesStrings
@@ -51,6 +52,8 @@ import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
 import app.aaps.core.nssdk.localmodel.clientcontrol.ClientState
 import app.aaps.core.nssdk.remotemodel.LastModified
+import app.aaps.core.objects.notes.CareportalNoteStatus
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.preference.libreSpecialSettings
@@ -96,6 +99,7 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metro.binding
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -915,7 +919,7 @@ class NSClientV3Plugin(
         try {
             val data = dataPair.value.toNSDeviceStatus()
             nsClientRepository.addLog("► ADD $collection", "Sent ${dataPair::class.simpleName} $progress", Json {}.encodeToJsonElement(data))
-            nsAndroidClient?.createDeviceStatus(data)?.let { result ->
+            nsAndroidClient?.createDeviceStatus(withCareportalNoteTexts(data))?.let { result ->
                 when (result.response) {
                     200  -> nsClientRepository.addLog("◄ UPDATED", "OK ${dataPair.value::class.simpleName}")
                     201  -> nsClientRepository.addLog("◄ ADDED", "OK ${dataPair.value::class.simpleName} ${result.identifier}")
@@ -939,6 +943,28 @@ class NSClientV3Plugin(
             return false
         }
         return false
+    }
+
+    /** Add display text only to the Nightscout upload. Other device status consumers get the original record. */
+    private suspend fun withCareportalNoteTexts(data: NSDeviceStatus): NSDeviceStatus {
+        val openAps = data.openaps ?: return data
+        val suggested = openAps.suggested ?: return data
+        if (!config.APS || config.AAPSCLIENT || !config.appInitialized || !preferences.get(BooleanKey.NsClientSyncFullCareportalNoteText)) return data
+        return try {
+            if (dataSyncSelectorV3.virtualPumpSelected()) return data
+            val texts = NoteSmsTexts.all(preferences)
+            if (texts.isEmpty()) return data
+            val now = dateUtil.now()
+            val noteTimes = persistenceLayer.getTherapyEventDataFromTime(now - CareportalNoteStatus.WINDOW_MS, TE.Type.NOTE, ascending = false)
+                .asSequence().filter { it.isValid }.map { it.timestamp }.toSet()
+            val notes = CareportalNoteStatus.encode(texts, noteTimes, now) ?: return data
+            data.copy(openaps = openAps.copy(suggested = JsonObject(suggested + (CareportalNoteStatus.FIELD to notes))))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Could not prepare full Careportal note text", error)
+            data
+        }
     }
 
     private suspend fun dbOperationEntries(collection: String = "entries", dataPair: DataSyncSelector.PairGlucoseValue, progress: String, operation: Operation): Boolean {
@@ -1405,8 +1431,7 @@ class NSClientV3Plugin(
             StringKey.NsClientAccessToken,
             BooleanKey.NsClient3UseWs,
             BooleanKey.NsClientReadOnlyClient,
-            StringKey.ClientNoteSmsSender,
-            BooleanKey.ClientNoteSmsInboxRecovery,
+            BooleanKey.NsClientSyncFullCareportalNoteText,
             libreSpecialSettings("ns_libre_special_settings"),
             PreferenceSubScreenDef(
                 key = "ns_client_synchronization",

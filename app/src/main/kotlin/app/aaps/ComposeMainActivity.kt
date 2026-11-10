@@ -98,7 +98,6 @@ import app.aaps.plugins.automation.AutomationRuntime
 import app.aaps.plugins.configuration.setupwizard.SWDefinition
 import app.aaps.plugins.source.DexcomPlugin
 import app.aaps.plugins.source.activities.RequestDexcomPermissionActivity
-import app.aaps.plugins.sync.smsCommunicator.SmsCommunicatorPlugin.SmsCommunicatorWorker
 import app.aaps.settingsstore.AndroidStorage
 import app.aaps.settingsstore.SettingsUnreadableActivity
 import app.aaps.ui.compose.configuration.ConfigurationViewModel
@@ -136,7 +135,6 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dev.zacsweers.metro.Inject
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import app.aaps.core.ui.R as CoreUiR
 
@@ -289,9 +287,6 @@ class ComposeMainActivity : MetroAppCompatActivity() {
             }
             if (denied.isNotEmpty()) onPermissionResultDenied?.invoke(denied)
             updateButtons()
-            if (config.AAPSCLIENT && permissions[Manifest.permission.READ_SMS] == true) {
-                SmsCommunicatorWorker.recoverClientInboxNow(this)
-            }
         }
 
         onPermissionResultDenied = { denied ->
@@ -667,16 +662,6 @@ class ComposeMainActivity : MetroAppCompatActivity() {
         // Wake lock: initial value applies on startup, subsequent changes update the flag
         lifecycleScope.launch {
             preferences.observe(BooleanKey.OverviewKeepScreenOn).collect { setupWakeLock() }
-        }
-        if (config.AAPSCLIENT) {
-            lifecycleScope.launch {
-                merge(
-                    preferences.observe(StringKey.ClientNoteSmsSender).drop(1),
-                    preferences.observe(BooleanKey.ClientNoteSmsInboxRecovery).drop(1)
-                ).collect {
-                    if (config.appInitialized) permissionsViewModel.refresh()
-                }
-            }
         }
         // A rebuild asked for by code that cannot reach this activity: `MainApp` once Android has applied a
         // new language, an import applying its settings. Android answers it by recreating; the view models

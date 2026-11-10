@@ -13,12 +13,12 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.concurrent.Volatile
 
 /**
- * The full SMS text of an AutoISF CarePortal note, kept on this phone only (2026-11-09, per explicit request).
+ * The full display text of an AutoISF Careportal note, stored on this phone.
  *
  * The note itself stays the short code (for example `Shwr12`), because rules on this and other phones match those codes.
  * The SMS sent with it has the full text with the values of that moment (`Shower12: g=7.8 iobTH=12`), which cannot be
  * made again later. So it is saved here by the note's time, and Treatments > CarePortal shows it under the code.
- * Nightscout and other phones get the code only.
+ * A master can also send the full text separately in Nightscout device status.
  */
 object NoteSmsTexts {
 
@@ -46,7 +46,7 @@ object NoteSmsTexts {
         }
     }
 
-    /** Fill gaps from the inbox in one write, keeping any text already saved on this phone. */
+    /** Fill gaps in one write, keeping any text already saved on this phone. */
     suspend fun recoverMissing(preferences: Preferences, texts: Map<Long, String>, now: Long) {
         if (texts.isEmpty()) return
         writeLock.withLock {
@@ -69,7 +69,7 @@ object NoteSmsTexts {
 
     /**
      * The SMS sent with a note ends with this tag, the note's time in base 36 (for example ` #nmhb2k3fk`), so a full AAPS
-     * or Android client that receives the SMS can save the text for the same note when Nightscout brings it.
+     * that receives the SMS can save the text for the same note when Nightscout brings it.
      */
     fun tagged(text: String, noteTimestamp: Long): String = "$text $TAG_PREFIX${noteTimestamp.toString(36)}"
 

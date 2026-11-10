@@ -30,6 +30,8 @@ import app.aaps.core.utils.safeGetStringAllowNull
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import app.aaps.plugins.sync.nsclientV3.workers.stepsFromPrimarySite
 import app.aaps.core.objects.autoisf.legacyAutoIsfListValues
+import app.aaps.core.objects.notes.CareportalNoteStatus
+import app.aaps.core.objects.notes.NoteSmsTexts
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -178,6 +180,20 @@ class NSDeviceStatusHandler(
             // Rebuild predictions once for the newest data in this batch.
             launchReceivedStatusWork("predictions") { calculationWorkflow.runOnReceivedPredictions(overviewData) }
             if (apsResults.isNotEmpty()) launchReceivedStatusWork("APS history") { storeApsResults(apsResults) }
+            val noteReports = accepted
+                .filter { it.suggested != null && it.status.device?.startsWith("openaps://") == true }
+                .sortedByDescending { it.createdAt }
+                .mapNotNull { it.status.openaps?.suggested?.get(CareportalNoteStatus.FIELD) }
+            if (noteReports.isNotEmpty()) launchReceivedStatusWork("Careportal note text") {
+                val now = dateUtil.now()
+                val texts = mutableMapOf<Long, String>()
+                noteReports.forEach { report ->
+                    CareportalNoteStatus.decode(report, now).forEach { (time, text) ->
+                        if (time !in texts) texts[time] = text
+                    }
+                }
+                NoteSmsTexts.recoverMissing(preferences, texts, now)
+            }
             rxBus.send(EventNsClientStatusUpdated())
         }
     }

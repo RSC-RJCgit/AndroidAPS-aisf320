@@ -522,13 +522,12 @@ enum class BooleanKey(
     NsClientSlowSync("ns_sync_slow", false, KeysStrings.pref_title_ns_slow_sync),
     // Client control and hardened mode both ride the WebSocket, so simple mode and hardened mode keep it on.
     NsClient3UseWs("ns_use_ws", true, KeysStrings.pref_title_ns_use_ws, KeysStrings.pref_summary_ns_use_ws, defaultedBySM = true, defaultedByHardenedMode = true),
-    ClientNoteSmsInboxRecovery(
-        key = "client_note_sms_inbox_recovery",
+    NsClientSyncFullCareportalNoteText(
+        key = "ns_sync_full_careportal_note_text",
         defaultValue = false,
-        title = KeysStrings.pref_title_client_note_sms_inbox_recovery,
-        summary = KeysStrings.pref_summary_client_note_sms_inbox_recovery,
-        platforms = AppPlatform.ANDROID_ONLY,
-        showInApsMode = false,
+        title = KeysStrings.pref_title_ns_sync_full_careportal_note_text,
+        summary = KeysStrings.pref_summary_ns_sync_full_careportal_note_text,
+        showInNsClientMode = false,
         showInPumpControlMode = false,
         exportable = false
     ),
