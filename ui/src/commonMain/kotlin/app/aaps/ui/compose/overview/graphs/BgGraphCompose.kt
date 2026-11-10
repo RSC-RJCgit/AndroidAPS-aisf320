@@ -778,13 +778,12 @@ fun BgGraphCompose(
 
         fun nearest(timestamp: Long): Double? =
             bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
-        val markDrop = if (chartConfig.lowMark > 30.0) 15.0 else 0.8
         // A zero bolus gets a small arrow (zeroBolusArrows), not the big mark
         val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 }.mapNotNull { bolus ->
             nearest(bolus.timestamp)?.let { bolus.timestamp to it }
         }
         val carbPoints = treatments.carbs.mapNotNull { carb ->
-            nearest(carb.timestamp)?.let { carb.timestamp to (it - markDrop) }
+            nearest(carb.timestamp)?.let { carb.timestamp to it }
         }
         // Activity scales to the axis as it is without the Graph 5 top band, so its peak never reaches the band lanes.
         val activityAxisMax = if (!showActivity) maxBgY else if (topBandLines) niceScale(dataMin, axisDataMax).max else niceBgScale.max
@@ -883,23 +882,12 @@ fun BgGraphCompose(
     }
 
     val smbMarkColor = AapsTheme.elementColors.insulin
+    // Anchor both marks to glucose, with the triangle bodies on opposite sides of the reading.
     val bolusMarkLine = remember {
-        LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
-            areaFill = null,
-            pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF00FF)), shape = BolusUnderLineShape), size = 28.dp)
-            )
-        )
+        createMarkerLine(Color(0xFFFF00FF), ::invertedTriangleShape, 32.dp)
     }
     val carbMarkLine = remember {
-        LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
-            areaFill = null,
-            pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(Color(0xFFFF9800)), shape = TriangleShape), size = 28.dp)
-            )
-        )
+        createMarkerLine(Color(0xFFFF9800), ::triangleBelowShape, 28.dp)
     }
 
     val bgLines = remember(activeSeries, regularLine, bucketedLine, rawLine, ukfLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, bolusMarkLine, carbMarkLine, normalizerLine) {

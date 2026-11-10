@@ -424,22 +424,6 @@ val TriangleShape: Shape = GenericShape { size, _ ->
 }
 
 /**
- * Upright bolus triangle. The mark is centered on the glucose point, so the tip starts
- * just under that center and the body hangs below the line.
- */
-val BolusUnderLineShape: Shape = GenericShape { size, _ ->
-    val cx = size.width / 2f
-    val apexY = size.height / 2f + size.height * 0.06f
-    val baseY = size.height * 0.98f
-    // UK graph half-width is bolusSize and the height is 1.67 times that, so the base is about half this box.
-    val baseHalf = size.width * 0.25f
-    moveTo(cx, apexY)
-    lineTo(cx + baseHalf, baseY)
-    lineTo(cx - baseHalf, baseY)
-    close()
-}
-
-/**
  * Inverted triangle shape pointing downward (flat base at top, apex at bottom).
  *
  * Used for a manual bolus on the BG and IOB graphs, and for carbs on the COB graph. The apex sits at the data point's
