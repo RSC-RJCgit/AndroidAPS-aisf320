@@ -830,17 +830,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 // set values above point
             }
             // BOLUS arrowhead+shaft: drawn outside overdraw gate so it always appears when x is on-screen.
-            // Same size/shaft proportions as the SMB arrow (value.size * scaledPxSize * 1.2f arrowhead,
-            // scaledTextSize * 0.25f shaft), instead of the smaller bare-triangle-no-shaft look this used before.
-            // Color.BLACK previously here likely blended into a dark theme's graph background — this was
-            // a themed value.color(context) (bolusDataPointColor, a visible blue/cyan) before an earlier
-            // change hardcoded it to black. Using a fixed bright color instead of black or a theme lookup,
-            // so it can't blend into either a light or dark background.
+            // Sized to match carb entry triangles (scaledPxSize), retaining bolus color (MAGENTA / YELLOW for delayed).
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
                 mPaint.color = if (value.hasDelayedComponent) Color.YELLOW else Color.MAGENTA
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
-                val bolusSize = value.size * scaledPxSize * 1.2f
+                val bolusSize = scaledPxSize
                 if ((value as? BolusDataPoint)?.data?.amount == 0.0) {
                     // A 0.00 bolus (real, or a "Wizard: 0U calculated" point): the slim SMB arrow under the BG
                     // dot, ZERO_BOLUS_ARROW_SCALE times larger, not the big triangle a real bolus gets.
