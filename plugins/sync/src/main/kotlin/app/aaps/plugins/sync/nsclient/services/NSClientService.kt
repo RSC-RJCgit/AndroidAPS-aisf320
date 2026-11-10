@@ -43,6 +43,7 @@ import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.utils.JsonHelper.safeGetString
 import app.aaps.core.utils.JsonHelper.safeGetStringAllowNull
 import app.aaps.core.utils.receivers.DataWorkerStorage
@@ -621,15 +622,19 @@ class NSClientService : DaggerService() {
         }
     }
 
-    fun dbAdd(collection: String, data: JSONObject, originalObject: Any, progress: String) {
+    fun dbAdd(collection: String, data: JSONObject, originalObject: Any, progress: String, fullNoteTexts: JSONObject? = null) {
         if (dataSyncSelectorV1.replayBgOnly) return
         try {
             if (!isConnected || !hasWriteAuth) return
+            val logText = "Sent ${originalObject.javaClass.simpleName} $data $progress"
+            if (fullNoteTexts != null) {
+                data.optJSONObject("openaps")?.optJSONObject("suggested")?.put(NoteSmsTexts.DEVICE_STATUS_FIELD, fullNoteTexts)
+            }
             val message = JSONObject()
             message.put("collection", collection)
             message.put("data", data)
             socket?.emit("dbAdd", message, NSAddAck(aapsLogger, rxBus, this, dateUtil, dataWorkerStorage, originalObject))
-            rxBus.send(EventNSClientNewLog("► ADD $collection", "Sent " + originalObject.javaClass.simpleName + " " + data + " " + progress))
+            rxBus.send(EventNSClientNewLog("► ADD $collection", logText))
         } catch (e: JSONException) {
             aapsLogger.error("Unhandled exception", e)
         }

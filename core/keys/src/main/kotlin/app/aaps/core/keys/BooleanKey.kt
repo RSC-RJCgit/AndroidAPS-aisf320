@@ -310,7 +310,7 @@ enum class BooleanKey(
     NsClientCreateAnnouncementsFromCarbsReq("ns_create_announcements_from_carbs_req", false, calculatedDefaultValue = true, showInNsClientMode = false),
     NsClientSlowSync("ns_sync_slow", false),
     NsClient3UseWs("ns_use_ws", true),
-    NsSyncFullCareportalNotes("ns_sync_full_careportal_notes", false, showInNsClientMode = false, showInPumpControlMode = false, exportable = false),
+    NsSyncFullCareportalNotes("ns_sync_full_careportal_notes", true, showInNsClientMode = false, showInPumpControlMode = false, exportable = false),
     OpenHumansWifiOnly("oh_wifi_only", true),
     OpenHumansChargingOnly("oh_charging_only", false),
     XdripSendStatus("xdrip_send_status", false),

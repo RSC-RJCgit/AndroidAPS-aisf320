@@ -49,6 +49,7 @@ import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.nsShared.NSClientFragment
+import app.aaps.plugins.sync.nsShared.fullCareportalNoteTextsForUpload
 import app.aaps.plugins.sync.nsShared.events.EventNSClientStatus
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiData
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
@@ -385,7 +386,16 @@ class NSClientPlugin @Inject constructor(
             is DataSyncSelector.PairProfileStore           -> dataPair.value
             else                                           -> null
         }?.let { data ->
-            nsClientService?.dbAdd(collection, data, dataPair, progress)
+            nsClientService?.let { service ->
+                val fullNoteTexts = if (dataPair is DataSyncSelector.PairDeviceStatus &&
+                    data.optJSONObject("openaps")?.optJSONObject("suggested") != null
+                ) {
+                    persistenceLayer.fullCareportalNoteTextsForUpload(
+                        config, preferences, minOf(dateUtil.now(), dataPair.value.timestamp), aapsLogger
+                    )
+                } else null
+                service.dbAdd(collection, data, dataPair, progress, fullNoteTexts)
+            }
         }
         return true
     }
@@ -452,6 +462,14 @@ class NSClientPlugin @Inject constructor(
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientUploadData, summary = R.string.ns_upload_summary, title = R.string.ns_upload).also {
                     if (dataSyncSelectorV1.fullAapsOnVirtualPump) it.setSummary(R.string.ns_upload_virtual_warning_summary)
                 })
+                if (config.APS && !config.AAPSCLIENT) {
+                    addPreference(
+                        AdaptiveSwitchPreference(
+                            ctx = context, booleanKey = BooleanKey.NsSyncFullCareportalNotes,
+                            title = R.string.ns_sync_full_careportal_notes, summary = R.string.ns_sync_full_careportal_notes_summary
+                        )
+                    )
+                }
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.BgSourceUploadToNs, title = app.aaps.core.ui.R.string.do_ns_upload_title))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptCgmData, summary = R.string.ns_receive_cgm_summary, title = R.string.ns_receive_cgm))
                 addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClientAcceptProfileStore, summary = R.string.ns_receive_profile_store_summary, title = R.string.ns_receive_profile_store))

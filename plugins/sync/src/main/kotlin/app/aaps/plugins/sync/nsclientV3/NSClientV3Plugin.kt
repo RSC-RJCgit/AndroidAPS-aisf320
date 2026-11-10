@@ -18,7 +18,6 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.HasIDs
-import app.aaps.core.data.model.TE
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
@@ -77,6 +76,7 @@ import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.sync.R
 import app.aaps.plugins.sync.nsShared.NSClientFragment
+import app.aaps.plugins.sync.nsShared.fullCareportalNoteTextsForUpload
 import app.aaps.plugins.sync.nsShared.liveConnectionConfigured
 import app.aaps.plugins.sync.nsShared.events.EventConnectivityOptionChanged
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiData
@@ -533,23 +533,10 @@ class NSClientV3Plugin @Inject constructor(
         try {
             val data = dataPair.value.toNSDeviceStatus()
             rxBus.send(EventNSClientNewLog("► ADD $collection", "Sent ${dataPair.javaClass.simpleName} <i>${gson.toJson(data)}</i> $progress"))
-            if (config.appInitialized && config.APS && !config.AAPSCLIENT && preferences.get(BooleanKey.NsSyncFullCareportalNotes) &&
-                activePlugin.activePump !is VirtualPump
-            ) {
-                data.openaps?.suggested?.let { suggested ->
-                    runCatching {
-                        val texts = NoteSmsTexts.all(preferences)
-                        if (texts.isNotEmpty()) {
-                            val now = dateUtil.now()
-                            val through = minOf(now, data.date ?: now)
-                            val noteTimes = persistenceLayer
-                                .getTherapyEventDataFromTime(through - NoteSmsTexts.DEVICE_STATUS_WINDOW_MS, TE.Type.NOTE, ascending = false)
-                                .asSequence().filter { it.isValid && !it.note.isNullOrBlank() && it.timestamp in texts }
-                                .map { it.timestamp }.toSet()
-                            NoteSmsTexts.forDeviceStatus(texts, noteTimes, through)?.let { suggested.put(NoteSmsTexts.DEVICE_STATUS_FIELD, it) }
-                        }
-                    }.onFailure { aapsLogger.error(LTag.NSCLIENT, "Could not include full note text in device status", it) }
-                }
+            data.openaps?.suggested?.let { suggested ->
+                val now = dateUtil.now()
+                persistenceLayer.fullCareportalNoteTextsForUpload(config, preferences, minOf(now, data.date ?: now), aapsLogger)
+                    ?.let { suggested.put(NoteSmsTexts.DEVICE_STATUS_FIELD, it) }
             }
             nsAndroidClient?.createDeviceStatus(data)?.let { result ->
                 when (result.response) {
