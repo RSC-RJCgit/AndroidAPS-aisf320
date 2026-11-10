@@ -354,7 +354,7 @@ fun BgGraphCompose(
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
     // 2026-10-23, per explicit request: the automatic clean graph (zoomed out past its width) also hides Raw and UKF raw BG,
-    // the insulin activity and carbs model curves and the bolus numbers, and draws boluses as slim arrows (bolusArrowMarks)
+    // the insulin activity and carbs model curves. Regular bolus labels stay visible.
     val showRaw = SeriesType.RAW_BG in bgOverlays && !automaticCleanGraph
     val showUkf = SeriesType.UKF_BG in bgOverlays && !automaticCleanGraph
     val rawPredictions by viewModel.predictionsFlow.collectAsStateWithLifecycle()
@@ -1081,9 +1081,8 @@ fun BgGraphCompose(
         }
     }
 
-    // Basal Y-axis range: maxBasal / BASAL_HEIGHT_FRACTION so basal occupies that fraction of chart height
-    val basalMaxY = remember(basalData.maxBasal) {
-        if (basalData.maxBasal > 0.0) basalData.maxBasal / BG_GRAPH_BASAL_HEIGHT_FRACTION else 1.0
+    val basalMaxY = remember(basalData, visibleTimeRange) {
+        basalAxisMax(basalData, visibleTimeRange, BG_GRAPH_BASAL_HEIGHT_FRACTION)
     }
 
     // =========================================================================
@@ -1229,8 +1228,7 @@ fun BgGraphCompose(
         SmbStackLabels(uamBoostLabels, uamBoostText, pinToBottom = false)
     }
     val bolusText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
-    val bolusStack = remember(treatments, minTimestamp, lowMark, automaticCleanGraph) {
-        if (automaticCleanGraph) return@remember emptyList()
+    val bolusStack = remember(treatments, minTimestamp, lowMark) {
         val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
         val stack = smbStackIndex(boluses.map { it.timestamp })
         boluses.mapIndexed { index, bolus ->
@@ -1264,22 +1262,6 @@ fun BgGraphCompose(
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
     // A zero bolus: an SMB-style arrow under the BG dot, a little larger, in the bolus colour. Its 0 label stays at
     // the bottom (bolusStack).
-    // In the automatic clean graph every bolus is a slim arrow under its BG dot, in the bolus colour, like a zero bolus
-    val bolusArrowMarks = remember(treatments, bgReadings, minTimestamp, automaticCleanGraph) {
-        val boluses = if (automaticCleanGraph) treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 } else emptyList()
-        SmbArrows(
-            boluses.map { bolus ->
-                SmbStackItem(
-                    x = timestampToX(bolus.timestamp, minTimestamp),
-                    label = bolus.number.ifEmpty { bolus.label },
-                    stackIndex = 0,
-                    anchorY = bgReadings.minByOrNull { abs(it.timestamp - bolus.timestamp) }?.value,
-                    color = Color(0xFFFF00FF),
-                )
-            },
-            scale = ZERO_BOLUS_ARROW_SCALE
-        )
-    }
     val zeroBolusArrowMarks = remember(treatments, bgReadings, minTimestamp) {
         val zeroBoluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount <= 0.0 }
         SmbArrows(
@@ -1340,8 +1322,8 @@ fun BgGraphCompose(
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true)
     // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
     val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
-    val decorations = remember(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
-        listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) +
+    val decorations = remember(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
+        listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) +
             listOfNotNull(basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
 

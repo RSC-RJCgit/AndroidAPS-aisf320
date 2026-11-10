@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
+import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
@@ -310,6 +311,20 @@ fun Modifier.onScrollOrZoomGesture(
  * e.g. 0.5 → basal occupies half the height, the primary data the other half.
  */
 const val BASAL_HEIGHT_FRACTION = 0.5
+
+/** Scale to the highest basal in view, including the rates already in effect at the left edge. */
+internal fun basalAxisMax(data: BasalGraphData?, visibleTimeRange: Pair<Long, Long>?, heightFraction: Double): Double {
+    if (data == null || data.maxBasal <= 0.0) return 1.0
+    if (visibleTimeRange == null) return data.maxBasal / heightFraction
+    val (from, to) = visibleTimeRange
+    val visibleMax = listOf(data.profileBasal, data.actualBasal).mapNotNull { series ->
+        val atStart = series.lastOrNull { it.timestamp <= from }?.value
+        val within = series.asSequence().filter { it.timestamp in from..to }.maxOfOrNull { it.value }
+        listOfNotNull(atStart, within).maxOrNull()
+    }.maxOrNull()
+    val peak = visibleMax ?: data.maxBasal
+    return if (peak > 0.0) peak / heightFraction else 1.0
+}
 
 /** Empty space above the flipped basal columns on graph 1, as a share of the basal scale (about 13% of the graph), for the hourly basal peak numbers. */
 const val BASAL_LABEL_STRIP = 0.15

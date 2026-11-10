@@ -53,6 +53,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -249,7 +250,9 @@ class CommandQueueImplementation(
                 // Internal also when a scene marked this switch: while the pump was busy the events queued up, and
                 // the one that led here can be an unrelated one, a Nightscout id arriving, with no silent flag.
                 val silentWrite = silent || profileSwitchSilentGate.isSilent(it.id, dateUtil.now())
-                if (result?.enacted == true && !silentWrite && report != BasalReport.Rejected)
+                if (result?.enacted == true && !silentWrite && report != BasalReport.Rejected &&
+                    preferences.get(BooleanKey.AlertBasalProfileUpdated)
+                )
                     notifyProfileSet(asked = nonCustomized.basalBlocks, given = basalBlocks)
                 // A PS that is already effective only had to be set in the pump again. It gets no second EPS,
                 // unless this pump gives another basal than the EPS holds, e.g. a new pump with another step.
@@ -848,7 +851,7 @@ class CommandQueueImplementation(
         return enqueue(
             CommandSetProfile(
                 aapsLogger, rh, smsCommunicator(), activePlugin, dateUtil, this, config, persistenceLayer, pumpEnactResultProvider,
-                profile, hasNsId
+                profile, hasNsId, preferences.get(BooleanKey.AlertBasalProfileUpdated)
             )
         ).completion.await()
     }

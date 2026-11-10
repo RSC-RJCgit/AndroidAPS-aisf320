@@ -27,6 +27,7 @@ class CommandSetProfile(
     override val pumpEnactResultProvider: () -> PumpEnactResult,
     private val profile: EffectiveProfile,
     private val hasNsId: Boolean,
+    private val notifyProfileUpdated: Boolean,
 ) : Command() {
 
     override val commandType: Command.CommandType = Command.CommandType.BASAL_PROFILE
@@ -39,10 +40,11 @@ class CommandSetProfile(
         val r = activePlugin.activePump.setNewBasalProfile(profile)
         aapsLogger.debug(LTag.PUMPQUEUE, "Result success: ${r.success} enacted: ${r.enacted} profile: $profile")
         // Send SMS notification if ProfileSwitch is coming from NS
-        val profileSwitch = persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now())
-        if (profileSwitch != null && r.enacted && hasNsId && !config.AAPSCLIENT) {
-            if (smsCommunicator.isEnabled() && !config.isEnabled(ExternalOptions.DO_NOT_SEND_SMS_ON_PROFILE_CHANGE))
-                smsCommunicator.sendNotificationToAllNumbers(rh.gs(CoreUiStrings.profile_set_ok))
+        if (notifyProfileUpdated && r.success && r.enacted && hasNsId && !config.AAPSCLIENT &&
+            smsCommunicator.isEnabled() && !config.isEnabled(ExternalOptions.DO_NOT_SEND_SMS_ON_PROFILE_CHANGE) &&
+            persistenceLayer.getEffectiveProfileSwitchActiveAt(dateUtil.now()) != null
+        ) {
+            smsCommunicator.sendNotificationToAllNumbers(rh.gs(CoreUiStrings.profile_set_ok))
         }
         return r
     }

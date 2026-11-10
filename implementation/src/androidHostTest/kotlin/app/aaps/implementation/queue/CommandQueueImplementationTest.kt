@@ -36,6 +36,7 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -587,7 +588,13 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
     }
 
     /** A new PS (id 140) set in a pump that reports [delivered]. */
-    private suspend fun setNewPsInPumpThatGives(delivered: List<ProfileValue>?, event: EventProfileChangeRequested = EventProfileChangeRequested(), enacted: Boolean = true) {
+    private suspend fun setNewPsInPumpThatGives(
+        delivered: List<ProfileValue>?,
+        event: EventProfileChangeRequested = EventProfileChangeRequested(),
+        enacted: Boolean = true,
+        confirmations: Boolean = true
+    ) {
+        whenever(preferences.get(BooleanKey.AlertBasalProfileUpdated)).thenReturn(confirmations)
         givenActiveEpsFrom(139)
         testPumpPlugin.isProfileSet = false
         testPumpPlugin.delivered = delivered
@@ -615,6 +622,15 @@ class CommandQueueImplementationTest : TestBaseWithProfile() {
         assertThat(savedEps().basalBlocks).isEqualTo(profileSwitch.basalBlocks)
         assertThat(roundingNotices()).isEmpty()
         verifyOkPosted()
+    }
+
+    @Test
+    fun `a successful profile update still saves the effective profile with confirmations off`() = runTest {
+        setNewPsInPumpThatGives(null, confirmations = false)
+
+        assertThat(savedEps().basalBlocks).isEqualTo(profileSwitch.basalBlocks)
+        assertThat(roundingNotices()).isEmpty()
+        verifyNoPlainOkPosted()
     }
 
     @Test

@@ -1099,31 +1099,12 @@ fun SecondaryGraphCompose(
             else                         -> CartesianLayerRangeProvider.fixed(minX = 0.0, maxX = maxX)
         }
     }
-    // Basal range: 0 at top, -basalMaxY at bottom → basal occupies the top BASAL_HEIGHT_FRACTION of the height.
-    // Windowed to the visible scroll/zoom range, like the primary IOB scale above, so basal doesn't
-    // stay flattened/clipped when scrolled away from the loaded range's peak.
-    val basalMaxY = remember(basalData, processedBasalProfile, processedBasalActual, settledMinX, settledMaxX) {
-        if (basalData == null || basalData.maxBasal <= 0.0) return@remember 1.0
-        // Profile/actual are stored sparsely (only at rate changes — see rebuildBasalGraph), so a
-        // zoom window entirely inside one constant segment (e.g. an extended zero-temp) can contain
-        // zero literal points for either series. Deliberately NOT using windowedY here: its own
-        // ifEmpty fallback dumps the *whole loaded day's* values the moment the window has no
-        // literal point, which is exactly what over-inflated this axis in the first place. Instead,
-        // filter to the window with no fallback, and separately fold in the rate actually in effect
-        // at the window start (stepValueAt) for BOTH series — e.g. a high temp basal that started
-        // just 1 minute before the window but runs for 2 hours has no literal change-point inside
-        // the window either, so without this it would be invisible to this scale computation even
-        // though its bar is drawn across the whole visible window (and could overlap IOB if it's
-        // the true max) — reflects just this window's real level instead of the whole day's range.
-        fun inWindow(x: Double) = settledMinX == null || settledMaxX == null || x in settledMinX..settledMaxX
-        val literalWindowed = processedBasalProfile.filter { inWindow(it.first) }.map { it.second } +
-            processedBasalActual.filter { inWindow(it.first) }.map { it.second }
-        val hiddenValues = listOfNotNull(
-            settledMinX?.let { stepValueAt(processedBasalProfile, it) },
-            settledMinX?.let { stepValueAt(processedBasalActual, it) }
-        )
-        val windowedAbsMax = (literalWindowed + hiddenValues).map { -it }.maxOrNull()
-        (windowedAbsMax?.takeIf { it > 0.0 } ?: hiddenValues.maxOfOrNull { -it } ?: basalData.maxBasal) / BASAL_HEIGHT_FRACTION
+    // The flipped basal layer uses the same visible peak as the main graph, with its own height fraction.
+    val basalMaxY = remember(basalData, settledVisibleRange, minTimestamp) {
+        val visibleBasalTimes = settledVisibleRange?.let { (from, to) ->
+            (minTimestamp + (from * 60_000).toLong()) to (minTimestamp + (to * 60_000).toLong())
+        }
+        basalAxisMax(basalData, visibleBasalTimes, BASAL_HEIGHT_FRACTION)
     }
     // Empty strip above 0 (2026-10-14): the columns start one text line down, so the hourly basal peak numbers
     // (pinned to the top edge) sit above the columns instead of on them.

@@ -199,6 +199,7 @@ class BuiltInSearchables(
             IntKey.AlertsStaleDataThreshold,
             BooleanKey.AlertPumpUnreachable,
             IntKey.AlertsPumpUnreachableThreshold,
+            BooleanKey.AlertBasalProfileUpdated,
             BooleanKey.AlertCarbsRequired,
             BooleanKey.AlertUrgentAsAndroidNotification,
             BooleanKey.AlertIncreaseVolume,
