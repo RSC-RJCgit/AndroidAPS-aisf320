@@ -241,15 +241,6 @@ class SmsCommunicatorPlugin @Inject constructor(
             Sms(first).apply { text = parts.joinToString("") { it.text } }
         } else null
 
-        if (config.AAPSCLIENT) {
-            // Clients only accept tagged note text from their configured sender.
-            val sender = NoteSmsTexts.normaliseSender(preferences.get(StringKey.ClientNoteSmsSender))
-            if (joined != null && sender != null && NoteSmsTexts.normaliseSender(joined.phoneNumber) == sender) {
-                NoteSmsTexts.untag(joined.text)?.let { (timestamp, text) -> saveNoteSms(timestamp, text) }
-            }
-            return
-        }
-
         if (joined != null && NoteSmsTexts.untag(joined.text) != null) processSms(joined)
         else parts.forEach(::processSms)
     }
@@ -296,6 +287,7 @@ class SmsCommunicatorPlugin @Inject constructor(
     }
 
     fun processSms(receivedSms: Sms) {
+        if (config.AAPSCLIENT) return
         if (!isEnabled()) {
             aapsLogger.debug(LTag.SMS, "Ignoring SMS. Plugin disabled.")
             return

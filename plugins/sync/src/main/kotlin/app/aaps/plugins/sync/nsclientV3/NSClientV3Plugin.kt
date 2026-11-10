@@ -18,6 +18,7 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.HasIDs
+import app.aaps.core.data.model.TE
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
@@ -32,6 +33,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
@@ -531,6 +533,24 @@ class NSClientV3Plugin @Inject constructor(
         try {
             val data = dataPair.value.toNSDeviceStatus()
             rxBus.send(EventNSClientNewLog("► ADD $collection", "Sent ${dataPair.javaClass.simpleName} <i>${gson.toJson(data)}</i> $progress"))
+            if (config.appInitialized && config.APS && !config.AAPSCLIENT && preferences.get(BooleanKey.NsSyncFullCareportalNotes) &&
+                activePlugin.activePump !is VirtualPump
+            ) {
+                data.openaps?.suggested?.let { suggested ->
+                    runCatching {
+                        val texts = NoteSmsTexts.all(preferences)
+                        if (texts.isNotEmpty()) {
+                            val now = dateUtil.now()
+                            val through = minOf(now, data.date ?: now)
+                            val noteTimes = persistenceLayer
+                                .getTherapyEventDataFromTime(through - NoteSmsTexts.DEVICE_STATUS_WINDOW_MS, TE.Type.NOTE, ascending = false)
+                                .asSequence().filter { it.isValid && !it.note.isNullOrBlank() && it.timestamp in texts }
+                                .map { it.timestamp }.toSet()
+                            NoteSmsTexts.forDeviceStatus(texts, noteTimes, through)?.let { suggested.put(NoteSmsTexts.DEVICE_STATUS_FIELD, it) }
+                        }
+                    }.onFailure { aapsLogger.error(LTag.NSCLIENT, "Could not include full note text in device status", it) }
+                }
+            }
             nsAndroidClient?.createDeviceStatus(data)?.let { result ->
                 when (result.response) {
                     200  -> rxBus.send(EventNSClientNewLog("◄ UPDATED", "OK ${dataPair.value.javaClass.simpleName}"))
@@ -955,19 +975,15 @@ class NSClientV3Plugin @Inject constructor(
                 )
             )
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.NsClient3UseWs, summary = R.string.ns_use_ws_summary, title = R.string.ns_use_ws_title))
-            if (config.AAPSCLIENT) {
-                addPreference(
-                    AdaptiveStringPreference(
-                        ctx = context, stringKey = StringKey.ClientNoteSmsSender,
-                        title = R.string.client_note_sms_sender, summary = R.string.client_note_sms_sender_summary
-                    )
-                )
+            if (config.APS && !config.AAPSCLIENT) {
                 addPreference(
                     AdaptiveSwitchPreference(
-                        ctx = context, booleanKey = BooleanKey.ClientNoteSmsInboxRecovery,
-                        title = R.string.client_note_sms_inbox_recovery, summary = R.string.client_note_sms_inbox_recovery_summary
+                        ctx = context, booleanKey = BooleanKey.NsSyncFullCareportalNotes,
+                        title = R.string.ns_sync_full_careportal_notes, summary = R.string.ns_sync_full_careportal_notes_summary
                     )
                 )
+            }
+            if (config.AAPSCLIENT) {
                 // Libre calibration/smoothing for the NS BGL result (follower is NS-only; no xDrip source)
                 addPreference(PreferenceCategory(context).also { cat ->
                     cat.key = "aapsclient_libre_settings"

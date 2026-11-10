@@ -1,6 +1,7 @@
 package app.aaps.core.objects.notes
 
 import com.google.common.truth.Truth.assertThat
+import org.json.JSONObject
 import org.junit.jupiter.api.Test
 
 class NoteSmsTextsTest {
@@ -44,5 +45,22 @@ class NoteSmsTextsTest {
     fun smsWithoutTagIsNotANoteSms() {
         assertThat(NoteSmsTexts.untag("BG 7.8 mmol/L")).isNull()
         assertThat(NoteSmsTexts.untag("#nmhb2k3fk")).isNull()
+    }
+
+    @Test
+    fun deviceStatusOnlyIncludesRecentTextsWithMatchingNotes() {
+        val old = now - NoteSmsTexts.DEVICE_STATUS_WINDOW_MS - 1
+        val texts = mapOf(now to "Full text", now - 1 to "No matching note", old to "Old text")
+        val payload = requireNotNull(NoteSmsTexts.forDeviceStatus(texts, setOf(now, old), now))
+        assertThat(NoteSmsTexts.fromDeviceStatus(payload, now)).containsExactly(now, "Full text")
+    }
+
+    @Test
+    fun deviceStatusRejectsMalformedOrFutureTexts() {
+        val payload = JSONObject().put(now.toString(), "Full text")
+            .put((now - 1).toString(), 123)
+            .put((now + 6 * 60_000L).toString(), "Future text")
+            .put("bad time", "Bad timestamp")
+        assertThat(NoteSmsTexts.fromDeviceStatus(payload, now)).containsExactly(now, "Full text")
     }
 }

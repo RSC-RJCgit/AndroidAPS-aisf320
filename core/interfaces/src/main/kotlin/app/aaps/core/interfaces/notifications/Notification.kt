@@ -149,7 +149,6 @@ open class Notification {
         const val NSCLIENT_SIMULATOR_BG_REPLAY = 97
         // A profile store from another uploader than the one this phone takes profiles from was ignored (2026-11-08)
         const val NS_PROFILE_OWNER_IGNORED = 98
-        const val PERMISSION_NOTE_SMS_INBOX = 99
 
         const val USER_MESSAGE = 1000
 

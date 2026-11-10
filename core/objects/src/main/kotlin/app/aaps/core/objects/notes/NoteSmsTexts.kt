@@ -10,9 +10,15 @@ import org.json.JSONObject
  * The note itself stays the short code (for example `Shwr12`), because rules on this and other phones match those codes.
  * The SMS sent with it has the full text with the values of that moment (`Shower12: g=7.8 iobTH=12`), which cannot be
  * made again later. So it is saved here by the note's time, and Treatments > CarePortal shows it under the code.
- * Nightscout and other phones get the code only.
+ * The optional Nightscout sync sends full text separately from the short Careportal note.
  */
 object NoteSmsTexts {
+
+    const val DEVICE_STATUS_FIELD = "careportalNoteTexts"
+    const val DEVICE_STATUS_WINDOW_MS = 6L * 60 * 60 * 1000
+    private const val SYNC_MAX_ENTRIES = 32
+    private const val SYNC_MAX_TEXT_LENGTH = 1024
+    private const val SYNC_CLOCK_SKEW_MS = 5 * 60 * 1000L
 
     /** Texts older than this are removed when a new one is saved */
     const val KEEP_MS = 30L * 24 * 60 * 60 * 1000
@@ -23,10 +29,6 @@ object NoteSmsTexts {
     private val lock = Any()
     private var cachedRaw: String? = null
     private var cached: Map<Long, String> = emptyMap()
-    private val senderPattern = Regex("\\+?[0-9]+")
-
-    fun normaliseSender(number: String): String? =
-        number.filterNot { it.isWhitespace() || it in "-()" }.takeIf(senderPattern::matches)
 
     /** Saves [smsText] for the note at [noteTimestamp]. Nothing is saved when it is blank or the same as [note]. */
     fun save(preferences: Preferences, noteTimestamp: Long, note: String, smsText: String?, now: Long) {
@@ -38,7 +40,7 @@ object NoteSmsTexts {
         }
     }
 
-    /** Fills gaps from the inbox without replacing live SMS texts. Returns true if anything was saved. */
+    /** Fills gaps from sync without replacing previously saved texts. Returns true if the cache changed. */
     fun saveMissing(preferences: Preferences, texts: Map<Long, String>, now: Long): Boolean = synchronized(lock) {
         if (texts.isEmpty()) return@synchronized false
         val existing = all(preferences)
@@ -54,6 +56,32 @@ object NoteSmsTexts {
         preferences.put(StringNonKey.CarePortalNoteSmsTexts, json.toString())
     }
 
+    fun forDeviceStatus(texts: Map<Long, String>, validNoteTimes: Set<Long>, now: Long): JSONObject? {
+        val recent = texts.entries.asSequence()
+            .filter { (timestamp, text) ->
+                timestamp > 0 && timestamp in validNoteTimes && timestamp in (now - DEVICE_STATUS_WINDOW_MS)..now &&
+                    text.isNotBlank() && text.length <= SYNC_MAX_TEXT_LENGTH
+            }
+            .sortedByDescending { it.key }
+            .take(SYNC_MAX_ENTRIES)
+        val payload = JSONObject()
+        recent.forEach { (timestamp, text) -> payload.put(timestamp.toString(), text) }
+        return payload.takeIf { it.length() > 0 }
+    }
+
+    fun fromDeviceStatus(payload: JSONObject, now: Long): Map<Long, String> {
+        if (payload.length() > SYNC_MAX_ENTRIES) return emptyMap()
+        return payload.keys().asSequence().mapNotNull { key ->
+            val timestamp = key.toLongOrNull()?.takeIf {
+                it > 0 && it.toString() == key && it in (now - KEEP_MS)..(now + SYNC_CLOCK_SKEW_MS)
+            }
+                ?: return@mapNotNull null
+            val text = (payload.opt(key) as? String)?.takeIf { it.isNotBlank() && it.length <= SYNC_MAX_TEXT_LENGTH }
+                ?: return@mapNotNull null
+            timestamp to text
+        }.toMap()
+    }
+
     /** All saved texts by note time. Parsed once for each new stored value, so a list can call it for every row. */
     fun all(preferences: Preferences): Map<Long, String> = synchronized(lock) {
         val raw = preferences.get(StringNonKey.CarePortalNoteSmsTexts)
@@ -66,7 +94,7 @@ object NoteSmsTexts {
 
     /**
      * The SMS sent with a note ends with this tag, the note's time in base 36 (for example ` #nmhb2k3fk`), so a full AAPS
-     * or AAPSClient that receives the SMS can save the text for the same note when Nightscout brings it.
+     * that receives the SMS can save the text for the same note when Nightscout brings it.
      */
     fun tagged(text: String, noteTimestamp: Long): String = "$text $TAG_PREFIX${noteTimestamp.toString(36)}"
 

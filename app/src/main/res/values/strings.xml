@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="client_note_sms_permission">Allow SMS access to receive full Careportal notes from the loop phone.</string>
-    <string name="client_note_sms_allow">Allow SMS</string>
-    <string name="client_note_sms_inbox_permission">Allow inbox access to recover missed Careportal notes from the loop phone.</string>
-    <string name="client_note_sms_inbox_allow">Allow inbox access</string>
     <string name="default_lang" translatable="false">System default</string>
     <string name="nav_preferences_plugin">%1$s Preferences</string>
     <string name="nav_exit">Exit</string>

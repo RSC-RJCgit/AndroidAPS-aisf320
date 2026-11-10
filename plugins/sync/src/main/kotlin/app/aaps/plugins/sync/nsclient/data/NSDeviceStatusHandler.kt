@@ -16,6 +16,8 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.overview.OverviewData
 import app.aaps.core.interfaces.profile.ProfileUtil
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanNonKey
@@ -25,6 +27,7 @@ import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.core.utils.JsonHelper
 import io.reactivex.rxjava3.disposables.CompositeDisposable
@@ -100,7 +103,8 @@ class NSDeviceStatusHandler @Inject constructor(
     private val profileUtil: ProfileUtil,
     private val activePlugin: Provider<ActivePlugin>,
     private val liveStepsMirror: LiveStepsMirror,
-    private val apsResultProvider: Provider<APSResult>
+    private val apsResultProvider: Provider<APSResult>,
+    private val rxBus: RxBus
 ) {
 
     private val disposable = CompositeDisposable()
@@ -127,6 +131,8 @@ class NSDeviceStatusHandler @Inject constructor(
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>, fromSecondary: Boolean = false) {
         if (!fromSecondary && activePlugin.get().isFollowerPhone(config) && preferences.liveConnectionConfigured()) return
         var configurationDetected = false
+        val noteTexts = mutableMapOf<Long, String>()
+        val now = dateUtil.now()
         for (i in deviceStatuses.size - 1 downTo 0) {
             val nsDeviceStatus = deviceStatuses[i]
             // Full-app Virtual does not enter the Client-only updateOpenApsData path below.
@@ -137,6 +143,13 @@ class NSDeviceStatusHandler @Inject constructor(
                 receiveLiveSteps(nsDeviceStatus)
             }
             if (config.AAPSCLIENT) {
+                if (nsDeviceStatus.device?.startsWith("openaps://") == true) {
+                    nsDeviceStatus.openaps?.suggested?.optJSONObject(NoteSmsTexts.DEVICE_STATUS_FIELD)?.let { payload ->
+                        NoteSmsTexts.fromDeviceStatus(payload, now).forEach { (timestamp, text) ->
+                            noteTexts.putIfAbsent(timestamp, text)
+                        }
+                    }
+                }
                 updatePumpData(nsDeviceStatus)
                 updateDeviceData(nsDeviceStatus)
                 updateOpenApsData(nsDeviceStatus)
@@ -153,6 +166,9 @@ class NSDeviceStatusHandler @Inject constructor(
             if (config.APS) {
                 nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
             }
+        }
+        if (NoteSmsTexts.saveMissing(preferences, noteTexts, now)) {
+            rxBus.send(EventPreferenceChange(StringNonKey.CarePortalNoteSmsTexts.key))
         }
     }
 
