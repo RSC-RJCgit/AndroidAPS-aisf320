@@ -40,7 +40,6 @@ import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.interfaces.pump.BolusProgressState
 import app.aaps.core.keys.StringKey
 import app.aaps.core.ui.compose.LocalPreferences
-import app.aaps.core.ui.compose.PHONE_COLUMN_MIN_WIDTH_DP
 import app.aaps.core.ui.compose.TABLET_MIN_SW_DP
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -68,26 +67,15 @@ import kotlinx.coroutines.delay
  */
 private const val DESKTOP_FULL_WIDTH_MIN_DP = 1400
 
-/**
- * Narrower than this there is no room for two phone-width columns, so the layout stays wide. Also for a tablet: a nearly
- * square tablet window got two columns narrower than any phone has (upstream, 2026-10).
- */
-private const val SPLIT_LAYOUT_MIN_WIDTH_DP = 2f * PHONE_COLUMN_MIN_WIDTH_DP
-
-/**
- * The same for a phone (2026-10-28, per explicit request): two columns of 320 dp. An iPhone without a Dynamic Island has
- * about 670 dp in landscape once the notch areas and the navigation rail are taken off, too little for 2 x 360. The split
- * is only used there when the Landscape layout setting asks for it; "auto" keeps a phone wide.
- */
-private const val PHONE_SPLIT_LAYOUT_MIN_WIDTH_DP = 2f * 320
+/** Minimum usable width for two 320 dp columns. */
+private const val SPLIT_LAYOUT_MIN_WIDTH_DP = 2f * 320
 
 internal enum class OverviewLayout { WIDE, SPLIT, TABLET }
 
 /**
  * Which main screen layout to use (2026-10-24, per explicit request). Portrait is always wide. In landscape [choice] (the
  * Landscape layout setting) decides: "wide" and "split" force one, and "auto" keeps the old rule, which gives a tablet its
- * split layout and everything else wide. A tablet's split is its own layout (with the large clock); a phone's split needs
- * [SPLIT_LAYOUT_MIN_WIDTH_DP] of width, as it did before 26 Sep, when phones were moved to wide.
+ * split layout and everything else wide. The split layouts need [SPLIT_LAYOUT_MIN_WIDTH_DP] of usable width.
  */
 internal fun overviewLayout(choice: String, landscape: Boolean, tabletScreen: Boolean, splitFits: Boolean, wideDesktopWindow: Boolean): OverviewLayout =
     when {
@@ -197,8 +185,8 @@ fun OverviewScreen(
     val profileSceneManaged = activeSceneState?.scopedRecords?.psId
         ?.let { it == profilePsId && it > 0 } == true
 
-    val isLandscape = isLandscape()
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val landscape = isLandscape() || maxWidth > maxHeight
         // A wide desktop window gets the full-width layout (BG header on top, graphs across the whole window, the page
         // scrolls) instead of the split with a fixed left panel. A tablet keeps the split when there is room for it.
         // Use the content's usable width, including split-screen resizing and the reserved navigation rail.
@@ -208,11 +196,10 @@ fun OverviewScreen(
         val desktop = LocalConfig.current.platform == AppPlatform.Desktop
         val wideDesktopWindow = desktop && windowWidthDp >= DESKTOP_FULL_WIDTH_MIN_DP
         val tabletScreen = smallestScreenWidthDp() >= TABLET_MIN_SW_DP
-        val phone = !tabletScreen && !desktop
-        val splitFits = windowWidthDp >= if (phone) PHONE_SPLIT_LAYOUT_MIN_WIDTH_DP else SPLIT_LAYOUT_MIN_WIDTH_DP
+        val splitFits = windowWidthDp >= SPLIT_LAYOUT_MIN_WIDTH_DP
         val preferences = LocalPreferences.current
         val layoutChoice by preferences.observe(StringKey.OverviewLandscapeLayout).collectAsState()
-        val layout = overviewLayout(layoutChoice, isLandscape, tabletScreen, splitFits, wideDesktopWindow)
+        val layout = overviewLayout(layoutChoice, landscape, tabletScreen, splitFits, wideDesktopWindow)
 
         if (layout == OverviewLayout.TABLET) {
             OverviewScreenTablet(
@@ -339,7 +326,7 @@ fun OverviewScreen(
         // 2026-10-24, per explicit request: one tap switches between the wide and the split layout and keeps the choice
         // (the Landscape layout setting). Only in landscape, and only where split fits. It sits in the top corner of the
         // content, under the top bar.
-        if (isLandscape && splitFits) {
+        if (landscape && splitFits) {
             val toSplit = layout == OverviewLayout.WIDE
             IconButton(
                 onClick = { preferences.put(StringKey.OverviewLandscapeLayout, if (toSplit) "split" else "wide") },

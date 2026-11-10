@@ -233,7 +233,7 @@ fun OverviewScreenSplit(
             ) {
                 GraphsSection(
                     graphViewModel = graphViewModel, isSimpleMode = isSimpleMode, iobText = iobUiState.text, cobText = cobUiState.text,
-                    overlaidBarsHeight = overlaidBarsHeight
+                    overlaidBarsHeight = overlaidBarsHeight, splitLayout = true
                 )
             }
         }

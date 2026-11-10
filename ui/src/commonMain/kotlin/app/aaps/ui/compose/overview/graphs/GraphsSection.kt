@@ -199,7 +199,8 @@ fun GraphsSection(
     iobText: String? = null,
     cobText: String? = null,
     /** Height of the bars drawn over the end of this section (the overview's preview mode), added to the space at its end. */
-    overlaidBarsHeight: Dp = 0.dp
+    overlaidBarsHeight: Dp = 0.dp,
+    splitLayout: Boolean = false
 ) {
     val dateUtil = LocalDateUtil.current
     val savedGraphConfig by graphViewModel.graphConfigFlow.collectAsStateWithLifecycle()
@@ -300,8 +301,8 @@ fun GraphsSection(
         }
     } ?: 0
     val cleanGraphForWindow =
-        if (isDesktop) useCleanGraphForDesktopWindow(visibleMinutes, DEFAULT_GRAPH_ZOOM_MINUTES, windowWidthDp)
-        else useCleanGraphForPhone(visibleMinutes, smbsInView, landscape = windowSize.width > windowSize.height)
+        if (isDesktop) useCleanGraphForDesktopWindow(visibleMinutes, DEFAULT_GRAPH_ZOOM_MINUTES, windowWidthDp, splitLayout)
+        else useCleanGraphForPhone(visibleMinutes, smbsInView, landscape = windowSize.width > windowSize.height, splitLayout = splitLayout)
     // Desktop: a long press on the IOB or basal icon ends the clean graph until the zoom changes.
     val cleanGraphOverride by graphViewModel.cleanGraphOverride.collectAsStateWithLifecycle()
     SideEffect { graphViewModel.cleanGraphCanBeOverridden = isDesktop && cleanGraphForWindow }

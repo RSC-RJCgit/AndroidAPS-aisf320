@@ -42,6 +42,14 @@ class GraphZoomPolicyTest {
     }
 
     @Test
+    fun splitLayoutsUseThePortraitTimeLimit() {
+        assertFalse(useCleanGraphForPhone(180.0, 41, landscape = true, splitLayout = true))
+        assertTrue(useCleanGraphForPhone(181.0, 0, landscape = true, splitLayout = true))
+        assertFalse(useCleanGraphForDesktopWindow(180.0, 180.0, 1600.0, splitLayout = true))
+        assertTrue(useCleanGraphForDesktopWindow(181.0, 360.0, 1600.0, splitLayout = true))
+    }
+
+    @Test
     fun phoneWithoutAWindowStaysNormal() {
         assertFalse(useCleanGraphForPhone(null, 100, landscape = false))
         assertFalse(useCleanGraphForPhone(Double.NaN, 100, landscape = false))

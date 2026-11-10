@@ -8,11 +8,11 @@ internal fun useCleanGraphForWindow(visibleMinutes: Double?, defaultMinutes: Dou
 /**
  * Phones (2026-10-19, per explicit request): the clean graph only when the view is crowded. Portrait: more than 3 hours
  * shown (2026-11-09, per explicit request; was 6 hours), or more than 40 SMBs in view. Landscape has about twice the width: more than 12 hours, or more than 80 SMBs.
- * Desktop keeps [useCleanGraphForDesktopWindow].
+ * Split layout uses the portrait time limit because the graph only has one column.
  */
-internal fun useCleanGraphForPhone(visibleMinutes: Double?, smbsInView: Int, landscape: Boolean): Boolean {
+internal fun useCleanGraphForPhone(visibleMinutes: Double?, smbsInView: Int, landscape: Boolean, splitLayout: Boolean = false): Boolean {
     if (visibleMinutes == null || !visibleMinutes.isFinite()) return false
-    val maxMinutes = if (landscape) PHONE_LANDSCAPE_CLEAN_MINUTES else PHONE_PORTRAIT_CLEAN_MINUTES
+    val maxMinutes = if (landscape && !splitLayout) PHONE_LANDSCAPE_CLEAN_MINUTES else PHONE_PORTRAIT_CLEAN_MINUTES
     val maxSmbs = if (landscape) PHONE_LANDSCAPE_CLEAN_SMBS else PHONE_PORTRAIT_CLEAN_SMBS
     return visibleMinutes > maxMinutes + 0.01 || smbsInView > maxSmbs
 }
@@ -30,8 +30,9 @@ internal const val CLEAN_GRAPH_MIN_DP_PER_MINUTE = 2.0
 
 /**
  * Desktop: a wide window has room for more hours, so the limit is the space for each minute, not 3 hours.
- * Never clean at 3 hours or less, the same as on a phone.
+ * Split layout uses the portrait time limit regardless of window width.
  */
-internal fun useCleanGraphForDesktopWindow(visibleMinutes: Double?, defaultMinutes: Double, widthDp: Double): Boolean =
-    visibleMinutes != null && useCleanGraphForWindow(visibleMinutes, defaultMinutes) &&
+internal fun useCleanGraphForDesktopWindow(visibleMinutes: Double?, defaultMinutes: Double, widthDp: Double, splitLayout: Boolean = false): Boolean =
+    if (splitLayout) useCleanGraphForWindow(visibleMinutes, PHONE_PORTRAIT_CLEAN_MINUTES)
+    else visibleMinutes != null && useCleanGraphForWindow(visibleMinutes, defaultMinutes) &&
         widthDp / visibleMinutes < CLEAN_GRAPH_MIN_DP_PER_MINUTE
