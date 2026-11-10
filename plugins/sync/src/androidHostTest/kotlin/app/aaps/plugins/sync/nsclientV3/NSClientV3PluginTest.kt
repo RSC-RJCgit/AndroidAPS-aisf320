@@ -167,10 +167,13 @@ internal class NSClientV3PluginTest : TestBaseWithProfile() {
     }
 
     @Test
-    fun uploadsOnlyMatchingFullNoteTextWithoutChangingStoredDeviceStatus() = runTest {
+    fun virtualMasterUploadsOnlyMatchingFullNoteTextWithoutChangingStoredDeviceStatus() = runTest {
         val noteTime = now - 1
         whenever(config.APS).thenReturn(true)
+        whenever(config.PUMPDRIVERS).thenReturn(true)
         whenever(config.appInitialized).thenReturn(true)
+        whenever(dataSyncSelectorV3.virtualPumpSelected()).thenReturn(true)
+        assertThat(sut.virtualOnlyMaster).isTrue()
         whenever(preferences.get(BooleanKey.NsClientSyncFullCareportalNoteText)).thenReturn(true)
         whenever(preferences.get(StringNonKey.CarePortalNoteSmsTexts)).thenReturn(
             """{"$noteTime":"Full note", "$now":"No matching note"}"""

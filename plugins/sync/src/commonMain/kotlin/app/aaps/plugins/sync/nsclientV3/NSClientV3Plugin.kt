@@ -951,7 +951,6 @@ class NSClientV3Plugin(
         val suggested = openAps.suggested ?: return data
         if (!config.APS || config.AAPSCLIENT || !config.appInitialized || !preferences.get(BooleanKey.NsClientSyncFullCareportalNoteText)) return data
         return try {
-            if (dataSyncSelectorV3.virtualPumpSelected()) return data
             val texts = NoteSmsTexts.all(preferences)
             if (texts.isEmpty()) return data
             val now = dateUtil.now()

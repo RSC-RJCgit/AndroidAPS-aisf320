@@ -524,7 +524,7 @@ enum class BooleanKey(
     NsClient3UseWs("ns_use_ws", true, KeysStrings.pref_title_ns_use_ws, KeysStrings.pref_summary_ns_use_ws, defaultedBySM = true, defaultedByHardenedMode = true),
     NsClientSyncFullCareportalNoteText(
         key = "ns_sync_full_careportal_note_text",
-        defaultValue = false,
+        defaultValue = true,
         title = KeysStrings.pref_title_ns_sync_full_careportal_note_text,
         summary = KeysStrings.pref_summary_ns_sync_full_careportal_note_text,
         showInNsClientMode = false,
