@@ -10,12 +10,15 @@ import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import org.json.JSONObject
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.Date
 import java.util.TimeZone
 
 object MasterGraphTime {
 
     const val FIELD = "masterTimeZone"
+    const val MANUAL_OFFSET_PATTERN = "[+-](?:(?:0[0-9]|1[0-7]):[0-5][0-9]|18:00)"
+    private val manualOffsetPattern = Regex(MANUAL_OFFSET_PATTERN)
 
     fun forUpload(config: Config): String? =
         if (config.appInitialized && config.APS && !config.AAPSCLIENT) ZoneId.systemDefault().id else null
@@ -33,8 +36,12 @@ object MasterGraphTime {
 
     fun forClient(config: Config, preferences: Preferences): TimeZone? {
         if (!config.AAPSCLIENT) return null
-        val site = site(preferences, usesSecondarySite(preferences))
-        val zone = read(preferences, site)?.optString("zone")?.let(::parseZone) ?: return null
+        val imported = if (preferences.get(BooleanKey.ClientGraphFollowMasterTimeZone)) {
+            val site = site(preferences, usesSecondarySite(preferences))
+            read(preferences, site)?.optString("zone")?.let(::parseZone)
+        } else null
+        val zone = imported ?: preferences.get(StringKey.ClientGraphManualUtcOffset).trim()
+            .takeIf(manualOffsetPattern::matches)?.let(ZoneOffset::of) ?: return null
         return TimeZone.getTimeZone(zone)
     }
 

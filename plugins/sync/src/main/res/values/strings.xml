@@ -61,6 +61,10 @@
     <string name="ns_client_v3_title">NSClientV3</string>
     <string name="ns_sync_full_careportal_notes">Sync full Careportal note text</string>
     <string name="ns_sync_full_careportal_notes_summary">Send recent full note text to Nightscout for client display. The text can contain details absent from the short notes.</string>
+    <string name="client_graph_follow_master_time_zone">Follow master time zone</string>
+    <string name="client_graph_follow_master_time_zone_summary">Use the master time zone when it is available. Turn this off to keep using your manual offset.</string>
+    <string name="client_graph_manual_utc_offset">Manual graph UTC offset</string>
+    <string name="client_graph_manual_utc_offset_summary">Enter an offset such as +09:30 or -05:00. Leave blank to use this device time zone when the master time zone is unavailable or turned off.</string>
     <string name="ns_client_url_title">Nightscout URL</string>
     <string name="ns_client_url_dialog_message">Enter your Nightscout URL (i.e. https://yoursitename.yourplatform.dom)</string>
     <string name="ns_client_secret_title">Nightscout API secret</string>

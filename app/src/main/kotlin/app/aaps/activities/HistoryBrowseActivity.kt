@@ -220,7 +220,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         if (config.AAPSCLIENT) {
             disposable += rxBus.toObservable(EventPreferenceChange::class.java)
                 .filter {
-                    it.isChanged(StringNonKey.ClientGraphMasterTimeZone.key) || it.isChanged(StringKey.NsClientUrl.key) ||
+                    it.isChanged(StringNonKey.ClientGraphMasterTimeZone.key) || it.isChanged(BooleanKey.ClientGraphFollowMasterTimeZone.key) ||
+                        it.isChanged(StringKey.ClientGraphManualUtcOffset.key) || it.isChanged(StringKey.NsClientUrl.key) ||
                         it.isChanged(StringKey.NsClientSecondaryUrl.key) || it.isChanged(BooleanKey.NsClientSecondaryEnabled.key)
                 }
                 .observeOn(aapsSchedulers.main)
