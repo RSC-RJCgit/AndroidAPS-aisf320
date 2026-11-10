@@ -2,6 +2,7 @@ package app.aaps.plugins.constraints.objectives
 
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.configuration.appInitializedFlow
 import app.aaps.core.interfaces.constraints.Constraint
 import app.aaps.core.interfaces.constraints.Objectives
 import app.aaps.core.interfaces.constraints.Objectives.Companion.AUTOSENS_OBJECTIVE
@@ -41,6 +42,10 @@ import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.IntKey
 import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metro.binding
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlin.jvm.JvmSuppressWildcards
 
 @ContributesIntoMap(AppScope::class, binding = binding<PluginBase>())
@@ -74,6 +79,7 @@ class ObjectivesPlugin(
 
     /** The install/update notice is on screen, so it can be taken away once objectives no longer limit anything. */
     private var limitNoticePosted = false
+    private var limitNoticeJob: Job? = null
 
     /**
      * Virtual master bypass (2026-10-31, per explicit request): with the switch on, a master on VirtualPump is not
@@ -88,7 +94,18 @@ class ObjectivesPlugin(
 
     override suspend fun onStart() {
         super.onStart()
-        checkAfterInstallOrUpdate()
+        if (!config.APS) return
+        // Startup waits for onStart to finish. Wait for the selected pump in a separate job.
+        limitNoticeJob = pluginScope.launch {
+            config.appInitializedFlow.first { it }
+            checkAfterInstallOrUpdate()
+        }
+    }
+
+    override suspend fun onStop() {
+        limitNoticeJob?.cancelAndJoin()
+        limitNoticeJob = null
+        super.onStop()
     }
 
     /**
@@ -99,13 +116,13 @@ class ObjectivesPlugin(
      */
     internal fun checkAfterInstallOrUpdate() {
         val version = "${config.VERSION_NAME} ${config.HEAD}"
-        if (preferences.get(StringNonKey.ObjectivesLastCheckedVersion) == version) return
-        preferences.put(StringNonKey.ObjectivesLastCheckedVersion, version)
-        if (!config.APS || isBypassed) return
+        if (!config.APS || preferences.get(StringNonKey.ObjectivesLastCheckedVersion) == version) return
         val limited = limitedFunctions()
-        if (limited.isEmpty()) return
-        notificationManager.post(NotificationId.OBJECTIVES_LIMIT_FUNCTIONS, rh.gs(ConstraintsStrings.objectives_limit_after_update, limited.joinToString("; ")))
-        limitNoticePosted = true
+        if (limited.isNotEmpty()) {
+            notificationManager.post(NotificationId.OBJECTIVES_LIMIT_FUNCTIONS, rh.gs(ConstraintsStrings.objectives_limit_after_update, limited.joinToString("; ")))
+            limitNoticePosted = true
+        }
+        preferences.put(StringNonKey.ObjectivesLastCheckedVersion, version)
     }
 
     /** What objectives limit right now, each with its reason, in the order of the constraints below. */
