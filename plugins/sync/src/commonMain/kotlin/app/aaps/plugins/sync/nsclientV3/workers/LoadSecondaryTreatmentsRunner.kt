@@ -28,6 +28,7 @@ import app.aaps.core.nssdk.localmodel.treatment.NSProfileSwitch
 import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryBasal
 import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.objects.workflow.WorkOutcome
+import app.aaps.core.objects.overview.MasterGraphTimeZone
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import app.aaps.plugins.sync.nsclientV3.NsIncomingDataProcessor
 import app.aaps.plugins.sync.nsclientV3.data.NSDeviceStatusHandler
@@ -81,7 +82,7 @@ class LoadSecondaryTreatmentsRunner(
             logger = { msg -> aapsLogger.debug(LTag.HTTP, "SecondaryNS: $msg") }
         )
         return try {
-            download(client)
+            download(client, url)
         } catch (error: Exception) {
             aapsLogger.error(LTag.NSCLIENT, "Secondary NS fetch failed", error)
             nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Unknown error")
@@ -122,7 +123,7 @@ class LoadSecondaryTreatmentsRunner(
         }
     }
 
-    private suspend fun download(client: NSAndroidClientImpl): WorkOutcome {
+    private suspend fun download(client: NSAndroidClientImpl, site: String): WorkOutcome {
         val isVirtualMaster = !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
         if (isVirtualMaster && preferences.get(LongNonKey.NsClientSecondaryVirtualMealRecoveryVersion) < 1L) {
             // Old scans advanced past meals when the separate receive switches were off.
@@ -238,23 +239,28 @@ class LoadSecondaryTreatmentsRunner(
         if (page >= MAX_PAGES && continueLoading)
             nsClientRepository.addLog("◄ SEC-NS", "Recovery paused after $MAX_PAGES pages; continuing next sync")
         if (recoveryScan) downloadSensorChanges(client)
-        downloadLiveSteps(client)
+        downloadLiveDeviceStatus(client, site)
         downloadGlucose(client)
         return WorkOutcome.Success
     }
 
-    // Step buckets written into the live phone's loop reason. This phone's own Nightscout is not used.
-    private suspend fun downloadLiveSteps(client: NSAndroidClientImpl) {
-        if (!preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) return
+    // Live step buckets and the client graph clock come from the configured live site.
+    private suspend fun downloadLiveDeviceStatus(client: NSAndroidClientImpl, site: String) {
+        val readSteps = preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
+        val readZone = config.AAPSCLIENT && site == MasterGraphTimeZone.selectedSite(preferences)
+        if (!readSteps && !readZone) return
         try {
             val from = dateUtil.now() - LiveSteps.MAX_AGE_MS
             val statuses = client.getDeviceStatusModifiedSince(from, NSClientV3Plugin.RECORDS_TO_LOAD)
-            val outcome = nsDeviceStatusHandler.takeLiveSteps(statuses)
-            // Always logged (also when nothing came back), so a missing step import can be traced to the step that fails.
-            nsClientRepository.addLog("◄ SEC-NS", "Step import: ${statuses.size} device status rows in the last 20 min; $outcome")
+            if (readZone) nsDeviceStatusHandler.takeMasterGraphTimeZone(statuses, site)
+            if (readSteps && preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)) {
+                val outcome = nsDeviceStatusHandler.takeLiveSteps(statuses)
+                // Always logged (also when nothing came back), so a missing step import can be traced to the step that fails.
+                nsClientRepository.addLog("◄ SEC-NS", "Step import: ${statuses.size} device status rows in the last 20 min; $outcome")
+            }
         } catch (error: Exception) {
-            aapsLogger.error(LTag.NSCLIENT, "Secondary NS step fetch failed", error)
-            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Steps error")
+            aapsLogger.error(LTag.NSCLIENT, "Secondary NS device status fetch failed", error)
+            nsClientRepository.addLog("◄ SEC-NS ERR", error.message ?: "Device status error")
         }
     }
 

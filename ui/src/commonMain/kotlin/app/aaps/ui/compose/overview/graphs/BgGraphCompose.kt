@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.concurrent.Volatile
+import kotlinx.datetime.TimeZone
 import kotlin.math.abs
 import kotlin.math.round
 import kotlin.time.Clock
@@ -305,7 +306,8 @@ fun BgGraphCompose(
     inspect: GraphInspectState? = null,
     /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
     geometryHolder: ChartGeometryHolder? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    masterZone: TimeZone? = null
 ) {
     val dateUtil = LocalDateUtil.current
     val decimalFormatter = LocalDecimalFormatter.current
@@ -335,7 +337,7 @@ fun BgGraphCompose(
                 title = { Text(stringResource(InterfacesStrings.bolus)) },
                 text = {
                     Column {
-                        Text(dateUtil.dateAndTimeAndSecondsString(bolus.timestamp))
+                        Text(graphTimestamp(dateUtil, bolus.timestamp, masterZone, showDate = true, showSeconds = true))
                         Text(stringResource(InterfacesStrings.format_insulin_units, bolus.amount))
                         if (!bolus.isValid) Text(stringResource(CoreUiStrings.invalid))
                         Text(stringResource(UiStrings.graph_bolus_calculation_unavailable))
@@ -832,8 +834,8 @@ fun BgGraphCompose(
     }
 
     // Time formatter and axis configuration
-    val timeFormatter = rememberTimeFormatter(minTimestamp)
-    val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp)
+    val timeFormatter = rememberTimeFormatter(minTimestamp, masterZone)
+    val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp, masterZone)
 
     // =========================================================================
     // BG layer lines (layer 0)
@@ -1319,7 +1321,7 @@ fun BgGraphCompose(
     }
     val geometryReporter = rememberChartGeometryReporter(geometryHolder)
     // Upstream's clock change mark (2026-10-27 merge): a dashed line and a clock where the UTC offset of the readings changes
-    val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true)
+    val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true, masterZone = masterZone)
     // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
     val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
     val decorations = remember(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
@@ -1503,7 +1505,7 @@ fun BgGraphCompose(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                 Column {
                     Text(if (lineName != null) stringResource(CoreUiStrings.graph_point_line_value, lineName, valueText) else valueText)
-                    Text(dateUtil.dateAndTimeString(reading.timestamp))
+                    Text(graphTimestamp(dateUtil, reading.timestamp, masterZone, showDate = true))
                 }
                 TextButton(onClick = { selectedBg = null }) { Text(stringResource(CoreUiStrings.close)) }
             }
@@ -1514,7 +1516,7 @@ fun BgGraphCompose(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
                 Column {
                     Text(stringResource(CoreUiStrings.graph_point_line_value, stringResource(CoreUiStrings.smb_shortname), stringResource(InterfacesStrings.format_insulin_units, smb.amount)))
-                    Text(dateUtil.dateAndTimeAndSecondsString(smb.timestamp))
+                    Text(graphTimestamp(dateUtil, smb.timestamp, masterZone, showDate = true, showSeconds = true))
                     if (smb.stepCut >= 0.01) {
                         Text(stringResource(CoreUiStrings.graph_smb_step_cut, stringResource(InterfacesStrings.format_insulin_units, smb.stepCut)), color = STEP_CUT_ARROW_COLOR)
                     }
@@ -1555,7 +1557,7 @@ fun BgGraphCompose(
             val rows = bandNames.mapIndexedNotNull { lane, (name, color) ->
                 topBandLines5[lane].points.minByOrNull { abs(it.first - time) }?.takeIf { abs(it.first - time) <= TOP_BAND_TAP_MAX_MS }?.let { (at, value) ->
                     val shown = if (lane == 3) stringResource(CoreUiStrings.pump_base_basal_rate, value) else decimalFormatter.to2Decimal(value)
-                    "$name $shown  ${dateUtil.dateAndTimeString(at)}" to color
+                    "$name $shown  ${graphTimestamp(dateUtil, at, masterZone, showDate = true)}" to color
                 }
             }
             if (rows.isNotEmpty()) AlertDialog(

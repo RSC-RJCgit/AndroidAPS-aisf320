@@ -7,6 +7,7 @@ import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
+import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
 import app.aaps.core.interfaces.configuration.Config
@@ -54,6 +55,7 @@ import app.aaps.core.nssdk.localmodel.clientcontrol.ClientState
 import app.aaps.core.nssdk.remotemodel.LastModified
 import app.aaps.core.objects.notes.CareportalNoteStatus
 import app.aaps.core.objects.notes.NoteSmsTexts
+import app.aaps.core.objects.overview.MasterGraphTimeZone
 import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.preference.libreSpecialSettings
@@ -124,6 +126,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.concurrent.Volatile
 import kotlin.concurrent.atomics.AtomicBoolean
@@ -919,7 +922,7 @@ class NSClientV3Plugin(
         try {
             val data = dataPair.value.toNSDeviceStatus()
             nsClientRepository.addLog("► ADD $collection", "Sent ${dataPair::class.simpleName} $progress", Json {}.encodeToJsonElement(data))
-            nsAndroidClient?.createDeviceStatus(withCareportalNoteTexts(data))?.let { result ->
+            nsAndroidClient?.createDeviceStatus(withCareportalNoteTexts(withMasterGraphTimeZone(data)))?.let { result ->
                 when (result.response) {
                     200  -> nsClientRepository.addLog("◄ UPDATED", "OK ${dataPair.value::class.simpleName}")
                     201  -> nsClientRepository.addLog("◄ ADDED", "OK ${dataPair.value::class.simpleName} ${result.identifier}")
@@ -943,6 +946,14 @@ class NSClientV3Plugin(
             return false
         }
         return false
+    }
+
+    private fun withMasterGraphTimeZone(data: NSDeviceStatus): NSDeviceStatus {
+        if (!config.APS || config.AAPSCLIENT || !config.appInitialized) return data
+        val openAps = data.openaps ?: return data
+        val suggested = openAps.suggested ?: return data
+        val zone = SystemTimeZone.current()
+        return data.copy(openaps = openAps.copy(suggested = JsonObject(suggested + (MasterGraphTimeZone.FIELD to JsonPrimitive(zone.id)))))
     }
 
     /** Add display text only to the Nightscout upload. Other device status consumers get the original record. */

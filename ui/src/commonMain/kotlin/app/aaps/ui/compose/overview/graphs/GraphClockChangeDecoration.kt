@@ -61,9 +61,10 @@ internal fun rememberClockChangeDecoration(
     minTimestamp: Long,
     maxTimestamp: Long,
     readings: List<BgDataPoint>,
-    showIcon: Boolean = false
+    showIcon: Boolean = false,
+    masterZone: TimeZone? = null
 ): GraphClockChangeDecoration {
-    val timeZone = SystemTimeZone.current()
+    val timeZone = masterZone ?: SystemTimeZone.current()
     val changes = remember(minTimestamp, maxTimestamp, timeZone, readings) {
         graphClockChanges(minTimestamp, maxTimestamp, timeZone, readings)
     }

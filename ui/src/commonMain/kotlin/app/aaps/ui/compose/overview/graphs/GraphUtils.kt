@@ -42,6 +42,7 @@ import com.patrykandpatrick.vico.compose.common.data.ExtraStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -105,14 +106,15 @@ fun axisLongerThan(timeRange: Pair<Long, Long>, windowMinutes: Double): Boolean 
  * @return CartesianValueFormatter that converts x-values back to time labels
  */
 @Composable
-fun rememberTimeFormatter(minTimestamp: Long): CartesianValueFormatter {
-    return remember(minTimestamp) {
+fun rememberTimeFormatter(minTimestamp: Long, masterZone: TimeZone? = null): CartesianValueFormatter {
+    val timeZone = masterZone ?: SystemTimeZone.current()
+    return remember(minTimestamp, timeZone) {
         CartesianValueFormatter { _, value, _ ->
             val timestamp = minTimestamp + (value * 60000).toLong()
             // Always 24 hour, as SimpleDateFormat("HH") was: on an axis a bare 12 hour label would
             // not say which half of the day it belongs to.
             val local = Instant.fromEpochMilliseconds(timestamp)
-                .toLocalDateTime(SystemTimeZone.current())
+                .toLocalDateTime(timeZone)
             timeAxisLabel(local.hour, local.minute)
         }
     }
@@ -137,9 +139,9 @@ internal fun timeAxisLabel(hour: Int, minute: Int): String {
 }
 
 @OptIn(ExperimentalTime::class)
-internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int): Int {
+internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int, timeZone: TimeZone = SystemTimeZone.current()): Int {
     val minute = Instant.fromEpochMilliseconds(minTimestamp)
-        .toLocalDateTime(SystemTimeZone.current())
+        .toLocalDateTime(timeZone)
         .minute
     val intoStep = minute % stepMinutes
     return if (intoStep == 0) 0 else stepMinutes - intoStep
@@ -150,12 +152,13 @@ internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int): Int {
  * Short ranges use 15 or 30 minute steps. Longer ranges stay on the hour.
  */
 @Composable
-fun rememberBottomAxisItemPlacer(minTimestamp: Long): HorizontalAxis.ItemPlacer {
-    return remember(minTimestamp) {
+fun rememberBottomAxisItemPlacer(minTimestamp: Long, masterZone: TimeZone? = null): HorizontalAxis.ItemPlacer {
+    val timeZone = masterZone ?: SystemTimeZone.current()
+    return remember(minTimestamp, timeZone) {
         ShortRangeTimeAxisPlacer(
-            hourly = alignedTimePlacer(minTimestamp, 60, padExtremes = true),
-            halfHour = alignedTimePlacer(minTimestamp, 30, padExtremes = false),
-            quarterHour = alignedTimePlacer(minTimestamp, 15, padExtremes = false),
+            hourly = alignedTimePlacer(minTimestamp, 60, timeZone, padExtremes = true),
+            halfHour = alignedTimePlacer(minTimestamp, 30, timeZone, padExtremes = false),
+            quarterHour = alignedTimePlacer(minTimestamp, 15, timeZone, padExtremes = false),
         )
     }
 }
@@ -163,9 +166,10 @@ fun rememberBottomAxisItemPlacer(minTimestamp: Long): HorizontalAxis.ItemPlacer 
 private fun alignedTimePlacer(
     minTimestamp: Long,
     stepMinutes: Int,
+    timeZone: TimeZone,
     padExtremes: Boolean,
 ): HorizontalAxis.ItemPlacer {
-    val offset = minutesUntilNextStep(minTimestamp, stepMinutes)
+    val offset = minutesUntilNextStep(minTimestamp, stepMinutes, timeZone)
     return HorizontalAxis.ItemPlacer.aligned(
         spacing = { stepMinutes },
         offset = { offset },

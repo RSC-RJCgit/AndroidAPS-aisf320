@@ -33,6 +33,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.datetime.TimeZone
 import kotlin.math.abs
 import kotlin.math.round
 import kotlin.math.roundToInt
@@ -217,7 +218,8 @@ fun SecondaryGraphCompose(
     geometryHolder: ChartGeometryHolder? = null,
     /** A label drawn at the plot's bottom left, just above the time labels (the G1 label). Null draws none. */
     cornerLabel: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    masterZone: TimeZone? = null
 ) {
     val dateUtil = LocalDateUtil.current
     if (seriesTypes.isEmpty()) return
@@ -796,8 +798,8 @@ fun SecondaryGraphCompose(
     // Chart rendering
     // =========================================================================
 
-    val timeFormatter = rememberTimeFormatter(minTimestamp)
-    val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp)
+    val timeFormatter = rememberTimeFormatter(minTimestamp, masterZone)
+    val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp, masterZone)
     val nowLineColor = MaterialTheme.colorScheme.onSurface
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
     // Upstream's press-and-hold inspect line (2026-10-16 merge), drawn with our labels.
@@ -858,7 +860,7 @@ fun SecondaryGraphCompose(
         }
         SmbStackLabels(items + dropItems, smbText, pinToBottom = true, stackStepFraction = 0.65f)
     }
-    val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor) {
+    val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor, masterZone) {
         if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()
         val notes = visibleCareNotes(
             // ANNOUNCEMENT included: care-portal announcements such as the Tier 3 UAM boost "B" are text labels on the
@@ -882,7 +884,7 @@ fun SecondaryGraphCompose(
                 DominantIsf.DURA -> duraColor
                 else -> Color(0xFFFFFF00)
             }
-            val clock = dateUtil.timeString(note.first).replace(":", "")
+            val clock = graphTimestamp(dateUtil, note.first, masterZone).replace(":", "")
             SmbStackItem(
                 x = timestampToX(note.first, minTimestamp),
                 label = if (first) clock else "",
@@ -1291,7 +1293,7 @@ fun SecondaryGraphCompose(
             text = {
                 Column {
                     selectedStepSamples.forEach { (index, sample) ->
-                        Text(stringResource(CoreUiStrings.graph_steps_sample, stringResource(stepLabels[index]), sample.value.roundToInt(), dateUtil.dateAndTimeString(sample.timestamp)))
+                        Text(stringResource(CoreUiStrings.graph_steps_sample, stringResource(stepLabels[index]), sample.value.roundToInt(), graphTimestamp(dateUtil, sample.timestamp, masterZone, showDate = true)))
                     }
                 }
             },

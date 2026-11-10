@@ -203,6 +203,7 @@ fun GraphsSection(
     splitLayout: Boolean = false
 ) {
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
     val savedGraphConfig by graphViewModel.graphConfigFlow.collectAsStateWithLifecycle()
     // In simple mode: fixed layout (BG, IOB+BAS, COB — no overlays, no editing)
     val graphConfig = if (isSimpleMode) SIMPLE_MODE_CONFIG else savedGraphConfig
@@ -1060,6 +1061,7 @@ fun GraphsSection(
         ) {
             BgGraphCompose(
                 viewModel = graphViewModel,
+                masterZone = masterZone,
                 automaticCleanGraph = automaticCleanGraph,
                 cleanGraphHidesTextLines = cleanGraphHidesTextLines,
                 bgOverlays = graphConfig.bgOverlays,
@@ -1181,6 +1183,7 @@ fun GraphsSection(
         Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
             SecondaryGraphCompose(
                 viewModel = graphViewModel,
+                masterZone = masterZone,
                 seriesTypes = listOf(SeriesType.IOB),
                 cobOverlay = SeriesType.COB in graphConfig.iobOverlays,
                 scrollState = iobScrollState,
@@ -1239,6 +1242,7 @@ fun GraphsSection(
             Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
                 SecondaryGraphCompose(
                     viewModel = graphViewModel,
+                    masterZone = masterZone,
                     inspect = inspect,
                     seriesTypes = secondary.series,
                     showSmbDoseLabels = i == 0,
@@ -1293,6 +1297,7 @@ fun GraphsSection(
             Box(modifier = Modifier.graphInspectTouch(inspect)) {
                 BgGraphCompose(
                     viewModel = graphViewModel,
+                    masterZone = masterZone,
                     automaticCleanGraph = automaticCleanGraph,
                     cleanGraphHidesTextLines = cleanGraphHidesTextLines,
                     bgOverlays = graphConfig.bgOverlays,

@@ -87,6 +87,7 @@ import com.patrykandpatrick.vico.compose.cartesian.marker.CartesianMarkerVisibil
 import com.patrykandpatrick.vico.compose.cartesian.marker.Interaction
 import com.patrykandpatrick.vico.compose.common.Fill
 import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
+import kotlinx.datetime.TimeZone
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
@@ -501,7 +502,8 @@ fun GraphInspectPillOf(inspect: GraphInspectState, graphViewModel: GraphViewMode
         data = data,
         modifier = modifier,
         statusLines = inspectStatusLines(autoIsfGraph, showSteps) + heartbeatLines,
-        stepSamples = if (showSteps) inspectStepSamples(stepsGraph, data.timestamp) else emptyList()
+        stepSamples = if (showSteps) inspectStepSamples(stepsGraph, data.timestamp) else emptyList(),
+        masterZone = rememberMasterGraphTimeZone()
     )
 }
 
@@ -645,7 +647,8 @@ fun GraphInspectPill(
     data: InspectData,
     modifier: Modifier = Modifier,
     statusLines: List<String> = emptyList(),
-    stepSamples: List<Pair<Int, GraphDataPoint>> = emptyList()
+    stepSamples: List<Pair<Int, GraphDataPoint>> = emptyList(),
+    masterZone: TimeZone? = null
 ) {
     val dateUtil = LocalDateUtil.current
     val profileUtil = LocalProfileUtil.current
@@ -665,7 +668,7 @@ fun GraphInspectPill(
                 verticalArrangement = Arrangement.spacedBy(AapsSpacing.extraSmall),
                 modifier = Modifier.padding(vertical = AapsSpacing.small)
             ) {
-                PillText(dateUtil.timeString(data.timestamp), MaterialTheme.colorScheme.onSurfaceVariant)
+                PillText(graphTimestamp(dateUtil, data.timestamp, masterZone), MaterialTheme.colorScheme.onSurfaceVariant)
                 data.bg?.let { bg ->
                     val text = if (profileUtil.units == GlucoseUnit.MGDL) decimalFormatter.to0Decimal(bg.value) else decimalFormatter.to1Decimal(bg.value)
                     PillText(text, bg.range.inspectColor())
@@ -709,7 +712,7 @@ fun GraphInspectPill(
             val stepLabels = listOf(CoreUiStrings.graph_steps_s5, CoreUiStrings.graph_steps_s15, CoreUiStrings.graph_steps_s30, CoreUiStrings.graph_steps_s60)
             stepSamples.forEach { (index, sample) ->
                 PillText(
-                    stringResource(CoreUiStrings.graph_steps_sample, stringResource(stepLabels[index]), sample.value.roundToInt(), dateUtil.dateAndTimeString(sample.timestamp)),
+                    stringResource(CoreUiStrings.graph_steps_sample, stringResource(stepLabels[index]), sample.value.roundToInt(), graphTimestamp(dateUtil, sample.timestamp, masterZone, showDate = true)),
                     MaterialTheme.colorScheme.onSurface
                 )
             }

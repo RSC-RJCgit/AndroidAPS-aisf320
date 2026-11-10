@@ -32,6 +32,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.stepsFromPrimarySite
 import app.aaps.core.objects.autoisf.legacyAutoIsfListValues
 import app.aaps.core.objects.notes.CareportalNoteStatus
 import app.aaps.core.objects.notes.NoteSmsTexts
+import app.aaps.core.objects.overview.MasterGraphTimeZone
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -153,6 +154,10 @@ class NSDeviceStatusHandler(
         }
         if (unreadable.count > 0)
             aapsLogger.warn(LTag.NSCLIENT, "Device statuses, parts skipped because they could not be read: ${unreadable.count}. The first: ${unreadable.first}")
+        // This display field also works with older loop-result shapes the current APS parser cannot read.
+        if (config.AAPSCLIENT && deviceStatuses.any { it.openaps?.suggested?.containsKey(MasterGraphTimeZone.FIELD) == true }) {
+            takeMasterGraphTimeZone(deviceStatuses.asList(), preferences.get(StringKey.NsClientUrl).trim())
+        }
         if (config.AAPSCLIENT && accepted.isNotEmpty()) {
             val trioStatuses = accepted.filter { it.status.device == "Trio" }
             if (trioStatuses.isNotEmpty()) {
@@ -196,6 +201,26 @@ class NSDeviceStatusHandler(
             }
             rxBus.send(EventNsClientStatusUpdated())
         }
+    }
+
+    internal fun takeMasterGraphTimeZone(statuses: List<NSDeviceStatus>, site: String) {
+        if (!config.AAPSCLIENT || site.isBlank() || site != MasterGraphTimeZone.selectedSite(preferences)) return
+        val latestAllowed = dateUtil.now() + 5 * 60_000L
+        val latest = statuses.asSequence().mapNotNull { status ->
+            if (status.device?.startsWith("openaps://") != true) return@mapNotNull null
+            val suggested = status.openaps?.suggested ?: return@mapNotNull null
+            val field = suggested[MasterGraphTimeZone.FIELD] as? JsonPrimitive ?: return@mapNotNull null
+            val zone = field.takeIf { it.isString }?.content?.let(MasterGraphTimeZone::parseZone) ?: return@mapNotNull null
+            val reportTime = status.date ?: graphReportTime(status.createdAt) ?: graphReportTime(suggested.safeGetString("timestamp")) ?: return@mapNotNull null
+            if (reportTime in 1L..latestAllowed) reportTime to zone else null
+        }.maxByOrNull { it.first } ?: return
+        launchReceivedStatusWork("master graph time zone") {
+            MasterGraphTimeZone.saveNewest(preferences, site, latest.first, latest.second)
+        }
+    }
+
+    private fun graphReportTime(raw: String?): Long? = raw?.let {
+        it.toLongOrNull() ?: runCatching { dateUtil.fromISODateString(it) }.getOrNull()
     }
 
     private data class ParsedDeviceStatus(
