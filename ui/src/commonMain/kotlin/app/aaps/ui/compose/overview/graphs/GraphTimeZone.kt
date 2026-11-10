@@ -7,6 +7,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.GRAPH_UTC_OFFSET_PATTERN
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.objects.overview.MasterGraphTimeZone
@@ -16,7 +17,9 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Instant
 
-/** Only graph display follows the master. Other screens and time calculations use local time. */
+private val graphUtcOffsetPattern = Regex(GRAPH_UTC_OFFSET_PATTERN)
+
+/** The client's graph display zone, with an optional manual fallback. */
 @Composable
 internal fun rememberMasterGraphTimeZone(): TimeZone? {
     if (!LocalConfig.current.AAPSCLIENT) return null
@@ -26,7 +29,12 @@ internal fun rememberMasterGraphTimeZone(): TimeZone? {
     val secondaryEnabled by preferences.observe(BooleanKey.NsClientSecondaryEnabled).collectAsStateWithLifecycle()
     val site = MasterGraphTimeZone.selectedSite(primary, secondary, secondaryEnabled)
     val saved by preferences.observe(StringNonKey.ClientGraphMasterTimeZone).collectAsStateWithLifecycle()
-    return remember(saved, site) { MasterGraphTimeZone.read(saved, site) }
+    val followMaster by preferences.observe(BooleanKey.ClientGraphFollowMasterTimeZone).collectAsStateWithLifecycle()
+    val manualOffset by preferences.observe(StringKey.ClientGraphManualUtcOffset).collectAsStateWithLifecycle()
+    return remember(saved, site, followMaster, manualOffset) {
+        val imported = if (followMaster) MasterGraphTimeZone.read(saved, site) else null
+        imported ?: manualOffset.trim().takeIf(graphUtcOffsetPattern::matches)?.let(MasterGraphTimeZone::parseZone)
+    }
 }
 
 internal fun graphTimestamp(

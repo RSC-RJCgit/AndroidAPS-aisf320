@@ -462,6 +462,10 @@
     <string name="nsclient_token_title">Nightscout access token</string>
     <string name="nsclient_token_summary">Enter your Nightscout access token (min. 17 characters)</string>
     <string name="ns_secondary_settings">Secondary NS (bolus, carbs, and profile)</string>
+    <string name="client_graph_follow_master_time_zone">Follow master time zone</string>
+    <string name="client_graph_follow_master_time_zone_summary">Use the master time zone when it is available. Turn this off to keep using your manual offset.</string>
+    <string name="client_graph_manual_utc_offset">Manual graph UTC offset</string>
+    <string name="client_graph_manual_utc_offset_summary">Enter an offset such as +09:30 or -05:00. Leave blank to use this device time zone when the master time zone is unavailable or turned off.</string>
     <string name="ns_secondary_enabled">Download bolus, carbs, and profile from secondary NS</string>
     <string name="ns_secondary_enabled_summary">Pull manual boluses, carbs, and the profile store from a separate Nightscout site, for example the main phone. SMBs are not copied. This phone does not take the profile store from its own Nightscout while this is on.</string>
     <string name="ns_raw_from_secondary">Raw from secondary NS when the reading has none</string>

@@ -17,6 +17,8 @@ import app.aaps.core.keys.interfaces.TextRef
  */
 const val IOS_HEARTBEAT_FORGET_CHECKED = "forget"
 
+const val GRAPH_UTC_OFFSET_PATTERN = "[+-](?:(?:0[0-9]|1[0-7]):[0-5][0-9]|18:00)"
+
 enum class StringKey(
     override val key: String,
     override val defaultValue: String,
@@ -360,6 +362,14 @@ enum class StringKey(
         defaultValue = "",
         title = KeysStrings.ns_profile_accept_from,
         summary = KeysStrings.ns_profile_accept_from_summary
+    ),
+    ClientGraphManualUtcOffset(
+        key = "client_graph_manual_utc_offset",
+        defaultValue = "",
+        title = KeysStrings.client_graph_manual_utc_offset,
+        summary = KeysStrings.client_graph_manual_utc_offset_summary,
+        validator = StringValidator.regex(GRAPH_UTC_OFFSET_PATTERN, "Enter an offset such as +09:30 or -05:00"),
+        visibility = ElementVisibility { it.isClient }
     ),
     NsClientSecondaryUrl(
         key = "nsclient_secondary_url",

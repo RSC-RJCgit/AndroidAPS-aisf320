@@ -472,6 +472,11 @@ enum class BooleanKey(
     NsClientAcceptTbrEb("ns_receive_tbr_eb", false, KeysStrings.pref_title_ns_receive_tbr_eb, KeysStrings.pref_summary_ns_receive_tbr_eb, showInNsClientMode = false, engineeringModeOnly = true, defaultedByHardenedMode = true),
     // A second Nightscout site. A virtual pump reads glucose from its own site, and boluses and
     // carbs from the phone that entered them. SMBs are never taken from this site.
+    ClientGraphFollowMasterTimeZone(
+        "client_graph_follow_master_time_zone", true,
+        KeysStrings.client_graph_follow_master_time_zone, KeysStrings.client_graph_follow_master_time_zone_summary,
+        showInApsMode = false, showInPumpControlMode = false
+    ),
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false, KeysStrings.ns_secondary_enabled, KeysStrings.ns_secondary_enabled_summary),
     // Trio remote control, as in LoopFollow (2026-10-29, per explicit request). The rest of its settings depend on this.
     TrioRemoteEnabled("trio_remote_enabled", false, KeysStrings.trio_remote_enabled, KeysStrings.trio_remote_enabled_summary),

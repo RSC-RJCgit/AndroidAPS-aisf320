@@ -1441,6 +1441,8 @@ class NSClientV3Plugin(
             StringKey.NsClientAccessToken,
             BooleanKey.NsClient3UseWs,
             BooleanKey.NsClientReadOnlyClient,
+            BooleanKey.ClientGraphFollowMasterTimeZone,
+            StringKey.ClientGraphManualUtcOffset,
             BooleanKey.NsClientSyncFullCareportalNoteText,
             libreSpecialSettings("ns_libre_special_settings"),
             PreferenceSubScreenDef(
