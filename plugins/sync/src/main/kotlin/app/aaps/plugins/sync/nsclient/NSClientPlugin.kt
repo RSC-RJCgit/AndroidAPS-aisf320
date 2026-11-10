@@ -41,6 +41,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.graph.MasterGraphTime
 import app.aaps.core.objects.extensions.toJson
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.EditTextValidator
@@ -394,6 +395,11 @@ class NSClientPlugin @Inject constructor(
                         config, preferences, minOf(dateUtil.now(), dataPair.value.timestamp), aapsLogger
                     )
                 } else null
+                if (dataPair is DataSyncSelector.PairDeviceStatus) {
+                    MasterGraphTime.forUpload(config)?.let { zone ->
+                        data.optJSONObject("openaps")?.optJSONObject("suggested")?.put(MasterGraphTime.FIELD, zone)
+                    }
+                }
                 service.dbAdd(collection, data, dataPair, progress, fullNoteTexts)
             }
         }

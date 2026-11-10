@@ -27,6 +27,7 @@ import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
+import app.aaps.core.objects.graph.MasterGraphTime
 import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.core.utils.JsonHelper
@@ -131,6 +132,7 @@ class NSDeviceStatusHandler @Inject constructor(
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>, fromSecondary: Boolean = false) {
         if (!fromSecondary && activePlugin.get().isFollowerPhone(config) && preferences.liveConnectionConfigured()) return
         var configurationDetected = false
+        var graphZoneChanged = false
         val noteTexts = mutableMapOf<Long, String>()
         val now = dateUtil.now()
         for (i in deviceStatuses.size - 1 downTo 0) {
@@ -144,6 +146,7 @@ class NSDeviceStatusHandler @Inject constructor(
             }
             if (config.AAPSCLIENT) {
                 if (nsDeviceStatus.device?.startsWith("openaps://") == true) {
+                    if (receiveMasterGraphTime(nsDeviceStatus, fromSecondary, now)) graphZoneChanged = true
                     nsDeviceStatus.openaps?.suggested?.optJSONObject(NoteSmsTexts.DEVICE_STATUS_FIELD)?.let { payload ->
                         NoteSmsTexts.fromDeviceStatus(payload, now).forEach { (timestamp, text) ->
                             noteTexts.putIfAbsent(timestamp, text)
@@ -167,9 +170,19 @@ class NSDeviceStatusHandler @Inject constructor(
                 nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
             }
         }
+        if (graphZoneChanged) rxBus.send(EventPreferenceChange(StringNonKey.ClientGraphMasterTimeZone.key))
         if (NoteSmsTexts.saveMissing(preferences, noteTexts, now)) {
             rxBus.send(EventPreferenceChange(StringNonKey.CarePortalNoteSmsTexts.key))
         }
+    }
+
+    private fun receiveMasterGraphTime(status: NSDeviceStatus, fromSecondary: Boolean, now: Long): Boolean {
+        val suggested = status.openaps?.suggested ?: return false
+        val zone = suggested.opt(MasterGraphTime.FIELD) as? String ?: return false
+        val timestamp = status.date?.takeIf { it > 0L }
+            ?: status.createdAt?.let { it.toLongOrNull() ?: runCatching { dateUtil.fromISODateString(it) }.getOrNull() }
+            ?: return false
+        return MasterGraphTime.remember(preferences, fromSecondary, zone, timestamp, now)
     }
 
     private fun receiveLiveSteps(deviceStatus: NSDeviceStatus) {

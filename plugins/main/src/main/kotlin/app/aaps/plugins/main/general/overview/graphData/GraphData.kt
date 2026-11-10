@@ -34,6 +34,7 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.graph.MasterGraphTime
 import app.aaps.core.ui.R as CoreUiR
 import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.ui.dialogs.OKDialog
@@ -42,6 +43,7 @@ import com.jjoe64.graphview.GraphView
 import com.jjoe64.graphview.series.DataPoint
 import com.jjoe64.graphview.series.DataPointInterface
 import com.jjoe64.graphview.series.Series
+import java.util.TimeZone
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlin.math.max
@@ -79,11 +81,16 @@ class GraphData @Inject constructor(
 
     private lateinit var graph: GraphView
     private lateinit var overviewData: OverviewData
+    private var displayTimeZone: TimeZone? = null
 
-    fun with(graph: GraphView, overviewData: OverviewData): GraphData = this.also {
+    fun with(graph: GraphView, overviewData: OverviewData, displayTimeZone: TimeZone? = null): GraphData = this.also {
         it.graph = graph
         it.overviewData = overviewData
+        it.displayTimeZone = displayTimeZone
     }
+
+    private fun graphTime(timestamp: Long): String =
+        MasterGraphTime.timeString(graph.context, dateUtil, timestamp, displayTimeZone)
 
     fun addBucketedData() {
         addSeries(overviewData.bucketedGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
@@ -98,7 +105,10 @@ class GraphData @Inject constructor(
             addSeries(overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
             if (addPredictions) addSeries(overviewData.predictionsGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>)
             onTap { (overviewData.bgReadingGraphSeries as PointsWithLabelGraphSeries<DataPointWithLabelInterface>).setOnDataPointTapListener { _, dataPoint ->
-                if (dataPoint is GlucoseValueDataPoint) ToastUtils.infoToast(context, dataPoint.label)
+                if (dataPoint is GlucoseValueDataPoint) {
+                    val label = if (displayTimeZone == null) dataPoint.label else dataPoint.labelAt(graphTime(dataPoint.data.timestamp))
+                    ToastUtils.infoToast(context, label)
+                }
             } }
         }
     }
@@ -466,7 +476,7 @@ class GraphData @Inject constructor(
             if (abs(at - time) > TOP_BAND_TAP_MAX_MS) continue
             if (text.isNotEmpty()) text.append("\n")
             val start = text.length
-            text.append("$name ${decimalFormatter.to2Decimal(value)}  ${dateUtil.timeString(at)}")
+            text.append("$name ${decimalFormatter.to2Decimal(value)}  ${graphTime(at)}")
             text.setSpan(ForegroundColorSpan(rh.gac(graph.context, colorAttr)), start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         if (text.isNotEmpty()) OKDialog.show(graph.context, rh.gs(R.string.overview_graph5_title), text)
@@ -623,7 +633,8 @@ class GraphData @Inject constructor(
             numHorizontalLabels = 7,
             // All 7 ticks now show: instead of hiding the 2nd and 6th to avoid collisions, the time labels
             // (only) are drawn smaller via horizontalTextScale below, and whole hours print as "10", not "10:00".
-            hideTickIndices = emptySet()
+            hideTickIndices = emptySet(),
+            displayTimeZone = displayTimeZone
         )
         graph.gridLabelRenderer.horizontalTextScale = 0.75f
         graph.gridLabelRenderer.numHorizontalLabels = 7 // only 7 because of the space
@@ -651,7 +662,7 @@ class GraphData @Inject constructor(
     private fun showLineTap(name: String, dataPoint: DataPointInterface, earlier: List<DataPointInterface>) {
         val mgdl = units == GlucoseUnit.MGDL
         val value = if (mgdl) decimalFormatter.to0Decimal(dataPoint.y) else decimalFormatter.to1Decimal(dataPoint.y)
-        val time = dateUtil.timeString(dataPoint.x.toLong())
+        val time = graphTime(dataPoint.x.toLong())
         val change = ukfShortDelta(dataPoint, earlier)
         val text = if (change == null) rh.gs(R.string.graph_line_tap_no_delta, name, value, time)
         else rh.gs(R.string.graph_line_tap, name, value, if (mgdl) decimalFormatter.to1Decimal(change) else decimalFormatter.to2Decimal(change), time)
@@ -730,7 +741,7 @@ class GraphData @Inject constructor(
                     val point = line.getValues(graph.viewport.getMinX(false), graph.viewport.getMaxX(false))
                         .asSequence().minByOrNull { abs(it.x - timestamp) }
                     point?.let {
-                        rh.gs(R.string.graph_steps_line_tap, rh.gs(label), it.rawValue.toInt(), dateUtil.dateAndTimeString(it.x.toLong()))
+                        rh.gs(R.string.graph_steps_line_tap, rh.gs(label), it.rawValue.toInt(), MasterGraphTime.dateAndTimeString(graph.context, dateUtil, it.x.toLong(), displayTimeZone))
                     }
                 }
                 if (samples.isNotEmpty()) OKDialog.show(graph.context, rh.gs(R.string.steps_shortname), samples.joinToString("\n"))

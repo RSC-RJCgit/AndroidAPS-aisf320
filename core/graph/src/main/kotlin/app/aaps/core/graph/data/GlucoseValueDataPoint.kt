@@ -34,7 +34,8 @@ class GlucoseValueDataPoint(
     override fun getY(): Double = valueToUnits(profileUtil.units)
 
     override fun setY(y: Double) {}
-    override val label: String = dateUtil.timeString(data.timestamp) + " " + profileUtil.fromMgdlToStringInUnits(data.value)
+    override val label: String = labelAt(dateUtil.timeString(data.timestamp))
+    fun labelAt(time: String): String = "$time ${profileUtil.fromMgdlToStringInUnits(data.value)}"
     override val duration = 0L
     override val shape get() = if (isPrediction) Shape.PREDICTION else Shape.BG
     override val size = if (isPrediction) 1f else 0.6f

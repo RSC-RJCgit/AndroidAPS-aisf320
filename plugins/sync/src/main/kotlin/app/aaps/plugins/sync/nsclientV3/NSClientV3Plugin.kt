@@ -32,6 +32,7 @@ import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.core.objects.graph.MasterGraphTime
 import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.interfaces.profile.Profile
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -534,6 +535,7 @@ class NSClientV3Plugin @Inject constructor(
             val data = dataPair.value.toNSDeviceStatus()
             rxBus.send(EventNSClientNewLog("► ADD $collection", "Sent ${dataPair.javaClass.simpleName} <i>${gson.toJson(data)}</i> $progress"))
             data.openaps?.suggested?.let { suggested ->
+                MasterGraphTime.forUpload(config)?.let { suggested.put(MasterGraphTime.FIELD, it) }
                 val now = dateUtil.now()
                 persistenceLayer.fullCareportalNoteTextsForUpload(config, preferences, minOf(now, data.date ?: now), aapsLogger)
                     ?.let { suggested.put(NoteSmsTexts.DEVICE_STATUS_FIELD, it) }

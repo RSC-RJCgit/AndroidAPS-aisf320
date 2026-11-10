@@ -130,6 +130,7 @@ import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.directionToIcon
 import app.aaps.core.objects.extensions.displayText
 import app.aaps.core.objects.extensions.round
+import app.aaps.core.objects.graph.MasterGraphTime
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizard
@@ -423,7 +424,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         graphZoomWidth = null
         graphZoomEndTime = null
         requireActivity().runOnUiThread {
-            _binding?.graphsLayout?.historyDate?.text = dateUtil.dateAndTimeString(history.fromTime)
+            _binding?.graphsLayout?.historyDate?.let {
+                it.text = MasterGraphTime.dateAndTimeString(it.context, dateUtil, history.fromTime, MasterGraphTime.forClient(config, preferences))
+            }
         }
         calculationWorkflow.runCalculation(
             job = CalculationWorkflow.HISTORY_CALCULATION,
@@ -3567,12 +3570,15 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // 2026-10-10: the graph text lines (every one but the hypoprediction line) follow Settings > AutoISF "Show the text lines".
         PointsWithLabelGraphSeries.showTextRows = preferences.get(BooleanKey.ApsAutoIsfShowGraphText)
         val pump = activePlugin.activePump
-        binding.graphsLayout.historyDate.text = historicalStartTime?.let { dateUtil.dateAndTimeString(it) } ?: ""
+        val displayTimeZone = MasterGraphTime.forClient(config, preferences)
+        binding.graphsLayout.historyDate.text = historicalStartTime?.let {
+            MasterGraphTime.dateAndTimeString(binding.root.context, dateUtil, it, displayTimeZone)
+        }.orEmpty()
         binding.graphsLayout.historyDate.visibility = if (historicalStartTime != null) View.VISIBLE else View.GONE
         // An older window shows no current BG under the hours drop-down (2026-10-27); back on now it shows again
         binding.graphsLayout.graphBgValue.visibility =
             if (historicalStartTime == null && binding.graphsLayout.graphBgValue.text.isNotEmpty()) View.VISIBLE else View.GONE
-        val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData)
+        val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData, displayTimeZone)
         val menuChartSettings = overviewMenus.setting
         if (menuChartSettings.isEmpty()) return
         if (historicalStartTime == null) extendEndTimeForPredictions()
@@ -3682,7 +3688,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // label/marker-bearing (bolus doses, carb grams, note text); this panel is plain data lines only.
         if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) {
             binding.graphsLayout.graph5Container.visibility = View.VISIBLE
-            val graph5Data = graphDataProvider.get().with(binding.graphsLayout.graph5, overviewData)
+            val graph5Data = graphDataProvider.get().with(binding.graphsLayout.graph5, overviewData, displayTimeZone)
             graph5Data.addInRangeArea(
                 overviewData.fromTime, overviewData.endTime,
                 preferences.get(UnitDoubleKey.OverviewLowMark),
@@ -3751,7 +3757,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val labelBgColor = lastBgData.lastBgColor(context)
         val labelBgIsActual = lastBgData.isActualBg()
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
-            val secondGraphData = graphDataProvider.get().with(secondaryGraphs[g], overviewData)
+            val secondGraphData = graphDataProvider.get().with(secondaryGraphs[g], overviewData, displayTimeZone)
             var useABSForScale = false
             var useIobForScale = false
             var useCobForScale = false

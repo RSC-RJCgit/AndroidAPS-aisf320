@@ -1,0 +1,69 @@
+package app.aaps.core.objects.graph
+
+import android.content.Context
+import android.text.format.DateFormat
+import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.keys.interfaces.Preferences
+import org.json.JSONObject
+import java.time.ZoneId
+import java.util.Date
+import java.util.TimeZone
+
+object MasterGraphTime {
+
+    const val FIELD = "masterTimeZone"
+
+    fun forUpload(config: Config): String? =
+        if (config.appInitialized && config.APS && !config.AAPSCLIENT) ZoneId.systemDefault().id else null
+
+    @Synchronized
+    fun remember(preferences: Preferences, fromSecondary: Boolean, zone: String, timestamp: Long, now: Long): Boolean {
+        val site = site(preferences, fromSecondary)
+        if (site.isEmpty() || timestamp <= 0L || timestamp > now + 5 * 60_000L || parseZone(zone) == null) return false
+        val previous = read(preferences, site)
+        if (previous != null && timestamp <= previous.optLong("timestamp")) return false
+        val report = JSONObject().put("site", site).put("timestamp", timestamp).put("zone", zone)
+        preferences.put(StringNonKey.ClientGraphMasterTimeZone, report.toString())
+        return previous?.optString("zone") != zone
+    }
+
+    fun forClient(config: Config, preferences: Preferences): TimeZone? {
+        if (!config.AAPSCLIENT) return null
+        val site = site(preferences, usesSecondarySite(preferences))
+        val zone = read(preferences, site)?.optString("zone")?.let(::parseZone) ?: return null
+        return TimeZone.getTimeZone(zone)
+    }
+
+    fun timeString(context: Context, dateUtil: DateUtil, timestamp: Long, zone: TimeZone?): String =
+        if (zone == null) dateUtil.timeString(timestamp)
+        else DateFormat.getTimeFormat(context).apply { timeZone = zone }.format(Date(timestamp))
+
+    fun dateAndTimeString(context: Context, dateUtil: DateUtil, timestamp: Long, zone: TimeZone?): String =
+        if (zone == null) dateUtil.dateAndTimeString(timestamp)
+        else {
+            val date = DateFormat.getDateFormat(context).apply { timeZone = zone }.format(Date(timestamp))
+            "$date ${timeString(context, dateUtil, timestamp, zone)}"
+        }
+
+    private fun usesSecondarySite(preferences: Preferences): Boolean =
+        preferences.get(BooleanKey.NsClientSecondaryEnabled) && preferences.get(StringKey.NsClientSecondaryUrl).isNotBlank()
+
+    private fun site(preferences: Preferences, fromSecondary: Boolean): String {
+        if (fromSecondary != usesSecondarySite(preferences)) return ""
+        val key = if (fromSecondary) StringKey.NsClientSecondaryUrl else StringKey.NsClientUrl
+        return preferences.get(key).trim().trimEnd('/')
+    }
+
+    private fun read(preferences: Preferences, site: String): JSONObject? {
+        if (site.isEmpty()) return null
+        val saved = preferences.get(StringNonKey.ClientGraphMasterTimeZone)
+        if (saved.isEmpty()) return null
+        return runCatching { JSONObject(saved) }.getOrNull()?.takeIf { it.optString("site") == site }
+    }
+
+    private fun parseZone(zone: String): ZoneId? = runCatching { ZoneId.of(zone) }.getOrNull()
+}

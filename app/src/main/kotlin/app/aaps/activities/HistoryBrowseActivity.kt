@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutosensCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventCustomCalculationFinished
 import app.aaps.core.interfaces.rx.events.EventIobCalculationProgress
+import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventRefreshOverview
 import app.aaps.core.interfaces.rx.events.EventScale
 import app.aaps.core.interfaces.rx.events.EventUpdateOverviewGraph
@@ -28,8 +29,11 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.graph.MasterGraphTime
 import app.aaps.core.ui.activities.TranslatedDaggerAppCompatActivity
 import app.aaps.core.ui.extensions.toVisibility
 import app.aaps.core.ui.extensions.toVisibilityKeepSpace
@@ -42,6 +46,7 @@ import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
 import java.util.Calendar
 import java.util.GregorianCalendar
+import java.util.TimeZone
 import javax.inject.Inject
 import kotlin.math.max
 import javax.inject.Provider
@@ -133,7 +138,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
                 .apply {
                     addOnPositiveButtonClickListener { selection ->
                         setTime(dateUtil.mergeUtcDateToTimestamp(historyBrowserData.overviewData.fromTime, selection))
-                        binding.date.text = dateUtil.dateAndTimeString(historyBrowserData.overviewData.fromTime)
+                        updateDate()
                         loadAll("onClickDate")
                     }
                 }
@@ -212,6 +217,15 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (config.AAPSCLIENT) {
+            disposable += rxBus.toObservable(EventPreferenceChange::class.java)
+                .filter {
+                    it.isChanged(StringNonKey.ClientGraphMasterTimeZone.key) || it.isChanged(StringKey.NsClientUrl.key) ||
+                        it.isChanged(StringKey.NsClientSecondaryUrl.key) || it.isChanged(BooleanKey.NsClientSecondaryEnabled.key)
+                }
+                .observeOn(aapsSchedulers.main)
+                .subscribe({ updateGUI("master graph time zone") }, fabricPrivacy::logException)
+        }
         disposable += rxBus
             .toObservable(EventAutosensCalculationFinished::class.java)
             .observeOn(aapsSchedulers.io)
@@ -381,8 +395,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         })
     }
 
-    private fun updateDate() {
-        binding.date.text = dateUtil.dateAndTimeString(historyBrowserData.overviewData.fromTime)
+    private fun updateDate(displayTimeZone: TimeZone? = MasterGraphTime.forClient(config, preferences)) {
+        binding.date.text = MasterGraphTime.dateAndTimeString(this, dateUtil, historyBrowserData.overviewData.fromTime, displayTimeZone)
         binding.zoom.text = rangeToDisplay.toString()
     }
 
@@ -390,10 +404,11 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
     fun updateGUI(from: String) {
         aapsLogger.debug(LTag.UI, "updateGui $from")
 
-        updateDate()
+        val displayTimeZone = MasterGraphTime.forClient(config, preferences)
+        updateDate(displayTimeZone)
         binding.scaleButton.text = overviewMenus.scaleString(rangeToDisplay)
         val pump = activePlugin.activePump
-        val graphData = graphDataProvider.get().with(binding.bgGraph, historyBrowserData.overviewData)
+        val graphData = graphDataProvider.get().with(binding.bgGraph, historyBrowserData.overviewData, displayTimeZone)
         val menuChartSettings = overviewMenus.setting
         graphData.addInRangeArea(
             historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime,
@@ -458,7 +473,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         // old secondary-graph slot here.
         if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) {
             binding.graph5Container.visibility = android.view.View.VISIBLE
-            val graph5Data = graphDataProvider.get().with(binding.graph5, historyBrowserData.overviewData)
+            val graph5Data = graphDataProvider.get().with(binding.graph5, historyBrowserData.overviewData, displayTimeZone)
             graph5Data.addInRangeArea(
                 historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime,
                 preferences.get(UnitDoubleKey.OverviewLowMark),
@@ -508,7 +523,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         //val runningAutoIsf =  activePlugin.activeAPS.algorithm.name == "AUTO_ISF"
         val now = System.currentTimeMillis()
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size + 1)) {
-            val secondGraphData = graphDataProvider.get().with(secondaryGraphs[g], historyBrowserData.overviewData)
+            val secondGraphData = graphDataProvider.get().with(secondaryGraphs[g], historyBrowserData.overviewData, displayTimeZone)
             var useABSForScale = false
             var useIobForScale = false
             var useCobForScale = false

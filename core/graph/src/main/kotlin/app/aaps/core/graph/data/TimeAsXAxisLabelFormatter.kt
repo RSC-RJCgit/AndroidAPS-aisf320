@@ -4,6 +4,7 @@ import com.jjoe64.graphview.DefaultLabelFormatter
 import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.roundToInt
 
 /**
@@ -14,12 +15,15 @@ class TimeAsXAxisLabelFormatter(
     private val fromTime: Long = 0L,
     private val endTime: Long = 0L,
     private val numHorizontalLabels: Int = 0,
-    private val hideTickIndices: Set<Int> = emptySet()
+    private val hideTickIndices: Set<Int> = emptySet(),
+    internal val displayTimeZone: TimeZone? = null
 ) : DefaultLabelFormatter() {
 
     override fun formatLabel(value: Double, isValueX: Boolean): String =
         if (isValueX) {
-            val dateFormat: DateFormat = SimpleDateFormat(format, Locale.getDefault())
+            val dateFormat: DateFormat = SimpleDateFormat(format, Locale.getDefault()).apply {
+                displayTimeZone?.let { timeZone = it }
+            }
             // Whole hours drop the minutes ("10:00" -> "10"); the ticks are rounded to 15 min so :00 is unambiguous.
             val time = dateFormat.format(roundToDisplayGranularity(value.toLong())).removeSuffix(":00")
             if (hideTickIndices.isEmpty() || numHorizontalLabels < 2 || endTime <= fromTime) time
@@ -50,7 +54,10 @@ class TimeAsXAxisLabelFormatter(
     // position) to the nearest 15min on short windows, or the nearest hour on longer ones.
     private fun roundToDisplayGranularity(millis: Long): Long {
         val granularity = if (endTime > fromTime && endTime - fromTime <= SIX_HOURS_MS) FIFTEEN_MIN_MS else ONE_HOUR_MS
-        return Math.round(millis / granularity.toDouble()) * granularity
+        val offset = displayTimeZone?.getOffset(millis)?.toLong() ?: 0L
+        val rounded = Math.round((millis + offset) / granularity.toDouble()) * granularity - offset
+        // Rounding across a DST transition must not shift the tick by an extra hour.
+        return if (displayTimeZone != null && displayTimeZone.getOffset(rounded).toLong() != offset) millis else rounded
     }
 
     companion object {
