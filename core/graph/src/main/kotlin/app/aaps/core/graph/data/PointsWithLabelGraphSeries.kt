@@ -833,7 +833,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 // set values above point
             }
             // BOLUS arrowhead+shaft: drawn outside overdraw gate so it always appears when x is on-screen.
-            // Sized to match carb entry triangles (scaledPxSize), retaining bolus color (MAGENTA / YELLOW for delayed).
+            // Nonzero bolus triangles are slightly larger than carb triangles and point down toward the BG.
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
                 mPaint.color = if (value.hasDelayedComponent) Color.YELLOW else Color.MAGENTA
                 mPaint.strokeWidth = 0f
@@ -855,19 +855,18 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f * k, mPaint)
                 } else {
-                    // Offset down from the BG line so this doesn't sit exactly on top of a carb marker,
-                    // which is also placed at the nearest-BG-line position.
-                    val bEndY = (endY + bolusSize * 2f).coerceIn(graphTop + bolusSize, graphTop + graphHeight - bolusSize)
-                    val bTriBase = bEndY + bolusSize * 0.67f
+                    val halfWidth = bolusSize * 1.15f
+                    // Leave room above the tip of a carb triangle drawn at the same reading.
+                    val apex = endY - bolusSize * 1.35f
+                    val base = apex - halfWidth * 1.67f
                     drawArrows(arrayOf(
-                        Point(endX.toInt(), (bEndY - bolusSize).toInt()),
-                        Point((endX + bolusSize).toInt(), bTriBase.toInt()),
-                        Point((endX - bolusSize).toInt(), bTriBase.toInt())
+                        Point(endX.toInt(), apex.toInt()),
+                        Point((endX + halfWidth).toInt(), base.toInt()),
+                        Point((endX - halfWidth).toInt(), base.toInt())
                     ), canvas, mPaint)
-                    // shaft below the arrowhead, matching the SMB arrow's shaft style
                     mPaint.strokeWidth = 2f
                     mPaint.style = Paint.Style.STROKE
-                    canvas.drawLine(endX, bTriBase, endX, bTriBase + scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
+                    canvas.drawLine(endX, base, endX, base - scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
                 }
                 if (value.label.isNotEmpty()) {
                     val labelRatY = (value.labelY - minY) / diffY
