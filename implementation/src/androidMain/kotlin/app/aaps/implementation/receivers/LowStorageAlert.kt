@@ -1,6 +1,8 @@
 package app.aaps.implementation.receivers
 
 import android.content.Context
+import android.os.Environment
+import android.os.StatFs
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -43,23 +45,25 @@ class LowStorageAlert(
     @Synchronized
     fun check(context: Context) {
         if (!config.APS || config.AAPSCLIENT || activePlugin.activePumpInternal is VirtualPump) return
-        val filesDir = context.filesDir
-        if (!filesDir.isDirectory) return
         val now = dateUtil.now()
         val localTime = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
         val localDay = localTime.toLocalDate().toEpochDay()
         val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
             localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)
-        val freeBefore = filesDir.usableSpace / BYTES_PER_GIB
-        if (freeBefore < 10.0 || weeklyDue) {
+        val freeBefore = if (weeklyDue) null else freeStorageGiB()
+        val cleanupDue = weeklyDue || (freeBefore != null && freeBefore < 10.0)
+        if (cleanupDue) {
             deleteOldApks(context, preferences.get(StringKey.AapsDirectoryUri), aapsLogger)
         }
-        val freeGiB = filesDir.usableSpace / BYTES_PER_GIB
+        val freeGiB = if (cleanupDue) freeStorageGiB() else freeBefore
         if (weeklyDue) {
             preferences.put(LongNonKey.LastWeeklyApkCleanupDay, localDay)
-            sendStorageSms(String.format(Locale.US, "Weekly storage: %.1fGB free", freeGiB), smsTargets(), "Weekly storage")
+            val text = if (freeGiB == null) "Weekly storage: free space unavailable"
+            else String.format(Locale.US, "Weekly storage: %.1fGB free", freeGiB)
+            sendStorageSms(text, smsTargets(), "Weekly storage")
         }
 
+        if (freeGiB == null) return
         val notified = preferences.get(BooleanNonKey.LowStorageNotified)
         val sent = preferences.get(BooleanNonKey.LowStorageTargetedSmsSent)
         if (freeGiB >= 10.5) {
@@ -110,6 +114,9 @@ class LowStorageAlert(
     }
 
     private companion object {
+
+        fun freeStorageGiB(): Double? =
+            runCatching { StatFs(Environment.getDataDirectory().path).availableBytes / BYTES_PER_GIB }.getOrNull()
 
         const val BYTES_PER_GIB = 1024.0 * 1024.0 * 1024.0
     }
