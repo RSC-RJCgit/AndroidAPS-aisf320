@@ -269,6 +269,18 @@
                         app:layout_gravity="fill"
                         app:layout_row="2" />
 
+                    <app.aaps.core.ui.elements.SingleClickButton
+                        android:id="@+id/add_archive_folder"
+                        style="@style/GrayButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:text="@string/add_installer_archive_folder"
+                        android:textSize="11sp"
+                        app:layout_column="0"
+                        app:layout_columnSpan="2"
+                        app:layout_gravity="fill"
+                        app:layout_row="3" />
+
                 </androidx.gridlayout.widget.GridLayout>
 
             </com.google.android.material.card.MaterialCardView>

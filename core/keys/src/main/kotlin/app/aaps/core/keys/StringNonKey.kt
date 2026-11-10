@@ -27,6 +27,7 @@ enum class StringNonKey(
     SmsOtpSecret("smscommunicator_otp_secret", defaultValue = ""),
     TotalBaseBasal("TBB", defaultValue = "10.00"),
     MirroredAutoIsfSettings("mirrored_autoisf_settings", defaultValue = "", exportable = false),
+    InstallerArchiveFolders("installer_archive_folders", "", exportable = false),
     ClientGraphMasterTimeZone("client_graph_master_time_zone", "", exportable = false),
     LiveStepsHistory("live_steps_history", defaultValue = "[]", exportable = false),
     // Full SMS text of AutoISF CarePortal notes, by note time, kept on this phone only (2026-11-09, see NoteSmsTexts)

@@ -6,7 +6,6 @@ import android.os.Environment
 import android.os.StatFs
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
-import androidx.core.net.toUri
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -17,6 +16,7 @@ import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import java.io.IOException
 import java.time.DayOfWeek
@@ -44,7 +44,10 @@ class ApkStorageMaintenance @Inject constructor(
         val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
             localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)
         if (weeklyDue || freeStorageGiB()?.let { it < 10.0 } == true) {
-            deleteOldApks(context, preferences.get(StringKey.AapsDirectoryUri), logger)
+            deleteOldInstallers(
+                context, preferences.get(StringKey.AapsDirectoryUri),
+                preferences.get(StringNonKey.InstallerArchiveFolders), logger
+            )
         }
         if (weeklyDue) {
             preferences.put(LongNonKey.LastWeeklyApkCleanupDay, localDay)
@@ -84,16 +87,16 @@ class ApkStorageMaintenance @Inject constructor(
     }
 }
 
-/** Permanently deletes old APKs across the selected AAPS folder and other authorized AAPS archive folders. */
-private fun deleteOldApks(context: Context, folderUri: String, logger: AAPSLogger) {
+/** Permanently deletes old installers across the selected AAPS folder and other authorized AAPS archive folders. */
+private fun deleteOldInstallers(context: Context, folderUri: String, extraFolders: String, logger: AAPSLogger) {
     if (folderUri.isBlank()) {
-        logger.warn(LTag.CORE, "APK cleanup needs a selected AAPS folder")
+        logger.warn(LTag.CORE, "Installer cleanup needs a selected AAPS folder")
         return
     }
-    val selected = folderUri.toUri()
+    val selected = Uri.parse(folderUri)
     val resolver = context.contentResolver
     if (selected.authority != EXTERNAL_STORAGE_AUTHORITY || !DocumentsContract.isTreeUri(selected)) {
-        logger.warn(LTag.CORE, "APK cleanup needs an AAPS folder on device storage")
+        logger.warn(LTag.CORE, "Installer cleanup needs an AAPS folder on device storage")
         return
     }
     val grantedTrees = resolver.persistedUriPermissions
@@ -101,14 +104,16 @@ private fun deleteOldApks(context: Context, folderUri: String, logger: AAPSLogge
         .map { it.uri }
         .filter { it.authority == EXTERNAL_STORAGE_AUTHORITY && DocumentsContract.isTreeUri(it) }
     if (selected !in grantedTrees) {
-        logger.warn(LTag.CORE, "APK cleanup needs read and write access to the AAPS folder")
+        logger.warn(LTag.CORE, "Installer cleanup needs read and write access to the AAPS folder")
         return
     }
+    val extraUris = extraFolders.lineSequence().filter(String::isNotBlank).toSet()
     val trees = listOf(selected) + grantedTrees.filter { tree ->
-        tree != selected && DocumentsContract.getTreeDocumentId(tree).substringAfter(':', "") in AAPS_ARCHIVE_FOLDERS
+        val folder = DocumentsContract.getTreeDocumentId(tree).substringAfter(':', "")
+        tree != selected && (tree.toString() in extraUris || AAPS_ARCHIVE_FOLDERS.any { it.equals(folder, ignoreCase = true) })
     }
 
-    val apks = mutableMapOf<String, ArchiveApk>()
+    val installers = mutableMapOf<String, ArchiveInstaller>()
     val columns = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_LAST_MODIFIED)
     try {
         for (tree in trees) {
@@ -125,40 +130,41 @@ private fun deleteOldApks(context: Context, folderUri: String, logger: AAPSLogge
                         val name = it.getString(1)
                         if (it.getString(2) == Document.MIME_TYPE_DIR) {
                             folders.add(id)
-                        } else if (name.endsWith(".apk", ignoreCase = true) && !name.equals("aapsNewestAPK.apk", ignoreCase = true)) {
+                        } else if (INSTALLER_EXTENSIONS.any { name.endsWith(it, ignoreCase = true) } && !name.equals("aapsNewestAPK.apk", ignoreCase = true)) {
                             val modified = it.getLong(3)
-                            if (modified <= 0L) throw IOException("Missing APK modification time")
-                            apks.putIfAbsent(id, ArchiveApk(tree, id, modified))
+                            if (modified <= 0L) throw IOException("Missing installer modification time")
+                            installers.putIfAbsent(id, ArchiveInstaller(tree, id, modified))
                         }
                     }
                 }
             }
         }
     } catch (error: Exception) {
-        logger.error(LTag.CORE, "Could not list APKs in the AAPS folders", error)
+        logger.error(LTag.CORE, "Could not list installers in the AAPS folders", error)
         return
     }
 
     var deleted = 0
     var failed = 0
-    val oldApks = apks.values.sortedWith(compareByDescending<ArchiveApk> { it.modified }.thenBy { it.id }).drop(10)
-    for (apk in oldApks) {
-        val uri = DocumentsContract.buildDocumentUriUsingTree(apk.tree, apk.id)
+    val oldInstallers = installers.values.sortedWith(compareByDescending<ArchiveInstaller> { it.modified }.thenBy { it.id }).drop(10)
+    for (installer in oldInstallers) {
+        val uri = DocumentsContract.buildDocumentUriUsingTree(installer.tree, installer.id)
         val removed = try {
             DocumentsContract.deleteDocument(resolver, uri)
         } catch (error: Exception) {
-            logger.error(LTag.CORE, "Could not delete an old APK", error)
+            logger.error(LTag.CORE, "Could not delete an old installer", error)
             false
         }
         if (removed) deleted++ else failed++
     }
-    val result = "APK cleanup: ${trees.size} folders, ${apks.size} APKs, $deleted deleted, $failed failed"
+    val result = "Installer cleanup: ${trees.size} folders, ${installers.size} installers, $deleted deleted, $failed failed"
     if (failed > 0) logger.warn(LTag.CORE, result)
     else if (deleted > 0) logger.info(LTag.CORE, result)
     else logger.debug(LTag.CORE, result)
 }
 
 private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"
-private val AAPS_ARCHIVE_FOLDERS = setOf("AAPS", "AAPS3", "AAPS333", "AAPS4ios")
+private val INSTALLER_EXTENSIONS = setOf(".apk", ".dmg", ".msi")
+private val AAPS_ARCHIVE_FOLDERS = setOf("AAP", "AAPS", "AAPS3", "AAPS333", "AAPS4ios")
 
-private data class ArchiveApk(val tree: Uri, val id: String, val modified: Long)
+private data class ArchiveInstaller(val tree: Uri, val id: String, val modified: Long)

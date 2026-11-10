@@ -2,13 +2,16 @@ package app.aaps.plugins.configuration.maintenance
 
 import android.content.Intent
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.text.toSpanned
 import androidx.fragment.app.FragmentActivity
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -31,10 +34,12 @@ import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.ui.extensions.runOnUiThread
 import app.aaps.core.ui.extensions.toVisibility
+import app.aaps.core.ui.toast.ToastUtils
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.plugins.configuration.R
 import app.aaps.plugins.configuration.activities.DaggerAppCompatActivityWithResult
@@ -53,6 +58,7 @@ import javax.inject.Inject
 
 class MaintenanceFragment : DaggerFragment() {
 
+    @Inject lateinit var config: Config
     @Inject lateinit var aapsLogger: AAPSLogger
     @Inject lateinit var maintenancePlugin: MaintenancePlugin
     @Inject lateinit var rxBus: RxBus
@@ -74,6 +80,22 @@ class MaintenanceFragment : DaggerFragment() {
     @Inject lateinit var cloudStorageManager: CloudStorageManager
     @Inject lateinit var cloudDirectoryDialog: CloudDirectoryDialog
     @Inject lateinit var exportOptionsDialog: ExportOptionsDialog
+
+    private val addArchiveTree = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            val context = requireContext()
+            val added = runCatching {
+                require(uri.authority == "com.android.externalstorage.documents" && DocumentsContract.isTreeUri(uri))
+                require(DocumentsContract.getTreeDocumentId(uri).substringAfter(':', "").isNotBlank())
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                val key = StringNonKey.InstallerArchiveFolders
+                val folders = preferences.get(key).lineSequence().filter(String::isNotBlank).toMutableSet()
+                if (folders.add(uri.toString())) preferences.put(key, folders.joinToString("\n"))
+            }.isSuccess
+            if (added) ToastUtils.infoToast(context, rh.gs(R.string.installer_archive_folder_added))
+            else ToastUtils.errorToast(context, rh.gs(R.string.installer_archive_folder_access_error))
+        }
+    }
 
     private val disposable = CompositeDisposable()
     private var inMenu = false
@@ -189,6 +211,13 @@ class MaintenanceFragment : DaggerFragment() {
             (requireActivity() as? DaggerAppCompatActivityWithResult)?.let { act ->
                 maintenancePlugin.selectAapsDirectory(act)
             }
+        }
+        binding.addArchiveFolder.visibility = (config.APS && !config.AAPSCLIENT).toVisibility()
+        binding.addArchiveFolder.setOnClickListener {
+            OKDialog.showConfirmation(
+                requireContext(), rh.gs(R.string.add_installer_archive_folder),
+                rh.gs(R.string.add_installer_archive_folder_desc), Runnable { addArchiveTree.launch(null) }
+            )
         }
         // Cloud directory: choose not to use or Google Drive
         binding.cloudDirectory.setOnClickListener {

@@ -106,6 +106,10 @@
     <string name="check_preferences_import_anyway_btn">Import anyway (DANGEROUS!)</string>
     <string name="import_setting">Import settings</string>
     <string name="aaps_directory">AAPS directory</string>
+    <string name="add_installer_archive_folder">Add archive folder</string>
+    <string name="add_installer_archive_folder_desc">Allow automatic removal of older APK, DMG and MSI files in this folder and its subfolders.</string>
+    <string name="installer_archive_folder_added">Archive folder added</string>
+    <string name="installer_archive_folder_access_error">Could not add archive folder. Select a folder on device storage.</string>
     <string name="select_aaps_directory">Select AAPS directory for storing exports, configurations etc.</string>
     <string name="check_preferences_before_import">Please check preferences before importing:</string>
     <string name="check_preferences_cannot_import">Preferences cannot be imported!</string>
