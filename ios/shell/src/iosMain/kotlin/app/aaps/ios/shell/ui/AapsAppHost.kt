@@ -66,7 +66,9 @@ import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
 import app.aaps.implementation.receivers.IosTimeDateOrTZChangeWatcher
 import app.aaps.implementation.logging.AAPSLoggerIos
+import app.aaps.implementation.protection.IosBiometricPrompt
 import app.aaps.implementation.protection.KeychainUnavailableException
+import app.aaps.implementation.protection.LocalAuthenticationEvaluator
 import app.aaps.ios.shell.IosAppStartup
 import app.aaps.ios.shell.IosCrashLog
 import app.aaps.ios.shell.PluginStoreRegistry
@@ -116,7 +118,7 @@ import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSSearchPathForDirectoriesInDomains
 import platform.Foundation.NSUserDomainMask
-import platform.UIKit.UIApplicationDidBecomeActiveNotification
+import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIViewController
 
@@ -303,7 +305,11 @@ private fun startApp(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivit
         rxBus = graph.rxBus,
         startPeriodicWork = { graph.periodicMaintenance.start(graph.appScope) },
         scope = graph.appScope,
-        onPluginsStarted = { graph.config.initCompleted() }
+        onPluginsStarted = { graph.config.initCompleted() },
+        startAutomation = {
+            // Load and sync rules on iOS clients without enabling execution on the iOS master.
+            if (!graph.config.APS) graph.automationRuntime.start()
+        }
     ).run()
 
     // Attach to the notification centre. Registering a category only records it now, so that building
@@ -398,6 +404,10 @@ private fun AapsApp(app: StartedApp) {
     // beside the language effect because both are app wide settings applied while it runs.
     KeepScreenOnEffect(graph.preferences)
 
+    // One prompt for the whole app, like the single `BiometricCheck` call Android makes. Held across
+    // recompositions because `LAContext` is built per evaluation inside it, not here.
+    val biometricPrompt = remember { IosBiometricPrompt(LocalAuthenticationEvaluator(), logger) }
+
     val restart by graph.uiRestart.signal.collectAsState()
     key(restart) {
     // iOS has no ambient application object, so the factory is provided here rather than found.
@@ -415,6 +425,19 @@ private fun AapsApp(app: StartedApp) {
             passwordHasher = graph.passwordHasher,
             passwordCheck = graph.passwordCheck,
             protectionCheck = graph.protectionCheck,
+            // The one platform-specific part of protection, exactly as `ComposeMainActivity` passes
+            // its `BiometricCheck` one. Without it the host falls back to its own default, which
+            // answers "use the password" at once, so Face ID was never shown and application
+            // protection could not be satisfied (nightscout/AndroidAPS#5520).
+            showBiometricSimple = { title, onSuccess, onFallback, onCancel ->
+                biometricPrompt.show(
+                    title = title,
+                    fallbackTitle = graph.textResolver.gs(CoreUiStrings.use_pin_password),
+                    onSuccess = onSuccess,
+                    onFallback = onFallback,
+                    onCancel = onCancel
+                )
+            },
             exportPasswordDataStore = graph.exportPasswordDataStore,
             visibilityContext = graph.visibilityContext,
             nsClient = graph.nsClient,
@@ -436,11 +459,21 @@ private fun AapsApp(app: StartedApp) {
             // has no request to render and a configured app-launch password never appears - the
             // setting looked saved and did nothing, which is how it was found.
             //
-            // Asked at launch **and every time the app comes back to the foreground**, which is
+            // Asked at launch **and every time the app comes back from the background**, which is
             // the case that matters: a phone handed to someone else while AAPS is backgrounded.
             // Android does the same from `onResume`. When protection is set to "No protection"
             // this costs nothing - `requestProtection` grants straight away without a dialog, so
             // the gate only appears for someone who asked for it.
+            //
+            // `WillEnterForeground` and **not** `DidBecomeActive`, which this used to listen to.
+            // `DidBecomeActive` also fires when a system sheet closes, and the Face ID sheet is a
+            // system sheet - so asking for Face ID re-locked the app the moment the scan succeeded
+            // and the sheet went away, for ever (nightscout/AndroidAPS#5520). Control centre and
+            // the notification shade did the same. Android does not see this because
+            // `BiometricPrompt` is an overlay that never pauses the activity, so `onResume` does
+            // not fire when it closes. `WillEnterForeground` fires only on a real return from the
+            // background, which is what `onResume` means here, and it pairs with
+            // `IosProtectionLifecycle`, which clears the authorization on `DidEnterBackground`.
             var unlocked by remember { mutableStateOf(false) }
             var asking by remember { mutableStateOf(false) }
             val requestUnlock = remember {
@@ -465,7 +498,7 @@ private fun AapsApp(app: StartedApp) {
             DisposableEffect(Unit) {
                 requestUnlock()
                 val observer = NSNotificationCenter.defaultCenter.addObserverForName(
-                    name = UIApplicationDidBecomeActiveNotification,
+                    name = UIApplicationWillEnterForegroundNotification,
                     `object` = null,
                     queue = NSOperationQueue.mainQueue,
                     usingBlock = { requestUnlock() }
@@ -578,11 +611,7 @@ private fun AapsApp(app: StartedApp) {
                     rxBus = graph.rxBus,
                     activePlugin = graph.activePlugin,
                     pluginPermissions = graph.pluginPermissions,
-                    // Passed so the rules can be read and edited here. The runtime is deliberately
-                    // NOT started on a client: `MainApp` calls `automationRuntime.start()`, this shell
-                    // does not, and that is the design - a follower edits definitions and the master
-                    // runs them. Do not "fix" the missing start() call; it would give a second machine
-                    // the power to fire the same rules.
+                    // iOS clients load and sync definitions during startup. Rule execution is master-only.
                     automationRuntime = graph.automationRuntime,
                     preferences = graph.preferences,
                     rh = graph.textResolver,

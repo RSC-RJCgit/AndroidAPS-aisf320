@@ -21,7 +21,8 @@ enum class PumpCapability {
     TandemSlimCapabilities(Refill, ReplaceBattery),
     TandemMobiCapabilities(Bolus, TempBasal, BasalProfileSet, Refill, BasalRate30min),
     // Diaconn set without Refill and ReplaceBattery: the Equil wizard fills the reservoir and fits the charged battery
-    EquilCapabilities(Bolus, ExtendedBolus, TempBasal, BasalProfileSet, TDD, ManualTDDLoad)
+    // The Equil driver cannot read daily totals from the pump. AAPS calculates them from delivered insulin.
+    EquilCapabilities(Bolus, ExtendedBolus, TempBasal, BasalProfileSet)
     ;
 
 

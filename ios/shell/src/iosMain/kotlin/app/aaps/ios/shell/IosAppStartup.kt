@@ -27,7 +27,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * ## What Android also does here, and this does not yet
  *
  * `MainApp` migrates preferences, re-reads the profile repository, vacuums the database, starts the
- * running-mode reconciler and expiry schedulers, starts the automation runtime and runs data
+ * running-mode reconciler and expiry schedulers and runs data
  * migrations - all in the background, behind the splash screen that `AapsAppRoot` shows until
  * `config.initCompleted()`. None of that is wired up here yet. What is wired up is the splash itself:
  * the app counts as initialized only once the plugins have started ([onPluginsStarted]).
@@ -43,7 +43,9 @@ internal class IosAppStartup(
     /** Where the wait for the plugins runs. Not the main thread's caller, so the UI is never blocked by it. */
     private val scope: CoroutineScope,
     /** Called once the plugins have started, or the wait gave up: the app then counts as initialized. */
-    private val onPluginsStarted: () -> Unit
+    private val onPluginsStarted: () -> Unit,
+    /** Loads automation rules once the plugins have settled. */
+    private val startAutomation: () -> Unit
 ) {
 
     fun run() {
@@ -83,6 +85,7 @@ internal class IosAppStartup(
                 aapsLogger.warn(LTag.CORE, "Plugins did not finish starting within $PLUGIN_START_WAIT")
             onPluginsStarted()
             rxBus.send(EventAppInitialized())
+            startAutomation()
         }
 
         // The periodic housekeeping Android gets from KeepAliveWorker: the missed-reading alarm,
