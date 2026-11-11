@@ -43,6 +43,17 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
+        <TextView
+            android:id="@+id/graph_current_time"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignBaseline="@id/graph_bg_value"
+            android:layout_toEndOf="@id/graph_bg_value"
+            android:layout_marginStart="8dp"
+            android:singleLine="true"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/history_previous"
             android:layout_width="35dp"

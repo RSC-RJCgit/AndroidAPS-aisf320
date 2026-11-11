@@ -19,6 +19,7 @@ import android.os.HandlerThread
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.util.TypedValue
@@ -549,9 +550,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         refreshLoop = Runnable {
             refreshAll()
-            handler.postDelayed(refreshLoop, 60 * 1000L)
+            handler.postDelayed(refreshLoop, 60_000L - dateUtil.now() % 60_000L)
         }
-        handler.postDelayed(refreshLoop, 60 * 1000L)
+        handler.postDelayed(refreshLoop, 60_000L - dateUtil.now() % 60_000L)
 
         handler.post { refreshAll() }
         // Force a genuine fresh BG-data + graph recompute on resume (2026-10-01, per explicit request),
@@ -2309,6 +2310,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (!isActualBg) binding.graphsLayout.graphBgValue.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 else binding.graphsLayout.graphBgValue.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
             binding.graphsLayout.graphBgValue.visibility = if (lastBg != null && historicalStartTime == null) View.VISIBLE else View.GONE
+            binding.graphsLayout.graphCurrentTime.text = MasterGraphTime.timeString(
+                binding.root.context, dateUtil, dateUtil.now(), MasterGraphTime.forClient(config, preferences)
+            )
+            binding.graphsLayout.graphCurrentTime.visibility = binding.graphsLayout.graphBgValue.visibility
 
             val outDate = (if (!isActualBg) rh.gs(R.string.a11y_bg_outdated) else "")
             binding.infoLayout.bg.contentDescription = rh.gs(R.string.a11y_blood_glucose) + " " + binding.infoLayout.bg.text.toString() + " " + lastBgDescription + " " + outDate
@@ -3571,6 +3576,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         PointsWithLabelGraphSeries.showTextRows = preferences.get(BooleanKey.ApsAutoIsfShowGraphText)
         val pump = activePlugin.activePump
         val displayTimeZone = MasterGraphTime.forClient(config, preferences)
+        val graphCurrentTime = MasterGraphTime.timeString(binding.root.context, dateUtil, dateUtil.now(), displayTimeZone)
+        binding.graphsLayout.graphCurrentTime.text = graphCurrentTime
         binding.graphsLayout.historyDate.text = historicalStartTime?.let {
             MasterGraphTime.dateAndTimeString(binding.root.context, dateUtil, it, displayTimeZone)
         }.orEmpty()
@@ -3578,6 +3585,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // An older window shows no current BG under the hours drop-down (2026-10-27); back on now it shows again
         binding.graphsLayout.graphBgValue.visibility =
             if (historicalStartTime == null && binding.graphsLayout.graphBgValue.text.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.graphsLayout.graphCurrentTime.visibility = binding.graphsLayout.graphBgValue.visibility
         val graphData = graphDataProvider.get().with(binding.graphsLayout.bgGraph, overviewData, displayTimeZone)
         val menuChartSettings = overviewMenus.setting
         if (menuChartSettings.isEmpty()) return
@@ -3930,6 +3938,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (!labelBgIsActual)
                     graphLabel.setSpan(StrikethroughSpan(), valueStart, graphLabel.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
+            graphLabel.append("  ")
+            val timeStart = graphLabel.length
+            graphLabel.append(graphCurrentTime)
+            graphLabel.setSpan(RelativeSizeSpan(0.8f), timeStart, graphLabel.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             secondaryGraphsLabel[g].text = graphLabel
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
