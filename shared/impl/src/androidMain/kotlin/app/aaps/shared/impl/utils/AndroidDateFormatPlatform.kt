@@ -1,5 +1,9 @@
 package app.aaps.shared.impl.utils
 
+import app.aaps.core.data.time.AppTimeZone
+
+import app.aaps.core.data.time.javaZone
+
 import android.content.Context
 import java.time.Instant
 import java.time.ZoneId
@@ -19,7 +23,7 @@ class AndroidDateFormatPlatform(
     private val context: Context
 ) : DateFormatPlatform {
 
-    private val systemZone: ZoneId get() = ZoneId.systemDefault()
+    private val systemZone: ZoneId get() = AppTimeZone.javaZone()
     private val displayLocale: Locale get() = Locale.getDefault()
 
     override fun is24Hour(): Boolean = AndroidDateFormat.is24HourFormat(context)

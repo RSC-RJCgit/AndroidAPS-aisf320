@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.interfaces.aps.APSResult
@@ -1971,7 +1973,7 @@ class DetermineBasalAutoISF(
 
         // if not in LGS mode, cancel temps before the top of the hour to reduce beeping/vibration
         // console.error(profile.skip_neutral_temps, rT.deliverAt.getMinutes());
-        val minutes = Instant.fromEpochMilliseconds(rT.deliverAt!!).toLocalDateTime(TimeZone.currentSystemDefault()).minute
+        val minutes = Instant.fromEpochMilliseconds(rT.deliverAt!!).toLocalDateTime(AppTimeZone.current()).minute
         if (profile.skip_neutral_temps && minutes >= 55) {
             rT.reason.append("; Canceling temp at " + minutes + "m past the hour. ")
             return setTempBasal(0.0, 0, profile, rT, currenttemp)
@@ -2149,7 +2151,7 @@ class DetermineBasalAutoISF(
                 var stepCutDirect = 0.0
                 if (autoIsfMode) {
                     val ratioHour = if (hour in 0..23) hour
-                    else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                    else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(AppTimeZone.current()).hour
                     val effectiveSmbRatio = overnightSmbDeliveryRatio(smb_ratio, ratioHour)
                     if (effectiveSmbRatio != smb_ratio) {
                         consoleError.add("Overnight SMB delivery ratio: ${round(smb_ratio, 2)} -> ${round(effectiveSmbRatio, 2)} (00:00-08:00)")
@@ -2163,7 +2165,7 @@ class DetermineBasalAutoISF(
                     microBolus = kotlin.math.floor(microBolus * roundSMBTo) / roundSMBTo
                 }
                 val stackHour = if (hour in 0..23) hour
-                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(AppTimeZone.current()).hour
                 val stacked = smbStackTrim(
                     microBolus = microBolus,
                     smbIntervalSec = smbIntervalSec,
@@ -2178,7 +2180,7 @@ class DetermineBasalAutoISF(
                 smbStackStartToStore = stacked.stackStart
                 // 2026-10-08: the SMB offset is worked out before Tier 3 now, because Tier 3 needs the current offset as its BG floor.
                 val offsetHour = if (hour in 0..23) hour
-                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(AppTimeZone.current()).hour
                 val carbAgeMin = if (meal_data.carbs > 0.0) round((systemTime - meal_data.lastCarbTime) / 60000.0, 2) else 363.0
                 val offset = targetOffset(
                     smbDeliveryRatioMax = profile.smb_delivery_ratio_max,
@@ -2193,7 +2195,7 @@ class DetermineBasalAutoISF(
                     carbAgeMin = carbAgeMin,
                 )
                 val tier3Hour = if (hour in 0..23) hour
-                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(AppTimeZone.current()).hour
                 fun tier3At(scale: Double) = tier3BoostMicroBolus(
                     enabled = uamBoostEnabled,
                     hour = tier3Hour,
@@ -2236,7 +2238,7 @@ class DetermineBasalAutoISF(
                 tier3.console.lines().filter { it.isNotBlank() }.forEach { consoleError.add(it) }
                 if (fastRiseSettingOn != null) {
                     val nowHour = if (hour in 0..23) hour
-                    else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(TimeZone.currentSystemDefault()).hour
+                    else Instant.fromEpochMilliseconds(currentTime).toLocalDateTime(AppTimeZone.current()).hour
                     val loReb = loRebWindow(
                         bg = bg,
                         delta = glucose_status.delta,
@@ -2316,7 +2318,7 @@ class DetermineBasalAutoISF(
                     microBolus = adjusted.microBolus
                     if (adjusted.reason.isNotEmpty()) rT.reason.append(adjusted.reason)
                     val minuteOfDay = Instant.fromEpochMilliseconds(currentTime)
-                        .toLocalDateTime(TimeZone.currentSystemDefault())
+                        .toLocalDateTime(AppTimeZone.current())
                         .let { it.hour * 60 + it.minute }
                     val fastRiseNow = libreActive &&
                         bg > 6.0 * 18.0 &&
@@ -2430,7 +2432,7 @@ class DetermineBasalAutoISF(
                 // allow SMBIntervals between 1 and 10 minutes
                 var SMBInterval = min(10, max(1, profile.SMBInterval)) * 60.0   // in seconds
                 val cadenceMinuteOfDay = Instant.fromEpochMilliseconds(currentTime)
-                    .toLocalDateTime(TimeZone.currentSystemDefault())
+                    .toLocalDateTime(AppTimeZone.current())
                     .let { it.hour * 60 + it.minute }
                 val flooredInterval = overnightSmbIntervalSec(SMBInterval, cadenceMinuteOfDay, bg)
                 if (flooredInterval != SMBInterval) {

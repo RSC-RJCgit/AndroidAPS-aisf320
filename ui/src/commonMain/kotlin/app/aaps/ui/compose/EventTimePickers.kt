@@ -1,5 +1,7 @@
 package app.aaps.ui.compose
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.runtime.Composable
 import app.aaps.core.ui.compose.dialogs.DatePickerModal
 import app.aaps.core.ui.compose.dialogs.TimePickerModal
@@ -33,7 +35,7 @@ fun EventDatePicker(
     onEventTimeChanged: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val tz = TimeZone.currentSystemDefault()
+    val tz = AppTimeZone.current()
     DatePickerModal(
         onDateSelected = { selectedMillis ->
             selectedMillis?.let {
@@ -62,7 +64,7 @@ fun EventTimePicker(
     onEventTimeChanged: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val tz = TimeZone.currentSystemDefault()
+    val tz = AppTimeZone.current()
     val currentLdt = Instant.fromEpochMilliseconds(eventTimeMillis).toLocalDateTime(tz)
     TimePickerModal(
         onTimeSelected = { hour, minute ->

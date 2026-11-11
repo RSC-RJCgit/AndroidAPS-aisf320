@@ -1,9 +1,10 @@
 package app.aaps.ui.compose.history
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.data.configuration.Constants
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
@@ -61,12 +62,12 @@ class HistoryViewModel(
     // 100 s later each day. And a day with a clock change is 23 or 25 hours long, so a fixed 24 hours
     // from its midnight lands in the wrong day.
     fun previousWindow() {
-        setTime(MidnightTime.daysBack(windowMidnight(), 1, SystemTimeZone.current()))
+        setTime(MidnightTime.daysBack(windowMidnight(), 1, AppTimeZone.current()))
         runCalculation("previousWindow")
     }
 
     fun nextWindow() {
-        setTime(MidnightTime.daysBack(windowMidnight(), -1, SystemTimeZone.current()))
+        setTime(MidnightTime.daysBack(windowMidnight(), -1, AppTimeZone.current()))
         runCalculation("nextWindow")
     }
 
@@ -95,11 +96,11 @@ class HistoryViewModel(
 
     // Round to start-of-day so windows snap to midnight.
     private fun setTime(start: Long) {
-        adjustTimeRange(MidnightTime.before(start, SystemTimeZone.current()))
+        adjustTimeRange(MidnightTime.before(start, AppTimeZone.current()))
     }
 
     /** The midnight the current window starts at, without the nudge. */
-    private fun windowMidnight(): Long = MidnightTime.before(historyScope.overviewData.fromTime, SystemTimeZone.current())
+    private fun windowMidnight(): Long = MidnightTime.before(historyScope.overviewData.fromTime, AppTimeZone.current())
 
     // The nudge here comes from the legacy GraphView era where exact boundary
     // timestamps produced off-by-one rounding at axis labels. Compose/Vico doesn't need it,

@@ -1,5 +1,7 @@
 package app.aaps.implementation.profile
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.data.Block
@@ -714,7 +716,7 @@ class ProfileRepositoryImpl(
                             put("target_low", target.lowToJsonArray())
                             put("target_high", target.highToJsonArray())
                             put("units", if (mgdl) GlucoseUnit.MGDL.asText else GlucoseUnit.MMOL.asText)
-                            put("timezone", TimeZone.currentSystemDefault().id)
+                            put("timezone", AppTimeZone.current().id)
                         }
                     }
                 }

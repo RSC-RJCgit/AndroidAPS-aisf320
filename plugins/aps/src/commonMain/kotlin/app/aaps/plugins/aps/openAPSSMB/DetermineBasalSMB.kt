@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSSMB
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.interfaces.aps.APSResult
@@ -1001,7 +1003,7 @@ class DetermineBasalSMB(
 
         // if not in LGS mode, cancel temps before the top of the hour to reduce beeping/vibration
         // console.error(profile.skip_neutral_temps, rT.deliverAt.getMinutes());
-        val minutes = Instant.fromEpochMilliseconds(rT.deliverAt!!).toLocalDateTime(TimeZone.currentSystemDefault()).minute
+        val minutes = Instant.fromEpochMilliseconds(rT.deliverAt!!).toLocalDateTime(AppTimeZone.current()).minute
         if (profile.skip_neutral_temps && minutes >= 55) {
             rT.reason.append("; Canceling temp at " + minutes + "m past the hour. ")
             return setTempBasal(0.0, 0, profile, rT, currenttemp)

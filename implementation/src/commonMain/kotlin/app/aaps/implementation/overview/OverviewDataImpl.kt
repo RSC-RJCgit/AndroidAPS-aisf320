@@ -1,7 +1,8 @@
 package app.aaps.implementation.overview
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.overview.OverviewData
 import dev.zacsweers.metro.AppScope
@@ -29,7 +30,7 @@ class OverviewDataImpl() : OverviewData {
     override var endTime: Long = toTime
 
     private fun initialToTime(): Long {
-        val tz = SystemTimeZone.current()
+        val tz = AppTimeZone.current()
         val now = Instant.fromEpochMilliseconds(Clock.System.now().toEpochMilliseconds())
         val local = now.toLocalDateTime(tz)
         val truncatedHour = LocalDateTime(local.year, local.month, local.day, local.hour, 0)

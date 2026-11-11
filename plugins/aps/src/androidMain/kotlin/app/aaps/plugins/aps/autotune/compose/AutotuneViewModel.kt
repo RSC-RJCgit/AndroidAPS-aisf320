@@ -1,12 +1,13 @@
 package app.aaps.plugins.aps.autotune.compose
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.view.View
 import androidx.compose.runtime.Immutable
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.RM
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
@@ -420,7 +421,7 @@ class AutotuneViewModel(
     }
 
     private fun checkNewDay() {
-        val runToday = autotunePlugin.lastRun > MidnightTime.before(dateUtil.now() - autotunePlugin.autotuneStartHour * 3600 * 1000L, SystemTimeZone.current()) + autotunePlugin.autotuneStartHour * 3600 * 1000L
+        val runToday = autotunePlugin.lastRun > MidnightTime.before(dateUtil.now() - autotunePlugin.autotuneStartHour * 3600 * 1000L, AppTimeZone.current()) + autotunePlugin.autotuneStartHour * 3600 * 1000L
         if (!runToday || autotunePlugin.result.isEmpty())
             resetParam(!runToday)
     }

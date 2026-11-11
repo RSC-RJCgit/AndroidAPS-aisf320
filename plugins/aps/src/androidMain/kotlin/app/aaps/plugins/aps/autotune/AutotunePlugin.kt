@@ -2,10 +2,13 @@
 
 package app.aaps.plugins.aps.autotune
 
+import app.aaps.core.data.time.AppTimeZone
+
+import app.aaps.core.data.time.javaTimeZone
+
 import android.view.View
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.plugin.PluginType
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -208,7 +211,7 @@ class AutotunePlugin(
         autotuneFS.createAutotuneFolder()                           //create autotune subfolder for autotune files if not exists
         autotuneFS.deleteAutotuneFiles()                            //clean autotune folder before run
         // Today at 4 AM
-        var endTime = MidnightTime.before(lastRun, SystemTimeZone.current()) + autotuneStartHour * 60 * 60 * 1000L
+        var endTime = MidnightTime.before(lastRun, AppTimeZone.current()) + autotuneStartHour * 60 * 60 * 1000L
         if (endTime > lastRun) endTime -= 24 * 60 * 60 * 1000L      // Check if 4 AM is before now
         val startTime = endTime - daysBack * 24 * 60 * 60 * 1000L
         autotuneFS.exportSettings(settings(lastRun, daysBack, startTime, endTime, iCfg))
@@ -390,7 +393,7 @@ class AutotunePlugin(
     private fun settings(runDate: Long, nbDays: Int, firstLoopStart: Long, lastLoopEnd: Long, iCfg: ICfg): String {
         var jsonString = ""
         val jsonSettings = JSONObject()
-        val utcOffset = T.msecs(TimeZone.getDefault().getOffset(dateUtil.now()).toLong()).hours()
+        val utcOffset = T.msecs(AppTimeZone.javaTimeZone().getOffset(dateUtil.now()).toLong()).hours()
         val startDateString = dateUtil.toISOString(firstLoopStart).substring(0, 10)
         val endDateString = dateUtil.toISOString(lastLoopEnd - 24 * 60 * 60 * 1000L).substring(0, 10)
         val nsUrl = preferences.get(StringKey.NsClientUrl)
@@ -401,13 +404,13 @@ class AutotunePlugin(
             jsonSettings.put("dateutc", dateUtil.toISOAsUTC(runDate))
             jsonSettings.put("utcOffset", utcOffset)
             jsonSettings.put("units", profileFunction.getUnits().asText)
-            jsonSettings.put("timezone", TimeZone.getDefault().id)
+            jsonSettings.put("timezone", AppTimeZone.javaTimeZone().id)
             jsonSettings.put("url_nightscout", nsUrl)
             jsonSettings.put("nbdays", nbDays)
             jsonSettings.put("startdate", startDateString)
             jsonSettings.put("enddate", endDateString)
             // command to change timezone
-            jsonSettings.put("timezone_command", "sudo ln -sf /usr/share/zoneinfo/" + TimeZone.getDefault().id + " /etc/localtime")
+            jsonSettings.put("timezone_command", "sudo ln -sf /usr/share/zoneinfo/" + AppTimeZone.javaTimeZone().id + " /etc/localtime")
             // oref0_command is for running oref0-autotune on a virtual machine in a dedicated ~/aaps subfolder
             jsonSettings.put("oref0_command", "oref0-autotune -d=~/aaps -n=$nsUrl -s=$startDateString -e=$endDateString $optCategorizeUam $optInsulinCurve")
             // aaps_command is for running modified oref0-autotune with exported data from aaps (ns-entries and ns-treatment JSON files copied in ~/aaps/autotune folder and pumpprofile.json copied in ~/aaps/settings/
@@ -531,9 +534,9 @@ class AutotunePlugin(
     }
 
     fun calcDays(daysBack: Int): Int {
-        var endTime = MidnightTime.before(dateUtil.now(), SystemTimeZone.current()) + autotuneStartHour * 60 * 60 * 1000L
-        if (endTime > dateUtil.now()) endTime = MidnightTime.daysBack(1, SystemTimeZone.current())      // Check if 4 AM is before now
-        val startTime = MidnightTime.daysBack(endTime, daysBack.toLong(), SystemTimeZone.current())
+        var endTime = MidnightTime.before(dateUtil.now(), AppTimeZone.current()) + autotuneStartHour * 60 * 60 * 1000L
+        if (endTime > dateUtil.now()) endTime = MidnightTime.daysBack(1, AppTimeZone.current())      // Check if 4 AM is before now
+        val startTime = MidnightTime.daysBack(endTime, daysBack.toLong(), AppTimeZone.current())
         var result = 0
         for (i in 0 until daysBack) {
             if (days.isSet(startTime + i * T.days(1).msecs()))

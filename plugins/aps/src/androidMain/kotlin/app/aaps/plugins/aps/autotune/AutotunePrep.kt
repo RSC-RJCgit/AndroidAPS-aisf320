@@ -1,10 +1,11 @@
 package app.aaps.plugins.aps.autotune
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.ICfg
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
@@ -59,7 +60,7 @@ class AutotunePrep(
                 basalGlucose?.let {
                     for (hour in 0..23) {
                         for (i in basalGlucose.indices) {
-                            val myHour = ((basalGlucose[i].date - MidnightTime.before(basalGlucose[i].date, SystemTimeZone.current())) / T.hours(1).msecs()).toInt()
+                            val myHour = ((basalGlucose[i].date - MidnightTime.before(basalGlucose[i].date, AppTimeZone.current())) / T.hours(1).msecs()).toInt()
                             if (hour == myHour) {
                                 sqrtDeviations += abs(basalGlucose[i].deviation).pow(0.5)
                                 deviations += abs(basalGlucose[i].deviation)
@@ -106,7 +107,7 @@ class AutotunePrep(
                 basalGlucose?.let {
                     for (hour in 0..23) {
                         for (i in basalGlucose.indices) {
-                            val myHour = ((basalGlucose[i].date - MidnightTime.before(basalGlucose[i].date, SystemTimeZone.current())) / T.hours(1).msecs()).toInt()
+                            val myHour = ((basalGlucose[i].date - MidnightTime.before(basalGlucose[i].date, AppTimeZone.current())) / T.hours(1).msecs()).toInt()
                             if (hour == myHour) {
                                 //console.error(basalGlucose[i].deviation);
                                 sqrtDeviations += abs(basalGlucose[i].deviation).pow(0.5)

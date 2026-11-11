@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.overview.graphs
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -25,7 +27,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.SeriesType
@@ -107,7 +108,7 @@ fun axisLongerThan(timeRange: Pair<Long, Long>, windowMinutes: Double): Boolean 
  */
 @Composable
 fun rememberTimeFormatter(minTimestamp: Long, masterZone: TimeZone? = null): CartesianValueFormatter {
-    val timeZone = masterZone ?: SystemTimeZone.current()
+    val timeZone = masterZone ?: AppTimeZone.current()
     return remember(minTimestamp, timeZone) {
         CartesianValueFormatter { _, value, _ ->
             val timestamp = minTimestamp + (value * 60000).toLong()
@@ -139,7 +140,7 @@ internal fun timeAxisLabel(hour: Int, minute: Int): String {
 }
 
 @OptIn(ExperimentalTime::class)
-internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int, timeZone: TimeZone = SystemTimeZone.current()): Int {
+internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int, timeZone: TimeZone = AppTimeZone.current()): Int {
     val minute = Instant.fromEpochMilliseconds(minTimestamp)
         .toLocalDateTime(timeZone)
         .minute
@@ -153,7 +154,7 @@ internal fun minutesUntilNextStep(minTimestamp: Long, stepMinutes: Int, timeZone
  */
 @Composable
 fun rememberBottomAxisItemPlacer(minTimestamp: Long, masterZone: TimeZone? = null): HorizontalAxis.ItemPlacer {
-    val timeZone = masterZone ?: SystemTimeZone.current()
+    val timeZone = masterZone ?: AppTimeZone.current()
     return remember(minTimestamp, timeZone) {
         ShortRangeTimeAxisPlacer(
             hourly = alignedTimePlacer(minTimestamp, 60, timeZone, padExtremes = true),

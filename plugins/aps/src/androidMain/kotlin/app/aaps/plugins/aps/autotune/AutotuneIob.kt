@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.autotune
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.iob.Iob
 import app.aaps.core.data.model.BS
@@ -11,7 +13,6 @@ import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.durationInMinutes
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -209,7 +210,7 @@ open class AutotuneIob(
         if (tb.isValid && tb.durationInMinutes > 0) {
             val endTimestamp = splittedTimestamp + splittedDuration
             while (splittedDuration > 0) {
-                if (MidnightTime.millisFromMidnight(splittedTimestamp, SystemTimeZone.current()) / cutInMilliSec == MidnightTime.millisFromMidnight(endTimestamp, SystemTimeZone.current()) / cutInMilliSec) {
+                if (MidnightTime.millisFromMidnight(splittedTimestamp, AppTimeZone.current()) / cutInMilliSec == MidnightTime.millisFromMidnight(endTimestamp, AppTimeZone.current()) / cutInMilliSec) {
                     val newTb = TB(
                         isValid = true,
                         isAbsolute = tb.isAbsolute,
@@ -226,7 +227,7 @@ open class AutotuneIob(
                     boluses.addAll(convertToBoluses(newTb, profile, tunedProfile.profile))           //
                     // required for correct iob calculation with oref0 algo
                 } else {
-                    val durationFilled = (cutInMilliSec - MidnightTime.millisFromMidnight(splittedTimestamp, SystemTimeZone.current()) % cutInMilliSec)
+                    val durationFilled = (cutInMilliSec - MidnightTime.millisFromMidnight(splittedTimestamp, AppTimeZone.current()) % cutInMilliSec)
                     val newTb = TB(
                         isValid = true,
                         isAbsolute = tb.isAbsolute,

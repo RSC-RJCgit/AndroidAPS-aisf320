@@ -1,10 +1,11 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.CarbsType
 import app.aaps.annotations.OpenForTesting
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.data.model.RM
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
@@ -57,7 +58,7 @@ class QuickWizardEntry(
     @OpenForTesting
     class Time {
 
-        fun secondsFromMidnight(): Int = MidnightTime.secondsFromMidnight(SystemTimeZone.current())
+        fun secondsFromMidnight(): Int = MidnightTime.secondsFromMidnight(AppTimeZone.current())
 
     }
 

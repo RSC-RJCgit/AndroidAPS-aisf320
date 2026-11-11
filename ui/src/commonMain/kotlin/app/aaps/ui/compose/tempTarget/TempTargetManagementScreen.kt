@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.tempTarget
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -171,7 +173,7 @@ fun TempTargetManagementScreen(
                 selectedMillis?.let {
                     // Keep the time of day the user already chose, move only the date.
                     val current = Instant.fromEpochMilliseconds(uiState.eventTime)
-                        .toLocalDateTime(TimeZone.currentSystemDefault())
+                        .toLocalDateTime(AppTimeZone.current())
                     viewModel.updateEventTime(
                         viewModel.dateUtil.mergeHourMinuteToTimestamp(it, current.hour, current.minute, true)
                     )
@@ -185,7 +187,7 @@ fun TempTargetManagementScreen(
     // Time picker modal
     if (showTimePicker) {
         val eventLocal = Instant.fromEpochMilliseconds(uiState.eventTime)
-            .toLocalDateTime(TimeZone.currentSystemDefault())
+            .toLocalDateTime(AppTimeZone.current())
 
         TimePickerModal(
             onTimeSelected = { hour, minute ->

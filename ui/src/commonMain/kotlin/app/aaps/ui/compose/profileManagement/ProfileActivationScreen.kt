@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.profileManagement
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Arrangement
@@ -149,7 +151,7 @@ fun ProfileActivationScreen(
 
     // Time picker modal
     if (showTimePicker) {
-        val localTime = Instant.fromEpochMilliseconds(eventTime).toLocalDateTime(TimeZone.currentSystemDefault())
+        val localTime = Instant.fromEpochMilliseconds(eventTime).toLocalDateTime(AppTimeZone.current())
         TimePickerModal(
             initialHour = localTime.hour,
             initialMinute = localTime.minute,

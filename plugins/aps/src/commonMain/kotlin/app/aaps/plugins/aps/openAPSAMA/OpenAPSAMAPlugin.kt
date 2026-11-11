@@ -1,10 +1,11 @@
 package app.aaps.plugins.aps.openAPSAMA
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes
 import app.aaps.core.data.plugin.PluginType
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
@@ -137,7 +138,7 @@ class OpenAPSAMAPlugin(
 
         if (!hardLimits.checkHardLimits(profile.iCfg.dia, InterfacesStrings.profile_dia, hardLimits.diaRange())) return@withContext
         if (!hardLimits.checkHardLimits(
-                profile.getIcTimeFromMidnight(MidnightTime.secondsFromMidnight(SystemTimeZone.current())),
+                profile.getIcTimeFromMidnight(MidnightTime.secondsFromMidnight(AppTimeZone.current())),
                 InterfacesStrings.profile_carbs_ratio_value,
                 hardLimits.icRange()
             )

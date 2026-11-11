@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.nsclientV3
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.annotation.VisibleForTesting
 import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.HasIDs
@@ -7,7 +9,6 @@ import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.concurrent.aapsIoDispatcher
 import app.aaps.core.interfaces.configuration.Config
@@ -952,7 +953,7 @@ class NSClientV3Plugin(
         if (!config.APS || config.AAPSCLIENT || !config.appInitialized) return data
         val openAps = data.openaps ?: return data
         val suggested = openAps.suggested ?: return data
-        val zone = SystemTimeZone.current()
+        val zone = AppTimeZone.current()
         return data.copy(openaps = openAps.copy(suggested = JsonObject(suggested + (MasterGraphTimeZone.FIELD to JsonPrimitive(zone.id)))))
     }
 

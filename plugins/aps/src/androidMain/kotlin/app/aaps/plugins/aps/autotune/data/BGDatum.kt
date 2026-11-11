@@ -1,5 +1,9 @@
 package app.aaps.plugins.aps.autotune.data
 
+import app.aaps.core.data.time.AppTimeZone
+
+import app.aaps.core.data.time.javaTimeZone
+
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
@@ -59,7 +63,7 @@ class BGDatum {
 
     fun toJSON(mealData: Boolean): JSONObject {
         val bgjson = JSONObject()
-        val utcOffset = T.msecs(TimeZone.getDefault().getOffset(dateUtil.now()).toLong()).hours()
+        val utcOffset = T.msecs(AppTimeZone.javaTimeZone().getOffset(dateUtil.now()).toLong()).hours()
         try {
             bgjson.put("_id", id)
             bgjson.put("date", date)

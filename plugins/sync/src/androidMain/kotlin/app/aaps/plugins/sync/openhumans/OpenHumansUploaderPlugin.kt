@@ -1,5 +1,9 @@
 package app.aaps.plugins.sync.openhumans
 
+import app.aaps.core.data.time.AppTimeZone
+
+import app.aaps.core.data.time.javaTimeZone
+
 import android.content.Context
 import android.content.Intent
 import android.util.DisplayMetrics
@@ -283,7 +287,7 @@ class OpenHumansUploaderPlugin internal constructor(
         uploadInfo.put("fileVersion", 2)
         uploadInfo.put("counter", uploadNumber)
         uploadInfo.put("timestamp", until)
-        uploadInfo.put("utcOffset", TimeZone.getDefault().getOffset(uploadDate))
+        uploadInfo.put("utcOffset", AppTimeZone.javaTimeZone().getOffset(uploadDate))
         zos.writeFile("UploadInfo.json", uploadInfo.toString().toByteArray())
         tags.add("UploadInfo")
 

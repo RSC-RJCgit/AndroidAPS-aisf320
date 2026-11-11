@@ -1,8 +1,9 @@
 package app.aaps.shared.impl.utils
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.format.NumberFormatPlatform
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
@@ -47,7 +48,7 @@ class DateUtilImpl(
     private val clock: Clock = Clock.System
 ) : DateUtil {
 
-    private val systemZone: TimeZone get() = SystemTimeZone.current()
+    private val systemZone: TimeZone get() = AppTimeZone.current()
 
     private fun Long.at(zone: TimeZone = systemZone): LocalDateTime =
         Instant.fromEpochMilliseconds(this).toLocalDateTime(zone)

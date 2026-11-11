@@ -1,10 +1,11 @@
 package app.aaps.ui.compose.overview.graphs
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.GRAPH_UTC_OFFSET_PATTERN
@@ -44,7 +45,7 @@ internal fun graphTimestamp(
     showDate: Boolean = false,
     showSeconds: Boolean = false
 ): String {
-    if (masterZone == null || masterZone == SystemTimeZone.current()) return when {
+    if (masterZone == null || masterZone == AppTimeZone.current()) return when {
         showDate && showSeconds -> dateUtil.dateAndTimeAndSecondsString(timestamp)
         showDate                -> dateUtil.dateAndTimeString(timestamp)
         showSeconds             -> dateUtil.timeStringWithSeconds(timestamp)

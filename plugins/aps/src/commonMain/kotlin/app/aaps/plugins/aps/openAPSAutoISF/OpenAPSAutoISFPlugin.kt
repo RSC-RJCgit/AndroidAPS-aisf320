@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
@@ -16,7 +18,6 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
@@ -375,7 +376,7 @@ open class OpenAPSAutoISFPlugin(
 
         if (!hardLimits.checkHardLimits(profile.iCfg.dia, InterfacesStrings.profile_dia, hardLimits.diaRange())) return@withContext
         if (!hardLimits.checkHardLimits(
-                profile.getIcTimeFromMidnight(MidnightTime.secondsFromMidnight(SystemTimeZone.current())),
+                profile.getIcTimeFromMidnight(MidnightTime.secondsFromMidnight(AppTimeZone.current())),
                 InterfacesStrings.profile_carbs_ratio_value,
                 hardLimits.icRange()
             )
@@ -577,7 +578,7 @@ open class OpenAPSAutoISFPlugin(
         if (sub75Note == "arm") aapsLogger.debug(LTag.APS, "sc7.5 cooldown armed, 10 min SMB $smb10")
         if (sub75Note == "clear") aapsLogger.debug(LTag.APS, "sc7.5 cooldown cleared")
         val uamRecent = runMarks.recent(RunMark.UAM_BST, 20, now)
-        val minuteOfDay = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
+        val minuteOfDay = Instant.fromEpochMilliseconds(now).toLocalDateTime(AppTimeZone.current()).let { it.hour * 60 + it.minute }
         val stepSample = if (usesLiveSteps()) freshLiveSteps(now)
         else persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60 * 1000L, now)
         val statesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
@@ -924,9 +925,9 @@ open class OpenAPSAutoISFPlugin(
             libreActive = libreActive(now),
             rawDelta5Mgdl = ukf.delta5 ?: 0.0,
             aapsDelta1Mgdl = aapsDelta1MinMgdl(now) ?: 0.0,
-            hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
+            hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(AppTimeZone.current()).hour,
             todOffsetMgdl = if (!codedOn) 0.0 else todOffsetMmol(
-                hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
+                hour = Instant.fromEpochMilliseconds(now).toLocalDateTime(AppTimeZone.current()).hour,
                 offset0002 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0002),
                 offset0204 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0204),
                 offset0406 = preferences.get(DoubleKey.ApsAutoIsfTodOffset0406),
@@ -1219,7 +1220,7 @@ open class OpenAPSAutoISFPlugin(
             steps15 = stepSample?.let { steps15Bin(it) } ?: 0,
             steps30 = stepSample?.steps30min ?: 0,
             steps60 = stepSample?.steps60min ?: 0,
-            hour = Instant.fromEpochMilliseconds(nowMs).toLocalDateTime(TimeZone.currentSystemDefault()).hour,
+            hour = Instant.fromEpochMilliseconds(nowMs).toLocalDateTime(AppTimeZone.current()).hour,
             bg = glucose_status.glucose,
             targetBg = target_bg,
             shortDelta = glucose_status.shortAvgDelta,
@@ -2987,7 +2988,7 @@ open class OpenAPSAutoISFPlugin(
         // The alarm uses its own saved time. The other two use this moment.
         val steps60Now = steps60(now)
         fun hypoDropBlocked(eventAt: Long) = hypoTierDropBlocked(
-            Instant.fromEpochMilliseconds(eventAt).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute },
+            Instant.fromEpochMilliseconds(eventAt).toLocalDateTime(AppTimeZone.current()).let { it.hour * 60 + it.minute },
             steps60Now,
         )
         val safety = preferences.get(StringNonKey.ApsAutoIsfSafetyProfileName).trim()
@@ -3097,7 +3098,7 @@ open class OpenAPSAutoISFPlugin(
         val hypoStore = states()
         val hypoStatesOn = preferences.get(BooleanKey.AutomationStatesEnabled)
         val alarmAt = preferences.get(LongNonKey.ApsAutoIsfLastAlarmHypoAt)
-        val alarmMinuteOfDay = Instant.fromEpochMilliseconds(alarmAt).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
+        val alarmMinuteOfDay = Instant.fromEpochMilliseconds(alarmAt).toLocalDateTime(AppTimeZone.current()).let { it.hour * 60 + it.minute }
         // 2026-10-07: an AlarmRecent flag whose alarm time is missing, over 24 hours old, or inside the ignored overnight window
         // is cleared. Before this, the flag stayed set until Not50Recently happened to clear it, and never did when LowBG was already reset.
         if (hypoStatesOn && hypoStore.inState("AlarmHypo", "AlarmRecent") && hypoStore.hasStateValues("AlarmHypo") &&
@@ -3130,7 +3131,7 @@ open class OpenAPSAutoISFPlugin(
             .map { it.timestamp to it.value }
         // 2026-10-07: readings between 01:00 and 07:00 do not count toward an episode, so an overnight compression low
         // cannot trigger this reset later in the 12 hour lookback. Episodes with 60 minute steps over 1000 are already skipped.
-        val zone = TimeZone.currentSystemDefault()
+        val zone = AppTimeZone.current()
         val overnight = { ts: Long -> Instant.fromEpochMilliseconds(ts).toLocalDateTime(zone).let { inHypoIgnoreWindow(it.hour * 60 + it.minute) } }
         val loopHit = sustainedLowEpisode(loopSeries, steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = overnight)
         val ukfHit = sustainedLowEpisode(ukf1Series(now), steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = overnight)
@@ -3568,7 +3569,7 @@ open class OpenAPSAutoISFPlugin(
         }
         // A dip only opens the sensor-age slope tier, never the acce cap this returns
         findRawDip(readings)?.let { dip ->
-            val minuteOfDay = Instant.fromEpochMilliseconds(dip.bottomAt).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute }
+            val minuteOfDay = Instant.fromEpochMilliseconds(dip.bottomAt).toLocalDateTime(AppTimeZone.current()).let { it.hour * 60 + it.minute }
             if (rawSpikeCounts(dip.bottomAt, now, runMarks.minutesAgo(RunMark.SHOWER12, now)) && !inCompressionHours(minuteOfDay) &&
                 dip.bottomAt > preferences.get(LongNonKey.ApsAutoIsfRawDipAt)
             ) {

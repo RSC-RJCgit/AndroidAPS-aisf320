@@ -1,11 +1,12 @@
 package app.aaps.workflow
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.TE
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensDataStore
@@ -508,7 +509,7 @@ class PrepareGraphDataRunner(
 
                 // add one neutral deviation every 2 hours to help decay over long exclusion periods
                 // Local wall clock, exactly what GregorianCalendar read before.
-                val local = Instant.fromEpochMilliseconds(bgTime).toLocalDateTime(SystemTimeZone.current())
+                val local = Instant.fromEpochMilliseconds(bgTime).toLocalDateTime(AppTimeZone.current())
                 val minute = local.minute
                 val hours = local.hour
                 if (minute in 0..4 && hours % 2 == 0) autosensData.extraDeviation.add(0.0)

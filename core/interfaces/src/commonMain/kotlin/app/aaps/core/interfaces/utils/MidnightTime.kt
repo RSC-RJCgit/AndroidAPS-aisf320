@@ -1,5 +1,7 @@
 package app.aaps.core.interfaces.utils
 
+import app.aaps.core.data.time.AppTimeZone
+
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.LocalTime
@@ -26,7 +28,7 @@ import kotlin.time.Instant
  * The time zone is a parameter and is never read here. [secondsFromMidnight] is asked for the basal
  * rate of every minute of every temporary basal, again for every 5 minute step, so it runs millions
  * of times per IOB calculation - and reading the system zone costs a file read per call on Apple
- * targets. The app passes `SystemTimeZone.current()`, which keeps its last read. Deliberately
+ * targets. The app passes `AppTimeZone.current()`, which keeps its last read. Deliberately
  * without a default value: a default would be evaluated in this module, which would quietly put that
  * per-call read back for every caller that left the argument out.
  */

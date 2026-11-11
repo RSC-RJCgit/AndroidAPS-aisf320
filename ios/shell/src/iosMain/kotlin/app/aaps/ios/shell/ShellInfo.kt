@@ -1,5 +1,7 @@
 package app.aaps.ios.shell
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.AlarmSound
@@ -40,7 +42,7 @@ object ShellInfo {
      * Kotlin runtime started and that a multiplatform dependency, here kotlinx-datetime, works
      * inside a real app rather than only linking.
      */
-    fun localTime(): String = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).toString()
+    fun localTime(): String = Clock.System.now().toLocalDateTime(AppTimeZone.current()).toString()
 
     /**
      * Builds a Metro graph and uses what comes out of it.

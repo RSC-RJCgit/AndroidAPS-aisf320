@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.overview.graphs
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.MaterialTheme
@@ -9,7 +11,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.ui.compose.AapsSpacing
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
@@ -64,7 +65,7 @@ internal fun rememberClockChangeDecoration(
     showIcon: Boolean = false,
     masterZone: TimeZone? = null
 ): GraphClockChangeDecoration {
-    val timeZone = masterZone ?: SystemTimeZone.current()
+    val timeZone = masterZone ?: AppTimeZone.current()
     val changes = remember(minTimestamp, maxTimestamp, timeZone, readings) {
         graphClockChanges(minTimestamp, maxTimestamp, timeZone, readings)
     }

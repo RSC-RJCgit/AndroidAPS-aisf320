@@ -1,10 +1,13 @@
 package app.aaps.plugins.aps.autotune.data
 
+import app.aaps.core.data.time.AppTimeZone
+
+import app.aaps.core.data.time.javaTimeZone
+
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.data.Block
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -98,7 +101,7 @@ class ATProfile(
         return this
     }
 
-    fun getBasal(timestamp: Long): Double = basal[MidnightTime.secondsFromMidnight(timestamp, SystemTimeZone.current()) / 3600]
+    fun getBasal(timestamp: Long): Double = basal[MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()) / 3600]
 
     // for local profile synchronisation
     // kotlinx, not org.json: these feed blockFromJson in AutotunePlugin, the last caller the org.json
@@ -175,7 +178,7 @@ class ATProfile(
             json.put("autosens_max", preferences.get(DoubleKey.AutosensMax))
             json.put("autosens_min", preferences.get(DoubleKey.AutosensMin))
             json.put("units", GlucoseUnit.MGDL.asText)
-            json.put("timezone", TimeZone.getDefault().id)
+            json.put("timezone", AppTimeZone.javaTimeZone().id)
             jsonString = json.toString(2).replace("\\/", "/")
         } catch (e: JSONException) {
             aapsLogger.error(LTag.CORE, e.stackTraceToString())

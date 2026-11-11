@@ -1,5 +1,9 @@
 package app.aaps.implementation.receivers
 
+import app.aaps.core.data.time.AppTimeZone
+
+import app.aaps.core.data.time.javaZone
+
 import android.content.Context
 import android.os.Environment
 import android.os.StatFs
@@ -47,7 +51,7 @@ class LowStorageAlert(
     fun check(context: Context) {
         if (!config.APS || config.AAPSCLIENT || activePlugin.activePumpInternal is VirtualPump) return
         val now = dateUtil.now()
-        val localTime = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault())
+        val localTime = Instant.ofEpochMilli(now).atZone(AppTimeZone.javaZone())
         val localDay = localTime.toLocalDate().toEpochDay()
         val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
             localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)

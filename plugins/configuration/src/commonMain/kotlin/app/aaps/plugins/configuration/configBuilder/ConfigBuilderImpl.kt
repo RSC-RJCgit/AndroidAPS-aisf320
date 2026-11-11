@@ -1,5 +1,8 @@
 package app.aaps.plugins.configuration.configBuilder
 
+import app.aaps.core.data.time.AppTimeZone
+import app.aaps.core.objects.overview.MasterGraphTimeZone
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -67,6 +70,11 @@ class ConfigBuilderImpl(
     private val scope = CoroutineScope(Dispatchers.Default + Job())
 
     override fun initialize(): List<Job> {
+        AppTimeZone.virtualMasterZone = {
+            if (config.APS && !config.AAPSCLIENT && config.appInitialized && activePlugin.activePump.selectedActivePump() is VirtualPump) {
+                MasterGraphTimeZone.forVirtualMaster(preferences)
+            } else null
+        }
         // Collected and returned, not dropped: these are only scheduled, so without waiting for them the
         // caller carries on against plugins that are enabled but not yet started. That is the difference
         // that made the two start paths give different guarantees (plan bug 12) - applyConfiguration below

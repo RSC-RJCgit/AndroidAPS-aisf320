@@ -1,5 +1,7 @@
 package app.aaps.core.objects.profile
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.model.GlucoseUnit
@@ -7,7 +9,6 @@ import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.data.Block
 import app.aaps.core.data.model.data.TargetBlock
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.data.time.systemUtcOffsetAt
 import app.aaps.core.interfaces.InterfacesStrings
@@ -333,31 +334,31 @@ sealed class ProfileSealed(
     override val percentage: Int
         get() = pct
 
-    override fun getBasal(): Double = basalBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), percentage / 100.0, timeshift)
-    override fun getBasal(timestamp: Long): Double = basalBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, SystemTimeZone.current()), percentage / 100.0, timeshift)
+    override fun getBasal(): Double = basalBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), percentage / 100.0, timeshift)
+    override fun getBasal(timestamp: Long): Double = basalBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()), percentage / 100.0, timeshift)
     override fun getIc(): Double =
         if (aps?.supportsDynamicIc() ?: error("APS not defined"))
-            aps.getIc(this) ?: icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), 100.0 / percentage, timeshift)
-        else icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), 100.0 / percentage, timeshift)
+            aps.getIc(this) ?: icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), 100.0 / percentage, timeshift)
+        else icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), 100.0 / percentage, timeshift)
 
     override fun getIc(timestamp: Long): Double =
         if (aps?.supportsDynamicIc() ?: error("APS not defined"))
-            aps.getIc(timestamp, this) ?: icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, SystemTimeZone.current()), 100.0 / percentage, timeshift)
-        else icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, SystemTimeZone.current()), 100.0 / percentage, timeshift)
+            aps.getIc(timestamp, this) ?: icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()), 100.0 / percentage, timeshift)
+        else icBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()), 100.0 / percentage, timeshift)
 
     override fun getProfileIsfMgdl(): Double =
-        toMgdl(isfBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), 100.0 / percentage, timeshift), units)
+        toMgdl(isfBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), 100.0 / percentage, timeshift), units)
 
     override fun getIsfMgdl(caller: String): Double =
         if (aps?.usingDynamicIsf() ?: error("APS not defined"))
-            aps.getIsfMgdl(this, caller) ?: toMgdl(isfBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), 100.0 / percentage, timeshift), units)
+            aps.getIsfMgdl(this, caller) ?: toMgdl(isfBlocks.blockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), 100.0 / percentage, timeshift), units)
         else getProfileIsfMgdl()
 
-    override fun getTargetMgdl(): Double = toMgdl(targetBlocks.targetBlockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), timeshift), units)
-    override fun getTargetLowMgdl(): Double = toMgdl(targetBlocks.lowTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), timeshift), units)
-    override fun getTargetLowMgdl(timestamp: Long): Double = toMgdl(targetBlocks.lowTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, SystemTimeZone.current()), timeshift), units)
-    override fun getTargetHighMgdl(): Double = toMgdl(targetBlocks.highTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(SystemTimeZone.current()), timeshift), units)
-    override fun getTargetHighMgdl(timestamp: Long): Double = toMgdl(targetBlocks.highTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, SystemTimeZone.current()), timeshift), units)
+    override fun getTargetMgdl(): Double = toMgdl(targetBlocks.targetBlockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), timeshift), units)
+    override fun getTargetLowMgdl(): Double = toMgdl(targetBlocks.lowTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), timeshift), units)
+    override fun getTargetLowMgdl(timestamp: Long): Double = toMgdl(targetBlocks.lowTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()), timeshift), units)
+    override fun getTargetHighMgdl(): Double = toMgdl(targetBlocks.highTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(AppTimeZone.current()), timeshift), units)
+    override fun getTargetHighMgdl(timestamp: Long): Double = toMgdl(targetBlocks.highTargetBlockValueBySeconds(MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()), timeshift), units)
     override fun getBasalTimeFromMidnight(timeAsSeconds: Int): Double = basalBlocks.blockValueBySeconds(timeAsSeconds, percentage / 100.0, timeshift)
     override fun getIcTimeFromMidnight(timeAsSeconds: Int): Double = icBlocks.blockValueBySeconds(timeAsSeconds, 100.0 / percentage, timeshift)
     fun getIsfTimeFromMidnight(timeAsSeconds: Int): Double = isfBlocks.blockValueBySeconds(timeAsSeconds, 100.0 / percentage, timeshift)

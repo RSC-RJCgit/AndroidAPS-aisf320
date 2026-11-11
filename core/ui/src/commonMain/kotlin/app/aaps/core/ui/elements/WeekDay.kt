@@ -1,5 +1,7 @@
 package app.aaps.core.ui.elements
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.elements.WeekDay.DayOfWeek.Companion.calendarInts
@@ -53,7 +55,7 @@ open class WeekDay {
              * number is turned into one of these.
              */
             fun of(now: Instant): DayOfWeek =
-                entries[now.toLocalDateTime(TimeZone.currentSystemDefault()).dayOfWeek.isoDayNumber - 1]
+                entries[now.toLocalDateTime(AppTimeZone.current()).dayOfWeek.isoDayNumber - 1]
         }
     }
 
@@ -83,7 +85,7 @@ open class WeekDay {
      */
     fun isSet(timestamp: Long): Boolean {
         val dayOfWeek = Instant.fromEpochMilliseconds(timestamp)
-            .toLocalDateTime(TimeZone.currentSystemDefault())
+            .toLocalDateTime(AppTimeZone.current())
             .dayOfWeek
         return isSet(DayOfWeek.entries[dayOfWeek.ordinal])
     }

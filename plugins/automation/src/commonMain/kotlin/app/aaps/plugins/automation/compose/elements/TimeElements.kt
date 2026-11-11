@@ -1,5 +1,7 @@
 package app.aaps.plugins.automation.compose.elements
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -104,7 +106,7 @@ fun InputDateTimeEditor(
     // The default time zone, so what the user sees is their own wall clock. Seconds and nanoseconds
     // are carried through every edit, because setting only the date or only the hour and minute must
     // not quietly zero the rest.
-    val zone = TimeZone.currentSystemDefault()
+    val zone = AppTimeZone.current()
     val local = remember(timeMillis) { Instant.fromEpochMilliseconds(timeMillis).toLocalDateTime(zone) }
     Row(
         modifier = modifier.fillMaxWidth(),

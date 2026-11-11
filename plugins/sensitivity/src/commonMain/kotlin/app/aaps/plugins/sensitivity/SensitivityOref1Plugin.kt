@@ -1,9 +1,10 @@
 package app.aaps.plugins.sensitivity
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.PS
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.plugin.PluginType
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.aps.AutosensDataStore
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.Sensitivity.SensitivityType
@@ -130,7 +131,7 @@ class SensitivityOref1Plugin(
                     deviationsArray.removeAt(0)
                 }
                 pastSensitivity.append(autosensData.pastSensitivity)
-                val secondsFromMidnight = MidnightTime.secondsFromMidnight(autosensData.time, SystemTimeZone.current())
+                val secondsFromMidnight = MidnightTime.secondsFromMidnight(autosensData.time, AppTimeZone.current())
                 if (secondsFromMidnight % 3600 < 2.5 * 60 || secondsFromMidnight % 3600 > 57.5 * 60) {
                     pastSensitivity.append("(").append((secondsFromMidnight / 3600.0).roundToInt()).append(")")
                 }

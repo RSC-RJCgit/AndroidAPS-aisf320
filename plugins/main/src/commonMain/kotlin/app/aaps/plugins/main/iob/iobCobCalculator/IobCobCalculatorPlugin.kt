@@ -1,5 +1,7 @@
 package app.aaps.plugins.main.iob.iobCobCalculator
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.collection.LongSparseArray
 import app.aaps.core.data.aps.BasalData
 import app.aaps.core.data.configuration.Constants
@@ -14,7 +16,6 @@ import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.devAssert
 import app.aaps.core.data.model.iobCalc
 import app.aaps.core.data.plugin.PluginType
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.AutosensDataStore
@@ -533,7 +534,7 @@ class IobCobCalculatorPlugin(
         //
         // Midnight, not `oldDataTimestamp`: a TDD row is keyed on the start of its day, so anything
         // later in that day has to take the whole day with it.
-        persistenceLayer.clearCachedTddData(MidnightTime.before(oldDataTimestamp, SystemTimeZone.current()))
+        persistenceLayer.clearCachedTddData(MidnightTime.before(oldDataTimestamp, AppTimeZone.current()))
         dataLock.withLock {
 
             // clear up 5 min back for proper COB calculation

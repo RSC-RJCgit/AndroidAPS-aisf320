@@ -1,7 +1,10 @@
 package app.aaps.implementation.stats
 
+import app.aaps.core.data.time.AppTimeZone
+
+import app.aaps.core.data.time.calendar
+
 import app.aaps.core.data.configuration.Constants
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.stats.DexcomTIR
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.toLocalDateTime
@@ -129,9 +132,9 @@ class DexcomTirImpl : DexcomTIR {
      * @param valueMgdl Glucose value in mg/dL
      */
     fun add(time: Long, valueMgdl: Double) {
-        // Local hour of day, as Calendar.getInstance() gave: the hour picks the day or night high
+        // Local hour of day, as AppTimeZone.calendar() gave: the hour picks the day or night high
         // threshold, so it has to follow the user`s zone rather than UTC.
-        val localTime = Instant.fromEpochMilliseconds(time).toLocalDateTime(SystemTimeZone.current())
+        val localTime = Instant.fromEpochMilliseconds(time).toLocalDateTime(AppTimeZone.current())
         val hour = localTime.hour
         if (valueMgdl >= 39) addToCgp(time, localTime.date, valueMgdl)
         when {

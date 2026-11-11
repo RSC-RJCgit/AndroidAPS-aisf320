@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.log
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -189,6 +191,6 @@ private fun ClickableAnnotatedText(
 // Only used by Compose previews and tests, where there is no DateUtil. Hand-padded because
 // String.format is JVM only.
 private fun previewTime(millis: Long): String =
-    Instant.fromEpochMilliseconds(millis).toLocalDateTime(TimeZone.currentSystemDefault()).let {
+    Instant.fromEpochMilliseconds(millis).toLocalDateTime(AppTimeZone.current()).let {
         "${it.hour.toString().padStart(2, '0')}:${it.minute.toString().padStart(2, '0')}:${it.second.toString().padStart(2, '0')}"
     }

@@ -1,7 +1,8 @@
 package app.aaps.implementation.stats
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.collection.LongSparseArray
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.stats.TIR
 import app.aaps.core.interfaces.stats.TirCalculator
@@ -92,8 +93,8 @@ class TirCalculatorImpl(
             if (lowMgdl < 39) throw RuntimeException("Low below 39")
             if (lowMgdl > highMgdl) throw RuntimeException("Low > High")
         }
-        val startTime = MidnightTime.daysBack(days, SystemTimeZone.current())
-        val endTime = MidnightTime.before(dateUtil.now(), SystemTimeZone.current())
+        val startTime = MidnightTime.daysBack(days, AppTimeZone.current())
+        val endTime = MidnightTime.before(dateUtil.now(), AppTimeZone.current())
 
         val bgReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(startTime, endTime, true)
         val results = ranges.map { LongSparseArray<TIR>() }
@@ -103,9 +104,9 @@ class TirCalculatorImpl(
         var dayEnd = Long.MIN_VALUE
         for (bg in bgReadings) {
             if (bg.timestamp < dayStart || bg.timestamp >= dayEnd) {
-                dayStart = MidnightTime.before(bg.timestamp, SystemTimeZone.current())
+                dayStart = MidnightTime.before(bg.timestamp, AppTimeZone.current())
                 // 25 h after a midnight is always on the next day, also on a 23 h or 25 h daylight-saving day
-                dayEnd = MidnightTime.before(dayStart + DAY_PLUS_ONE_HOUR_MS, SystemTimeZone.current())
+                dayEnd = MidnightTime.before(dayStart + DAY_PLUS_ONE_HOUR_MS, AppTimeZone.current())
             }
             for (i in ranges.indices) {
                 val (lowMgdl, highMgdl) = ranges[i]

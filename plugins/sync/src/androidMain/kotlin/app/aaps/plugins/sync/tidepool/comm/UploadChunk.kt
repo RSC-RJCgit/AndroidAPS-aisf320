@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.tidepool.comm
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.EPS
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.model.TE
@@ -245,7 +247,7 @@ class UploadChunk(
     private val basalSegmentFallbackStep = T.mins(1).msecs()
 
     private fun secondsFromMidnight(timestamp: Long): Int {
-        val localDateTime = Instant.fromEpochMilliseconds(timestamp).toLocalDateTime(TimeZone.currentSystemDefault())
+        val localDateTime = Instant.fromEpochMilliseconds(timestamp).toLocalDateTime(AppTimeZone.current())
         return localDateTime.hour * 3600 + localDateTime.minute * 60 + localDateTime.second
     }
 
@@ -257,7 +259,7 @@ class UploadChunk(
     private fun nextBasalBlockBoundary(timestamp: Long, profile: Profile): Long? {
         val seconds = secondsFromMidnight(timestamp)
         val nextSeconds = profile.getBasalValues().map { it.timeAsSeconds }.filter { it > seconds }.minOrNull() ?: 86_400
-        val zone = TimeZone.currentSystemDefault()
+        val zone = AppTimeZone.current()
         val date = Instant.fromEpochMilliseconds(timestamp).toLocalDateTime(zone).date
         val boundary =
             if (nextSeconds >= 86_400) date.plus(1, DateTimeUnit.DAY).atStartOfDayIn(zone)

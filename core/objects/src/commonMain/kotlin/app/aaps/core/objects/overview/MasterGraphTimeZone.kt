@@ -1,11 +1,14 @@
 package app.aaps.core.objects.overview
 
+import app.aaps.core.keys.GRAPH_UTC_OFFSET_PATTERN
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.concurrent.Volatile
+import kotlin.time.TimeSource
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -19,6 +22,23 @@ object MasterGraphTimeZone {
 
     const val FIELD = "masterTimeZone"
     private val writeLock = Mutex()
+
+    private val manualOffsetPattern = Regex(GRAPH_UTC_OFFSET_PATTERN)
+    private class CachedZone(val preferences: Preferences, val readAt: TimeSource.Monotonic.ValueTimeMark, val zone: TimeZone?)
+    @Volatile private var cachedZone: CachedZone? = null
+
+    /** Avoid reading settings for every minute of historical basal calculations. */
+    fun forVirtualMaster(preferences: Preferences): TimeZone? {
+        val cached = cachedZone
+        if (cached != null && cached.preferences === preferences && cached.readAt.elapsedNow().inWholeMilliseconds < 1000L) return cached.zone
+        val imported = if (preferences.get(BooleanKey.ClientGraphFollowMasterTimeZone)) {
+            read(preferences.get(StringNonKey.ClientGraphMasterTimeZone), selectedSite(preferences))
+        } else null
+        val zone = imported ?: preferences.get(StringKey.ClientGraphManualUtcOffset).trim()
+            .takeIf(manualOffsetPattern::matches)?.let(::parseZone)
+        cachedZone = CachedZone(preferences, TimeSource.Monotonic.markNow(), zone)
+        return zone
+    }
 
     fun parseZone(id: String): TimeZone? = runCatching { TimeZone.of(id) }.getOrNull()
 

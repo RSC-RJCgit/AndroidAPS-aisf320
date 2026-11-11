@@ -1,9 +1,10 @@
 package app.aaps.ui.compose.stats
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.GV
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.utils.MidnightTime
 import kotlin.math.ceil
@@ -20,7 +21,7 @@ enum class AgpStatsRange {
     DAYS_90;
 
     fun startTime(now: Long): Long = when (this) {
-        TODAY    -> MidnightTime.before(now, SystemTimeZone.current())
+        TODAY    -> MidnightTime.before(now, AppTimeZone.current())
         HOURS_24 -> now - T.hours(24).msecs()
         DAYS_7   -> now - T.days(7).msecs()
         DAYS_30  -> now - T.days(30).msecs()
@@ -113,7 +114,7 @@ internal fun calculateAgpStatsData(
     val cadence = gaps.getOrNull(gaps.size / 2) ?: DEFAULT_CADENCE_MS
     val sampleDays = valid.size * cadence.toDouble() / DAY_MS
     val spanDays = (valid.last().timestamp - valid.first().timestamp + cadence).toDouble() / DAY_MS
-    val zone = SystemTimeZone.current()
+    val zone = AppTimeZone.current()
 
     return AgpStatsData(
         lowMgdl = lowMgdl,
