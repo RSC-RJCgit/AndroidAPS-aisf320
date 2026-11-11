@@ -486,15 +486,22 @@ class MainViewModel(
         val buttonText = entry.buttonText()
         val guid = entry.guid()
 
-        val globalReason = when {
+        val otherReason = when {
             // App init is checked in computeQuickWizardItems, before the profile is read.
-            lastBG == null                           -> rh.gs(CoreUiStrings.wizard_no_actual_bg)
             profile == null                          -> rh.gs(CoreUiStrings.noprofile)
             !pump.isInitialized()                    -> rh.gs(CoreUiStrings.pump_not_initialized_profile_not_set)
             pump.isSuspended()                       -> rh.gs(InterfacesStrings.pumpsuspended)
             runningMode == RM.Mode.DISCONNECTED_PUMP -> rh.gs(InterfacesStrings.pump_disconnected)
             else                                     -> null
         }
+        // No BG and nothing else in the way: the button stays usable and opens the bolus calculator with its carbs,
+        // where a BG can be typed in, like the calculator itself (2026-11-12, per explicit request). See executeQuickWizard.
+        if (lastBG == null && otherReason == null)
+            return QuickWizardItem(
+                guid = guid, buttonText = buttonText, mode = entry.mode().value,
+                detail = rh.gs(CoreUiStrings.quickwizard_no_bg_opens_calculator, entry.carbs()), isEnabled = true
+            )
+        val globalReason = if (lastBG == null) rh.gs(CoreUiStrings.wizard_no_actual_bg) else otherReason
         if (globalReason != null)
             return QuickWizardItem(guid = guid, buttonText = buttonText, mode = entry.mode().value, disabledReason = globalReason)
 
@@ -585,13 +592,19 @@ class MainViewModel(
     /**
      * Execute QuickWizard by GUID. WIZARD mode runs the shared prepare→confirm spine (master delivers
      * locally; an AAPSCLIENT routes prepare/commit to its master over the signed round-trip).
+     *
+     * With no recent BG, a WIZARD entry opens the bolus calculator through [openCalculator] instead, with the entry's
+     * carbs and its name as the note, so a BG can be typed in there (2026-11-12, per explicit request). A caller that
+     * passes no [openCalculator] keeps the old answer ("No actual BG").
      */
-    fun executeQuickWizard(guid: String) {
+    fun executeQuickWizard(guid: String, openCalculator: ((carbs: Int, notes: String) -> Unit)? = null) {
         viewModelScope.launch {
             val entry = quickWizard.get(guid) ?: return@launch
             if (!entry.isActive()) return@launch
             when (entry.mode()) {
-                QuickWizardMode.WIZARD  -> executeWizardQuickWizard(entry, guid)
+                QuickWizardMode.WIZARD  ->
+                    if (openCalculator != null && iobCobCalculator.ads.actualBg() == null) openCalculator(entry.carbs(), entry.buttonText())
+                    else executeWizardQuickWizard(entry, guid)
                 QuickWizardMode.INSULIN -> executeInsulinMode(entry)
                 QuickWizardMode.CARBS   -> executeCarbsMode(entry)
             }
@@ -604,6 +617,10 @@ class MainViewModel(
      * EXACT lines via the shared [showWizardBolusConfirmation]; the user's OK rides back as a commit the master delivers
      * once (the advisor fork chooses correction-only). No dose is ever computed on a client.
      */
+    /** A client set to read-only ("v3 style only"): QuickWizard works as an example only, as the bolus calculator does. */
+    private val readOnlyClient: Boolean
+        get() = config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient)
+
     private suspend fun executeWizardQuickWizard(entry: QuickWizardEntry, guid: String) {
         val label = rh.gs(CoreUiStrings.clientcontrol_action_deliver_bolus)
         // Counted from before the prepare, so on a client the confirmation closes before the master's SMB pause ends.
@@ -615,6 +632,13 @@ class MainViewModel(
                     closeAt = closeAt,
                     onCancel = { wizardExecutor.discard(prepared.id) }
                 ) { asAdvisor ->
+                    // A read-only ("v3 style only") client: the lines were an example. Say so at OK, as the bolus calculator
+                    // does, and give nothing (2026-11-12, per explicit request). RoleBranch.commit would refuse it anyway.
+                    if (readOnlyClient) {
+                        wizardExecutor.discard(prepared.id)
+                        rxBus.send(EventShowDialog.Ok(title = entry.buttonText(), message = rh.gs(CoreUiStrings.wizard_read_only_example)))
+                        return@showWizardBolusConfirmation
+                    }
                     // The async delivery failure is alarmed once, centrally, from the executor — no local alarm here (it would double).
                     appScope.launch { wizardExecutor.commit(prepared.id, asAdvisor, Sources.QuickWizard, label) }
                 }
@@ -646,7 +670,12 @@ class MainViewModel(
                     EventShowDialog.OkCancel(
                         title = entry.buttonText(), message = "", confirmationLines = prepared.lines, icon = icon,
                         onOk = {
-                            appScope.launch { batchExecutor.commit(prepared.id, Sources.QuickWizard, label) }
+                            // A read-only client: an example only, said at OK like the bolus calculator (2026-11-12)
+                            if (readOnlyClient) {
+                                batchExecutor.discard(prepared.id)
+                                rxBus.send(EventShowDialog.Ok(title = entry.buttonText(), message = rh.gs(CoreUiStrings.clientcontrol_read_only_example)))
+                            } else
+                                appScope.launch { batchExecutor.commit(prepared.id, Sources.QuickWizard, label) }
                         },
                         onCancel = { batchExecutor.discard(prepared.id) },
                         closeAt = closeAt

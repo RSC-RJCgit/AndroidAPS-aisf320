@@ -280,10 +280,11 @@ fun NavGraphBuilder.appNavGraph(
             onRequestEditMode = {
                 requestEditModeAuthorization { quickWizardManagementViewModel.setScreenMode(ScreenMode.EDIT) }
             },
+            // The same route as a QuickWizard tap anywhere else (2026-11-12, per explicit request): the navigator asks the
+            // QuickWizard protection, and with no BG it opens the bolus calculator. It also runs the button on iOS, whose
+            // onExecuteQuickWizard only reported "not implemented yet". onExecuteQuickWizard is no longer called here.
             onExecuteClick = { guid ->
-                withProtection(ElementType.QUICK_WIZARD.protection) {
-                    onExecuteQuickWizard(guid)
-                }
+                onNavigationRequest(NavigationRequest.QuickWizard(guid), navController)
             }
         )
     }

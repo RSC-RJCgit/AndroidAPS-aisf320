@@ -202,15 +202,22 @@ class TreatmentViewModel(
         val buttonText = entry.buttonText()
         val guid = entry.guid()
 
-        val globalReason = when {
+        val otherReason = when {
             // App init is checked in buildQuickWizardItems, before the profile is read.
-            lastBG == null                           -> rh.gs(CoreUiStrings.wizard_no_actual_bg)
             profile == null                          -> rh.gs(CoreUiStrings.noprofile)
             !pump.isInitialized()                    -> rh.gs(CoreUiStrings.pump_not_initialized_profile_not_set)
             pump.isSuspended()                       -> rh.gs(InterfacesStrings.pumpsuspended)
             runningMode == RM.Mode.DISCONNECTED_PUMP -> rh.gs(InterfacesStrings.pump_disconnected)
             else                                     -> null
         }
+        // No BG and nothing else in the way: the entry stays usable and opens the bolus calculator with its carbs,
+        // where a BG can be typed in (2026-11-12, per explicit request). See MainViewModel.executeQuickWizard.
+        if (lastBG == null && otherReason == null)
+            return QuickWizardItem(
+                guid = guid, buttonText = buttonText, mode = entry.mode().value,
+                detail = rh.gs(CoreUiStrings.quickwizard_no_bg_opens_calculator, entry.carbs()), isEnabled = true
+            )
+        val globalReason = if (lastBG == null) rh.gs(CoreUiStrings.wizard_no_actual_bg) else otherReason
         if (globalReason != null)
             return QuickWizardItem(guid = guid, buttonText = buttonText, mode = entry.mode().value, disabledReason = globalReason)
 

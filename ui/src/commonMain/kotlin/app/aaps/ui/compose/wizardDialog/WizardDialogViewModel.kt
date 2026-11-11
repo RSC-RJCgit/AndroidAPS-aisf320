@@ -917,6 +917,8 @@ class WizardDialogViewModel(
                     ) { asAdvisor ->
                         // A read-only client: the lines were an example. Say so and keep the wizard open, give nothing.
                         if (readOnlyClient) {
+                            // The example was prepared on this phone: drop it and end its SMB pause (2026-11-12)
+                            wizardExecutor.discard(prepared.id)
                             rxBus.send(EventShowDialog.Ok(title = rh.gs(CoreUiStrings.boluswizard), message = rh.gs(CoreUiStrings.wizard_read_only_example)))
                             return@showWizardBolusConfirmation
                         }

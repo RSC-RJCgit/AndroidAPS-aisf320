@@ -145,10 +145,11 @@ class RoleBranch(
 
     /**
      * Drop a prepared entry the user cancelled: [masterDiscard] on a master. A client sends nothing - the master's
-     * entry and its SMB pause run out by themselves.
+     * entry and its SMB pause run out by themselves. A read-only client prepared the entry on this phone, so it drops
+     * its own entry and ends its own SMB pause (2026-11-12, per explicit request).
      */
     fun discard(masterDiscard: () -> Unit) {
-        if (!config.AAPSCLIENT) masterDiscard()
+        if (!config.AAPSCLIENT || readOnlyClient) masterDiscard()
     }
 
     /**
