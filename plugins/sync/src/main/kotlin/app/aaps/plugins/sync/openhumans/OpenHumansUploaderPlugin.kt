@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.openhumans
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -276,7 +278,7 @@ class OpenHumansUploaderPlugin @Inject internal constructor(
         uploadInfo.put("fileVersion", 2)
         uploadInfo.put("counter", uploadNumber)
         uploadInfo.put("timestamp", until)
-        uploadInfo.put("utcOffset", TimeZone.getDefault().getOffset(uploadDate))
+        uploadInfo.put("utcOffset", AppTimeZone.timeZone().getOffset(uploadDate))
         zos.writeFile("UploadInfo.json", uploadInfo.toString().toByteArray())
         tags.add("UploadInfo")
 

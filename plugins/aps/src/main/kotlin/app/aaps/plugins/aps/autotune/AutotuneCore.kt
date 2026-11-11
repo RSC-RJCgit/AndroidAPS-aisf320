@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.autotune
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -173,7 +175,7 @@ class AutotuneCore @Inject constructor(
         for (hour in 0..23) {
             var deviations = 0.0
             for (i in basalGlucose.indices) {
-                val bgTime = Calendar.getInstance()
+                val bgTime = AppTimeZone.calendar()
                 //var BGTime: Date? = null
                 if (basalGlucose[i].date != 0L) {
                     bgTime.timeInMillis = basalGlucose[i].date

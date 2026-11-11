@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAMA
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.content.Intent
 import android.icu.util.Calendar
@@ -191,7 +193,7 @@ class OpenAPSAMAPlugin @Inject constructor(
 
         val iobArray = iobCobCalculator.calculateIobArrayInDia(profile)
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
-        val calendar = Calendar.getInstance()
+        val calendar = AppTimeZone.calendar()
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart).milliseconds.inWholeMinutes
 

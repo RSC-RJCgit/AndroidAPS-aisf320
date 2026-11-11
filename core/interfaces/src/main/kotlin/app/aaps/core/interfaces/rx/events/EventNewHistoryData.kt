@@ -1,5 +1,7 @@
 package app.aaps.core.interfaces.rx.events
 
+import app.aaps.core.data.time.AppTimeZone
+
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -16,7 +18,7 @@ class EventNewHistoryData(val oldDataTimestamp: Long, var reloadBgData: Boolean,
     override fun toString(): String {
         return super.toString() +
             " " +
-            Instant.ofEpochMilli(oldDataTimestamp).atZone(ZoneId.systemDefault()).toLocalDateTime()
+            Instant.ofEpochMilli(oldDataTimestamp).atZone(AppTimeZone.current()).toLocalDateTime()
                 .format(DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss"))
     }
 }

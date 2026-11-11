@@ -12,6 +12,9 @@ import androidx.annotation.StringRes
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.fragment.app.FragmentActivity
+import app.aaps.core.data.time.AppTimeZone
+import app.aaps.core.objects.graph.MasterGraphTime
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -88,7 +91,14 @@ class ConfigBuilderPlugin @Inject constructor(
     private val scope = CoroutineScope(Dispatchers.Default + Job())
 
     override fun initialize() {
+        var selectionReady = false
+        AppTimeZone.virtualMasterZone = {
+            if (selectionReady && preferences.apsMode && activePlugin.activePump is VirtualPump) {
+                MasterGraphTime.forVirtualMaster(preferences)?.toZoneId()
+            } else null
+        }
         loadSettings()
+        selectionReady = true
         setAlwaysEnabledPluginsEnabled()
         // Wait for MainActivity start
         runOnUiThreadDelayed(5000) { rxBus.send(EventAppInitialized()) }

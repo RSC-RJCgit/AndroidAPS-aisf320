@@ -1,5 +1,7 @@
 package app.aaps.plugins.main.profile
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.fragment.app.FragmentActivity
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
@@ -174,7 +176,7 @@ class ProfilePlugin @Inject constructor(
             profile.put("target_low", targetLow)
             profile.put("target_high", targetHigh)
             profile.put("units", if (mgdl) GlucoseUnit.MGDL.asText else GlucoseUnit.MMOL.asText)
-            profile.put("timezone", TimeZone.getDefault().id)
+            profile.put("timezone", AppTimeZone.timeZone().id)
         }
         val defaultUnits = JsonHelper.safeGetStringAllowNull(profile, "units", null)
         return pureProfileFromJson(profile, dateUtil, defaultUnits)
@@ -419,7 +421,7 @@ class ProfilePlugin @Inject constructor(
                     profile.put("target_low", targetLow)
                     profile.put("target_high", targetHigh)
                     profile.put("units", if (mgdl) GlucoseUnit.MGDL.asText else GlucoseUnit.MMOL.asText)
-                    profile.put("timezone", TimeZone.getDefault().id)
+                    profile.put("timezone", AppTimeZone.timeZone().id)
                     store.put(name, profile)
                 }
             }

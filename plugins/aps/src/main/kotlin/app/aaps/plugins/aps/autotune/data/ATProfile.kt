@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.autotune.data
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.data.Block
 import app.aaps.core.data.time.T
@@ -169,7 +171,7 @@ class ATProfile @Inject constructor(
             json.put("autosens_max", preferences.get(DoubleKey.AutosensMax))
             json.put("autosens_min", preferences.get(DoubleKey.AutosensMin))
             json.put("units", GlucoseUnit.MGDL.asText)
-            json.put("timezone", TimeZone.getDefault().id)
+            json.put("timezone", AppTimeZone.timeZone().id)
             jsonString = json.toString(2).replace("\\/", "/")
         } catch (e: JSONException) {
             aapsLogger.error(LTag.CORE, e.stackTraceToString())

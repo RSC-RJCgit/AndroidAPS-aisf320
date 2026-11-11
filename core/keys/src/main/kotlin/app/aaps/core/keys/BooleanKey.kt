@@ -287,7 +287,7 @@ enum class BooleanKey(
     NsClientAcceptProfileSwitch("ns_receive_profile_switch", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptInsulin("ns_receive_insulin", false, showInNsClientMode = false, hideParentScreenIfHidden = true),
     NsClientAcceptInsulinExcludeSmb("ns_receive_insulin_exclude_smb", false, showInNsClientMode = false, dependency = NsClientAcceptInsulin),
-    ClientGraphFollowMasterTimeZone("client_graph_follow_master_time_zone", true, showInApsMode = false, showInPumpControlMode = false),
+    ClientGraphFollowMasterTimeZone("client_graph_follow_master_time_zone", true, showInPumpControlMode = false),
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false),
     NsClientSimulatorBgReplay("nsclient_simulator_bg_replay", false, exportable = false),
     NsClientSecondaryAcceptTherapyEvent("nsclient_secondary_receive_therapy_events", true, dependency = NsClientSecondaryEnabled),

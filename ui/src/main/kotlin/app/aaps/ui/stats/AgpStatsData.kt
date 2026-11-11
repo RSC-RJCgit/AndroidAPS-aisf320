@@ -2,6 +2,8 @@
 // v4's Statistics tabs, drawn with Android views in v3. Keep the two in step when one changes.
 package app.aaps.ui.stats
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.GV
@@ -134,7 +136,7 @@ internal fun calculateAgpStatsData(
             veryHigh = percentage(values.count { it > maxOf(VERY_HIGH_MGDL, highMgdl) }, values.size)
         ),
         hourlyPercentiles = valid
-            .groupBy { Calendar.getInstance().apply { timeInMillis = it.timestamp }.get(Calendar.HOUR_OF_DAY) }
+            .groupBy { AppTimeZone.calendar().apply { timeInMillis = it.timestamp }.get(Calendar.HOUR_OF_DAY) }
             .entries
             .sortedBy { it.key }
             .map { (hour, readingsForHour) ->

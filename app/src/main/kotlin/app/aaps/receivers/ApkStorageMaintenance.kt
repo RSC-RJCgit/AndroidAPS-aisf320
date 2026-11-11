@@ -1,5 +1,7 @@
 package app.aaps.receivers
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
@@ -39,7 +41,7 @@ class ApkStorageMaintenance @Inject constructor(
     @Synchronized
     fun check(context: Context) {
         if (!config.APS || config.AAPSCLIENT || activePlugin.activePump is VirtualPump) return
-        val localTime = Instant.ofEpochMilli(dateUtil.now()).atZone(ZoneId.systemDefault())
+        val localTime = Instant.ofEpochMilli(dateUtil.now()).atZone(AppTimeZone.current())
         val localDay = localTime.toLocalDate().toEpochDay()
         val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
             localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)

@@ -1,5 +1,7 @@
 package app.aaps.plugins.main.general.overview
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.annotation.SuppressLint
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
@@ -1102,7 +1104,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
                     preferences.get(BooleanKey.AutomationStatesEnabled) &&
                     !config.AAPSCLIENT &&
-                    Calendar.getInstance().get(Calendar.HOUR_OF_DAY) >= 6 &&
+                    AppTimeZone.calendar().get(Calendar.HOUR_OF_DAY) >= 6 &&
                     try {
                         activePlugin.activeAPS.algorithm.name == "AUTO_ISF" &&
                             automationStateService.getState("MJ") == "NOMJremains" &&

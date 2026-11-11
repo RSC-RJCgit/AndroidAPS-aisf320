@@ -1,5 +1,7 @@
 package app.aaps.plugins.automation.elements
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.graphics.Typeface
 import android.text.format.DateFormat
@@ -44,7 +46,7 @@ class InputTimeRange(private val rh: ResourceHelper, private val dateUtil: DateU
                         setPadding(px, px, px, px)
                         setOnClickListener {
                             getFragmentManager(root.context)?.let { fm ->
-                                val cal = Calendar.getInstance().apply { timeInMillis = toMills(start) }
+                                val cal = AppTimeZone.calendar().apply { timeInMillis = toMills(start) }
                                 val clockFormat = if (DateFormat.is24HourFormat(context)) TimeFormat.CLOCK_24H else TimeFormat.CLOCK_12H
                                 val timePicker = MaterialTimePicker.Builder()
                                     .setTimeFormat(clockFormat)
@@ -65,7 +67,7 @@ class InputTimeRange(private val rh: ResourceHelper, private val dateUtil: DateU
                     setPadding(px, px, px, px)
                     setOnClickListener {
                         getFragmentManager(root.context)?.let { fm ->
-                            val cal = Calendar.getInstance().apply { timeInMillis = toMills(end) }
+                            val cal = AppTimeZone.calendar().apply { timeInMillis = toMills(end) }
                             val clockFormat = if (DateFormat.is24HourFormat(context)) TimeFormat.CLOCK_24H else TimeFormat.CLOCK_12H
                             val timePicker = MaterialTimePicker.Builder()
                                 .setTimeFormat(clockFormat)

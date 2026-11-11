@@ -1,5 +1,7 @@
 package app.aaps.implementation.stats
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Typeface
@@ -46,7 +48,7 @@ class DexcomTirImpl : DexcomTIR {
     private fun highTirMgdl(hour: Int) = if (hour in 6..22) highTirMgdl else highNightTirMgdl
 
     fun add(time: Long, valueMgdl: Double) {
-        val c = Calendar.getInstance()
+        val c = AppTimeZone.calendar()
         c.timeInMillis = time
         val hour = c[Calendar.HOUR_OF_DAY]
         when {

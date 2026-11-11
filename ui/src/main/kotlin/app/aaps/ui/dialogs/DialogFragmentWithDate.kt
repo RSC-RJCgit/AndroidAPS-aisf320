@@ -1,5 +1,7 @@
 package app.aaps.ui.dialogs
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.os.Bundle
 import android.text.format.DateFormat
 import android.view.View
@@ -101,7 +103,7 @@ abstract class DialogFragmentWithDate : DaggerDialogFragment() {
         eventTimeView?.text = dateUtil.timeString(eventTime)
         eventTimeView?.setOnClickListener {
             val clockFormat = if (DateFormat.is24HourFormat(context)) TimeFormat.CLOCK_24H else TimeFormat.CLOCK_12H
-            val cal = Calendar.getInstance().apply { timeInMillis = eventTime }
+            val cal = AppTimeZone.calendar().apply { timeInMillis = eventTime }
             val timePicker = MaterialTimePicker.Builder()
                 .setTimeFormat(clockFormat)
                 .setHour(cal.get(Calendar.HOUR_OF_DAY))

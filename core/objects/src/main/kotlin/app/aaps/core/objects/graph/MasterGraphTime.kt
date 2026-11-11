@@ -1,5 +1,7 @@
 package app.aaps.core.objects.graph
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.text.format.DateFormat
 import app.aaps.core.interfaces.configuration.Config
@@ -21,7 +23,7 @@ object MasterGraphTime {
     private val manualOffsetPattern = Regex(MANUAL_OFFSET_PATTERN)
 
     fun forUpload(config: Config): String? =
-        if (config.appInitialized && config.APS && !config.AAPSCLIENT) ZoneId.systemDefault().id else null
+        if (config.appInitialized && config.APS && !config.AAPSCLIENT) AppTimeZone.current().id else null
 
     @Synchronized
     fun remember(preferences: Preferences, fromSecondary: Boolean, zone: String, timestamp: Long, now: Long): Boolean {
@@ -35,7 +37,22 @@ object MasterGraphTime {
     }
 
     fun forClient(config: Config, preferences: Preferences): TimeZone? {
-        if (!config.AAPSCLIENT) return null
+        if (!config.AAPSCLIENT && !config.APS) return null
+        return resolve(preferences)
+    }
+
+    private class CachedZone(val preferences: Preferences, val readAt: Long, val zone: TimeZone?)
+    @Volatile private var cachedZone: CachedZone? = null
+
+    /** Avoid reading settings for every minute of historical basal calculations. */
+    fun forVirtualMaster(preferences: Preferences): TimeZone? {
+        val now = System.nanoTime()
+        val cached = cachedZone
+        if (cached != null && cached.preferences === preferences && now - cached.readAt in 0L..1_000_000_000L) return cached.zone
+        return resolve(preferences).also { cachedZone = CachedZone(preferences, now, it) }
+    }
+
+    private fun resolve(preferences: Preferences): TimeZone? {
         val imported = if (preferences.get(BooleanKey.ClientGraphFollowMasterTimeZone)) {
             val site = site(preferences, usesSecondarySite(preferences))
             read(preferences, site)?.optString("zone")?.let(::parseZone)

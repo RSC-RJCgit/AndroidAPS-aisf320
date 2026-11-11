@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.tidepool.messages
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.utils.DateUtil
@@ -47,7 +49,7 @@ class OpenDatasetRequestMessage(config: Config, dateUtil: DateUtil) : BaseMessag
     var timeProcessing = "none"
 
     @Expose
-    var timezone: String = TimeZone.getDefault().id
+    var timezone: String = AppTimeZone.timeZone().id
 
     @Expose
     var version = config.VERSION_NAME

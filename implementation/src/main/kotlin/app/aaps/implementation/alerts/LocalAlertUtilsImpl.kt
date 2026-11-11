@@ -1,5 +1,7 @@
 package app.aaps.implementation.alerts
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.time.T
@@ -171,7 +173,7 @@ class LocalAlertUtilsImpl @Inject constructor(
     private val LOW_BG_THRESHOLD_MGDL = 6.5 * 18.0182
 
     private fun setReducedTempBasalIfLastBgLow(now: Long, lastBgMgdl: Double) {
-        val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
+        val hour = Instant.ofEpochMilli(now).atZone(AppTimeZone.current()).hour
         if (hour !in 2 until 6) return
         if (lastBgMgdl >= LOW_BG_THRESHOLD_MGDL) return
 
@@ -199,7 +201,7 @@ class LocalAlertUtilsImpl @Inject constructor(
     }
 
     private fun cancelHighTempBasalOvernight(now: Long) {
-        val hour = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).hour
+        val hour = Instant.ofEpochMilli(now).atZone(AppTimeZone.current()).hour
         if (hour !in 2 until 6) return
 
         val profile = profileFunction.getProfile() ?: return

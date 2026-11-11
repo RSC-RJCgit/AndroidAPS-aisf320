@@ -1,5 +1,7 @@
 package app.aaps.plugins.constraints.dstHelper
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.time.T
@@ -52,7 +54,7 @@ class DstHelperPlugin @Inject constructor(
     fun dstCheck() {
         val pump = activePlugin.activePump
         if (pump.canHandleDST()) return
-        val cal = Calendar.getInstance()
+        val cal = AppTimeZone.calendar()
         if (willBeDST(cal)) {
             val snoozedTo: Long = preferences.get(DstHelperLongKey.SnoozeDstIn24h)
             if (snoozedTo == 0L || System.currentTimeMillis() > snoozedTo) {

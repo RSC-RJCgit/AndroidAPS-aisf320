@@ -1,5 +1,7 @@
 package app.aaps.core.interfaces.utils
 
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.annotation.VisibleForTesting
 import androidx.collection.LongSparseArray
 import java.time.Instant
@@ -13,6 +15,7 @@ object MidnightTime {
     val times = LongSparseArray<Long>()
 
     private const val THRESHOLD = 100000
+    private var cacheZone: ZoneId? = null
 
     /**
      * Epoch time of last midnight
@@ -20,7 +23,7 @@ object MidnightTime {
      * @return epoch millis
      */
     fun calc(): Long =
-        LocalDateTime.now().atZone(ZoneId.systemDefault())
+        Instant.now().atZone(AppTimeZone.current())
             .with(LocalTime.of(0, 0, 0, 0))
             .toInstant().toEpochMilli()
 
@@ -33,7 +36,7 @@ object MidnightTime {
     fun calcMidnightPlusMinutes(minutes: Int): Long {
         val h = (minutes / 60) % 24
         val m = minutes % 60
-        return LocalDateTime.now().atZone(ZoneId.systemDefault())
+        return Instant.now().atZone(AppTimeZone.current())
             .with(LocalTime.of(h, m, 0, 0))
             .toInstant().toEpochMilli()
     }
@@ -46,7 +49,12 @@ object MidnightTime {
      */
     fun calc(time: Long): Long {
         synchronized(times) {
-            val m = times[time] ?: Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault())
+            val zone = AppTimeZone.current()
+            if (cacheZone != zone) {
+                resetCache()
+                cacheZone = zone
+            }
+            val m = times[time] ?: Instant.ofEpochMilli(time).atZone(AppTimeZone.current())
                 .with(LocalTime.of(0, 0, 0, 0))
                 .toInstant().toEpochMilli()
             if (times.size() > THRESHOLD) resetCache()
@@ -61,7 +69,7 @@ object MidnightTime {
      * @return epoch millis of midnight
      */
     fun calcDaysBack(daysBack: Long): Long =
-        LocalDateTime.now().atZone(ZoneId.systemDefault())
+        Instant.now().atZone(AppTimeZone.current())
             .with(LocalTime.of(0, 0, 0, 0))
             .minusDays(daysBack)
             .toInstant().toEpochMilli()
@@ -74,7 +82,7 @@ object MidnightTime {
      * @return epoch millis of midnight
      */
     fun calcDaysBack(time: Long, daysBack: Long): Long =
-        Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault())
+        Instant.ofEpochMilli(time).atZone(AppTimeZone.current())
             .with(LocalTime.of(0, 0, 0, 0))
             .minusDays(daysBack)
             .toInstant().toEpochMilli()

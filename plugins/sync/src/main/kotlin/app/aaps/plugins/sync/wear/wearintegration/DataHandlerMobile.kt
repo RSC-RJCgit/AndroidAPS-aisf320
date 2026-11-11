@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.wear.wearintegration
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.app.NotificationManager
 import android.content.Context
 import app.aaps.core.data.configuration.Constants
@@ -353,7 +355,7 @@ class DataHandlerMobile @Inject constructor(
                            var carbTime: Long? = null
                            var carbTimeOffset: Long = 0
                            var useAlarm = false
-                           val currentTime = Calendar.getInstance().timeInMillis
+                           val currentTime = AppTimeZone.calendar().timeInMillis
                            var eventTime = currentTime
                            var carbs2 = 0
                            var duration = 0

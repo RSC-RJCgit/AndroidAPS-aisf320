@@ -1,5 +1,7 @@
 package app.aaps.plugins.sync.nsclient
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow
@@ -378,7 +380,7 @@ class SimulatorBgReplay @Inject constructor(
     // Time-zone match (2026-11-07, per explicit request): a reading replays at the same LOCAL clock time, the delay later, in
     // this phone's current zone, not exactly the delay later in UTC. Its original zone is its own UTC offset (utcOffset, or an
     // explicit offset in dateString/sysTime), else the "Replay source time zone" setting at that moment, with its daylight saving.
-    private fun here(): TimeZone = TimeZone.getDefault()
+    private fun here(): TimeZone = AppTimeZone.timeZone()
     private fun sourceZone(): TimeZone = TimeZone.getTimeZone(preferences.get(StringKey.NsClientSimulatorBgReplaySourceTimeZone).trim())
 
     private fun sourceOffsetMs(source: JSONObject, zone: TimeZone): Long {

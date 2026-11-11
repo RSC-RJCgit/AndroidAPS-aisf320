@@ -1,5 +1,7 @@
 package app.aaps.ui.defaultProfile
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.profile.PureProfile
@@ -43,7 +45,7 @@ class DefaultProfileDPV @Inject constructor(
         profile.put("dia", 5.0)
         profile.put("carbs_hr", 20) // not used
         profile.put("delay", 5.0) // not used
-        profile.put("timezone", TimeZone.getDefault().id)
+        profile.put("timezone", AppTimeZone.timeZone().id)
         profile.put("target_high", JSONArray().put(JSONObject().put("time", "00:00").put("value", profileUtil.fromMgdlToUnits(108.0, units))))
         profile.put("target_low", JSONArray().put(JSONObject().put("time", "00:00").put("value", profileUtil.fromMgdlToUnits(108.0, units))))
         profile.put("units", units.asText)

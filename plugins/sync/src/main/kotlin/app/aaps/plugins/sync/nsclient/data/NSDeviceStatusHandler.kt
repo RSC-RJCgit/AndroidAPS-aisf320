@@ -144,9 +144,13 @@ class NSDeviceStatusHandler @Inject constructor(
             ) {
                 receiveLiveSteps(nsDeviceStatus)
             }
+            if ((config.AAPSCLIENT || (config.APS && activePlugin.get().activePump is VirtualPump)) &&
+                nsDeviceStatus.device?.startsWith("openaps://") == true
+            ) {
+                if (receiveMasterGraphTime(nsDeviceStatus, fromSecondary, now)) graphZoneChanged = true
+            }
             if (config.AAPSCLIENT) {
                 if (nsDeviceStatus.device?.startsWith("openaps://") == true) {
-                    if (receiveMasterGraphTime(nsDeviceStatus, fromSecondary, now)) graphZoneChanged = true
                     nsDeviceStatus.openaps?.suggested?.optJSONObject(NoteSmsTexts.DEVICE_STATUS_FIELD)?.let { payload ->
                         NoteSmsTexts.fromDeviceStatus(payload, now).forEach { (timestamp, text) ->
                             noteTexts.putIfAbsent(timestamp, text)

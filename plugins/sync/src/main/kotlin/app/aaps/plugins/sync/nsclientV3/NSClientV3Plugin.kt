@@ -952,7 +952,7 @@ class NSClientV3Plugin @Inject constructor(
             key = "ns_client_settings"
             title = rh.gs(R.string.ns_client_v3_title)
             initialExpandedChildrenCount = 0
-            if (config.AAPSCLIENT) addClientGraphTimePreferences(context)
+            if (config.AAPSCLIENT || dataSyncSelectorV3.fullAapsOnVirtualPump) addClientGraphTimePreferences(context)
             addPreference(
                 AdaptiveStringPreference(
                     ctx = context, stringKey = StringKey.NsClientUrl, dialogMessage = R.string.ns_client_url_dialog_message, title = R.string.ns_client_url_title,

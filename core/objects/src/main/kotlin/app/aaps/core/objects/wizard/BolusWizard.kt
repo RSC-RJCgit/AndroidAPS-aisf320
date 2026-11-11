@@ -1,5 +1,7 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.annotation.SuppressLint
 import android.content.Context
 import android.text.Spanned
@@ -2050,7 +2052,7 @@ class BolusWizard @Inject constructor(
             val duration = JsonHelper.safeGetInt(quickWizardEntry.storage, "duration", 0)
             val carbs2 = JsonHelper.safeGetInt(quickWizardEntry.storage, "carbs2", 0)
 
-            val currentTime = Calendar.getInstance().timeInMillis
+            val currentTime = AppTimeZone.calendar().timeInMillis
             val eventTime: Long = currentTime + (timeOffset * 60000)
 
             if (carbs2 > 0) {

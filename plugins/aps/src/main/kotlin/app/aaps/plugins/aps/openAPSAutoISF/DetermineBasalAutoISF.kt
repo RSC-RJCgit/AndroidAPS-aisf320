@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
@@ -1179,7 +1181,7 @@ class DetermineBasalAutoISF @Inject constructor(
         var varOffset: Double = if (useSimpleOffsetOverride) preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride) * 18.0
                                  else high_SMB * 18.0  // 0.5→9, 0.6→10.8, 1.0→18
 
-        val hour = LocalDateTime.now().hour
+        val hour = LocalDateTime.now(AppTimeZone.current()).hour
 
         var targetBgOrig: Double = when {
             !profile.temptargetSet && profile.min_bg != null -> profile.min_bg!!.toDouble()
@@ -1213,7 +1215,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         var targetBgOffset = min(targetBgOrig + varOffset, 126.0)
 
-        val nowLocalDateTime = LocalDateTime.now()
+        val nowLocalDateTime = LocalDateTime.now(AppTimeZone.current())
         val nowHour = nowLocalDateTime.hour
         // Minute-of-day, needed because the cumulative SMB cap's window starts at 00:30 -- hour
         // granularity alone cannot express that.
@@ -1404,7 +1406,7 @@ class DetermineBasalAutoISF @Inject constructor(
             return setTempBasal(0.0, durationReq, profile, rT, currenttemp)
         }
 
-        val minutes = Instant.ofEpochMilli(rT.deliverAt!!).atZone(ZoneId.systemDefault()).toLocalDateTime().minute
+        val minutes = Instant.ofEpochMilli(rT.deliverAt!!).atZone(AppTimeZone.current()).toLocalDateTime().minute
         if (profile.skip_neutral_temps && minutes >= 55) {
             rT.reason.append("; Canceling temp at " + minutes + "m past the hour. ")
             return setTempBasal(0.0, 0, profile, rT, currenttemp)
@@ -1636,7 +1638,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 // in their own local-time window too, rather than against the wall clock at the moment
                 // the code happens to run. 09:00 is inclusive; 21:00 is exclusive (last eligible
                 // minute is 20:59).
-                val tier3LocalHour = Instant.ofEpochMilli(systemTime).atZone(ZoneId.systemDefault()).hour
+                val tier3LocalHour = Instant.ofEpochMilli(systemTime).atZone(AppTimeZone.current()).hour
                 val tier3TimeAllowed = (tier3LocalHour in 9 until 21) || daytimeGateBypassOk || riseHold
                 if (boostActive && !tier3TimeAllowed) {
                     consoleError.add("Tier 3 UAM Boost blocked outside 09:00-21:00 (local hour $tier3LocalHour)")

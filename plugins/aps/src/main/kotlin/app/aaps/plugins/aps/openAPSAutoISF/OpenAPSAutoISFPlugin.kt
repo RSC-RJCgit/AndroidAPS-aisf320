@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -1028,7 +1030,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // 2026-10-07, per explicit request: overnight lows are often sensor compression, so a hypo event between 01:00 and 07:00,
     // or with 60 minute steps over 1000, is ignored by the AlarmHypo marking and by the hypo-driven drops to a lower tier.
     private fun minuteOfDayAt(ts: Long): Int {
-        val cal = Calendar.getInstance().apply { timeInMillis = ts }
+        val cal = AppTimeZone.calendar().apply { timeInMillis = ts }
         return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
     }
 
@@ -2629,7 +2631,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // True when the local clock is inside [startH:startM, endH:endM). Handles overnight ranges
     // (e.g. 22:00–01:00) by checking the complement and inverting.
     private fun isTimeBetween(startH: Int, startM: Int, endH: Int, endM: Int): Boolean {
-        val cal = Calendar.getInstance()
+        val cal = AppTimeZone.calendar()
         val nowMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
         val startMins = startH * 60 + startM
         val endMins   = endH * 60 + endM
@@ -3815,7 +3817,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         findRawDip(readings)?.let { dip ->
             val showerAt = lastRunTimestamps["Shower12"] ?: 0L
             val afterShower = showerAt != 0L && dip.bottomAt - showerAt in 0L..T.hours(2).msecs()
-            val minuteOfDay = Calendar.getInstance().apply { timeInMillis = dip.bottomAt }.let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
+            val minuteOfDay = AppTimeZone.calendar().apply { timeInMillis = dip.bottomAt }.let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
             if (!afterShower && !inCompressionHours(minuteOfDay) && dip.bottomAt > preferences.get(LongNonKey.ApsAutoIsfRawDipAt)) {
                 preferences.put(LongNonKey.ApsAutoIsfRawDipAt, dip.bottomAt)
                 addCarePortalNote("SaDip -${round(dip.dropMgdl / 18.016, 2)} (${round(dip.underBgMgdl / 18.016, 2)} under BG)")
@@ -5243,7 +5245,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "invoke found step counts 5m:$recentSteps5Minutes, 10m:$recentSteps10Minutes, 15m:$recentSteps15Minutes, 30m:$recentSteps30Minutes, 60m:$recentSteps60Minutes")
         consoleError.clear()
         consoleLog.clear()
-        val calendar = Calendar.getInstance()
+        val calendar = AppTimeZone.calendar()
         val hour = max(1, calendar.get(Calendar.HOUR_OF_DAY))
         val activityRatio = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour, glucoseStatus.shortAvgDelta)
         val activityOutcomeForDisplay = consoleLog.lastOrNull { it.startsWith("Activity monitor") }
@@ -11363,7 +11365,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
         //var steps180 = steps180min  // add this
         //var steps15 = steps15min  // add this
-        val nowHour = LocalDateTime.now().hour
+        val nowHour = LocalDateTime.now(AppTimeZone.current()).hour
         consoleError.add("steps5min is ${recentSteps5Minutes} ;;")
         consoleError.add("steps15min is ${recentSteps15Minutes} ;;")
         consoleError.add("steps30min is ${recentSteps30Minutes} ;;")
@@ -11562,7 +11564,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val fit_corr: Double = glucose_status.corrSqu
         val bg_acce: Double = glucose_status.bgAcceleration
         bgAcce = bg_acce  // store for use in determine_basal
-        //val nowHour = LocalDateTime.now().hour
+        //val nowHour = LocalDateTime.now(AppTimeZone.current()).hour
         //consoleError.add("steps60min is ${recentSteps60Minutes} ;;")
         //consoleError.add("steps180min is ${steps180min} ;;")
         consoleError.add("nowHour is ${nowHour} ;;")

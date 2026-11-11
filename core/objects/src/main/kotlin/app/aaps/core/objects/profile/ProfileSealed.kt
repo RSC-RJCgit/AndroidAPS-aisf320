@@ -1,5 +1,7 @@
 package app.aaps.core.objects.profile
 
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.IDs
@@ -323,7 +325,7 @@ sealed class ProfileSealed(
                 is EPS  -> this.value.iCfg.insulinEndTime / 3600.0 / 1000.0
                 is Pure -> this.value.dia
             },
-            timeZone = TimeZone.getDefault()
+            timeZone = AppTimeZone.timeZone()
         )
 
     override fun toPureNsJson(dateUtil: DateUtil): JSONObject {

@@ -1,5 +1,7 @@
 package app.aaps.implementation.stats
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.graphics.Typeface
 import android.view.Gravity
@@ -44,7 +46,7 @@ class TddCalculatorImpl @Inject constructor(
 
     override fun calculate(timestamp: Long, days: Long, allowMissingDays: Boolean): LongSparseArray<TDD>? {
         var startTime = MidnightTime.calcDaysBack(timestamp, days)
-        val endTime = Instant.ofEpochMilli(startTime).atZone(ZoneId.systemDefault())
+        val endTime = Instant.ofEpochMilli(startTime).atZone(AppTimeZone.current())
             .plusDays(days)
             .toInstant().toEpochMilli()
 

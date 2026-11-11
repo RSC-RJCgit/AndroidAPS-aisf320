@@ -71,7 +71,7 @@ enum class StringKey(
 
     VirtualPumpType("virtualpump_type", "Generic AAPS"),
 
-    ClientGraphManualUtcOffset("client_graph_manual_utc_offset", "", showInApsMode = false, showInPumpControlMode = false),
+    ClientGraphManualUtcOffset("client_graph_manual_utc_offset", "", showInPumpControlMode = false),
     NsClientUrl("nsclientinternal_url", ""),
     NsClientApiSecret("nsclientinternal_api_secret", "", isPassword = true),
     NsClientWifiSsids("ns_wifi_ssids", "", dependency = BooleanKey.NsClientUseWifi),

@@ -1,5 +1,7 @@
 package app.aaps.activities
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.ViewGroup
@@ -117,7 +119,7 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             rxBus.send(EventScale(hours))
         }
         binding.zoom.setOnLongClickListener {
-            Calendar.getInstance().also { calendar ->
+            AppTimeZone.calendar().also { calendar ->
                 calendar.timeInMillis = historyBrowserData.overviewData.fromTime
                 calendar[Calendar.MILLISECOND] = 0
                 calendar[Calendar.SECOND] = 0

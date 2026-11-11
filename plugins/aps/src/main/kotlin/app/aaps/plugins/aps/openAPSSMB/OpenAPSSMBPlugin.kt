@@ -1,5 +1,7 @@
 package app.aaps.plugins.aps.openAPSSMB
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.content.Intent
 import androidx.collection.LongSparseArray
@@ -422,7 +424,7 @@ open class OpenAPSSMBPlugin @Inject constructor(
         val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, preferences.get(BooleanKey.ApsAutoIsfHighTtRaisesSens), preferences.get(UnitDoubleKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget)
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
 
-        val calendar = Calendar.getInstance()
+        val calendar = AppTimeZone.calendar()
         val lastAppStart = preferences.get(LongKey.AppStart)
         val elapsedTimeSinceLastStart = (dateUtil.now() - lastAppStart) / 60000
 

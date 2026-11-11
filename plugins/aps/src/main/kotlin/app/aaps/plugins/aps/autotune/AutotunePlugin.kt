@@ -2,6 +2,8 @@
 
 package app.aaps.plugins.aps.autotune
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import android.view.View
 import androidx.preference.PreferenceCategory
@@ -315,7 +317,7 @@ class AutotunePlugin @Inject constructor(
         var jsonString = ""
         val jsonSettings = JSONObject()
         val insulinInterface = activePlugin.activeInsulin
-        val utcOffset = T.msecs(TimeZone.getDefault().getOffset(dateUtil.now()).toLong()).hours()
+        val utcOffset = T.msecs(AppTimeZone.timeZone().getOffset(dateUtil.now()).toLong()).hours()
         val startDateString = dateUtil.toISOString(firstLoopStart).substring(0, 10)
         val endDateString = dateUtil.toISOString(lastLoopEnd - 24 * 60 * 60 * 1000L).substring(0, 10)
         val nsUrl = preferences.get(StringKey.NsClientUrl)
@@ -326,13 +328,13 @@ class AutotunePlugin @Inject constructor(
             jsonSettings.put("dateutc", dateUtil.toISOAsUTC(runDate))
             jsonSettings.put("utcOffset", utcOffset)
             jsonSettings.put("units", profileFunction.getUnits().asText)
-            jsonSettings.put("timezone", TimeZone.getDefault().id)
+            jsonSettings.put("timezone", AppTimeZone.timeZone().id)
             jsonSettings.put("url_nightscout", nsUrl)
             jsonSettings.put("nbdays", nbDays)
             jsonSettings.put("startdate", startDateString)
             jsonSettings.put("enddate", endDateString)
             // command to change timezone
-            jsonSettings.put("timezone_command", "sudo ln -sf /usr/share/zoneinfo/" + TimeZone.getDefault().id + " /etc/localtime")
+            jsonSettings.put("timezone_command", "sudo ln -sf /usr/share/zoneinfo/" + AppTimeZone.timeZone().id + " /etc/localtime")
             // oref0_command is for running oref0-autotune on a virtual machine in a dedicated ~/aaps subfolder
             jsonSettings.put("oref0_command", "oref0-autotune -d=~/aaps -n=$nsUrl -s=$startDateString -e=$endDateString $optCategorizeUam $optInsulinCurve")
             // aaps_command is for running modified oref0-autotune with exported data from aaps (ns-entries and ns-treatment json files copied in ~/aaps/autotune folder and pumpprofile.json copied in ~/aaps/settings/

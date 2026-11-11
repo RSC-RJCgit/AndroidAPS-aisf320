@@ -1,5 +1,7 @@
 package app.aaps.shared.impl.utils
 
+import app.aaps.core.data.time.AppTimeZone
+
 import android.content.Context
 import androidx.collection.LongSparseArray
 import app.aaps.core.interfaces.R
@@ -41,7 +43,7 @@ class DateUtilImpl @Inject constructor(
 ) : DateUtil {
 
     /** The timezone is captured each time systemZone is accessed.*/
-    private val systemZone: ZoneId get() = ZoneId.systemDefault()
+    private val systemZone: ZoneId get() = AppTimeZone.current()
     /** The locale used for formatting strings (e.g., date formats, AM/PM) is captured each time displayLocale is accessed.*/
     private val displayLocale: Locale get() = Locale.getDefault()
 
@@ -79,14 +81,14 @@ class DateUtilImpl @Inject constructor(
     }
 
     override fun secondsOfTheDayToMillisecondsOfHoursAndMinutes(seconds: Int): Long {
-        val today = LocalDate.now(clock)
+        val today = LocalDate.now(clock.withZone(systemZone))
         val totalMinutes = seconds / 60
         val time = java.time.LocalTime.of(totalMinutes / 60, totalMinutes % 60)
         return today.atTime(time).atZone(systemZone).toInstant().toEpochMilli()
     }
 
     override fun secondsOfTheDayToMilliseconds(seconds: Int): Long {
-        val today = LocalDate.now(clock)
+        val today = LocalDate.now(clock.withZone(systemZone))
         val time = java.time.LocalTime.ofSecondOfDay(seconds.toLong())
         return today.atTime(time).atZone(systemZone).toInstant().toEpochMilli()
     }
@@ -320,7 +322,7 @@ class DateUtilImpl @Inject constructor(
     }
 
     override fun isAfterNoon(): Boolean =
-        ZonedDateTime.now(clock).hour >= 12
+        ZonedDateTime.now(clock.withZone(systemZone)).hour >= 12
 
     override fun isSameDayGroup(timestamp1: Long, timestamp2: Long): Boolean {
         val now = now()
@@ -456,7 +458,7 @@ class DateUtilImpl @Inject constructor(
     // the functionality was refactored in getTimestampWithCurrentTimeOfDay()
     override fun getTimestampWithCurrentTimeOfDay(timestamp: Long): Long {
         val inputDate = Instant.ofEpochMilli(timestamp).atZone(systemZone).toLocalDate()
-        val timeOfNow = ZonedDateTime.now(clock).toLocalTime()
+        val timeOfNow = ZonedDateTime.now(clock.withZone(systemZone)).toLocalTime()
         return inputDate.atTime(timeOfNow).atZone(systemZone).toInstant().toEpochMilli()
     }
 
