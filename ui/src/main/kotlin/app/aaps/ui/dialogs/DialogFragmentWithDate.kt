@@ -1,7 +1,6 @@
 package app.aaps.ui.dialogs
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.os.Bundle
 import android.text.format.DateFormat
 import android.view.View

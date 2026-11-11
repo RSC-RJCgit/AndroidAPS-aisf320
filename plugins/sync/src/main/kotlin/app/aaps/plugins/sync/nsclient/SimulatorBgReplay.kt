@@ -1,7 +1,6 @@
 package app.aaps.plugins.sync.nsclient
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.model.TrendArrow

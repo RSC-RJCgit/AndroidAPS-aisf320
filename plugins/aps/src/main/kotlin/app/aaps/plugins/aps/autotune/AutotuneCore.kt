@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.autotune
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences

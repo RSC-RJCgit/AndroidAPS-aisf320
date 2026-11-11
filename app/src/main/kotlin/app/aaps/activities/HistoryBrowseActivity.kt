@@ -1,7 +1,6 @@
 package app.aaps.activities
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.ViewGroup

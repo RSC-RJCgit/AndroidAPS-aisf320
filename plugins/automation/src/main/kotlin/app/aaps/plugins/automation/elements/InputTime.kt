@@ -1,7 +1,6 @@
 package app.aaps.plugins.automation.elements
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.graphics.Typeface
 import android.text.format.DateFormat

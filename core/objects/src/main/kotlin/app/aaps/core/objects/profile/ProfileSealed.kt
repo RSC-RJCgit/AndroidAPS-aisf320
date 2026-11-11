@@ -1,7 +1,6 @@
 package app.aaps.core.objects.profile
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.IDs
@@ -332,7 +331,7 @@ sealed class ProfileSealed(
         val o = JSONObject()
         o.put("units", units.asText)
         o.put("dia", dia)
-        o.put("timezone", dateUtil.timeZoneByOffset(utcOffset))
+        o.put("timezone", if (AppTimeZone.virtualMasterZone?.invoke() != null) AppTimeZone.current().id else dateUtil.timeZoneByOffset(utcOffset))
         // SENS
         val sens = JSONArray()
         var elapsedHours = 0L

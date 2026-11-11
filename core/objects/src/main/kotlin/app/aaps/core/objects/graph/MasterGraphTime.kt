@@ -1,7 +1,6 @@
 package app.aaps.core.objects.graph
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.text.format.DateFormat
 import app.aaps.core.interfaces.configuration.Config

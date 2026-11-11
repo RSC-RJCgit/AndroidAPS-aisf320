@@ -1,7 +1,6 @@
 package app.aaps.core.interfaces.utils
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import androidx.annotation.VisibleForTesting
 import androidx.collection.LongSparseArray
 import java.time.Instant

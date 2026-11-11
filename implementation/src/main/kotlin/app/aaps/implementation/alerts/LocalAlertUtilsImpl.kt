@@ -1,7 +1,6 @@
 package app.aaps.implementation.alerts
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TB
 import app.aaps.core.data.time.T

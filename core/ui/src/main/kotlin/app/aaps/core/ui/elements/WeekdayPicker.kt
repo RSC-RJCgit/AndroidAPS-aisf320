@@ -1,7 +1,6 @@
 package app.aaps.core.ui.elements
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.interfaces.utils.AppCalendar
 import android.content.Context
 import android.util.AttributeSet
 import android.view.LayoutInflater
@@ -27,7 +26,7 @@ class WeekdayPicker(context: Context, attrs: AttributeSet? = null, defStyleAttr:
     fun Boolean.toVisibility() = if (this) VISIBLE else GONE
 
     private fun determineBeginOfWeek() {
-        (AppTimeZone.calendar().firstDayOfWeek == Calendar.SUNDAY).let {
+        (AppCalendar.current().firstDayOfWeek == Calendar.SUNDAY).let {
             binding.weekdayPickerSundayStart.visibility = it.toVisibility()
             binding.weekdayPickerSundayEnd.visibility = it.not().toVisibility()
         }

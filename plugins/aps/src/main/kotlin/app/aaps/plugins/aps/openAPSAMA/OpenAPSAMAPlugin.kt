@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.openAPSAMA
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.content.Intent
 import android.icu.util.Calendar
@@ -44,6 +43,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntentKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.LongKey
+
 //import app.aaps.core.objects.aps.DetermineBasalResult
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.convertedToAbsolute

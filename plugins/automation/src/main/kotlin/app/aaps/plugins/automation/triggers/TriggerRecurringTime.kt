@@ -1,7 +1,6 @@
 package app.aaps.plugins.automation.triggers
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.widget.LinearLayout
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.utils.MidnightTime

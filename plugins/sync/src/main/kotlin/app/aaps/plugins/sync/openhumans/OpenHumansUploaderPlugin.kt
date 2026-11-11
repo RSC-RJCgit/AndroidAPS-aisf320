@@ -1,7 +1,6 @@
 package app.aaps.plugins.sync.openhumans
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent

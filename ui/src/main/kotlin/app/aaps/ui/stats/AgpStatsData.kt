@@ -2,8 +2,7 @@
 // v4's Statistics tabs, drawn with Android views in v3. Keep the two in step when one changes.
 package app.aaps.ui.stats
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.GV

@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.autotune.data
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.data.Block
 import app.aaps.core.data.time.T

@@ -1,7 +1,6 @@
 package app.aaps.receivers
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.net.Uri
 import android.os.Environment

@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.content.Intent
 import android.os.Build

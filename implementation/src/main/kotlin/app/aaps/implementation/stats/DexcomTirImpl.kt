@@ -1,7 +1,6 @@
 package app.aaps.implementation.stats
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Typeface

@@ -2,8 +2,7 @@
 
 package app.aaps.plugins.aps.autotune
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.view.View
 import androidx.preference.PreferenceCategory

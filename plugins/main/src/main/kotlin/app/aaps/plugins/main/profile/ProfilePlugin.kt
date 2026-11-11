@@ -1,7 +1,6 @@
 package app.aaps.plugins.main.profile
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import androidx.fragment.app.FragmentActivity
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit

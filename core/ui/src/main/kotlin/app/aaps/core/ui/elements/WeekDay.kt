@@ -1,7 +1,6 @@
 package app.aaps.core.ui.elements
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.interfaces.utils.AppCalendar
 import android.widget.LinearLayout
 import androidx.annotation.StringRes
 import app.aaps.core.ui.R
@@ -68,7 +67,7 @@ open class WeekDay {
     fun isSet(day: DayOfWeek): Boolean = weekdays[day.ordinal]
 
     fun isSet(timestamp: Long): Boolean {
-        val scheduledDayOfWeek = AppTimeZone.calendar().also { it.time = Date(timestamp) }
+        val scheduledDayOfWeek = AppCalendar.current().also { it.time = Date(timestamp) }
         return isSet(DayOfWeek.fromCalendarInt(scheduledDayOfWeek[Calendar.DAY_OF_WEEK]))
     }
 

@@ -1,7 +1,6 @@
 package app.aaps.core.interfaces.rx.events
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

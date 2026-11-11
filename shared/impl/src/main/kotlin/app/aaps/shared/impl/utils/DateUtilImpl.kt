@@ -1,7 +1,6 @@
 package app.aaps.shared.impl.utils
 
-import app.aaps.core.data.time.AppTimeZone
-
+import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import app.aaps.core.interfaces.R
 import app.aaps.core.interfaces.resources.ResourceHelper
