@@ -369,7 +369,7 @@ enum class StringKey(
         title = KeysStrings.client_graph_manual_utc_offset,
         summary = KeysStrings.client_graph_manual_utc_offset_summary,
         validator = StringValidator.regex(GRAPH_UTC_OFFSET_PATTERN, "Enter an offset such as +09:30 or -05:00"),
-        visibility = ElementVisibility { it.isClient }
+        showInPumpControlMode = false
     ),
     NsClientSecondaryUrl(
         key = "nsclient_secondary_url",

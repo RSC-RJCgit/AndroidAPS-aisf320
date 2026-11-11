@@ -155,7 +155,7 @@ class NSDeviceStatusHandler(
         if (unreadable.count > 0)
             aapsLogger.warn(LTag.NSCLIENT, "Device statuses, parts skipped because they could not be read: ${unreadable.count}. The first: ${unreadable.first}")
         // This display field also works with older loop-result shapes the current APS parser cannot read.
-        if (config.AAPSCLIENT && deviceStatuses.any { it.openaps?.suggested?.containsKey(MasterGraphTimeZone.FIELD) == true }) {
+        if (deviceStatuses.any { it.openaps?.suggested?.containsKey(MasterGraphTimeZone.FIELD) == true }) {
             takeMasterGraphTimeZone(deviceStatuses.asList(), preferences.get(StringKey.NsClientUrl).trim())
         }
         if (config.AAPSCLIENT && accepted.isNotEmpty()) {
@@ -204,7 +204,8 @@ class NSDeviceStatusHandler(
     }
 
     internal fun takeMasterGraphTimeZone(statuses: List<NSDeviceStatus>, site: String) {
-        if (!config.AAPSCLIENT || site.isBlank() || site != MasterGraphTimeZone.selectedSite(preferences)) return
+        if (!config.AAPSCLIENT && (!config.APS || activePlugin.activePump.selectedActivePump() !is VirtualPump)) return
+        if (site.isBlank() || site != MasterGraphTimeZone.selectedSite(preferences)) return
         val latestAllowed = dateUtil.now() + 5 * 60_000L
         val latest = statuses.asSequence().mapNotNull { status ->
             if (status.device?.startsWith("openaps://") != true) return@mapNotNull null

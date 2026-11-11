@@ -475,7 +475,7 @@ enum class BooleanKey(
     ClientGraphFollowMasterTimeZone(
         "client_graph_follow_master_time_zone", true,
         KeysStrings.client_graph_follow_master_time_zone, KeysStrings.client_graph_follow_master_time_zone_summary,
-        showInApsMode = false, showInPumpControlMode = false
+        showInPumpControlMode = false
     ),
     NsClientSecondaryEnabled("nsclient_secondary_enabled", false, KeysStrings.ns_secondary_enabled, KeysStrings.ns_secondary_enabled_summary),
     // Trio remote control, as in LoopFollow (2026-10-29, per explicit request). The rest of its settings depend on this.

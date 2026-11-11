@@ -244,10 +244,11 @@ class LoadSecondaryTreatmentsRunner(
         return WorkOutcome.Success
     }
 
-    // Live step buckets and the client graph clock come from the configured live site.
+    // Live step buckets and the graph clock come from the configured live site.
     private suspend fun downloadLiveDeviceStatus(client: NSAndroidClientImpl, site: String) {
         val readSteps = preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)
-        val readZone = config.AAPSCLIENT && site == MasterGraphTimeZone.selectedSite(preferences)
+        val canReadZone = config.AAPSCLIENT || (config.APS && activePlugin.activePump.selectedActivePump() is VirtualPump)
+        val readZone = canReadZone && site == MasterGraphTimeZone.selectedSite(preferences)
         if (!readSteps && !readZone) return
         try {
             val from = dateUtil.now() - LiveSteps.MAX_AGE_MS

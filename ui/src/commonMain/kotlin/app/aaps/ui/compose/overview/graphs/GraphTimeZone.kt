@@ -19,10 +19,10 @@ import kotlin.time.Instant
 
 private val graphUtcOffsetPattern = Regex(GRAPH_UTC_OFFSET_PATTERN)
 
-/** The client's graph display zone, with an optional manual fallback. */
+/** The graph display zone for clients and masters, with an optional manual fallback. */
 @Composable
 internal fun rememberMasterGraphTimeZone(): TimeZone? {
-    if (!LocalConfig.current.AAPSCLIENT) return null
+    if (!LocalConfig.current.AAPSCLIENT && !LocalConfig.current.APS) return null
     val preferences = LocalPreferences.current
     val primary by preferences.observe(StringKey.NsClientUrl).collectAsStateWithLifecycle()
     val secondary by preferences.observe(StringKey.NsClientSecondaryUrl).collectAsStateWithLifecycle()
