@@ -37,10 +37,10 @@ class JvmDateFormatPlatform : DateFormatPlatform {
     }
 
     override fun format(millis: Long, pattern: String): String =
-        SimpleDateFormat(pattern, Locale.getDefault()).format(Date(millis))
+        SimpleDateFormat(pattern, Locale.getDefault()).apply { timeZone = TimeZone.getTimeZone(AppTimeZone.javaZone()) }.format(Date(millis))
 
     override fun localizedShortDate(millis: Long): String =
-        DateFormat.getDateInstance(DateFormat.SHORT, Locale.getDefault()).format(Date(millis))
+        DateFormat.getDateInstance(DateFormat.SHORT, Locale.getDefault()).apply { timeZone = TimeZone.getTimeZone(AppTimeZone.javaZone()) }.format(Date(millis))
 
     /**
      * The zone's offset ignoring daylight saving, which is what "standard" means here - the same

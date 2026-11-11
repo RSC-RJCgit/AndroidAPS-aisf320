@@ -8,6 +8,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.concurrent.Volatile
+import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.datetime.TimeZone
 import kotlinx.serialization.json.Json
@@ -17,15 +18,17 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
-/** The last master zone reported by this client's Nightscout site, for graph labels only. */
+/** The selected site time zone, used for client displays and virtual-master schedules. */
 object MasterGraphTimeZone {
 
     const val FIELD = "masterTimeZone"
     private val writeLock = Mutex()
 
     private val manualOffsetPattern = Regex(GRAPH_UTC_OFFSET_PATTERN)
-    private class CachedZone(val preferences: Preferences, val readAt: TimeSource.Monotonic.ValueTimeMark, val zone: TimeZone?)
+    private class CachedZone(val preferences: Preferences, val readAt: TimeMark, val zone: TimeZone?)
     @Volatile private var cachedZone: CachedZone? = null
+
+    fun invalidate() { cachedZone = null }
 
     /** Avoid reading settings for every minute of historical basal calculations. */
     fun forVirtualMaster(preferences: Preferences): TimeZone? {

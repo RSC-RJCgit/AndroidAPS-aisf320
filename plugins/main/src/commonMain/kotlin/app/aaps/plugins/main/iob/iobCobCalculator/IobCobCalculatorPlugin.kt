@@ -1,5 +1,11 @@
 package app.aaps.plugins.main.iob.iobCobCalculator
 
+import kotlinx.coroutines.flow.distinctUntilChanged
+
+import app.aaps.core.keys.StringNonKey
+
+import app.aaps.core.objects.overview.MasterGraphTimeZone
+
 import app.aaps.core.data.time.AppTimeZone
 
 import androidx.collection.LongSparseArray
@@ -159,6 +165,21 @@ class IobCobCalculatorPlugin(
                 epsList.minOfOrNull { it.timestamp }?.let { timestamp ->
                     newHistoryData(timestamp, bgDataReload = false, triggeredByNewBG = false)
                 }
+            }
+        // A graph-zone setting also changes virtual-master schedules and cached basal/IOB history.
+        merge(
+            preferences.observe(BooleanKey.ClientGraphFollowMasterTimeZone).map {},
+            preferences.observe(StringKey.ClientGraphManualUtcOffset).map {},
+            preferences.observe(StringNonKey.ClientGraphMasterTimeZone).map {},
+            preferences.observe(StringKey.NsClientUrl).map {},
+            preferences.observe(StringKey.NsClientSecondaryUrl).map {},
+            preferences.observe(BooleanKey.NsClientSecondaryEnabled).map {},
+        ).map {
+            MasterGraphTimeZone.invalidate()
+            AppTimeZone.current()
+        }.distinctUntilChanged().drop(1)
+            .collectResilient(newScope, aapsLogger, LTag.AUTOSENS) {
+                resetDataAndRunCalculation("virtual master time zone changed")
             }
         // Preference changes
         merge(

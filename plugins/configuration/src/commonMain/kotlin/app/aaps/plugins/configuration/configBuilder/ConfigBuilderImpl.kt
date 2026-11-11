@@ -39,6 +39,7 @@ import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -68,10 +69,11 @@ class ConfigBuilderImpl(
 ) : ConfigBuilder {
 
     private val scope = CoroutineScope(Dispatchers.Default + Job())
+    @Volatile private var timeZoneSelectionReady = false
 
     override fun initialize(): List<Job> {
         AppTimeZone.virtualMasterZone = {
-            if (config.APS && !config.AAPSCLIENT && config.appInitialized && activePlugin.activePump.selectedActivePump() is VirtualPump) {
+            if (config.APS && !config.AAPSCLIENT && timeZoneSelectionReady && activePlugin.activePump.selectedActivePump() is VirtualPump) {
                 MasterGraphTimeZone.forVirtualMaster(preferences)
             } else null
         }
@@ -80,6 +82,7 @@ class ConfigBuilderImpl(
         // that made the two start paths give different guarantees (plan bug 12) - applyConfiguration below
         // waits, this one left it to the caller and nobody did it.
         val started = loadSettings() + applyEnforcedPluginStates()
+        timeZoneSelectionReady = true
         // Seed the synthetic ActivePlugin mirror from the local selection — MASTER ONLY. On a client this is
         // intentionally skipped: now that these keys are Bidirectional, a startup put would publish the
         // client's (possibly stale) local selection and clobber the master. The client's mirror is instead

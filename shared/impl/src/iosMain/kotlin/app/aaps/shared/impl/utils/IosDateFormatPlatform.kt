@@ -1,5 +1,17 @@
 package app.aaps.shared.impl.utils
 
+import platform.Foundation.timeZoneForSecondsFromGMT
+
+import platform.Foundation.timeZoneWithName
+
+import platform.Foundation.NSTimeZone
+
+import kotlin.time.Clock
+
+import kotlinx.datetime.offsetAt
+
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.interfaces.utils.usesTwelveHourClock
 import platform.Foundation.NSCalendar
 import platform.Foundation.NSDate
@@ -47,16 +59,22 @@ class IosDateFormatPlatform : DateFormatPlatform {
 
     override fun standardUtcOffsetMillis(): Long {
         val now = NSDate()
-        val zone = NSCalendar.currentCalendar.timeZone
+        val zone = appTimeZone()
         // secondsFromGMT already includes the daylight hour when one is in effect, so taking it
         // back off is what leaves the standard offset.
         val daylight = zone.daylightSavingTimeOffsetForDate(now)
         return ((zone.secondsFromGMTForDate(now).toDouble() - daylight) * 1000.0).toLong()
     }
 
+    private fun appTimeZone(): NSTimeZone {
+        val zone = AppTimeZone.current()
+        return NSTimeZone.timeZoneWithName(zone.id)
+            ?: NSTimeZone.timeZoneForSecondsFromGMT(zone.offsetAt(Clock.System.now()).totalSeconds.toLong())
+    }
+
     private fun formatter(): NSDateFormatter = NSDateFormatter().apply {
         locale = NSLocale.currentLocale
-        timeZone = NSCalendar.currentCalendar.timeZone
+        timeZone = appTimeZone()
     }
 
     private fun Long.toNsDate(): NSDate = NSDate.dateWithTimeIntervalSince1970(this / 1000.0)

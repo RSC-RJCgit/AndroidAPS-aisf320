@@ -422,7 +422,7 @@ sealed class ProfileSealed(
             // read-only client without a word. This build reads iCfg and ignores "dia".
             put("dia", it.insulinEndTime / 3_600_000.0)
         }
-        put("timezone", dateUtil.timeZoneByOffset(utcOffset))
+        put("timezone", if (AppTimeZone.virtualMasterZone?.invoke() != null) AppTimeZone.current().id else dateUtil.timeZoneByOffset(utcOffset))
         put("sens", schedule(isfBlocks.map { it.duration }, ::getIsfTimeFromMidnight))
         put("carbratio", schedule(icBlocks.map { it.duration }, ::getIcTimeFromMidnight))
         put("basal", schedule(basalBlocks.map { it.duration }, ::getBasalTimeFromMidnight))

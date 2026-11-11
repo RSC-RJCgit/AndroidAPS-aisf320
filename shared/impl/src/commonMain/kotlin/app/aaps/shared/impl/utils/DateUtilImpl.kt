@@ -247,7 +247,7 @@ class DateUtilImpl(
         mills.at().date.atStartOfDayIn(systemZone).toEpochMilliseconds()
 
     override fun timeStringFromSeconds(seconds: Int): String =
-        timeStrings.getOrPut(seconds) { timeString(secondsOfTheDayToMilliseconds(seconds)) }
+        timeString(secondsOfTheDayToMilliseconds(seconds))
 
     override fun hourStringFromSeconds(seconds: Int): String =
         platform.format(secondsOfTheDayToMilliseconds(seconds), if (platform.is24Hour()) "HH" else "h a")
@@ -418,7 +418,6 @@ class DateUtilImpl(
 
     private fun three(value: Int): String = value.toString().padStart(3, '0')
 
-    private val timeStrings = mutableMapOf<Int, String>()
     private var seconds: Int = (Random.nextDouble() * 59.0).toInt()
 
     companion object {

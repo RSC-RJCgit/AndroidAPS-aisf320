@@ -1,5 +1,9 @@
 package app.aaps.plugins.aps.autotune
 
+import app.aaps.core.data.time.javaTimeZone
+
+import app.aaps.core.data.time.AppTimeZone
+
 import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.plugins.aps.R
@@ -208,6 +212,7 @@ class AutotuneFS(
 
     private fun formatDate(date: Long, dateHour: Boolean = false): String {
         val dateFormat = if (dateHour) SimpleDateFormat("yyyy-MM-dd_HH-mm-ss") else SimpleDateFormat("yyyy-MM-dd")
+        dateFormat.timeZone = AppTimeZone.javaTimeZone()
         return dateFormat.format(date)
     }
 }
