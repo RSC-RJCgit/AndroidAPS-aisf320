@@ -1,7 +1,6 @@
 package app.aaps.implementation.stats
 
 import app.aaps.core.data.time.AppTimeZone
-import app.aaps.core.data.time.calendar
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.interfaces.stats.DexcomTIR
 import kotlinx.datetime.LocalDate
