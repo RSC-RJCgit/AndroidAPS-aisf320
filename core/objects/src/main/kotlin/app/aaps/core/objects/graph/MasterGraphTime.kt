@@ -2,6 +2,8 @@ package app.aaps.core.objects.graph
 
 import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
+import android.os.Environment
+import android.os.StatFs
 import android.text.format.DateFormat
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.utils.DateUtil
@@ -14,6 +16,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.Date
 import java.util.TimeZone
+import kotlin.math.roundToInt
 
 object MasterGraphTime {
 
@@ -23,6 +26,35 @@ object MasterGraphTime {
 
     fun forUpload(config: Config): String? =
         if (config.appInitialized && config.APS && !config.AAPSCLIENT) AppTimeZone.current().id else null
+
+    // Master free storage beside the clock under the hours drop-down (2026-11-11, per explicit request). The master sends its
+    // free storage in whole GB (1 GB = 1,000,000,000 bytes, as Android Settings shows it) with masterTimeZone; Client and
+    // Virtual show the mirrored value while it is under 30 min old. The master itself shows its own.
+    const val FREE_STORAGE_FIELD = "masterFreeGB"
+    private const val FREE_STORAGE_MAX_AGE_MS = 30 * 60_000L
+
+    private class MirroredFreeStorage(val timestamp: Long, val gb: Int)
+    @Volatile private var mirroredFreeStorage: MirroredFreeStorage? = null
+
+    fun localFreeStorageGb(): Int? =
+        runCatching { (StatFs(Environment.getDataDirectory().path).availableBytes / 1_000_000_000.0).roundToInt() }.getOrNull()
+
+    fun freeStorageForUpload(config: Config): Int? =
+        if (config.appInitialized && config.APS && !config.AAPSCLIENT) localFreeStorageGb() else null
+
+    @Synchronized
+    fun rememberFreeStorage(preferences: Preferences, fromSecondary: Boolean, gb: Int, timestamp: Long, now: Long) {
+        if (site(preferences, fromSecondary).isEmpty() || gb < 0 || timestamp <= 0L || timestamp > now + 5 * 60_000L) return
+        val previous = mirroredFreeStorage
+        if (previous == null || timestamp > previous.timestamp) mirroredFreeStorage = MirroredFreeStorage(timestamp, gb)
+    }
+
+    /** The clock text with the master's free storage after it, e.g. "14:32  48 GB"; just the time when none is known. */
+    fun withFreeStorage(time: String, config: Config, now: Long): String {
+        val mirrored = mirroredFreeStorage?.takeIf { now - it.timestamp in 0L..FREE_STORAGE_MAX_AGE_MS }?.gb
+        val gb = mirrored ?: if (config.APS && !config.AAPSCLIENT) localFreeStorageGb() else null
+        return if (gb == null) time else "$time  $gb GB"
+    }
 
     @Synchronized
     fun remember(preferences: Preferences, fromSecondary: Boolean, zone: String, timestamp: Long, now: Long): Boolean {

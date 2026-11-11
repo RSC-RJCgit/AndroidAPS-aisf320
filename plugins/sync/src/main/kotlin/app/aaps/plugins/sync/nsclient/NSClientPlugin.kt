@@ -400,6 +400,9 @@ class NSClientPlugin @Inject constructor(
                     MasterGraphTime.forUpload(config)?.let { zone ->
                         data.optJSONObject("openaps")?.optJSONObject("suggested")?.put(MasterGraphTime.FIELD, zone)
                     }
+                    MasterGraphTime.freeStorageForUpload(config)?.let { gb ->
+                        data.optJSONObject("openaps")?.optJSONObject("suggested")?.put(MasterGraphTime.FREE_STORAGE_FIELD, gb)
+                    }
                 }
                 service.dbAdd(collection, data, dataPair, progress, fullNoteTexts)
             }

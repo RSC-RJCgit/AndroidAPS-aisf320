@@ -2311,8 +2311,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 if (!isActualBg) binding.graphsLayout.graphBgValue.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
                 else binding.graphsLayout.graphBgValue.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
             binding.graphsLayout.graphBgValue.visibility = if (lastBg != null && historicalStartTime == null) View.VISIBLE else View.GONE
-            binding.graphsLayout.graphCurrentTime.text = MasterGraphTime.timeString(
-                binding.root.context, dateUtil, dateUtil.now(), MasterGraphTime.forClient(config, preferences)
+            binding.graphsLayout.graphCurrentTime.text = MasterGraphTime.withFreeStorage(
+                MasterGraphTime.timeString(binding.root.context, dateUtil, dateUtil.now(), MasterGraphTime.forClient(config, preferences)),
+                config, dateUtil.now()
             )
             binding.graphsLayout.graphCurrentTime.visibility = binding.graphsLayout.graphBgValue.visibility
 
@@ -3578,7 +3579,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val pump = activePlugin.activePump
         val displayTimeZone = MasterGraphTime.forClient(config, preferences)
         val graphCurrentTime = MasterGraphTime.timeString(binding.root.context, dateUtil, dateUtil.now(), displayTimeZone)
-        binding.graphsLayout.graphCurrentTime.text = graphCurrentTime
+        binding.graphsLayout.graphCurrentTime.text = MasterGraphTime.withFreeStorage(graphCurrentTime, config, dateUtil.now())
         binding.graphsLayout.historyDate.text = historicalStartTime?.let {
             MasterGraphTime.dateAndTimeString(binding.root.context, dateUtil, it, displayTimeZone)
         }.orEmpty()

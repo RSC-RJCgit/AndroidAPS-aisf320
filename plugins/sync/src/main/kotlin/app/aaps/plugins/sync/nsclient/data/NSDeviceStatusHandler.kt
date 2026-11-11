@@ -182,10 +182,13 @@ class NSDeviceStatusHandler @Inject constructor(
 
     private fun receiveMasterGraphTime(status: NSDeviceStatus, fromSecondary: Boolean, now: Long): Boolean {
         val suggested = status.openaps?.suggested ?: return false
-        val zone = suggested.opt(MasterGraphTime.FIELD) as? String ?: return false
         val timestamp = status.date?.takeIf { it > 0L }
             ?: status.createdAt?.let { it.toLongOrNull() ?: runCatching { dateUtil.fromISODateString(it) }.getOrNull() }
             ?: return false
+        (suggested.opt(MasterGraphTime.FREE_STORAGE_FIELD) as? Number)?.let {
+            MasterGraphTime.rememberFreeStorage(preferences, fromSecondary, it.toInt(), timestamp, now)
+        }
+        val zone = suggested.opt(MasterGraphTime.FIELD) as? String ?: return false
         return MasterGraphTime.remember(preferences, fromSecondary, zone, timestamp, now)
     }
 

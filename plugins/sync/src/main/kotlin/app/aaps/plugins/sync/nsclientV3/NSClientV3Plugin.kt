@@ -537,6 +537,7 @@ class NSClientV3Plugin @Inject constructor(
             rxBus.send(EventNSClientNewLog("► ADD $collection", "Sent ${dataPair.javaClass.simpleName} <i>${gson.toJson(data)}</i> $progress"))
             data.openaps?.suggested?.let { suggested ->
                 MasterGraphTime.forUpload(config)?.let { suggested.put(MasterGraphTime.FIELD, it) }
+                MasterGraphTime.freeStorageForUpload(config)?.let { suggested.put(MasterGraphTime.FREE_STORAGE_FIELD, it) }
                 val now = dateUtil.now()
                 persistenceLayer.fullCareportalNoteTextsForUpload(config, preferences, minOf(now, data.date ?: now), aapsLogger)
                     ?.let { suggested.put(NoteSmsTexts.DEVICE_STATUS_FIELD, it) }
