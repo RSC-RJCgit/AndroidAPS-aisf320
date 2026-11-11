@@ -307,7 +307,9 @@ fun BgGraphCompose(
     /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
     geometryHolder: ChartGeometryHolder? = null,
     modifier: Modifier = Modifier,
-    masterZone: TimeZone? = null
+    masterZone: TimeZone? = null,
+    basalSnapshot: BasalGraphData? = null,
+    onRenderReady: (Boolean) -> Unit = {}
 ) {
     val dateUtil = LocalDateUtil.current
     val decimalFormatter = LocalDecimalFormatter.current
@@ -361,7 +363,7 @@ fun BgGraphCompose(
     val showUkf = SeriesType.UKF_BG in bgOverlays && !automaticCleanGraph
     val rawPredictions by viewModel.predictionsFlow.collectAsStateWithLifecycle()
     val predictions = if (showPredictions) rawPredictions else emptyList()
-    val rawBasalData by viewModel.basalGraphFlow.collectAsStateWithLifecycle()
+    val rawBasalData = basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value
     val targetData by viewModel.targetLineFlow.collectAsStateWithLifecycle()
 
     // Basal is a flipped overlay on the IOB graph. Settings > AutoISF "Basal on the BG graph (as v3)" also puts it on the
@@ -452,6 +454,8 @@ fun BgGraphCompose(
         minTimestamp to maxTimestamp
     }
 
+    val renderReporter = remember { GraphRenderReporter() }
+
     // Function to rebuild chart from registry
     suspend fun rebuildChart(
         currentBasalData: BasalGraphData,
@@ -466,6 +470,7 @@ fun BgGraphCompose(
         carbPoints: List<Pair<Long, Double>>,
         axisMin: Double,
         axisMax: Double,
+        renderToken: GraphRenderToken,
     ) {
         val regularPoints = seriesRegistry[SERIES_REGULAR] ?: emptyList()
         val bucketedPoints = seriesRegistry[SERIES_BUCKETED] ?: emptyList()
@@ -677,7 +682,10 @@ fun BgGraphCompose(
             // identical to last time (see BG_VISIBLE_RANGE_KEY doc) — otherwise scrolling/zooming
             // would re-submit the same partials and get silently skipped, never picking up the
             // updated startAxisRangeProvider.
-            extras { it[BG_VISIBLE_RANGE_KEY] = currentVisibleTimeRange?.first to currentVisibleTimeRange?.second }
+            extras {
+                it[BG_VISIBLE_RANGE_KEY] = currentVisibleTimeRange?.first to currentVisibleTimeRange?.second
+                it[GRAPH_RENDER_TOKEN] = renderToken
+            }
         }
     }
 
@@ -711,6 +719,8 @@ fun BgGraphCompose(
         showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData,
         topBandLines, topBandLines5, showBasalOnBgGraph
     )
+    val renderToken = remember(rebuildInputs) { GraphRenderToken() }
+    ReportGraphReady(renderReporter, renderToken, derivedTimeRange == null || visibleTimeRange != null, onRenderReady)
     val latestRebuildInputs by rememberUpdatedState(rebuildInputs)
     val latestRebuild by rememberUpdatedState<suspend () -> Unit>({
         seriesRegistry[SERIES_REGULAR] = bgReadings
@@ -807,7 +817,7 @@ fun BgGraphCompose(
         )
         rebuildChart(
             basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, markers, visibleTimeRange,
-            bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max
+            bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max, renderToken
         )
     })
     LaunchedEffect(modelProducer) {
@@ -1312,9 +1322,9 @@ fun BgGraphCompose(
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true, masterZone = masterZone)
     // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
     val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
-    val decorations = remember(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
+    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
         listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) +
-            listOfNotNull(basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
+            listOfNotNull(renderReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
 
     // =========================================================================
@@ -1444,6 +1454,7 @@ fun BgGraphCompose(
             markerController = inspect?.controller ?: defaultMarkerController
         ),
         modelProducer = modelProducer,
+        animationSpec = null,
         modifier = Modifier.fillMaxSize().pointerInput(tapTargets, topBandLines) {
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)

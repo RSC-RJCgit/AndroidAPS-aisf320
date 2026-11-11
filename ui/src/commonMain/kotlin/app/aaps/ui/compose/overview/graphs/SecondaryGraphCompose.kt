@@ -40,6 +40,7 @@ import kotlin.math.roundToInt
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.AdaptiveStep
 import app.aaps.core.graph.vico.Square
+import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.TherapyEventType
@@ -219,7 +220,9 @@ fun SecondaryGraphCompose(
     /** A label drawn at the plot's bottom left, just above the time labels (the G1 label). Null draws none. */
     cornerLabel: String? = null,
     modifier: Modifier = Modifier,
-    masterZone: TimeZone? = null
+    masterZone: TimeZone? = null,
+    basalSnapshot: BasalGraphData? = null,
+    onRenderReady: (Boolean) -> Unit = {}
 ) {
     val dateUtil = LocalDateUtil.current
     if (seriesTypes.isEmpty()) return
@@ -300,7 +303,7 @@ fun SecondaryGraphCompose(
     // Basal overlay only when IOB is primary and single-axis (no room for basal with dual-axis)
     // Fork: kept here also when Settings > AutoISF "Basal on the BG graph (as v3)" draws it on the BG graph (2026-11-09, per
     // explicit request; before, it moved from here to the BG graph).
-    val basalData = if (hasIob && !isDualAxis) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
+    val basalData = if (hasIob && !isDualAxis) basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
 
     // Collect flow for secondary (right axis) series - (emptyList() if DEV and BGI together)
     val secondaryLineData = if (!isDualAxis) emptyList() else when (secondaryType) {
@@ -832,7 +835,7 @@ fun SecondaryGraphCompose(
         SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.65f, labelSize = smbLabelSize)
     }
     // Actual basal (U/h step points), only collected for the SMB-totals graph. Used for the "b0.35" line above each total.
-    val basalForTotals = if (secondaryMarks == SecondaryMarks.SMB_TOTALS) viewModel.basalGraphFlow.collectAsStateWithLifecycle().value.actualBasal else emptyList()
+    val basalForTotals = if (secondaryMarks == SecondaryMarks.SMB_TOTALS) (basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value).actualBasal else emptyList()
     val smbTotals = remember(secondaryMarks, treatmentData, minTimestamp, smbText, basalForTotals, nowTimestamp) {
         if (secondaryMarks != SecondaryMarks.SMB_TOTALS) return@remember null
         val doses = treatmentData?.boluses.orEmpty().filter { it.amount > 0.0 }.map { it.timestamp to it.amount }
@@ -935,8 +938,9 @@ fun SecondaryGraphCompose(
     val cornerLabelMark = remember(cornerLabel, cornerLabelStyle, smbText) {
         cornerLabel?.let { PlotCornerLabelDecoration(it, cornerLabelStyle, smbText) }
     }
-    val decorations = remember(nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark) {
-        listOf(nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels +
+    val renderReporter = remember { GraphRenderReporter() }
+    val decorations = remember(renderReporter, nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark) {
+        listOf(renderReporter, nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels +
             listOfNotNull(inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark)
     }
 
@@ -1195,6 +1199,8 @@ fun SecondaryGraphCompose(
         maxX,
         axisScale
     )
+    val renderToken = remember(modelInputs) { GraphRenderToken() }
+    ReportGraphReady(renderReporter, renderToken, !hasRealTimeRange || settledVisibleRange != null, onRenderReady)
     val latestModelInputs by rememberUpdatedState(modelInputs)
     val latestSubmit by rememberUpdatedState<suspend () -> Unit>({
         // Always populate the model — even with no data / no real time range — so the chart frame
@@ -1252,6 +1258,7 @@ fun SecondaryGraphCompose(
             // would re-submit the same partials and get silently skipped, never picking up the
             // updated primaryRangeProvider.
             extras {
+                it[GRAPH_RENDER_TOKEN] = renderToken
                 it[AXIS_SCALE_KEY] = axisScale
                 processedIobTreatments.maxManualBolus?.let { max -> it[MAX_MANUAL_BOLUS_KEY] = max }
                 processedCarbs.maxOfOrNull { carbs -> carbs.second }?.let { max -> it[MAX_CARBS_KEY] = max }
@@ -1407,6 +1414,7 @@ fun SecondaryGraphCompose(
                     marker = inspectMarker, markerVisibilityListener = inspect?.visibilityListener, markerController = markerController
                 ),
                 modelProducer = modelProducer,
+                animationSpec = null,
                 modifier = chartModifier,
                 scrollState = scrollState, zoomState = zoomState
             )
@@ -1424,6 +1432,7 @@ fun SecondaryGraphCompose(
                     marker = inspectMarker, markerVisibilityListener = inspect?.visibilityListener, markerController = markerController
                 ),
                 modelProducer = modelProducer,
+                animationSpec = null,
                 modifier = chartModifier,
                 scrollState = scrollState, zoomState = zoomState
             )
@@ -1436,6 +1445,7 @@ fun SecondaryGraphCompose(
                     marker = inspectMarker, markerVisibilityListener = inspect?.visibilityListener, markerController = markerController
                 ),
                 modelProducer = modelProducer,
+                animationSpec = null,
                 modifier = chartModifier,
                 scrollState = scrollState, zoomState = zoomState
             )

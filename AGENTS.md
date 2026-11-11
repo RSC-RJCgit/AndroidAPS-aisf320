@@ -117,6 +117,10 @@ reported `NO-SOURCE`. That was wrong by the time anyone read it, and it caused w
 
 ## User Preferences
 
+- **Leave compilation, tests, and error checking to CI.** Do not run local builds, compilers,
+  tests, or other validation commands unless the user explicitly requests them. Make the requested
+  edits and leave them for review. The user handles commits and pushes; do not commit or push
+  unless explicitly asked. This preference overrides build and test guidance elsewhere in this file.
 - **NEVER make code changes without user confirmation** — When the user describes a problem or
   preference, propose the change first and wait for approval before editing code. Do NOT immediately
   edit files based on user feedback. The only exception is when the user explicitly says "do it",

@@ -15,6 +15,7 @@ import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.LocalClientRole
+import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.compose.main.TempTargetChipState
@@ -61,8 +62,7 @@ fun OverviewChipsColumn(
     onIobChipLongClick: () -> Unit = {},
     onIobChipDoubleClick: () -> Unit = {},
     onSensitivityChipDoubleClick: () -> Unit = {},
-    // The command chips (running mode / profile / temp target) open mutating screens — their click is disabled on an
-    // unpaired client (same MASTER_OR_PAIRED_CLIENT gate as nav/Manage), while the chip stays visible as status.
+    // Running mode needs a paired client. Profile and v3-only TT management can also open without pairing.
     commandsAllowed: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -178,7 +178,8 @@ private fun NarrowChips(
                 modifier = Modifier.weight(1f),
                 onClick = { onNavigate(NavigationRequest.Element(ElementType.TEMP_TARGET_MANAGEMENT)) },
                 sceneManaged = tempTargetSceneManaged,
-                enabled = commandsAllowed && LocalClientRole.current.allows(ElementType.TEMP_TARGET_MANAGEMENT.role)
+                enabled = (commandsAllowed || LocalReadOnlyClient.current) &&
+                    LocalClientRole.current.allows(ElementType.TEMP_TARGET_MANAGEMENT.role)
             )
         }
         // The "Client2-v4" label moved to the fixed corner line (VersionOverlay) on 2026-10-21, as in 3426.

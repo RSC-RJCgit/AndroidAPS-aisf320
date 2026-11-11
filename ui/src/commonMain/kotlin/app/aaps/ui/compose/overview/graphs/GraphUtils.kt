@@ -230,7 +230,7 @@ const val GRAPH_TOUCH_WINDOW_MS = 3_000L
 /** How long after the last copied move a still-moving graph (a fling) counts as the user's move. */
 const val GRAPH_FLING_CHAIN_MS = 1_000L
 
-/** The graphs area is shown after this long even when it has not settled (no BG at all), so it never stays blank. */
+/** Fallback wait for empty data, after every graph has drawn its model. */
 const val GRAPHS_READY_TIMEOUT_MS = 3_000L
 
 const val STARTUP_GUARD_INTERVAL_MS = 5_000L

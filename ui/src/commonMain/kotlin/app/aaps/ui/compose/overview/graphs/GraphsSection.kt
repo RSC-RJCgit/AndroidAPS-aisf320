@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -283,6 +284,9 @@ fun GraphsSection(
     // maps to different time when x-axis ranges differ).
     val derivedTimeRange by graphViewModel.derivedTimeRange.collectAsStateWithLifecycle()
 
+    // One basal snapshot for all graphs: columns and their scales must use the same data.
+    val basalSnapshot by graphViewModel.basalGraphFlow.collectAsStateWithLifecycle()
+
     // BG's own visible window, sourced from the fixed IOB graph's already-computed visible range
     // (its scroll/zoom are synced to BG's, see the sync LaunchedEffect below) — not from a
     // decoration on BG's own chart, since that was tried and found to break BG's pinch-zoom
@@ -428,22 +432,37 @@ fun GraphsSection(
     // The live overview stays on the current time until the user drags the main graph.
     var followNow by remember { mutableStateOf(!fitWholeWindow) }
     var placedOnNow by remember(bgScrollState) { mutableStateOf(false) }
-    // 2026-10-30, per explicit request: the graphs are laid out but not shown until they have settled, so the first view
-    // is not drawn at the default zoom and then jumps into place. Settled: the main graph is on its place, the time range
-    // is known, and the window the BG graph takes from the IOB graph has been steady for 400 ms (the IOB graph has then
-    // taken the main graph's zoom). A reopened screen or app, or a new main graph state (a forced redraw), hides them
-    // again. After GRAPHS_READY_TIMEOUT_MS they are shown anyway.
-    var graphsReady by remember(bgScrollState, bgZoomState) { mutableStateOf(false) }
+    // Lay out and draw every graph before revealing them. Scroll settling alone does not mean
+    // Vico has applied the basal ranges to the model it draws.
+    var renderedGraphs by remember {
+        mutableStateOf(emptyMap<Int, Boolean>())
+    }
+    val expectedGraphs = buildSet {
+        add(-1) // Main BG
+        add(-2) // Fixed IOB
+        for (i in 0 until activeCount) {
+            if (graphConfig.secondaryGraphs[i].series.isNotEmpty()) add(i)
+        }
+        if (showGraph5) add(-3)
+    }
+    val allGraphsRendered = expectedGraphs.all { renderedGraphs[it] == true }
+    val latestAllGraphsRendered by rememberUpdatedState(allGraphsRendered)
+    var graphsReady by remember(bgScrollState, bgZoomState, graphConfig, showGraph5, basalSnapshot, derivedTimeRange) { mutableStateOf(false) }
     val graphsHiddenSince = remember(bgScrollState, bgZoomState) { dateUtil.now() }
-    val graphsSettled = placedOnNow && derivedTimeRange != null && iobVisibleRangeSettled != null
-    LaunchedEffect(bgScrollState, bgZoomState, graphsSettled) {
-        if (graphsReady) return@LaunchedEffect
-        if (!graphsSettled) delay(GRAPHS_READY_TIMEOUT_MS)
+    val positionSettled = placedOnNow || (bgScrollState.maxValue.isFinite() && bgScrollState.maxValue <= 24f)
+    val graphsSettled = positionSettled && derivedTimeRange != null && iobVisibleRangeSettled != null
+    LaunchedEffect(bgScrollState, bgZoomState, graphConfig, showGraph5, basalSnapshot, derivedTimeRange, graphsSettled, allGraphsRendered) {
+        if (graphsReady || !allGraphsRendered) return@LaunchedEffect
+        if (!graphsSettled) {
+            // Empty data may never give a scroll range. Only that case may use the fallback.
+            if (derivedTimeRange != null) return@LaunchedEffect
+            delay(GRAPHS_READY_TIMEOUT_MS)
+        }
+        // Let child effects mark the new window pending before accepting an older model.
+        withFrameNanos { }
+        if (!latestAllGraphsRendered) return@LaunchedEffect
         graphsReady = true
-        graphViewModel.graphSyncLog(
-            "ready",
-            "graph area ready after ${dateUtil.now() - graphsHiddenSince} ms${if (graphsSettled) "" else " (not settled, shown after the time limit)"}"
-        )
+        graphViewModel.graphSyncLog("ready", "all graph models drawn after ${dateUtil.now() - graphsHiddenSince} ms")
     }
     val latestTimeRange = rememberUpdatedState(derivedTimeRange)
     val latestNow = rememberUpdatedState(nowTimestamp)
@@ -953,8 +972,8 @@ fun GraphsSection(
             }
             // Upstream (2026-10-27 port): a touch anywhere on the graphs closes the inspect pill
             .closesInspectPillOnTouch(inspect)
-            // Laid out, so the graphs can size and settle, but not drawn until then (graphsReady)
-            .then(if (graphsReady) Modifier else Modifier.alpha(0f))
+            // Draw the pending models off screen while keeping the last ready frame visible.
+            .holdGraphFrame(graphsReady)
     ) {
         // HP= at the left of the − + row (2026-10-31, per explicit request). Only with a current AutoISF row (statusIsf
         // is set only then), like the HP= of the steps line, so an old prediction does not linger.
@@ -1061,6 +1080,8 @@ fun GraphsSection(
         ) {
             BgGraphCompose(
                 viewModel = graphViewModel,
+                basalSnapshot = basalSnapshot,
+                onRenderReady = { renderedGraphs = renderedGraphs + (-1 to it) },
                 masterZone = masterZone,
                 automaticCleanGraph = automaticCleanGraph,
                 cleanGraphHidesTextLines = cleanGraphHidesTextLines,
@@ -1193,6 +1214,8 @@ fun GraphsSection(
                 nowTimestamp = nowTimestamp,
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
                 onVisibleRangeChanged = { iobVisibleRange = it },
+                basalSnapshot = basalSnapshot,
+                onRenderReady = { renderedGraphs = renderedGraphs + (-2 to it) },
                 inspect = inspect,
                 // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates"),
                 // at the bottom left because the hourly basal peak numbers use the top line of this graph. Drawn by the chart
@@ -1245,6 +1268,8 @@ fun GraphsSection(
                     masterZone = masterZone,
                     inspect = inspect,
                     seriesTypes = secondary.series,
+                    basalSnapshot = basalSnapshot,
+                    onRenderReady = { renderedGraphs = renderedGraphs + (i to it) },
                     showSmbDoseLabels = i == 0,
                     secondaryMarks = when (i) {
                         1 -> SecondaryMarks.SMB_TOTALS
@@ -1309,6 +1334,8 @@ fun GraphsSection(
                     visibleTimeRange = bgVisibleTimeRange,
                     inspect = inspect,
                     topBandLines = true,
+                    basalSnapshot = basalSnapshot,
+                    onRenderReady = { renderedGraphs = renderedGraphs + (-3 to it) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(graphConfig.graph5Height.dp * graphHeightScale)
