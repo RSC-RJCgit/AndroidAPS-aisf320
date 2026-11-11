@@ -1,7 +1,6 @@
 package app.aaps.core.ui.elements
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.elements.WeekDay.DayOfWeek.Companion.calendarInts

@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.openAPSAMA
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.getPassedDurationToTimeInMinutes

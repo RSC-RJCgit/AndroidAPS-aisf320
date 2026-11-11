@@ -1,9 +1,7 @@
 package app.aaps.shared.impl.utils
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.time.javaZone
-
 import app.aaps.core.interfaces.utils.usesTwelveHourClock
 import java.text.DateFormat
 import java.text.SimpleDateFormat

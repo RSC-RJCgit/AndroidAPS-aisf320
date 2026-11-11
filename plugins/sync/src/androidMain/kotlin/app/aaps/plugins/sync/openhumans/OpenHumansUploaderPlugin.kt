@@ -1,9 +1,7 @@
 package app.aaps.plugins.sync.openhumans
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.time.javaTimeZone
-
 import android.content.Context
 import android.content.Intent
 import android.util.DisplayMetrics

@@ -1,7 +1,6 @@
 package app.aaps.plugins.sync.nsclientV3.stats
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.model.TDD
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag

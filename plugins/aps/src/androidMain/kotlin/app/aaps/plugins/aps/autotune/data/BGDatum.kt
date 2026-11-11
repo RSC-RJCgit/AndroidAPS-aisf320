@@ -1,9 +1,7 @@
 package app.aaps.plugins.aps.autotune.data
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.time.javaTimeZone
-
 import app.aaps.core.data.model.GV
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T

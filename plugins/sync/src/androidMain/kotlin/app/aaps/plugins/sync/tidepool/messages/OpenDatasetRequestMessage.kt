@@ -1,9 +1,7 @@
 package app.aaps.plugins.sync.tidepool.messages
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.time.javaTimeZone
-
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.utils.DateUtil

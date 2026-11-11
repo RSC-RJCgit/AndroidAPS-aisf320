@@ -1,9 +1,7 @@
 package app.aaps.plugins.aps.autotune
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.time.calendar
-
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.DoubleKey

@@ -1,17 +1,11 @@
 package app.aaps.shared.impl.utils
 
 import platform.Foundation.timeZoneForSecondsFromGMT
-
 import platform.Foundation.timeZoneWithName
-
 import platform.Foundation.NSTimeZone
-
 import kotlin.time.Clock
-
 import kotlinx.datetime.offsetAt
-
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.interfaces.utils.usesTwelveHourClock
 import platform.Foundation.NSCalendar
 import platform.Foundation.NSDate

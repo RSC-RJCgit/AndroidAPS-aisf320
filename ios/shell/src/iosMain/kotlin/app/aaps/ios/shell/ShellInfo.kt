@@ -1,7 +1,6 @@
 package app.aaps.ios.shell
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.iob.InMemoryGlucoseValue
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.AlarmSound

@@ -1,7 +1,6 @@
 package app.aaps.plugins.sync.log
 
 import app.aaps.core.data.time.AppTimeZone
-
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column

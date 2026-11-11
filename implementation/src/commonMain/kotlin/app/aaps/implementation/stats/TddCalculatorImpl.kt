@@ -1,7 +1,6 @@
 package app.aaps.implementation.stats
 
 import app.aaps.core.data.time.AppTimeZone
-
 import androidx.collection.LongSparseArray
 import app.aaps.core.data.aps.AverageTDD
 import app.aaps.core.data.model.BS

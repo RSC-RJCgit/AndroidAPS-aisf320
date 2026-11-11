@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.openAPSSMB
 
 import app.aaps.core.data.time.AppTimeZone
-
 import androidx.collection.LongSparseArray
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.model.GlucoseUnit

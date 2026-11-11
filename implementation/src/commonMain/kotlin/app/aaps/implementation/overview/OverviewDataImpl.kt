@@ -1,7 +1,6 @@
 package app.aaps.implementation.overview
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.overview.OverviewData

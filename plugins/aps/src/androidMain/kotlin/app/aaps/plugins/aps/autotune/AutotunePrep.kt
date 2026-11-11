@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.autotune
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.GV

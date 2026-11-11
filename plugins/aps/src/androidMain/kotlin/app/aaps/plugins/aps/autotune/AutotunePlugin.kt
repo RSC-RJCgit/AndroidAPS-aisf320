@@ -3,9 +3,7 @@
 package app.aaps.plugins.aps.autotune
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.time.javaTimeZone
-
 import android.view.View
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.plugin.PluginType

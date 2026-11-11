@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.autotune.compose
 
 import app.aaps.core.data.time.AppTimeZone
-
 import android.view.View
 import androidx.compose.runtime.Immutable
 import app.aaps.core.data.configuration.Constants

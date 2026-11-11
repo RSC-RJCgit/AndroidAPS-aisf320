@@ -1,7 +1,6 @@
 package app.aaps.implementation.profile
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.data.Block

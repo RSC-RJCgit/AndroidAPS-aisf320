@@ -1,7 +1,6 @@
 package app.aaps.plugins.automation.elements
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime

@@ -1,7 +1,6 @@
 package app.aaps.plugins.sync.nsclientV3
 
 import app.aaps.core.data.time.AppTimeZone
-
 import androidx.annotation.VisibleForTesting
 import app.aaps.core.data.model.HR
 import app.aaps.core.data.model.HasIDs

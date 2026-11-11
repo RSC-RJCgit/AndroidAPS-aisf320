@@ -1,9 +1,7 @@
 package app.aaps.plugins.aps.autotune
 
 import app.aaps.core.data.time.javaTimeZone
-
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.plugins.aps.R

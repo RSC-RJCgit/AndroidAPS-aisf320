@@ -1,7 +1,6 @@
 package app.aaps.shared.impl.utils
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.format.NumberFormat
 import app.aaps.core.data.format.NumberFormatPlatform
 import app.aaps.core.interfaces.InterfacesStrings

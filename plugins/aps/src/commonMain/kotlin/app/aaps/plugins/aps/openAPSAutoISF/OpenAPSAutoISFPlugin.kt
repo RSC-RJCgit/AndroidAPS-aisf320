@@ -1,7 +1,6 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
 import app.aaps.core.data.time.AppTimeZone
-
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.AIV
