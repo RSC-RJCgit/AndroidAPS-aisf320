@@ -3,7 +3,6 @@ package app.aaps.shared.impl.utils
 import app.aaps.core.data.time.AppTimeZone
 
 import android.content.Context
-import androidx.collection.LongSparseArray
 import app.aaps.core.interfaces.R
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.utils.DateUtil
@@ -265,13 +264,8 @@ class DateUtilImpl @Inject constructor(
             .truncatedTo(ChronoUnit.DAYS)
             .toInstant().toEpochMilli()
 
-    override fun timeStringFromSeconds(seconds: Int): String {
-        val cached = timeStrings[seconds.toLong()]
-        if (cached != null) return cached
-        val t = timeString(secondsOfTheDayToMilliseconds(seconds))
-        timeStrings.put(seconds.toLong(), t)
-        return t
-    }
+    override fun timeStringFromSeconds(seconds: Int): String =
+        timeString(secondsOfTheDayToMilliseconds(seconds))
 
     override fun timeFrameString(timeInMillis: Long, rh: ResourceHelper): String {
         val duration = timeInMillis.milliseconds
@@ -487,7 +481,6 @@ class DateUtilImpl @Inject constructor(
 
         /** Formatter for creating a local ISO-like string without a timezone (e.g., "2023-10-27T10:30:00"). */
         private val ISO_LOCAL_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
-        private val timeStrings = LongSparseArray<String>()
         private var seconds: Int = (SecureRandom().nextDouble() * 59.0).toInt()
 
         val decimalFormatter = object : ThreadLocal<DecimalFormat>() {

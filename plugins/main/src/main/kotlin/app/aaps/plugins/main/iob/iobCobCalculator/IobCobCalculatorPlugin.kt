@@ -1,5 +1,13 @@
 package app.aaps.plugins.main.iob.iobCobCalculator
 
+import java.time.ZoneId
+
+import app.aaps.core.keys.StringNonKey
+
+import app.aaps.core.objects.graph.MasterGraphTime
+
+import app.aaps.core.data.time.AppTimeZone
+
 import androidx.collection.LongSparseArray
 import app.aaps.core.data.aps.BasalData
 import app.aaps.core.data.configuration.Constants
@@ -123,8 +131,11 @@ class IobCobCalculatorPlugin @Inject constructor(
         }
     }
 
+    private var lastScheduleZone: ZoneId? = null
+
     override fun onStart() {
         super.onStart()
+        lastScheduleZone = AppTimeZone.current()
         // EventConfigBuilderChange
         disposable += rxBus
             .toObservable(EventConfigBuilderChange::class.java)
@@ -145,6 +156,20 @@ class IobCobCalculatorPlugin @Inject constructor(
             .observeOn(aapsSchedulers.io)
             .subscribe({ event ->
                            safe("onEventPreferenceChange") {
+                               if (event.isChanged(BooleanKey.ClientGraphFollowMasterTimeZone.key) ||
+                                   event.isChanged(StringKey.ClientGraphManualUtcOffset.key) ||
+                                   event.isChanged(StringNonKey.ClientGraphMasterTimeZone.key) ||
+                                   event.isChanged(StringKey.NsClientUrl.key) ||
+                                   event.isChanged(StringKey.NsClientSecondaryUrl.key) ||
+                                   event.isChanged(BooleanKey.NsClientSecondaryEnabled.key)
+                               ) {
+                                   MasterGraphTime.invalidate()
+                                   val zone = AppTimeZone.current()
+                                   if (lastScheduleZone != zone) {
+                                       lastScheduleZone = zone
+                                       resetDataAndRunCalculation("virtual master time zone changed", event)
+                                   }
+                               }
                                if (event.isChanged(BooleanKey.ApsAutoIsfLoopEveryMinute.key)) {
                                    (ads as? AutosensDataStoreObject)?.pinGridToFiveMinutes = !preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)
                                    resetDataAndRunCalculation("loop interval changed", event)

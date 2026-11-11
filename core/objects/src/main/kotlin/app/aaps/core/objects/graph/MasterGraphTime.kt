@@ -44,6 +44,8 @@ object MasterGraphTime {
     private class CachedZone(val preferences: Preferences, val readAt: Long, val zone: TimeZone?)
     @Volatile private var cachedZone: CachedZone? = null
 
+    fun invalidate() { cachedZone = null }
+
     /** Avoid reading settings for every minute of historical basal calculations. */
     fun forVirtualMaster(preferences: Preferences): TimeZone? {
         val now = System.nanoTime()
