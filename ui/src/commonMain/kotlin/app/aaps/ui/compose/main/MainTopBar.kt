@@ -1,6 +1,7 @@
 package app.aaps.ui.compose.main
 
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
@@ -18,22 +19,30 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.overview.graph.BgInfoData
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.icons.IcSettingsOff
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.search.M3SearchBar
 import app.aaps.ui.search.SearchUiState
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
 
 /**
  * Main top bar with M3-style search bar.
@@ -64,6 +73,19 @@ fun MainTopBar(
     bgInfo: BgInfoData? = null,
     modifier: Modifier = Modifier
 ) {
+    val dateUtil = LocalDateUtil.current
+    val displayZone = rememberMasterGraphTimeZone()
+    val clock = remember(dateUtil) {
+        flow {
+            while (true) {
+                val now = dateUtil.now()
+                emit(now)
+                delay(60_000L - now % 60_000L)
+            }
+        }
+    }
+    val now by clock.collectAsStateWithLifecycle(initialValue = dateUtil.now())
+    val timeText = graphTimestamp(dateUtil, now, displayZone)
     if (compact) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -87,7 +109,7 @@ fun MainTopBar(
                 compact = true,
                 modifier = Modifier.weight(1f)
             )
-            TopBarBg(bgInfo, compact = true)
+            TopBarBg(bgInfo, compact = true, timeText = timeText)
             IconButton(onClick = onPreferencesClick) {
                 Icon(
                     imageVector = if (isSimpleMode) IcSettingsOff else Icons.Default.Settings,
@@ -122,7 +144,7 @@ fun MainTopBar(
             }
         },
         actions = {
-            TopBarBg(bgInfo, compact = false)
+            TopBarBg(bgInfo, compact = false, timeText = timeText)
             IconButton(onClick = onPreferencesClick) {
                 // In simple mode the gear shows "crossed" (IcSettingsOff) to signal the mode;
                 // the button action (open settings) is unchanged.
@@ -146,15 +168,29 @@ fun MainTopBar(
  * so it cannot take a tap meant for search.
  */
 @Composable
-private fun TopBarBg(bgInfo: BgInfoData?, compact: Boolean) {
-    val info = bgInfo ?: return
+private fun TopBarBg(bgInfo: BgInfoData?, compact: Boolean, timeText: String) {
+    Column(
+        horizontalAlignment = Alignment.End,
+        modifier = Modifier.padding(start = 4.dp)
+    ) {
+        if (bgInfo != null) TopBarBgValue(bgInfo, compact)
+        Text(
+            text = timeText,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun TopBarBgValue(info: BgInfoData, compact: Boolean) {
     val color = when (info.bgRange) {
         BgRange.HIGH     -> AapsTheme.generalColors.bgHigh
         BgRange.IN_RANGE -> AapsTheme.generalColors.bgInRange
         BgRange.LOW      -> AapsTheme.generalColors.bgLow
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = info.bgText,
             color = color,
