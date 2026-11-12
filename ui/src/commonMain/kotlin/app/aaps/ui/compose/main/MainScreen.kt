@@ -359,7 +359,7 @@ fun MainScreen(
                             )
                         },
                         paddingValues = contentPadding,
-                        fabBottomOffset = if (hasToolbar && showChrome && !landscapeNavigation) 56.dp else 0.dp,
+                        fabBottomOffset = if (hasToolbar && showChrome && !landscapeNavigation) 64.dp else 0.dp, // 56 dp quick launch bar + 8 dp gap
                         bolusState = bolusState,
                         pumpStatusText = pumpStatusText,
                         queueStatusText = queueStatusText,

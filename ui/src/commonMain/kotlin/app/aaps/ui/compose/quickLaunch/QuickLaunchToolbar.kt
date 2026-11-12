@@ -57,6 +57,10 @@ data class ResolvedQuickLaunchItem(
     val description: String? = null
 )
 
+/** Quick launch button and icon size (2026-11-12, per explicit request: 48 -> 56 dp, icon 24 -> 28 dp). */
+private val ToolbarItemSize = 56.dp
+private val ToolbarIconSize = 28.dp
+
 /**
  * Floating pill-shaped toolbar for quick actions.
  * Displayed as an overlay at the bottom of the overview screen.
@@ -84,8 +88,8 @@ fun QuickLaunchToolbar(
             vertical = if (vertical) 8.dp else 0.dp
         )
     ) {
-        BoxWithConstraints(if (vertical) Modifier.width(48.dp) else Modifier.height(48.dp)) {
-            val itemSizePx = with(LocalDensity.current) { 48.dp.toPx() }
+        BoxWithConstraints(if (vertical) Modifier.width(ToolbarItemSize) else Modifier.height(ToolbarItemSize)) {
+            val itemSizePx = with(LocalDensity.current) { ToolbarItemSize.toPx() }
             val contentPaddingPx = with(LocalDensity.current) { 8.dp.toPx() }
             val availablePx = if (vertical) constraints.maxHeight else constraints.maxWidth
             val maxItems = ((availablePx - contentPaddingPx) / itemSizePx).toInt()
@@ -175,13 +179,13 @@ private fun ToolbarIconButton(
             onClick = { onActionClick(item.action) },
             enabled = item.enabled,
             modifier = Modifier
-                .size(48.dp)
+                .size(ToolbarItemSize)
         ) {
             Icon(
                 imageVector = item.icon,
                 contentDescription = item.label,
                 tint = resolveItemColor(item),
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(ToolbarIconSize)
             )
         }
     }
@@ -197,12 +201,12 @@ private fun OverflowMenuButton(
     Box {
         IconButton(
             onClick = { showMenu = true },
-            modifier = Modifier.size(48.dp)
+            modifier = Modifier.size(ToolbarItemSize)
         ) {
             Icon(
                 imageVector = Icons.Default.MoreVert,
                 contentDescription = stringResource(CoreUiStrings.more_options),
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(ToolbarIconSize)
             )
         }
         DropdownMenu(
