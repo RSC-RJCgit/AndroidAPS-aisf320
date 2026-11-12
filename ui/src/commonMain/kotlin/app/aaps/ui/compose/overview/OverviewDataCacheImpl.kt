@@ -95,6 +95,7 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.utils.TrendCalculator
+import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.workflow.CalculationSignals
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
@@ -244,6 +245,7 @@ class OverviewDataCacheImpl(
     private val receiverStatusStore: ReceiverStatusStore,
     private val backgroundWorkPause: BackgroundWorkPause,
     private val uiRestart: UiRestart,
+    fabricPrivacy: FabricPrivacy,
     @Assisted val signals: CalculationSignals,
     @Assisted val observeDatabase: Boolean
 ) : OverviewDataCache {
@@ -251,6 +253,13 @@ class OverviewDataCacheImpl(
     // Lazy lookup breaks the cache ↔ iobCobCalculator construction cycle.
     // Only used on DB-observation paths (observeDatabase == true).
     private val iobCobCalculator: IobCobCalculator get() = iobCobCalculatorProvider()
+
+    // Every graph value goes through this before it is stored in a flow, see NonFiniteGraphValues
+    private val nonFinite = NonFiniteGraphValues(fabricPrivacy)
+
+    private fun List<GraphDataPoint>.finite(series: String): List<GraphDataPoint> = nonFinite.drop(series, this, { it.timestamp }, { it.value })
+
+    private fun List<BgDataPoint>.finiteBg(series: String): List<BgDataPoint> = nonFinite.drop(series, this, { it.timestamp }, { it.value })
 
     private val scope = CoroutineScope(SupervisorJob() + aapsIoDispatcher)
 
@@ -888,15 +897,15 @@ class OverviewDataCacheImpl(
     }
 
     override fun updateBgReadings(data: List<BgDataPoint>) {
-        _bgReadingsFlow.value = data
+        _bgReadingsFlow.value = data.finiteBg("BG readings")
     }
 
     override fun updateBucketedData(data: List<BgDataPoint>) {
-        _bucketedDataFlow.value = data
+        _bucketedDataFlow.value = data.finiteBg("bucketed BG")
     }
 
     override fun updatePredictions(data: List<BgDataPoint>) {
-        _predictionsFlow.value = data
+        _predictionsFlow.value = data.finiteBg("BG predictions")
     }
 
     override fun updateBgInfo(data: BgInfoData?) {
@@ -904,39 +913,42 @@ class OverviewDataCacheImpl(
     }
 
     override fun updateIobGraph(data: IobGraphData) {
-        _iobGraphFlow.value = data
+        _iobGraphFlow.value = IobGraphData(iob = data.iob.finite("IOB"), predictions = data.predictions.finite("IOB predictions"))
     }
 
     override fun updateAbsIobGraph(data: AbsIobGraphData) {
-        _absIobGraphFlow.value = data
+        _absIobGraphFlow.value = AbsIobGraphData(absIob = data.absIob.finite("absolute IOB"))
     }
 
     override fun updateCobGraph(data: CobGraphData) {
-        _cobGraphFlow.value = data
+        _cobGraphFlow.value = CobGraphData(
+            cob = data.cob.finite("COB"),
+            failOverPoints = nonFinite.drop("COB failover", data.failOverPoints, { it.timestamp }, { it.cobValue })
+        )
     }
 
     override fun updateActivityGraph(data: ActivityGraphData) {
-        _activityGraphFlow.value = data
+        _activityGraphFlow.value = ActivityGraphData(activity = data.activity.finite("activity"), activityPrediction = data.activityPrediction.finite("activity prediction"))
     }
 
     override fun updateBgiGraph(data: BgiGraphData) {
-        _bgiGraphFlow.value = data
+        _bgiGraphFlow.value = BgiGraphData(bgi = data.bgi.finite("BGI"), bgiPrediction = data.bgiPrediction.finite("BGI prediction"))
     }
 
     override fun updateDeviationsGraph(data: DeviationsGraphData) {
-        _deviationsGraphFlow.value = data
+        _deviationsGraphFlow.value = DeviationsGraphData(deviations = nonFinite.drop("deviations", data.deviations, { it.timestamp }, { it.value }))
     }
 
     override fun updateRatioGraph(data: RatioGraphData) {
-        _ratioGraphFlow.value = data
+        _ratioGraphFlow.value = RatioGraphData(ratio = data.ratio.finite("sensitivity ratio"))
     }
 
     override fun updateDevSlopeGraph(data: DevSlopeGraphData) {
-        _devSlopeGraphFlow.value = data
+        _devSlopeGraphFlow.value = DevSlopeGraphData(dsMax = data.dsMax.finite("deviation slope max"), dsMin = data.dsMin.finite("deviation slope min"))
     }
 
     override fun updateVarSensGraph(data: VarSensGraphData) {
-        _varSensGraphFlow.value = data
+        _varSensGraphFlow.value = VarSensGraphData(varSens = data.varSens.finite("variable sensitivity"))
     }
 
     override fun updateAutoIsfGraph(data: AutoIsfGraphData) {
@@ -944,11 +956,16 @@ class OverviewDataCacheImpl(
     }
 
     override fun updateHeartRateGraph(data: HeartRateGraphData) {
-        _heartRateGraphFlow.value = data
+        _heartRateGraphFlow.value = HeartRateGraphData(segments = data.segments.map { it.finite("heart rate") }.filter { it.isNotEmpty() })
     }
 
     override fun updateStepsGraph(data: StepsGraphData) {
-        _stepsGraphFlow.value = data
+        _stepsGraphFlow.value = StepsGraphData(
+            steps = data.steps.finite("steps"),
+            steps15 = data.steps15.finite("steps 15 min"),
+            steps30 = data.steps30.finite("steps 30 min"),
+            steps60 = data.steps60.finite("steps 60 min")
+        )
     }
 
     // =========================================================================
@@ -1097,12 +1114,13 @@ class OverviewDataCacheImpl(
                 )
             }
 
+        // Extended boluses are drawn at their amount, the rate is only in the label
         _treatmentGraphFlow.value = TreatmentGraphData(
-            boluses = bolusPoints,
-            carbs = carbsPoints,
-            extendedBoluses = extendedBolusPoints,
-            therapyEvents = therapyEventPoints,
-            calibrations = calibrationPoints
+            boluses = nonFinite.drop("boluses", bolusPoints, { it.timestamp }, { it.amount }),
+            carbs = nonFinite.drop("carbs", carbsPoints, { it.timestamp }, { it.amount }),
+            extendedBoluses = nonFinite.drop("extended boluses", extendedBolusPoints, { it.timestamp }, { it.amount }),
+            therapyEvents = nonFinite.drop("therapy event glucose", therapyEventPoints, { it.timestamp }, { it.glucoseUserUnits }),
+            calibrations = nonFinite.drop("calibrations", calibrationPoints, { it.timestamp }, { it.fingerstickUserUnits })
         )
     }
 
@@ -1175,7 +1193,7 @@ class OverviewDataCacheImpl(
         // The same step line the watch gets (DataHandlerMobile.sendTreatments)
         val targets = buildTargetLine(fromTime, endTime, temporaryTargets, profile::targetMiddleMgdl) { profileUtil.fromMgdlToUnits(it) }
 
-        _targetLineFlow.value = TargetLineData(targets)
+        _targetLineFlow.value = TargetLineData(targets.finite("target line"))
     }
 
     /**
@@ -1253,11 +1271,16 @@ class OverviewDataCacheImpl(
         if (lastProfileBasal >= 0.0) profileBasal.add(GraphDataPoint(endTime, lastProfileBasal))
         if (lastActualBasal >= 0.0) actualBasal.add(GraphDataPoint(endTime, lastActualBasal))
 
+        val finiteProfileBasal = profileBasal.finite("profile basal")
+        val finiteActualBasal = actualBasal.finite("actual basal")
+        // max() passes a NaN on, so a single bad rate would have made maxBasal NaN as well. Every rate
+        // is in one of the two lists (a point is added at each change), so this is the same maximum.
+        val finiteMaxBasal = if (maxBasal.isFinite()) maxBasal else (finiteProfileBasal + finiteActualBasal).maxOfOrNull { it.value }?.coerceAtLeast(0.0) ?: 0.0
         val factorTemps = factorTempColumns(fromTime, endTime)
         _basalGraphFlow.value = BasalGraphData(
-            profileBasal = profileBasal,
-            actualBasal = actualBasal,
-            maxBasal = maxBasal,
+            profileBasal = finiteProfileBasal,
+            actualBasal = finiteActualBasal,
+            maxBasal = finiteMaxBasal,
             acceTemp = factorTemps.acce,
             bgTemp = factorTemps.bg,
             ppTemp = factorTemps.pp,
@@ -1521,7 +1544,7 @@ class OverviewDataCacheImpl(
     private suspend fun rebuildHeartRateGraph() {
         val (fromTime, toTime) = graphTimeRange() ?: return
         val heartRates = persistenceLayer.getHeartRatesFromTimeToTime(fromTime, toTime).filter { it.isValid }
-        _heartRateGraphFlow.value = HeartRateGraphData(heartRateSegments(heartRates))
+        updateHeartRateGraph(HeartRateGraphData(heartRateSegments(heartRates)))
     }
 
     private suspend fun rebuildStepsGraph() {
@@ -1551,12 +1574,12 @@ class OverviewDataCacheImpl(
                 )
             }.sortedBy { it.timestamp }
         }
-        _stepsGraphFlow.value = StepsGraphData(
+        updateStepsGraph(StepsGraphData(
             steps = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps5.toDouble()) },
             steps15 = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps15.toDouble()) },
             steps30 = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps30.toDouble()) },
             steps60 = rows.map { GraphDataPoint(timestamp = it.timestamp, value = it.steps60.toDouble()) }
-        )
+        ))
     }
 
     override fun reset() {

@@ -2,8 +2,8 @@ package app.aaps.core.objects.di
 
 import app.aaps.core.interfaces.alerts.EatReminder
 import app.aaps.core.interfaces.aps.Loop
-import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.bolus.MasterActionExecutor
+import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -28,7 +28,7 @@ import app.aaps.core.objects.wizard.QuickWizardEntry
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.Provides
-import dev.zacsweers.metro.SingleIn
+import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -86,7 +86,6 @@ object CoreObjectsGraph {
     fun provideBolusWizard(
         logger: AAPSLogger,
         text: TextResolver,
-        bus: RxBus,
         prefs: Preferences,
         profile: ProfileFunction,
         profileU: ProfileUtil,
@@ -106,7 +105,7 @@ object CoreObjectsGraph {
         plugins: ActivePlugin,
         scope: CoroutineScope
     ): BolusWizard = BolusWizard(
-        logger, text, bus, prefs, profile, profileU, constraints, loopRef, iobCob, dates, cfg,
+        logger, text, prefs, profile, profileU, constraints, loopRef, iobCob, dates, cfg,
         entryLogger, automationRef, eatReminder, glucose, persistence, guard, ch, executor, plugins, scope
     )
 }

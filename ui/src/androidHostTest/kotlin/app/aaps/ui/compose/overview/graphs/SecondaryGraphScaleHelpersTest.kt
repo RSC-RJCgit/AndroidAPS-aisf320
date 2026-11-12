@@ -383,4 +383,15 @@ internal class SecondaryGraphScaleHelpersTest {
             assertThat(placer.getLineValues(context, 100f, 20f, Axis.Position.Vertical.Start)).isNull()
         }
     }
+
+    @Nested
+    inner class FilterToRangeTest {
+
+        // From upstream (#5525): a NaN point is dropped, the main screen crashed on it
+        @Test
+        fun `a point whose value is not a finite number is dropped`() {
+            val points = listOf(0.0 to 1.0, 5.0 to Double.NaN, 10.0 to 2.0, 15.0 to Double.POSITIVE_INFINITY)
+            assertThat(filterToRange(points, 0.0, 20.0)).containsExactly(0.0 to 1.0, 10.0 to 2.0).inOrder()
+        }
+    }
 }

@@ -39,7 +39,7 @@ class SplitRetryTest {
         whenever(preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)).thenAnswer { dateUtil.now() }
         whenever(preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)).thenReturn(3800L)
         return BolusWizard(
-            aapsLogger = logger, rh = mock(), rxBus = mock(), preferences = preferences,
+            aapsLogger = logger, rh = mock(), preferences = preferences,
             profileFunction = profileFunction, profileUtil = mock(), constraintChecker = mock(), loop = mock(),
             iobCobCalculator = mock(), dateUtil = dateUtil, config = mock(), uel = mock(), automation = mock(),
             eatReminder = mock(), glucoseStatusProvider = mock(), persistenceLayer = mock(), runningModeGuard = mock(),
