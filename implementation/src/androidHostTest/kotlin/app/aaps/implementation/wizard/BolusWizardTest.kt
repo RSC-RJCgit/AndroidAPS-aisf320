@@ -97,7 +97,7 @@ class BolusWizardTest : TestBaseWithProfile() {
     private fun createWizard() = BolusWizard(
         aapsLogger, rh, rxBus, preferences, profileFunction, profileUtil, constraintChecker, loop, iobCobCalculator, dateUtil, config, uel, automation, eatReminder,
         glucoseStatusProvider, persistenceLayer, runningModeGuard,
-        ch, masterActionExecutor, CoroutineScope(Dispatchers.Unconfined)
+        ch, masterActionExecutor, activePlugin, CoroutineScope(Dispatchers.Unconfined)
     )
 
     /**

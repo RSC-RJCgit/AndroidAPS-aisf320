@@ -84,9 +84,12 @@ fun InsulinDialogScreen(
     iobUiState: StateFlow<IobUiState>,
     cobUiState: StateFlow<CobUiState>,
     onNavigateBack: () -> Unit,
-    onShowDeliveryError: (String) -> Unit
+    onShowDeliveryError: (String) -> Unit,
+    /** Opens the calculator's insulin-only mode with the dose and notes (2026-11-01). Null keeps the plain bolus. */
+    onOpenCalculator: ((Double, String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    viewModel.calculatorRedirect = onOpenCalculator != null
     val bgInfo by bgInfoState.collectAsStateWithLifecycle()
     val iob by iobUiState.collectAsStateWithLifecycle()
     val cob by cobUiState.collectAsStateWithLifecycle()
@@ -113,6 +116,10 @@ fun InsulinDialogScreen(
                     confirmation?.let { viewModel.discard(it.bolusId) }
                     confirmation = effect
                 }
+
+                is InsulinDialogViewModel.SideEffect.OpenCalculator   -> {
+                    onOpenCalculator?.invoke(effect.insulin, effect.notes)
+                }
             }
         }
     }
@@ -128,7 +135,9 @@ fun InsulinDialogScreen(
             onConfirm = {
                 viewModel.commit(shown.bolusId)
                 confirmation = null
-                onNavigateBack()
+                val calculator = shown.thenCalculator
+                if (calculator != null && onOpenCalculator != null) onOpenCalculator(calculator.insulin, calculator.notes)
+                else onNavigateBack()
             },
             onDismiss = {
                 viewModel.discard(shown.bolusId)

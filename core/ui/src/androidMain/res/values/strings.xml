@@ -831,6 +831,7 @@
     <string name="carbs_removal_cob_limit" comment="Shown under the carbs field when removing carbs (a negative value). %1$d = grams of carbs currently on board, the maximum removable. Example: Max removal: 30 g (carbs on board)">Max removal: %1$d g (carbs on board)</string>
     <string name="wizard_no_insulin_required">No insulin required</string>
     <string name="wizard_no_actual_bg">No recent BG to base calculation on!</string>
+    <string name="quickwizard_no_bg_opens_calculator">%1$d g. No BG: opens the bolus calculator to type one in</string>
     <string name="wizard_no_active_profile">No active profile set!</string>
     <string name="wizard_carbs_constraint">Carb constraint violation!</string>
     <string name="wizard_trend_detail">15min trend (%1$s %2$s)</string>
@@ -1277,4 +1278,6 @@
     <string name="units_years">y</string>
     <string name="prefs_range_title">Range for visualization</string>
     <string name="secrets_not_protected">No system key store was found on this computer. The keys that protect your settings and the pairing with the master are kept in files next to the data, so anyone who gets a copy of your files gets them too. On Linux, install and start a keyring (for example GNOME Keyring or KWallet), then start AAPS again.</string>
+    <!-- Bolus calculator patch (fork customisations) -->
+    <string name="wizard_calculated_at" comment="First row of the bolus calculation details. %1$s = date and time of the calculation. Example: Calculated 22/10/26 07:52:41">Calculated %1$s</string>
 </resources>

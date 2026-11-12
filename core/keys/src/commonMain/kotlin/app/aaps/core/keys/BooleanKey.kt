@@ -61,6 +61,33 @@ enum class BooleanKey(
     ),
     OverviewShowNotesInDialogs(key = "show_notes_entry_dialogs", defaultValue = false, title = KeysStrings.pref_title_show_notes_in_dialogs, defaultedBySM = true),
     OverviewUseBolusAdvisor("use_bolus_advisor", true, KeysStrings.pref_title_use_bolus_advisor, KeysStrings.pref_summary_use_bolus_advisor, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // Bolus calculator starting state (2026-10-06, per explicit request). Applied every time the wizard opens;
+    // a box changed during use is NOT remembered. Shown in the wizard's own settings screen.
+    WizardDefaultUnreliableSmbs(
+        "wizard_default_unreliable_smbs",
+        false,
+        KeysStrings.pref_title_wizard_default_unreliable_smbs,
+        KeysStrings.pref_summary_wizard_default_unreliable_smbs
+    ),
+    WizardDefaultSmallMeal(
+        "wizard_default_small_meal",
+        true,
+        KeysStrings.pref_title_wizard_default_small_meal,
+        KeysStrings.pref_summary_wizard_default_small_meal
+    ),
+    // v3's split over max bolus (2026-10-22, per explicit request): how the calculator's and QuickWizard's split box start
+    WizardSplitOverMaxBolus(
+        "split_bolus_enabled",
+        true,
+        KeysStrings.pref_title_wizard_split_over_max,
+        KeysStrings.pref_summary_wizard_split_over_max
+    ),
+    WizardDefaultAutoFpu(
+        "wizard_default_auto_fpu",
+        false,
+        KeysStrings.pref_title_wizard_default_auto_fpu,
+        KeysStrings.pref_summary_wizard_default_auto_fpu
+    ),
     OverviewUseBolusReminder("use_bolus_reminder", true, KeysStrings.pref_title_use_bolus_reminder, KeysStrings.pref_summary_use_bolus_reminder, defaultedBySM = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
 
     @Deprecated("Remove support")

@@ -43,6 +43,14 @@ enum class LongNonKey(
     // Client: the "signed at" of the last cold and hot doc it took. An older one is a replay and is refused.
     NsClientControlColdSignedAt("nsclient_control_cold_signed_at", 0L, exportable = false),
     NsClientControlHotSignedAt("nsclient_control_hot_signed_at", 0L, exportable = false),
+    // Bolus calculator patch. In the fork, AutoISF writes HP1 and the follow-up insulinReq every loop; upstream nothing
+    // does, so they stay 0 (no insulinReq cap; the split check then uses the loop's own predictions). Local only.
+    ApsAutoIsfLastCycleHp1MilliMmol("autoisf_last_cycle_hp1_milli_mmol", 0L, exportable = false),
+    ApsAutoIsfLastCycleHp1At("autoisf_last_cycle_hp1_at", 0L, exportable = false),
+    ApsAutoIsfFollowUpInsulinReqMilliU("autoisf_follow_up_insulin_req_milliu", 0L, exportable = false),
+    ApsAutoIsfFollowUpInsulinReqAt("autoisf_follow_up_insulin_req_at", 0L, exportable = false),
+    // When a delayed carb or fat-protein dose was delivered. 0 means none yet. Local only.
+    ApsAutoIsfLastDelayedBolusAt("autoisf_last_delayed_bolus_at", 0L, exportable = false),
     LastVacuumRun("last_vacuum_run", 0L),
 }
 

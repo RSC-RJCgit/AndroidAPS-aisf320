@@ -1,6 +1,8 @@
 package app.aaps.core.ui.compose.dialogs
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -15,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -50,7 +54,7 @@ fun OkCancelDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = icon?.let {
+        icon = icon?.takeUnless { shortWindow() }?.let {
             {
                 Icon(
                     imageVector = icon,
@@ -73,8 +77,10 @@ fun OkCancelDialog(
             }
         },
         text = {
+            // Scrollable (2026-11-12, per explicit request): the dialog sizes icon, title and buttons first, so on a short
+            // landscape phone the lines were squeezed to nothing (QuickWizard / calculator confirmation on iOS).
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -123,7 +129,7 @@ fun OkCancelDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = icon?.let {
+        icon = icon?.takeUnless { shortWindow() }?.let {
             {
                 Icon(
                     imageVector = icon,
@@ -146,8 +152,10 @@ fun OkCancelDialog(
             }
         },
         text = {
+            // Scrollable (2026-11-12, per explicit request): the dialog sizes icon, title and buttons first, so on a short
+            // landscape phone the lines were squeezed to nothing (QuickWizard / calculator confirmation on iOS).
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -180,3 +188,15 @@ fun OkCancelDialog(
         properties = DialogProperties(dismissOnBackPress = true, dismissOnClickOutside = false)
     )
 }
+
+/**
+ * True on a short window, such as a phone in landscape (2026-11-12, per explicit request). The 48 dp icon is left out
+ * there, so the confirmation lines keep room; the title still says what the dialog is.
+ */
+@Composable
+private fun shortWindow(): Boolean {
+    val height = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() }
+    return height < SHORT_WINDOW_HEIGHT
+}
+
+private val SHORT_WINDOW_HEIGHT = 480.dp

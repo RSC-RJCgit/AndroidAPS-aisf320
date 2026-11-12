@@ -123,4 +123,9 @@ enum class StringNonKey(
     NsClientControlMasterSigningKey(key = "nsclient_control_master_signing_key", defaultValue = "", exportable = false),
     NsClientControlMasterSigningKeyUrl(key = "nsclient_control_master_signing_key_url", defaultValue = "", exportable = false),
 
+    /**
+     * The bolus calculator's meal type (a CarbsType name) from the last confirmed meal calculation, so the next run starts
+     * on it like the remembered ticks. An unknown name reads as BREAD.
+     */
+    WizardCarbsType("wizard_carbs_type", "BREAD"),
 }

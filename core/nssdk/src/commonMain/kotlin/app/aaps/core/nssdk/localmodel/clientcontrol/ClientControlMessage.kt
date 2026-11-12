@@ -152,7 +152,20 @@ sealed class ClientControlMessage {
         val eCarbsDelayMinutes: Int = 0,
         val eCarbsDurationHours: Int = 0,
         // null → the master's active profile; a name → that stored profile (additive, default keeps old clients wire-compatible).
-        val profileName: String? = null
+        val profileName: String? = null,
+        val walkingSoon: Boolean = false,
+        // 2026-10-22: the rest of the calculator's inputs. Defaults keep an older client wire-compatible.
+        val protein: Int = 0,
+        val fat: Int = 0,
+        val warsawDurationHours: Double = 5.0,
+        val maxBolus: Double? = null,
+        val giveRestLater: Boolean = true,
+        val retryFpuLater: Boolean = true,
+        val splitOverMax: Boolean = true,
+        val splitIntervalMinutes: Int = 7,
+        // 2026-11-01: insulin-only mode of the calculator. Null (an older client) is the usual calculator.
+        val fixedInsulin: Double? = null,
+        val fpuIntervalMinutes: Int = 30,
     ) : ClientControlMessage()
 
     /**

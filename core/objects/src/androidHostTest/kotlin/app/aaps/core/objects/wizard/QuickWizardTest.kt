@@ -1,5 +1,6 @@
 package app.aaps.core.objects.wizard
 
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
@@ -18,6 +19,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.mock
 
 class QuickWizardTest : TestBaseWithProfile() {
 
@@ -52,7 +54,7 @@ class QuickWizardTest : TestBaseWithProfile() {
     fun setup() {
         whenever(preferences.get(StringNonKey.QuickWizard)).thenReturn("[]")
         whenever(preferences.observe(StringNonKey.QuickWizard)).thenReturn(MutableStateFlow("[]"))
-        val quickWizardEntry = QuickWizardEntry(aapsLogger, preferences, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, { bolusWizard }, { quickWizardMock })
+        val quickWizardEntry = QuickWizardEntry(aapsLogger, preferences, profileFunction, loop, iobCobCalculator, persistenceLayer, dateUtil, glucoseStatusProvider, mock(), mock(), { bolusWizard }, { quickWizardMock })
         quickWizardEntry.time = mockedTime
         quickWizard = QuickWizard(preferences) { quickWizardEntry }
     }
@@ -140,5 +142,35 @@ class QuickWizardTest : TestBaseWithProfile() {
         assertThat(quickWizard.reorder(listOf(0, 1, 5))).isFalse()       // out of range
 
         assertThat(buttonTexts()).containsExactly("Meal", "Lunch", "Dinner").inOrder()
+    }
+
+    @Test
+    fun mealTypeSplitsCarbsAsTheWizard() {
+        // Cake: 90% of the carbs now, 20% as extended carbs from +60 min over 2 h. The button's own fixed extended carbs are not used.
+        quickWizard.setData(entries("{\"buttonText\":\"Pasta\",\"carbs\":20,\"validFrom\":0,\"validTo\":86340,\"unreliableSmb\":false,\"autoFpu\":false,\"carbsType\":\"CAKE\",\"useEcarbs\":0,\"carbs2\":30,\"time\":15,\"duration\":4}"))
+        val e = quickWizard[0]
+        assertThat(e.carbsNow()).isEqualTo(18)
+        assertThat(e.eCarbsGrams()).isEqualTo(4)
+        assertThat(e.eCarbsDelayMinutes()).isEqualTo(60)
+        assertThat(e.eCarbsDurationHours()).isEqualTo(2)
+    }
+
+    @Test
+    fun buttonWithoutMealTypeKeepsItsOwnExtendedCarbs() {
+        quickWizard.setData(entries("{\"buttonText\":\"Pasta\",\"carbs\":20,\"validFrom\":0,\"validTo\":86340,\"unreliableSmb\":false,\"autoFpu\":false,\"useEcarbs\":0,\"carbs2\":30,\"time\":15,\"duration\":4}"))
+        val e = quickWizard[0]
+        assertThat(e.carbsType()).isEqualTo(CarbsType.BREAD)
+        assertThat(e.carbsNow()).isEqualTo(20)
+        assertThat(e.eCarbsGrams()).isEqualTo(30)
+        assertThat(e.eCarbsDelayMinutes()).isEqualTo(15)
+        assertThat(e.eCarbsDurationHours()).isEqualTo(4)
+    }
+
+    @Test
+    fun automaticFatAndProteinReplaceTheMealTypeExtendedCarbs() {
+        quickWizard.setData(entries("{\"buttonText\":\"Pasta\",\"carbs\":20,\"validFrom\":0,\"validTo\":86340,\"unreliableSmb\":false,\"autoFpu\":true,\"carbsType\":\"CAKE\"}"))
+        val e = quickWizard[0]
+        assertThat(e.carbsNow()).isEqualTo(18)
+        assertThat(e.eCarbsGrams()).isEqualTo(0)
     }
 }

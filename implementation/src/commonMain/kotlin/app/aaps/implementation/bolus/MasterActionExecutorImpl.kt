@@ -49,6 +49,8 @@ import app.aaps.core.interfaces.queue.SmbPause
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.keys.interfaces.TextRef
@@ -58,6 +60,7 @@ import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.wizard.QuickWizard
+import app.aaps.core.objects.wizard.WarsawFpuPlan
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.formatMinutesAsDuration
@@ -70,6 +73,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.ceil
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+import app.aaps.core.objects.wizard.SPLIT_LEFTOVER_INTERVAL_MINUTES
+import app.aaps.core.objects.wizard.WizardDropTrendCaution
+import app.aaps.core.objects.wizard.dropTrendCautionNow
+import kotlin.math.min
 
 /**
  * [MasterActionExecutor] implementation. The `BolusWizard`/`QuickWizardEntry` compute objects stay
@@ -104,6 +112,8 @@ class MasterActionExecutorImpl(
     // Plain CoroutineScope, not @ApplicationScope: that qualifier is javax and cannot appear in
     // commonMain. AppCoroutineBindings.unqualifiedAppScope binds the very same scope without it.
     private val appScope: CoroutineScope,
+    private val preferences: Preferences,
+    private val glucoseStatusProvider: GlucoseStatusProvider,
     private val masterRecordWriter: MasterRecordWriter,
     private val smbPause: SmbPause,
     private val eatReminder: EatReminder
@@ -157,6 +167,14 @@ class MasterActionExecutorImpl(
         val recordOnly: Boolean = false,
         val iCfg: ICfg? = null,
         val bolusTimestamp: Long? = null,
+        val warsawPlan: WarsawFpuPlan? = null,
+        val warsawIobBaseline: Double = 0.0,
+        val warsawRetryLater: Boolean = true,
+        val wizardMaxBolus: Double? = null,
+        val walkingSoonHeld: Double = 0.0,
+        val splitRapidFall: Boolean = false,
+        val splitOverMax: Boolean = true,
+        val splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES,
         // Who it was prepared for (null: the master itself) and the lowest role its content needs. Only that caller
         // may commit it, and only while its role still allows it (see RemoteCaller).
         val caller: RemoteCaller? = null,
@@ -290,7 +308,23 @@ class MasterActionExecutorImpl(
             smbPause.end(pause)
             return MasterActionExecutor.PrepareResult.Error(message)
         }
-        val wizard = entry.doCalc(profile, profileName, actualBg)
+        val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        // The button's own max bolus always counts; 0 uses the saved max bolus. As in the Bolus Wizard, unreliable SMBs only
+        // fall back to the saved value when nothing was set for this bolus (2026-10-22, per explicit request).
+        // 2026-10-22, per explicit request: the falling-BG caution also halves the max bolus, for the calculation and the
+        // commit. The button works the caution out again inside doCalc with the same live data.
+        val caution = dropTrendCautionNow(actualBg.value, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+        val ownMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
+        val buttonMax = if (caution) WizardDropTrendCaution.scaledMaxBolus(ownMax ?: savedMaxBolus, pump.bolusStepSize(ownMax ?: savedMaxBolus))
+        else ownMax
+        if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, buttonMax)
+        val wizard = try {
+            entry.doCalc(profile, profileName, actualBg)
+        } finally {
+            if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+        }
+        wizard.splitOverMax = entry.splitOverMax()
+        wizard.splitIntervalMinutes = entry.splitIntervalMinutes()
 
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(entry.carbs(), aapsLogger)).value()
         if (carbsAfterConstraints != entry.carbs()) return refused(rh.gs(CoreUiStrings.wizard_carbs_constraint))
@@ -300,30 +334,45 @@ class MasterActionExecutorImpl(
         val eCarbsGrams = entry.eCarbsGrams()
         if (constraintChecker.applyCarbsConstraints(ConstraintObject(eCarbsGrams, aapsLogger)).value() != eCarbsGrams)
             return refused(rh.gs(CoreUiStrings.wizard_carbs_constraint))
+        // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
+        // Commit applies the same cap again, so the pump never sees the uncapped amount.
         val insulinAfterConstraints = wizard.insulinAfterConstraints
-        if (Round.isMoreThanRounding(wizard.calculatedTotalInsulin, insulinAfterConstraints, pump.bolusStepSize(insulinAfterConstraints)))
-            return refused(rh.gs(CoreUiStrings.wizard_constraint_bolus_size, wizard.calculatedTotalInsulin))
-        // A correction-only QuickWizard (0 carbs) that nets to nothing → reject rather than show an empty confirm.
-        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0)
+        if (insulinAfterConstraints <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return refused(rh.gs(CoreUiStrings.wizard_no_insulin_required))
         // Carbs only: nothing goes to the pump, so nothing to hold back.
-        val givesInsulin = wizard.calculatedTotalInsulin > 0.0
+        val givesInsulin = insulinAfterConstraints > 0.0
         if (!givesInsulin) smbPause.end(pause)
 
         evictStalePending()
-        pending.park(
+        pending.park(wizard.timeStamp, PendingBolus(
+            wizard.unclampedCalculatedInsulin,
+            wizard.carbs,
+            wizard.createBolusCalculatorResult(
+                eCarbsGrams = eCarbsGrams,
+                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.eCarbsDelayMinutes() else 0,
+                eCarbsDurationHours = if (eCarbsGrams > 0) entry.eCarbsDurationHours() else 0,
+            ),
             wizard.timeStamp,
-            PendingBolus(
-                wizard.unclampedCalculatedInsulin, wizard.carbs, wizard.createBolusCalculatorResult(), wizard.timeStamp, entry,
-                carbTimeMinutes = entry.carbTime(), notes = entry.buttonText(), caller = caller, requiredRole = ClientRole.MealAssistant,
-                smbPause = pause.takeIf { givesInsulin }
-            )
-        )
+            entry,
+            carbTimeMinutes = entry.carbTime(),
+            notes = entry.buttonText(),
+            warsawPlan = wizard.warsawPlan,
+            warsawIobBaseline = wizard.warsawIobBaseline,
+            warsawRetryLater = wizard.warsawRetryLater,
+            wizardMaxBolus = buttonMax,
+            walkingSoonHeld = wizard.walkingSoonHeldUnits,
+            splitRapidFall = wizard.rapidFallForSplit,
+            splitOverMax = wizard.splitOverMax,
+            splitIntervalMinutes = wizard.splitIntervalMinutes,
+            caller = caller,
+            requiredRole = ClientRole.MealAssistant,
+            smbPause = pause.takeIf { givesInsulin },
+        ))
         // Build the master's color-coded confirmation lines here so the client renders the master's EXACT
         // wizard confirmation (shared builder). advisorApplies offers the high-BG "correct now, eat later" fork.
         val advisorApplies = wizard.needsBolusAdvisor()
         return MasterActionExecutor.PrepareResult.Preview(
-            insulin = wizard.calculatedTotalInsulin,
+            insulin = insulinAfterConstraints,
             carbs = wizard.carbs,
             bolusId = wizard.timeStamp,
             lines = wizard.buildConfirmationLines(advisor = false, quickWizardEntry = entry),
@@ -331,11 +380,11 @@ class MasterActionExecutorImpl(
             advisorLines = if (advisorApplies) wizard.buildConfirmationLines(advisor = true, quickWizardEntry = entry) else emptyList(),
             wizardDetail = wizard.buildWizardDetail().copy(
                 eCarbsGrams = eCarbsGrams,
-                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.time() else 0,
-                eCarbsDurationHours = if (eCarbsGrams > 0) entry.duration() else 0,
+                eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.eCarbsDelayMinutes() else 0,
+                eCarbsDurationHours = if (eCarbsGrams > 0) entry.eCarbsDurationHours() else 0,
                 carbTimeMinutes = entry.carbTime(),
                 alarm = entry.useAlarm() == QuickWizardEntry.ALWAYS && entry.carbTime() > 0,
-                maxBolus = constraintChecker.getMaxBolusAllowed().value(),
+                maxBolus = buttonMax ?: constraintChecker.getMaxBolusAllowed().value(),
                 bolusStep = pump.bolusStepSize(wizard.insulinAfterConstraints),
             ),
         )
@@ -374,10 +423,52 @@ class MasterActionExecutorImpl(
             smbPause.end(pause)
             return MasterActionExecutor.PrepareResult.Error(message)
         }
-        val wizard = bolusWizardProvider().doCalc(
-            profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, inputs.percentage,
-            inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime
-        )
+        val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        // The falling-BG caution is applied here, on the master's live data (2026-10-22). The calculator only showed it:
+        // its percent was sent un-halved, so the dose given was not reduced. The cut part is given later when asked.
+        // It halves the max bolus too (2026-10-22, per explicit request), for the calculation and the commit.
+        val bgMgdl = if (inputs.useBg && inputs.bg > 0.0) profileUtil.convertToMgdl(inputs.bg, profileFunction.getUnits())
+        else glucoseStatusProvider.getGlucoseStatusData()?.glucose ?: 999.0
+        val caution = dropTrendCautionNow(bgMgdl, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+        val ownMax = inputs.maxBolus?.coerceIn(0.1, 60.0)
+        val wizardMax = if (caution) WizardDropTrendCaution.scaledMaxBolus(ownMax ?: savedMaxBolus, pump.bolusStepSize(ownMax ?: savedMaxBolus))
+        else ownMax
+        if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
+        val percentForCalc = if (caution) min(inputs.percentage, WizardDropTrendCaution.scaledWizPercent(inputs.percentage))
+        else inputs.percentage
+        var suggestedBcr: BCR? = null
+        val wizard = try {
+            bolusWizardProvider().doCalc(
+                profile, profileName, tempTarget, carbsAfterConstraints, cob, inputs.bg, inputs.directCorrection, percentForCalc,
+                inputs.useBg, inputs.useCob, inputs.useIob, inputs.useIob, false, inputs.useTt, inputs.useTrend, inputs.alarm, inputs.notes, inputs.carbTime,
+                protein = inputs.protein, fat = inputs.fat, warsawDurationHours = inputs.warsawDurationHours,
+                fpuIntervalMinutes = inputs.fpuIntervalMinutes,
+                walkingSoon = inputs.walkingSoon,
+            ).also { w ->
+                // Insulin-only mode (2026-11-01): the typed dose replaces the suggestion, under the same max bolus.
+                // The calculation saved with the bolus is made first, so it keeps what the calculator suggested.
+                inputs.fixedInsulin?.let { fixed ->
+                    suggestedBcr = w.createBolusCalculatorResult(
+                        eCarbsGrams = inputs.eCarbsGrams,
+                        eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
+                        eCarbsDurationHours = inputs.eCarbsDurationHours,
+                    )
+                    w.useFixedInsulin(fixed)
+                }
+            }
+        } finally {
+            if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+        }
+        wizard.warsawRetryLater = inputs.retryFpuLater
+        // Nothing is added later to a typed dose: the user chose the amount
+        if (inputs.fixedInsulin == null && inputs.giveRestLater && inputs.percentage > percentForCalc) {
+            val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
+            wizard.addLaterUnits(scaled * (inputs.percentage - percentForCalc) / 100.0)
+        }
+        wizard.splitOverMax = inputs.splitOverMax
+        wizard.splitIntervalMinutes = inputs.splitIntervalMinutes.coerceIn(1, 60)
+        // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
+        // Commit applies the same cap again, so the pump never sees the uncapped amount.
         val insulinAfterConstraints = wizard.insulinAfterConstraints
         // Above a limit (max bolus) the dose is capped, not refused, as the phone wizard did in v3: the confirmation
         // shows the capped dose and a "constraint applied" warning. A QuickWizard preset is still refused, see
@@ -387,11 +478,12 @@ class MasterActionExecutorImpl(
         val baseInsulin = if (capped) insulinAfterConstraints else wizard.unclampedCalculatedInsulin
         // Nothing to deliver (e.g. BG below target + high IOB, no carbs): reject so the caller shows the standard
         // "no insulin required" instead of an empty confirmation. The guard lives here so every surface that recomputes
-        // through this path — phone wizard dialog, client relay, watch — gets it (it was previously only in the wear handler).
-        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0)
+        // through this path - phone wizard dialog, client relay, watch - gets it (it was previously only in the wear handler).
+        // Fork: a Warsaw fat/protein plan alone is still something to give (kept in the 2026-10-16 upstream merge).
+        if (wizard.calculatedTotalInsulin <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return refused(rh.gs(CoreUiStrings.wizard_no_insulin_required))
         // A limit that leaves no insulin at all, and there are no carbs either: nothing would be given.
-        if (capped && insulinAfterConstraints <= 0.0 && wizard.carbs <= 0)
+        if (capped && insulinAfterConstraints <= 0.0 && wizard.carbs <= 0 && wizard.warsawPlan == null)
             return refused(rh.gs(CoreUiStrings.wizard_constraint_bolus_size, wizard.calculatedTotalInsulin))
         // Carbs only: nothing goes to the pump, so nothing to hold back.
         val givesInsulin = baseInsulin > 0.0
@@ -401,7 +493,11 @@ class MasterActionExecutorImpl(
             PendingBolus(
                 baseInsulin,
                 wizard.carbs,
-                wizard.createBolusCalculatorResult(),
+                suggestedBcr?.let { bcr -> bcr.copy(note = directInsulinNote(wizard, bcr.note)) } ?: wizard.createBolusCalculatorResult(
+                    eCarbsGrams = inputs.eCarbsGrams,
+                    eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
+                    eCarbsDurationHours = inputs.eCarbsDurationHours,
+                ),
                 wizard.timeStamp,
                 entry = null,
                 carbTimeMinutes = inputs.carbTime,
@@ -410,20 +506,30 @@ class MasterActionExecutorImpl(
                 eCarbsGrams = inputs.eCarbsGrams,
                 eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
                 eCarbsDurationHours = inputs.eCarbsDurationHours,
+                warsawPlan = wizard.warsawPlan,
+                warsawIobBaseline = wizard.warsawIobBaseline,
+                warsawRetryLater = wizard.warsawRetryLater,
+                wizardMaxBolus = wizardMax,
+                walkingSoonHeld = wizard.walkingSoonHeldUnits,
+                splitRapidFall = wizard.rapidFallForSplit,
+                splitOverMax = wizard.splitOverMax,
+                splitIntervalMinutes = wizard.splitIntervalMinutes,
                 caller = caller,
                 requiredRole = ClientRole.MealAssistant,
                 smbPause = pause.takeIf { givesInsulin }
             )
         )
-        val advisorApplies = wizard.needsBolusAdvisor()
+        // A typed dose is given as it is: no "correct now, eat later" choice
+        val advisorApplies = inputs.fixedInsulin == null && wizard.needsBolusAdvisor()
+        val directLine = wizard.suggestedInsulin?.let { listOf(ConfirmationLine(ConfirmationRole.INFO, directInsulinText(wizard))) }.orEmpty()
         return MasterActionExecutor.PrepareResult.Preview(
-            insulin = wizard.calculatedTotalInsulin,
+            insulin = insulinAfterConstraints,
             carbs = wizard.carbs,
             bolusId = wizard.timeStamp,
             // Pass the eCarbs split (food type → extended carbs) so the delivery confirmation shows the eCarbs line too —
             // the record-only path already does this via getConfirmationSummary(). Advisor = correction-only ("eat later"),
             // so eCarbs don't apply there.
-            lines = wizard.buildConfirmationLines(
+            lines = directLine + wizard.buildConfirmationLines(
                 advisor = false,
                 eCarbsGrams = inputs.eCarbsGrams,
                 eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
@@ -443,6 +549,13 @@ class MasterActionExecutorImpl(
             ),
         )
     }
+
+    /** "Direct 2.00 U, calculator suggested 1.40 U" for a dose typed in the calculator's insulin-only mode. */
+    private fun directInsulinText(wizard: BolusWizard): String =
+        rh.gs(InterfacesStrings.wizard_direct_insulin, wizard.calculatedTotalInsulin, wizard.suggestedInsulin ?: 0.0)
+
+    private fun directInsulinNote(wizard: BolusWizard, note: String): String =
+        if (note.isEmpty()) directInsulinText(wizard) else rh.gs(InterfacesStrings.wizard_notes_join, directInsulinText(wizard), note)
 
     override suspend fun prepareBatch(actions: List<BatchAction>, caller: RemoteCaller?): MasterActionExecutor.PrepareResult {
         val bolus = actions.filterIsInstance<BatchAction.Bolus>().firstOrNull()
@@ -781,11 +894,14 @@ class MasterActionExecutorImpl(
         val qwe = p.entry
         if (qwe != null) {
             useAlarm = qwe.useAlarm() == QuickWizardEntry.ALWAYS
-            if (qwe.useEcarbs() == QuickWizardEntry.ALWAYS) {
-                eCarbsDelay = qwe.time()
+            // The same extended carbs the confirmation showed: the meal type's or the button's own, none when fat and
+            // protein replace them. It read carbs2 directly before, so those carbs came too (2026-10-22).
+            val qweECarbs = qwe.eCarbsGrams()
+            if (qweECarbs > 0) {
+                eCarbsDelay = qwe.eCarbsDelayMinutes()
                 eventTime += (eCarbsDelay * 60000)
-                carbs2 = qwe.carbs2()
-                duration = qwe.duration()
+                carbs2 = qweECarbs
+                duration = qwe.eCarbsDurationHours()
             }
         } else if (p.eCarbsGrams > 0) {
             // Manual wizard from a client (no QuickWizardEntry): the eCarbs split travels in PendingBolus so the
@@ -814,9 +930,16 @@ class MasterActionExecutorImpl(
         // The mg/dL BG comes from the BCR's glucoseValue (== profileUtil.convertToMgdl(bg, units)).
         // correctionU: watch-side ± adjustment added by the user on the result page; adjust BCR so the wizard log
         // records the actual delivered amount (otherCorrection mirrors the phone wizard's direct-correction field).
-        val correctedInsulin = constraintChecker.applyBolusConstraints(
-            ConstraintObject((p.insulin + correctionU).coerceAtLeast(0.0), aapsLogger)
-        ).value()
+        val savedMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        val wizardMax = p.wizardMaxBolus?.coerceIn(0.1, 60.0)
+        if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, wizardMax)
+        val correctedInsulin = try {
+            constraintChecker.applyBolusConstraints(
+                ConstraintObject((p.insulin + correctionU).coerceAtLeast(0.0), aapsLogger)
+            ).value()
+        } finally {
+            if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+        }
         val correctedBcr = if (correctionU != 0.0)
             p.bcr?.copy(
                 otherCorrection = p.bcr.otherCorrection + correctionU,
@@ -830,6 +953,22 @@ class MasterActionExecutorImpl(
             correctedInsulin, p.carbs, carbTimeOffset.toInt(), p.bcr?.glucoseValue, correctedBcr, notes, source, onError,
             withEatReminder(useAlarm && p.carbs > 0, carbTimeOffset.toInt(), onSuccess)
         )
+        if (p.bcr != null) {
+            val requested = p.insulin + correctionU
+            bolusWizardProvider().scheduleLeftoverSplit(
+                requested,
+                correctedInsulin,
+                p.warsawIobBaseline + correctionU,
+                source,
+                rapidFall = p.splitRapidFall,
+                walkingSoonHeld = p.walkingSoonHeld,
+                splitOverMax = p.splitOverMax,
+                intervalMinutes = p.splitIntervalMinutes,
+            )
+        } else {
+            bolusWizardProvider().cancelLeftoverSplit()
+        }
+        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source, p.warsawRetryLater) }
         if (carbs2 > 0) deliverECarbs(carbs2, eventTime, duration, eCarbsDelay, notes, source, onError)
         p.entry?.markAsUsed()
         return MasterActionExecutor.ConfirmResult.Delivered

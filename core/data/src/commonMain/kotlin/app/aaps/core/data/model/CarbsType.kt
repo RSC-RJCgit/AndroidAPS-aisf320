@@ -24,4 +24,13 @@ enum class CarbsType(
 
     /** The part of [totalCarbs] that is entered as eCarbs, 0 for bread. */
     fun eCarbs(totalCarbs: Int): Int = totalCarbs * eCarbsPercent / 100
+
+    companion object {
+
+        /**
+         * A stored name; anything unknown (or a QuickWizard button saved before meal types) is [BREAD], which changes
+         * nothing. Fork, 2026-10-22: a QuickWizard button gives the same split as the wizard.
+         */
+        fun fromName(name: String?): CarbsType = entries.firstOrNull { it.name == name } ?: BREAD
+    }
 }

@@ -152,9 +152,11 @@ fun QuickWizardCarouselCard(
 private fun buildCarbsText(entry: QuickWizardEntry): String = when (entry.mode()) {
     QuickWizardMode.INSULIN -> stringResource(InterfacesStrings.format_insulin_units, entry.insulin())
     QuickWizardMode.CARBS, QuickWizardMode.WIZARD -> {
-        val carbs = stringResource(InterfacesStrings.format_carbs, entry.carbs())
-        if (entry.useEcarbs() == QuickWizardEntry.ALWAYS) {
-            stringResource(UiStrings.values_with_plus, carbs, stringResource(InterfacesStrings.wizard_ecarbs, entry.carbs2(), entry.duration(), entry.time()))
+        // Carbs now and the extended carbs the button really gives (meal type or its own), as the confirmation shows them
+        val carbs = stringResource(InterfacesStrings.format_carbs, entry.carbsNow())
+        val carbs2 = entry.eCarbsGrams()
+        if (carbs2 > 0) {
+            stringResource(UiStrings.values_with_plus, carbs, stringResource(InterfacesStrings.wizard_ecarbs, carbs2, entry.eCarbsDurationHours(), entry.eCarbsDelayMinutes()))
         } else {
             carbs
         }
