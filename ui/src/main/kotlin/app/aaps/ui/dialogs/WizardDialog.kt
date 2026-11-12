@@ -359,6 +359,7 @@ class WizardDialog : DaggerDialogFragment() {
         // Small meal (2026-10-05): halves the Fat/Protein auto-fill. Same behaviour as the unreliable box: re-runs the
         // suggestion (only takes effect while the boxes are not manually overridden) and recalculates.
         binding.smallMealCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
+        binding.giveRestLaterCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
         // Turning auto FPU off clears suggested grams but keeps fields edited by the user.
         // Turning it on fills both fields again.
         binding.autoFpuCheckbox.setOnCheckedChangeListener { _, checked ->
@@ -556,6 +557,7 @@ class WizardDialog : DaggerDialogFragment() {
         if (preferences.get(BooleanKey.OverviewUseSuperBolus)) preferences.put(BooleanKey.WizardIncludeSuperBolus, binding.sbCheckbox.isChecked)
         preferences.put(BooleanKey.WizardSplitFpuBolus, binding.splitFpuBolusCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDelayFpuInsteadOfCancel, binding.delayFpuCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardGiveRestLater, binding.giveRestLaterCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, binding.unreliableSmbsCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultSmallMeal, binding.smallMealCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultAutoFpu, binding.autoFpuCheckbox.isChecked)
@@ -586,7 +588,7 @@ class WizardDialog : DaggerDialogFragment() {
             binding.bgCheckbox, binding.ttCheckbox, binding.bgTrendCheckbox, binding.iobCheckbox, binding.cobCheckbox, binding.sbCheckbox,
             binding.bgCheckboxIcon, binding.ttCheckboxIcon, binding.trendCheckboxIcon, binding.iobCheckboxIcon, binding.cobCheckboxIcon,
             binding.walkingSoonCheckbox, binding.unreliableSmbsCheckbox, binding.smallMealCheckbox, binding.autoFpuCheckbox, binding.splitFpuBolusCheckbox,
-            binding.delayFpuCheckbox, binding.fpuIntervalInput, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
+            binding.delayFpuCheckbox, binding.giveRestLaterCheckbox, binding.fpuIntervalInput, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
             binding.correctionPercent
         ).forEach { it.lockForInsulinOnly() }
         insulinOnlyControlsReady = true
@@ -719,6 +721,7 @@ class WizardDialog : DaggerDialogFragment() {
         binding.iobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeIob)
         binding.sbCheckbox.isChecked = preferences.get(BooleanKey.OverviewUseSuperBolus) && preferences.get(BooleanKey.WizardIncludeSuperBolus)
         binding.delayFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDelayFpuInsteadOfCancel)
+        binding.giveRestLaterCheckbox.isChecked = preferences.get(BooleanKey.WizardGiveRestLater)
         binding.bgTrendCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeTrend)
         binding.cobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeCob)
         // Opens with the % tick on every time (the Corr box then shows the wizard percentage), as requested 8 Oct 2026;
@@ -941,6 +944,7 @@ class WizardDialog : DaggerDialogFragment() {
         // WizardDropTrendCaution (2026-09-30): same calc-scoped-only override, takes whichever of the two
         // is MORE conservative (lower) rather than replacing the checkbox's own value.
         val dropTrendCautionActive = dropTrendCautionApplies(lowBgRuleMgdl(bg))
+        val percentBeforeCaution = wizPercentForThisCalc
         if (dropTrendCautionActive)
             wizPercentForThisCalc = min(wizPercentForThisCalc, WizardDropTrendCaution.scaledWizPercent(wizPercentForThisCalc))
         // 2026-10-22, per explicit request: the caution halves the max bolus too, for this calculation. The stepper keeps
@@ -969,6 +973,13 @@ class WizardDialog : DaggerDialogFragment() {
             fat = if (binding.splitFpuBolusCheckbox.isChecked) fat else 0,
             walkingSoon = binding.walkingSoonCheckbox.isChecked
         )
+        // Give rest later (2026-11-12, per explicit request, from v4): the part the falling-BG caution cut from this dose is
+        // given later in the protein/fat series. Not in insulin-only mode, where the typed dose is what is given.
+        // Only what the caution really removed: with the % box ticked the box's own % is used, so nothing is held back there.
+        if (dropTrendCautionActive && binding.giveRestLaterCheckbox.isChecked && fixedInsulin() == null) {
+            val standingWithoutCaution = if (usePercentage) percentageCorrection.toDouble() else percentBeforeCaution.toDouble()
+            wizard?.let { w -> w.addLaterUnits(w.percentCutHeldBack(standingWithoutCaution)) }
+        }
 
         wizard?.let { wizard ->
             // Set before anything below reads warsawFpuPlan() (the live preview does, further down) --

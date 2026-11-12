@@ -144,6 +144,9 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
                     entry.storage.put("useWalkingSoon", if (binding.walkingSoonAutoCheckbox.isChecked) QuickWizardEntry.AUTO else checkBoxToRadioNumbers(binding.walkingSoonCheckbox.isChecked))
                     entry.storage.put("splitFpuBolus", binding.splitFpuBolusCheckbox.isChecked)
                     entry.storage.put("retryFpuLater", binding.retryFpuLaterCheckbox.isChecked)
+                    entry.storage.put("giveRestLater", binding.giveRestLaterCheckbox.isChecked)
+                    entry.storage.put("maxBolus", binding.ownMaxBolusInput.value)
+                    entry.storage.put("directCorrection", binding.directCorrectionInput.value)
                     entry.storage.put("fpuIntervalMinutes", binding.fpuIntervalInput.value.toInt().coerceIn(30, 60))
                     entry.storage.put("useUnreliableSmb", checkBoxToRadioNumbers(binding.unreliableSmbsCheckbox.isChecked))
                     entry.storage.put("useSmallMeal", checkBoxToRadioNumbers(binding.smallMealCheckbox.isChecked))
@@ -337,6 +340,10 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
         binding.splitFpuBolusCheckbox.setOnCheckedChangeListener { _, _ -> updateFpuMode(); updateCarbsTypeInfo() }
         updateFpuMode()
         binding.retryFpuLaterCheckbox.isChecked = entry.retryFpuLater()
+        // From v4 (2026-11-12, per explicit request): give rest later, the button's own max bolus and its correction in units
+        binding.giveRestLaterCheckbox.isChecked = entry.giveRestLater()
+        binding.ownMaxBolusInput.setParams(entry.maxBolus(), 0.0, 60.0, 0.05, DecimalFormat("0.00"), true, binding.okcancel.ok)
+        binding.directCorrectionInput.setParams(entry.directCorrection(), -10.0, 10.0, 0.05, DecimalFormat("0.00"), true, binding.okcancel.ok)
         binding.unreliableSmbsCheckbox.isChecked = entry.unreliableSmb()
         binding.smallMealCheckbox.isChecked = entry.smallMeal()
         binding.autoFpuCheckbox.isChecked = entry.autoFpu()
@@ -385,7 +392,8 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
     private fun applySimpleMode() {
         val visibility = if (binding.detailedSettingsCheckbox.isChecked) View.VISIBLE else View.GONE
         listOf(
-            binding.timeRow, binding.retryFpuLaterCheckbox, binding.correctionRow, binding.carbTimeRow, binding.useForCalcLabel,
+            binding.timeRow, binding.retryFpuLaterCheckbox, binding.giveRestLaterCheckbox, binding.ownMaxBolusRow, binding.directCorrectionRow,
+            binding.correctionRow, binding.carbTimeRow, binding.useForCalcLabel,
             binding.useForCalcBlock, binding.ecarbsTable
         ).forEach { it.visibility = visibility }
         updateCarbsTypeInfo()

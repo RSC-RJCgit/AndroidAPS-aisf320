@@ -791,6 +791,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         }
         if (quickWizardEntry != null && actualBg != null && profile != null) {
             binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
+            // The button's own max bolus (2026-11-12, per explicit request, from v4; 0 = the saved max bolus): set for this
+            // press only and put back like the temporary limits below, which (falling-BG caution) still halve it.
+            quickWizardEntry.maxBolus().takeIf { it >= 0.1 }?.let { ownMax ->
+                restoreQuickWizardSafetyMaxBolus()
+                quickWizardOriginalSafetyMaxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+                preferences.put(DoubleKey.SafetyMaxBolus, ownMax)
+            }
             var wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
             // Low-BG recent-entry rule (2026-09-24, see WizardRecentEntry): BG < 6.0, a normal bolus / carb entry
             // in the last 60 min, and BG below 6.0 since. For this press only, the max bolus is cut to x0.8 of what

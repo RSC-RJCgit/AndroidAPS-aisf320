@@ -199,6 +199,28 @@ class BolusWizard @Inject constructor(
     // cancelled as before. Read when the series is scheduled. Quick-wizard buttons never touch it, so they keep the default.
     var delayFpuInsteadOfCancel: Boolean = true
 
+    // Give rest later (2026-11-12, per explicit request, ported from v4): the insulin the falling-BG caution cut from this
+    // dose, given later in the protein/fat series (see warsawFpuPlan). 0 when the box is off or the caution did not apply.
+    var heldBackUnits: Double = 0.0
+        private set
+
+    /**
+     * The insulin the falling-BG caution removed from this dose: the total before the percent, times the difference between
+     * the percent this calculation used and the one it would have used without the caution ([standingPercentWithoutCaution],
+     * walking soon applied the same way). 0 when the caution did not lower the percent actually used.
+     */
+    fun percentCutHeldBack(standingPercentWithoutCaution: Double): Double {
+        val without = WizardActivitySteps.walkingSoonImmediatePercent(walkingSoonUsed, standingPercentWithoutCaution)
+        val cut = without - appliedPercentage
+        if (cut <= 0.0 || totalBeforePercentageAdjustment <= 0.0) return 0.0
+        return totalBeforePercentageAdjustment * cut / 100.0
+    }
+
+    /** Add insulin the wizard held back, to be given later as hourly doses. */
+    fun addLaterUnits(units: Double) {
+        if (units > 0.0) heldBackUnits += units
+    }
+
     // Meal type eCarbs (2026-11-05, per explicit request: v4's Bread / Cake / Pizza). Set by WizardDialog or a QuickWizard
     // button after doCalc(), like the FPU settings above: the cake/pizza share of the carbs, entered as extended carbs
     // from [mealECarbsDelayMinutes] over [mealECarbsDurationHours]. 0 when split FPU doses replace eCarbs, or for bread.
@@ -278,6 +300,11 @@ class BolusWizard @Inject constructor(
     // Delayed follows this, not the checkbox: a seated QuickWizard "always on"
     // press must not SMB-block 85 min for a cut that never happened.
     var walkingSoonCutApplied: Boolean = false
+    // The percent this calculation really used (after walking soon), and the walking soon flag, for give rest later
+    // (2026-11-12): percentCutHeldBack() compares it with the percent the falling-BG caution would have left alone.
+    var appliedPercentage: Double = 100.0
+        private set
+    private var walkingSoonUsed: Boolean = false
     // True when WizardDropTrendCaution scaled this calc's wiz%/max bolus (2026-10-02, per explicit
     // request) -- a fourth reason for DelayedBolusWorker to catch up the withheld amount later,
     // alongside profile=50%/recent50Triggered/walkingSoonCutApplied. See WizardDropTrendCaution's own
@@ -444,6 +471,8 @@ class BolusWizard @Inject constructor(
         val standingPct = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
         val percentage = WizardActivitySteps.walkingSoonImmediatePercent(walkingSoon, standingPct)
         walkingSoonCutApplied = walkingSoon && percentage < standingPct - 0.5
+        appliedPercentage = percentage
+        walkingSoonUsed = walkingSoon
 
         // Percentage adjustment
         totalBeforePercentageAdjustment = calculatedTotalInsulin
@@ -554,6 +583,8 @@ class BolusWizard @Inject constructor(
                     "(${decimalFormatter.to2Decimal(plan.totalInsulin)}U, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)}), " +
                     "first in $gap min, then every $gap min, each only if BG and IOB allow$cappedNote"
             )
+            // Give rest later (2026-11-12): say how much of this series the falling-BG caution held back
+            if (heldBackUnits > 0.0) parts.add("Includes ${decimalFormatter.to2Decimal(heldBackUnits)}U held back by the falling BG caution")
         }
         if (parts.isEmpty()) return ""
         return parts.joinToString("\n") + "\nEach later part is capped by the loop's insulinReq"
@@ -776,6 +807,9 @@ class BolusWizard @Inject constructor(
                     "(${plan.numDoses}x, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)})$cappedNote")
                     .formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor)
             )
+            if (heldBackUnits > 0.0)
+                actions.add("Given later: ${decimalFormatter.to2Decimal(heldBackUnits)}U held back by the falling BG caution"
+                    .formatColor(context, rh, app.aaps.core.ui.R.attr.infoColor))
         }
         if (config.AAPSCLIENT && insulinAfterConstraints > 0)
             actions.add(rh.gs(app.aaps.core.ui.R.string.bolus_recorded_only).formatColor(context, rh, app.aaps.core.ui.R.attr.warningColor))
@@ -871,7 +905,7 @@ class BolusWizard @Inject constructor(
         // (see their own doc comments) — but a protein-only or fat-only entry (no carbs, no other
         // component) still needs to reach commonProcessing() below to schedule its delayed dose, or it
         // silently falls into the "no action selected" branch and the previewed dose never gets scheduled.
-        if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
+        if (calculatedTotalInsulin > 0.0 || carbs > 0.0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0 || heldBackUnits > 0.0) {
             if (accepted) {
                 aapsLogger.debug(LTag.UI, "guarding: already accepted")
                 return
@@ -979,7 +1013,7 @@ class BolusWizard @Inject constructor(
         val confirmMessage = confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry)
         showWizardConfirmation(ctx, rh.gs(app.aaps.core.ui.R.string.boluswizard), confirmMessage, { confirmMessageAfterConstraints(ctx, advisor = false, quickWizardEntry) }, {
             // Same protein/fat-only fix as confirmAndExecute()'s own guard above.
-            if (insulinAfterConstraints > 0 || carbs > 0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
+            if (insulinAfterConstraints > 0 || carbs > 0 || insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0 || heldBackUnits > 0.0) {
                 if (useSuperBolus) {
                     if (loop.allowedNextModes().contains(RM.Mode.SUPER_BOLUS)) {
                         loop.handleRunningModeChange(
@@ -1139,7 +1173,7 @@ class BolusWizard @Inject constructor(
                                 }
                             }
                         })
-                    } else if (insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0) {
+                    } else if (insulinFromProteinOnly > 0.0 || insulinFromFatOnly > 0.0 || heldBackUnits > 0.0) {
                         // Protein/fat only — nothing to actually deliver right now (0U insulin, 0 carbs), so
                         // deliberately skip commandQueue.bolus() entirely: calling it with an empty
                         // DetailedBolusInfo drives the real pump-delivery UI (BolusProgressDialog), which has
@@ -1193,7 +1227,18 @@ class BolusWizard @Inject constructor(
     // FPU picks 3, 4, 5 or 8 hours. Only the 8-hour tier can be capped by the duration input.
     // The cap removes its share of the total; changing spacing between 30 and 60 minutes does not.
     // The last part stays at the duration cap when it falls between full-hour boundaries.
+    // Give rest later (2026-11-12, per explicit request, as in v4): the held-back insulin rides on the protein/fat series,
+    // or, with no protein or fat, becomes its own 3 hour series of 6 parts every 30 min. Each part keeps the usual checks.
     fun warsawFpuPlan(): WarsawFpuPlan? {
+        val plan = proteinFatPlan()
+        val held = heldBackUnits
+        if (held <= 0.0) return plan
+        if (plan == null) return WarsawFpuPlan(0.0, 3 * 60, 6, held / 6, held, held, capped = false, intervalMinutes = 30)
+        val total = plan.totalInsulin + held
+        return plan.copy(perDoseInsulin = total / plan.numDoses, totalInsulin = total, fullTierInsulin = plan.fullTierInsulin + held)
+    }
+
+    private fun proteinFatPlan(): WarsawFpuPlan? {
         val totalRequiredInsulin = insulinFromProteinOnly + insulinFromFatOnly
         if (totalRequiredInsulin <= 0.0) return null
         val fpu = (9 * fat + 4 * protein) / 100.0

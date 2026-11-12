@@ -183,6 +183,15 @@
             android:text="Recheck a delayed FPU dose every 10 minutes"
             android:textAppearance="@style/TextAppearance.AppCompat.Medium"
             tools:ignore="HardcodedText" />
+        <CheckBox
+            android:id="@+id/give_rest_later_checkbox"
+            style="@style/Widget.App.CheckBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Give rest later: the part the falling-BG caution cuts is given later with the FPU doses"
+            android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+            tools:ignore="HardcodedText" />
 
         <TableLayout
             android:layout_width="wrap_content"
@@ -777,6 +786,42 @@
                     tools:ignore="HardcodedText" />
                 <app.aaps.core.ui.elements.NumberPicker
                     android:id="@+id/fpu_interval_input"
+                    android:layout_width="130dp"
+                    android:layout_height="40dp" />
+            </TableRow>
+
+            <TableRow
+                android:id="@+id/own_max_bolus_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:padding="10dp"
+                    android:text="Max bolus for this button (U, 0 = saved max bolus)"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    tools:ignore="HardcodedText" />
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/own_max_bolus_input"
+                    android:layout_width="130dp"
+                    android:layout_height="40dp" />
+            </TableRow>
+
+            <TableRow
+                android:id="@+id/direct_correction_row"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:padding="10dp"
+                    android:text="Correction (U, + or -, added to the calculated dose)"
+                    android:textAppearance="?android:attr/textAppearanceSmall"
+                    tools:ignore="HardcodedText" />
+                <app.aaps.core.ui.elements.NumberPicker
+                    android:id="@+id/direct_correction_input"
                     android:layout_width="130dp"
                     android:layout_height="40dp" />
             </TableRow>

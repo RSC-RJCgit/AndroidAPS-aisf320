@@ -345,6 +345,8 @@ enum class BooleanKey(
     WizardIncludeSuperBolus("wizard_include_super_bolus", defaultValue = false),
     WizardSplitFpuBolus("wizard_split_fpu_bolus", defaultValue = true),
     WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", defaultValue = true),
+    // Bolus calculator "Give rest later" box, remembered from the last OK (2026-11-12, per explicit request, from v4)
+    WizardGiveRestLater("wizard_give_rest_later", defaultValue = true),
     // Bolus calculator starting state (2026-10-06, per explicit request). Settings are under Overview > Bolus calculator
     // defaults. Since 2026-11-05 the calculator also saves its last ticks here on OK, so the next run starts from them.
     WizardDefaultUnreliableSmbs("wizard_default_unreliable_smbs", defaultValue = false),

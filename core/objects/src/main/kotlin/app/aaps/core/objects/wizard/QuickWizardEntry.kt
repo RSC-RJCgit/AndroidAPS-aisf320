@@ -162,6 +162,7 @@ class QuickWizardEntry @Inject constructor(
         var percentage = if (unreliableSmb()) min(basePercentage, MealFpuFromCarbs.UNRELIABLE_WIZ_PERCENT) else basePercentage
         val dropTrendCaution =
             WizardDropTrendCaution.appliesNow(lastBG.value, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+        val percentBeforeCaution = percentage
         if (dropTrendCaution) percentage = min(percentage, WizardDropTrendCaution.scaledWizPercent(percentage))
         // Auto fat/protein: only when the button has no protein or fat of its own (like a manual edit in the dialog).
         val (autoFat, autoProtein) =
@@ -182,7 +183,8 @@ class QuickWizardEntry @Inject constructor(
             carbsNow(),
             cob,
             bg,
-            0.0,
+            // The button's own correction in units, + or - (2026-11-12, per explicit request, from v4). Max bolus still caps it.
+            directCorrection(),
             percentage,
             true,
             useCOB() == YES,
@@ -228,6 +230,9 @@ class QuickWizardEntry @Inject constructor(
         wizard.delayFpuInsteadOfCancel = retryFpuLater()
         // A fourth DelayedBolusWorker reason, as in the dialog: the held-back part can follow once BG rises.
         wizard.dropTrendCautionApplied = dropTrendCaution
+        // Give rest later (2026-11-12, per explicit request, from v4): what the caution cut from the % is given later in the
+        // protein/fat series, each part with the usual BG and IOB checks.
+        if (dropTrendCaution && giveRestLater()) wizard.addLaterUnits(wizard.percentCutHeldBack(percentBeforeCaution.toDouble()))
         // Meal type (2026-11-05): with eCarbs (split FPU off) the cake/pizza share is entered as extended carbs on OK.
         val type = carbsType()
         wizard.mealECarbs = if (splitFpuBolus()) 0 else type.eCarbs(carbs())
@@ -314,6 +319,14 @@ class QuickWizardEntry @Inject constructor(
     fun fpuIntervalMinutes(): Int = safeGetInt(storage, "fpuIntervalMinutes", 30).coerceIn(30, 60)
 
     fun retryFpuLater(): Boolean = safeGetBoolean(storage, "retryFpuLater", true)
+
+    // From v4 (2026-11-12, per explicit request). A button saved before these existed: give rest later on, no own max
+    // bolus (0 = the saved max bolus), no correction.
+    fun giveRestLater(): Boolean = safeGetBoolean(storage, "giveRestLater", true)
+
+    fun maxBolus(): Double = safeGetDouble(storage, "maxBolus", 0.0).coerceIn(0.0, 60.0)
+
+    fun directCorrection(): Double = safeGetDouble(storage, "directCorrection", 0.0)
 
     // Bolus Wizard boxes (2026-10-22). A button saved before these existed follows the "Bolus calculator defaults" settings.
     fun unreliableSmb(): Boolean = optionOrDefault("useUnreliableSmb", BooleanKey.WizardDefaultUnreliableSmbs)

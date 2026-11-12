@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.33.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.34.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -60,16 +60,34 @@ FULL_COPY = [
     "ui/src/main/res/layout/dialog_wizardinfo.xml",
     # Added in patch .32: brand-new file (not in BASE), the Bread / Cake / Pizza meal type used by WizardDialog.kt.
     "core/data/src/main/kotlin/app/aaps/core/data/model/CarbsType.kt",
+    # Patch .34: the QuickWizard entry, editor and layout as full fork files (their surgical hunks below still run on the
+    # base text but are overwritten by these copies). QuickWizardEntry's StepCountSource is reverted in main().
+    "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt",
+    "ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt",
+    "ui/src/main/res/layout/dialog_edit_quickwizard.xml",
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .33, 2026-11-12)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .34, 2026-11-12)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.33.patch
-  git apply bolus-calculator-on-3426-aisf321.33.patch
+  git apply --check bolus-calculator-on-3426-aisf321.34.patch
+  git apply bolus-calculator-on-3426-aisf321.34.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .34 (2026-11-12):
+- "Give rest later" (from v4), in the bolus calculator and per QuickWizard button, on by default. When the falling-BG
+  caution lowers the % actually used, the part it removed is given later: added to the protein/fat doses, or as 6 parts
+  every 30 min over 3 h when there are none. Each part keeps the usual BG / IOB checks and the loop's insulinReq cap.
+  The confirmation and the calculation note show the amount. New BooleanKey WizardGiveRestLater (remembered tick).
+- QuickWizard per button (from v4): its own max bolus (0 = the saved max bolus; the falling-BG caution still halves
+  it), and a direct correction in units (+ or -), which max bolus still caps.
+- The QuickWizard entry, its editor and layout are now the fork's full files, so per-button Split fat/protein bolus,
+  retry FPU later and meal type (already in the calculator) reach QuickWizard too. Steps stay on the plain records.
+- With that full QuickWizard entry, a button with carbs and no carb time of its own dates the carbs back from the rise
+  onset (CarbTimeFromRise, as the calculator does). New BooleanKey OverviewQuickWizardCarbTimeFromRise, on; no settings
+  switch in the patch.
 
 Changes in patch .33 (2026-11-12):
 - QuickWizard with no recent BG: the Overview button no longer hides. It shows "No BG: opens the bolus calculator", and a
@@ -665,6 +683,11 @@ def apply_surgical(staging: Path) -> None:
         '    WizardIncludeSuperBolus("wizard_include_super_bolus", defaultValue = false),\n'
         '    WizardSplitFpuBolus("wizard_split_fpu_bolus", defaultValue = true),\n'
         '    WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", defaultValue = true),\n'
+        '    // Patch .34: the "Give rest later" tick, remembered from the last OK.\n'
+        '    WizardGiveRestLater("wizard_give_rest_later", defaultValue = true),\n'
+        '    // Patch .34: read by the full-copy QuickWizardEntry (carbs dated back from the rise onset). On, as in the fork; the\n'
+        '    // patch has no settings switch for it.\n'
+        '    OverviewQuickWizardCarbTimeFromRise("quickwizard_carb_time_from_rise", true, defaultedBySM = true),\n'
         '    WizardIncludeCob("wizard_include_cob", defaultValue = false),',
         "BooleanKey wizard defaults",
     )
@@ -1810,6 +1833,29 @@ def main() -> None:
             copy_ours(new, p)
 
         revert_steps_source(new)
+
+        # Patch .34: QuickWizardEntry (now a full copy) reads steps through the fork-only StepCountSource; keep the plain
+        # persisted-steps walkingSoonDefault, as WizardDialog does above.
+        qwe = "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt"
+        t = read(new, qwe)
+        t = must_replace(t, "import app.aaps.core.objects.utils.StepCountSource\n", "", "QWE import")
+        t = must_replace(
+            t,
+            "    private val bolusWizardProvider: Provider<BolusWizard>,\n    private val stepCountSource: StepCountSource\n",
+            "    private val bolusWizardProvider: Provider<BolusWizard>\n",
+            "QWE constructor",
+        )
+        t = must_replace(
+            t,
+            "WizardActivitySteps.walkingSoonDefault(stepCountSource, dateUtil.now(), lastBG.value,\n"
+            "                    glucoseStatus?.delta ?: 0.0) ?: false",
+            "WizardActivitySteps.walkingSoonDefault(persistenceLayer, dateUtil.now(), lastBG.value,\n"
+            "                    glucoseStatus?.delta ?: 0.0)",
+            "QWE walkingSoonDefault",
+        )
+        if "StepCountSource" in t or "stepCountSource" in t:
+            raise SystemExit("QuickWizardEntry still uses StepCountSource")
+        write(new, qwe, t)
 
         # Patch .33: the fork's master time zone (aisf321UK_1452, 2026-11-11) moved BolusWizard onto the fork-only
         # app.aaps.core.keys.time.AppTimeZone, which the clean base does not have. Keep the base's own Calendar call.
