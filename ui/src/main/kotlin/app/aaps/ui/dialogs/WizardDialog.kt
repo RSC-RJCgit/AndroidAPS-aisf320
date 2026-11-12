@@ -43,6 +43,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.formatColor
@@ -330,7 +331,8 @@ class WizardDialog : DaggerDialogFragment() {
             calculateInsulin()
         }
         // Meal type: Bread / Cake / Pizza (see CarbsType). A new type re-runs the fat/protein suggestion (cake/pizza scale it).
-        carbsType = CarbsType.fromName(savedInstanceState?.getString("carbs_type"))
+        // A new run starts on the meal type of the last confirmed meal calculation (2026-11-12, per explicit request).
+        carbsType = CarbsType.fromName(savedInstanceState?.getString("carbs_type") ?: preferences.get(StringNonKey.WizardCarbsType))
         binding.carbsTypeGroup.check(
             when (carbsType) {
                 CarbsType.BREAD -> binding.carbsTypeBread.id
@@ -557,6 +559,7 @@ class WizardDialog : DaggerDialogFragment() {
         preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, binding.unreliableSmbsCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultSmallMeal, binding.smallMealCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultAutoFpu, binding.autoFpuCheckbox.isChecked)
+        preferences.put(StringNonKey.WizardCarbsType, carbsType.name)
     }
 
     // The typed dose in insulin-only mode, else null

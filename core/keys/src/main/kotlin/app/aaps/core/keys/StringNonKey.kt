@@ -31,5 +31,8 @@ enum class StringNonKey(
     ClientGraphMasterTimeZone("client_graph_master_time_zone", "", exportable = false),
     LiveStepsHistory("live_steps_history", defaultValue = "[]", exportable = false),
     // Full SMS text of AutoISF CarePortal notes, by note time, kept on this phone only (2026-11-09, see NoteSmsTexts)
-    CarePortalNoteSmsTexts("careportal_note_sms_texts", defaultValue = "{}", exportable = false)
+    CarePortalNoteSmsTexts("careportal_note_sms_texts", defaultValue = "{}", exportable = false),
+    // The bolus calculator's meal type (a CarbsType name) from the last confirmed meal calculation, so the next run
+    // starts on it like the remembered ticks (2026-11-12, per explicit request). An unknown name reads as BREAD.
+    WizardCarbsType("wizard_carbs_type", defaultValue = "BREAD")
 }

@@ -783,6 +783,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val profile = profileFunction.getProfile()
         val profileName = profileFunction.getProfileName()
         val quickWizardEntry = quickWizard.getActive()
+        // No recent BG: open the bolus calculator with the button's carbs and name, where a BG can be typed in, like the
+        // calculator itself (2026-11-12, per explicit request). Before, the tap did nothing.
+        if (quickWizardEntry != null && actualBg == null && profile != null) {
+            uiInteraction.runWizardDialog(childFragmentManager, quickWizardEntry.carbs(), quickWizardEntry.buttonText())
+            return
+        }
         if (quickWizardEntry != null && actualBg != null && profile != null) {
             binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
             var wizard = quickWizardEntry.doCalc(profile, profileName, actualBg)
@@ -973,7 +979,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val quickWizardEntry = quickWizard.getActive()
         runOnUiThread {
             _binding ?: return@runOnUiThread
-            if (quickWizardEntry != null && lastBG != null && profile != null && pump.isInitialized() && loop.runningMode != RM.Mode.DISCONNECTED_PUMP && !pump.isSuspended()) {
+            val quickWizardUsable = quickWizardEntry != null && profile != null && pump.isInitialized() && loop.runningMode != RM.Mode.DISCONNECTED_PUMP && !pump.isSuspended()
+            // No recent BG: the button stays and opens the bolus calculator to type one in (2026-11-12, per explicit request)
+            if (quickWizardUsable && quickWizardEntry != null && actualBG == null) {
+                binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
+                binding.buttonsLayout.quickWizardButton.text = quickWizardEntry.buttonText() + "\n" + rh.gs(app.aaps.core.objects.R.string.format_carbs, quickWizardEntry.carbs()) +
+                    " " + rh.gs(R.string.quickwizard_no_bg_opens_calculator)
+            } else if (quickWizardUsable && quickWizardEntry != null && profile != null && lastBG != null) {
                 binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE
                 val wizard = quickWizardEntry.doCalc(profile, profileName, lastBG)
                 binding.buttonsLayout.quickWizardButton.text = quickWizardEntry.buttonText() + "\n" + rh.gs(app.aaps.core.objects.R.string.format_carbs, quickWizardEntry.carbs()) +

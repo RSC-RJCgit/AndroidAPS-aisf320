@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.32.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.33.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -63,13 +63,22 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .32, 2026-11-05)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .33, 2026-11-12)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.32.patch
-  git apply bolus-calculator-on-3426-aisf321.32.patch
+  git apply --check bolus-calculator-on-3426-aisf321.33.patch
+  git apply bolus-calculator-on-3426-aisf321.33.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .33 (2026-11-12):
+- QuickWizard with no recent BG: the Overview button no longer hides. It shows "No BG: opens the bolus calculator", and a
+  tap opens the bolus calculator with the button's carbs and its name in the note, where a BG can be typed in. No
+  profile, pump not ready, suspended or disconnected still hide it.
+- The bolus calculator remembers the meal type (Bread / Cake / Pizza) of the last confirmed meal calculation and opens on
+  it, like the remembered ticks. New StringNonKey WizardCarbsType.
+- A new QuickWizard button starts IOB, COB and Trend from the calculator's saved ticks (COB only with IOB), instead of
+  IOB on, COB off, Trend off. Existing buttons do not change.
 
 Changes in patch .32 (2026-11-05):
 - The bolus calculator opens on a simple screen: carbs, the meal type (Bread / Cake / Pizza), Use split boluses for
@@ -615,6 +624,20 @@ def apply_surgical(staging: Path) -> None:
     )
     write(staging, p, t)
 
+    # StringNonKey (patch .33): the bolus calculator's remembered meal type, read and saved by WizardDialog.kt.
+    p = "core/keys/src/main/kotlin/app/aaps/core/keys/StringNonKey.kt"
+    t = read(BASE, p)
+    t = must_replace(
+        t,
+        '    TotalBaseBasal("TBB", defaultValue = "10.00")\n}',
+        '    TotalBaseBasal("TBB", defaultValue = "10.00"),\n'
+        '    // The bolus calculator meal type (a CarbsType name) from the last confirmed meal calculation, so the next run\n'
+        '    // starts on it like the remembered ticks (patch .33). An unknown name reads as BREAD.\n'
+        '    WizardCarbsType("wizard_carbs_type", defaultValue = "BREAD")\n}',
+        "StringNonKey meal type",
+    )
+    write(staging, p, t)
+
     # BooleanKey
     p = "core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt"
     t = read(BASE, p)
@@ -876,6 +899,14 @@ def apply_surgical(staging: Path) -> None:
         '    <string name="wizard_split_bolus_summary">When profile is 50%: deliver the remaining gap ×90% at +10/20/30 min once BGL rising criteria are met. SMBs are blocked during the check window.</string>\n'
         '    <string name="enable_bolus_advisor">Enable bolus advisor</string>\n',
         "strings.xml",
+    )
+    # Patch .33: the QuickWizard button's text when there is no recent BG.
+    t = must_replace(
+        t,
+        '    <string name="enable_bolus_advisor">Enable bolus advisor</string>\n',
+        '    <string name="quickwizard_no_bg_opens_calculator">No BG: opens the bolus calculator</string>\n'
+        '    <string name="enable_bolus_advisor">Enable bolus advisor</string>\n',
+        "strings.xml QuickWizard no BG",
     )
     # Patch .19: labels for the "Bolus calculator defaults" settings.
     t = must_replace(
@@ -1146,11 +1177,16 @@ def apply_surgical(staging: Path) -> None:
         "if (wizard.calculatedTotalInsulin <= 0 && quickWizardEntry.carbs() <= 0) binding.buttonsLayout.quickWizardButton.visibility",
         "QuickWizard carbs-only visibility",
     )
+    # Patch .33: with no recent BG the QuickWizard button opens the bolus calculator instead of doing nothing.
+    t = must_replace(t, "        val quickWizardEntry = quickWizard.getActive()\n        if (quickWizardEntry != null && actualBg != null && profile != null) {\n", "        val quickWizardEntry = quickWizard.getActive()\n        // No recent BG: open the bolus calculator with the button's carbs and name, where a BG can be typed in, like the\n        // calculator itself (patch .33). Before, the tap did nothing.\n        if (quickWizardEntry != null && actualBg == null && profile != null) {\n            uiInteraction.runWizardDialog(childFragmentManager, quickWizardEntry.carbs(), quickWizardEntry.buttonText())\n            return\n        }\n        if (quickWizardEntry != null && actualBg != null && profile != null) {\n", "QuickWizard no BG click")
+    t = must_replace(t, "            if (quickWizardEntry != null && lastBG != null && profile != null && pump.isInitialized() && loop.runningMode != RM.Mode.DISCONNECTED_PUMP && !pump.isSuspended()) {\n", "            val quickWizardUsable = quickWizardEntry != null && profile != null && pump.isInitialized() && loop.runningMode != RM.Mode.DISCONNECTED_PUMP && !pump.isSuspended()\n            // No recent BG: the button stays and opens the bolus calculator to type one in (patch .33)\n            if (quickWizardUsable && quickWizardEntry != null && actualBG == null) {\n                binding.buttonsLayout.quickWizardButton.visibility = View.VISIBLE\n                binding.buttonsLayout.quickWizardButton.text = quickWizardEntry.buttonText() + \"\\n\" + rh.gs(app.aaps.core.objects.R.string.format_carbs, quickWizardEntry.carbs()) +\n                    \" \" + rh.gs(R.string.quickwizard_no_bg_opens_calculator)\n            } else if (quickWizardUsable && quickWizardEntry != null && profile != null && lastBG != null) {\n", "QuickWizard no BG button")
     write(staging, p, t)
 
     # EditQuickWizardDialog.kt
     p = "ui/src/main/kotlin/app/aaps/ui/dialogs/EditQuickWizardDialog.kt"
     t = read(BASE, p)
+    # Patch .33: a new button starts IOB, COB and Trend from the bolus calculator's saved ticks.
+    t = must_replace(t, "        val entry = if (position == -1) quickWizard.newEmptyItem() else quickWizard[position]\n", "        val entry = if (position == -1) quickWizard.newEmptyItem() else quickWizard[position]\n        // A new button starts IOB, COB and Trend from the bolus calculator's last saved ticks (patch .33). COB needs\n        // IOB, as in the calculator. Never changed, those ticks equal the old defaults (IOB on, COB off, Trend off).\n        if (position == -1) {\n            val useIob = preferences.get(BooleanKey.WizardIncludeIob)\n            val useCob = useIob && preferences.get(BooleanKey.WizardIncludeCob)\n            entry.storage.put(\"useIOB\", if (useIob) QuickWizardEntry.YES else QuickWizardEntry.NO)\n            entry.storage.put(\"useCOB\", if (useCob) QuickWizardEntry.YES else QuickWizardEntry.NO)\n            entry.storage.put(\"useTrend\", if (preferences.get(BooleanKey.WizardIncludeTrend)) QuickWizardEntry.YES else QuickWizardEntry.NO)\n        }\n", "EditQuickWizardDialog new-button ticks")
     t = must_replace(
         t,
         '                    entry.storage.put("carbs2", carbs2)\n                } catch (e: JSONException) {',
@@ -1742,6 +1778,7 @@ def main() -> None:
             "core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt",
             "core/keys/src/main/kotlin/app/aaps/core/keys/IntKey.kt",
             "core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt",
+            "core/keys/src/main/kotlin/app/aaps/core/keys/StringNonKey.kt",
             "core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt",
             "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt",
             "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt",
@@ -1773,6 +1810,16 @@ def main() -> None:
             copy_ours(new, p)
 
         revert_steps_source(new)
+
+        # Patch .33: the fork's master time zone (aisf321UK_1452, 2026-11-11) moved BolusWizard onto the fork-only
+        # app.aaps.core.keys.time.AppTimeZone, which the clean base does not have. Keep the base's own Calendar call.
+        bw = "core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt"
+        t = read(new, bw)
+        t = must_replace(t, "import app.aaps.core.keys.time.AppTimeZone\n", "", "BolusWizard AppTimeZone import")
+        t = must_replace(t, "AppTimeZone.calendar().timeInMillis", "Calendar.getInstance().timeInMillis", "BolusWizard AppTimeZone call")
+        if "AppTimeZone" in t:
+            raise SystemExit("BolusWizard still uses AppTimeZone")
+        write(new, bw, t)
 
         # Strip unused IntKey import from BolusWizard in the patch payload
         bw = new / rel("core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt")

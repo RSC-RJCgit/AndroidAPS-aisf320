@@ -79,6 +79,17 @@ class EditQuickWizardDialog : DaggerDialogFragment(), View.OnClickListener {
             position = bundle.getInt("position", -1)
         }
         val entry = if (position == -1) quickWizard.newEmptyItem() else quickWizard[position]
+        // A new button starts IOB, COB, Trend and Split fat/protein from the bolus calculator's last saved ticks
+        // (2026-11-12, per explicit request). COB needs IOB, as in the calculator. Never changed, those ticks equal
+        // the old fixed defaults (IOB on, COB off, Trend off, Split on).
+        if (position == -1) {
+            val useIob = preferences.get(BooleanKey.WizardIncludeIob)
+            val useCob = useIob && preferences.get(BooleanKey.WizardIncludeCob)
+            entry.storage.put("useIOB", if (useIob) QuickWizardEntry.YES else QuickWizardEntry.NO)
+            entry.storage.put("useCOB", if (useCob) QuickWizardEntry.YES else QuickWizardEntry.NO)
+            entry.storage.put("useTrend", if (preferences.get(BooleanKey.WizardIncludeTrend)) QuickWizardEntry.YES else QuickWizardEntry.NO)
+            entry.storage.put("splitFpuBolus", preferences.get(BooleanKey.WizardSplitFpuBolus))
+        }
         if (preferences.get(BooleanKey.WearControl)) {
             binding.devicePhoneCheckbox.visibility = View.VISIBLE
             binding.deviceWatchCheckbox.visibility = View.VISIBLE

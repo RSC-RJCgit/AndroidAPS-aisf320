@@ -449,4 +449,5 @@
     <string name="graph_steps_line_tap" comment="Step sample shown when the graph is tapped. %1$s=series name, %2$d=step count, %3$s=sample date and time">%1$s = %2$d steps  %3$s</string>
     <string name="graph_line_ukf_raw" comment="Short name of the UKF-smoothed raw glucose line on the graph">UKF raw</string>
     <string name="graph_line_raw" comment="Short name of the raw glucose line on the graph">Raw</string>
+    <string name="quickwizard_no_bg_opens_calculator">No BG: opens the bolus calculator</string>
 </resources>
