@@ -43,6 +43,28 @@ internal class SecondaryGraphScaleHelpersTest {
         }
     }
 
+    // The IOB axis looks one screen beyond each side, so a scroll does not push IOB past the scale before the refit.
+    @Nested
+    inner class LookAheadRangeTest {
+
+        @Test
+        fun widensByOneScreenOnEachSide() {
+            assertThat(lookAheadRange(60.0, 240.0)).isEqualTo(-120.0 to 420.0)
+        }
+
+        @Test
+        fun aPeakOneScreenAwayIsInTheScale() {
+            val iob = listOf(100.0 to 1.0, 300.0 to 6.0)
+            val (minX, maxX) = lookAheadRange(60.0, 240.0)
+            assertThat(windowedY(iob, minX, maxX)).containsExactly(1.0, 6.0)
+        }
+
+        @Test
+        fun noWindowStaysNoWindow() {
+            assertThat(lookAheadRange(null, null)).isEqualTo(null to null)
+        }
+    }
+
     @Nested
     inner class StepValueAtTest {
 

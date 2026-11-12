@@ -541,6 +541,10 @@ fun SecondaryGraphCompose(
     }
     val settledMinX = settledVisibleRange?.first
     val settledMaxX = settledVisibleRange?.second
+    // IOB graph (2026-11-12, per explicit request): its axis is fitted with one screen of look-ahead on each side, so a
+    // scroll no longer pushes the IOB curve past the scale (into the basal band) before the refit. Other graphs keep
+    // the visible window.
+    val (scaleMinX, scaleMaxX) = if (hasIob) lookAheadRange(settledMinX, settledMaxX) else settledMinX to settledMaxX
 
     // Expose this graph's own (already debounced) visible window upward — used by BgGraphCompose
     // to window its own axis from this graph's synced scroll/zoom instead of attaching its own
@@ -570,9 +574,9 @@ fun SecondaryGraphCompose(
     // (see processedActivityOverlay below), so feeding it back in here would be circular.
     // Fork (kept in the 2026-10-16 merge): windowed to the SETTLED range, so the axis is rebuilt once the finger stops.
     val primaryYValues = remember(
-        processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, settledMinX, settledMaxX
+        processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, scaleMinX, scaleMaxX
     ) {
-        windowedPrimaryY(settledMinX, settledMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
+        windowedPrimaryY(scaleMinX, scaleMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
     }
 
     // Zero-floor nice range of the primary layer, windowed — 0 if the visible window has no
@@ -952,9 +956,9 @@ fun SecondaryGraphCompose(
     // below a point that is "below zero" on the other. We compute a shared zero
     // fraction from both data extents and extend each side's range to match it.
     // Only applied to true dual-axis case (no basal overlay, secondary present).
-    val dualAxisRanges = remember(isDualAxis, hasBasalLayer, primaryYValues, processedSecondary, settledMinX, settledMaxX) {
+    val dualAxisRanges = remember(isDualAxis, hasBasalLayer, primaryYValues, processedSecondary, scaleMinX, scaleMaxX) {
         if (!isDualAxis || hasBasalLayer) return@remember null
-        val secondaryY = windowedY(processedSecondary, settledMinX, settledMaxX)
+        val secondaryY = windowedY(processedSecondary, scaleMinX, scaleMaxX)
         if (primaryYValues.isEmpty() || secondaryY.isEmpty()) return@remember null
 
         // An ISF line keeps the UK scale (1.0 in the middle, the peak at the top). An IOB
@@ -1567,6 +1571,17 @@ private fun bottomHalfSpecs(
 // =========================================================================
 // Data processing helpers
 // =========================================================================
+
+/**
+ * The settled window widened by one screen-width on each side (2026-11-12, per explicit request, as the basal look-ahead
+ * in [basalAxisMax]). The axis is only refitted after a scroll settles, so a scroll of up to one screen then meets no
+ * value outside the scale already set. Null in, null out.
+ */
+internal fun lookAheadRange(minX: Double?, maxX: Double?): Pair<Double?, Double?> {
+    if (minX == null || maxX == null) return minX to maxX
+    val width = (maxX - minX).coerceAtLeast(0.0)
+    return (minX - width) to (maxX + width)
+}
 
 /**
  * Y-values of [points] restricted to [visibleMinX]..[visibleMaxX], falling back to the full

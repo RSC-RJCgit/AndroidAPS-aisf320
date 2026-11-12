@@ -316,11 +316,20 @@ fun Modifier.onScrollOrZoomGesture(
  */
 const val BASAL_HEIGHT_FRACTION = 0.5
 
-/** Scale to the highest basal in view, including the rates already in effect at the left edge. */
+/**
+ * Scale to the highest basal in view, including the rates already in effect at the left edge.
+ *
+ * Look-ahead (2026-11-12, per explicit request): the window is widened by one screen-width on each side. The scale is only
+ * refitted after a scroll settles, so while scrolling the old scale still applies; fitted to the view alone, a higher
+ * basal scrolled into view stood far too tall, into the BG readings, and then jumped down. With the look-ahead a scroll
+ * of up to one screen meets no basal higher than the scale already allows.
+ */
 internal fun basalAxisMax(data: BasalGraphData?, visibleTimeRange: Pair<Long, Long>?, heightFraction: Double): Double {
     if (data == null || data.maxBasal <= 0.0) return 1.0
     if (visibleTimeRange == null) return data.maxBasal / heightFraction
-    val (from, to) = visibleTimeRange
+    val width = (visibleTimeRange.second - visibleTimeRange.first).coerceAtLeast(0L)
+    val from = visibleTimeRange.first - width
+    val to = visibleTimeRange.second + width
     val visibleMax = listOf(data.profileBasal, data.actualBasal).mapNotNull { series ->
         val atStart = series.lastOrNull { it.timestamp <= from }?.value
         val within = series.asSequence().filter { it.timestamp in from..to }.maxOfOrNull { it.value }
