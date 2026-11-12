@@ -139,6 +139,8 @@ abstract class AbstractDanaEmulatorUiTest {
         // Simple mode (the default) hides the Temp basal / Extended bolus actions in the Manage
         // sheet (ManageBottomSheet gates them on !isSimpleMode). Turn it off so those are reachable.
         preferences.put(BooleanKey.GeneralSimpleMode, false)
+        // The overview's bottom bar is hidden by default since 2026-11-12 (BG tap opens it); these tests tap its "Manage"
+        preferences.put(BooleanKey.OverviewShowNavigationBar, true)
     }
 
     /**

@@ -648,6 +648,8 @@ class PumpScenario(private val pump: PumpUnderTest) {
         preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, true)
         preferences.put(StringKey.GeneralUnits, "mg/dl")
         preferences.put(BooleanKey.GeneralSimpleMode, false)
+        // The overview's bottom bar is hidden by default since 2026-11-12 (BG tap opens it); these tests tap its "Manage"
+        preferences.put(BooleanKey.OverviewShowNavigationBar, true)
         preferences.put(BooleanComposedKey.ConfigBuilderEnabled, "PUMP_${pump.pluginName}", value = true)
         preferences.put(BooleanComposedKey.ConfigBuilderEnabled, "PUMP_VirtualPumpPlugin", value = false)
     }

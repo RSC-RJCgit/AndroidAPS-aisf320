@@ -13,6 +13,7 @@ import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import app.aaps.ComposeMainActivity
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.di.ResetGraphRule
 import app.aaps.di.testGraphs
@@ -81,6 +82,8 @@ class SetupWizardE2ETest {
         // crashed in getICfg). Then reproduce the bits of MainApp.onCreate the UI needs.
         clearAllSharedPrefs()
         preferences.put(BooleanNonKey.GeneralSetupWizardProcessed, false) // force the wizard to show
+        // The overview's bottom bar is hidden by default since 2026-11-12 (BG tap opens it); these tests tap its "Manage"
+        preferences.put(BooleanKey.OverviewShowNavigationBar, true)
         pluginStore.plugins = pluginList
         configBuilder.initialize()
         config.initCompleted()                                            // flip splash gate → AppContent renders
