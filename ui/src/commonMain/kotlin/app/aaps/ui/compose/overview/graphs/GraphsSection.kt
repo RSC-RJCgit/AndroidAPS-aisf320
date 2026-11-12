@@ -634,7 +634,10 @@ fun GraphsSection(
         snapshotFlow {
             val count = activeCount
             Triple(
-                latestTimeRange.value,
+                // The main graph's width rides along (2026-11-12, per explicit request): without it, a width that arrived
+                // after the first check waited for the next 30 s clock tick, and the graphs stayed hidden until then
+                // (desktop Client2, "drawn after 30173 ms" on return from the bolus calculator).
+                latestTimeRange.value to bgScrollState.maxValue,
                 latestNow.value,
                 // In main graph units (2026-10-24), so every comparison below is between equal units
                 buildList {
@@ -647,7 +650,8 @@ fun GraphsSection(
             )
         }
             .conflate()
-            .collect { (range, now, states) ->
+            .collect { (rangeAndMax, now, states) ->
+                val range = rangeAndMax.first
                 val bgScroll = bgScrollState.value
                 val bgMax = bgScrollState.maxValue
                 // The chart reports NaN until it has a size. Copying that crashes the point draw.

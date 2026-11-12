@@ -184,5 +184,10 @@ enum class StringNonKey(
     CarePortalNoteSmsTexts(key = "careportal_note_sms_texts", defaultValue = "{}", exportable = false),
     InstallerArchiveFolders("installer_archive_folders", "", exportable = false),
     ClientGraphMasterTimeZone(key = "client_graph_master_time_zone", defaultValue = "", exportable = false),
+    /**
+     * The bolus calculator's meal type (a CarbsType name) from the last confirmed meal calculation, so the next run starts
+     * on it like the remembered ticks (2026-11-12, per explicit request). An unknown name reads as BREAD.
+     */
+    WizardCarbsType("wizard_carbs_type", "BREAD"),
 
 }

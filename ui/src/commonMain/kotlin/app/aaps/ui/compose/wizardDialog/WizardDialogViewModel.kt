@@ -42,6 +42,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.wizard.walkingSoonStepCounts
 import app.aaps.core.objects.wizard.dropTrendCautionNow
@@ -281,6 +282,8 @@ class WizardDialogViewModel(
                 useIOB = preferences.get(BooleanNonKey.WizardIncludeIob) || useCOB,
                 useCOB = useCOB,
                 splitFpuBolus = preferences.get(BooleanNonKey.WizardSplitFpuBolus),
+                // The meal type from the last confirmed meal calculation (2026-11-12, per explicit request)
+                carbsType = CarbsType.fromName(preferences.get(StringNonKey.WizardCarbsType)),
                 delayFpuInsteadOfCancel = preferences.get(BooleanNonKey.WizardDelayFpuInsteadOfCancel),
                 // Insulin-only mode: the meal extras and the later parts are off, only max bolus and its split apply
                 fpuInstead = defaultAutoFpu && fixedInsulin == null,
@@ -868,6 +871,7 @@ class WizardDialogViewModel(
         preferences.put(BooleanKey.WizardDefaultAutoFpu, state.fpuInstead || state.unreliableSmb)
         preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, state.unreliableSmb)
         preferences.put(BooleanKey.WizardDefaultSmallMeal, state.smallMeal)
+        preferences.put(StringNonKey.WizardCarbsType, state.carbsType.name)
     }
 
     /**

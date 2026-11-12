@@ -13,6 +13,7 @@ import app.aaps.core.interfaces.rx.collectResilient
 import app.aaps.core.interfaces.rx.events.EventShowSnackbar
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.data.model.CarbsType
@@ -441,8 +442,18 @@ class QuickWizardManagementViewModel(
     fun addNewEntry() {
         viewModelScope.launch {
             try {
-                // A fresh entry already carries these defaults, so nothing needs setting here.
                 val newEntry = quickWizard.newEmptyItem()
+                // IOB, COB, Trend and Split fat/protein start from the bolus calculator's last saved ticks (2026-11-12, per
+                // explicit request), not from fixed values. COB needs IOB, as in the calculator. Never changed, those ticks
+                // equal the old fixed values (IOB on, COB off, Trend off, Split on). The other fields keep their defaults.
+                val useIob = preferences.get(BooleanNonKey.WizardIncludeIob)
+                val useCob = useIob && preferences.get(BooleanNonKey.WizardIncludeCob)
+                newEntry.data = newEntry.data.copy(
+                    useIOB = if (useIob) QuickWizardEntry.ALWAYS else QuickWizardEntry.NEVER,
+                    useCOB = if (useCob) QuickWizardEntry.ALWAYS else QuickWizardEntry.NEVER,
+                    useTrend = if (preferences.get(BooleanNonKey.WizardIncludeTrend)) QuickWizardEntry.ALWAYS else QuickWizardEntry.NEVER,
+                    splitFpuBolus = preferences.get(BooleanNonKey.WizardSplitFpuBolus)
+                )
 
                 quickWizard.addOrUpdate(newEntry)
                 rxBus.send(EventQuickWizardChange())
