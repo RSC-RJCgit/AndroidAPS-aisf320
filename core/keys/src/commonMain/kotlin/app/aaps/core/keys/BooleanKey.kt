@@ -49,6 +49,10 @@ enum class BooleanKey(
         key = "keep_screen_on", defaultValue = false, title = KeysStrings.pref_title_keep_screen_on, summary = KeysStrings.pref_summary_keep_screen_on,
         calculatedDefaultValue = true, platforms = setOf(AppPlatform.Android, AppPlatform.Ios)
     ),
+    // Off (default, 2026-11-12 per explicit request): portrait hides the Treatments/Scenes/Manage bottom bar, the Quick launch
+    // bar takes its place and a tap on the big BG circle opens the bar's buttons in a sheet. The bar still shows while one of
+    // its attention buttons is up (loop suggestion, permissions, pump or BG source setup). The landscape rail is unchanged.
+    OverviewShowNavigationBar(key = "overview_show_navigation_bar", defaultValue = false, title = KeysStrings.pref_title_show_navigation_bar, summary = KeysStrings.pref_summary_show_navigation_bar),
     OverviewShowTreatmentButton(key = "show_treatment_button", defaultValue = false, title = KeysStrings.pref_title_show_treatment_button, defaultedBySM = true),
     OverviewShowWizardButton(key = "show_wizard_button", defaultValue = true, title = KeysStrings.pref_title_show_wizard_button, defaultedBySM = true),
     OverviewShowInsulinButton(key = "show_insulin_button", defaultValue = true, title = KeysStrings.pref_title_show_insulin_button, defaultedBySM = true),

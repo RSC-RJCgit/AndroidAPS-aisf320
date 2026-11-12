@@ -1,6 +1,8 @@
 package app.aaps.ui.compose.overview
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -10,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -19,6 +22,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
@@ -32,6 +36,8 @@ import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalAapsScale
+import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.components.bgSpokenDescription
 import kotlin.math.PI
 import kotlin.math.cos
@@ -51,6 +57,8 @@ import kotlin.math.sqrt
  *   [LocalAapsScale] so the circle grows on tablets to match scaled typography. Pass an explicit
  *   value only if you want to override the tablet-aware default.
  * @param showTimeAgo Whether to render the small "time ago" line below the BG value.
+ * @param onClick Tap on the circle (2026-11-12, per explicit request: opens the navigation buttons that the
+ *   bottom bar holds, so that bar can be hidden). Null keeps the circle display only.
  *
  * @see BgInfoSectionInRangePreview
  * @see BgInfoSectionHighPreview
@@ -63,13 +71,18 @@ fun BgInfoSection(
     timeAgoText: String,
     modifier: Modifier = Modifier,
     size: Dp = AapsSpacing.bgCircleSize * LocalAapsScale.current,
-    showTimeAgo: Boolean = true
+    showTimeAgo: Boolean = true,
+    onClick: (() -> Unit)? = null
 ) {
+    val onClickLabel = stringResource(UiStrings.a11y_bg_open_navigation)
+    val tapModifier = if (onClick != null)
+        Modifier.clip(CircleShape).clickable(onClickLabel = onClickLabel, role = Role.Button, onClick = onClick)
+    else Modifier
     if (bgInfo == null) {
         // Show placeholder when no data
         Box(
             contentAlignment = Alignment.Center,
-            modifier = modifier.size(size)
+            modifier = modifier.size(size).then(tapModifier)
         ) {
             Text(
                 text = "---",
@@ -104,6 +117,7 @@ fun BgInfoSection(
             // read instead, as loose fragments mixed in among the chips - measured with TalkBack on a
             // phone. Merging makes the sentence one stop and takes the fragments out of the sweep.
             .semantics(mergeDescendants = true) { contentDescription = a11yDescription }
+            .then(tapModifier)
     ) {
         // Background ring + trend arc indicator
         Canvas(modifier = Modifier.size(size)) {

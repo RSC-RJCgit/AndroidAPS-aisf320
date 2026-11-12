@@ -75,6 +75,8 @@ fun OverviewScreenTablet(
     statusViewModel: StatusViewModel,
     statusLightsDef: PreferenceSubScreenDef,
     onNavigate: (NavigationRequest) -> Unit,
+    /** Tap on the big BG circle: opens the navigation buttons of the (possibly hidden) bottom bar. */
+    onBgClick: (() -> Unit)? = null,
     onTbrChipClick: () -> Unit,
     onIobChipClick: () -> Unit,
     paddingValues: PaddingValues,
@@ -141,7 +143,8 @@ fun OverviewScreenTablet(
                         BgInfoSection(
                             bgInfo = bgInfoState.bgInfo,
                             timeAgoText = bgInfoState.timeAgoText,
-                            showTimeAgo = false
+                            showTimeAgo = false,
+                            onClick = onBgClick
                         )
                     }
 

@@ -29,10 +29,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberModalBottomSheetState
+import app.aaps.core.keys.BooleanKey
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -104,6 +108,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     mainViewModel: MainViewModel,
@@ -184,6 +189,10 @@ fun MainScreen(
     var showTreatmentSheet by remember { mutableStateOf(false) }
     var showAutomationSheet by remember { mutableStateOf(false) }
     var showLoopActionSheet by remember { mutableStateOf(false) }
+    // The bottom bar's buttons in a sheet, opened by a tap on the big BG circle (2026-11-12, per explicit request)
+    var showNavigationSheet by remember { mutableStateOf(false) }
+    val showNavigationBarPref by remember { mainViewModel.preferences.observe(BooleanKey.OverviewShowNavigationBar) }
+        .collectAsStateWithLifecycle()
     val automationState by scenesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = LocalSnackbarHostState.current
 
@@ -269,11 +278,17 @@ fun MainScreen(
             val topBarBgInfo by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
             Scaffold { scaffoldPadding ->
                 val hasToolbar = quickLaunchItems.isNotEmpty()
+                val loopActionState = loopActionViewModel.uiState.collectAsStateWithLifecycle().value
+                // Portrait bottom bar: hidden by default (OverviewShowNavigationBar), the Quick launch bar then sits in its place.
+                // It still shows while one of its attention buttons is up, so a waiting loop suggestion or a missing setup
+                // cannot go unseen behind a tap on the BG.
+                val attentionPending = pumpSetupPlugin != null || bgSetupPlugin != null || permissionsMissing || loopActionState.actionAvailable
+                val bottomBarShown = showNavigationBarPref || attentionPending
 
                 // Keep the top bar (including Search and Settings) available even when
                 // landscape height is short. The bottom navigation may still auto-hide.
                 val topBarHeight = with(density) { topBarHeightPx.toDp() }
-                val bottomBarHeight = with(density) { bottomBarHeightPx.toDp() }
+                val bottomBarHeight = if (bottomBarShown) with(density) { bottomBarHeightPx.toDp() } else 0.dp
                 val contentPadding = PaddingValues(
                     start = if (landscapeNavigation) scaffoldPadding.calculateStartPadding(layoutDirection) + AapsSpacing.navigationRailWidth else 0.dp,
                     top = scaffoldPadding.calculateTopPadding() + topBarHeight,
@@ -318,6 +333,7 @@ fun MainScreen(
                         statusViewModel = statusViewModel,
                         statusLightsDef = statusLightsDef,
                         onNavigate = onNavigate,
+                        onBgClick = { showNavigationSheet = true },
                         onTbrChipClick = mainViewModel::showTbrInfo,
                         onIobChipClick = chipsViewModel::showIobInfo,
                         notifications = notifications,
@@ -494,37 +510,24 @@ fun MainScreen(
                         }
                     }
 
-                    // Landscape uses a rail with space reserved beside the graphs.
-                    AnimatedVisibility(
-                        visible = landscapeNavigation || showChrome,
-                        enter = if (landscapeNavigation) slideInHorizontally { -it } else slideInVertically { it },
-                        exit = if (landscapeNavigation) slideOutHorizontally { -it } else slideOutVertically { it },
-                        modifier = Modifier
-                            .align(if (landscapeNavigation) Alignment.CenterStart else Alignment.BottomCenter)
-                            .then(
-                                if (landscapeNavigation) Modifier
-                                    .fillMaxHeight()
-                                    .padding(
-                                        start = scaffoldPadding.calculateStartPadding(layoutDirection),
-                                        top = topBarHeight,
-                                        bottom = scaffoldPadding.calculateBottomPadding()
-                                    )
-                                else Modifier.padding(bottom = scaffoldPadding.calculateBottomPadding())
-                            )
-                    ) {
-                        val loopActionState = loopActionViewModel.uiState.collectAsStateWithLifecycle().value
-                        @Composable
-                        fun NavigationItems(modifier: Modifier, vertical: Boolean) {
+                    // The bar's buttons. [beforeAction] lets the BG-tap sheet close itself before a button acts.
+                    @Composable
+                    fun NavigationItems(modifier: Modifier, vertical: Boolean, beforeAction: () -> Unit = {}) {
                             MainNavigationBar(
                                 vertical = vertical,
-                                onManageClick = { manageSheetState.show() },
+                                onManageClick = {
+                                    beforeAction()
+                                    manageSheetState.show()
+                                },
                                 onTreatmentClick = {
+                                    beforeAction()
                                     treatmentViewModel.refreshState()
                                     showTreatmentSheet = true
                                 },
                                 masterOrPairedClient = masterOrPairedClient,
                                 quickWizardCount = uiState.quickWizardItems.size,
                                 onAutomationClick = {
+                                    beforeAction()
                                     scenesViewModel.refreshState()
                                     showAutomationSheet = true
                                 },
@@ -543,14 +546,43 @@ fun MainScreen(
                                 objectivesProgressText = objectivesProgressText,
                                 objectivesProgressDescription = objectivesProgressDescription,
                                 objectivesBypassed = objectivesBypassed,
-                                onNavigate = onNavigate,
+                                onNavigate = { request ->
+                                    beforeAction()
+                                    onNavigate(request)
+                                },
                                 permissionsMissing = permissionsMissing,
-                                onPermissionsClick = onPermissionsClick,
+                                onPermissionsClick = {
+                                    beforeAction()
+                                    onPermissionsClick()
+                                },
                                 loopActionAvailable = loopActionState.actionAvailable,
-                                onLoopActionClick = { showLoopActionSheet = true },
+                                onLoopActionClick = {
+                                    beforeAction()
+                                    showLoopActionSheet = true
+                                },
                                 modifier = modifier
                             )
-                        }
+                    }
+
+                    // Landscape uses a rail with space reserved beside the graphs. Portrait shows the bottom bar only while
+                    // the setting asks for it or something needs attention (see bottomBarShown).
+                    AnimatedVisibility(
+                        visible = landscapeNavigation || (showChrome && bottomBarShown),
+                        enter = if (landscapeNavigation) slideInHorizontally { -it } else slideInVertically { it },
+                        exit = if (landscapeNavigation) slideOutHorizontally { -it } else slideOutVertically { it },
+                        modifier = Modifier
+                            .align(if (landscapeNavigation) Alignment.CenterStart else Alignment.BottomCenter)
+                            .then(
+                                if (landscapeNavigation) Modifier
+                                    .fillMaxHeight()
+                                    .padding(
+                                        start = scaffoldPadding.calculateStartPadding(layoutDirection),
+                                        top = topBarHeight,
+                                        bottom = scaffoldPadding.calculateBottomPadding()
+                                    )
+                                else Modifier.padding(bottom = scaffoldPadding.calculateBottomPadding())
+                            )
+                    ) {
                         if (landscapeNavigation) {
                             Column(modifier = Modifier.fillMaxHeight().width(AapsSpacing.navigationRailWidth)) {
                                 NavigationItems(
@@ -575,7 +607,23 @@ fun MainScreen(
                         }
                     }
 
+                    // Tap on the big BG circle: the bar's buttons, badges included, in a sheet. Each closes the sheet first.
+                    if (showNavigationSheet) {
+                        ModalBottomSheet(
+                            onDismissRequest = { showNavigationSheet = false },
+                            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ) {
+                            NavigationItems(
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                vertical = false,
+                                beforeAction = { showNavigationSheet = false }
+                            )
+                        }
+                    }
+
                     // Quick launch stays on the bottom in portrait only. Landscape puts it in the rail.
+                    // With the bottom bar hidden, bottomBarHeight is 0 and it moves down into the bar's place.
                     AnimatedVisibility(
                         visible = hasToolbar && showChrome && !landscapeNavigation,
                         enter = slideInVertically { it },

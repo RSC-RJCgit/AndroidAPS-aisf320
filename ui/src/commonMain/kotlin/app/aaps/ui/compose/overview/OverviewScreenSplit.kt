@@ -67,6 +67,8 @@ fun OverviewScreenSplit(
     statusViewModel: StatusViewModel,
     statusLightsDef: PreferenceSubScreenDef,
     onNavigate: (NavigationRequest) -> Unit,
+    /** Tap on the big BG circle: opens the navigation buttons of the (possibly hidden) bottom bar. */
+    onBgClick: (() -> Unit)? = null,
     onTbrChipClick: () -> Unit,
     onIobChipClick: () -> Unit,
     paddingValues: PaddingValues,
@@ -132,7 +134,8 @@ fun OverviewScreenSplit(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         BgInfoSection(
                             bgInfo = bgInfoState.bgInfo,
-                            timeAgoText = bgInfoState.timeAgoText
+                            timeAgoText = bgInfoState.timeAgoText,
+                            onClick = onBgClick
                         )
                     }
 

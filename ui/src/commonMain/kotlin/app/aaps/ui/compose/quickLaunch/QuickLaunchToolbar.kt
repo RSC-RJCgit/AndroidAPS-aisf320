@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.quickLaunch
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -58,7 +60,9 @@ data class ResolvedQuickLaunchItem(
 /**
  * Floating pill-shaped toolbar for quick actions.
  * Displayed as an overlay at the bottom of the overview screen.
- * When items exceed available width, extra items go into an overflow dropdown menu.
+ * Horizontal: when items exceed the available width the row scrolls sideways (2026-11-12, per explicit request, so the
+ * bar can hold more items now that it takes the hidden bottom bar's place). Vertical (landscape rail): extra items go
+ * into an overflow dropdown menu, as before.
  * Long-press any icon to see a tooltip with label and description.
  */
 @Composable
@@ -87,7 +91,7 @@ fun QuickLaunchToolbar(
             val maxItems = ((availablePx - contentPaddingPx) / itemSizePx).toInt()
                 .coerceAtLeast(1)
 
-            val needsOverflow = items.size > maxItems
+            val needsOverflow = vertical && items.size > maxItems
             val visibleItems = if (needsOverflow) items.take((maxItems - 1).coerceAtLeast(0)) else items
             val overflowItems = if (needsOverflow) items.drop((maxItems - 1).coerceAtLeast(0)) else emptyList()
 
@@ -106,7 +110,9 @@ fun QuickLaunchToolbar(
             } else {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 4.dp)
+                    modifier = Modifier
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 4.dp)
                 ) {
                     visibleItems.forEach { item ->
                         ToolbarIconButton(item, onActionClick)
