@@ -121,7 +121,17 @@ tasks.matching { it.name.startsWith("linkDebugFramework") }.configureEach { depe
  * own copy of the call that ignored the exit code, so a build outside a work tree stamped itself
  * "-2026.11.03" with no commit at all while HEAD correctly said the commit was unknown.
  */
-fun buildStamp(): String = gitHead() + "-" + SimpleDateFormat("yyyy.MM.dd").format(Date())
+fun buildStamp(): String = gitHead() + "-" + stampDate()
+
+/**
+ * The commit's own date, not today's (2026-11-12, per explicit request). With today's date, a TestFlight run whose
+ * first archive crossed midnight UTC changed this stamp between its two archives, which made the second one redo
+ * the whole Kotlin/Native release link (iOS TestFlight #120: 1 h 30 min instead of 40 s). The same commit now always
+ * has the same stamp. Today's date only when git cannot say.
+ */
+fun stampDate(): String =
+    git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d")?.ifEmpty { null }
+        ?: SimpleDateFormat("yyyy.MM.dd").format(Date())
 
 /**
  * Runs a git command and returns its trimmed output, or null if the command did not succeed.
