@@ -8,6 +8,7 @@ import app.aaps.core.data.model.TT
 import app.aaps.core.data.model.TTPreset
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.automation.Automation
+import app.aaps.core.interfaces.automation.AutomationEvent
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -21,6 +22,7 @@ import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.shared.tests.generatedTextResolver
 import app.aaps.ui.compose.navigation.ElementAvailability
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
@@ -150,6 +152,35 @@ internal class QuickLaunchResolverTest {
     fun `other actions are not limited by time`() {
         assertThat(sut.isShownNow(QuickLaunchAction.Fill)).isTrue()
         assertThat(sut.isShownNow(QuickLaunchAction.SceneAction("s1"))).isTrue()
+    }
+
+    // As v3: an automation button shows only while its trigger conditions are met.
+    @Test
+    fun `automation button follows its trigger conditions`() = runTest {
+        val event = mock<AutomationEvent>()
+        whenever(automation.findEventById("a1")).thenReturn(event)
+
+        whenever(event.canRun()).thenReturn(false)
+        assertThat(sut.automationConditionsMet(QuickLaunchAction.AutomationAction("a1"))).isFalse()
+
+        whenever(event.canRun()).thenReturn(true)
+        assertThat(sut.automationConditionsMet(QuickLaunchAction.AutomationAction("a1"))).isTrue()
+    }
+
+    // A trigger that fails to evaluate must not silently hide the button.
+    @Test
+    fun `automation button stays shown when its trigger throws`() = runTest {
+        val event = mock<AutomationEvent>()
+        whenever(automation.findEventById("a1")).thenReturn(event)
+        whenever(event.canRun()).thenThrow(IllegalStateException("bad trigger"))
+
+        assertThat(sut.automationConditionsMet(QuickLaunchAction.AutomationAction("a1"))).isTrue()
+    }
+
+    @Test
+    fun `other actions are not limited by automation conditions`() = runTest {
+        assertThat(sut.automationConditionsMet(QuickLaunchAction.Fill)).isTrue()
+        assertThat(sut.automationConditionsMet(QuickLaunchAction.SceneAction("s1"))).isTrue()
     }
 
     // Fill and battery change follow the pump: a patch pump does both in its own wizard.

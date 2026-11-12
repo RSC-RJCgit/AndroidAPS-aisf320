@@ -35,6 +35,7 @@ import app.aaps.ui.compose.tempTarget.toTTPresetsWithDisplayName
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Shared resolver for QuickLaunch actions — resolves actions to display items
@@ -135,6 +136,24 @@ class QuickLaunchResolver(
     fun isShownNow(action: QuickLaunchAction): Boolean = when (action) {
         is QuickLaunchAction.QuickWizardAction -> quickWizard.get(action.guid)?.isActive() == true
         else                                   -> true
+    }
+
+    /**
+     * Whether an automation button's trigger conditions are met right now (2026-11-12, as v3's overview
+     * user-action buttons, which showed only while [app.aaps.core.interfaces.automation.AutomationEvent.canRun]).
+     * Like [isShownNow] this only hides the button; it stays in the saved toolbar and returns when the
+     * conditions are met. Every other action, and a trigger that fails to evaluate, stays shown.
+     */
+    suspend fun automationConditionsMet(action: QuickLaunchAction): Boolean {
+        if (action !is QuickLaunchAction.AutomationAction) return true
+        val event = automation.findEventById(action.automationId) ?: return true
+        return try {
+            event.canRun()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            true
+        }
     }
 
     fun resolveLabel(action: QuickLaunchAction): String = when (action) {

@@ -64,6 +64,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -163,6 +164,8 @@ internal class MainViewModelTest {
         // toolbar when the first runTest runs the deferred collectors, and an unstubbed isValid (false)
         // would then remove every action from the saved toolbar.
         whenever(quickLaunchResolver.isValid(any())).thenReturn(true)
+        // Likewise automation trigger conditions: an unstubbed suspend mock returns false and would hide every item.
+        runBlocking { whenever(quickLaunchResolver.automationConditionsMet(any())).thenReturn(true) }
 
         sut = buildSut()
     }

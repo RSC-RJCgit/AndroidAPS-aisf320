@@ -228,6 +228,8 @@ class MainViewModel(
                 .filter { it.action.elementType?.isAvailable(visibilityContext) ?: true }
                 // (2) Hide QuickWizard entries that are not active now.
                 .filter { quickLaunchResolver.isShownNow(it.action) }
+                // (2b) Hide automation buttons whose trigger conditions are not met now (as v3); re-checked each tick.
+                .filter { quickLaunchResolver.automationConditionsMet(it.action) }
                 // (3) Scene actions disable while the master is transiently unreachable.
                 .map { item ->
                     if (!reachable && item.action is QuickLaunchAction.SceneAction) item.copy(enabled = false) else item
