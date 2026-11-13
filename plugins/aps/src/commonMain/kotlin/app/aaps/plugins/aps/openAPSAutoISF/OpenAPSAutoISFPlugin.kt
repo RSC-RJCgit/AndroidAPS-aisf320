@@ -6232,7 +6232,8 @@ open class OpenAPSAutoISFPlugin(
                 delta = delta,
                 cannulaHours = cannulaHours,
                 lastBolusMinutes = minutesSinceLastMealEvent(now),
-                delayedBolusPending = false,
+                // A delayed bolus waiting (DelayedBolus, since 2026-11-14): its bolus is not a sign of recovery
+                delayedBolusPending = preferences.get(LongNonKey.WizardDelayedBolusPendingUntil) > now,
             )
         ) return
         if (!switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: activity off")) return

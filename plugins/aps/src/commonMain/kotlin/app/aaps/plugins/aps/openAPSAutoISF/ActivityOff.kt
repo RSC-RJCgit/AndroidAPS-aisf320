@@ -6,7 +6,8 @@ package app.aaps.plugins.aps.openAPSAutoISF
  * Glucose and delta are mg/dL. 171.2 is 9.5 mmol/L. 153.1 is 8.5. 108.1 is 6.0. 1.8 is 0.1 mmol/L.
  * The caller switches to the standard profile at 100% and can put the IOB threshold back to 70.
  * It does not change the acceleration weight. A drop to 0.35 would stay, because the restore only raises it.
- * A delayed-bolus wait is not in this app, so the caller passes that flag false.
+ * While a delayed bolus waits (DelayedBolus, ported from the 3426 app on 2026-11-14), the bolus that started it is not taken
+ * as a sign of recovery: the caller passes delayedBolusPending from LongNonKey.WizardDelayedBolusPendingUntil.
  */
 internal fun activityOffShouldFire(
     ready: Boolean,

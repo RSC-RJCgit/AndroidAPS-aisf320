@@ -157,6 +157,7 @@ jobs:
             exit 0
           end
 
+          answered = 0
           %w[/v1/bundleIds?limit=1 /v1/apps?limit=1].each do |path|
             uri = URI("https://api.appstoreconnect.apple.com#{path}")
             begin
@@ -175,12 +176,13 @@ jobs:
               exit 3
             elsif res.code == "200"
               puts "#{path}: OK"
+              answered += 1
             else
               titles = (JSON.parse(body)["errors"] || []).map { |e| "#{e["code"]}: #{e["title"]}" }.join("; ") rescue ""
               puts "::warning::#{path}: HTTP #{res.code} #{titles}"
             end
           end
-          puts "No pending Apple agreement found."
+          puts(answered > 0 ? "No pending Apple agreement found." : "Agreements not checked (see the warnings above). The build goes on.")
           RUBY
           if [ "$rc" -eq 3 ]; then exit 1; fi
           if [ "$rc" -ne 0 ]; then echo "::warning::The agreement check itself failed (exit $rc), so it was skipped. The build goes on."; fi

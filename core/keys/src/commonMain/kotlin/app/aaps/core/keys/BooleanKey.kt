@@ -247,6 +247,22 @@ enum class BooleanKey(
         KeysStrings.pref_title_wizard_default_small_meal,
         KeysStrings.pref_summary_wizard_default_small_meal
     ),
+    // v3's delayed bolus (ported 2026-11-14, per explicit request; the same key as the 3426 app). On by default here, as it
+    // runs on Live: after a calculator or QuickWizard bolus on a 50% profile, or with carb insulin halved for a recent low,
+    // the rest of the meal is given later, once BG rises. See DelayedBolus.
+    WizardDelayedBolusEnabled(
+        "wizard_split_bolus_enabled",
+        true,
+        KeysStrings.pref_title_wizard_delayed_bolus,
+        KeysStrings.pref_summary_wizard_delayed_bolus
+    ),
+    // v3's QuickWizard carb time from a rise (ported 2026-11-14, per explicit request; the same key as the 3426 app)
+    OverviewQuickWizardCarbTimeFromRise(
+        "quickwizard_carb_time_from_rise",
+        true,
+        KeysStrings.pref_title_quickwizard_carb_time_from_rise,
+        KeysStrings.pref_summary_quickwizard_carb_time_from_rise
+    ),
     // v3's split over max bolus (2026-10-22, per explicit request): how the calculator's and QuickWizard's split box start
     WizardSplitOverMaxBolus(
         "split_bolus_enabled",

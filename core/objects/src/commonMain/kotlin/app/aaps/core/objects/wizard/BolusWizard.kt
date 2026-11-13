@@ -158,6 +158,19 @@ class BolusWizard(
     /** The calculator's own dose when [useFixedInsulin] replaced it, else null. */
     var suggestedInsulin: Double? = null
         private set
+    /**
+     * The low-BG recent-entry rule ([WizardRecentEntry], from the 3426 app, 2026-11-14) held at this calculation: BG under 6.0
+     * since a bolus or carbs in the last hour. Only reported here; the Bolus Wizard starts its COB box unticked and a
+     * QuickWizard press cuts its max bolus to 80% from it.
+     */
+    var lowBgRecentEntryRule: Boolean = false
+        private set
+    /** Profile percent and the calculator's immediate percent at this calculation, for the delayed bolus. */
+    private var activeProfilePct: Int = 100
+    private var immediatePercent: Double = 100.0
+    /** Carb insulin held back for a [DelayedBolus], set by [prepareDelayedBolus]; null when nothing is held back. */
+    var delayedPlan: DelayedBolusPlan? = null
+        private set
 
     /** Immutable snapshot of the computed result, built at the end of [doCalc] (additive — the legacy
      *  fields above stay). The shared bolus path consumes this instead of reaching into individual fields. */
@@ -183,7 +196,10 @@ class BolusWizard(
     private var useTrend: Boolean = false
     private var useAlarm = false
     var notes: String = ""
-    private var carbTime: Int = 0
+    // Readable since 2026-11-14: a QuickWizard press can date its carbs from a rise (CarbTimeFromRise), so the commit takes
+    // the carb time from here rather than from the button.
+    var carbTime: Int = 0
+        private set
     var usePercentage: Boolean = false
     var positiveIOBOnly: Boolean = false
     private var source: Sources = Sources.WizardDialog
@@ -300,6 +316,10 @@ class BolusWizard(
             hasGlucose = status != null,
         )
         if (carbsHalvedByRecent50) insulinFromCarbs /= 2.0
+        // From the 3426 app (2026-11-14): only noted here. BG is the wizard BG when one is used, else the latest CGM value.
+        lowBgRecentEntryRule = WizardRecentEntry.applies(persistenceLayer, now, if (wizardBgMgdl > 0.0) wizardBgMgdl else status?.glucose)
+        activeProfilePct = activePct
+        delayedPlan = null
         insulinFromCOB = if (useCob) (cob / ic) else 0.0
 
         // Insulin from IOB calculation
@@ -334,6 +354,7 @@ class BolusWizard(
 
         val standingPct = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
         val percentage = walkingSoonImmediatePercent(walkingSoon, standingPct)
+        immediatePercent = percentage
         val walkingSoonCutApplied = walkingSoon && percentage < standingPct - 0.5
         this.walkingSoonHeldUnits = walkingSoonHeldUnits(walkingSoon, standingPct, scaledComponents)
 
@@ -437,6 +458,8 @@ class BolusWizard(
         if (carbTime != 0) extras.add(rh.gs(InterfacesStrings.wizard_carbs_time, carbTime))
         if (trendLeftOut) extras.add(rh.gs(InterfacesStrings.wizard_trend_left_out, carbTime))
         if (carbsHalvedByRecent50) extras.add(rh.gs(InterfacesStrings.wizard_carbs_halved))
+        if (lowBgRecentEntryRule) extras.add(rh.gs(InterfacesStrings.wizard_recent_entry))
+        delayedPlan?.let { extras.add(rh.gs(InterfacesStrings.wizard_delayed_pending, it.heldUnits, it.heldBy.text, it.ic)) }
         if (hpSafetyApplied) extras.add(rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved))
         warsawPlan?.let { plan ->
             extras.add(rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60))
@@ -791,6 +814,155 @@ class BolusWizard(
         WarsawScheduleGate.next()
     }
 
+    /**
+     * Works out the [DelayedBolus] plan of this calculation (2026-11-14, per explicit request, from the 3426 app). Call after
+     * [doCalc] and any [useFixedInsulin], before the confirmation and the saved calculation are built. [standardIc] is the
+     * Standard profile's carb ratio now, at 100%: the Low profile is for hypo risk with no carbs, so once it is safe to give
+     * the rest of a meal it is dosed as on Standard. Null (no Standard profile set or found) falls back to this profile's own
+     * carb ratio with the 50% taken off.
+     */
+    fun prepareDelayedBolus(standardIc: Double?) {
+        delayedPlan = null
+        if (!preferences.get(BooleanKey.WizardDelayedBolusEnabled) || carbs <= 0 || suggestedInsulin != null) return
+        if (useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) return
+        val heldBy = when {
+            activeProfilePct == 50 -> DelayedHeldBy.PROFILE_50
+            carbsHalvedByRecent50  -> DelayedHeldBy.RECENT_LOW
+            else                   -> return
+        }
+        val standard = standardIc?.takeIf { it > 0.0 }
+        val fromStandard = standard != null
+        val useIc = standard ?: if (activeProfilePct == 50) ic / 2.0 else ic
+        val held = DelayedBolus.heldUnits(carbs, useIc, insulinFromCarbs, immediatePercent)
+        if (held < ch.bolusStep(max(held, 0.05)) / 2.0) return
+        delayedPlan = DelayedBolusPlan(heldBy, Round.roundTo(held, 0.001), carbs, useIc, fromStandard)
+        aapsLogger.info(
+            LTag.CORE,
+            "Delayed bolus plan: ${heldBy.label} held=${Round.roundTo(held, 0.001)}U carbs=${carbs}g IC=$useIc " +
+                "(${if (fromStandard) "Standard profile" else "own profile, Standard not found"}) carbInsulinNow=$insulinFromCarbs pct=$immediatePercent"
+        )
+    }
+
+    /**
+     * Starts the checks of a [DelayedBolus] after its bolus was given. A newer delayed bolus replaces one still waiting.
+     * ActivityOff reads [LongNonKey.WizardDelayedBolusPendingUntil] while it waits.
+     */
+    suspend fun scheduleDelayedBolus(plan: DelayedBolusPlan, source: Sources) {
+        val token = DelayedScheduleGate.next()
+        val now = dateUtil.now()
+        preferences.put(LongNonKey.WizardDelayedBolusPendingUntil, now + DelayedBolus.PENDING_MINUTES * 60_000L)
+        aapsLogger.info(LTag.CORE, "Delayed bolus: ${plan.heldUnits}U held back by ${plan.heldBy.label}, checks every ${DelayedBolus.POLL_MINUTES} min")
+        delayedNote("Db0 ${warsawNoteAmount(plan.heldUnits)} U held back by ${plan.heldBy.text}, checked every ${DelayedBolus.POLL_MINUTES} min", source)
+        launchDelayedCheck(plan, source, token, attempt = 1, deliveredSoFar = 0.0, dueAt = now + DelayedBolus.POLL_MINUTES * 60_000L)
+    }
+
+    private fun launchDelayedCheck(plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double, dueAt: Long) {
+        appScope.launch {
+            // In steps of at most 2 minutes, so a newer delayed bolus stops this one at once
+            while (true) {
+                if (!DelayedScheduleGate.isCurrent(token)) {
+                    delayedNote("Db${DelayedBolus.checkMinutes(attempt)} replaced by a newer delayed bolus", source)
+                    return@launch
+                }
+                val wait = dueAt - dateUtil.now()
+                if (wait <= 0L) break
+                delay(min(wait, 120_000L))
+            }
+            runDelayedCheck(plan, source, token, attempt, deliveredSoFar)
+        }
+    }
+
+    private suspend fun runDelayedCheck(plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double) {
+        val minutes = DelayedBolus.checkMinutes(attempt)
+        val db = "Db$minutes"
+        val left = max(0.0, plan.heldUnits - deliveredSoFar)
+        val notGiven = "${warsawNoteAmount(left)} U held back by ${plan.heldBy.text} is not given"
+
+        suspend fun finish(note: String) {
+            delayedNote(note, source)
+            if (DelayedScheduleGate.isCurrent(token)) preferences.put(LongNonKey.WizardDelayedBolusPendingUntil, 0L)
+        }
+
+        suspend fun checkAgain(reason: String) {
+            aapsLogger.info(LTag.CORE, "Delayed bolus $db: $reason")
+            if (attempt < DelayedBolus.MAX_ATTEMPTS) {
+                delayedNote("$db wait: $reason", source)
+                launchDelayedCheck(plan, source, token, attempt + 1, deliveredSoFar, dateUtil.now() + DelayedBolus.POLL_MINUTES * 60_000L)
+            } else finish("$db end: $reason after $minutes min; $notGiven")
+        }
+
+        if (loop.runningMode() == RM.Mode.SUPER_BOLUS || runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null) {
+            checkAgain("pump will not take a bolus")
+            return
+        }
+        val now = dateUtil.now()
+        val gs = glucoseStatusProvider.glucoseStatusData
+        if (!DelayedBolus.gateOk(gs?.glucose, gs?.delta, gs?.shortAvgDelta, gs?.longAvgDelta, gs?.let { now - it.date })) {
+            val reason = when {
+                gs == null                                -> "no BG"
+                now - gs.date > DelayedBolus.GATE_MAX_AGE_MS -> "BG ${(now - gs.date) / 60_000L} min old"
+                else                                      -> "BG not over 5.0 and rising (${gateGlucoseText(gs.glucose, gs.delta, gs.shortAvgDelta, profileFunction.getUnits())})"
+            }
+            checkAgain(reason)
+            return
+        }
+        val cob = iobCobCalculator.getCobInfo("DelayedBolus").displayCob ?: 0.0
+        val cobFraction = DelayedBolus.cobFraction(cob, plan.carbs)
+        val raw = DelayedBolus.checkDose(plan.heldUnits, deliveredSoFar, cobFraction)
+        val step = ch.bolusStep(max(raw, 0.05))
+        if (raw < step / 2.0) {
+            aapsLogger.info(LTag.CORE, "Delayed bolus $db: covered, COB $cob of ${plan.carbs} g leaves $raw U")
+            finish("$db covered: carbs on board ${Round.roundTo(cob, 0.1)} of ${plan.carbs} g leave nothing to give")
+            return
+        }
+        // Cut while walking, as the other later doses; the cut part is dropped
+        val walkFactor = walkingFactorNow()
+        val walked = Round.roundTo(raw * walkFactor, step)
+        val capped = cappedFollowUpDose(walked, step)
+        if (capped == null) {
+            checkAgain("insulinReq missing or stale")
+            return
+        }
+        if (capped <= 0.0) {
+            checkAgain("insulinReq cap is below one pump step")
+            return
+        }
+        // Only insulinReq keeps the series going after a dose: carbs absorbed and walking are real reasons to give less
+        val insulinReqLimited = capped < walked - step / 2.0
+        val continues = insulinReqLimited && attempt < DelayedBolus.MAX_ATTEMPTS
+        aapsLogger.info(
+            LTag.CORE,
+            "Delayed bolus $db: giving ${capped}U (held ${plan.heldUnits}U, given before ${deliveredSoFar}U, COB x${Round.roundTo(cobFraction, 0.01)}, " +
+                "walking x$walkFactor, insulinReq-limited=$insulinReqLimited)"
+        )
+        delayedNote("$db ${warsawNoteAmount(capped)} U${if (continues) ", insulinReq-limited, the rest checked again in ${DelayedBolus.POLL_MINUTES} min" else ""}", source)
+        deliverLaterDose(capped, source, rh.gs(InterfacesStrings.wizard_delayed_dose, minutes, plan.heldBy.text), "Delayed bolus") {
+            preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
+            if (continues) launchDelayedCheck(plan, source, token, attempt + 1, deliveredSoFar + capped, dateUtil.now() + DelayedBolus.POLL_MINUTES * 60_000L)
+            else if (DelayedScheduleGate.isCurrent(token)) preferences.put(LongNonKey.WizardDelayedBolusPendingUntil, 0L)
+        }
+    }
+
+    /** A care portal note of a delayed bolus check: "Db5 wait: ...", "Db15 0.80 U", "Db80 end: ...", as in the 3426 app. */
+    private suspend fun delayedNote(text: String, source: Sources) {
+        val timestamp = max(dateUtil.now(), lastWarsawNoteAt + 1)
+        lastWarsawNoteAt = timestamp
+        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
+            therapyEvent = TE(
+                timestamp = timestamp,
+                type = TE.Type.NOTE,
+                note = text,
+                duration = 60_000L,
+                glucoseUnit = profileFunction.getUnits(),
+            ),
+            timestamp = timestamp,
+            action = Action.CAREPORTAL,
+            source = source,
+            note = "Delayed bolus check: $text",
+            listValues = listOf(ValueWithUnit.SimpleString(text.substringBefore(' '))),
+        )
+    }
+
     suspend fun scheduleLeftoverSplit(
         requested: Double,
         delivered: Double,
@@ -1128,6 +1300,12 @@ class BolusWizard(
             }
             if (carbsHalvedByRecent50) {
                 line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_carbs_halved))
+            }
+            if (lowBgRecentEntryRule) {
+                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_recent_entry))
+            }
+            delayedPlan?.let { plan ->
+                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_delayed_pending, plan.heldUnits, plan.heldBy.text, plan.ic))
             }
             if (hpSafetyApplied) {
                 line(
