@@ -26,7 +26,6 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.protection.ProtectionCheck.Protection.BOLUS
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
-import app.aaps.core.interfaces.pump.ScheduledDoseSupersession
 import app.aaps.core.interfaces.queue.Callback
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
@@ -391,10 +390,10 @@ class CarbsDialog : DialogFragmentWithDate() {
                                 } else {
                                     if (preferences.get(BooleanKey.OverviewUseBolusReminder) && remindBolus)
                                         automation.scheduleAutomationEventBolusReminder()
-                                    // Extra carbs entered here change the assumptions any still-pending
-                                    // BolusWizard split/protein/fat schedule was calculated under — supersede
-                                    // it (see ScheduledDoseSupersession's own doc comment).
-                                    ScheduledDoseSupersession.bump()
+                                    // Carbs alone no longer supersede a still-pending BolusWizard split/protein/fat
+                                    // schedule (2026-11-14, per explicit request): 15 g at 10:16 Dubai on 13 Nov dropped
+                                    // the 10:12 meal's protein/fat doses, though extra carbs only add to what is needed.
+                                    // A bolus still supersedes (see ScheduledDoseSupersession).
                                 }
                             }
                         })

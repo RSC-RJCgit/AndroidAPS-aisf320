@@ -198,10 +198,10 @@ class TreatmentDialog : DialogFragmentWithDate() {
                                 source = Sources.TreatmentDialog,
                                 note = if (carbsAfterConstraints != 0) rh.gs(app.aaps.core.ui.R.string.record) else ""
                             ).subscribe()
-                        // A manually-recorded bolus/carbs entry is still a new treatment — supersede any
-                        // still-pending BolusWizard split/protein/fat schedule (see
-                        // ScheduledDoseSupersession's own doc comment).
-                        if (detailedBolusInfo.insulin > 0 || detailedBolusInfo.carbs > 0) ScheduledDoseSupersession.bump()
+                        // A manually-recorded bolus is still a new treatment — supersede any still-pending
+                        // BolusWizard split/protein/fat schedule (see ScheduledDoseSupersession's own doc comment).
+                        // Carbs alone do not (2026-11-14, per explicit request, see CarbsDialog).
+                        if (detailedBolusInfo.insulin > 0) ScheduledDoseSupersession.bump()
                     } else {
                         if (detailedBolusInfo.insulin > 0) {
                             uel.log(
@@ -228,7 +228,7 @@ class TreatmentDialog : DialogFragmentWithDate() {
                                     action = action,
                                     source = Sources.TreatmentDialog
                                 ).subscribe()
-                                ScheduledDoseSupersession.bump()
+                                // Carbs alone no longer supersede pending split/protein/fat doses (2026-11-14, see CarbsDialog)
                             }
                         }
                     }
