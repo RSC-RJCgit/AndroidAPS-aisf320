@@ -43,6 +43,8 @@ import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.extensions.highValueToUnitsToString
 import app.aaps.core.ui.extensions.lowValueToUnitsToString
 import app.aaps.ui.compose.components.ContentContainer
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 import app.aaps.ui.compose.treatments.viewmodels.TempTargetViewModel
 
 /**
@@ -143,6 +145,7 @@ private fun TempTargetItem(
 ) {
     val profileUtil = LocalProfileUtil.current
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
     val units = profileUtil.units
 
     AapsCard(
@@ -169,7 +172,7 @@ private fun TempTargetItem(
                 text = buildString {
                     // Time range. A target without an end (a scene without a duration) shows only its start.
                     if (tempTarget.hasEnd) append(dateUtil.timeRangeString(tempTarget.timestamp, tempTarget.end))
-                    else append(dateUtil.timeString(tempTarget.timestamp))
+                    else append(graphTimestamp(dateUtil, tempTarget.timestamp, masterZone))
                     append(" ")
                     // Targets - show only one value if low and high are the same
                     if (tempTarget.lowTarget == tempTarget.highTarget) {

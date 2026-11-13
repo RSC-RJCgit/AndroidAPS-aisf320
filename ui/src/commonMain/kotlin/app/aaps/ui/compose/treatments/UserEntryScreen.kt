@@ -60,6 +60,10 @@ import app.aaps.core.ui.compose.navigation.color
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.styledStringResource
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.overview.graphs.graphDate
+import app.aaps.ui.compose.overview.graphs.graphDateRelative
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 import app.aaps.ui.compose.treatments.viewmodels.UserEntryViewModel
 
 /**
@@ -85,6 +89,7 @@ fun UserEntryScreen(
     onNavigateBack: () -> Unit = { }
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val masterZone = rememberMasterGraphTimeZone()
 
     // Dialog state
     var showExportDialog by remember { mutableStateOf(false) }
@@ -149,11 +154,11 @@ fun UserEntryScreen(
 
                 else -> {
                     // Group items by day for sticky headers (optimized with derivedStateOf)
-                    val groupedByDay by remember {
+                    val groupedByDay by remember(masterZone) {
                         derivedStateOf {
                             uiState.userEntries.groupBy { ue ->
                                 val timestamp = ue.timestamp
-                                viewModel.dateUtil.dateString(timestamp)
+                                graphDate(viewModel.dateUtil, timestamp, masterZone)
                             }
                         }
                     }
@@ -165,7 +170,7 @@ fun UserEntryScreen(
                         groupedByDay.forEach { (dateString, itemsForDay) ->
                             stickyHeader(key = dateString) {
                                 Text(
-                                    text = viewModel.dateUtil.dateStringRelative(itemsForDay.first().timestamp, viewModel.rh),
+                                    text = graphDateRelative(viewModel.dateUtil, itemsForDay.first().timestamp, masterZone, viewModel.rh),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .background(MaterialTheme.colorScheme.surface)
@@ -204,6 +209,7 @@ private fun UserEntryItem(
     translator: Translator
 ) {
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
     AapsCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -221,7 +227,7 @@ private fun UserEntryItem(
             ) {
                 // Time
                 Text(
-                    text = dateUtil.timeStringWithSeconds(userEntry.timestamp),
+                    text = graphTimestamp(dateUtil, userEntry.timestamp, masterZone, showSeconds = true),
                     fontSize = 14.sp
                 )
 

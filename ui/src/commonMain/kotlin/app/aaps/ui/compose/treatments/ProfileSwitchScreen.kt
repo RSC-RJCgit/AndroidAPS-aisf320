@@ -52,6 +52,8 @@ import app.aaps.core.ui.compose.icons.Pump
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.components.ContentContainer
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 import app.aaps.ui.compose.treatments.viewmodels.ProfileSwitchViewModel
 
 /**
@@ -73,6 +75,7 @@ fun ProfileSwitchScreen(
     onNavigateBack: () -> Unit = { }
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val screenMasterZone = rememberMasterGraphTimeZone()
 
     // Dialog states
     var showCloneDialog by remember { mutableStateOf(false) }
@@ -152,7 +155,7 @@ fun ProfileSwitchScreen(
                             onClone = { ps ->
                                 val profileName = ps.value.getCustomizedName(decimalFormatter)
                                 val timestamp = ps.value.timestamp
-                                val timestampStr = viewModel.dateUtil.dateAndTimeString(timestamp)
+                                val timestampStr = graphTimestamp(viewModel.dateUtil, timestamp, screenMasterZone, showDate = true)
 
                                 cloneDialogMessage = "${viewModel.rh.gs(CoreUiStrings.copytolocalprofile)}\n$profileName\n$timestampStr"
                                 pendingCloneAction = {
@@ -196,6 +199,7 @@ private fun ProfileSwitchItem(
     decimalFormatter: DecimalFormatter
 ) {
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
     AapsCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -225,7 +229,7 @@ private fun ProfileSwitchItem(
             Text(
                 text = buildString {
                     // Time
-                    append(dateUtil.timeString(profileSwitch.timestamp))
+                    append(graphTimestamp(dateUtil, profileSwitch.timestamp, masterZone))
                     append(" ")
                     // Profile name
                     append(profileName)

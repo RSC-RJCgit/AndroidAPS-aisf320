@@ -25,6 +25,8 @@ import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -40,6 +42,7 @@ internal fun WizardInfoDialog(
 ) {
     val profileUtil = LocalProfileUtil.current
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -57,7 +60,7 @@ internal fun WizardInfoDialog(
                     isfInUnits = profileUtil.fromMgdlToUnits(bcr.isf),
                     trendString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseTrend * 3),
                     decimalFormatter = decimalFormatter,
-                    timeString = dateUtil.dateAndTimeAndSecondsString(bcr.timestamp)
+                    timeString = graphTimestamp(dateUtil, bcr.timestamp, masterZone, showDate = true, showSeconds = true)
                 )
             }
         },

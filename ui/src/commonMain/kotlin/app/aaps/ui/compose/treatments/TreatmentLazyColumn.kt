@@ -21,6 +21,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.ui.compose.overview.graphs.graphDate
+import app.aaps.ui.compose.overview.graphs.graphDateRelative
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 
 /**
  * Generic lazy column for treatment screens with sticky date headers and item animations.
@@ -37,10 +40,11 @@ fun <T> TreatmentLazyColumn(
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
-    val groupedByDay by remember(items) {
+    val masterZone = rememberMasterGraphTimeZone()
+    val groupedByDay by remember(items, masterZone) {
         derivedStateOf {
             items.groupBy { item ->
-                dateUtil.dateString(getTimestamp(item))
+                graphDate(dateUtil, getTimestamp(item), masterZone)
             }
         }
     }
@@ -52,7 +56,7 @@ fun <T> TreatmentLazyColumn(
         groupedByDay.forEach { (dateString, itemsForDay) ->
             stickyHeader(key = "header_$dateString") {
                 Text(
-                    text = dateUtil.dateStringRelative(getTimestamp(itemsForDay.first()), rh),
+                    text = graphDateRelative(dateUtil, getTimestamp(itemsForDay.first()), masterZone, rh),
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)

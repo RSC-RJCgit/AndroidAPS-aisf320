@@ -48,6 +48,8 @@ import app.aaps.core.ui.compose.icons.Ns
 import app.aaps.core.ui.compose.icons.Pump
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.compose.components.ContentContainer
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 import app.aaps.ui.compose.treatments.viewmodels.ExtendedBolusViewModel
 
 /**
@@ -137,6 +139,7 @@ private fun ExtendedBolusItem(
     rh: TextResolver
 ) {
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
     val profile by produceState<app.aaps.core.interfaces.profile.EffectiveProfile?>(null, extendedBolus.timestamp) {
         value = profileFunction.getProfile(extendedBolus.timestamp)
     }
@@ -172,7 +175,7 @@ private fun ExtendedBolusItem(
                     // Time range
                     append(
                         if (isActive) {
-                            dateUtil.timeString(extendedBolus.timestamp)
+                            graphTimestamp(dateUtil, extendedBolus.timestamp, masterZone)
                         } else {
                             dateUtil.timeRangeString(extendedBolus.timestamp, extendedBolus.end)
                         }

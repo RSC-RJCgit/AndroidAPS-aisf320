@@ -42,6 +42,8 @@ import app.aaps.core.ui.compose.icons.Ns
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.components.ContentContainer
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 import app.aaps.ui.compose.treatments.viewmodels.RunningModeViewModel
 
 /**
@@ -137,6 +139,7 @@ private fun RunningModeItem(
     translator: Translator
 ) {
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
     AapsCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -161,7 +164,7 @@ private fun RunningModeItem(
             ) {
                 // Time
                 Text(
-                    text = dateUtil.timeString(runningMode.timestamp),
+                    text = graphTimestamp(dateUtil, runningMode.timestamp, masterZone),
                     modifier = Modifier.padding(start = 4.dp),
                     fontSize = 14.sp,
                     color = when {

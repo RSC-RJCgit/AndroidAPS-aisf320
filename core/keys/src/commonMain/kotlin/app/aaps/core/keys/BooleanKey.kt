@@ -240,9 +240,10 @@ enum class BooleanKey(
         KeysStrings.pref_title_wizard_default_unreliable_smbs,
         KeysStrings.pref_summary_wizard_default_unreliable_smbs
     ),
+    // Off by default since 2026-11-13 (per explicit request): an average meal gets the full automatic fat/protein.
     WizardDefaultSmallMeal(
         "wizard_default_small_meal",
-        true,
+        false,
         KeysStrings.pref_title_wizard_default_small_meal,
         KeysStrings.pref_summary_wizard_default_small_meal
     ),
@@ -253,9 +254,10 @@ enum class BooleanKey(
         KeysStrings.pref_title_wizard_split_over_max,
         KeysStrings.pref_summary_wizard_split_over_max
     ),
+    // On by default since 2026-11-13 (per explicit request): the calculator starts set for an average mixed meal.
     WizardDefaultAutoFpu(
         "wizard_default_auto_fpu",
-        false,
+        true,
         KeysStrings.pref_title_wizard_default_auto_fpu,
         KeysStrings.pref_summary_wizard_default_auto_fpu
     ),

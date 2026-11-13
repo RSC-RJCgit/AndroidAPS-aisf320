@@ -57,6 +57,8 @@ import app.aaps.core.ui.compose.navigation.icon
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.styledStringResource
 import app.aaps.ui.compose.components.ContentContainer
+import app.aaps.ui.compose.overview.graphs.graphTimestamp
+import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
 import app.aaps.ui.compose.treatments.viewmodels.BolusCarbsViewModel
 
 /**
@@ -172,6 +174,7 @@ internal fun MealLinkItem(
     showInvalidated: Boolean
 ) {
     val dateUtil = LocalDateUtil.current
+    val masterZone = rememberMasterGraphTimeZone()
     AapsCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -198,7 +201,7 @@ internal fun MealLinkItem(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = dateUtil.timeString(bcr.timestamp),
+                            text = graphTimestamp(dateUtil, bcr.timestamp, masterZone),
                             fontSize = 14.sp
                         )
 
@@ -251,7 +254,7 @@ internal fun MealLinkItem(
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = dateUtil.timeString(bolus.timestamp),
+                                    text = graphTimestamp(dateUtil, bolus.timestamp, masterZone),
                                     fontSize = 14.sp,
                                     color = if (bolus.timestamp > dateUtil.now()) Color(AapsTheme.generalColors.futureRecord.value) else MaterialTheme.colorScheme.onSurface
                                 )
@@ -372,7 +375,7 @@ internal fun MealLinkItem(
                         Column(modifier = Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = dateUtil.timeString(carbs.timestamp),
+                                    text = graphTimestamp(dateUtil, carbs.timestamp, masterZone),
                                     fontSize = 14.sp
                                 )
 

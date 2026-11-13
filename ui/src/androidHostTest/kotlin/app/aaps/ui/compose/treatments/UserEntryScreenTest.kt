@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
+import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.ToolbarConfig
@@ -54,6 +55,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import app.aaps.core.interfaces.configuration.Config as AppConfig
 
 /**
  * Robolectric composable test for [UserEntryScreen].
@@ -78,6 +80,8 @@ class UserEntryScreenTest {
     private val aapsLogger: AAPSLogger = mock()
     private val rxBus: RxBus = mock()
     private val preferences: Preferences = mock()
+    // Times and day headers follow the graph's master zone; a plain (non-client) config keeps the phone's zone.
+    private val config: AppConfig = mock()
 
     private val presentationHelper: UserEntryPresentationHelper = mock()
     private val translator: Translator = mock()
@@ -143,6 +147,7 @@ class UserEntryScreenTest {
         compose.setContent {
             CompositionLocalProvider(
                 LocalPreferences provides preferences,
+                LocalConfig provides config,
                 LocalDateUtil provides dateUtil
             ) {
                 UserEntryScreen(
