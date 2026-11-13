@@ -2,6 +2,7 @@ package app.aaps.core.objects.wizard
 
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.pump.defs.PumpType
+import app.aaps.core.data.time.AppTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -9,6 +10,7 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -35,6 +37,7 @@ suspend fun dropTrendCautionNow(
     val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
     val from = dateUtil.now() - T.mins(BG_RISE_WINDOW_MINUTES).msecs()
     val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true).minOfOrNull { it.value }
+    val tt = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
     return WizardDropTrendCaution.applies(
         delta = glucose.delta,
         shortAvgDelta = glucose.shortAvgDelta,
@@ -42,6 +45,8 @@ suspend fun dropTrendCautionNow(
         hp1Mmol = hp1Mmol,
         iobUnits = bolusIob + basalIob,
         bgRiseMgdl = if (recentMin == null) 0.0 else bgMgdl - recentMin,
+        minuteOfDay = MidnightTime.secondsFromMidnight(dateUtil.now(), AppTimeZone.current()) / 60,
+        activityTempTarget = tt != null && WizardDropTrendCaution.isActivityTempTarget(tt.lowTarget, tt.duration),
     )
 }
 
