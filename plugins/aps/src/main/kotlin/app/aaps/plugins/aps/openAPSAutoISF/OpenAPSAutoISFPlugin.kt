@@ -8831,7 +8831,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // fresh/stale, carbs are up, and BGL is rising with headroom on IOB. Live-pump-only, matching
         // the original's note. Preconditions: profile=100%, no TT. Also requires a genuine recent high
         // (raw Libre >12.0mmol within 48h) -- without that recent confirmation the boost isn't warranted.
-        if (readyToRun("RecentPod", 5) && activePlugin.activePump !is VirtualPump
+        // Throttle 5 -> 60 min on 2026-11-13 (per explicit request): with 5 min, the boost's own undo (RecentPodOff,
+        // back to 100% once the 5-min TT ends) re-armed this block, so one meal got a 130% boost every ~7 min while
+        // COB stayed >= 16 g (12 Nov Live, 19:54/20:01/20:14/20:24 Dubai, each followed by pTTOff). RecentPodOff's own
+        // !readyToRun("RecentPod", 60) look-back still sees the boost, so its undo is unchanged.
+        if (readyToRun("RecentPod", 60) && activePlugin.activePump !is VirtualPump
             && profile_percentage == 100 && activeTtMgdl() == null && recentLibreOver12(48)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
