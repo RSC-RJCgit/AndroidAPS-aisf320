@@ -25,6 +25,9 @@ import app.aaps.core.interfaces.insulin.ConcentrationHelper
 import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.objects.wizard.CarbTimeFromRise
+import app.aaps.core.objects.wizard.WizardRecentEntry
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -140,6 +143,8 @@ class WizardDialogViewModel(
     private var maxBolusOverridden = false
     private var maxBolusTouched = false
     private var walkingSoonTouched = false
+    /** COB started unticked by the low-BG recent-entry rule, untouched since (WizardRecentEntry, 2026-11-14) */
+    private var cobOffForRecentEntry = false
     private var mealBeforeExtra: Triple<Int, Int, Int>? = null
     private var manualExtraFat: Int? = null
     private var manualExtraProtein: Int? = null
@@ -258,6 +263,14 @@ class WizardDialogViewModel(
         val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
         val totalIOB = bolusIob.iob + basalIob.basaliob
 
+        // From the 3426 app (2026-11-14, per explicit request): BG under 6.0 since a bolus or carbs in the last hour starts COB
+        // unticked, as COB still holds carbs that bolus covered. Ticking it counts COB for this bolus. Not saved as the default.
+        cobOffForRecentEntry = useCOB && fixedInsulin == null && WizardRecentEntry.applies(persistenceLayer, dateUtil.now(), actualBg?.value)
+        val startCob = useCOB && !cobOffForRecentEntry
+        // Carbs dated from the rise the calculator opens in (CarbTimeFromRise, from the 3426 app, 2026-11-14)
+        val riseCarbTime = if (fixedInsulin == null) CarbTimeFromRise.estimate(persistenceLayer, dateUtil.now())?.offsetMinutes else null
+        if (riseCarbTime != null) aapsLogger.info(LTag.UI, "Wizard: carb time $riseCarbTime min from the rise")
+
         val cantDeliverBolus = runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null
         // An AAPSCLIENT always delivers via the master (deliverManualWizard), so it is NEVER forced record-only;
         // only a master's own can't-deliver conditions force the local record-only log (matches Insulin/Treatment dialog).
@@ -271,7 +284,7 @@ class WizardDialogViewModel(
                 carbs = initialCarbs ?: 0,
                 percentage = percentage,
                 directCorrection = 0.0,
-                carbTime = 0,
+                carbTime = riseCarbTime ?: 0,
                 notes = initialNotes ?: "",
                 selectedProfileIndex = 0,
                 // Toggles
@@ -280,7 +293,7 @@ class WizardDialogViewModel(
                 useTT = preferences.get(BooleanNonKey.WizardIncludeTt),
                 useTrend = useTrend,
                 useIOB = preferences.get(BooleanNonKey.WizardIncludeIob) || useCOB,
-                useCOB = useCOB,
+                useCOB = startCob,
                 splitFpuBolus = preferences.get(BooleanNonKey.WizardSplitFpuBolus),
                 // The meal type from the last confirmed meal calculation
                 carbsType = CarbsType.fromName(preferences.get(StringNonKey.WizardCarbsType)),
@@ -576,6 +589,7 @@ class WizardDialogViewModel(
 
     fun toggleCOB(checked: Boolean) {
         if (uiState.value.insulinOnly) return
+        cobOffForRecentEntry = false
         _uiState.update {
             it.copy(
                 useCOB = checked,
@@ -619,7 +633,7 @@ class WizardDialogViewModel(
         _uiState.update {
             it.copy(
                 useTrend = useTrend,
-                useCOB = useCOB,
+                useCOB = useCOB && !cobOffForRecentEntry,
                 useBolusAdvisor = useBolusAdvisor,
                 percentage = percentage ?: it.percentage
             )
@@ -850,7 +864,8 @@ class WizardDialogViewModel(
 
     fun savePreferences() {
         val state = uiState.value
-        preferences.put(BooleanNonKey.WizardIncludeCob, state.useCOB)
+        // An untick by the low-BG recent-entry rule is for this bolus only, not the saved default
+        if (!cobOffForRecentEntry) preferences.put(BooleanNonKey.WizardIncludeCob, state.useCOB)
         preferences.put(BooleanNonKey.WizardIncludeTrend, state.useTrend)
     }
 

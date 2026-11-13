@@ -168,6 +168,13 @@ class QuickWizardEntry(
                 walkingSoonDefault(steps5, steps30, bgMgdl, glucoseStatus?.delta ?: 0.0, steps15) ?: false
             }
         }
+        // From the 3426 app (ported 2026-11-14, per explicit request): partway up a rise the carbs are dated back to where the
+        // rise began (CarbTimeFromRise). Only for a button with carbs and no carb time of its own, while the setting is on.
+        // The carb time then shows in the confirmation and the saved calculation, as any carb time does.
+        val riseCarbTime =
+            if (carbTime() == 0 && carbs() > 0 && preferences.get(BooleanKey.OverviewQuickWizardCarbTimeFromRise))
+                CarbTimeFromRise.estimate(persistenceLayer, dateUtil.now())?.offsetMinutes
+            else null
         val wizard = bolusWizardProvider().doCalc(
             profile,
             profileName,
@@ -186,7 +193,7 @@ class QuickWizardEntry(
             trend,
             useAlarm() == ALWAYS,
             buttonText(),
-            carbTime(),
+            riseCarbTime ?: carbTime(),
             positiveIOBOnly = uPositiveIOBOnly,
             source = Sources.QuickWizard,
             protein = if (splitFpuBolus()) extra.proteinGrams else 0,

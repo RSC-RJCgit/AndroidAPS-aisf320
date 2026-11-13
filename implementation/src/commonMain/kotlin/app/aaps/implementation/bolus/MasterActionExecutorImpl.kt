@@ -77,6 +77,8 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.objects.wizard.SPLIT_LEFTOVER_INTERVAL_MINUTES
 import app.aaps.core.objects.wizard.WizardDropTrendCaution
 import app.aaps.core.objects.wizard.dropTrendCautionNow
+import app.aaps.core.objects.wizard.DelayedBolusPlan
+import app.aaps.core.objects.wizard.WizardRecentEntry
 import kotlin.math.min
 
 /**
@@ -175,6 +177,8 @@ class MasterActionExecutorImpl(
         val splitRapidFall: Boolean = false,
         val splitOverMax: Boolean = true,
         val splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES,
+        // Carb insulin held back by a 50% profile or a recent low, given later (DelayedBolus, 2026-11-14)
+        val delayedPlan: DelayedBolusPlan? = null,
         // Who it was prepared for (null: the master itself) and the lowest role its content needs. Only that caller
         // may commit it, and only while its role still allows it (see RemoteCaller).
         val caller: RemoteCaller? = null,
@@ -284,6 +288,12 @@ class MasterActionExecutorImpl(
 
     private fun smbBeingDelivered() = MasterActionExecutor.PrepareResult.Error(rh.gs(ImplementationStrings.smb_being_delivered))
 
+    /**
+     * The delayed bolus works out what was held back with the running profile's own carb ratio (the 50% taken off): this
+     * app has no Standard profile role. The 3426-based fork uses the Standard profile's ratio here.
+     */
+    private fun standardProfileIcNow(): Double? = null
+
     override suspend fun prepareQuickWizard(guid: String, caller: RemoteCaller?): MasterActionExecutor.PrepareResult {
         // Reject before plugins are wired up: a remote prepare (client-control) can land while the master is still
         // initializing — before ConfigBuilder.initialize() ran verifySelectionInCategories(). At that point activeAPS
@@ -315,8 +325,15 @@ class MasterActionExecutorImpl(
         // commit. The button works the caution out again inside doCalc with the same live data.
         val caution = dropTrendCautionNow(actualBg.value, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
         val ownMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
-        val buttonMax = if (caution) WizardDropTrendCaution.scaledMaxBolus(ownMax ?: savedMaxBolus, pump.bolusStepSize(ownMax ?: savedMaxBolus))
-        else ownMax
+        // From the 3426 app (2026-11-14, per explicit request): the low-BG recent-entry rule cuts this press's max bolus to 80%,
+        // the lower one when the falling-BG caution also cuts it (WizardRecentEntry).
+        val recentEntry = WizardRecentEntry.applies(persistenceLayer, dateUtil.now(), actualBg.value)
+        val baseMax = ownMax ?: savedMaxBolus
+        val baseStep = pump.bolusStepSize(baseMax)
+        var cutMax = baseMax
+        if (caution) cutMax = WizardDropTrendCaution.scaledMaxBolus(baseMax, baseStep)
+        if (recentEntry) cutMax = minOf(cutMax, WizardRecentEntry.scaledMaxBolus(baseMax, baseStep))
+        val buttonMax = if (caution || recentEntry) cutMax else ownMax
         if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, buttonMax)
         val wizard = try {
             entry.doCalc(profile, profileName, actualBg)
@@ -325,6 +342,7 @@ class MasterActionExecutorImpl(
         }
         wizard.splitOverMax = entry.splitOverMax()
         wizard.splitIntervalMinutes = entry.splitIntervalMinutes()
+        wizard.prepareDelayedBolus(standardProfileIcNow())
 
         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(entry.carbs(), aapsLogger)).value()
         if (carbsAfterConstraints != entry.carbs()) return refused(rh.gs(CoreUiStrings.wizard_carbs_constraint))
@@ -354,7 +372,8 @@ class MasterActionExecutorImpl(
             ),
             wizard.timeStamp,
             entry,
-            carbTimeMinutes = entry.carbTime(),
+            // The wizard's carb time: the button's own, or dated from a rise (CarbTimeFromRise, 2026-11-14)
+            carbTimeMinutes = wizard.carbTime,
             notes = entry.buttonText(),
             warsawPlan = wizard.warsawPlan,
             warsawIobBaseline = wizard.warsawIobBaseline,
@@ -364,6 +383,7 @@ class MasterActionExecutorImpl(
             splitRapidFall = wizard.rapidFallForSplit,
             splitOverMax = wizard.splitOverMax,
             splitIntervalMinutes = wizard.splitIntervalMinutes,
+            delayedPlan = wizard.delayedPlan,
             caller = caller,
             requiredRole = ClientRole.MealAssistant,
             smbPause = pause.takeIf { givesInsulin },
@@ -382,7 +402,7 @@ class MasterActionExecutorImpl(
                 eCarbsGrams = eCarbsGrams,
                 eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.eCarbsDelayMinutes() else 0,
                 eCarbsDurationHours = if (eCarbsGrams > 0) entry.eCarbsDurationHours() else 0,
-                carbTimeMinutes = entry.carbTime(),
+                carbTimeMinutes = wizard.carbTime,
                 alarm = entry.useAlarm() == QuickWizardEntry.ALWAYS && entry.carbTime() > 0,
                 maxBolus = buttonMax ?: constraintChecker.getMaxBolusAllowed().value(),
                 bolusStep = pump.bolusStepSize(wizard.insulinAfterConstraints),
@@ -467,6 +487,8 @@ class MasterActionExecutorImpl(
         }
         wizard.splitOverMax = inputs.splitOverMax
         wizard.splitIntervalMinutes = inputs.splitIntervalMinutes.coerceIn(1, 60)
+        // After useFixedInsulin: a typed dose holds nothing back (prepareDelayedBolus checks it)
+        wizard.prepareDelayedBolus(standardProfileIcNow())
         // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
         // Commit applies the same cap again, so the pump never sees the uncapped amount.
         val insulinAfterConstraints = wizard.insulinAfterConstraints
@@ -514,6 +536,7 @@ class MasterActionExecutorImpl(
                 splitRapidFall = wizard.rapidFallForSplit,
                 splitOverMax = wizard.splitOverMax,
                 splitIntervalMinutes = wizard.splitIntervalMinutes,
+                delayedPlan = wizard.delayedPlan,
                 caller = caller,
                 requiredRole = ClientRole.MealAssistant,
                 smbPause = pause.takeIf { givesInsulin }
@@ -965,6 +988,8 @@ class MasterActionExecutorImpl(
                 splitOverMax = p.splitOverMax,
                 intervalMinutes = p.splitIntervalMinutes,
             )
+            // The carb insulin a 50% profile or a recent low held back, given once BG rises (DelayedBolus, 2026-11-14)
+            p.delayedPlan?.let { plan -> bolusWizardProvider().scheduleDelayedBolus(plan, source) }
         } else {
             bolusWizardProvider().cancelLeftoverSplit()
         }

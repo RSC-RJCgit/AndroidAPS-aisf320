@@ -311,7 +311,9 @@ class BuiltInSearchables(
             BooleanKey.WizardDefaultSmallMeal,
             BooleanKey.WizardDefaultAutoFpu,
             BooleanKey.WizardSplitOverMaxBolus,
-            IntKey.WizardSplitIntervalMinutes
+            IntKey.WizardSplitIntervalMinutes,
+            BooleanKey.WizardDelayedBolusEnabled,
+            BooleanKey.OverviewQuickWizardCarbTimeFromRise
         ),
         icon = IcCalculator
     )

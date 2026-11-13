@@ -177,6 +177,9 @@
     <string name="plugin_work_failed" comment="%1$s=plugin name, for example &quot;Dana-i/RS&quot;. Shown when background work the plugin started ended with an error. The plugin is still switched on, but part of it has stopped.">Plugin %1$s hit an error and part of it has stopped. Please restart AAPS.</string>
     <!-- Bolus calculator patch (fork customisations) -->
     <string name="wizard_carbs_halved">Carb insulin halved for a recent low.</string>
+    <string name="wizard_recent_entry">BG under 6.0 since an entry in the last hour: COB starts unticked, a QuickWizard max bolus is cut to 80%.</string>
+    <string name="wizard_delayed_pending" comment="%1$.2f = units held back, %2$s = why (the 50% profile / the recent low BG rule), %3$.1f = carb ratio used. Example: Delayed bolus: 1.20 U held back by the 50% profile (IC 4.7), given once BG rises, checked every 5 min for 80 min">Delayed bolus: %1$.2f U held back by %2$s (IC %3$.1f), given once BG rises, checked every 5 min for 80 min</string>
+    <string name="wizard_delayed_dose" comment="Treatment note of a delayed bolus dose. Must start with Delayed. %1$d = minutes since the bolus, %2$s = why it was held back. Example: Delayed bolus 15 min (held back by the 50% profile)">Delayed bolus %1$d min (held back by %2$s)</string>
     <string name="wizard_carbs_split" comment="%1$d = carbs given now, in grams. %2$d = extended carbs, in grams. Example: Carbs 9+2 g">Carbs %1$d+%2$d g</string>
     <string name="wizard_carbs_time" comment="%1$d = minutes. A plus means later, a minus means earlier. Example: Carbs +15 min">Carbs %1$+d min</string>
     <string name="wizard_direct_insulin" comment="Insulin-only mode of the calculator. %1$.2f = units the user chose to give, %2$.2f = units the calculator suggested. Example: Direct 2.00 U, calculator suggested 1.40 U">Direct %1$.2f U, calculator suggested %2$.2f U</string>
