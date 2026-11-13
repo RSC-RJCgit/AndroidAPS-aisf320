@@ -5887,8 +5887,11 @@ open class OpenAPSAutoISFPlugin(
             sendAutoSms("RecentPodOff Acce")
             aapsLogger.debug(LTag.APS, "RecentPodOff -> accel normal, standard at 100%")
         }
+        // Throttle 5 -> 60 min on 2026-11-13 (per explicit request), as in v3: with 5 min, RecentPodOff's switch back to
+        // 100% after the 5-min TT re-armed this, so one meal got a 130% boost every ~7 min while COB stayed >= 16 g
+        // (12 Nov Live, 4 boosts in 30 min). RecentPodOff's 60-min look-back still sees the boost.
         if (!recentPodShouldFire(
-                ready = runMarks.ready(RunMark.RECENT_POD, 5, now),
+                ready = runMarks.ready(RunMark.RECENT_POD, 60, now),
                 livePump = livePump,
                 profilePercent = profilePercent,
                 ttActive = tt != null,
