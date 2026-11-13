@@ -821,7 +821,7 @@ class BolusWizard(
      * the rest of a meal it is dosed as on Standard. Null (no Standard profile set or found) falls back to this profile's own
      * carb ratio with the 50% taken off.
      */
-    fun prepareDelayedBolus(standardIc: Double?) {
+    suspend fun prepareDelayedBolus(standardIc: Double?) {
         delayedPlan = null
         if (!preferences.get(BooleanKey.WizardDelayedBolusEnabled) || carbs <= 0 || suggestedInsulin != null) return
         if (useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) return
