@@ -1,0 +1,974 @@
+diff --git a/core/interfaces/src/androidMain/res/values/strings.xml b/core/interfaces/src/androidMain/res/values/strings.xml
+index 5e3bc9ef8a..b88d26ac4b 100644
+--- a/core/interfaces/src/androidMain/res/values/strings.xml
++++ b/core/interfaces/src/androidMain/res/values/strings.xml
+@@ -177,6 +177,9 @@
+     <string name="plugin_work_failed" comment="%1$s=plugin name, for example &quot;Dana-i/RS&quot;. Shown when background work the plugin started ended with an error. The plugin is still switched on, but part of it has stopped.">Plugin %1$s hit an error and part of it has stopped. Please restart AAPS.</string>
+     <!-- Bolus calculator patch (fork customisations) -->
+     <string name="wizard_carbs_halved">Carb insulin halved for a recent low.</string>
++    <string name="wizard_recent_entry">BG under 6.0 since an entry in the last hour: COB starts unticked, a QuickWizard max bolus is cut to 80%.</string>
++    <string name="wizard_delayed_pending" comment="%1$.2f = units held back, %2$s = why (the 50% profile / the recent low BG rule), %3$.1f = carb ratio used. Example: Delayed bolus: 1.20 U held back by the 50% profile (IC 4.7), given once BG rises, checked every 5 min for 80 min">Delayed bolus: %1$.2f U held back by %2$s (IC %3$.1f), given once BG rises, checked every 5 min for 80 min</string>
++    <string name="wizard_delayed_dose" comment="Treatment note of a delayed bolus dose. Must start with Delayed. %1$d = minutes since the bolus, %2$s = why it was held back. Example: Delayed bolus 15 min (held back by the 50% profile)">Delayed bolus %1$d min (held back by %2$s)</string>
+     <string name="wizard_carbs_split" comment="%1$d = carbs given now, in grams. %2$d = extended carbs, in grams. Example: Carbs 9+2 g">Carbs %1$d+%2$d g</string>
+     <string name="wizard_carbs_time" comment="%1$d = minutes. A plus means later, a minus means earlier. Example: Carbs +15 min">Carbs %1$+d min</string>
+     <string name="wizard_direct_insulin" comment="Insulin-only mode of the calculator. %1$.2f = units the user chose to give, %2$.2f = units the calculator suggested. Example: Direct 2.00 U, calculator suggested 1.40 U">Direct %1$.2f U, calculator suggested %2$.2f U</string>
+diff --git a/core/keys/src/androidMain/res/values/strings.xml b/core/keys/src/androidMain/res/values/strings.xml
+index 1eadf006ac..9a861ac9cd 100644
+--- a/core/keys/src/androidMain/res/values/strings.xml
++++ b/core/keys/src/androidMain/res/values/strings.xml
+@@ -407,6 +407,10 @@
+     <string name="pref_summary_wizard_default_unreliable_smbs">Applied each time the calculator opens. Off leaves it unticked. If this and Auto fat/protein are both on, this one wins.</string>
+     <string name="pref_title_wizard_default_small_meal">Calculator starts with Fast carbs (half automatic fat/protein) ticked</string>
+     <string name="pref_summary_wizard_default_small_meal">On by default. Applied each time the calculator opens. Halves the amounts when automatic fat/protein is enabled.</string>
++    <string name="pref_title_wizard_delayed_bolus">Delayed bolus after a 50% profile or a recent low</string>
++    <string name="pref_summary_wizard_delayed_bolus">After a bolus on a 50% profile, or with carb insulin halved for a recent low, the rest of the meal is given later. BG is checked every 5 min for 80 min and the rest is given once BG is over 5.0 and rising.</string>
++    <string name="pref_title_quickwizard_carb_time_from_rise">QuickWizard carb time from a rise</string>
++    <string name="pref_summary_quickwizard_carb_time_from_rise">Pressed partway up a rise, a QuickWizard button with carbs and no carb time of its own dates the carbs back to where the rise began, plus 10 min.</string>
+     <string name="pref_title_wizard_split_over_max">Split a dose over max bolus</string>
+     <string name="pref_summary_wizard_split_over_max">How the split box starts in the calculator and in a QuickWizard button. Ticked: max bolus is given now and the rest later, in parts, while BG is 7.0 or more and not falling.</string>
+     <string name="pref_title_wizard_split_interval">Minutes between split parts</string>
+diff --git a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanKey.kt b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanKey.kt
+index 6f2cb4c4ae..a2ee3baf7e 100644
+--- a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanKey.kt
++++ b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanKey.kt
+@@ -76,6 +76,22 @@ enum class BooleanKey(
+         KeysStrings.pref_title_wizard_default_small_meal,
+         KeysStrings.pref_summary_wizard_default_small_meal
+     ),
++    // v3's delayed bolus (2026-11-14, per explicit request; the same key as the 3426 app). On by default: after a calculator
++    // or QuickWizard bolus on a 50% profile, or with carb insulin halved for a recent low, the rest of the meal is given
++    // later, once BG rises. See DelayedBolus.
++    WizardDelayedBolusEnabled(
++        "wizard_split_bolus_enabled",
++        true,
++        KeysStrings.pref_title_wizard_delayed_bolus,
++        KeysStrings.pref_summary_wizard_delayed_bolus
++    ),
++    // v3's QuickWizard carb time from a rise (2026-11-14, per explicit request; the same key as the 3426 app)
++    OverviewQuickWizardCarbTimeFromRise(
++        "quickwizard_carb_time_from_rise",
++        true,
++        KeysStrings.pref_title_quickwizard_carb_time_from_rise,
++        KeysStrings.pref_summary_quickwizard_carb_time_from_rise
++    ),
+     // v3's split over max bolus (2026-10-22, per explicit request): how the calculator's and QuickWizard's split box start
+     WizardSplitOverMaxBolus(
+         "split_bolus_enabled",
+diff --git a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/LongNonKey.kt b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/LongNonKey.kt
+index 1b7d8095c8..4f64feb7e9 100644
+--- a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/LongNonKey.kt
++++ b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/LongNonKey.kt
+@@ -52,5 +52,7 @@ enum class LongNonKey(
+     // When a delayed carb or fat-protein dose was delivered. 0 means none yet. Local only.
+     ApsAutoIsfLastDelayedBolusAt("autoisf_last_delayed_bolus_at", 0L, exportable = false),
+     LastVacuumRun("last_vacuum_run", 0L),
++    // A delayed bolus (DelayedBolus) is waiting until this time; 0 when none. Local only.
++    WizardDelayedBolusPendingUntil("wizard_delayed_bolus_pending_until", 0L, exportable = false),
+ }
+ 
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index 85761264b9..ff543a289c 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -161,6 +161,19 @@ class BolusWizard(
+     /** The calculator's own dose when [useFixedInsulin] replaced it, else null. */
+     var suggestedInsulin: Double? = null
+         private set
++    /**
++     * The low-BG recent-entry rule ([WizardRecentEntry], from the 3426 app, 2026-11-14) held at this calculation: BG under 6.0
++     * since a bolus or carbs in the last hour. Only reported here; the Bolus Wizard starts its COB box unticked and a
++     * QuickWizard press cuts its max bolus to 80% from it.
++     */
++    var lowBgRecentEntryRule: Boolean = false
++        private set
++    /** Profile percent and the calculator's immediate percent at this calculation, for the delayed bolus. */
++    private var activeProfilePct: Int = 100
++    private var immediatePercent: Double = 100.0
++    /** Carb insulin held back for a [DelayedBolus], set by [prepareDelayedBolus]; null when nothing is held back. */
++    var delayedPlan: DelayedBolusPlan? = null
++        private set
+ 
+     /** Immutable snapshot of the computed result, built at the end of [doCalc] (additive — the legacy
+      *  fields above stay). The shared bolus path consumes this instead of reaching into individual fields. */
+@@ -186,7 +199,10 @@ class BolusWizard(
+     private var useTrend: Boolean = false
+     private var useAlarm = false
+     var notes: String = ""
+-    private var carbTime: Int = 0
++    // Readable since 2026-11-14: a QuickWizard press can date its carbs from a rise (CarbTimeFromRise), so the commit takes
++    // the carb time from here rather than from the button.
++    var carbTime: Int = 0
++        private set
+     var usePercentage: Boolean = false
+     var positiveIOBOnly: Boolean = false
+     private var source: Sources = Sources.WizardDialog
+@@ -302,6 +318,10 @@ class BolusWizard(
+             hasGlucose = status != null,
+         )
+         if (carbsHalvedByRecent50) insulinFromCarbs /= 2.0
++        // From the 3426 app (2026-11-14): only noted here. BG is the wizard BG when one is used, else the latest CGM value.
++        lowBgRecentEntryRule = WizardRecentEntry.applies(persistenceLayer, now, if (wizardBgMgdl > 0.0) wizardBgMgdl else status?.glucose)
++        activeProfilePct = activePct
++        delayedPlan = null
+         insulinFromCOB = if (useCob) (cob / ic) else 0.0
+ 
+         // Insulin from IOB calculation
+@@ -336,6 +356,7 @@ class BolusWizard(
+ 
+         val standingPct = if (usePercentage) totalPercentage else percentageCorrection.toDouble()
+         val percentage = walkingSoonImmediatePercent(walkingSoon, standingPct)
++        immediatePercent = percentage
+         val walkingSoonCutApplied = walkingSoon && percentage < standingPct - 0.5
+         this.walkingSoonHeldUnits = walkingSoonHeldUnits(walkingSoon, standingPct, scaledComponents)
+ 
+@@ -439,6 +460,8 @@ class BolusWizard(
+         if (carbTime != 0) extras.add(rh.gs(InterfacesStrings.wizard_carbs_time, carbTime))
+         if (trendLeftOut) extras.add(rh.gs(InterfacesStrings.wizard_trend_left_out, carbTime))
+         if (carbsHalvedByRecent50) extras.add(rh.gs(InterfacesStrings.wizard_carbs_halved))
++        if (lowBgRecentEntryRule) extras.add(rh.gs(InterfacesStrings.wizard_recent_entry))
++        delayedPlan?.let { extras.add(rh.gs(InterfacesStrings.wizard_delayed_pending, it.heldUnits, it.heldBy.text, it.ic)) }
+         if (hpSafetyApplied) extras.add(rh.gs(InterfacesStrings.wizard_hp_safety, hpSafetyOriginal, hpSafetyAdjusted, hpSafetyCobRemoved))
+         warsawPlan?.let { plan ->
+             extras.add(rh.gs(InterfacesStrings.wizard_warsaw_plan, plan.totalInsulin, plan.numDoses, plan.durationMinutes / 60))
+@@ -804,6 +827,155 @@ class BolusWizard(
+         WarsawScheduleGate.next()
+     }
+ 
++    /**
++     * Works out the [DelayedBolus] plan of this calculation (2026-11-14, per explicit request, from the 3426 app). Call after
++     * [doCalc] and any [useFixedInsulin], before the confirmation and the saved calculation are built. [standardIc] is the
++     * Standard profile's carb ratio now, at 100%: the Low profile is for hypo risk with no carbs, so once it is safe to give
++     * the rest of a meal it is dosed as on Standard. Null (no Standard profile set or found) falls back to this profile's own
++     * carb ratio with the 50% taken off.
++     */
++    suspend fun prepareDelayedBolus(standardIc: Double?) {
++        delayedPlan = null
++        if (!preferences.get(BooleanKey.WizardDelayedBolusEnabled) || carbs <= 0 || suggestedInsulin != null) return
++        if (useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) return
++        val heldBy = when {
++            activeProfilePct == 50 -> DelayedHeldBy.PROFILE_50
++            carbsHalvedByRecent50  -> DelayedHeldBy.RECENT_LOW
++            else                   -> return
++        }
++        val standard = standardIc?.takeIf { it > 0.0 }
++        val fromStandard = standard != null
++        val useIc = standard ?: if (activeProfilePct == 50) ic / 2.0 else ic
++        val held = DelayedBolus.heldUnits(carbs, useIc, insulinFromCarbs, immediatePercent)
++        if (held < ch.bolusStep(max(held, 0.05)) / 2.0) return
++        delayedPlan = DelayedBolusPlan(heldBy, Round.roundTo(held, 0.001), carbs, useIc, fromStandard)
++        aapsLogger.info(
++            LTag.CORE,
++            "Delayed bolus plan: ${heldBy.label} held=${Round.roundTo(held, 0.001)}U carbs=${carbs}g IC=$useIc " +
++                "(${if (fromStandard) "Standard profile" else "own profile, Standard not found"}) carbInsulinNow=$insulinFromCarbs pct=$immediatePercent"
++        )
++    }
++
++    /**
++     * Starts the checks of a [DelayedBolus] after its bolus was given. A newer delayed bolus replaces one still waiting.
++     * ActivityOff reads [LongNonKey.WizardDelayedBolusPendingUntil] while it waits.
++     */
++    suspend fun scheduleDelayedBolus(plan: DelayedBolusPlan, source: Sources) {
++        val token = DelayedScheduleGate.next()
++        val now = dateUtil.now()
++        preferences.put(LongNonKey.WizardDelayedBolusPendingUntil, now + DelayedBolus.PENDING_MINUTES * 60_000L)
++        aapsLogger.info(LTag.CORE, "Delayed bolus: ${plan.heldUnits}U held back by ${plan.heldBy.label}, checks every ${DelayedBolus.POLL_MINUTES} min")
++        delayedNote("Db0 ${warsawNoteAmount(plan.heldUnits)} U held back by ${plan.heldBy.text}, checked every ${DelayedBolus.POLL_MINUTES} min", source)
++        launchDelayedCheck(plan, source, token, attempt = 1, deliveredSoFar = 0.0, dueAt = now + DelayedBolus.POLL_MINUTES * 60_000L)
++    }
++
++    private fun launchDelayedCheck(plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double, dueAt: Long) {
++        appScope.launch {
++            // In steps of at most 2 minutes, so a newer delayed bolus stops this one at once
++            while (true) {
++                if (!DelayedScheduleGate.isCurrent(token)) {
++                    delayedNote("Db${DelayedBolus.checkMinutes(attempt)} replaced by a newer delayed bolus", source)
++                    return@launch
++                }
++                val wait = dueAt - dateUtil.now()
++                if (wait <= 0L) break
++                delay(min(wait, 120_000L))
++            }
++            runDelayedCheck(plan, source, token, attempt, deliveredSoFar)
++        }
++    }
++
++    private suspend fun runDelayedCheck(plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double) {
++        val minutes = DelayedBolus.checkMinutes(attempt)
++        val db = "Db$minutes"
++        val left = max(0.0, plan.heldUnits - deliveredSoFar)
++        val notGiven = "${warsawNoteAmount(left)} U held back by ${plan.heldBy.text} is not given"
++
++        suspend fun finish(note: String) {
++            delayedNote(note, source)
++            if (DelayedScheduleGate.isCurrent(token)) preferences.put(LongNonKey.WizardDelayedBolusPendingUntil, 0L)
++        }
++
++        suspend fun checkAgain(reason: String) {
++            aapsLogger.info(LTag.CORE, "Delayed bolus $db: $reason")
++            if (attempt < DelayedBolus.MAX_ATTEMPTS) {
++                delayedNote("$db wait: $reason", source)
++                launchDelayedCheck(plan, source, token, attempt + 1, deliveredSoFar, dateUtil.now() + DelayedBolus.POLL_MINUTES * 60_000L)
++            } else finish("$db end: $reason after $minutes min; $notGiven")
++        }
++
++        if (loop.runningMode() == RM.Mode.SUPER_BOLUS || runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null) {
++            checkAgain("pump will not take a bolus")
++            return
++        }
++        val now = dateUtil.now()
++        val gs = glucoseStatusProvider.glucoseStatusData
++        if (!DelayedBolus.gateOk(gs?.glucose, gs?.delta, gs?.shortAvgDelta, gs?.longAvgDelta, gs?.let { now - it.date })) {
++            val reason = when {
++                gs == null                                -> "no BG"
++                now - gs.date > DelayedBolus.GATE_MAX_AGE_MS -> "BG ${(now - gs.date) / 60_000L} min old"
++                else                                      -> "BG not over 5.0 and rising (${gateGlucoseText(gs.glucose, gs.delta, gs.shortAvgDelta, profileFunction.getUnits())})"
++            }
++            checkAgain(reason)
++            return
++        }
++        val cob = iobCobCalculator.getCobInfo("DelayedBolus").displayCob ?: 0.0
++        val cobFraction = DelayedBolus.cobFraction(cob, plan.carbs)
++        val raw = DelayedBolus.checkDose(plan.heldUnits, deliveredSoFar, cobFraction)
++        val step = ch.bolusStep(max(raw, 0.05))
++        if (raw < step / 2.0) {
++            aapsLogger.info(LTag.CORE, "Delayed bolus $db: covered, COB $cob of ${plan.carbs} g leaves $raw U")
++            finish("$db covered: carbs on board ${Round.roundTo(cob, 0.1)} of ${plan.carbs} g leave nothing to give")
++            return
++        }
++        // Cut while walking, as the other later doses; the cut part is dropped
++        val walkFactor = walkingFactorNow()
++        val walked = Round.roundTo(raw * walkFactor, step)
++        val capped = cappedFollowUpDose(walked, step)
++        if (capped == null) {
++            checkAgain("insulinReq missing or stale")
++            return
++        }
++        if (capped <= 0.0) {
++            checkAgain("insulinReq cap is below one pump step")
++            return
++        }
++        // Only insulinReq keeps the series going after a dose: carbs absorbed and walking are real reasons to give less
++        val insulinReqLimited = capped < walked - step / 2.0
++        val continues = insulinReqLimited && attempt < DelayedBolus.MAX_ATTEMPTS
++        aapsLogger.info(
++            LTag.CORE,
++            "Delayed bolus $db: giving ${capped}U (held ${plan.heldUnits}U, given before ${deliveredSoFar}U, COB x${Round.roundTo(cobFraction, 0.01)}, " +
++                "walking x$walkFactor, insulinReq-limited=$insulinReqLimited)"
++        )
++        delayedNote("$db ${warsawNoteAmount(capped)} U${if (continues) ", insulinReq-limited, the rest checked again in ${DelayedBolus.POLL_MINUTES} min" else ""}", source)
++        deliverLaterDose(capped, source, rh.gs(InterfacesStrings.wizard_delayed_dose, minutes, plan.heldBy.text), "Delayed bolus") {
++            preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
++            if (continues) launchDelayedCheck(plan, source, token, attempt + 1, deliveredSoFar + capped, dateUtil.now() + DelayedBolus.POLL_MINUTES * 60_000L)
++            else if (DelayedScheduleGate.isCurrent(token)) preferences.put(LongNonKey.WizardDelayedBolusPendingUntil, 0L)
++        }
++    }
++
++    /** A care portal note of a delayed bolus check: "Db5 wait: ...", "Db15 0.80 U", "Db80 end: ...", as in the 3426 app. */
++    private suspend fun delayedNote(text: String, source: Sources) {
++        val timestamp = max(dateUtil.now(), lastWarsawNoteAt + 1)
++        lastWarsawNoteAt = timestamp
++        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
++            therapyEvent = TE(
++                timestamp = timestamp,
++                type = TE.Type.NOTE,
++                note = text,
++                duration = 60_000L,
++                glucoseUnit = profileFunction.getUnits(),
++            ),
++            timestamp = timestamp,
++            action = Action.CAREPORTAL,
++            source = source,
++            note = "Delayed bolus check: $text",
++            listValues = listOf(ValueWithUnit.SimpleString(text.substringBefore(' '))),
++        )
++    }
++
+     suspend fun scheduleLeftoverSplit(
+         requested: Double,
+         delivered: Double,
+@@ -1143,6 +1315,12 @@ class BolusWizard(
+             if (carbsHalvedByRecent50) {
+                 line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_carbs_halved))
+             }
++            if (lowBgRecentEntryRule) {
++                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_recent_entry))
++            }
++            delayedPlan?.let { plan ->
++                line(ConfirmationRole.INFO, rh.gs(InterfacesStrings.wizard_delayed_pending, plan.heldUnits, plan.heldBy.text, plan.ic))
++            }
+             if (hpSafetyApplied) {
+                 line(
+                     ConfirmationRole.INFO,
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRise.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRise.kt
+new file mode 100644
+index 0000000000..9242d4c178
+--- /dev/null
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRise.kt
+@@ -0,0 +1,89 @@
++package app.aaps.core.objects.wizard
++
++import app.aaps.core.data.time.T
++import app.aaps.core.interfaces.db.PersistenceLayer
++import kotlin.coroutines.cancellation.CancellationException
++import kotlin.math.abs
++import kotlin.math.roundToInt
++
++/**
++ * Carb time from an ongoing rise, from the 3426 app (2026-09-26 there; ported 2026-11-14, per explicit request). A
++ * QuickWizard press (and the Bolus Wizard when it opens) partway up a rise dates the carbs back to where the rise began.
++ *
++ * The estimate is where the rise began, from the stored BG readings, plus [LAG_MINUTES] (BG only reacts some minutes after
++ * eating). It is an ESTIMATE: slow (fat / protein) carbs rise late, and a rise from another cause looks the same. Only when:
++ *  - the latest reading is current (within 10 min) and BG is still rising (0.2 mmol/L or more over 5 min, up over 15 min);
++ *  - BG is 1.5 mmol/L or more above where the rise began, at least 15 minutes ago (within 90 minutes);
++ *  - no normal bolus or carb entry in the last 60 minutes ([WizardRecentEntry.firstEntryTime]), so an earlier meal is not
++ *    taken for this one.
++ * Rounded to 5 minutes and limited to -60 min.
++ */
++object CarbTimeFromRise {
++
++    const val LAG_MINUTES = 10
++    const val LOOKBACK_MINUTES = 90L
++    const val MIN_RISE_MGDL = 27.0          // 1.5 mmol/L
++    const val MIN_MINUTES_SINCE_ONSET = 15
++    const val DIP_TOLERANCE_MGDL = 9.0      // 0.5 mmol/L: a bump this small is not the start of an earlier rise
++    const val TROUGH_BAND_MGDL = 3.6        // 0.2 mmol/L: readings this close to the bottom still count as the bottom
++    const val MIN_RECENT_DELTA5_MGDL = 3.6  // 0.2 mmol/L per 5 min
++
++    data class Estimate(val offsetMinutes: Int, val minutesSinceOnset: Int, val riseMgdl: Double)
++
++    /** [readings] are (timestamp ms, mg/dL) pairs in ascending time order. */
++    fun estimateFromSeries(now: Long, readings: List<Pair<Long, Double>>): Estimate? {
++        if (readings.size < 10) return null
++        val last = readings.last()
++        if (now - last.first > T.mins(10).msecs()) return null
++
++        fun valueAround(ts: Long): Double? =
++            readings.minByOrNull { abs(it.first - ts) }?.takeIf { abs(it.first - ts) <= T.mins(3).msecs() }?.second
++
++        val v5 = valueAround(last.first - T.mins(5).msecs()) ?: return null
++        val v15 = valueAround(last.first - T.mins(15).msecs()) ?: return null
++        if (last.second - v5 < MIN_RECENT_DELTA5_MGDL || last.second <= v15) return null
++
++        // Back from now while the series keeps falling going backwards (it was rising), allowing small bumps.
++        var troughValue = last.second
++        var troughIdx = readings.lastIndex
++        var i = readings.lastIndex
++        while (i >= 0) {
++            val (ts, v) = readings[i]
++            if (last.first - ts > T.mins(LOOKBACK_MINUTES).msecs()) break
++            if (v > troughValue + DIP_TOLERANCE_MGDL) break
++            if (v <= troughValue) {
++                troughValue = v
++                troughIdx = i
++            }
++            i--
++        }
++        // The rise began at the latest reading still at the bottom.
++        var onsetIdx = troughIdx
++        for (j in troughIdx..readings.lastIndex) {
++            if (readings[j].second <= troughValue + TROUGH_BAND_MGDL) onsetIdx = j else break
++        }
++        val rise = last.second - troughValue
++        if (rise < MIN_RISE_MGDL) return null
++        val minutesSinceOnset = ((now - readings[onsetIdx].first) / 60_000L).toInt()
++        if (minutesSinceOnset < MIN_MINUTES_SINCE_ONSET) return null
++
++        val raw = -(minutesSinceOnset + LAG_MINUTES)
++        val offset = ((raw / 5.0).roundToInt() * 5).coerceIn(-60, 0)
++        if (offset == 0) return null
++        return Estimate(offset, minutesSinceOnset, rise)
++    }
++
++    /** A failed database read gives no estimate. */
++    suspend fun estimate(persistenceLayer: PersistenceLayer, now: Long): Estimate? = try {
++        if (WizardRecentEntry.firstEntryTime(persistenceLayer, now) != null) null
++        else {
++            val from = now - T.mins(LOOKBACK_MINUTES + 15).msecs()
++            val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true).map { it.timestamp to it.value }
++            estimateFromSeries(now, readings)
++        }
++    } catch (e: CancellationException) {
++        throw e
++    } catch (_: Exception) {
++        null
++    }
++}
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/DelayedBolus.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/DelayedBolus.kt
+new file mode 100644
+index 0000000000..215bb0f0a0
+--- /dev/null
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/DelayedBolus.kt
+@@ -0,0 +1,95 @@
++package app.aaps.core.objects.wizard
++
++import kotlin.concurrent.atomics.AtomicLong
++import kotlin.concurrent.atomics.ExperimentalAtomicApi
++import kotlin.math.max
++
++/**
++ * Delayed bolus, from the 3426 app's DelayedBolusWorker (ported 2026-11-14, per explicit request).
++ *
++ * After a calculator or QuickWizard bolus on a 50% profile, or with the carb insulin halved for a recent low, the carb insulin
++ * that was held back is given later, once BG rises. BG is checked every [POLL_MINUTES] minutes, [MAX_ATTEMPTS] times (5 to
++ * 80 minutes). A check passes with fresh BG over 5.0 mmol/L, delta and short delta over +0.10 and long delta over 0. The dose
++ * is what is still held back, times the share of the carbs still on board, cut while walking, and capped by the loop's
++ * insulinReq. When insulinReq is the limit, the rest waits for the next check.
++ *
++ * Differences from the 3426 app, on purpose:
++ *  - What was held back is the carb insulin only: the carbs at the Standard profile's carb ratio (at 100%), less the carb
++ *    insulin given now, both at the calculator's percent. The 3426 app took a "full need" of (carbs / IC + bolus IOB) less
++ *    the whole dose given, and that ADDED the bolus IOB (held as a positive number), about 2 x IOB too much. Here IOB, BG,
++ *    trend and COB stay with the bolus given now, where the calculator already counted them.
++ *  - The part over max bolus is not in it: that is the carb split's (or nobody's at 50%, as for every split in this app).
++ *  - Walking cuts the dose as for the other later doses here ([delayedDoseWalkingFactor]), not the 3426 app's flat 80%.
++ *  - The walking-soon and falling-BG holds are not triggers: this app already gives those later (split leftover, give rest
++ *    later).
++ */
++object DelayedBolus {
++
++    const val POLL_MINUTES = 5
++    const val MAX_ATTEMPTS = 16
++    /** How long ActivityOff treats a bolus as part of a delayed bolus wait (the 3426 app's SMB-block window). */
++    const val PENDING_MINUTES = 85L
++
++    private const val MGDL_PER_MMOL = 18.0182
++    const val GATE_BG_MGDL = 5.0 * MGDL_PER_MMOL
++    const val GATE_DELTA_MGDL = 0.1 * MGDL_PER_MMOL
++    const val GATE_SHORT_DELTA_MGDL = 0.1 * MGDL_PER_MMOL
++    const val GATE_LONG_DELTA_MGDL = 0.0
++    const val GATE_MAX_AGE_MS = 5 * 60_000L
++
++    /**
++     * Carb insulin held back now, in units. [carbs] at [standardIc] less [carbInsulinNow] (the calculator's own carb insulin,
++     * already on the 50% profile's carb ratio or halved for the recent low), both at [percent]. Never under 0.
++     */
++    fun heldUnits(carbs: Int, standardIc: Double, carbInsulinNow: Double, percent: Double): Double {
++        if (carbs <= 0 || standardIc <= 0.0) return 0.0
++        return max(0.0, (carbs / standardIc - carbInsulinNow) * percent / 100.0)
++    }
++
++    /** True when a check may give insulin: fresh BG over 5.0 mmol/L and all three deltas rising. */
++    fun gateOk(glucoseMgdl: Double?, deltaMgdl: Double?, shortDeltaMgdl: Double?, longDeltaMgdl: Double?, ageMs: Long?): Boolean {
++        if (glucoseMgdl == null || deltaMgdl == null || shortDeltaMgdl == null || longDeltaMgdl == null || ageMs == null) return false
++        return ageMs in 0..GATE_MAX_AGE_MS &&
++            glucoseMgdl > GATE_BG_MGDL &&
++            deltaMgdl > GATE_DELTA_MGDL &&
++            shortDeltaMgdl > GATE_SHORT_DELTA_MGDL &&
++            longDeltaMgdl > GATE_LONG_DELTA_MGDL
++    }
++
++    /** Share of the carbs still on board, 0..1. No carbs entered gives 1. */
++    fun cobFraction(cobNow: Double, carbs: Int): Double = if (carbs > 0) (cobNow / carbs).coerceIn(0.0, 1.0) else 1.0
++
++    /** What a passing check would give before walking and the insulinReq cap: what is left, scaled by the carbs left. */
++    fun checkDose(heldUnits: Double, deliveredSoFar: Double, cobFraction: Double): Double =
++        max(0.0, heldUnits - deliveredSoFar) * cobFraction
++
++    /** Minutes since the bolus for check [attempt] (1-based): the "Db" number in the care portal notes. */
++    fun checkMinutes(attempt: Int): Int = attempt * POLL_MINUTES
++}
++
++/** What the calculator held back for a [DelayedBolus], carried from the confirm to the commit. */
++data class DelayedBolusPlan(
++    val heldBy: DelayedHeldBy,
++    val heldUnits: Double,
++    val carbs: Int,
++    /** The carb ratio the held part was worked out with, and whether it is the Standard profile's (else the fallback). */
++    val ic: Double,
++    val fromStandardProfile: Boolean,
++)
++
++/** Why part of the carb insulin was held back. [label] is the 3426 app's trigger name, kept for the logs. */
++enum class DelayedHeldBy(val label: String, val text: String) {
++    PROFILE_50("profile=50%", "the 50% profile"),
++    RECENT_LOW("recent50Triggered", "the recent low BG rule"),
++}
++
++/** A newer delayed bolus replaces the one waiting, as the 3426 app's single WorkManager job did. */
++@OptIn(ExperimentalAtomicApi::class)
++internal object DelayedScheduleGate {
++
++    private val generation = AtomicLong(0)
++
++    fun next(): Long = generation.addAndFetch(1)
++
++    fun isCurrent(token: Long): Boolean = generation.load() == token
++}
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
+index 9a1a196021..edae074762 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
+@@ -168,6 +168,13 @@ class QuickWizardEntry(
+                 walkingSoonDefault(steps5, steps30, bgMgdl, glucoseStatus?.delta ?: 0.0, steps15) ?: false
+             }
+         }
++        // From the 3426 app (ported 2026-11-14, per explicit request): partway up a rise the carbs are dated back to where the
++        // rise began (CarbTimeFromRise). Only for a button with carbs and no carb time of its own, while the setting is on.
++        // The carb time then shows in the confirmation and the saved calculation, as any carb time does.
++        val riseCarbTime =
++            if (carbTime() == 0 && carbs() > 0 && preferences.get(BooleanKey.OverviewQuickWizardCarbTimeFromRise))
++                CarbTimeFromRise.estimate(persistenceLayer, dateUtil.now())?.offsetMinutes
++            else null
+         val wizard = bolusWizardProvider().doCalc(
+             profile,
+             profileName,
+@@ -186,7 +193,7 @@ class QuickWizardEntry(
+             trend,
+             useAlarm() == ALWAYS,
+             buttonText(),
+-            carbTime(),
++            riseCarbTime ?: carbTime(),
+             positiveIOBOnly = uPositiveIOBOnly,
+             source = Sources.QuickWizard,
+             protein = if (splitFpuBolus()) extra.proteinGrams else 0,
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardRecentEntry.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardRecentEntry.kt
+new file mode 100644
+index 0000000000..8ecdb91284
+--- /dev/null
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardRecentEntry.kt
+@@ -0,0 +1,70 @@
++package app.aaps.core.objects.wizard
++
++import app.aaps.core.data.model.BS
++import app.aaps.core.data.time.T
++import app.aaps.core.interfaces.db.PersistenceLayer
++import kotlin.coroutines.cancellation.CancellationException
++import kotlin.math.floor
++import kotlin.math.min
++import kotlin.math.round
++
++/**
++ * Low-BG "recent entry" rule, from the 3426 app (2026-09-24 there; ported 2026-11-14, per explicit request).
++ *
++ * It applies when ALL of these hold:
++ *  - the BG is under 6.0 mmol/L;
++ *  - a normal bolus or a carb entry was made in the last 60 minutes;
++ *  - every stored reading from 5 minutes before the first such entry until now is under 6.0 mmol/L.
++ *
++ * Then:
++ *  - the Bolus Wizard's COB box starts unticked (COB still holds carbs that entry's bolus already covered, so counting it
++ *    again doses twice). The user can tick it again for that bolus;
++ *  - a QuickWizard press gets 80% of the max bolus that applies ([scaledMaxBolus]), the lower one if the falling-BG
++ *    caution also cuts it.
++ *
++ * "Bolus" is a normal bolus over 0 U only (wizard, QuickWizard, their later parts, manual insulin): the loop's SMBs come
++ * about once a minute and would make the rule true all the time under 6.0.
++ */
++object WizardRecentEntry {
++
++    const val WINDOW_MINUTES = 60L
++    const val LOW_BG_MGDL = 108.1 // 6.0 mmol/L
++    const val MAX_BOLUS_SCALE = 0.8
++
++    /** The earliest normal bolus or carb entry in the last [WINDOW_MINUTES], or null when there is none. */
++    suspend fun firstEntryTime(persistenceLayer: PersistenceLayer, now: Long): Long? {
++        val from = now - T.mins(WINDOW_MINUTES).msecs()
++        val bolusTimes = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = true)
++            .filter { it.type == BS.Type.NORMAL && it.amount > 0.0 }
++            .map { it.timestamp }
++        val carbTimes = persistenceLayer.getCarbsFromTimeToTimeExpanded(from, now, ascending = true)
++            .filter { it.amount > 0.0 }
++            .map { it.timestamp }
++        return (bolusTimes + carbTimes).minOrNull()
++    }
++
++    /** True when every stored reading from 5 minutes before [firstEntry] until [now] is under 6.0 (no readings: false). */
++    fun stayedLow(readingsMgdl: List<Double>): Boolean = readingsMgdl.isNotEmpty() && readingsMgdl.all { it < LOW_BG_MGDL }
++
++    /** [bgMgdl] null or 0 (no BG at all) never starts the rule. A failed database read counts as not applying. */
++    suspend fun applies(persistenceLayer: PersistenceLayer, now: Long, bgMgdl: Double?): Boolean {
++        if (bgMgdl == null || bgMgdl <= 0.0 || bgMgdl >= LOW_BG_MGDL) return false
++        return try {
++            val first = firstEntryTime(persistenceLayer, now) ?: return false
++            val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(first - T.mins(5).msecs(), now, ascending = true).map { it.value }
++            stayedLow(readings)
++        } catch (e: CancellationException) {
++            throw e
++        } catch (_: Exception) {
++            false
++        }
++    }
++
++    /** [base] x0.8, rounded DOWN to the pump step: never under one step, never over [base]. */
++    fun scaledMaxBolus(base: Double, bolusStep: Double): Double {
++        val step = if (bolusStep > 0.0) bolusStep else 0.05
++        val scaled = floor(base * MAX_BOLUS_SCALE / step + 1e-6) * step
++        val rounded = round(scaled * 1000.0) / 1000.0
++        return min(base, rounded.coerceAtLeast(min(base, step)))
++    }
++}
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRiseTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRiseTest.kt
+new file mode 100644
+index 0000000000..32488d0d89
+--- /dev/null
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/CarbTimeFromRiseTest.kt
+@@ -0,0 +1,49 @@
++package app.aaps.core.objects.wizard
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertNotNull
++import kotlin.test.assertNull
++
++class CarbTimeFromRiseTest {
++
++    private val now = 1_800_000_000_000L
++    private val mmol = 18.0182
++
++    /** One reading every 5 minutes, oldest first, the last one at [now]. */
++    private fun series(vararg mmolValues: Double): List<Pair<Long, Double>> =
++        mmolValues.mapIndexed { i, v -> now - (mmolValues.size - 1 - i) * 5 * 60_000L to v * mmol }
++
++    @Test
++    fun aRiseThatBeganThirtyMinutesAgoDatesTheCarbsForty() {
++        // Flat at 5.5, then rising from 30 minutes ago to 8.0
++        val readings = series(5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.9, 6.4, 6.9, 7.3, 7.7, 8.0)
++        val estimate = assertNotNull(CarbTimeFromRise.estimateFromSeries(now, readings))
++        assertEquals(30, estimate.minutesSinceOnset)
++        assertEquals(-40, estimate.offsetMinutes)
++    }
++
++    @Test
++    fun noEstimateWhenTheRiseIsTooSmallOrHasStopped() {
++        // Up 1.0 only
++        assertNull(CarbTimeFromRise.estimateFromSeries(now, series(5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.7, 5.9, 6.1, 6.3, 6.4, 6.5)))
++        // Up 2.5 but flat over the last 5 minutes
++        assertNull(CarbTimeFromRise.estimateFromSeries(now, series(5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 6.2, 7.0, 7.6, 8.0, 8.0, 8.0)))
++    }
++
++    @Test
++    fun noEstimateWithOldOrTooFewReadings() {
++        val readings = series(5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.5, 5.9, 6.4, 6.9, 7.3, 7.7, 8.0)
++        assertNull(CarbTimeFromRise.estimateFromSeries(now + 11 * 60_000L, readings))
++        assertNull(CarbTimeFromRise.estimateFromSeries(now, readings.takeLast(9)))
++    }
++
++    @Test
++    fun theOffsetStopsAtMinusSixty() {
++        // Rising slowly for 75 minutes
++        val rising = (0..15).map { 5.0 + it * 0.2 }.toDoubleArray()
++        val readings = series(4.9, 4.9, 4.9, *rising)
++        val estimate = assertNotNull(CarbTimeFromRise.estimateFromSeries(now, readings))
++        assertEquals(-60, estimate.offsetMinutes)
++    }
++}
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/DelayedBolusTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/DelayedBolusTest.kt
+new file mode 100644
+index 0000000000..e55dcf3868
+--- /dev/null
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/DelayedBolusTest.kt
+@@ -0,0 +1,66 @@
++package app.aaps.core.objects.wizard
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++import kotlin.test.assertTrue
++
++class DelayedBolusTest {
++
++    private val mmol = 18.0182
++
++    @Test
++    fun theHeldPartIsTheCarbsAtTheStandardRatioLessTheCarbInsulinGivenNow() {
++        // 30 g, Standard IC 5.0 = 6.0 U; on a 50% profile (IC 10) the calculator gave 3.0 U of carb insulin, at 80%
++        assertEquals(2.4, DelayedBolus.heldUnits(carbs = 30, standardIc = 5.0, carbInsulinNow = 3.0, percent = 80.0), 1e-9)
++        // Live, 50% on Profile70: own IC 6.8 at 100% vs Standard 4.76. The Standard ratio gives about 43% more
++        val onLow = DelayedBolus.heldUnits(30, 6.8, 30 / (6.8 * 2), 100.0)
++        val onStandard = DelayedBolus.heldUnits(30, 4.76, 30 / (6.8 * 2), 100.0)
++        assertTrue(onStandard > onLow * 1.6)
++    }
++
++    @Test
++    fun bolusIobIsNotPartOfTheHeldPart() {
++        // The 3426 app added bolus IOB here (about 2 x IOB too much). The held part depends on the carbs only:
++        // Live 11:16, 12 g at IC 5.7 with 0.47 U IOB, the 3426 app's "full need" was (12 / 5.7 + 0.47) x 0.8 = 2.06 U.
++        assertEquals((12 / 5.7 - 1.05) * 0.8, DelayedBolus.heldUnits(12, 5.7, 1.05, 80.0), 1e-9)
++    }
++
++    @Test
++    fun nothingIsHeldWithoutCarbsOrWhenTheGivenCarbInsulinCoversIt() {
++        assertEquals(0.0, DelayedBolus.heldUnits(0, 5.0, 0.0, 100.0))
++        assertEquals(0.0, DelayedBolus.heldUnits(30, 0.0, 0.0, 100.0))
++        assertEquals(0.0, DelayedBolus.heldUnits(30, 10.0, 4.0, 100.0))
++    }
++
++    @Test
++    fun theGateNeedsFreshBgOverFiveAndAllDeltasRising() {
++        assertTrue(DelayedBolus.gateOk(5.3 * mmol, 0.15 * mmol, 0.12 * mmol, 0.01 * mmol, 60_000L))
++        // BG not over 5.0
++        assertFalse(DelayedBolus.gateOk(5.0 * mmol, 0.15 * mmol, 0.12 * mmol, 0.01 * mmol, 60_000L))
++        // delta exactly 0.10 is not over it
++        assertFalse(DelayedBolus.gateOk(6.0 * mmol, 0.10 * mmol, 0.12 * mmol, 0.01 * mmol, 60_000L))
++        // long delta not rising (the 3426 app's 19 Sep 2026 rule: LD over 0)
++        assertFalse(DelayedBolus.gateOk(6.0 * mmol, 0.15 * mmol, 0.12 * mmol, 0.0, 60_000L))
++        // BG older than 5 minutes, or missing
++        assertFalse(DelayedBolus.gateOk(6.0 * mmol, 0.15 * mmol, 0.12 * mmol, 0.01 * mmol, 6 * 60_000L))
++        assertFalse(DelayedBolus.gateOk(null, 0.15 * mmol, 0.12 * mmol, 0.01 * mmol, 60_000L))
++    }
++
++    @Test
++    fun theDoseIsWhatIsLeftScaledByTheCarbsStillOnBoard() {
++        assertEquals(0.5, DelayedBolus.cobFraction(15.0, 30))
++        assertEquals(1.0, DelayedBolus.cobFraction(40.0, 30))
++        assertEquals(0.0, DelayedBolus.cobFraction(-1.0, 30))
++        assertEquals(1.0, DelayedBolus.cobFraction(10.0, 0))
++        // 2.4 U held, 0.8 U given at an earlier insulinReq-limited check, half the carbs left
++        assertEquals(0.8, DelayedBolus.checkDose(2.4, 0.8, 0.5), 1e-9)
++        assertEquals(0.0, DelayedBolus.checkDose(2.4, 3.0, 1.0))
++    }
++
++    @Test
++    fun checksRunEveryFiveMinutesForEightyMinutes() {
++        assertEquals(5, DelayedBolus.checkMinutes(1))
++        assertEquals(80, DelayedBolus.checkMinutes(DelayedBolus.MAX_ATTEMPTS))
++    }
++}
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WizardRecentEntryTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WizardRecentEntryTest.kt
+new file mode 100644
+index 0000000000..af466597b1
+--- /dev/null
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WizardRecentEntryTest.kt
+@@ -0,0 +1,29 @@
++package app.aaps.core.objects.wizard
++
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++import kotlin.test.assertTrue
++
++class WizardRecentEntryTest {
++
++    @Test
++    fun bgMustHaveStayedUnderSixSinceTheEntry() {
++        assertTrue(WizardRecentEntry.stayedLow(listOf(100.0, 95.0, 104.0)))
++        assertFalse(WizardRecentEntry.stayedLow(listOf(100.0, 110.0, 104.0)))
++        // No readings at all never starts the rule
++        assertFalse(WizardRecentEntry.stayedLow(emptyList()))
++    }
++
++    @Test
++    fun maxBolusIsCutToEightyPercentDownToThePumpStep() {
++        assertEquals(2.4, WizardRecentEntry.scaledMaxBolus(3.0, 0.05), 1e-9)
++        // 2.5 x 0.8 = 2.0
++        assertEquals(2.0, WizardRecentEntry.scaledMaxBolus(2.5, 0.1), 1e-9)
++        // 2.6 x 0.8 = 2.08, down to the 0.1 step
++        assertEquals(2.0, WizardRecentEntry.scaledMaxBolus(2.6, 0.1), 1e-9)
++        // Never under one step, never over the base
++        assertEquals(0.05, WizardRecentEntry.scaledMaxBolus(0.05, 0.05), 1e-9)
++        assertEquals(0.04, WizardRecentEntry.scaledMaxBolus(0.04, 0.05), 1e-9)
++    }
++}
+diff --git a/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt b/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
+index 77bb7fe93f..ab02bd9dde 100644
+--- a/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
++++ b/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
+@@ -77,6 +77,8 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+ import app.aaps.core.objects.wizard.SPLIT_LEFTOVER_INTERVAL_MINUTES
+ import app.aaps.core.objects.wizard.WizardDropTrendCaution
+ import app.aaps.core.objects.wizard.dropTrendCautionNow
++import app.aaps.core.objects.wizard.DelayedBolusPlan
++import app.aaps.core.objects.wizard.WizardRecentEntry
+ import kotlin.math.min
+ 
+ /**
+@@ -175,6 +177,8 @@ class MasterActionExecutorImpl(
+         val splitRapidFall: Boolean = false,
+         val splitOverMax: Boolean = true,
+         val splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES,
++        // Carb insulin held back by a 50% profile or a recent low, given later (DelayedBolus, 2026-11-14)
++        val delayedPlan: DelayedBolusPlan? = null,
+         // Who it was prepared for (null: the master itself) and the lowest role its content needs. Only that caller
+         // may commit it, and only while its role still allows it (see RemoteCaller).
+         val caller: RemoteCaller? = null,
+@@ -284,6 +288,12 @@ class MasterActionExecutorImpl(
+ 
+     private fun smbBeingDelivered() = MasterActionExecutor.PrepareResult.Error(rh.gs(ImplementationStrings.smb_being_delivered))
+ 
++    /**
++     * The delayed bolus works out what was held back with the running profile's own carb ratio (the 50% taken off): this
++     * app has no Standard profile role. The 3426-based fork uses the Standard profile's ratio here.
++     */
++    private fun standardProfileIcNow(): Double? = null
++
+     override suspend fun prepareQuickWizard(guid: String, caller: RemoteCaller?): MasterActionExecutor.PrepareResult {
+         // Reject before plugins are wired up: a remote prepare (client-control) can land while the master is still
+         // initializing — before ConfigBuilder.initialize() ran verifySelectionInCategories(). At that point activeAPS
+@@ -315,8 +325,15 @@ class MasterActionExecutorImpl(
+         // commit. The button works the caution out again inside doCalc with the same live data.
+         val caution = dropTrendCautionNow(actualBg.value, glucoseStatusProvider, preferences, iobCobCalculator, persistenceLayer, dateUtil)
+         val ownMax = entry.maxBolus().takeIf { it >= 0.1 }?.coerceAtMost(60.0)
+-        val buttonMax = if (caution) WizardDropTrendCaution.scaledMaxBolus(ownMax ?: savedMaxBolus, pump.bolusStepSize(ownMax ?: savedMaxBolus))
+-        else ownMax
++        // From the 3426 app (2026-11-14, per explicit request): the low-BG recent-entry rule cuts this press's max bolus to 80%,
++        // the lower one when the falling-BG caution also cuts it (WizardRecentEntry).
++        val recentEntry = WizardRecentEntry.applies(persistenceLayer, dateUtil.now(), actualBg.value)
++        val baseMax = ownMax ?: savedMaxBolus
++        val baseStep = pump.bolusStepSize(baseMax)
++        var cutMax = baseMax
++        if (caution) cutMax = WizardDropTrendCaution.scaledMaxBolus(baseMax, baseStep)
++        if (recentEntry) cutMax = minOf(cutMax, WizardRecentEntry.scaledMaxBolus(baseMax, baseStep))
++        val buttonMax = if (caution || recentEntry) cutMax else ownMax
+         if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, buttonMax)
+         val wizard = try {
+             entry.doCalc(profile, profileName, actualBg)
+@@ -325,6 +342,7 @@ class MasterActionExecutorImpl(
+         }
+         wizard.splitOverMax = entry.splitOverMax()
+         wizard.splitIntervalMinutes = entry.splitIntervalMinutes()
++        wizard.prepareDelayedBolus(standardProfileIcNow())
+ 
+         val carbsAfterConstraints = constraintChecker.applyCarbsConstraints(ConstraintObject(entry.carbs(), aapsLogger)).value()
+         if (carbsAfterConstraints != entry.carbs()) return refused(rh.gs(CoreUiStrings.wizard_carbs_constraint))
+@@ -354,7 +372,8 @@ class MasterActionExecutorImpl(
+             ),
+             wizard.timeStamp,
+             entry,
+-            carbTimeMinutes = entry.carbTime(),
++            // The wizard's carb time: the button's own, or dated from a rise (CarbTimeFromRise, 2026-11-14)
++            carbTimeMinutes = wizard.carbTime,
+             notes = entry.buttonText(),
+             warsawPlan = wizard.warsawPlan,
+             warsawIobBaseline = wizard.warsawIobBaseline,
+@@ -364,6 +383,7 @@ class MasterActionExecutorImpl(
+             splitRapidFall = wizard.rapidFallForSplit,
+             splitOverMax = wizard.splitOverMax,
+             splitIntervalMinutes = wizard.splitIntervalMinutes,
++            delayedPlan = wizard.delayedPlan,
+             caller = caller,
+             requiredRole = ClientRole.MealAssistant,
+             smbPause = pause.takeIf { givesInsulin },
+@@ -382,7 +402,7 @@ class MasterActionExecutorImpl(
+                 eCarbsGrams = eCarbsGrams,
+                 eCarbsDelayMinutes = if (eCarbsGrams > 0) entry.eCarbsDelayMinutes() else 0,
+                 eCarbsDurationHours = if (eCarbsGrams > 0) entry.eCarbsDurationHours() else 0,
+-                carbTimeMinutes = entry.carbTime(),
++                carbTimeMinutes = wizard.carbTime,
+                 alarm = entry.useAlarm() == QuickWizardEntry.ALWAYS && entry.carbTime() > 0,
+                 maxBolus = buttonMax ?: constraintChecker.getMaxBolusAllowed().value(),
+                 bolusStep = pump.bolusStepSize(wizard.insulinAfterConstraints),
+@@ -467,6 +487,8 @@ class MasterActionExecutorImpl(
+         }
+         wizard.splitOverMax = inputs.splitOverMax
+         wizard.splitIntervalMinutes = inputs.splitIntervalMinutes.coerceIn(1, 60)
++        // After useFixedInsulin: a typed dose holds nothing back (prepareDelayedBolus checks it)
++        wizard.prepareDelayedBolus(standardProfileIcNow())
+         // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
+         // Commit applies the same cap again, so the pump never sees the uncapped amount.
+         val insulinAfterConstraints = wizard.insulinAfterConstraints
+@@ -514,6 +536,7 @@ class MasterActionExecutorImpl(
+                 splitRapidFall = wizard.rapidFallForSplit,
+                 splitOverMax = wizard.splitOverMax,
+                 splitIntervalMinutes = wizard.splitIntervalMinutes,
++                delayedPlan = wizard.delayedPlan,
+                 caller = caller,
+                 requiredRole = ClientRole.MealAssistant,
+                 smbPause = pause.takeIf { givesInsulin }
+@@ -965,6 +988,8 @@ class MasterActionExecutorImpl(
+                 splitOverMax = p.splitOverMax,
+                 intervalMinutes = p.splitIntervalMinutes,
+             )
++            // The carb insulin a 50% profile or a recent low held back, given once BG rises (DelayedBolus, 2026-11-14)
++            p.delayedPlan?.let { plan -> bolusWizardProvider().scheduleDelayedBolus(plan, source) }
+         } else {
+             bolusWizardProvider().cancelLeftoverSplit()
+         }
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt
+index fb9d383c23..d768632ca5 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt
+@@ -25,6 +25,9 @@ import app.aaps.core.interfaces.insulin.ConcentrationHelper
+ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+ import app.aaps.core.interfaces.iob.IobCobCalculator
+ import app.aaps.core.interfaces.logging.AAPSLogger
++import app.aaps.core.interfaces.logging.LTag
++import app.aaps.core.objects.wizard.CarbTimeFromRise
++import app.aaps.core.objects.wizard.WizardRecentEntry
+ import app.aaps.core.interfaces.plugin.ActivePlugin
+ import app.aaps.core.interfaces.profile.ProfileFunction
+ import app.aaps.core.interfaces.profile.ProfileRepository
+@@ -140,6 +143,8 @@ class WizardDialogViewModel(
+     private var maxBolusOverridden = false
+     private var maxBolusTouched = false
+     private var walkingSoonTouched = false
++    /** COB started unticked by the low-BG recent-entry rule, untouched since (WizardRecentEntry, 2026-11-14) */
++    private var cobOffForRecentEntry = false
+     private var mealBeforeExtra: Triple<Int, Int, Int>? = null
+     private var manualExtraFat: Int? = null
+     private var manualExtraProtein: Int? = null
+@@ -258,6 +263,14 @@ class WizardDialogViewModel(
+         val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round()
+         val totalIOB = bolusIob.iob + basalIob.basaliob
+ 
++        // From the 3426 app (2026-11-14, per explicit request): BG under 6.0 since a bolus or carbs in the last hour starts COB
++        // unticked, as COB still holds carbs that bolus covered. Ticking it counts COB for this bolus. Not saved as the default.
++        cobOffForRecentEntry = useCOB && fixedInsulin == null && WizardRecentEntry.applies(persistenceLayer, dateUtil.now(), actualBg?.value)
++        val startCob = useCOB && !cobOffForRecentEntry
++        // Carbs dated from the rise the calculator opens in (CarbTimeFromRise, from the 3426 app, 2026-11-14)
++        val riseCarbTime = if (fixedInsulin == null) CarbTimeFromRise.estimate(persistenceLayer, dateUtil.now())?.offsetMinutes else null
++        if (riseCarbTime != null) aapsLogger.info(LTag.UI, "Wizard: carb time $riseCarbTime min from the rise")
++
+         val cantDeliverBolus = runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null
+         // An AAPSCLIENT always delivers via the master (deliverManualWizard), so it is NEVER forced record-only;
+         // only a master's own can't-deliver conditions force the local record-only log (matches Insulin/Treatment dialog).
+@@ -271,7 +284,7 @@ class WizardDialogViewModel(
+                 carbs = initialCarbs ?: 0,
+                 percentage = percentage,
+                 directCorrection = 0.0,
+-                carbTime = 0,
++                carbTime = riseCarbTime ?: 0,
+                 notes = initialNotes ?: "",
+                 selectedProfileIndex = 0,
+                 // Toggles
+@@ -280,7 +293,7 @@ class WizardDialogViewModel(
+                 useTT = preferences.get(BooleanNonKey.WizardIncludeTt),
+                 useTrend = useTrend,
+                 useIOB = preferences.get(BooleanNonKey.WizardIncludeIob) || useCOB,
+-                useCOB = useCOB,
++                useCOB = startCob,
+                 splitFpuBolus = preferences.get(BooleanNonKey.WizardSplitFpuBolus),
+                 // The meal type from the last confirmed meal calculation
+                 carbsType = CarbsType.fromName(preferences.get(StringNonKey.WizardCarbsType)),
+@@ -576,6 +589,7 @@ class WizardDialogViewModel(
+ 
+     fun toggleCOB(checked: Boolean) {
+         if (uiState.value.insulinOnly) return
++        cobOffForRecentEntry = false
+         _uiState.update {
+             it.copy(
+                 useCOB = checked,
+@@ -619,7 +633,7 @@ class WizardDialogViewModel(
+         _uiState.update {
+             it.copy(
+                 useTrend = useTrend,
+-                useCOB = useCOB,
++                useCOB = useCOB && !cobOffForRecentEntry,
+                 useBolusAdvisor = useBolusAdvisor,
+                 percentage = percentage ?: it.percentage
+             )
+@@ -850,7 +864,8 @@ class WizardDialogViewModel(
+ 
+     fun savePreferences() {
+         val state = uiState.value
+-        preferences.put(BooleanNonKey.WizardIncludeCob, state.useCOB)
++        // An untick by the low-BG recent-entry rule is for this bolus only, not the saved default
++        if (!cobOffForRecentEntry) preferences.put(BooleanNonKey.WizardIncludeCob, state.useCOB)
+         preferences.put(BooleanNonKey.WizardIncludeTrend, state.useTrend)
+     }
+ 
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/search/BuiltInSearchables.kt b/ui/src/commonMain/kotlin/app/aaps/ui/search/BuiltInSearchables.kt
+index cd8e2608d3..8b00e76a97 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/search/BuiltInSearchables.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/search/BuiltInSearchables.kt
+@@ -311,7 +311,9 @@ class BuiltInSearchables(
+             BooleanKey.WizardDefaultSmallMeal,
+             BooleanKey.WizardDefaultAutoFpu,
+             BooleanKey.WizardSplitOverMaxBolus,
+-            IntKey.WizardSplitIntervalMinutes
++            IntKey.WizardSplitIntervalMinutes,
++            BooleanKey.WizardDelayedBolusEnabled,
++            BooleanKey.OverviewQuickWizardCarbTimeFromRise
+         ),
+         icon = IcCalculator
+     )

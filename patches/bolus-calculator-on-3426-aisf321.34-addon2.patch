@@ -1,0 +1,45 @@
+diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
+index 101b052e43..66bb2c2781 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/CarbsDialog.kt
+@@ -26,7 +26,6 @@ import app.aaps.core.interfaces.profile.ProfileUtil
+ import app.aaps.core.interfaces.protection.ProtectionCheck
+ import app.aaps.core.interfaces.protection.ProtectionCheck.Protection.BOLUS
+ import app.aaps.core.interfaces.pump.DetailedBolusInfo
+-import app.aaps.core.interfaces.pump.ScheduledDoseSupersession
+ import app.aaps.core.interfaces.queue.Callback
+ import app.aaps.core.interfaces.queue.CommandQueue
+ import app.aaps.core.interfaces.resources.ResourceHelper
+@@ -391,7 +390,8 @@ class CarbsDialog : DialogFragmentWithDate() {
+                                 } else {
+                                     if (preferences.get(BooleanKey.OverviewUseBolusReminder) && remindBolus)
+                                         automation.scheduleAutomationEventBolusReminder()
+-                                    ScheduledDoseSupersession.bump()
++                                    // Carbs alone no longer replace waiting carb-split / protein-fat doses (2026-11-14):
++                                    // extra carbs only add to what is needed. A bolus still replaces them.
+                                 }
+                             }
+                         })
+diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
+index 9a8bd7d468..cdf603fb7b 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/TreatmentDialog.kt
+@@ -198,7 +198,8 @@ class TreatmentDialog : DialogFragmentWithDate() {
+                                 source = Sources.TreatmentDialog,
+                                 note = if (carbsAfterConstraints != 0) rh.gs(app.aaps.core.ui.R.string.record) else ""
+                             ).subscribe()
+-                        if (detailedBolusInfo.insulin > 0 || detailedBolusInfo.carbs > 0) ScheduledDoseSupersession.bump()
++                        // Carbs alone no longer replace waiting carb-split / protein-fat doses (2026-11-14)
++                        if (detailedBolusInfo.insulin > 0) ScheduledDoseSupersession.bump()
+                     } else {
+                         if (detailedBolusInfo.insulin > 0) {
+                             uel.log(
+@@ -225,7 +226,7 @@ class TreatmentDialog : DialogFragmentWithDate() {
+                                     action = action,
+                                     source = Sources.TreatmentDialog
+                                 ).subscribe()
+-                                ScheduledDoseSupersession.bump()
++                                // Carbs alone no longer replace waiting carb-split / protein-fat doses (2026-11-14)
+                             }
+                         }
+                     }

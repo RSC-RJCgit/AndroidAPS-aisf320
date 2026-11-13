@@ -1,0 +1,175 @@
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCaution.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCaution.kt
+index bdfe8348f6..ee17d2f542 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCaution.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCaution.kt
+@@ -1,5 +1,6 @@
+ package app.aaps.core.objects.wizard
+ 
++import kotlin.math.abs
+ import kotlin.math.floor
+ import kotlin.math.min
+ import kotlin.math.round
+@@ -15,6 +16,14 @@ import kotlin.math.round
+  * under 5.5 mmol. A rise under 0.1 mmol counts as 0.1. The 3.0 figure is from one episode and is not proven for a full
+  * meal dose.
+  *
++ * 2026-11-14, per explicit request: three more paths, for when the loop would soon switch to the 50% profile but has not
++ * yet (a meal's carbs stop prepare Set50% firing, so it may never switch). Their limits are the loop's own:
++ * Path 3 is prepare Set50% block 3: glucose under 5.0 mmol and delta at or below -0.05 mmol.
++ * Path 4 is prepare Set50% block 4: 21:00 to midnight, glucose at or under 7.0 mmol, delta at or below -0.20 and short
++ * delta at or below -0.10 mmol.
++ * Path 5 is ActivityProf50%: the 6.8 mmol activity temp target running (15 minutes or longer, so not a short
++ * post-bolus one), glucose at or under 8.5 mmol and delta at or below +0.10 mmol.
++ *
+  * Both the max bolus ([scaledMaxBolus], for this calculation and its commit) and the wizard percent are halved. The
+  * fat and protein plan is left as it is. Later doses are left to their own checks.
+  */
+@@ -30,6 +39,27 @@ object WizardDropTrendCaution {
+     const val IOB_PER_MMOL_RISE = 3.0
+     private const val MMOL_TO_MGDL = 18.0182
+ 
++    // Path 3 (prepare Set50% block 3)
++    const val LOW_FALL_BG_MGDL = 90.1 // 5.0 mmol
++    const val LOW_FALL_DELTA_MGDL = -0.90 // -0.05 mmol
++    // Path 4 (prepare Set50% block 4)
++    const val EVENING_START_MINUTE = 21 * 60
++    const val EVENING_BG_MGDL = 126.1 // 7.0 mmol
++    const val EVENING_DELTA_MGDL = -3.60 // -0.20 mmol
++    const val EVENING_SDELTA_MGDL = -1.80 // -0.10 mmol
++    // Path 5 (ActivityProf50%)
++    const val ACTIVITY_BG_MGDL = 153.1 // 8.5 mmol
++    const val ACTIVITY_DELTA_MGDL = 1.8 // +0.1 mmol
++    const val ACTIVITY_TT_MIN_DURATION_MS = 15 * 60_000L
++
++    /**
++     * True when a temp target with [lowTargetMgdl] and [durationMs] is the 6.8 mmol/L activity target. 6.8 x 18.0 is the
++     * value the old app stored; this app may store 6.8 x its own factor. A shorter one is a post-bolus target, not activity.
++     */
++    fun isActivityTempTarget(lowTargetMgdl: Double, durationMs: Long): Boolean =
++        durationMs >= ACTIVITY_TT_MIN_DURATION_MS &&
++            (abs(lowTargetMgdl - 6.8 * 18.0) <= 0.001 || abs(lowTargetMgdl - 6.8 * MMOL_TO_MGDL) <= 0.001)
++
+     fun iobDisproportionateToRise(iobUnits: Double, bgRiseMgdl: Double): Boolean {
+         val riseMmol = (bgRiseMgdl / MMOL_TO_MGDL).coerceAtLeast(0.1)
+         return iobUnits > riseMmol * IOB_PER_MMOL_RISE
+@@ -42,11 +72,18 @@ object WizardDropTrendCaution {
+         hp1Mmol: Double?,
+         iobUnits: Double,
+         bgRiseMgdl: Double,
++        /** Minutes since local midnight; null skips path 4. */
++        minuteOfDay: Int? = null,
++        activityTempTarget: Boolean = false,
+     ): Boolean {
+         val fastFall = delta <= DELTA_THRESHOLD_MGDL && shortAvgDelta <= SDELTA_THRESHOLD_MGDL
+         val lowOrPredictedLow = bgMgdl < BGL_THRESHOLD_MGDL || (hp1Mmol != null && hp1Mmol < HP1_THRESHOLD_MMOL)
+         val insulinHighForRise = bgMgdl < HALF_ONLY_BELOW_MGDL && iobDisproportionateToRise(iobUnits, bgRiseMgdl)
+-        return (fastFall && lowOrPredictedLow) || insulinHighForRise
++        val lowAndFalling = bgMgdl < LOW_FALL_BG_MGDL && delta <= LOW_FALL_DELTA_MGDL
++        val eveningFall = minuteOfDay != null && minuteOfDay >= EVENING_START_MINUTE &&
++            bgMgdl <= EVENING_BG_MGDL && delta <= EVENING_DELTA_MGDL && shortAvgDelta <= EVENING_SDELTA_MGDL
++        val activity = activityTempTarget && bgMgdl <= ACTIVITY_BG_MGDL && delta <= ACTIVITY_DELTA_MGDL
++        return (fastFall && lowOrPredictedLow) || insulinHighForRise || lowAndFalling || eveningFall || activity
+     }
+ 
+     /** Half of [base], rounded down to the pump step, at least one step and never above [base]. */
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
+index a44bed333d..3f226914a4 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
+@@ -1,5 +1,6 @@
+ package app.aaps.core.objects.wizard
+ 
++import app.aaps.core.data.time.SystemTimeZone
+ import app.aaps.core.data.time.T
+ import app.aaps.core.interfaces.configuration.Config
+ import app.aaps.core.interfaces.db.PersistenceLayer
+@@ -7,6 +8,7 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+ import app.aaps.core.interfaces.iob.IobCobCalculator
+ import app.aaps.core.interfaces.plugin.ActivePlugin
+ import app.aaps.core.interfaces.utils.DateUtil
++import app.aaps.core.interfaces.utils.MidnightTime
+ import app.aaps.core.keys.LongNonKey
+ import app.aaps.core.keys.interfaces.Preferences
+ import app.aaps.core.objects.extensions.round
+@@ -32,6 +34,7 @@ suspend fun dropTrendCautionNow(
+     val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
+     val from = dateUtil.now() - T.mins(BG_RISE_WINDOW_MINUTES).msecs()
+     val recentMin = persistenceLayer.getBgReadingsDataFromTimeToTime(from, dateUtil.now(), ascending = true).minOfOrNull { it.value }
++    val tt = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
+     return WizardDropTrendCaution.applies(
+         delta = glucose.delta,
+         shortAvgDelta = glucose.shortAvgDelta,
+@@ -39,6 +42,8 @@ suspend fun dropTrendCautionNow(
+         hp1Mmol = hp1Mmol,
+         iobUnits = bolusIob + basalIob,
+         bgRiseMgdl = if (recentMin == null) 0.0 else bgMgdl - recentMin,
++        minuteOfDay = MidnightTime.secondsFromMidnight(dateUtil.now(), SystemTimeZone.current()) / 60,
++        activityTempTarget = tt != null && WizardDropTrendCaution.isActivityTempTarget(tt.lowTarget, tt.duration),
+     )
+ }
+ 
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCautionTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCautionTest.kt
+index e0c04cef96..f5ee9e4e5a 100644
+--- a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCautionTest.kt
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WizardDropTrendCautionTest.kt
+@@ -67,11 +67,12 @@ class WizardDropTrendCautionTest {
+ 
+     @Test
+     fun aThinFallDoesNotCount() {
++        // 2026-11-14: was at 3.7 mmol, which path 3 (under 5.0 and falling) now catches; 5.3 mmol is above it
+         assertFalse(
+             WizardDropTrendCaution.applies(
+                 delta = -1.4,
+                 shortAvgDelta = -7.0,
+-                bgMgdl = 66.0,
++                bgMgdl = 95.0,
+                 hp1Mmol = 3.0,
+                 iobUnits = 0.0,
+                 bgRiseMgdl = 40.0,
+@@ -79,6 +80,46 @@ class WizardDropTrendCautionTest {
+         )
+     }
+ 
++    @Test
++    fun underFiveAndSlowlyFallingCounts() {
++        // Path 3, prepare Set50% block 3: under 5.0 mmol with delta -0.05
++        assertTrue(WizardDropTrendCaution.applies(delta = -0.9, shortAvgDelta = 0.0, bgMgdl = 88.0, hp1Mmol = 6.0, iobUnits = 0.0, bgRiseMgdl = 40.0))
++        // Flat under 5.0, or falling at exactly 5.0: no
++        assertFalse(WizardDropTrendCaution.applies(delta = -0.5, shortAvgDelta = 0.0, bgMgdl = 88.0, hp1Mmol = 6.0, iobUnits = 0.0, bgRiseMgdl = 40.0))
++        assertFalse(WizardDropTrendCaution.applies(delta = -0.9, shortAvgDelta = 0.0, bgMgdl = 90.2, hp1Mmol = 6.0, iobUnits = 0.0, bgRiseMgdl = 40.0))
++    }
++
++    @Test
++    fun anEveningFallUnderSevenCounts() {
++        // Path 4, prepare Set50% block 4: 6.5 mmol, delta -0.20, short delta -0.10, HP1 still 5.5 (path 1 would miss it)
++        fun at(minute: Int?, bg: Double = 6.5 * 18.0182) = WizardDropTrendCaution.applies(
++            delta = -3.6, shortAvgDelta = -1.8, bgMgdl = bg, hp1Mmol = 5.5, iobUnits = 0.0, bgRiseMgdl = 40.0, minuteOfDay = minute,
++        )
++        assertTrue(at(21 * 60))
++        assertTrue(at(23 * 60 + 59))
++        assertFalse(at(20 * 60 + 59))
++        assertFalse(at(0))
++        assertFalse(at(null))
++        assertFalse(at(22 * 60, bg = 7.1 * 18.0182))
++    }
++
++    @Test
++    fun theActivityTempTargetCounts() {
++        assertTrue(WizardDropTrendCaution.isActivityTempTarget(6.8 * 18.0, 60 * 60_000L))
++        assertTrue(WizardDropTrendCaution.isActivityTempTarget(6.8 * 18.0182, 60 * 60_000L))
++        // A 5 minute post-bolus 6.8 target is not activity; nor is another target
++        assertFalse(WizardDropTrendCaution.isActivityTempTarget(6.8 * 18.0, 5 * 60_000L))
++        assertFalse(WizardDropTrendCaution.isActivityTempTarget(7.0 * 18.0, 60 * 60_000L))
++        // Path 5, ActivityProf50%: at or under 8.5 mmol and delta at most +0.1
++        fun underActivity(tt: Boolean, bg: Double, delta: Double) = WizardDropTrendCaution.applies(
++            delta = delta, shortAvgDelta = 0.0, bgMgdl = bg, hp1Mmol = 6.0, iobUnits = 0.0, bgRiseMgdl = 40.0, activityTempTarget = tt,
++        )
++        assertTrue(underActivity(tt = true, bg = 8.0 * 18.0182, delta = 1.8))
++        assertFalse(underActivity(tt = false, bg = 8.0 * 18.0182, delta = 1.8))
++        assertFalse(underActivity(tt = true, bg = 8.6 * 18.0182, delta = 0.0))
++        assertFalse(underActivity(tt = true, bg = 8.0 * 18.0182, delta = 2.0))
++    }
++
+     @Test
+     fun aFastFallWithHp1Under5CountsAboveFivePointFive() {
+         assertTrue(
