@@ -52,5 +52,7 @@ enum class LongNonKey(
     // When a delayed carb or fat-protein dose was delivered. 0 means none yet. Local only.
     ApsAutoIsfLastDelayedBolusAt("autoisf_last_delayed_bolus_at", 0L, exportable = false),
     LastVacuumRun("last_vacuum_run", 0L),
+    // A delayed bolus (DelayedBolus) is waiting until this time; 0 when none. Local only.
+    WizardDelayedBolusPendingUntil("wizard_delayed_bolus_pending_until", 0L, exportable = false),
 }
 

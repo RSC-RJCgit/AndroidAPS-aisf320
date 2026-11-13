@@ -69,11 +69,28 @@ enum class BooleanKey(
         KeysStrings.pref_title_wizard_default_unreliable_smbs,
         KeysStrings.pref_summary_wizard_default_unreliable_smbs
     ),
+    // Off by default since 2026-11-13 (per explicit request): an average meal gets the full automatic fat/protein.
     WizardDefaultSmallMeal(
         "wizard_default_small_meal",
-        true,
+        false,
         KeysStrings.pref_title_wizard_default_small_meal,
         KeysStrings.pref_summary_wizard_default_small_meal
+    ),
+    // v3's delayed bolus (2026-11-14, per explicit request; the same key as the 3426 app). On by default: after a calculator
+    // or QuickWizard bolus on a 50% profile, or with carb insulin halved for a recent low, the rest of the meal is given
+    // later, once BG rises. See DelayedBolus.
+    WizardDelayedBolusEnabled(
+        "wizard_split_bolus_enabled",
+        true,
+        KeysStrings.pref_title_wizard_delayed_bolus,
+        KeysStrings.pref_summary_wizard_delayed_bolus
+    ),
+    // v3's QuickWizard carb time from a rise (2026-11-14, per explicit request; the same key as the 3426 app)
+    OverviewQuickWizardCarbTimeFromRise(
+        "quickwizard_carb_time_from_rise",
+        true,
+        KeysStrings.pref_title_quickwizard_carb_time_from_rise,
+        KeysStrings.pref_summary_quickwizard_carb_time_from_rise
     ),
     // v3's split over max bolus (2026-10-22, per explicit request): how the calculator's and QuickWizard's split box start
     WizardSplitOverMaxBolus(
@@ -82,9 +99,10 @@ enum class BooleanKey(
         KeysStrings.pref_title_wizard_split_over_max,
         KeysStrings.pref_summary_wizard_split_over_max
     ),
+    // On by default since 2026-11-13 (per explicit request): the calculator starts set for an average mixed meal.
     WizardDefaultAutoFpu(
         "wizard_default_auto_fpu",
-        false,
+        true,
         KeysStrings.pref_title_wizard_default_auto_fpu,
         KeysStrings.pref_summary_wizard_default_auto_fpu
     ),
