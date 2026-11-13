@@ -133,7 +133,10 @@ jobs:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
-          ruby <<'RUBY'
+          # Fail-safe: only exit 3 (Apple's agreement answer) stops the run. Anything else, a Ruby error in this script
+          # included, is a warning, so this check can never stop a good build by itself.
+          rc=0
+          ruby <<'RUBY' || rc=$?
           require "openssl"
           require "base64"
           require "json"
@@ -169,7 +172,7 @@ jobs:
               puts "::error::Apple wants an agreement accepted before it takes an upload. Sign in as the Account Holder at " \
                    "developer.apple.com/account (banner at the top) and appstoreconnect.apple.com > Business, accept every " \
                    "pending agreement, then run this again."
-              exit 1
+              exit 3
             elsif res.code == "200"
               puts "#{path}: OK"
             else
@@ -179,6 +182,8 @@ jobs:
           end
           puts "No pending Apple agreement found."
           RUBY
+          if [ "$rc" -eq 3 ]; then exit 1; fi
+          if [ "$rc" -ne 0 ]; then echo "::warning::The agreement check itself failed (exit $rc), so it was skipped. The build goes on."; fi
 
       # 2026-11-05, per explicit request: Apple only takes uploads built with the iOS 26 SDK (Xcode 26). The Intel image defaults to an
       # older Xcode (run 42009728362: "built with the iOS 18.5 SDK", both uploads refused), with Xcode 26 installed beside it. Picks
