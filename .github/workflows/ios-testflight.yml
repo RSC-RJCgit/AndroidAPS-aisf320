@@ -122,6 +122,64 @@ jobs:
           fi
           echo "All six signing secrets are present."
 
+      # 2026-11-13, per explicit request: stop here, in seconds, when Apple wants a new or updated agreement accepted. Run
+      # #129 built for about 75 minutes and only then had both uploads refused with 403 REQUIRED_AGREEMENTS_MISSING_OR_EXPIRED.
+      # The run signs in with the API key, so nobody sees the banner Apple shows on its web pages. Two small reads with the
+      # same key: bundle ids (the signing side the export uses) and apps (App Store Connect). Only the agreement answer
+      # stops the run; any other problem (network, key) is a warning, and the later steps report it as before.
+      - name: Check the Apple agreements are accepted
+        env:
+          KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          ruby <<'RUBY'
+          require "openssl"
+          require "base64"
+          require "json"
+          require "net/http"
+
+          b64 = ->(s) { Base64.urlsafe_encode64(s, padding: false) }
+          begin
+            key = OpenSSL::PKey.read(ENV.fetch("KEY"))   # the .p8 is a PKCS#8 "BEGIN PRIVATE KEY" EC key
+            now = Time.now.to_i
+            input = b64.(JSON.generate(alg: "ES256", kid: ENV.fetch("KEY_ID"), typ: "JWT")) + "." +
+                    b64.(JSON.generate(iss: ENV.fetch("ISSUER_ID"), iat: now, exp: now + 300, aud: "appstoreconnect-v1"))
+            # ES256 wants the raw 64 byte r|s, not the DER signature OpenSSL gives.
+            der = key.sign(OpenSSL::Digest.new("SHA256"), input)
+            raw = OpenSSL::ASN1.decode(der).value.map { |i| i.value.to_s(2).rjust(32, "\0".b) }.join
+            jwt = "#{input}.#{b64.(raw)}"
+          rescue => e
+            puts "::warning::Could not make an App Store Connect token (#{e.class}), so the agreements were not checked"
+            exit 0
+          end
+
+          %w[/v1/bundleIds?limit=1 /v1/apps?limit=1].each do |path|
+            uri = URI("https://api.appstoreconnect.apple.com#{path}")
+            begin
+              res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, open_timeout: 20, read_timeout: 30) do |http|
+                http.get(uri.request_uri, "Authorization" => "Bearer #{jwt}")
+              end
+            rescue => e
+              puts "::warning::#{path}: no answer from Apple (#{e.class}), agreements not checked"
+              next
+            end
+            body = res.body.to_s
+            if res.code != "200" && body.include?("AGREEMENT")
+              puts "::error::Apple wants an agreement accepted before it takes an upload. Sign in as the Account Holder at " \
+                   "developer.apple.com/account (banner at the top) and appstoreconnect.apple.com > Business, accept every " \
+                   "pending agreement, then run this again."
+              exit 1
+            elsif res.code == "200"
+              puts "#{path}: OK"
+            else
+              titles = (JSON.parse(body)["errors"] || []).map { |e| "#{e["code"]}: #{e["title"]}" }.join("; ") rescue ""
+              puts "::warning::#{path}: HTTP #{res.code} #{titles}"
+            end
+          end
+          puts "No pending Apple agreement found."
+          RUBY
+
       # 2026-11-05, per explicit request: Apple only takes uploads built with the iOS 26 SDK (Xcode 26). The Intel image defaults to an
       # older Xcode (run 42009728362: "built with the iOS 18.5 SDK", both uploads refused), with Xcode 26 installed beside it. Picks
       # the newest non-beta Xcode 26 and stops here, before the long build, if there is none.
