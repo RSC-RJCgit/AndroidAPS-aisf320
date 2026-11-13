@@ -21,6 +21,7 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.Sensitivity
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.insulin.Insulin
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -74,7 +75,8 @@ class ConfigBuilderPlugin @Inject constructor(
     private val pumpSync: PumpSync,
     private val protectionCheck: ProtectionCheck,
     private val uiInteraction: UiInteraction,
-    private val context: Context
+    private val context: Context,
+    private val config: Config
 ) : PluginBaseWithPreferences(
     pluginDescription = PluginDescription()
         .mainType(PluginType.GENERAL)
@@ -92,8 +94,11 @@ class ConfigBuilderPlugin @Inject constructor(
     @Volatile private var timeZoneSelectionReady = false
 
     override fun initialize() {
+        // 2026-11-14, per explicit request: AAPSCLIENT follows the master's zone too, so treatments tabs, AIV table/export and
+        // every other dateUtil time on Client match the graphs (MasterGraphTime.forClient) instead of the Client phone's own zone.
+        // Same settings as the graphs: "follow master time zone" / manual UTC offset; neither set = device zone as before.
         AppTimeZone.virtualMasterZone = {
-            if (timeZoneSelectionReady && preferences.apsMode && activePlugin.activePump is VirtualPump) {
+            if (timeZoneSelectionReady && (config.AAPSCLIENT || (preferences.apsMode && activePlugin.activePump is VirtualPump))) {
                 MasterGraphTime.forVirtualMaster(preferences)?.toZoneId()
             } else null
         }

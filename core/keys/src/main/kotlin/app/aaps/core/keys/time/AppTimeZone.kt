@@ -4,7 +4,7 @@ import java.time.ZoneId
 import java.util.Calendar
 import java.util.TimeZone
 
-/** The zone used by local schedules. The app supplies an override only for a virtual master. */
+/** The zone used by local schedules and displayed times. The app supplies an override only for a virtual master or an AAPSCLIENT. */
 object AppTimeZone {
     @Volatile var virtualMasterZone: (() -> ZoneId?)? = null
 
