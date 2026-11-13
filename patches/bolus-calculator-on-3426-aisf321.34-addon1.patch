@@ -1,0 +1,14 @@
+diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
+index 1f8ab62a97..679d3d4fcc 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
+@@ -1060,7 +1060,8 @@ class WizardDialog : DaggerDialogFragment() {
+             val maxBolus = constraintChecker.getMaxBolusAllowed().value()
+             val p = profileFunction.getProfile()
+             val activeProfileSwitchPct = if (p is ProfileSealed.EPS) p.value.originalPercentage else p?.percentage ?: 100
+-            val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct == 100 && doseGiven > maxBolus && maxBolus > 0
++            // >= 100 since 2026-11-13 (was == 100): a 130% profile hid the split box, so a dose over max bolus got no split.
++            val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct >= 100 && doseGiven > maxBolus && maxBolus > 0
+             if (splitFeatureAvailable) {
+                 if (!splitBolusInitialized) {
+                     splitBolusInitialized = true
