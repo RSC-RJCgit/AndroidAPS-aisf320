@@ -1058,11 +1058,13 @@ class WizardDialog : DaggerDialogFragment() {
             calculatedPercentage = wizard.calculatedPercentage
             calculatedCorrection = wizard.calculatedCorrection
 
-            // Split bolus controls: show when profile% = 100 (feature may apply)
+            // Split bolus controls: show when profile% >= 100 (feature may apply). Was "== 100" until 2026-11-13
+            // (per explicit request): a 130% switch hid the box, so a dose over MaxBolus got no split at all,
+            // although BolusWizard's own scheduling already accepts any profile% >= 100.
             val maxBolus = constraintChecker.getMaxBolusAllowed().value()
             val p = profileFunction.getProfile()
             val activeProfileSwitchPct = if (p is ProfileSealed.EPS) p.value.originalPercentage else p?.percentage ?: 100
-            val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct == 100 && doseGiven > maxBolus && maxBolus > 0
+            val splitFeatureAvailable = preferences.get(BooleanKey.ApsAutoIsfSplitBolusEnabled) && activeProfileSwitchPct >= 100 && doseGiven > maxBolus && maxBolus > 0
             if (splitFeatureAvailable) {
                 if (!splitBolusInitialized) {
                     splitBolusInitialized = true
