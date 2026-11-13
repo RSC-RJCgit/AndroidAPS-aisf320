@@ -52,6 +52,7 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.profile.ProfileSealed
@@ -630,7 +631,7 @@ class BolusWizard @Inject constructor(
             // branch, handles the rare case of both firing together). Schedule (5min x 16 attempts, up
             // to 80min) is DelayedBolusWorker's own fixed poll -- see its companion object.
             val triggerLabel = if (delayedProfilePctPreview == 50) "profile=50%" else if (recent50TriggeredPreview) "recent50Triggered" else if (walkingSoonCutApplied) "walkingSoon" else "dropTrendCaution"
-            val normalIc = if (delayedProfilePctPreview == 50) ic / 2.0 else ic
+            val normalIc = delayedNormalIc(if (delayedProfilePctPreview == 50) ic / 2.0 else ic)
             val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
             val cautionFullRequired = if (dropTrendCautionApplied) WizardDropTrendCaution.fullRequiredFromScaled(insulinAfterConstraints) else 0.0
             val fullRequired = max(profileFullRequired, cautionFullRequired)
@@ -1120,7 +1121,8 @@ class BolusWizard @Inject constructor(
                                         // already halved by the profile switch, so normal IC = 2x ic. On the
                                         // recent50Triggered path, ic was never touched (only insulinFromCarbsOnly
                                         // was manually halved above), so ic is already the normal one.
-                                        val normalIc = if (delayedProfilePct == 50) ic / 2.0 else ic
+                                        // Since 2026-11-14: the Standard profile's IC at 100%, see delayedNormalIc()
+                                        val normalIc = delayedNormalIc(if (delayedProfilePct == 50) ic / 2.0 else ic)
                                         val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
                                         // dropTrendCautionApplied's own fullRequired undoes THAT rule's wiz%/
                                         // max-bolus scaling directly (WizardDropTrendCaution.SCALE), unrelated
@@ -1448,6 +1450,24 @@ class BolusWizard @Inject constructor(
         val pct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile?.percentage ?: 100
         aapsLogger.info(LTag.CORE, "SplitBolus: profilePct=$pct (type=${profile?.javaClass?.simpleName})")
         return pct
+    }
+
+    /**
+     * IC for the delayed bolus's "full need" (2026-11-14, per explicit request): the Standard role's profile at 100%,
+     * at this time of day. The Low profile is for hypo risk with no carbs; once the delayed checks say it is safe to
+     * give the rest of a meal, the meal is dosed as on Standard. Live, 1 Oct - 13 Nov: all six profile=50% delayed
+     * boluses sat on Profile70, so "IC / 2" gave Profile70's IC (5.7-6.8, about 1.43x Standard's) and about 30% less
+     * carb insulin. Falls back to [fallbackIc] (the old rule) when the Standard name is unset or not in the profile store.
+     */
+    private fun delayedNormalIc(fallbackIc: Double): Double {
+        // String? on purpose: an unstubbed test mock returns null here
+        val standardName: String? = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val standardIc = standardName?.takeIf { it.isNotBlank() }
+            ?.let { activePlugin.activeProfileSource.profile?.getSpecificProfile(it) }
+            ?.let { ProfileSealed.Pure(value = it, activePlugin = null).getIc(dateUtil.now()) }
+            ?.takeIf { it > 0.0 }
+        if (standardIc == null) aapsLogger.info(LTag.CORE, "Delayed bolus: Standard profile '$standardName' not found, IC=$fallbackIc kept")
+        return standardIc ?: fallbackIc
     }
 
     // Live total active insulin (bolus + basal IOB), matching the same calculation doCalc() itself uses
