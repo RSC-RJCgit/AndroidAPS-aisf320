@@ -72,8 +72,11 @@ class ConfigBuilderImpl(
     @Volatile private var timeZoneSelectionReady = false
 
     override fun initialize(): List<Job> {
+        // 2026-11-14, per explicit request: AAPSCLIENT follows the master's zone too, so temp-basal rows, the AIV history dialog/export
+        // and every other dateUtil time on a client match the graphs (rememberMasterGraphTimeZone) instead of the client's own zone.
+        // Same settings as the graphs: "follow master time zone" / manual UTC offset; neither set = device zone as before.
         AppTimeZone.virtualMasterZone = {
-            if (config.APS && !config.AAPSCLIENT && timeZoneSelectionReady && activePlugin.activePump.selectedActivePump() is VirtualPump) {
+            if (timeZoneSelectionReady && (config.AAPSCLIENT || (config.APS && activePlugin.activePump.selectedActivePump() is VirtualPump))) {
                 MasterGraphTimeZone.forVirtualMaster(preferences)
             } else null
         }
