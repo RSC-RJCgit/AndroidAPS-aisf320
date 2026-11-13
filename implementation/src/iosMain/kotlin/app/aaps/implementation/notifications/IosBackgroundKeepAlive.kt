@@ -94,6 +94,22 @@ class IosBackgroundKeepAlive(
     /** Set by the alarm player while an alarm sounds. */
     var alarmPlaying = false
 
+    /**
+     * What the alarm player is told about the app leaving or returning to the screen and about audio coming back after an
+     * interruption (2026-11-13, per explicit request). Set by [IosAlarmSoundPlayer]; called on the main thread.
+     */
+    interface AlarmAudioHooks {
+        fun onAppBackground()
+        fun onAppActive()
+        fun onInterruptionEnded()
+    }
+
+    var alarmAudio: AlarmAudioHooks? = null
+
+    /** True between leaving the screen and becoming active again. Main thread only. */
+    var inBackground = false
+        private set
+
     // True while the RileyLink heartbeat (IosRileyLinkHeartbeat) is connected: its ticks wake the app, so no silent sound
     private var heartbeatConnected = false
 
@@ -131,7 +147,10 @@ class IosBackgroundKeepAlive(
         // A phone call or another app's audio stops our player. Start again when it ends.
         center.addObserverForName(AVAudioSessionInterruptionNotification, null, NSOperationQueue.mainQueue) { note ->
             val type = (note?.userInfo?.get(AVAudioSessionInterruptionTypeKey) as? NSNumber)?.unsignedLongValue
-            if (type == AVAudioSessionInterruptionTypeEnded) resume()
+            if (type == AVAudioSessionInterruptionTypeEnded) {
+                alarmAudio?.onInterruptionEnded()
+                resume()
+            }
         }
         // The audio system restarted: the old player is dead, make a new one.
         center.addObserverForName(AVAudioSessionMediaServicesWereResetNotification, null, NSOperationQueue.mainQueue) { _ ->
@@ -142,12 +161,20 @@ class IosBackgroundKeepAlive(
         center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
             backgroundWorkPause.setPaused(false)
             notificationCenter.removeDeliveredNotificationsWithIdentifiers(listOf(STOPPED_NOTICE_ID))
+            inBackground = false
+            alarmAudio?.onAppActive()
             resume()
         }
         // Battery (2026-10-18): in the background the per-reading calculation and the graph rebuilds wait (see
         // BackgroundWorkPause). Nightscout sync and the alarms keep running. They run once when the app is active again.
         center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) { _ ->
             backgroundWorkPause.setPaused(true)
+            // 2026-11-13: an alarm that respects the silent switch cannot sound in the background, and while it held the
+            // audio the app was suspended (8 Nov iPhone: 6.8 h with no Live Activity update). The alarm player lets go
+            // of the audio here, and resume() puts the silent loop back in charge.
+            inBackground = true
+            alarmAudio?.onAppBackground()
+            resume()
         }
     }
 
@@ -183,10 +210,14 @@ class IosBackgroundKeepAlive(
         }
     }
 
-    /** Sets the session to "playback, mix with others" and makes sure the silent loop plays. */
+    /**
+     * Sets the session to "playback, mix with others" and makes sure the silent loop plays. While an alarm sounds the
+     * session is the alarm's (its category answers the silent switch), but the silent loop still plays: until
+     * 2026-11-13 this returned at once during an alarm, so an interruption that ended mid-alarm left nothing playing.
+     */
     fun resume() {
-        if (!preferences.get(BooleanKey.IosKeepRunningInBackground) || alarmPlaying || heartbeatConnected) return
-        memScoped {
+        if (!preferences.get(BooleanKey.IosKeepRunningInBackground) || heartbeatConnected) return
+        if (!alarmPlaying) memScoped {
             val session = AVAudioSession.sharedInstance()
             val error = alloc<ObjCObjectVar<NSError?>>()
             if (!session.setCategory(AVAudioSessionCategoryPlayback, withOptions = AVAudioSessionCategoryOptionMixWithOthers, error = error.ptr)) {

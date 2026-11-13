@@ -67,7 +67,55 @@ class IosAlarmSoundPlayer(
     // --- main-dispatcher-confined state ---
     private var player: AVAudioPlayer? = null
     private var currentOwner: String? = null
+    private var currentSound: AlarmSound? = null
     private var rampJob: Job? = null
+
+    /**
+     * The alarm is still active but its sound is held back: the app is in the background and the alarm respects the
+     * silent switch (SoloAmbient), which iOS silences there anyway. The sound starts again when the app is opened.
+     */
+    private var heldInBackground = false
+
+    // 2026-11-13, per explicit request: a SoloAmbient alarm held the audio session in the background, the silent
+    // keep-alive stood aside, and iOS suspended the app until it was opened (8 Nov iPhone: 6.8 h with no updates).
+    init {
+        backgroundKeepAlive.alarmAudio = object : IosBackgroundKeepAlive.AlarmAudioHooks {
+            override fun onAppBackground() {
+                if (currentOwner == null || player == null || overrideSilentSwitch()) return
+                holdInBackground()
+            }
+
+            override fun onAppActive() {
+                if (!heldInBackground) return
+                heldInBackground = false
+                val sound = currentSound ?: return
+                val owner = currentOwner ?: return
+                aapsLogger.debug(LTag.NOTIFICATION, "Alarm $sound for $owner sounds again, the app is open")
+                doPlay(sound, owner)
+            }
+
+            override fun onInterruptionEnded() {
+                val current = player ?: return
+                if (current.playing) return
+                activateSession()
+                if (current.play()) aapsLogger.debug(LTag.NOTIFICATION, "Alarm sound restarted after an audio interruption")
+                else aapsLogger.error(LTag.NOTIFICATION, "Alarm sound did not restart after an audio interruption")
+            }
+        }
+    }
+
+    private fun overrideSilentSwitch(): Boolean = preferences.get(BooleanKey.AlertOverrideDoNotDisturb)
+
+    /** Stops the sound but keeps the alarm, so [IosBackgroundKeepAlive.resume] can take the session back. */
+    private fun holdInBackground() {
+        rampJob?.cancel()
+        rampJob = null
+        player?.stop()
+        player = null
+        heldInBackground = true
+        backgroundKeepAlive.alarmPlaying = false
+        aapsLogger.debug(LTag.NOTIFICATION, "Alarm $currentSound held in the background (silent switch respected), keep-alive takes the audio")
+    }
 
     /**
      * [postedAtElapsedRealtime] is ignored: it exists so Android can wait out a notification's own
@@ -89,6 +137,14 @@ class IosAlarmSoundPlayer(
 
     private fun doPlay(sound: AlarmSound, ownerTag: String) {
         doStop()
+        // In the background a SoloAmbient alarm would be silent and would take the audio from the keep-alive.
+        if (backgroundKeepAlive.inBackground && !overrideSilentSwitch()) {
+            currentOwner = ownerTag
+            currentSound = sound
+            heldInBackground = true
+            aapsLogger.debug(LTag.NOTIFICATION, "Alarm ${sound.name} for $ownerTag held until the app is open (silent switch respected)")
+            return
+        }
         val url = urlFor(sound) ?: run {
             aapsLogger.error(LTag.NOTIFICATION, "Alarm sound ${fileName(sound)} is not in the app bundle, cannot alarm")
             return
@@ -125,6 +181,7 @@ class IosAlarmSoundPlayer(
 
         player = created
         currentOwner = ownerTag
+        currentSound = sound
         aapsLogger.debug(LTag.NOTIFICATION, "Alarm ${sound.name} playing for $ownerTag, ramping=$ramping")
         if (ramping) rampJob = scope.launch { runRamp(created) }
     }
@@ -135,6 +192,8 @@ class IosAlarmSoundPlayer(
         player?.stop()
         player = null
         currentOwner = null
+        currentSound = null
+        heldInBackground = false
         // The session is left active on purpose: deactivating it on every alarm would interrupt
         // whatever else the phone is playing twice per alarm instead of once.
         // The keep-alive takes the session back after an alarm (an alarm may have set SoloAmbient).
