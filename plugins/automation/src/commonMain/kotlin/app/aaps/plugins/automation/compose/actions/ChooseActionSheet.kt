@@ -36,7 +36,11 @@ import app.aaps.plugins.automation.actions.ActionProfileSwitch
 import app.aaps.plugins.automation.actions.ActionProfileSwitchPercent
 import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
+import app.aaps.plugins.automation.actions.ActionAutoisfDisable
+import app.aaps.plugins.automation.actions.ActionAutoisfEnable
 import app.aaps.plugins.automation.actions.ActionSMBChange
+import app.aaps.plugins.automation.actions.ActionSetAcceWeight
+import app.aaps.plugins.automation.actions.ActionSetIobTH
 import app.aaps.plugins.automation.actions.ActionSendSMS
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionSmoothingChange
@@ -64,6 +68,10 @@ private fun actionCategoryOf(cls: KClass<*>): ActionCategory = when (cls) {
     ActionProfileSwitchPercent::class -> ActionCategory.Profile
 
     ActionSMBChange::class,
+    ActionAutoisfEnable::class,
+    ActionAutoisfDisable::class,
+    ActionSetAcceWeight::class,
+    ActionSetIobTH::class,
     ActionSmoothingChange::class,
     ActionStopProcessing::class,
     ActionRunAutotune::class -> ActionCategory.Loop

@@ -42,6 +42,8 @@ class TriggerFactory(
      */
     private fun empty(type: String): Trigger? = when (type.substringAfterLast('.')) {
         TriggerAutosensValue::class.simpleName      -> TriggerAutosensValue(deps)
+        TriggerBgAcceWeight::class.simpleName       -> TriggerBgAcceWeight(deps)
+        TriggerIobTH::class.simpleName              -> TriggerIobTH(deps)
         TriggerBg::class.simpleName                 -> TriggerBg(deps)
         TriggerBolusAgo::class.simpleName           -> TriggerBolusAgo(deps)
         TriggerBTDevice::class.simpleName           -> triggerBTDevice()

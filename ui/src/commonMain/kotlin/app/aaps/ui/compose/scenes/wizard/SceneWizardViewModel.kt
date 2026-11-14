@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.scenes.wizard
 
+import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.plugin.ActivePlugin
 import androidx.compose.runtime.Stable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -53,8 +55,13 @@ class SceneWizardViewModel(
     private val preferences: Preferences,
     private val translator: Translator,
     private val dateUtil: DateUtil,
-    private val rh: TextResolver
+    private val rh: TextResolver,
+    private val activePlugin: ActivePlugin
 ) : ViewModel() {
+
+    /** AutoISF fork: the AutoISF part of a scene is only offered while AutoISF is the active algorithm. */
+    val autoIsfActive: Boolean get() = activePlugin.activeAPS?.algorithm == APSResult.Algorithm.AUTO_ISF
+
 
     companion object {
 
@@ -94,12 +101,14 @@ class SceneWizardViewModel(
         val smbEnabled: Boolean = false,
         val runningModeEnabled: Boolean = false,
         val carePortalEnabled: Boolean = false,
+        val autoIsfEnabled: Boolean = false,
         // Action configs
         val profileAction: SceneAction.ProfileSwitch = SceneAction.ProfileSwitch(profileName = "", percentage = 100),
         val ttAction: SceneAction.TempTarget? = null,
         val smbAction: SceneAction.SmbToggle = SceneAction.SmbToggle(enabled = false),
         val runningModeAction: SceneAction.LoopModeChange = SceneAction.LoopModeChange(mode = RM.Mode.CLOSED_LOOP_LGS),
         val carePortalAction: SceneAction.CarePortalEvent = SceneAction.CarePortalEvent(type = TE.Type.EXERCISE),
+        val autoIsfAction: SceneAction.AutoIsfSettings = SceneAction.AutoIsfSettings(),
         // Metadata
         val durationMinutes: Int = 60,
         val chainTargetId: String? = null,
@@ -126,6 +135,7 @@ class SceneWizardViewModel(
         val smbAction = scene.actions.filterIsInstance<SceneAction.SmbToggle>().firstOrNull()
         val loopModeAction = scene.actions.filterIsInstance<SceneAction.LoopModeChange>().firstOrNull()
         val carePortalAction = scene.actions.filterIsInstance<SceneAction.CarePortalEvent>().firstOrNull()
+        val autoIsfAction = scene.actions.filterIsInstance<SceneAction.AutoIsfSettings>().firstOrNull()
 
         _state.value = WizardState(
             currentStep = STEP_PROFILE,
@@ -134,6 +144,8 @@ class SceneWizardViewModel(
             smbEnabled = smbAction != null,
             runningModeEnabled = loopModeAction != null,
             carePortalEnabled = carePortalAction != null,
+            autoIsfEnabled = autoIsfAction != null,
+            autoIsfAction = autoIsfAction ?: SceneAction.AutoIsfSettings(),
             profileAction = profileAction ?: SceneAction.ProfileSwitch(profileName = "", percentage = 100),
             ttAction = ttAction,
             smbAction = smbAction ?: SceneAction.SmbToggle(enabled = false),
@@ -254,6 +266,14 @@ class SceneWizardViewModel(
         if (action is SceneAction.TempTarget) _state.update { it.copy(ttAction = action) }
     }
 
+    fun setAutoIsfEnabled(enabled: Boolean) {
+        _state.update { it.copy(autoIsfEnabled = enabled) }
+    }
+
+    fun updateAutoIsfAction(action: SceneAction) {
+        if (action is SceneAction.AutoIsfSettings) _state.update { it.copy(autoIsfAction = action) }
+    }
+
     fun updateSmbAction(action: SceneAction) {
         if (action is SceneAction.SmbToggle) _state.update { it.copy(smbAction = action) }
     }
@@ -297,6 +317,7 @@ class SceneWizardViewModel(
             if (s.profileEnabled) add(s.profileAction)
             if (s.ttEnabled && s.ttAction != null) add(s.ttAction)
             if (s.smbEnabled) add(s.smbAction)
+            if (s.autoIsfEnabled && s.autoIsfAction.changesSomething) add(s.autoIsfAction)
             if (s.runningModeEnabled) add(s.runningModeAction)
             if (s.carePortalEnabled) add(s.carePortalAction)
         }

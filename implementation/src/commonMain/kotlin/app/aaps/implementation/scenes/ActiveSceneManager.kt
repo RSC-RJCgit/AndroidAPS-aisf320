@@ -312,6 +312,13 @@ class ActiveSceneManager(
             put("durationMs", state.durationMs)
             put("lifecycle", state.lifecycle.name)
             state.priorSmb?.let { put("priorSmb", it) }
+            state.priorAutoIsf?.let { prior ->
+                put("priorAutoIsf", buildJsonObject {
+                    prior.enabled?.let { put("enabled", it) }
+                    prior.acceWeight?.let { put("acceWeight", it) }
+                    prior.iobThPercent?.let { put("iobThPercent", it) }
+                })
+            }
             state.chainSkipReason?.let { put("chainSkipReason", it) }
             put("scopedRecords", state.scopedRecords.toJson())
         }
@@ -340,6 +347,13 @@ class ActiveSceneManager(
                     ?.let { runCatching { SceneLifecycle.valueOf(it) }.getOrNull() }
                     ?: SceneLifecycle.ACTIVE,
                 priorSmb = json.booleanOrNull("priorSmb"),
+                priorAutoIsf = (json["priorAutoIsf"] as? JsonObject)?.let { prior ->
+                    ActiveSceneState.AutoIsfPrior(
+                        enabled = prior.booleanOrNull("enabled"),
+                        acceWeight = prior.primitiveOrNull("acceWeight")?.content?.toDoubleOrNull(),
+                        iobThPercent = prior.primitiveOrNull("iobThPercent")?.content?.toIntOrNull()
+                    )
+                },
                 scopedRecords = (json["scopedRecords"] as? JsonObject)?.toScopedRecords() ?: ScopedRecords(),
                 chainSkipReason = json.stringOrNull("chainSkipReason")
             )

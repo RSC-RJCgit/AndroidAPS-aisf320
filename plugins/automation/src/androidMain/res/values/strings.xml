@@ -182,4 +182,24 @@
     <string name="permission_location_description">Needed for location-based automation triggers and WiFi network identification</string>
     <string name="permission_background_location_description">Needed for automation triggers to work when the app is in the background</string>
 
+    <!-- AutoISF actions and triggers of AutoISF 3.2.1 (2026-11-14, from blaqone's AAPS-autoISF) -->
+    <string name="autoisf_enable">Enable AutoISF</string>
+    <string name="autoisf_disable">Disable AutoISF</string>
+    <string name="autoisf_enabled">AutoISF enabled</string>
+    <string name="autoisf_disabled">AutoISF disabled</string>
+    <string name="autoisf_already_enabled">AutoISF was already enabled</string>
+    <string name="autoisf_already_disabled">AutoISF was already disabled</string>
+    <string name="autoisf_set_acce_weight">Set AutoISF acce weight</string>
+    <string name="autoisf_set_acce_weight_to" comment="%1$.2f = new BG acceleration ISF weight, 0 to 1. Example: Set acce weight to 0.20">Set acce weight to %1$.2f</string>
+    <string name="autoisf_set_iobth">Set AutoISF iobTH</string>
+    <string name="autoisf_set_iobth_to" comment="%1$d = new iobTH in percent of max IOB. Example: Set iobTH to 70 %">Set iobTH to %1$d %%</string>
+    <string name="autoisf_acce_weight_label">acce weight</string>
+    <string name="autoisf_iobth_label">iobTH</string>
+    <string name="autoisf_value_changed">New value set</string>
+    <string name="autoisf_value_unchanged">Value was already set</string>
+    <string name="autoisf_acce_weight_trigger">AutoISF acce weight</string>
+    <string name="autoisf_acce_weight_compared" comment="%1$s = comparison like is greater than, %2$.2f = BG acceleration ISF weight. Example: acce weight is greater than 0.20">acce weight %1$s %2$.2f</string>
+    <string name="autoisf_iobth_trigger">AutoISF iobTH</string>
+    <string name="autoisf_only_note">Only has an effect with OpenAPS AutoISF.</string>
+    <string name="autoisf_iobth_compared" comment="%1$s = comparison like is lower than, %2$d = iobTH in percent. Example: iobTH is lower than 70 %">iobTH %1$s %2$d %%</string>
 </resources>

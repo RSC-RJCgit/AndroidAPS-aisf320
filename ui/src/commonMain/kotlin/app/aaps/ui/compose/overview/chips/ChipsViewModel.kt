@@ -15,6 +15,7 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
+import app.aaps.core.data.model.BS
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
@@ -56,6 +57,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
 import app.aaps.ui.UiStrings
+import app.aaps.core.ui.extensions.toStringShort
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
 import dev.zacsweers.metro.AssistedInject
@@ -605,6 +607,47 @@ class ChipsViewModel(
         )
         aapsLogger.info(LTag.CORE, "Client sent $text to the master")
     }
+
+    private val secondTicker = flow {
+        while (true) {
+            emit(dateUtil.now())
+            delay(1_000L)
+        }
+    }
+
+    private val loopStatusDataTicker = flow {
+        while (true) {
+            emit(Unit)
+            delay(10_000L)
+        }
+    }
+
+    /**
+     * Last loop run, last SMB and the running temporary basal, for the status line under the BG.
+     * The database is read every 10 s and on every new IOB graph (that is after each calculation);
+     * only the clock for the "ago" texts moves every second.
+     */
+    private val loopStatusData = combine(loopStatusDataTicker, cache.iobGraphFlow) { _, _ ->
+        val now = dateUtil.now()
+        val smb = persistenceLayer.getNewestBolusOfType(BS.Type.SMB)
+        val tbr = persistenceLayer.getTemporaryBasalActiveAt(now)
+        LoopStatusUiState(
+            visible = config.APS,
+            lastRun = loop.lastRun?.lastAPSRun,
+            smbAmount = smb?.amount,
+            smbTime = smb?.timestamp,
+            tbrText = tbr?.toStringShort(rh),
+            tbrStart = tbr?.timestamp
+        )
+    }
+
+    val loopStatusUiState: StateFlow<LoopStatusUiState> = combine(loopStatusData, secondTicker) { data, now ->
+        data.copy(now = now)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = LoopStatusUiState()
+    )
 
     fun showIobInfo() {
         viewModelScope.launch {

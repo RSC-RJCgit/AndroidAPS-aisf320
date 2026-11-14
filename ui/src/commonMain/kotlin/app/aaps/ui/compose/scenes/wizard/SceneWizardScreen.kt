@@ -97,7 +97,10 @@ fun SceneWizardScreen(
                     SceneWizardViewModel.STEP_SMB -> SmbStep(
                         state = state, onToggle = viewModel::setSmbEnabled,
                         onUpdate = viewModel::updateSmbAction,
-                        onBack = onBack, onNext = onNext
+                        onBack = onBack, onNext = onNext,
+                        onAutoIsfToggle = viewModel::setAutoIsfEnabled,
+                        onAutoIsfUpdate = viewModel::updateAutoIsfAction,
+                        showAutoIsf = viewModel.autoIsfActive
                     )
 
                     SceneWizardViewModel.STEP_LOOP_MODE -> RunningModeStep(

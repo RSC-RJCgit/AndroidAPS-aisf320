@@ -68,7 +68,8 @@ class ActionFactory(
         actionAlarm(), actionCarePortalEvent(), actionDisableScene(), actionEnableScene(),
         actionNotification(), actionProfileSwitch(), actionProfileSwitchPercent(), actionRunAutotune(),
         actionRunScene(), actionSendSMS(), actionSettingsExport(), actionSMBChange(), actionSmoothingChange(),
-        actionStartTempTarget(), actionStopProcessing(), actionStopTempTarget()
+        actionStartTempTarget(), actionStopProcessing(), actionStopTempTarget(),
+        actionAutoisfEnable(), actionAutoisfDisable(), actionSetAcceWeight(), actionSetIobTH()
     )
 
     fun actionAlarm() = ActionAlarm(aapsLogger, rh, pumpEnactResultProvider, rxBus, dateUtil, reminderScheduler, config)
@@ -94,6 +95,10 @@ class ActionFactory(
     fun actionStartTempTarget() = ActionStartTempTarget(aapsLogger, rh, pumpEnactResultProvider, activePlugin, persistenceLayer, profileFunction, dateUtil, profileUtil, triggerDeps)
     fun actionStopProcessing() = ActionStopProcessing(aapsLogger, rh, pumpEnactResultProvider)
     fun actionStopTempTarget() = ActionStopTempTarget(aapsLogger, rh, pumpEnactResultProvider, persistenceLayer, dateUtil)
+    fun actionAutoisfEnable() = ActionAutoisfEnable(aapsLogger, rh, pumpEnactResultProvider, preferences)
+    fun actionAutoisfDisable() = ActionAutoisfDisable(aapsLogger, rh, pumpEnactResultProvider, preferences)
+    fun actionSetAcceWeight() = ActionSetAcceWeight(aapsLogger, rh, pumpEnactResultProvider, preferences)
+    fun actionSetIobTH() = ActionSetIobTH(aapsLogger, rh, pumpEnactResultProvider, preferences)
 
     /**
      * A new, empty action of the given type. The name may be plain or fully qualified, because that is
@@ -118,6 +123,10 @@ class ActionFactory(
             ActionStartTempTarget::class.simpleName      -> actionStartTempTarget()
             ActionStopProcessing::class.simpleName       -> actionStopProcessing()
             ActionStopTempTarget::class.simpleName       -> actionStopTempTarget()
+            ActionAutoisfEnable::class.simpleName        -> actionAutoisfEnable()
+            ActionAutoisfDisable::class.simpleName       -> actionAutoisfDisable()
+            ActionSetAcceWeight::class.simpleName        -> actionSetAcceWeight()
+            ActionSetIobTH::class.simpleName             -> actionSetIobTH()
             else                                             -> null
         }
 

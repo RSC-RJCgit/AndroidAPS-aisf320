@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mock
 import org.mockito.MockitoAnnotations
+import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -51,7 +52,7 @@ internal class SceneWizardViewModelTest {
         whenever(preferences.get(StringNonKey.TempTargetPresets)).thenReturn("[]")
         sut = SceneWizardViewModel(
             SavedStateHandle(), sceneRepository, profileRepository, profileUtil,
-            preferences, translator, dateUtil, generatedTextResolver()
+            preferences, translator, dateUtil, generatedTextResolver(), mock()
         )
     }
 
@@ -190,7 +191,7 @@ internal class SceneWizardViewModelTest {
         whenever(sceneRepository.getScene("s1")).thenReturn(Scene(id = "s1", name = "Bike"))
         val edit = SceneWizardViewModel(
             SavedStateHandle(mapOf("sceneId" to "s1")), sceneRepository, profileRepository, profileUtil,
-            preferences, translator, dateUtil, generatedTextResolver()
+            preferences, translator, dateUtil, generatedTextResolver(), mock()
         )
 
         assertThat(edit.progress(edit.state.value)).isEqualTo(SceneWizardViewModel.Progress(step = 0, total = 8))

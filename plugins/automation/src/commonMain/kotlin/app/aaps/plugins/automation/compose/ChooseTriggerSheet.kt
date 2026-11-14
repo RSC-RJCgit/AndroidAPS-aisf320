@@ -28,6 +28,8 @@ import app.aaps.core.ui.compose.stringResource
 import app.aaps.plugins.automation.AutomationStrings
 import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
+import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
+import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
@@ -72,6 +74,8 @@ fun triggerCategoryOf(triggerClass: KClass<*>): TriggerCategory = when (triggerC
     TriggerCOB::class,
     TriggerIob::class,
     TriggerAutosensValue::class,
+    TriggerBgAcceWeight::class,
+    TriggerIobTH::class,
     TriggerProfilePercent::class,
     TriggerTempTarget::class,
     TriggerTempTargetValue::class,

@@ -36,6 +36,8 @@ import app.aaps.core.interfaces.scenes.SceneChainResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.profileNames
 import app.aaps.core.ui.CoreUiStrings
@@ -174,7 +176,11 @@ class SceneExecutor(
         add(ConfirmationLine(ConfirmationRole.SCENE, scene.name))
         if (durationMinutes > 0)
             add(ConfirmationLine(ConfirmationRole.NORMAL, rh.gs(InterfacesStrings.confirmation_line, rh.gs(CoreUiStrings.duration), formatMinutesAsDuration(durationMinutes, rh))))
-        scene.actions.forEach { add(ConfirmationLine(ConfirmationRole.NORMAL, sceneActionLine(it))) }
+        scene.actions.forEach { action ->
+            // AutoISF settings: one line per changed value, like the other actions have one line each
+            if (action is SceneAction.AutoIsfSettings) autoIsfLines(action).forEach { add(ConfirmationLine(ConfirmationRole.NORMAL, it)) }
+            else add(ConfirmationLine(ConfirmationRole.NORMAL, sceneActionLine(action)))
+        }
         // The same "→ X" the Scenes list shows, in the scene colour on both the phone and the watch
         sceneChainResolver.resolveCatalogChainTarget(scene)?.let { add(ConfirmationLine(ConfirmationRole.SCENE, rh.gs(CoreUiStrings.scene_chain_indicator, it.name))) }
     }
@@ -188,6 +194,13 @@ class SceneExecutor(
         is SceneAction.SmbToggle       -> if (action.enabled) rh.gs(CoreUiStrings.scene_action_smb_on) else rh.gs(CoreUiStrings.scene_action_smb_off)
         is SceneAction.LoopModeChange  -> rh.gs(CoreUiStrings.scene_action_running_mode, translator.translate(action.mode))
         is SceneAction.CarePortalEvent -> rh.gs(CoreUiStrings.scene_action_careportal, translator.translate(action.type))
+        is SceneAction.AutoIsfSettings -> autoIsfLines(action).joinToString("\n")
+    }
+
+    private fun autoIsfLines(action: SceneAction.AutoIsfSettings): List<String> = buildList {
+        action.enabled?.let { add(if (it) rh.gs(CoreUiStrings.scene_action_autoisf_on) else rh.gs(CoreUiStrings.scene_action_autoisf_off)) }
+        action.acceWeight?.let { add(rh.gs(CoreUiStrings.scene_action_acce_weight, it)) }
+        action.iobThPercent?.let { add(rh.gs(CoreUiStrings.scene_action_iobth, it)) }
     }
 
     /**
@@ -228,6 +241,8 @@ class SceneExecutor(
 
         // Capture pre-activation SMB flag (the only "truly prior" state) before making changes.
         val priorSmb = capturePriorSmb(scene)
+        // AutoISF fork: the same for the AutoISF settings a scene changes
+        val priorAutoIsf = capturePriorAutoIsf(scene)
 
         // Execute each action
         val actionResults = mutableListOf<SceneExecutionResult.ActionResult>()
@@ -250,6 +265,7 @@ class SceneExecutor(
             activatedAt = now,
             durationMs = durationMs,
             priorSmb = priorSmb,
+            priorAutoIsf = priorAutoIsf,
             scopedRecords = scopedRecords
         )
         activeSceneManager.setActive(activeState)
@@ -337,7 +353,8 @@ class SceneExecutor(
         //    window during which a reconnecting client mirrors no active profile ("no profile set").
         // TT / LoopMode / CarePortal records self-expire via their own timestamp+duration queries.
         for (action in activeState.scene.actions) {
-            if (action is SceneAction.SmbToggle || action is SceneAction.ProfileSwitch) {
+            // AutoISF settings are preferences without a duration model too, like SMB
+            if (action is SceneAction.SmbToggle || action is SceneAction.ProfileSwitch || action is SceneAction.AutoIsfSettings) {
                 revertAction(action, activeState, now)
             }
         }
@@ -370,6 +387,16 @@ class SceneExecutor(
             ?.scene?.actions?.any { it is SceneAction.ProfileSwitch } == true
         activeSceneManager.clearActive()
         if (hadProfileSwitch) notificationManager.dismiss(NotificationId.PROFILE_SET_OK)
+    }
+
+    /** AutoISF fork: the AutoISF settings the scene changes, as they are now, so the end can restore them. */
+    private fun capturePriorAutoIsf(scene: Scene): ActiveSceneState.AutoIsfPrior? {
+        val action = scene.actions.filterIsInstance<SceneAction.AutoIsfSettings>().firstOrNull() ?: return null
+        return ActiveSceneState.AutoIsfPrior(
+            enabled = action.enabled?.let { preferences.get(BooleanKey.ApsUseAutoIsfWeights) },
+            acceWeight = action.acceWeight?.let { preferences.get(DoubleKey.ApsAutoIsfBgAccelWeight) },
+            iobThPercent = action.iobThPercent?.let { preferences.get(IntKey.ApsAutoIsfIobThPercent) }
+        )
     }
 
     private fun capturePriorSmb(scene: Scene): Boolean? {
@@ -479,6 +506,23 @@ class SceneExecutor(
 
                 is SceneAction.SmbToggle       -> {
                     preferences.put(BooleanKey.ApsUseSmb, action.enabled)
+                    SceneExecutionResult.ActionResult(action, success = true)
+                }
+
+                is SceneAction.AutoIsfSettings -> {
+                    action.enabled?.let { preferences.put(BooleanKey.ApsUseAutoIsfWeights, it) }
+                    action.acceWeight?.let {
+                        preferences.put(
+                            DoubleKey.ApsAutoIsfBgAccelWeight,
+                            it.coerceIn(SceneAction.AutoIsfSettings.ACCE_WEIGHT_MIN, SceneAction.AutoIsfSettings.ACCE_WEIGHT_MAX)
+                        )
+                    }
+                    action.iobThPercent?.let {
+                        preferences.put(
+                            IntKey.ApsAutoIsfIobThPercent,
+                            it.coerceIn(SceneAction.AutoIsfSettings.IOB_TH_MIN, SceneAction.AutoIsfSettings.IOB_TH_MAX)
+                        )
+                    }
                     SceneExecutionResult.ActionResult(action, success = true)
                 }
 
@@ -596,6 +640,15 @@ class SceneExecutor(
 
                 is SceneAction.SmbToggle       -> {
                     state.priorSmb?.let { preferences.put(BooleanKey.ApsUseSmb, it) }
+                    SceneExecutionResult.ActionResult(action, success = true)
+                }
+
+                is SceneAction.AutoIsfSettings -> {
+                    state.priorAutoIsf?.let { prior ->
+                        prior.enabled?.let { preferences.put(BooleanKey.ApsUseAutoIsfWeights, it) }
+                        prior.acceWeight?.let { preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, it) }
+                        prior.iobThPercent?.let { preferences.put(IntKey.ApsAutoIsfIobThPercent, it) }
+                    }
                     SceneExecutionResult.ActionResult(action, success = true)
                 }
 

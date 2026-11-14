@@ -1,5 +1,6 @@
 package app.aaps.plugins.automation
 
+import app.aaps.core.interfaces.aps.APSResult
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +54,8 @@ import app.aaps.plugins.automation.events.EventAutomationUpdateGui
 import app.aaps.plugins.automation.events.EventLocationChange
 import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
+import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
+import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
@@ -808,6 +811,8 @@ class AutomationRuntime(
         return eventsLock.withLock { automationEvents.find { it.id == id } }
     }
 
+    private fun isAutoIsfActive(): Boolean = activePlugin.activeAPS?.algorithm == APSResult.Algorithm.AUTO_ISF
+
     fun getActionDummyObjects(): List<Action> {
         val actions = mutableListOf(
             actionFactory.actionStopProcessing(),
@@ -826,6 +831,13 @@ class AutomationRuntime(
             actionFactory.actionEnableScene(),
             actionFactory.actionDisableScene()
         )
+        // AutoISF fork: the AutoISF actions are only offered while AutoISF is the active algorithm
+        if (isAutoIsfActive()) {
+            actions.add(actionFactory.actionAutoisfEnable())
+            actions.add(actionFactory.actionAutoisfDisable())
+            actions.add(actionFactory.actionSetAcceWeight())
+            actions.add(actionFactory.actionSetIobTH())
+        }
         // Autotune is only offered in engineering builds, as before.
         if (config.isEngineeringMode() && config.isDev())
             actions.add(actionFactory.actionRunAutotune())
@@ -858,6 +870,11 @@ class AutomationRuntime(
             TriggerReservoirLevel(triggerDeps),
             TriggerStepsCount(triggerDeps)
         )
+        // AutoISF fork: the AutoISF triggers are only offered while AutoISF is the active algorithm
+        if (isAutoIsfActive()) {
+            triggers.add(TriggerBgAcceWeight(triggerDeps))
+            triggers.add(TriggerIobTH(triggerDeps))
+        }
 
         val pump = activePlugin.activePump
 

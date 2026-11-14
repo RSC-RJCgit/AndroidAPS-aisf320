@@ -53,4 +53,29 @@ sealed class SceneAction {
         val type: TE.Type,
         val note: String = ""
     ) : SceneAction()
+
+    /**
+     * AutoISF fork: change AutoISF settings while the scene runs. Each value that is null stays as it is.
+     * At the end of the scene the previous values come back, like [SmbToggle].
+     * @param enabled AutoISF weights on or off ("Enable AutoISF")
+     * @param acceWeight BG acceleration ISF weight, 0 to 1
+     * @param iobThPercent iobTH in percent of max IOB, 10 to 100
+     */
+    data class AutoIsfSettings(
+        val enabled: Boolean? = null,
+        val acceWeight: Double? = null,
+        val iobThPercent: Int? = null
+    ) : SceneAction() {
+
+        /** True when the action changes at least one setting. */
+        val changesSomething: Boolean get() = enabled != null || acceWeight != null || iobThPercent != null
+
+        companion object {
+
+            const val ACCE_WEIGHT_MIN = 0.0
+            const val ACCE_WEIGHT_MAX = 1.0
+            const val IOB_TH_MIN = 10
+            const val IOB_TH_MAX = 100
+        }
+    }
 }

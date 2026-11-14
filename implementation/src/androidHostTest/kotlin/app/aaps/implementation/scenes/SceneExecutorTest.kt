@@ -27,6 +27,9 @@ import app.aaps.shared.tests.TestBaseWithProfile
 import app.aaps.shared.tests.generatedTextResolver
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.MutableStateFlow
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -380,5 +383,59 @@ class SceneExecutorTest : TestBaseWithProfile() {
 
         verifyBlocking(persistenceLayer) { cancelProfileSwitch(eq(30L), eq(now), any(), any(), anyOrNull(), any()) }
         verifyBlocking(persistenceLayer, never()) { cancelProfileSwitch(eq(22L), any(), any(), any(), anyOrNull(), any()) }
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // AutoISF fork: AutoISF settings in a scene are set at the start and come back at the end
+    // ---------------------------------------------------------------------------------------------
+
+    private val autoIsfScene = Scene(
+        id = "s3",
+        name = "Sport",
+        defaultDurationMinutes = 0,
+        actions = listOf(SceneAction.AutoIsfSettings(enabled = false, iobThPercent = 60))
+    )
+
+    @Test fun `a scene sets the AutoISF settings and remembers the old ones`() = runBlocking {
+        whenever(preferences.get(BooleanKey.ApsUseAutoIsfWeights)).thenReturn(true)
+        whenever(preferences.get(IntKey.ApsAutoIsfIobThPercent)).thenReturn(100)
+
+        sut.activate(autoIsfScene, durationMinutes = 0)
+
+        verify(preferences).put(BooleanKey.ApsUseAutoIsfWeights, false)
+        verify(preferences).put(IntKey.ApsAutoIsfIobThPercent, 60)
+        // the acce weight is not part of the scene, so it is not touched
+        verify(preferences, never()).put(eq(DoubleKey.ApsAutoIsfBgAccelWeight), any<Double>())
+        val state = argumentCaptor<ActiveSceneState>()
+        verify(activeSceneManager).setActive(state.capture())
+        assertThat(state.firstValue.priorAutoIsf).isEqualTo(ActiveSceneState.AutoIsfPrior(enabled = true, iobThPercent = 100))
+    }
+
+    @Test fun `ending the scene brings the AutoISF settings back`() = runBlocking {
+        whenever(activeSceneManager.getActiveState()).thenReturn(
+            ActiveSceneState(
+                scene = autoIsfScene, activatedAt = 1000L, durationMs = 0L,
+                priorAutoIsf = ActiveSceneState.AutoIsfPrior(enabled = true, iobThPercent = 100)
+            )
+        )
+
+        sut.deactivate()
+
+        verify(preferences).put(BooleanKey.ApsUseAutoIsfWeights, true)
+        verify(preferences).put(IntKey.ApsAutoIsfIobThPercent, 100)
+    }
+
+    @Test fun `the end of a timed scene brings the AutoISF settings back too`() = runBlocking {
+        whenever(activeSceneManager.getActiveState()).thenReturn(
+            ActiveSceneState(
+                scene = autoIsfScene, activatedAt = 1000L, durationMs = T.mins(30).msecs(),
+                priorAutoIsf = ActiveSceneState.AutoIsfPrior(enabled = true, iobThPercent = 100)
+            )
+        )
+
+        sut.onExpiry()
+
+        verify(preferences).put(BooleanKey.ApsUseAutoIsfWeights, true)
+        verify(preferences).put(IntKey.ApsAutoIsfIobThPercent, 100)
     }
 }
