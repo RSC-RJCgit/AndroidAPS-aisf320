@@ -39,6 +39,8 @@ enum class BooleanNonKey(
     WizardSplitFpuBolus("wizard_split_fpu_bolus", true),
     WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", true),
     WizardGiveRestLater("wizard_give_rest_later", true),
+    // 2026-11-14, per explicit request: the held part goes with the carb split (on) or the protein/fat doses (off)
+    WizardGiveRestWithSplit("wizard_give_rest_with_split", true),
 
     // Set once the read-only client defaults (bolus calculator, NSClient BG) were added to the toolbar (2026-10-16)
     QuickLaunchReadOnlyDefaultsAdded("quick_launch_read_only_defaults_added", false),

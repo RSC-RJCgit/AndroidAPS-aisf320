@@ -401,6 +401,8 @@ class MasterActionExecutorImpl(
             splitRapidFall = wizard.rapidFallForSplit,
             splitOverMax = wizard.splitOverMax,
             splitIntervalMinutes = wizard.splitIntervalMinutes,
+            // The falling-BG caution's held part goes with the split parts (2026-11-14)
+            requestedInsulin = if (wizard.splitHeldUnits > 0.0) wizard.unclampedCalculatedInsulin + wizard.splitHeldUnits else null,
             delayedPlan = wizard.delayedPlan,
             caller = caller,
             requiredRole = ClientRole.MealAssistant,
@@ -498,13 +500,15 @@ class MasterActionExecutorImpl(
             if (wizardMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
         }
         wizard.warsawRetryLater = inputs.retryFpuLater
-        // Nothing is added later to a typed dose: the user chose the amount
-        if (inputs.fixedInsulin == null && inputs.giveRestLater && inputs.percentage > percentForCalc) {
-            val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
-            wizard.addLaterUnits(scaled * (inputs.percentage - percentForCalc) / 100.0)
-        }
+        // Before holdForFollowUp, which reads it
         wizard.splitOverMax = inputs.splitOverMax
         wizard.splitIntervalMinutes = inputs.splitIntervalMinutes.coerceIn(1, 60)
+        // Nothing is added later to a typed dose: the user chose the amount. 2026-11-14: the held part goes with the split
+        // parts (so the follow-up reaches the normal wizard percent) when the split runs, else to the later hourly doses.
+        if (inputs.fixedInsulin == null && inputs.giveRestLater && inputs.percentage > percentForCalc) {
+            val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
+            wizard.holdForFollowUp(scaled * (inputs.percentage - percentForCalc) / 100.0, inputs.giveRestWithSplit)
+        }
         // After useFixedInsulin: a typed dose holds nothing back (prepareDelayedBolus checks it)
         wizard.prepareDelayedBolus(standardProfileIcNow())
         // A dose over max bolus is cut to the limit. The confirmation says the constraint was applied.
@@ -542,7 +546,7 @@ class MasterActionExecutorImpl(
                 entry = null,
                 carbTimeMinutes = inputs.carbTime,
                 useAlarm = inputs.alarm,
-                requestedInsulin = if (capped) wizard.calculatedTotalInsulin else null,
+                requestedInsulin = if (capped || wizard.splitHeldUnits > 0.0) wizard.calculatedTotalInsulin + wizard.splitHeldUnits else null,
                 notes = inputs.notes,
                 eCarbsGrams = inputs.eCarbsGrams,
                 eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,

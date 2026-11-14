@@ -269,6 +269,8 @@ interface MasterActionExecutor {
         val walkingSoon: Boolean = false,
         // 2026-10-22: the calculator's own boxes reach the master, which works the dose out again
         val giveRestLater: Boolean = true,
+        // 2026-11-14: where that held part goes: with the carb split (true) or the protein/fat doses
+        val giveRestWithSplit: Boolean = true,
         val retryFpuLater: Boolean = true,
         val splitOverMax: Boolean = true,
         val splitIntervalMinutes: Int = 7,

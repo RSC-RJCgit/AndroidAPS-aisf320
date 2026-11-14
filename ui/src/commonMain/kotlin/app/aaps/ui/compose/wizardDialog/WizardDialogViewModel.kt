@@ -301,6 +301,7 @@ class WizardDialogViewModel(
                 fpuInstead = defaultAutoFpu && fixedInsulin == null,
                 smallMeal = defaultSmallMeal && fixedInsulin == null,
                 giveRestLater = fixedInsulin == null && preferences.get(BooleanNonKey.WizardGiveRestLater),
+                giveRestWithSplit = preferences.get(BooleanNonKey.WizardGiveRestWithSplit),
                 fixedInsulin = fixedInsulin,
                 splitOverMax = preferences.get(BooleanKey.WizardSplitOverMaxBolus),
                 splitIntervalMinutes = preferences.get(IntKey.WizardSplitIntervalMinutes),
@@ -404,6 +405,13 @@ class WizardDialogViewModel(
     fun toggleGiveRestLater(checked: Boolean) {
         if (uiState.value.insulinOnly) return
         _uiState.update { it.copy(giveRestLater = checked) }
+        recalculate()
+    }
+
+    // 2026-11-14, per explicit request: where the held part goes, the carb split (ticked) or the protein/fat doses
+    fun toggleGiveRestWithSplit(checked: Boolean) {
+        if (uiState.value.insulinOnly) return
+        _uiState.update { it.copy(giveRestWithSplit = checked) }
         recalculate()
     }
 
@@ -763,10 +771,13 @@ class WizardDialogViewModel(
         // A newer calculation started meanwhile: its result counts, not this one
         if (calculation != calculations) return
         wizard = w
+        // Same as the master's commit (2026-11-14): the held part goes with the split parts when the split runs
+        w.splitOverMax = state.splitOverMax
+        w.splitIntervalMinutes = state.splitIntervalMinutes.coerceIn(1, 60)
         if (state.giveRestLater && extra.percentage > percentForCalc) {
             val scaled = w.insulinFromBG + w.insulinFromTrend + w.insulinFromCarbs + w.insulinFromCOB
             val later = scaled * (extra.percentage - percentForCalc) / 100.0
-            w.addLaterUnits(later)
+            w.holdForFollowUp(later, state.giveRestWithSplit)
         }
 
         // Update temp target availability
@@ -874,6 +885,7 @@ class WizardDialogViewModel(
         preferences.put(BooleanNonKey.WizardSplitFpuBolus, state.splitFpuBolus)
         preferences.put(BooleanNonKey.WizardDelayFpuInsteadOfCancel, state.delayFpuInsteadOfCancel)
         preferences.put(BooleanNonKey.WizardGiveRestLater, state.giveRestLater)
+        preferences.put(BooleanNonKey.WizardGiveRestWithSplit, state.giveRestWithSplit)
         preferences.put(BooleanKey.WizardDefaultAutoFpu, state.fpuInstead || state.unreliableSmb)
         preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, state.unreliableSmb)
         preferences.put(BooleanKey.WizardDefaultSmallMeal, state.smallMeal)
@@ -909,7 +921,7 @@ class WizardDialogViewModel(
             warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
             fpuIntervalMinutes = state.fpuIntervalMinutes,
             walkingSoon = state.walkingSoon,
-            giveRestLater = state.giveRestLater, retryFpuLater = state.delayFpuInsteadOfCancel,
+            giveRestLater = state.giveRestLater, giveRestWithSplit = state.giveRestWithSplit, retryFpuLater = state.delayFpuInsteadOfCancel,
             splitOverMax = state.splitOverMax, splitIntervalMinutes = state.splitIntervalMinutes,
             fixedInsulin = state.fixedInsulin?.let { Round.floorTo(it, ch.bolusStep(it)) },
         )

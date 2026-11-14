@@ -172,6 +172,7 @@ sealed class ClientControlMessage {
         val warsawDurationHours: Double = 5.0,
         val maxBolus: Double? = null,
         val giveRestLater: Boolean = true,
+        val giveRestWithSplit: Boolean = true,
         val retryFpuLater: Boolean = true,
         val splitOverMax: Boolean = true,
         val splitIntervalMinutes: Int = 7,

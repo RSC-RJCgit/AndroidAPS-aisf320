@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.valueToUnits
 import kotlin.math.min
@@ -203,9 +204,12 @@ class QuickWizardEntry(
             walkingSoon = walking,
         ) //tbc, ok if only quickwizard, but if other sources elsewhere use Sources.QuickWizard
         wizard.warsawRetryLater = retryFpuLater()
+        // 2026-11-14, per explicit request: the held part goes with the split parts (follow-up up to the button's own
+        // percent) when the split runs, else to the later hourly doses. splitOverMax first, holdForFollowUp reads it.
+        wizard.splitOverMax = splitOverMax()
         if (giveRestLater() && extra.percentage > percentage) {
             val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
-            wizard.addLaterUnits(scaled * (extra.percentage - percentage) / 100.0)
+            wizard.holdForFollowUp(scaled * (extra.percentage - percentage) / 100.0, preferences.get(BooleanNonKey.WizardGiveRestWithSplit))
         }
         return wizard
     }
