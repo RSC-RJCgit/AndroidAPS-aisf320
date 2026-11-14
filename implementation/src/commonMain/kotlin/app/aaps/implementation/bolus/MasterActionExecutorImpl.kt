@@ -181,6 +181,10 @@ class MasterActionExecutorImpl(
         val splitRapidFall: Boolean = false,
         val splitOverMax: Boolean = true,
         val splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES,
+        // The wizard's uncapped total when the dose was cut to max bolus; the split gives the part above max from it.
+        // 2026-11-14, per explicit request: [insulin] holds the capped dose, so the split saw requested = delivered and
+        // never scheduled the rest (A15 tandem 14 Nov 09:56: 6.10 U calculated, 2.50 U given, 3.60 U never split).
+        val requestedInsulin: Double? = null,
         // Carb insulin held back by a 50% profile or a recent low, given later (DelayedBolus, 2026-11-14)
         val delayedPlan: DelayedBolusPlan? = null,
         // Who it was prepared for (null: the master itself) and the lowest role its content needs. Only that caller
@@ -538,6 +542,7 @@ class MasterActionExecutorImpl(
                 entry = null,
                 carbTimeMinutes = inputs.carbTime,
                 useAlarm = inputs.alarm,
+                requestedInsulin = if (capped) wizard.calculatedTotalInsulin else null,
                 notes = inputs.notes,
                 eCarbsGrams = inputs.eCarbsGrams,
                 eCarbsDelayMinutes = inputs.eCarbsDelayMinutes,
@@ -1020,7 +1025,7 @@ class MasterActionExecutorImpl(
             eCarbs = eCarbsWithBolus
         )
         if (p.bcr != null) {
-            val requested = p.insulin + correctionU
+            val requested = (p.requestedInsulin ?: p.insulin) + correctionU
             bolusWizardProvider().scheduleLeftoverSplit(
                 requested,
                 correctedInsulin,
