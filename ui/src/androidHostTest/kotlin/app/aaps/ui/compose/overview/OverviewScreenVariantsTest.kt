@@ -159,7 +159,7 @@ class OverviewScreenVariantsTest {
 
         compose.onNodeWithText(OverviewViewModelFixture.BG_TEXT).assertIsDisplayed()
         compose.onNodeWithText(OverviewViewModelFixture.DELTA_TEXT).assertIsDisplayed()
-        compose.onNodeWithText(OverviewViewModelFixture.TIME_AGO).assertIsDisplayed()
+        compose.onNodeWithText(OverviewViewModelFixture.BG_AGE).assertIsDisplayed()
         compose.onNodeWithText(NO_BG_PLACEHOLDER).assertDoesNotExist()
     }
 
@@ -169,7 +169,7 @@ class OverviewScreenVariantsTest {
         viewModels.withBg()
         setScreen(Variant.SPLIT)
 
-        compose.onNodeWithText(OverviewViewModelFixture.TIME_AGO).assertIsDisplayed()
+        compose.onNodeWithText(OverviewViewModelFixture.BG_AGE).assertIsDisplayed()
     }
 
     @Test
@@ -179,7 +179,7 @@ class OverviewScreenVariantsTest {
         setScreen(Variant.TABLET)
 
         compose.onNodeWithText(OverviewViewModelFixture.BG_TEXT).assertIsDisplayed()
-        compose.onNodeWithText(OverviewViewModelFixture.TIME_AGO).assertDoesNotExist()
+        compose.onNodeWithText(OverviewViewModelFixture.BG_AGE).assertDoesNotExist()
     }
 
     // ---------------------------------------------------------------- clock

@@ -256,6 +256,9 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
 
         /** Distinct on purpose: the BG circle's "time ago" and the clock's "time ago" are different widgets. */
         const val TIME_AGO = "5 min"
+
+        /** The overview shows the age of a BG value younger than 10 minutes in seconds (`secago`). */
+        const val BG_AGE = "300s ago"
         const val CLOCK_TIME = "21:33"
         const val CLOCK_AGO = " 5'"
         const val BG_TEXT = "120"

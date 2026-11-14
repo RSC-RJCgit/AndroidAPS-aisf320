@@ -5,6 +5,7 @@ import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.IobTotal
 import app.aaps.core.interfaces.aps.MealData
 import app.aaps.core.interfaces.aps.OapsProfile
@@ -88,7 +89,46 @@ class OpenAPSViewModel(
             return
         }
 
+        // AutoISF fork: the order of AutoISF 3.4.2.6 - the result first and open, then the inputs, closed except the
+        // glucose status. Reading the decision is what the tab is opened for; the inputs are there to check it.
         val sections = buildList {
+            // --- Result group ---
+            add(OpenAPSSection(title = CoreUiStrings.result, isGroupHeader = true))
+
+            // Script Debug
+            lastAPSResult.scriptDebug?.let { debug ->
+                if (debug.isNotEmpty()) {
+                    add(
+                        OpenAPSSection(
+                            title = ApsStrings.openapsma_script_debug_data_label,
+                            rows = debug.map { KeyValueRow("", it) }
+                        )
+                    )
+                }
+            }
+
+            // Raw Result (RT)
+            val rawData = lastAPSResult.rawData()
+            if (rawData is RT) {
+                add(
+                    OpenAPSSection(
+                        title = CoreUiStrings.result,
+                        rows = rawData.toRows()
+                    )
+                )
+            }
+
+            // Request (algorithm decision)
+            val requestText = lastAPSResult.resultAsString()
+            if (requestText.isNotEmpty()) {
+                add(
+                    OpenAPSSection(
+                        title = ApsStrings.openapsma_request_label,
+                        rows = requestText.lines().filter { it.isNotBlank() }.map { KeyValueRow("", it) }
+                    )
+                )
+            }
+
             // --- Input parameters group ---
             add(OpenAPSSection(title = ApsStrings.openapsma_input_parameters_label, isGroupHeader = true))
 
@@ -99,18 +139,19 @@ class OpenAPSViewModel(
                     add(
                         OpenAPSSection(
                             title = ApsStrings.constraints,
-                            rows = reasons.split("\n").filter { it.isNotBlank() }.map { KeyValueRow("", it) }
+                            rows = reasons.split("\n").filter { it.isNotBlank() }.map { KeyValueRow("", it) },
+                            collapsedByDefault = true
                         )
                     )
                 }
             }
 
-            // Glucose Status
+            // Glucose Status: with AutoISF all its values (parabola, dura_ISF), as in AutoISF 3.4.2.6
             lastAPSResult.glucoseStatus?.let { gs ->
                 add(
                     OpenAPSSection(
                         title = ApsStrings.openapsma_glucose_status_label,
-                        rows = gs.toRows()
+                        rows = (gs as? GlucoseStatusAutoIsf)?.toAutoIsfRows() ?: gs.toRows()
                     )
                 )
             }
@@ -120,7 +161,8 @@ class OpenAPSViewModel(
                 add(
                     OpenAPSSection(
                         title = ApsStrings.openapsma_current_temp_label,
-                        rows = ct.toRows()
+                        rows = ct.toRows(),
+                        collapsedByDefault = true
                     )
                 )
             }
@@ -130,7 +172,8 @@ class OpenAPSViewModel(
                 add(
                     OpenAPSSection(
                         title = ApsStrings.openapsma_iob_data_label,
-                        rows = iob.toRows(lastAPSResult.iobData?.size ?: 0)
+                        rows = iob.toRows(lastAPSResult.iobData?.size ?: 0),
+                        collapsedByDefault = true
                     )
                 )
             }
@@ -153,7 +196,8 @@ class OpenAPSViewModel(
                 add(
                     OpenAPSSection(
                         title = ApsStrings.openapsma_meal_data_label,
-                        rows = md.toRows()
+                        rows = md.toRows(),
+                        collapsedByDefault = true
                     )
                 )
             }
@@ -163,46 +207,8 @@ class OpenAPSViewModel(
                 add(
                     OpenAPSSection(
                         title = ApsStrings.openapsma_autosensdata_label,
-                        rows = asr.toRows()
-                    )
-                )
-            }
-
-            // --- Result group ---
-            add(OpenAPSSection(title = CoreUiStrings.result, isGroupHeader = true))
-
-            // Script Debug
-            lastAPSResult.scriptDebug?.let { debug ->
-                if (debug.isNotEmpty()) {
-                    add(
-                        OpenAPSSection(
-                            title = ApsStrings.openapsma_script_debug_data_label,
-                            rows = debug.map { KeyValueRow("", it) },
-                            collapsedByDefault = true
-                        )
-                    )
-                }
-            }
-
-            // Raw Result (RT)
-            val rawData = lastAPSResult.rawData()
-            if (rawData is RT) {
-                add(
-                    OpenAPSSection(
-                        title = CoreUiStrings.result,
-                        rows = rawData.toRows(),
+                        rows = asr.toRows(),
                         collapsedByDefault = true
-                    )
-                )
-            }
-
-            // Request (algorithm decision) — last section
-            val requestText = lastAPSResult.resultAsString()
-            if (requestText.isNotEmpty()) {
-                add(
-                    OpenAPSSection(
-                        title = ApsStrings.openapsma_request_label,
-                        rows = requestText.lines().filter { it.isNotBlank() }.map { KeyValueRow("", it) }
                     )
                 )
             }
@@ -229,6 +235,26 @@ class OpenAPSViewModel(
         KeyValueRow("delta", delta.toString()),
         KeyValueRow("shortAvgDelta", shortAvgDelta.toString()),
         KeyValueRow("longAvgDelta", longAvgDelta.toString())
+    )
+
+    /** AutoISF fork: every value of the AutoISF glucose status, named as in its JSON. */
+    private fun GlucoseStatusAutoIsf.toAutoIsfRows(): List<KeyValueRow> = listOf(
+        KeyValueRow("glucose", glucose.toString()),
+        KeyValueRow("noise", noise.toString()),
+        KeyValueRow("delta", delta.toString()),
+        KeyValueRow("shortAvgDelta", shortAvgDelta.toString()),
+        KeyValueRow("longAvgDelta", longAvgDelta.toString()),
+        KeyValueRow("date", if (date > 0) dateUtil.dateAndTimeAndSecondsString(date) else "0"),
+        KeyValueRow("duraISFminutes", duraISFminutes.toString()),
+        KeyValueRow("duraISFaverage", duraISFaverage.toString()),
+        KeyValueRow("parabolaMinutes", parabolaMinutes.toString()),
+        KeyValueRow("deltaPl", deltaPl.toString()),
+        KeyValueRow("deltaPn", deltaPn.toString()),
+        KeyValueRow("bgAcceleration", bgAcceleration.toString()),
+        KeyValueRow("a0", a0.toString()),
+        KeyValueRow("a1", a1.toString()),
+        KeyValueRow("a2", a2.toString()),
+        KeyValueRow("corrSqu", corrSqu.toString())
     )
 
     private fun CurrentTemp.toRows(): List<KeyValueRow> = buildList {
@@ -357,6 +383,7 @@ class OpenAPSViewModel(
         add(KeyValueRow("enableSMB_EvenOn_OddOff_always", enableSMB_EvenOn_OddOff_always.toString()))
         add(KeyValueRow("iob_threshold_percent", iob_threshold_percent.toString()))
         add(KeyValueRow("profile_percentage", profile_percentage.toString()))
+        add(KeyValueRow("now", now.toString()))
     }
 
     private fun MealData.toRows(): List<KeyValueRow> = buildList {
