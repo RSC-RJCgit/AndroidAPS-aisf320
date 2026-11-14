@@ -4,7 +4,10 @@ import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.os.Environment
 import android.os.StatFs
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.format.DateFormat
+import android.text.style.ForegroundColorSpan
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
@@ -29,12 +32,28 @@ object MasterGraphTime {
 
     // Master free storage beside the clock under the hours drop-down (2026-11-11, per explicit request). The master sends its
     // free storage in whole GB (1 GB = 1,000,000,000 bytes, as Android Settings shows it) with masterTimeZone; Client and
-    // Virtual show the mirrored value while it is under 30 min old. The master itself shows its own.
+    // Virtual show the mirrored value. The master itself shows its own.
+    // 2026-11-15, per explicit request (it came and went too often): the mirrored value is saved
+    // (StringNonKey.ClientMasterFreeStorage, "timestamp;GB") so a restart keeps it, and it is shown for up to 24 h,
+    // greyed out once it is over 30 min old.
     const val FREE_STORAGE_FIELD = "masterFreeGB"
-    private const val FREE_STORAGE_MAX_AGE_MS = 30 * 60_000L
+    private const val FREE_STORAGE_FRESH_MS = 30 * 60_000L
+    private const val FREE_STORAGE_MAX_AGE_MS = 24 * 60 * 60_000L
+    private const val FREE_STORAGE_STALE_COLOR = 0xFF777777.toInt()
 
     private class MirroredFreeStorage(val timestamp: Long, val gb: Int)
     @Volatile private var mirroredFreeStorage: MirroredFreeStorage? = null
+    @Volatile private var freeStorageRestored = false
+
+    private fun restoreFreeStorage(preferences: Preferences) {
+        if (freeStorageRestored) return
+        freeStorageRestored = true
+        val parts = preferences.get(StringNonKey.ClientMasterFreeStorage).split(';')
+        val timestamp = parts.getOrNull(0)?.toLongOrNull() ?: return
+        val gb = parts.getOrNull(1)?.toIntOrNull() ?: return
+        val previous = mirroredFreeStorage
+        if (gb >= 0 && timestamp > 0L && (previous == null || timestamp > previous.timestamp)) mirroredFreeStorage = MirroredFreeStorage(timestamp, gb)
+    }
 
     fun localFreeStorageGb(): Int? =
         runCatching { (StatFs(Environment.getDataDirectory().path).availableBytes / 1_000_000_000.0).roundToInt() }.getOrNull()
@@ -45,15 +64,30 @@ object MasterGraphTime {
     @Synchronized
     fun rememberFreeStorage(preferences: Preferences, fromSecondary: Boolean, gb: Int, timestamp: Long, now: Long) {
         if (site(preferences, fromSecondary).isEmpty() || gb < 0 || timestamp <= 0L || timestamp > now + 5 * 60_000L) return
+        restoreFreeStorage(preferences)
         val previous = mirroredFreeStorage
-        if (previous == null || timestamp > previous.timestamp) mirroredFreeStorage = MirroredFreeStorage(timestamp, gb)
+        if (previous == null || timestamp > previous.timestamp) {
+            mirroredFreeStorage = MirroredFreeStorage(timestamp, gb)
+            preferences.put(StringNonKey.ClientMasterFreeStorage, "$timestamp;$gb")
+        }
     }
 
-    /** The clock text with the master's free storage after it, e.g. "14:32  48 GB"; just the time when none is known. */
-    fun withFreeStorage(time: String, config: Config, now: Long): String {
-        val mirrored = mirroredFreeStorage?.takeIf { now - it.timestamp in 0L..FREE_STORAGE_MAX_AGE_MS }?.gb
-        val gb = mirrored ?: if (config.APS && !config.AAPSCLIENT) localFreeStorageGb() else null
-        return if (gb == null) time else "$time  $gb GB"
+    /**
+     * The clock text with the master's free storage after it, e.g. "14:32  48 GB"; just the time when none is known.
+     * A mirrored value over 30 min old (up to 24 h) is greyed out.
+     */
+    fun withFreeStorage(time: String, config: Config, now: Long, preferences: Preferences): CharSequence {
+        restoreFreeStorage(preferences)
+        val known = mirroredFreeStorage?.takeIf { now - it.timestamp in 0L..FREE_STORAGE_MAX_AGE_MS }
+        val fresh = known?.takeIf { now - it.timestamp <= FREE_STORAGE_FRESH_MS }?.gb
+        val local = if (fresh == null && config.APS && !config.AAPSCLIENT) localFreeStorageGb() else null
+        val gb = fresh ?: local ?: known?.gb ?: return time
+        val text = SpannableStringBuilder(time).append("  ")
+        val start = text.length
+        text.append("$gb GB")
+        if (fresh == null && local == null)
+            text.setSpan(ForegroundColorSpan(FREE_STORAGE_STALE_COLOR), start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return text
     }
 
     @Synchronized

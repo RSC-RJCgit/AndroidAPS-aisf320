@@ -145,7 +145,7 @@ private fun deleteOldInstallers(context: Context, folderUri: String, extraFolder
                         } else if (INSTALLER_EXTENSIONS.any { name.endsWith(it, ignoreCase = true) } && !name.equals("aapsNewestAPK.apk", ignoreCase = true)) {
                             val modified = it.getLong(3)
                             if (modified <= 0L) throw IOException("Missing installer modification time")
-                            installers.putIfAbsent(id, ArchiveInstaller(tree, id, modified))
+                            installers.putIfAbsent(id, ArchiveInstaller(tree, id, modified, isUnwantedInstaller(name)))
                         }
                     }
                 }
@@ -158,7 +158,11 @@ private fun deleteOldInstallers(context: Context, folderUri: String, extraFolder
 
     var deleted = 0
     var failed = 0
-    val oldInstallers = installers.values.sortedWith(compareByDescending<ArchiveInstaller> { it.modified }.thenBy { it.id }).drop(10)
+    // 2026-11-15, per explicit request: desktop installers (.dmg, .msi) and APKs this phone never installs (wear, tandem,
+    // full2) are always deleted; of the other APKs the newest 10 are kept, as before.
+    val (unwanted, phoneApks) = installers.values.partition { it.unwanted }
+    val oldInstallers = unwanted +
+        phoneApks.sortedWith(compareByDescending<ArchiveInstaller> { it.modified }.thenBy { it.id }).drop(10)
     for (installer in oldInstallers) {
         val uri = DocumentsContract.buildDocumentUriUsingTree(installer.tree, installer.id)
         val removed = try {
@@ -179,4 +183,10 @@ private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.docu
 private val INSTALLER_EXTENSIONS = setOf(".apk", ".dmg", ".msi")
 private val AAPS_ARCHIVE_FOLDERS = setOf("AAP", "AAPS", "AAPS3", "AAPS333", "AAPS4ios")
 
-private data class ArchiveInstaller(val tree: Uri, val id: String, val modified: Long)
+private data class ArchiveInstaller(val tree: Uri, val id: String, val modified: Long, val unwanted: Boolean)
+
+/** A desktop installer, or an APK this phone never installs (watch, Tandem or full2 build). */
+private fun isUnwantedInstaller(name: String): Boolean =
+    !name.endsWith(".apk", ignoreCase = true) || UNWANTED_APK_NAME_PARTS.any { name.contains(it, ignoreCase = true) }
+
+private val UNWANTED_APK_NAME_PARTS = setOf("wear", "tandem", "full2")

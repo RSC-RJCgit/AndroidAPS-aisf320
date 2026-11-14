@@ -29,6 +29,8 @@ enum class StringNonKey(
     MirroredAutoIsfSettings("mirrored_autoisf_settings", defaultValue = "", exportable = false),
     InstallerArchiveFolders("installer_archive_folders", "", exportable = false),
     ClientGraphMasterTimeZone("client_graph_master_time_zone", "", exportable = false),
+    /** The master's last free storage, "timestamp;GB", so it survives a restart (2026-11-15, see MasterGraphTime). */
+    ClientMasterFreeStorage("client_master_free_storage", "", exportable = false),
     LiveStepsHistory("live_steps_history", defaultValue = "[]", exportable = false),
     // Full SMS text of AutoISF CarePortal notes, by note time, kept on this phone only (2026-11-09, see NoteSmsTexts)
     CarePortalNoteSmsTexts("careportal_note_sms_texts", defaultValue = "{}", exportable = false),
