@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,6 +62,7 @@ fun AapsClientStatusCard(
     onOpenList2: () -> Unit = {},
     onOpenList3: () -> Unit = {},
     onOpenAutoIsfHistory: () -> Unit = {},
+    onOpenAutoIsfSplit: () -> Unit = {},
     onOpenStats: () -> Unit = {}
 ) {
     val items = listOfNotNull(statusData.pump, statusData.openAps, statusData.autoIsf, statusData.uploader)
@@ -96,10 +98,12 @@ fun AapsClientStatusCard(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.clickable(onClick = onOpenList1)
                     )
+                    // AIV (2026-11-15, per explicit request): a tap shows the AutoISF split of the newest loop run,
+                    // a long press opens the AIV table (a tap did that before).
                     Text(
                         text = stringResource(UiStrings.client_aiv_chip),
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.clickable(onClick = onOpenAutoIsfHistory)
+                        modifier = Modifier.combinedClickable(onClick = onOpenAutoIsfSplit, onLongClick = onOpenAutoIsfHistory)
                     )
                     statusData.openAps?.let { item ->
                         AapsClientStatusChip(item = item)

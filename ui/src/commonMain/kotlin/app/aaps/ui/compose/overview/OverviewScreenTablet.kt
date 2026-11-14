@@ -228,6 +228,7 @@ fun OverviewScreenTablet(
                         onOpenList2 = chipsViewModel::openList2,
                         onOpenList3 = chipsViewModel::openList3,
                         onOpenAutoIsfHistory = { chipsViewModel.openAutoIsfHistory(graphViewModel.aivHistoryEndTime) },
+                        onOpenAutoIsfSplit = chipsViewModel::openAutoIsfSplit,
                         onOpenStats = { graphViewModel.openStatsSummary() }
                     )
                 }

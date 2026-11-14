@@ -15,6 +15,7 @@ import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.ProfileRoleSynchronizer
+import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.BS
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
@@ -216,6 +217,27 @@ class ChipsViewModel(
                     dateUtil.now()
                 ).isNotEmpty()
         )
+    }
+
+    /**
+     * The AutoISF split of the newest loop run (2026-11-15, per explicit request): a tap on AIV in the oAPS row shows
+     * it, a long press opens the table. Read from the newest AIV row, so a client shows the master's mirrored values.
+     */
+    var autoIsfSplitOpen by mutableStateOf(false)
+        private set
+    var autoIsfSplit by mutableStateOf<AIV?>(null)
+        private set
+
+    fun openAutoIsfSplit() {
+        viewModelScope.launch {
+            val now = dateUtil.now()
+            autoIsfSplit = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - 30 * 60_000L, now).maxByOrNull { it.timestamp }
+            autoIsfSplitOpen = true
+        }
+    }
+
+    fun closeAutoIsfSplit() {
+        autoIsfSplitOpen = false
     }
 
     var autoIsfHistoryOpen by mutableStateOf(false)
