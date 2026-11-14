@@ -962,12 +962,16 @@ class BolusWizard @Inject constructor(
             else
                 commonProcessing(ctx, quickWizardEntry)
         } else {
-            // Record zero bolus + wizard result — shows on graph and syncs to NS (e.g. IOB covered BG)
+            // Record zero bolus + wizard result — shows on graph and syncs to NS (e.g. IOB covered BG).
+            // 2026-11-15, per explicit request: with pump-style ids like the part markers, or the NS upload (which only
+            // takes boluses with a pumpId) skipped it and clients never saw this 0 marker.
+            val zeroTime = dateUtil.now()
             val zeroBolus = BS(
-                timestamp = dateUtil.now(),
+                timestamp = zeroTime,
                 amount = 0.0,
                 type = BS.Type.NORMAL,
-                notes = notes?.ifEmpty { "Wizard: 0U (IOB/COB covered)" } ?: "Wizard: 0U (IOB/COB covered)"
+                notes = notes?.ifEmpty { "Wizard: 0U (IOB/COB covered)" } ?: "Wizard: 0U (IOB/COB covered)",
+                ids = zeroBolusIds(zeroTime)
             )
             persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroBolus.notes).blockingGet()
             persistenceLayer.insertOrUpdateBolusCalculatorResult(createBolusCalculatorResult()).blockingGet()
@@ -1226,11 +1230,13 @@ class BolusWizard @Inject constructor(
                     bolusCalculatorResult?.let { persistenceLayer.insertOrUpdateBolusCalculatorResult(it).blockingGet() }
                     // Record zero bolus on graph/NS when insulin is 0 (e.g. IOB covers BG, only carbs logged)
                     if (insulinAfterConstraints == 0.0) {
+                        // 2026-11-15: pump-style ids so the NS upload takes it (it skips boluses without a pumpId)
                         val zeroBolus = BS(
                             timestamp = now,
                             amount = 0.0,
                             type = BS.Type.NORMAL,
-                            notes = notes?.ifEmpty { "Wizard: 0U (IOB covered)" } ?: "Wizard: 0U (IOB covered)"
+                            notes = notes?.ifEmpty { "Wizard: 0U (IOB covered)" } ?: "Wizard: 0U (IOB covered)",
+                            ids = zeroBolusIds(now)
                         )
                         persistenceLayer.insertOrUpdateBolus(zeroBolus, Action.BOLUS, Sources.WizardDialog, zeroBolus.notes).blockingGet()
                     }
