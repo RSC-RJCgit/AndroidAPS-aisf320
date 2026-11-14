@@ -1,0 +1,44 @@
+diff --git a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
+index 622eaee..7c61ffe 100644
+--- a/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
++++ b/plugins/aps/src/main/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
+@@ -88,7 +88,6 @@ import java.util.Locale
+ import javax.inject.Inject
+ import javax.inject.Provider
+ import javax.inject.Singleton
+-import kotlin.math.abs
+ import kotlin.math.floor
+ import kotlin.math.max
+ import kotlin.math.min
+@@ -372,21 +371,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
+         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
+         val iobData = iobArray[0]
+         preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, 0L)
+-        val hpReadings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 7 * 60_000L, now, ascending = false)
+-        if (hpReadings.size >= 2) {
+-            val hpNewest = hpReadings[0]
+-            val hpReference = hpReadings.minByOrNull { abs(it.timestamp - (now - 5 * 60_000L)) }
+-            val hpRawNow = hpNewest.noise
+-            val hpRawBefore = hpReference?.noise
+-            if (hpReference != null && hpReference.timestamp != hpNewest.timestamp && hpRawNow != null && hpRawBefore != null) {
+-                val hp1 = glucoseStatus.glucose / 18.0182 - iobData.iob +
+-                    0.25 * glucoseStatus.shortAvgDelta / 18.0182 +
+-                    0.25 * (hpRawNow - hpRawBefore) / 18.0182 + mealData.mealCOB / 12.0
+-                if (hp1.isFinite()) {
+-                    preferences.put(LongKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1 * 1000).toLong())
+-                    preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
+-                }
+-            }
++        // HP1 (hypo prediction) for the bolus calculator's split parts and falling-BG caution: (BG - IOB) + 0.25 x short delta
++        // + 0.25 x 5-min delta + COB / 12, mmol/L. 2026-11-14: the normal 5-min delta. The 3426 fork takes the 5-min change of
++        // the raw Libre value, which it keeps in a reading's noise field; plain AutoISF does not, so HP1 was never written
++        // (noise empty, split parts then waited until cancelled) or its last term meant nothing (noise holding a noise level).
++        val hp1 = glucoseStatus.glucose / 18.0182 - iobData.iob +
++            0.25 * glucoseStatus.shortAvgDelta / 18.0182 +
++            0.25 * glucoseStatus.delta / 18.0182 + mealData.mealCOB / 12.0
++        if (hp1.isFinite()) {
++            preferences.put(LongKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1 * 1000).toLong())
++            preferences.put(LongKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
+         }
+         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
+         val delayedBolusBlockUntil = preferences.get(LongKey.DelayedBolusBlockSmbUntil)

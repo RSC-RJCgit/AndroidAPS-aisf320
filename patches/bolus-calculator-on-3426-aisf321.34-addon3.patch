@@ -1,0 +1,232 @@
+diff --git a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
+index 881f6ca..ca79cd3 100644
+--- a/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
++++ b/core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt
+@@ -141,6 +141,9 @@ enum class BooleanKey(
+     WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", defaultValue = true),
+     // Patch .34: the "Give rest later" tick, remembered from the last OK.
+     WizardGiveRestLater("wizard_give_rest_later", defaultValue = true),
++    // 2026-11-14, per explicit request: where the caution's held part goes: the delayed bolus or carb split (on), or the
++    // protein/fat doses only (off, and then the caution does not start the delayed bolus)
++    WizardGiveRestWithSplit("wizard_give_rest_with_split", defaultValue = true),
+     // Patch .34: read by the full-copy QuickWizardEntry (carbs dated back from the rise onset). On, as in the fork; the
+     // patch has no settings switch for it.
+     OverviewQuickWizardCarbTimeFromRise("quickwizard_carb_time_from_rise", true, defaultedBySM = true),
+diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index 2ad1ff3..b631971 100644
+--- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -217,6 +217,38 @@ class BolusWizard @Inject constructor(
+         if (units > 0.0) heldBackUnits += units
+     }
+ 
++    // 2026-11-14, per explicit request (A15 tandem 14 Nov 12:43: caution 80% -> 40%, 1.2 U given, follow-up only to 40%):
++    // the follow-up after the falling-BG caution reaches the normal wizard percent, as the delayed fix does for 50%.
++    // The caution's held part when it goes with the carb split instead of the protein/fat series (see routeCautionHeldBack).
++    var splitHeldUnits: Double = 0.0
++        private set
++
++    // "Give it with the carb split" (2026-11-14, per explicit request; on by default): off keeps the held part in the
++    // protein/fat doses only, and the falling-BG caution then does not start the delayed bolus. Set by WizardDialog and
++    // QuickWizardEntry after doCalc().
++    var giveRestWithSplit: Boolean = true
++    private val cautionDelays: Boolean get() = dropTrendCautionApplied && giveRestWithSplit
++
++    /**
++     * Where the falling-BG caution's held part ([heldBackUnits], "Give rest later") goes, decided at confirm:
++     *  - delayed bolus on: the delayed bolus gives it (its fullRequired is the total at the normal wizard percent), so it is
++     *    not also planned in the protein/fat series;
++     *  - else, when the carb split runs (split ticked, profile at 100% or more, no superbolus): with the split parts;
++     *  - else: the protein/fat series, as before.
++     */
++    private fun routeCautionHeldBack() {
++        val held = heldBackUnits
++        if (held <= 0.0 || !dropTrendCautionApplied || !giveRestWithSplit) return
++        if (preferences.get(BooleanKey.WizardDelayedBolusEnabled)) {
++            heldBackUnits = 0.0
++            return
++        }
++        if (manualSplitBolusEnabled && activeProfileSwitchPct() >= 100 && loop.runningMode != RM.Mode.SUPER_BOLUS) {
++            splitHeldUnits = held
++            heldBackUnits = 0.0
++        }
++    }
++
+     // Meal type eCarbs (2026-11-05, per explicit request: v4's Bread / Cake / Pizza). Set by WizardDialog or a QuickWizard
+     // button after doCalc(), like the FPU settings above: the cake/pizza share of the carbs, entered as extended carbs
+     // from [mealECarbsDelayMinutes] over [mealECarbsDurationHours]. 0 when split FPU doses replace eCarbs, or for bread.
+@@ -561,10 +593,12 @@ class BolusWizard @Inject constructor(
+                 "calculatedTotalInsulin=$calculatedTotalInsulin maxBolusAllowed=$maxBolusAllowed"
+         )
+         if (!splitBolusScheduled && !superBolusActive && manualSplitBolusEnabled &&
+-            schedulingPct >= 100 && calculatedTotalInsulin > maxBolusAllowed
++            schedulingPct >= 100 && (calculatedTotalInsulin > maxBolusAllowed || splitHeldUnits > 0.0)
+         ) {
+-            if (ceil(calculatedTotalInsulin / maxBolusAllowed).toInt() > 1) {
+-                val residual = calculatedTotalInsulin - maxBolusAllowed
++            // Same as the scheduling (2026-11-14): the caution's held part follows in the split parts
++            if (splitHeldUnits > 0.0 || ceil(calculatedTotalInsulin / maxBolusAllowed).toInt() > 1) {
++                val residual = calculatedTotalInsulin + splitHeldUnits -
++                    (if (splitHeldUnits > 0.0) insulinAfterConstraints else maxBolusAllowed)
+                 parts.add(
+                     "Carb split: ${decimalFormatter.to2Decimal(residual)}U left, in parts every ${manualSplitBolusIntervalMins} min " +
+                         "while BG is 7.0 or more and not falling"
+@@ -612,7 +646,7 @@ class BolusWizard @Inject constructor(
+         val recent50TriggeredPreview = recent50ShouldReduceWizard()
+         val delayedWillFire = (insulinAfterConstraints > 0 || carbs > 0) &&
+             preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
+-            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoonCutApplied || dropTrendCautionApplied)
++            (delayedProfilePctPreview == 50 || recent50TriggeredPreview || walkingSoonCutApplied || cautionDelays)
+         val delayedLabel = if (!delayedWillFire) {
+             "none"
+         } else {
+@@ -628,7 +662,7 @@ class BolusWizard @Inject constructor(
+             val triggerLabel = if (delayedProfilePctPreview == 50) "profile=50%" else if (recent50TriggeredPreview) "recent50Triggered" else if (walkingSoonCutApplied) "walkingSoon" else "dropTrendCaution"
+             val normalIc = if (delayedProfilePctPreview == 50) ic / 2.0 else ic
+             val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+-            val cautionFullRequired = if (dropTrendCautionApplied) WizardDropTrendCaution.fullRequiredFromScaled(insulinAfterConstraints) else 0.0
++            val cautionFullRequired = if (cautionDelays) WizardDropTrendCaution.fullRequiredFromScaled(calculatedTotalInsulin) else 0.0
+             val fullRequired = max(profileFullRequired, cautionFullRequired)
+             // 2026-10-23, per explicit request: say what was held back and why, and that the part over MaxBolus is the carb split's
+             val overMax = max(0.0, calculatedTotalInsulin - insulinAfterConstraints)
+@@ -897,6 +931,8 @@ class BolusWizard @Inject constructor(
+         // dismiss() immediately after this returns, which reverts any live max-bolus-override) -- see
+         // maxBolusAllowedAtConfirm's own doc comment for the real bug this fixes.
+         maxBolusAllowedAtConfirm = constraintChecker.getMaxBolusAllowed().value()
++        // Before the confirmation text is built: it shows where the held part goes (2026-11-14)
++        routeCautionHeldBack()
+         // insulinFromProteinOnly/insulinFromFatOnly are deliberately excluded from calculatedTotalInsulin
+         // (see their own doc comments) — but a protein-only or fat-only entry (no carbs, no other
+         // component) still needs to reach commonProcessing() below to schedule its delayed dose, or it
+@@ -1110,7 +1146,7 @@ class BolusWizard @Inject constructor(
+                                     // it, and dropTrendCautionApplied's own doc comment for where it's set.
+                                     if ((insulinAfterConstraints > 0 || carbs > 0) &&
+                                         preferences.get(BooleanKey.WizardDelayedBolusEnabled) &&
+-                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoonCutApplied || dropTrendCautionApplied)
++                                        (delayedProfilePct == 50 || recent50Triggered || walkingSoonCutApplied || cautionDelays)
+                                     ) {
+                                         // FullRequired uses normal IC. On the profile-50% path, ic itself is
+                                         // already halved by the profile switch, so normal IC = 2x ic. On the
+@@ -1126,7 +1162,11 @@ class BolusWizard @Inject constructor(
+                                         // recover it), so max() correctly picks this one instead. When BOTH fire
+                                         // together (rare), max() is a simple, conservative combination rather
+                                         // than modelling the exact compounding.
+-                                        val cautionFullRequired = if (dropTrendCautionApplied) WizardDropTrendCaution.fullRequiredFromScaled(insulinAfterConstraints) else 0.0
++                                        // 2026-11-14, per explicit request: from the uncapped total, not the dose given. The caution
++                                        // halves the max bolus too, so the given dose (e.g. 1.2 U) undercounted the full need: the
++                                        // follow-up then stopped short of the normal wizard percent. The part over max bolus that
++                                        // the carb split gives is taken off by DelayedBolusWorker (splitShare), as before.
++                                        val cautionFullRequired = if (cautionDelays) WizardDropTrendCaution.fullRequiredFromScaled(calculatedTotalInsulin) else 0.0
+                                         val fullRequired = max(profileFullRequired, cautionFullRequired)
+                                         // Block SMBs for the whole delayed-check window (16 × 5 min + margin).
+                                         // DelayedBolusWorker releases the block early on delivery/give-up/cancel.
+@@ -1314,14 +1354,18 @@ class BolusWizard @Inject constructor(
+             !superBolusActive &&
+             manualSplitBolusEnabled &&
+             schedulingPct >= 100 &&
+-            calculatedTotalInsulin > maxBolusAllowedAtConfirm
++            (calculatedTotalInsulin > maxBolusAllowedAtConfirm || splitHeldUnits > 0.0)
+         ) {
+             splitBolusScheduled = true
+             val maxPart = maxBolusAllowedAtConfirm
+             val intervalMins = manualSplitBolusIntervalMins
+-            val numParts = ceil(calculatedTotalInsulin / maxPart).toInt()
++            // 2026-11-14: the falling-BG caution's held part (splitHeldUnits) follows in the same parts, so the follow-up
++            // reaches the normal wizard percent. Then what was given now is the real first part, which may be under maxPart.
++            val followUpTotal = calculatedTotalInsulin + splitHeldUnits
++            val givenNow = if (splitHeldUnits > 0.0) insulinAfterConstraints else maxPart
++            val numParts = if (splitHeldUnits > 0.0) 2 else ceil(calculatedTotalInsulin / maxPart).toInt()
+             if (numParts > 1) {
+-                val residual = calculatedTotalInsulin - maxPart // part 1 (100% of maxPart) already delivered synchronously above
++                val residual = followUpTotal - givenNow // part 1 (100% of maxPart, or the dose given now) already delivered synchronously above
+                 // Becomes the baseline the first scheduled split's IOB-delta is measured against once
+                 // maxPart (this dose) is added to it, matching "gap start = IOB before a dose + that dose's
+                 // own amount" throughout.
+@@ -1329,7 +1373,7 @@ class BolusWizard @Inject constructor(
+                     LTag.CORE,
+                     "ReducedSplitBolus: residual ${residual}U, first scheduled part starts from ${maxPart}U every ${intervalMins}min, SMBs allowed, BG- and IOBdelta-gated"
+                 )
+-                scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + maxPart, intervalMins, schedulingPct, myScheduleToken)
++                scheduleReducedPartsSplitBolus(residual, maxPart, iobBeforeFirstDose + givenNow, intervalMins, schedulingPct, myScheduleToken)
+                 totalProjectedFutureSplitDoses += residual
+                 noteDetails.add("carb split ${decimalFormatter.to2Decimal(residual)}U left, in parts every $intervalMins min while BG allows")
+             }
+diff --git a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
+index 011c59f..e560bd8 100644
+--- a/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
++++ b/core/objects/src/main/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
+@@ -228,6 +228,8 @@ class QuickWizardEntry @Inject constructor(
+         wizard.delayFpuInsteadOfCancel = retryFpuLater()
+         // A fourth DelayedBolusWorker reason, as in the dialog: the held-back part can follow once BG rises.
+         wizard.dropTrendCautionApplied = dropTrendCaution
++        // The calculator's remembered "Give it with the carb split" choice (2026-11-14)
++        wizard.giveRestWithSplit = preferences.get(BooleanKey.WizardGiveRestWithSplit)
+         // Give rest later (2026-11-12, per explicit request, from v4): what the caution cut from the % is given later in the
+         // protein/fat series, each part with the usual BG and IOB checks.
+         if (dropTrendCaution && giveRestLater()) wizard.addLaterUnits(wizard.percentCutHeldBack(percentBeforeCaution.toDouble()))
+diff --git a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
+index 679d3d4..ef33452 100644
+--- a/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
++++ b/ui/src/main/kotlin/app/aaps/ui/dialogs/WizardDialog.kt
+@@ -358,6 +358,7 @@ class WizardDialog : DaggerDialogFragment() {
+         // suggestion (only takes effect while the boxes are not manually overridden) and recalculates.
+         binding.smallMealCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
+         binding.giveRestLaterCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
++        binding.giveRestWithSplitCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
+         // Turning auto FPU off clears suggested grams but keeps fields edited by the user.
+         // Turning it on fills both fields again.
+         binding.autoFpuCheckbox.setOnCheckedChangeListener { _, checked ->
+@@ -556,6 +557,7 @@ class WizardDialog : DaggerDialogFragment() {
+         preferences.put(BooleanKey.WizardSplitFpuBolus, binding.splitFpuBolusCheckbox.isChecked)
+         preferences.put(BooleanKey.WizardDelayFpuInsteadOfCancel, binding.delayFpuCheckbox.isChecked)
+         preferences.put(BooleanKey.WizardGiveRestLater, binding.giveRestLaterCheckbox.isChecked)
++        preferences.put(BooleanKey.WizardGiveRestWithSplit, binding.giveRestWithSplitCheckbox.isChecked)
+         preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, binding.unreliableSmbsCheckbox.isChecked)
+         preferences.put(BooleanKey.WizardDefaultSmallMeal, binding.smallMealCheckbox.isChecked)
+         preferences.put(BooleanKey.WizardDefaultAutoFpu, binding.autoFpuCheckbox.isChecked)
+@@ -586,7 +588,7 @@ class WizardDialog : DaggerDialogFragment() {
+             binding.bgCheckbox, binding.ttCheckbox, binding.bgTrendCheckbox, binding.iobCheckbox, binding.cobCheckbox, binding.sbCheckbox,
+             binding.bgCheckboxIcon, binding.ttCheckboxIcon, binding.trendCheckboxIcon, binding.iobCheckboxIcon, binding.cobCheckboxIcon,
+             binding.walkingSoonCheckbox, binding.unreliableSmbsCheckbox, binding.smallMealCheckbox, binding.autoFpuCheckbox, binding.splitFpuBolusCheckbox,
+-            binding.delayFpuCheckbox, binding.giveRestLaterCheckbox, binding.fpuIntervalInput, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
++            binding.delayFpuCheckbox, binding.giveRestLaterCheckbox, binding.giveRestWithSplitCheckbox, binding.fpuIntervalInput, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
+             binding.correctionPercent
+         ).forEach { it.lockForInsulinOnly() }
+         insulinOnlyControlsReady = true
+@@ -720,6 +722,7 @@ class WizardDialog : DaggerDialogFragment() {
+         binding.sbCheckbox.isChecked = preferences.get(BooleanKey.OverviewUseSuperBolus) && preferences.get(BooleanKey.WizardIncludeSuperBolus)
+         binding.delayFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDelayFpuInsteadOfCancel)
+         binding.giveRestLaterCheckbox.isChecked = preferences.get(BooleanKey.WizardGiveRestLater)
++        binding.giveRestWithSplitCheckbox.isChecked = preferences.get(BooleanKey.WizardGiveRestWithSplit)
+         binding.bgTrendCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeTrend)
+         binding.cobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeCob)
+         // Opens with the % tick on every time (the Corr box then shows the wizard percentage), as requested 8 Oct 2026;
+@@ -988,6 +991,7 @@ class WizardDialog : DaggerDialogFragment() {
+             wizard.delayFpuInsteadOfCancel = binding.delayFpuCheckbox.isChecked
+             // See dropTrendCautionApplied's own doc comment -- a fourth DelayedBolusWorker trigger reason.
+             wizard.dropTrendCautionApplied = dropTrendCautionActive
++            wizard.giveRestWithSplit = binding.giveRestWithSplitCheckbox.isChecked
+             wizard.mealECarbs = mealECarbs
+             wizard.mealECarbsDelayMinutes = carbsType.eCarbsDelayMinutes + carbTime
+             wizard.mealECarbsDurationHours = carbsType.eCarbsDurationHours
+diff --git a/ui/src/main/res/layout/dialog_wizard.xml b/ui/src/main/res/layout/dialog_wizard.xml
+index d8182d4..532dc6f 100644
+--- a/ui/src/main/res/layout/dialog_wizard.xml
++++ b/ui/src/main/res/layout/dialog_wizard.xml
+@@ -548,6 +548,16 @@
+                         android:textAppearance="?android:attr/textAppearanceSmall"
+                         tools:ignore="HardcodedText,RtlSymmetry" />
+ 
++                    <!-- 2026-11-14, per explicit request: where that held part goes -->
++                    <CheckBox
++                        android:id="@+id/give_rest_with_split_checkbox"
++                        android:layout_width="wrap_content"
++                        android:layout_height="wrap_content"
++                        android:checked="true"
++                        android:text="Give it with the carb split: ticked, the held part follows as the delayed bolus (when on) or in the carb split parts, so the total reaches your wizard %; unticked, it is added to the protein/fat doses only"
++                        android:textAppearance="?android:attr/textAppearanceSmall"
++                        tools:ignore="HardcodedText,RtlSymmetry" />
++
+                 </LinearLayout>
+ 
+             </TableRow>

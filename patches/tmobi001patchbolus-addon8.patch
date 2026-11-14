@@ -1,0 +1,214 @@
+diff --git a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt
+index d3ddee34e7..2daab0d71f 100644
+--- a/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt
++++ b/appshell/src/commonMain/kotlin/app/aaps/appshell/navigation/AppNavGraph.kt
+@@ -326,6 +326,11 @@ fun NavGraphBuilder.appNavGraph(
+             onNavigateBack = { navController.safePopBackStack() },
+             onShowDeliveryError = { comment ->
+                 onShowDeliveryError(comment, CoreUiStrings.treatmentdeliveryerror)
++            },
++            // Meal carbs go on in the calculator, which takes the Carbs dialog's place (2026-11-14)
++            onOpenCalculator = { carbs, notes ->
++                navController.safePopBackStack()
++                navController.navigate(AppRoute.WizardDialog.createRoute(carbs = carbs, notes = notes.ifEmpty { null }))
+             }
+         )
+     }
+@@ -356,6 +361,11 @@ fun NavGraphBuilder.appNavGraph(
+             onNavigateBack = { navController.safePopBackStack() },
+             onShowDeliveryError = { comment ->
+                 onShowDeliveryError(comment, CoreUiStrings.treatmentdeliveryerror)
++            },
++            // A pump treatment goes on in the calculator, which takes the Treatment dialog's place (2026-11-14)
++            onOpenCalculator = { insulin, carbs ->
++                navController.safePopBackStack()
++                navController.navigate(AppRoute.WizardDialog.createRoute(carbs = carbs, insulin = insulin))
+             }
+         )
+     }
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogScreen.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogScreen.kt
+index ce392339db..90d0ad7d14 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogScreen.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogScreen.kt
+@@ -45,7 +45,6 @@ import androidx.compose.ui.semantics.semantics
+ import androidx.compose.ui.unit.dp
+ import androidx.lifecycle.compose.collectAsStateWithLifecycle
+ import app.aaps.core.data.format.NumberFormat
+-import app.aaps.core.data.ui.ConfirmationLine
+ import app.aaps.core.interfaces.InterfacesStrings
+ import app.aaps.core.interfaces.navigation.ElementType
+ import app.aaps.core.ui.CoreUiStrings
+@@ -84,9 +83,12 @@ fun CarbsDialogScreen(
+     iobUiState: StateFlow<IobUiState>,
+     cobUiState: StateFlow<CobUiState>,
+     onNavigateBack: () -> Unit,
+-    onShowDeliveryError: (String) -> Unit
++    onShowDeliveryError: (String) -> Unit,
++    /** Opens the calculator with the meal carbs and notes (2026-11-14). Null keeps the plain carb entry. */
++    onOpenCalculator: ((Int, String) -> Unit)? = null
+ ) {
+     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
++    viewModel.calculatorRedirect = onOpenCalculator != null
+     val bgInfo by bgInfoState.collectAsStateWithLifecycle()
+     val iob by iobUiState.collectAsStateWithLifecycle()
+     val cob by cobUiState.collectAsStateWithLifecycle()
+@@ -97,7 +99,7 @@ fun CarbsDialogScreen(
+     var showTimePicker by rememberSaveable { mutableStateOf(false) }
+     var showButtonSettings by rememberSaveable { mutableStateOf(false) }
+     // The master's prepared confirmation (bolusId + its merged lines), set via the ShowConfirmation side effect.
+-    var confirmation by remember { mutableStateOf<Pair<Long, List<ConfirmationLine>>?>(null) }
++    var confirmation by remember { mutableStateOf<CarbsDialogViewModel.SideEffect.ShowConfirmation?>(null) }
+ 
+     // Observe side effects
+     LaunchedEffect(Unit) {
+@@ -112,21 +114,27 @@ fun CarbsDialogScreen(
+                 }
+ 
+                 is CarbsDialogViewModel.SideEffect.ShowConfirmation -> {
+-                    confirmation = effect.bolusId to effect.lines
++                    confirmation = effect
++                }
++
++                is CarbsDialogViewModel.SideEffect.OpenCalculator     -> {
++                    onOpenCalculator?.invoke(effect.carbs, effect.notes)
+                 }
+             }
+         }
+     }
+ 
+     // Confirmation dialog — renders the MASTER's prepared lines (set via the ShowConfirmation side effect after prepare()).
+-    confirmation?.let { (bolusId, lines) ->
++    confirmation?.let { shown ->
+         ElementConfirmationDialog(
+             elementType = ElementType.CARBS,
+-            lines = lines,
++            lines = shown.lines,
+             onConfirm = {
+-                viewModel.commit(bolusId)
++                viewModel.commit(shown.bolusId)
+                 confirmation = null
+-                onNavigateBack()
++                val calculator = shown.thenCalculator
++                if (calculator != null && onOpenCalculator != null) onOpenCalculator(calculator.carbs, calculator.notes)
++                else onNavigateBack()
+             },
+             onDismiss = { confirmation = null }
+         )
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogViewModel.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogViewModel.kt
+index 54cf53dbf7..990ae42037 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogViewModel.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/carbsDialog/CarbsDialogViewModel.kt
+@@ -84,9 +84,23 @@ class CarbsDialogViewModel(
+         data object ShowNoActionDialog : SideEffect()
+ 
+         /** The MASTER prepared the batch and returned its merged confirmation [lines]; show them, then [commit] [bolusId]. */
+-        data class ShowConfirmation(val bolusId: Long, val lines: List<ConfirmationLine>) : SideEffect()
++        data class ShowConfirmation(
++            val bolusId: Long,
++            val lines: List<ConfirmationLine>,
++            /** Open the calculator with these carbs once the confirmed eating-soon target is set. */
++            val thenCalculator: OpenCalculator? = null
++        ) : SideEffect()
++
++        /** Meal carbs go on in the bolus calculator, as a pump bolus from the Insulin dialog does (2026-11-14). */
++        data class OpenCalculator(val carbs: Int, val notes: String) : SideEffect()
+     }
+ 
++    /**
++     * Set by the screen that can open the calculator: meal carbs (now, no duration, no hypo or activity target, no
++     * bolus reminder) then go through the calculator, which works out the bolus, split and caution. Others stay here.
++     */
++    var calculatorRedirect = false
++
+     private val _sideEffect = MutableSharedFlow<SideEffect>(
+         replay = 0,
+         extraBufferCapacity = 1,
+@@ -310,13 +324,20 @@ class CarbsDialogViewModel(
+         appScope.launch {
+             val state = uiState.value
+             confirmedState = state
+-            val actions = buildActions(state)
++            // Meal carbs go to the calculator. An eating-soon target is still set from here, through its own
++            // confirmation, and the calculator opens when it is confirmed.
++            val toCalculator =
++                if (calculatorRedirect && state.carbs > 0 && state.timeOffsetMinutes == 0 && state.durationHours == 0 &&
++                    !state.hypoTtChecked && !state.activityTtChecked && !state.bolusReminderChecked
++                ) SideEffect.OpenCalculator(state.carbs, state.notes)
++                else null
++            val actions = buildActions(if (toCalculator != null) state.copy(carbs = 0) else state)
+             if (actions.isEmpty()) {
+-                _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
++                _sideEffect.tryEmit(toCalculator ?: SideEffect.ShowNoActionDialog)
+                 return@launch
+             }
+             when (val prepared = batchExecutor.prepare(actions, Sources.CarbDialog, rh.gs(InterfacesStrings.carbs))) {
+-                is ActionProgress.Prepared -> _sideEffect.tryEmit(SideEffect.ShowConfirmation(prepared.id, prepared.lines))
++                is ActionProgress.Prepared -> _sideEffect.tryEmit(SideEffect.ShowConfirmation(prepared.id, prepared.lines, toCalculator))
+                 is ActionProgress.Rejected -> when {
+                     // No-op (e.g. nothing left to remove after a COB-shrink between open and confirm): neutral message, NOT the bolus-error alarm.
+                     prepared.reason == FailureReason.NoAction -> _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogScreen.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogScreen.kt
+index 9b44e445c2..1f42f551f0 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogScreen.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogScreen.kt
+@@ -65,9 +65,12 @@ fun TreatmentDialogScreen(
+     iobUiState: StateFlow<IobUiState>,
+     cobUiState: StateFlow<CobUiState>,
+     onNavigateBack: () -> Unit,
+-    onShowDeliveryError: (String) -> Unit
++    onShowDeliveryError: (String) -> Unit,
++    /** Opens the calculator with the typed dose or carbs (2026-11-14). Null keeps the plain treatment. */
++    onOpenCalculator: ((insulin: Double?, carbs: Int?) -> Unit)? = null
+ ) {
+     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
++    viewModel.calculatorRedirect = onOpenCalculator != null
+     val bgInfo by bgInfoState.collectAsStateWithLifecycle()
+     val iob by iobUiState.collectAsStateWithLifecycle()
+     val cob by cobUiState.collectAsStateWithLifecycle()
+@@ -94,6 +97,10 @@ fun TreatmentDialogScreen(
+                     confirmation?.let { viewModel.discard(it.bolusId) }
+                     confirmation = effect
+                 }
++
++                is TreatmentDialogViewModel.SideEffect.OpenCalculator     -> {
++                    onOpenCalculator?.invoke(effect.insulin, effect.carbs)
++                }
+             }
+         }
+     }
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogViewModel.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogViewModel.kt
+index f3bff26e62..bf6ed0e219 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogViewModel.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/treatmentDialog/TreatmentDialogViewModel.kt
+@@ -84,8 +84,17 @@ class TreatmentDialogViewModel(
+          * [bolusId], or [discard] it on Cancel. Close it at [closeAt]: the master's SMB pause for the dose has run out by then.
+          */
+         data class ShowConfirmation(val bolusId: Long, val lines: List<ConfirmationLine>, val closeAt: TimeMark) : SideEffect()
++
++        /**
++         * A pump treatment goes on in the bolus calculator (2026-11-14): with carbs, the calculator works out the dose
++         * for them ([insulin] null); insulin alone opens its insulin-only mode with the typed dose ([carbs] null).
++         */
++        data class OpenCalculator(val insulin: Double?, val carbs: Int?) : SideEffect()
+     }
+ 
++    /** Set by the screen that can open the calculator. A forced record-only treatment stays here. */
++    var calculatorRedirect = false
++
+     private val _sideEffect = MutableSharedFlow<SideEffect>(
+         replay = 0,
+         extraBufferCapacity = 1,
+@@ -151,6 +160,13 @@ class TreatmentDialogViewModel(
+         appScope.launch {
+             val state = uiState.value
+             confirmedState = state
++            if (calculatorRedirect && !state.forcedRecordOnly && (state.carbs > 0 || state.insulin > 0.0)) {
++                _sideEffect.tryEmit(
++                    if (state.carbs > 0) SideEffect.OpenCalculator(insulin = null, carbs = state.carbs)
++                    else SideEffect.OpenCalculator(insulin = Round.floorTo(state.insulin, ch.bolusStep(state.insulin)), carbs = null)
++                )
++                return@launch
++            }
+             val actions = buildActions(state)
+             if (actions.isEmpty()) {
+                 _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
