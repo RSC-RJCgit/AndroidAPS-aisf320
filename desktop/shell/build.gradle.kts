@@ -297,7 +297,9 @@ compose.desktop {
             // The packaged app carries a trimmed JRE with only the modules the plugin can detect. JNA
             // needs sun.misc.Unsafe from jdk.unsupported, which it cannot detect; without it every OS
             // key store fails to load and the keys fall back to plain files.
-            modules("jdk.unsupported")
+            // jdk.localedata (2026-11-14, per explicit request): without it the JRE only has US English locale data, so
+            // dates showed 11/14/2026 on an en-AU Windows PC instead of 14/11/2026.
+            modules("jdk.unsupported", "jdk.localedata")
             // jpackage embeds a JRE, so the user installs an app rather than a JVM.
             targetFormats(
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
