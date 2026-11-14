@@ -84,7 +84,16 @@ class TreatmentDialogViewModel(
          * [bolusId], or [discard] it on Cancel. Close it at [closeAt]: the master's SMB pause for the dose has run out by then.
          */
         data class ShowConfirmation(val bolusId: Long, val lines: List<ConfirmationLine>, val closeAt: TimeMark) : SideEffect()
+
+        /**
+         * A pump treatment goes on in the bolus calculator (2026-11-14): with carbs, the calculator works out the dose
+         * for them ([insulin] null); insulin alone opens its insulin-only mode with the typed dose ([carbs] null).
+         */
+        data class OpenCalculator(val insulin: Double?, val carbs: Int?) : SideEffect()
     }
+
+    /** Set by the screen that can open the calculator. A forced record-only treatment stays here. */
+    var calculatorRedirect = false
 
     private val _sideEffect = MutableSharedFlow<SideEffect>(
         replay = 0,
@@ -151,6 +160,13 @@ class TreatmentDialogViewModel(
         appScope.launch {
             val state = uiState.value
             confirmedState = state
+            if (calculatorRedirect && !state.forcedRecordOnly && (state.carbs > 0 || state.insulin > 0.0)) {
+                _sideEffect.tryEmit(
+                    if (state.carbs > 0) SideEffect.OpenCalculator(insulin = null, carbs = state.carbs)
+                    else SideEffect.OpenCalculator(insulin = Round.floorTo(state.insulin, ch.bolusStep(state.insulin)), carbs = null)
+                )
+                return@launch
+            }
             val actions = buildActions(state)
             if (actions.isEmpty()) {
                 _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
