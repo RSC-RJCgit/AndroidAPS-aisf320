@@ -55,7 +55,9 @@ import app.aaps.core.nssdk.localmodel.clientcontrol.ClientState
 import app.aaps.core.nssdk.remotemodel.LastModified
 import app.aaps.core.objects.notes.CareportalNoteStatus
 import app.aaps.core.objects.notes.NoteSmsTexts
+import app.aaps.core.objects.overview.MasterFreeStorage
 import app.aaps.core.objects.overview.MasterGraphTimeZone
+import app.aaps.core.objects.overview.localFreeStorageGb
 import app.aaps.core.ui.compose.icons.IcPluginNsClient
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.preference.libreSpecialSettings
@@ -953,7 +955,13 @@ class NSClientV3Plugin(
         val openAps = data.openaps ?: return data
         val suggested = openAps.suggested ?: return data
         val zone = AppTimeZone.current()
-        return data.copy(openaps = openAps.copy(suggested = JsonObject(suggested + (MasterGraphTimeZone.FIELD to JsonPrimitive(zone.id)))))
+        // The master's free storage beside its zone (2026-11-14, per explicit request), as a v3 master sends it.
+        val freeGb = localFreeStorageGb()
+        val extra = buildMap {
+            put(MasterGraphTimeZone.FIELD, JsonPrimitive(zone.id))
+            if (freeGb != null) put(MasterFreeStorage.FIELD, JsonPrimitive(freeGb))
+        }
+        return data.copy(openaps = openAps.copy(suggested = JsonObject(suggested + extra)))
     }
 
     /** Add display text only to the Nightscout upload. Other device status consumers get the original record. */

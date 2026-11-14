@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -34,7 +35,9 @@ import app.aaps.core.interfaces.overview.graph.BgInfoData
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
+import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.objects.overview.MasterFreeStorage
 import app.aaps.core.ui.compose.icons.IcSettingsOff
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.search.M3SearchBar
@@ -85,7 +88,9 @@ fun MainTopBar(
         }
     }
     val now by clock.collectAsStateWithLifecycle(initialValue = dateUtil.now())
-    val timeText = graphTimestamp(dateUtil, now, displayZone)
+    // The master's free storage after the clock (2026-11-14, per explicit request); a master shows its own.
+    val isMaster = !LocalInspectionMode.current && LocalConfig.current.APS && !LocalConfig.current.AAPSCLIENT
+    val timeText = MasterFreeStorage.withFreeStorage(graphTimestamp(dateUtil, now, displayZone), now, isMaster)
     if (compact) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

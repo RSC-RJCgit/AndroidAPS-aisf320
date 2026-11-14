@@ -32,6 +32,7 @@ import app.aaps.plugins.sync.nsclientV3.workers.stepsFromPrimarySite
 import app.aaps.core.objects.autoisf.legacyAutoIsfListValues
 import app.aaps.core.objects.notes.CareportalNoteStatus
 import app.aaps.core.objects.notes.NoteSmsTexts
+import app.aaps.core.objects.overview.MasterFreeStorage
 import app.aaps.core.objects.overview.MasterGraphTimeZone
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
@@ -206,6 +207,7 @@ class NSDeviceStatusHandler(
     internal fun takeMasterGraphTimeZone(statuses: List<NSDeviceStatus>, site: String) {
         if (!config.AAPSCLIENT && (!config.APS || activePlugin.activePump.selectedActivePump() !is VirtualPump)) return
         if (site.isBlank() || site != MasterGraphTimeZone.selectedSite(preferences)) return
+        takeMasterFreeStorage(statuses)
         val latestAllowed = dateUtil.now() + 5 * 60_000L
         val latest = statuses.asSequence().mapNotNull { status ->
             if (status.device?.startsWith("openaps://") != true) return@mapNotNull null
@@ -217,6 +219,18 @@ class NSDeviceStatusHandler(
         }.maxByOrNull { it.first } ?: return
         launchReceivedStatusWork("master graph time zone") {
             MasterGraphTimeZone.saveNewest(preferences, site, latest.first, latest.second)
+        }
+    }
+
+    /** The master's free storage, sent beside masterTimeZone (2026-11-14): keep the newest for the top-bar clock. */
+    private fun takeMasterFreeStorage(statuses: List<NSDeviceStatus>) {
+        val now = dateUtil.now()
+        statuses.forEach { status ->
+            if (status.device?.startsWith("openaps://") != true) return@forEach
+            val suggested = status.openaps?.suggested ?: return@forEach
+            val gb = (suggested[MasterFreeStorage.FIELD] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: return@forEach
+            val at = status.date ?: graphReportTime(status.createdAt) ?: graphReportTime(suggested.safeGetString("timestamp")) ?: return@forEach
+            MasterFreeStorage.remember(gb, at, now)
         }
     }
 
