@@ -12,11 +12,30 @@ import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
+import kotlin.math.roundToLong
 
 // The live checks the Bolus Wizard makes before it calculates, shared with QuickWizard (2026-10-21, per explicit request:
 // a QuickWizard gives the same dose as the Bolus Wizard with the same options). They were private to the wizard screen.
 
 private const val BG_RISE_WINDOW_MINUTES = 60L
+
+/**
+ * HP1 (hypo prediction) for a phone without AutoISF, which on the fork works it out every loop (2026-11-14, per explicit
+ * request): the same formula, (BG - IOB) + 0.25 x short delta + 0.25 x 5-min delta + COB / 12, all mmol/L. The fork takes
+ * the 5-min change of the raw Libre value; here the normal 5-min delta. Returns the glucose time and HP1 in milli-mmol/L,
+ * as the fork stores it, or null without glucose data. It replaces the lowest-loop-prediction stand-in, which ignores
+ * carbs and so held nearly every split part after a meal (A15, 14 Nov 12:50).
+ */
+suspend fun localHp1(glucoseStatusProvider: GlucoseStatusProvider, iobCobCalculator: IobCobCalculator): Pair<Long, Long>? {
+    val glucose = glucoseStatusProvider.getGlucoseStatusData() ?: return null
+    val iob = iobCobCalculator.calculateIobFromBolus().round().iob +
+        iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
+    val cob = iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+    val mmol = 18.0182
+    val hp1 = (glucose.glucose / mmol - iob) + 0.25 * (glucose.shortAvgDelta / mmol) + 0.25 * (glucose.delta / mmol) + cob / 12.0
+    if (!hp1.isFinite()) return null
+    return glucose.date to (hp1 * 1000.0).roundToLong()
+}
 
 /** True when the falling-BG caution applies now ([WizardDropTrendCaution]): the wizard percent is then halved. */
 suspend fun dropTrendCautionNow(
@@ -29,7 +48,8 @@ suspend fun dropTrendCautionNow(
 ): Boolean {
     val glucose = glucoseStatusProvider.getGlucoseStatusData() ?: return false
     val hp1Cached = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
-    val hp1Mmol = if (hp1Cached != 0L) hp1Cached / 1000.0 else null
+    // No AutoISF on this phone: the same HP1 worked out here (2026-11-14, see localHp1)
+    val hp1Mmol = if (hp1Cached != 0L) hp1Cached / 1000.0 else localHp1(glucoseStatusProvider, iobCobCalculator)?.second?.let { it / 1000.0 }
     val bolusIob = iobCobCalculator.calculateIobFromBolus().round().iob
     val basalIob = iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
     val from = dateUtil.now() - T.mins(BG_RISE_WINDOW_MINUTES).msecs()

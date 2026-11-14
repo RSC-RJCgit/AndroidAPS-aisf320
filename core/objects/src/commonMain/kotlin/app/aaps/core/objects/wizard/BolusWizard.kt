@@ -57,7 +57,6 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToLong
 import kotlin.time.Clock
 
 class BolusWizard(
@@ -826,17 +825,6 @@ class BolusWizard(
      * A newer bolus cancels whatever is still waiting.
      */
     /** A bolus that is not a wizard confirm still replaces any leftover series that is waiting. */
-    /**
-     * Patch for upstream: no AutoISF HP1 here, so the lowest of this phone's last loop predictions (IOB, COB, UAM) over
-     * the next hour, in milli-mmol/L, and when the loop made them. Null when the loop has no predictions.
-     */
-    private fun ownLoopLowestPrediction(): Pair<Long, Long>? {
-        val result = loop.lastRun?.request ?: return null
-        val predictions = result.predictions() ?: return null
-        val lowest = listOfNotNull(predictions.IOB, predictions.COB, predictions.UAM).flatMap { it.take(13) }.minOrNull() ?: return null
-        return result.date to (lowest / Constants.MMOLL_TO_MGDL * 1000).roundToLong()
-    }
-
     fun cancelLeftoverSplit() {
         SplitScheduleGate.next()
     }
@@ -1112,7 +1100,7 @@ class BolusWizard(
             val hpValue = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
             // For Trio: the lowest of Trio's own predictions over the next hour stands in for HP1
             val hpCheck = trioLater?.let { trio -> trio.lowestPrediction()?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait }
-                ?: if (hpAt == 0L) ownLoopLowestPrediction()?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait
+                ?: if (hpAt == 0L) localHp1(glucoseStatusProvider, iobCobCalculator)?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait
                 else if (hpAt == preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)) splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
             when (hpCheck) {
                 SplitHpCheck.Hold -> {
