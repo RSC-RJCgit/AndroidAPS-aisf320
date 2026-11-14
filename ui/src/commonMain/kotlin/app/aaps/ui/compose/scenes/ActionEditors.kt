@@ -44,6 +44,7 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.NumberInputRow
+import app.aaps.ui.compose.scenes.wizard.ActionToggle
 import app.aaps.core.ui.compose.stringResource
 
 // --- Helpers ---
@@ -167,6 +168,67 @@ internal fun SmbToggleEditor(
             checked = action.enabled,
             onCheckedChange = { onUpdate(action.copy(enabled = it)) }
         )
+    }
+}
+
+/**
+ * AutoISF fork: which AutoISF settings the scene changes. Each one has its own switch; a setting that is
+ * not switched on stays as it is during the scene.
+ */
+@Composable
+internal fun AutoIsfSettingsEditor(
+    action: SceneAction.AutoIsfSettings,
+    onUpdate: (SceneAction) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
+        ActionToggle(
+            label = stringResource(CoreUiStrings.scene_editor_change_autoisf),
+            checked = action.enabled != null,
+            onCheckedChange = { onUpdate(action.copy(enabled = if (it) false else null)) }
+        )
+        action.enabled?.let { enabled ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (enabled) stringResource(CoreUiStrings.scene_editor_enabled) else stringResource(CoreUiStrings.scene_editor_disabled),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Switch(checked = enabled, onCheckedChange = { onUpdate(action.copy(enabled = it)) })
+            }
+        }
+        ActionToggle(
+            label = stringResource(CoreUiStrings.scene_editor_change_acce_weight),
+            checked = action.acceWeight != null,
+            onCheckedChange = { onUpdate(action.copy(acceWeight = if (it) 0.0 else null)) }
+        )
+        action.acceWeight?.let { weight ->
+            NumberInputRow(
+                labelRef = CoreUiStrings.scene_editor_acce_weight,
+                value = weight,
+                onValueChange = { onUpdate(action.copy(acceWeight = it)) },
+                valueRange = SceneAction.AutoIsfSettings.ACCE_WEIGHT_MIN..SceneAction.AutoIsfSettings.ACCE_WEIGHT_MAX,
+                step = 0.05,
+                decimalPlaces = 2
+            )
+        }
+        ActionToggle(
+            label = stringResource(CoreUiStrings.scene_editor_change_iobth),
+            checked = action.iobThPercent != null,
+            onCheckedChange = { onUpdate(action.copy(iobThPercent = if (it) 100 else null)) }
+        )
+        action.iobThPercent?.let { percent ->
+            NumberInputRow(
+                labelRef = CoreUiStrings.scene_editor_iobth,
+                value = percent.toDouble(),
+                onValueChange = { onUpdate(action.copy(iobThPercent = it.toInt())) },
+                valueRange = SceneAction.AutoIsfSettings.IOB_TH_MIN.toDouble()..SceneAction.AutoIsfSettings.IOB_TH_MAX.toDouble(),
+                step = 5.0,
+                unitLabel = CoreUiStrings.units_percent
+            )
+        }
     }
 }
 

@@ -26,6 +26,9 @@ import app.aaps.plugins.automation.actions.ActionProfileSwitchPercent
 import app.aaps.plugins.automation.actions.ActionRunAutotune
 import app.aaps.plugins.automation.actions.ActionRunScene
 import app.aaps.plugins.automation.actions.ActionSMBChange
+import app.aaps.plugins.automation.actions.ActionSetAcceWeight
+import app.aaps.plugins.automation.actions.ActionSetIobTH
+import app.aaps.plugins.automation.actions.AutoIsfAutomationLimits
 import app.aaps.plugins.automation.actions.ActionSendSMS
 import app.aaps.plugins.automation.actions.ActionSettingsExport
 import app.aaps.plugins.automation.actions.ActionSmoothingChange
@@ -68,6 +71,8 @@ fun ActionEditor(
             is ActionSettingsExport       -> ActionSettingsExportEditor(action, onChange)
             is ActionCarePortalEvent      -> ActionCarePortalEventEditor(action, tick, onChange)
             is ActionSMBChange            -> ActionSMBChangeEditor(action, tick, onChange)
+            is ActionSetAcceWeight        -> ActionSetAcceWeightEditor(action, tick, onChange)
+            is ActionSetIobTH             -> ActionSetIobTHEditor(action, tick, onChange)
             is ActionSmoothingChange      -> ActionSmoothingChangeEditor(action, tick, onChange)
             is ActionProfileSwitch        -> ActionProfileSwitchEditor(action, profileNames, tick, onChange)
             is ActionProfileSwitchPercent -> ActionProfileSwitchPercentEditor(action, tick, onChange)
@@ -162,6 +167,44 @@ fun ActionSMBChangeEditor(a: ActionSMBChange, tick: Int = 0, onChange: () -> Uni
             onValueChange = { a.smbState.setValue(it); onChange() }
         )
     }
+}
+
+@Composable
+fun ActionSetAcceWeightEditor(a: ActionSetAcceWeight, tick: Int = 0, onChange: () -> Unit) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    NumberInputRow(
+        labelRef = AutomationStrings.autoisf_acce_weight_label,
+        value = a.weight,
+        onValueChange = { a.weight = it; onChange() },
+        valueRange = AutoIsfAutomationLimits.ACCE_WEIGHT_MIN..AutoIsfAutomationLimits.ACCE_WEIGHT_MAX,
+        step = AutoIsfAutomationLimits.ACCE_WEIGHT_STEP,
+        decimalPlaces = 2
+    )
+    AutoIsfOnlyNote()
+}
+
+@Composable
+fun ActionSetIobTHEditor(a: ActionSetIobTH, tick: Int = 0, onChange: () -> Unit) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    NumberInputRow(
+        labelRef = AutomationStrings.autoisf_iobth_label,
+        value = a.percent.toDouble(),
+        onValueChange = { a.percent = it.toInt(); onChange() },
+        valueRange = AutoIsfAutomationLimits.IOB_TH_MIN.toDouble()..AutoIsfAutomationLimits.IOB_TH_MAX.toDouble(),
+        step = AutoIsfAutomationLimits.IOB_TH_STEP.toDouble(),
+        unitLabel = CoreUiStrings.units_percent
+    )
+    AutoIsfOnlyNote()
+}
+
+/** AutoISF fork: the AutoISF actions and triggers change settings that only OpenAPS AutoISF uses. */
+@Composable
+fun AutoIsfOnlyNote() {
+    Text(
+        text = stringResource(AutomationStrings.autoisf_only_note),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
 }
 
 @Composable

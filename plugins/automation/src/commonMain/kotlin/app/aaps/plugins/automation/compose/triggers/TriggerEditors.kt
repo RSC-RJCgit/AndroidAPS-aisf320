@@ -32,6 +32,9 @@ import app.aaps.plugins.automation.elements.InputDelta.DeltaType
 import app.aaps.plugins.automation.elements.InputPercent
 import app.aaps.plugins.automation.triggers.Trigger
 import app.aaps.plugins.automation.triggers.TriggerAutosensValue
+import app.aaps.plugins.automation.compose.actions.AutoIsfOnlyNote
+import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
+import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
@@ -82,6 +85,8 @@ fun TriggerEditor(
             is TriggerIob                -> TriggerIobEditor(trigger, onChange, tick)
             is TriggerHeartRate          -> TriggerHeartRateEditor(trigger, onChange, tick)
             is TriggerAutosensValue      -> TriggerAutosensValueEditor(trigger, onChange, tick)
+            is TriggerBgAcceWeight       -> TriggerBgAcceWeightEditor(trigger, onChange, tick)
+            is TriggerIobTH              -> TriggerIobTHEditor(trigger, onChange, tick)
             is TriggerBolusAgo           -> TriggerBolusAgoEditor(trigger, onChange, tick)
             is TriggerCannulaAge         -> TriggerCannulaAgeEditor(trigger, onChange, tick)
             is TriggerInsulinAge         -> TriggerInsulinAgeEditor(trigger, onChange, tick)
@@ -225,6 +230,48 @@ fun TriggerHeartRateEditor(t: TriggerHeartRate, onChange: () -> Unit, tick: Int 
             compact = true
         )
     }
+}
+
+@Composable
+fun TriggerBgAcceWeightEditor(t: TriggerBgAcceWeight, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    CompareRow(
+        comparator = t.comparator.value,
+        onComparatorChange = { t.comparator.value = it; onChange() },
+        label = ""
+    ) {
+        NumberInputRow(
+            labelRef = null,
+            value = t.acceWeight,
+            onValueChange = { t.acceWeight = it; onChange() },
+            valueRange = 0.0..1.0,
+            step = 0.05,
+            decimalPlaces = 2,
+            compact = true
+        )
+    }
+    AutoIsfOnlyNote()
+}
+
+@Composable
+fun TriggerIobTHEditor(t: TriggerIobTH, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    CompareRow(
+        comparator = t.comparator.value,
+        onComparatorChange = { t.comparator.value = it; onChange() },
+        label = ""
+    ) {
+        NumberInputRow(
+            labelRef = null,
+            value = t.percent.toDouble(),
+            onValueChange = { t.percent = it.toInt(); onChange() },
+            valueRange = 10.0..100.0,
+            step = 5.0,
+            unitLabel = CoreUiStrings.units_percent,
+            compact = true
+        )
+    }
+    AutoIsfOnlyNote()
 }
 
 @Composable

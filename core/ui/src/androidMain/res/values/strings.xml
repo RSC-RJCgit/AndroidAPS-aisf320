@@ -1318,5 +1318,17 @@
     <string name="units_sec">sec</string>
     <string name="units_years">y</string>
     <string name="prefs_range_title">Range for visualization</string>
-    <string name="secrets_not_protected">No system key store was found on this computer. The keys that protect your settings and the pairing with the master are kept in files next to the data, so anyone who gets a copy of your files gets them too. On Linux, install and start a keyring (for example GNOME Keyring or KWallet), then start AAPS again.</string>
+    <string name="secrets_not_protected">No system key store was found on this computer. The keys that protect your settings and the pairing with the master are kept in files next to the data, so anyone who gets a copy of your files gets them too. On Linux, install and start a keyring (for example GNOME Keyring or KWallet), then start AAPS again.</string>    <string name="scene_wizard_autoisf_title">AutoISF</string>
+    <string name="scene_wizard_autoisf_info">Change AutoISF settings while the scene runs. At the end they go back to the values before the scene. Only has an effect with OpenAPS AutoISF.</string>
+    <string name="scene_editor_change_autoisf">Switch AutoISF on or off</string>
+    <string name="scene_editor_change_acce_weight">Change acce weight</string>
+    <string name="scene_editor_change_iobth">Change iobTH</string>
+    <string name="scene_editor_acce_weight">acce weight</string>
+    <string name="scene_editor_iobth">iobTH</string>
+    <string name="scene_action_autoisf_on">AutoISF on</string>
+    <string name="scene_action_autoisf_off">AutoISF off</string>
+    <string name="scene_action_acce_weight" comment="%1$.2f = BG acceleration ISF weight, 0 to 1. Example: acce weight 0.20">acce weight %1$.2f</string>
+    <string name="scene_action_iobth" comment="%1$d = iobTH in percent of max IOB. Example: iobTH 70 %">iobTH %1$d %%</string>
+    <string name="scene_revert_autoisf">AutoISF settings go back to the values before the scene</string>
+
 </resources>

@@ -16,6 +16,7 @@ import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.pump.WizardButton
 import app.aaps.core.ui.compose.pump.WizardStepLayout
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.compose.scenes.AutoIsfSettingsEditor
 import app.aaps.ui.compose.scenes.SmbToggleEditor
 
 /**
@@ -27,7 +28,10 @@ internal fun SmbStep(
     onToggle: (Boolean) -> Unit,
     onUpdate: (SceneAction) -> Unit,
     onBack: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onAutoIsfToggle: (Boolean) -> Unit = {},
+    onAutoIsfUpdate: (SceneAction) -> Unit = {},
+    showAutoIsf: Boolean = false
 ) {
     WizardStepLayout(
         secondaryButton = WizardButton(text = stringResource(CoreUiStrings.back), onClick = onBack),
@@ -57,6 +61,32 @@ internal fun SmbStep(
                     action = state.smbAction,
                     onUpdate = onUpdate
                 )
+            }
+        }
+        // AutoISF fork: AutoISF settings for the time of the scene, on the same page as SMB. Only offered
+        // while AutoISF is the active algorithm; a scene that has them keeps them when it is edited.
+        if (showAutoIsf) {
+            Text(
+                text = stringResource(CoreUiStrings.scene_wizard_autoisf_info),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            ActionToggle(
+                label = stringResource(CoreUiStrings.scene_wizard_include_action, stringResource(CoreUiStrings.scene_wizard_autoisf_title)),
+                checked = state.autoIsfEnabled,
+                onCheckedChange = onAutoIsfToggle
+            )
+            AnimatedVisibility(
+                visible = state.autoIsfEnabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(AapsSpacing.medium)) {
+                    AutoIsfSettingsEditor(
+                        action = state.autoIsfAction,
+                        onUpdate = onAutoIsfUpdate
+                    )
+                }
             }
         }
     }

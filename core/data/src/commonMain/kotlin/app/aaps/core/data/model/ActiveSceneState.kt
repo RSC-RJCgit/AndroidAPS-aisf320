@@ -28,6 +28,8 @@ data class ActiveSceneState(
     val lifecycle: SceneLifecycle = SceneLifecycle.ACTIVE,
     /** SMB enabled state before activation (null if scene didn't change SMB) */
     val priorSmb: Boolean? = null,
+    /** AutoISF fork: AutoISF settings before activation, only the ones the scene changes (null if none) */
+    val priorAutoIsf: AutoIsfPrior? = null,
     /** Records created by this scene at activation */
     val scopedRecords: ScopedRecords = ScopedRecords(),
     /**
@@ -37,6 +39,13 @@ data class ActiveSceneState(
      */
     val chainSkipReason: String? = null
 ) {
+
+    /** AutoISF fork: the values [SceneAction.AutoIsfSettings] changed, as they were before the scene. */
+    data class AutoIsfPrior(
+        val enabled: Boolean? = null,
+        val acceWeight: Double? = null,
+        val iobThPercent: Int? = null
+    )
 
     /** Calculated end time (null if indefinite) */
     val endsAt: Long?

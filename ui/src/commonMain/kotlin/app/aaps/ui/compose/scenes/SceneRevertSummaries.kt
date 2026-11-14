@@ -29,6 +29,8 @@ internal fun ActiveSceneState.revertSummaries(rh: TextResolver): List<String> {
 
             is SceneAction.LoopModeChange  -> summaries.add(rh.gs(CoreUiStrings.scene_revert_loop_mode))
             is SceneAction.CarePortalEvent -> hasCarePortal = true
+            // AutoISF fork (2026-11-14, from blaqone's AAPS-autoISF): the AutoISF settings go back at the end
+            is SceneAction.AutoIsfSettings -> summaries.add(rh.gs(CoreUiStrings.scene_revert_autoisf))
         }
     }
 

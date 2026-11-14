@@ -208,4 +208,20 @@ class SceneSerializerTest : TestBase() {
             assertThat(lm.mode).isEqualTo(mode)
         }
     }
+
+    // AutoISF fork: the AutoISF action keeps exactly the values it changes, and nothing else
+    @Test
+    fun autoIsfSettings_roundTrip() {
+        val scene = Scene(
+            id = "autoisf-1",
+            name = "Sport",
+            actions = listOf(
+                SceneAction.AutoIsfSettings(enabled = false, acceWeight = 0.15, iobThPercent = 60),
+                SceneAction.AutoIsfSettings(iobThPercent = 80)
+            )
+        )
+        val restored = listOf(scene).toJson().toScenes()[0]
+        assertThat(restored.actions[0]).isEqualTo(SceneAction.AutoIsfSettings(enabled = false, acceWeight = 0.15, iobThPercent = 60))
+        assertThat(restored.actions[1]).isEqualTo(SceneAction.AutoIsfSettings(iobThPercent = 80))
+    }
 }

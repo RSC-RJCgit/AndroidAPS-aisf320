@@ -10,6 +10,7 @@ import app.aaps.core.utils.lenientBoolean
 import app.aaps.core.utils.lenientBooleanOrNull
 import app.aaps.core.utils.lenientDoubleOrNull
 import app.aaps.core.utils.lenientInt
+import app.aaps.core.utils.lenientIntOrNull
 import app.aaps.core.utils.lenientString
 import app.aaps.core.utils.lenientStringOrNull
 import kotlinx.serialization.json.Json
@@ -124,6 +125,13 @@ private fun List<SceneAction>.toJsonArray(): JsonArray =
                             put("mode", action.mode.name)
                         }
 
+                        is SceneAction.AutoIsfSettings -> {
+                            put("type", "autoisf_settings")
+                            action.enabled?.let { put("enabled", it) }
+                            action.acceWeight?.let { put("acceWeight", it) }
+                            action.iobThPercent?.let { put("iobThPercent", it) }
+                        }
+
                         is SceneAction.CarePortalEvent -> {
                             put("type", "careportal")
                             put("teType", action.type.text)
@@ -149,6 +157,14 @@ private fun JsonArray.toSceneActions(): List<SceneAction> {
                 profileName = obj.lenientString("profileName"),
                 percentage = obj.lenientInt("percentage", 100),
                 timeShiftHours = obj.lenientInt("timeShiftHours", 0)
+            )
+
+            "autoisf_settings" -> SceneAction.AutoIsfSettings(
+                enabled = obj.lenientBooleanOrNull("enabled"),
+                acceWeight = obj.lenientDoubleOrNull("acceWeight")
+                    ?.coerceIn(SceneAction.AutoIsfSettings.ACCE_WEIGHT_MIN, SceneAction.AutoIsfSettings.ACCE_WEIGHT_MAX),
+                iobThPercent = obj.lenientIntOrNull("iobThPercent")
+                    ?.coerceIn(SceneAction.AutoIsfSettings.IOB_TH_MIN, SceneAction.AutoIsfSettings.IOB_TH_MAX)
             )
 
             "smb_toggle"     -> SceneAction.SmbToggle(

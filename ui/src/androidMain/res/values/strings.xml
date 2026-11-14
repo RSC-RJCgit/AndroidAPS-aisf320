@@ -537,6 +537,10 @@
     <string name="overview_steroid_250">Steroids 190% are on. Increase to 250?</string>
     <string name="overview_steroid_off">Steroids are on, or restart over 8.0. Turn off?</string>
     <string name="graph_therapy_event_bg_with_note" comment="Shown when the user taps a BG check in the overview graph. %1$s = glucose with its unit, %2$s = the note the user wrote. Example: 6.1 mmol/L, before lunch">%1$s, %2$s</string>
+    <string name="overview_status_loop" comment="Overview status line. %1$s = how long ago the loop ran, already with ago. Example: Loop 47s ago">Loop %1$s</string>
+    <string name="overview_status_smb" comment="Overview status line. %1$s = insulin with unit, %2$s = how long ago, already with ago. Example: SMB 0.30 U 4m ago">SMB %1$s %2$s</string>
+    <string name="overview_status_tbr" comment="Overview status line. %1$s = temporary basal rate with unit or percent, %2$s = how long ago it started, already with ago. Example: TBR 1.20 U/h 3m ago">TBR %1$s %2$s</string>
+    <string name="overview_status_no_tbr" comment="Overview status line when no temporary basal rate is running">No TBR</string>
 
     <string name="graph_bolus_calculation_unavailable">Calculation unavailable</string>
     <string name="client_settings1_chip">Set1</string>
