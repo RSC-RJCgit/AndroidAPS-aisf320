@@ -1189,7 +1189,7 @@ fun GraphsSection(
             GraphSeriesBottomSheet(
                 title = stringResource(CoreUiStrings.graph_bg),
                 selectedSeries = graphConfig.bgOverlays,
-                availableSeries = if (autoIsfActive) BG_OVERLAY_SERIES else BG_OVERLAY_SERIES.filter { it !in GraphConfig.AUTOISF_ONLY_TYPES },
+                availableSeries = BG_OVERLAY_SERIES,
                 height = graphConfig.bgHeight,
                 maxHeight = GraphConfig.MAX_BG_GRAPH_HEIGHT_DP,
                 onHeightChange = { h ->
