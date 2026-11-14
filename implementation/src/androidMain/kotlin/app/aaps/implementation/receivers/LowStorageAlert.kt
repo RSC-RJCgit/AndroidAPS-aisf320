@@ -9,6 +9,7 @@ import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -22,6 +23,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.implementation.maintenance.deleteOldInstallers
+import app.aaps.implementation.maintenance.trimLogsForLowStorage
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
@@ -40,7 +42,8 @@ class LowStorageAlert(
     private val dateUtil: DateUtil,
     private val notificationManager: NotificationManager,
     private val smsCommunicator: SmsCommunicator,
-    private val aapsLogger: AAPSLogger
+    private val aapsLogger: AAPSLogger,
+    private val loggerUtils: LoggerUtils
 ) {
 
     private var lastSmsAttemptAt = 0L
@@ -54,12 +57,21 @@ class LowStorageAlert(
         val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
             localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)
         val freeBefore = if (weeklyDue) null else freeStorageGiB()
-        val cleanupDue = weeklyDue || (freeBefore != null && freeBefore < 10.0)
+        val lowStorage = freeBefore != null && freeBefore < 10.0
+        val cleanupDue = weeklyDue || lowStorage
         if (cleanupDue) {
             deleteOldInstallers(
                 context, preferences.get(StringKey.AapsDirectoryUri),
                 preferences.get(StringNonKey.InstallerArchiveFolders), aapsLogger
             )
+        }
+        // 2026-11-15, per explicit request (as v3): under 10 GiB the old log zips go too
+        if (lowStorage) {
+            try {
+                aapsLogger.info(LTag.CORE, trimLogsForLowStorage(loggerUtils.logDirectory))
+            } catch (error: Exception) {
+                aapsLogger.error(LTag.CORE, "Could not trim the old log zips", error)
+            }
         }
         val freeGiB = if (cleanupDue) freeStorageGiB() else freeBefore
         if (weeklyDue) {

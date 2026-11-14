@@ -17,3 +17,16 @@ internal fun inspectStepSamples(data: StepsGraphData, timestamp: Long): List<Pai
             ?.takeIf { abs(it.timestamp - timestamp) <= 5 * 60_000L }
             ?.let { index to it }
     }
+
+/**
+ * The pairs of one status line, e.g. "f=0.70 ac=-- targetOffset= 133.0" to (f, 0.70), (ac, --), (targetOffset, 133.0), for
+ * the pill's tiles (2026-11-15, per explicit request). Empty when the line is not made of name=value pairs (such as the
+ * iOS heartbeat lines), which then stay plain text.
+ */
+internal fun statusLinePairs(line: String): List<Pair<String, String>> {
+    val pairs = STATUS_PAIR.findAll(line).map { it.groupValues[1] to it.groupValues[2] }.toList()
+    val covered = STATUS_PAIR.findAll(line).sumOf { it.value.length }
+    return if (pairs.isEmpty() || covered < line.count { !it.isWhitespace() } * 0.8) emptyList() else pairs
+}
+
+private val STATUS_PAIR = Regex("""([A-Za-z][A-Za-z0-9]*)=\s*([^\s]+)""")

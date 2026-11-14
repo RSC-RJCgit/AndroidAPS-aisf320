@@ -126,6 +126,15 @@ class NSDeviceStatusHandler(
     /** One batch is stored at a time, so the check for results already stored sees the batch before. */
     private val storeLock = Mutex()
 
+    init {
+        // The master's last free storage is shown again at once after a restart (2026-11-15, per explicit request)
+        try {
+            MasterFreeStorage.restore(preferences.get(StringNonKey.ClientMasterFreeStorage))
+        } catch (error: Exception) {
+            aapsLogger.warn(LTag.NSCLIENT, "Could not restore the master's free storage: ${error.message}")
+        }
+    }
+
     /** A live push and a downloaded batch both count. The status time is what the 9-minute check uses. */
     fun handleNewData(deviceStatuses: Array<NSDeviceStatus>) {
         val accepted = mutableListOf<ParsedDeviceStatus>()
@@ -225,13 +234,18 @@ class NSDeviceStatusHandler(
     /** The master's free storage, sent beside masterTimeZone (2026-11-14): keep the newest for the top-bar clock. */
     private fun takeMasterFreeStorage(statuses: List<NSDeviceStatus>) {
         val now = dateUtil.now()
+        // A saved value first, so an older status after a restart cannot replace a newer saved one
+        MasterFreeStorage.restore(preferences.get(StringNonKey.ClientMasterFreeStorage))
+        var changed = false
         statuses.forEach { status ->
             if (status.device?.startsWith("openaps://") != true) return@forEach
             val suggested = status.openaps?.suggested ?: return@forEach
             val gb = (suggested[MasterFreeStorage.FIELD] as? JsonPrimitive)?.content?.toDoubleOrNull()?.toInt() ?: return@forEach
             val at = status.date ?: graphReportTime(status.createdAt) ?: graphReportTime(suggested.safeGetString("timestamp")) ?: return@forEach
-            MasterFreeStorage.remember(gb, at, now)
+            if (MasterFreeStorage.remember(gb, at, now)) changed = true
         }
+        // Saved, so a restart keeps showing it (2026-11-15, per explicit request)
+        if (changed) preferences.put(StringNonKey.ClientMasterFreeStorage, MasterFreeStorage.encoded())
     }
 
     private fun graphReportTime(raw: String?): Long? = raw?.let {

@@ -54,7 +54,7 @@ internal fun deleteOldInstallers(context: Context, folderUri: String, extraFolde
                         } else if (INSTALLER_EXTENSIONS.any { name.endsWith(it, ignoreCase = true) } && !name.equals("aapsNewestAPK.apk", ignoreCase = true)) {
                             val modified = it.getLong(3)
                             if (modified <= 0L) throw IOException("Missing installer modification time")
-                            installers.putIfAbsent(id, ArchiveInstaller(tree, id, modified))
+                            installers.putIfAbsent(id, ArchiveInstaller(tree, id, modified, isUnwantedInstaller(name)))
                         }
                     }
                 }
@@ -67,7 +67,11 @@ internal fun deleteOldInstallers(context: Context, folderUri: String, extraFolde
 
     var deleted = 0
     var failed = 0
-    val oldInstallers = installers.values.sortedWith(compareByDescending<ArchiveInstaller> { it.modified }.thenBy { it.id }).drop(10)
+    // 2026-11-15, per explicit request (as v3): desktop installers (.dmg, .msi) and APKs this phone never installs (wear,
+    // tandem, full2) are always deleted; of the other APKs the newest 10 are kept, as before.
+    val (unwanted, phoneApks) = installers.values.partition { it.unwanted }
+    val oldInstallers = unwanted +
+        phoneApks.sortedWith(compareByDescending<ArchiveInstaller> { it.modified }.thenBy { it.id }).drop(10)
     for (installer in oldInstallers) {
         val uri = DocumentsContract.buildDocumentUriUsingTree(installer.tree, installer.id)
         val removed = try {
@@ -88,4 +92,39 @@ private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.docu
 private val INSTALLER_EXTENSIONS = setOf(".apk", ".dmg", ".msi")
 private val AAPS_ARCHIVE_FOLDERS = setOf("AAP", "AAPS", "AAPS3", "AAPS333", "AAPS4ios")
 
-private data class ArchiveInstaller(val tree: Uri, val id: String, val modified: Long)
+private data class ArchiveInstaller(val tree: Uri, val id: String, val modified: Long, val unwanted: Boolean)
+
+/** A desktop installer, or an APK this phone never installs (watch, Tandem or full2 build). */
+private fun isUnwantedInstaller(name: String): Boolean =
+    !name.endsWith(".apk", ignoreCase = true) || UNWANTED_APK_NAME_PARTS.any { name.contains(it, ignoreCase = true) }
+
+private val UNWANTED_APK_NAME_PARTS = setOf("wear", "tandem", "full2")
+
+/**
+ * 2026-11-15, per explicit request (as v3's MaintenancePlugin.trimLogsForLowStorage): frees space on the loop phone when its
+ * storage is low (called with the installer cleanup, under 10 GiB). In [logDirectory], hourly log zips
+ * (AndroidAPS._yyyy-MM-dd_HH.log.zip) older than [hourlyKeepDays] go (logback keeps 30 days), and only the newest
+ * [bundleKeep] saved AndroidAPS_LOG_* bundles stay. The live AndroidAPS.log is never touched. Returns a line for the log.
+ */
+internal fun trimLogsForLowStorage(logDirectory: String, hourlyKeepDays: Int = 7, bundleKeep: Int = 8): String {
+    if (logDirectory.isBlank()) return "Log cleanup: no log folder"
+    val dir = java.io.File(logDirectory)
+    var hourlyDeleted = 0
+    var bundlesDeleted = 0
+    var freedBytes = 0L
+    fun remove(file: java.io.File): Boolean {
+        val size = file.length()
+        return runCatching { file.delete() }.getOrDefault(false).also { if (it) freedBytes += size }
+    }
+    val hourFormat = java.text.SimpleDateFormat("yyyy-MM-dd_HH", java.util.Locale.US)
+    val cutoffStamp = hourFormat.format(java.util.Date(System.currentTimeMillis() - hourlyKeepDays * 24L * 60L * 60L * 1000L))
+    val hourlyName = Regex("""AndroidAPS\._(\d{4}-\d{2}-\d{2}_\d{2})\.log\.zip""")
+    dir.listFiles { _, name -> hourlyName.matches(name) }.orEmpty()
+        .filter { (hourlyName.matchEntire(it.name)?.groupValues?.get(1) ?: "9") < cutoffStamp }
+        .forEach { if (remove(it)) hourlyDeleted++ }
+    dir.listFiles { _, name -> name.startsWith("AndroidAPS_LOG_") && name.endsWith(".zip") }.orEmpty()
+        .sortedByDescending { it.name }.drop(bundleKeep)
+        .forEach { if (remove(it)) bundlesDeleted++ }
+    return "Log cleanup: $hourlyDeleted hourly zips older than $hourlyKeepDays days and $bundlesDeleted log bundles deleted, " +
+        "${freedBytes / 1_000_000} MB freed"
+}

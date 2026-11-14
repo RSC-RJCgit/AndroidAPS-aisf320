@@ -718,7 +718,44 @@ fun GraphInspectPill(
             }
             if (statusLines.isNotEmpty()) {
                 PillText(stringResource(CoreUiStrings.carb_time_now), MaterialTheme.colorScheme.onSurfaceVariant)
-                statusLines.forEach { PillText(it, MaterialTheme.colorScheme.onSurface) }
+                // Each line as small tiles, name above value, like the AutoISF split (2026-11-15, per explicit request); a line
+                // that is not name=value pairs stays plain text
+                statusLines.forEach { line ->
+                    val pairs = statusLinePairs(line)
+                    if (pairs.isEmpty()) PillText(line, MaterialTheme.colorScheme.onSurface)
+                    else StatusTiles(pairs)
+                }
+            }
+        }
+    }
+}
+
+/** One status line as tiles; the ISF factors in their graph line colours (ACCE, BG, PP, DURA and FINAL as on G2/G3). */
+@Composable
+private fun StatusTiles(pairs: List<Pair<String, String>>) {
+    val colors = AapsTheme.generalColors
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(AapsSpacing.extraSmall),
+        verticalArrangement = Arrangement.spacedBy(AapsSpacing.extraSmall),
+        modifier = Modifier.padding(bottom = AapsSpacing.extraSmall)
+    ) {
+        pairs.forEach { (name, value) ->
+            val valueColor = when (name) {
+                "f"  -> colors.finalIsf
+                "ac" -> colors.acceIsf
+                "bg" -> colors.bgIsf
+                "pp" -> colors.ppIsf
+                "du" -> colors.duraIsf
+                else -> MaterialTheme.colorScheme.onSurface
+            }
+            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(name, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Text(value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = valueColor, maxLines = 1)
+                }
             }
         }
     }

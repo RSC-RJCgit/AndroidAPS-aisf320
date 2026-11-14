@@ -919,7 +919,12 @@ class OverviewDataCacheImpl(
     }
 
     override fun updateIobGraph(data: IobGraphData) {
-        _iobGraphFlow.value = IobGraphData(iob = data.iob.finite("IOB"), predictions = data.predictions.finite("IOB predictions"))
+        // copy(), not a new IobGraphData: the fork's insulinByMinute (the insulin totals row) must come through (2026-11-15)
+        _iobGraphFlow.value = data.copy(
+            iob = data.iob.finite("IOB"),
+            predictions = data.predictions.finite("IOB predictions"),
+            insulinByMinute = data.insulinByMinute.finite("insulin by minute")
+        )
     }
 
     override fun updateAbsIobGraph(data: AbsIobGraphData) {
@@ -934,7 +939,15 @@ class OverviewDataCacheImpl(
     }
 
     override fun updateActivityGraph(data: ActivityGraphData) {
-        _activityGraphFlow.value = ActivityGraphData(activity = data.activity.finite("activity"), activityPrediction = data.activityPrediction.finite("activity prediction"))
+        // copy(), not a new ActivityGraphData: maxActivity, carbModel and maxCarbModel scale the activity and carb model
+        // curves, which were not drawn while they were dropped here (2026-11-15)
+        _activityGraphFlow.value = data.copy(
+            activity = data.activity.finite("activity"),
+            activityPrediction = data.activityPrediction.finite("activity prediction"),
+            maxActivity = data.maxActivity.takeIf { it.isFinite() } ?: 0.0,
+            carbModel = data.carbModel.finite("carb model"),
+            maxCarbModel = data.maxCarbModel.takeIf { it.isFinite() } ?: 0.0
+        )
     }
 
     override fun updateBgiGraph(data: BgiGraphData) {

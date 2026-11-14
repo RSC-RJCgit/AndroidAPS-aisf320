@@ -25,7 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -90,7 +94,16 @@ fun MainTopBar(
     val now by clock.collectAsStateWithLifecycle(initialValue = dateUtil.now())
     // The master's free storage after the clock (2026-11-14, per explicit request); a master shows its own.
     val isMaster = !LocalInspectionMode.current && LocalConfig.current.APS && !LocalConfig.current.AAPSCLIENT
-    val timeText = MasterFreeStorage.withFreeStorage(graphTimestamp(dateUtil, now, displayZone), now, isMaster)
+    // A mirrored value over 30 min old stays, greyed out, for up to 24 h (2026-11-15, per explicit request)
+    val storage = MasterFreeStorage.display(now, isMaster)
+    val staleColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
+    val timeText = buildAnnotatedString {
+        append(graphTimestamp(dateUtil, now, displayZone))
+        storage.gb?.let { gb ->
+            append("  ")
+            if (storage.stale) withStyle(SpanStyle(color = staleColor)) { append("$gb GB") } else append("$gb GB")
+        }
+    }
     if (compact) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -173,7 +186,25 @@ fun MainTopBar(
  * so it cannot take a tap meant for search.
  */
 @Composable
-private fun TopBarBg(bgInfo: BgInfoData?, compact: Boolean, timeText: String) {
+private fun TopBarBg(bgInfo: BgInfoData?, compact: Boolean, timeText: AnnotatedString) {
+    // The compact bar (landscape, Windows) is one fixed 48 dp row: a second line fell below it, so the time and free
+    // storage go beside the BG there (2026-11-15, per explicit request).
+    if (compact) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 4.dp)
+        ) {
+            if (bgInfo != null) TopBarBgValue(bgInfo, compact = true)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = timeText,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1
+            )
+        }
+        return
+    }
     Column(
         horizontalAlignment = Alignment.End,
         modifier = Modifier.padding(start = 4.dp)
