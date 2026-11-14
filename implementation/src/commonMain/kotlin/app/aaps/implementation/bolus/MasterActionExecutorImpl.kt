@@ -5,6 +5,7 @@ import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
+import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
@@ -1572,6 +1573,30 @@ class MasterActionExecutorImpl(
                 ValueWithUnit.Minute(carbTimeMinutes).takeIf { carbTimeMinutes != 0 }
             )
             executeBolus(detailedBolusInfo, action, uelValues, notes, bolusCalculatorResult, source, onError, onSuccess)
+        }
+        // 2026-11-15, per explicit request: a calculation that comes to 0 U leaves a 0 U marker, as in v3, so the graphs
+        // show that the calculator ran and gave nothing. Pump-style ids (like the cancelled-part markers) so the
+        // Nightscout upload takes it and every client shows it. Only a fat/protein plan and no carbs: nothing above
+        // stored the calculation, so it is stored here.
+        if (insulin == 0.0 && bolusCalculatorResult != null) {
+            if (carbs == 0) persistenceLayer.insertOrUpdateBolusCalculatorResult(bolusCalculatorResult)
+            val profile = profileFunction.getProfile()
+            if (profile != null) {
+                val at = dateUtil.now()
+                val pump = activePlugin.activePump
+                val zeroNote = listOfNotNull(notes?.takeIf { it.isNotBlank() }, "Wizard: 0U calculated").joinToString(" ")
+                persistenceLayer.insertOrUpdateBolus(
+                    BS(
+                        timestamp = at,
+                        amount = 0.0,
+                        type = BS.Type.NORMAL,
+                        notes = zeroNote,
+                        ids = IDs(pumpId = at, pumpType = pump.model(), pumpSerial = pump.serialNumber()),
+                        iCfg = profile.iCfg
+                    ),
+                    Action.BOLUS, source, zeroNote
+                )
+            } else aapsLogger.info(LTag.CORE, "Calculator 0 U marker not written, no profile")
         }
     }
 
