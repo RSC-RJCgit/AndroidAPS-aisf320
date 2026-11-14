@@ -233,6 +233,7 @@ fun WizardDialogScreen(
         onSplitFpuBolusToggle = viewModel::toggleSplitFpuBolus,
         onFpuIntervalChange = viewModel::updateFpuInterval,
         onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
+        onGiveRestWithSplitToggle = viewModel::toggleGiveRestWithSplit,
         onSplitOverMaxToggle = viewModel::toggleSplitOverMax,
         onSplitIntervalChange = viewModel::updateSplitIntervalMinutes,
         onDelayFpuInsteadOfCancelToggle = viewModel::toggleDelayFpuInsteadOfCancel,
@@ -277,6 +278,7 @@ internal fun WizardDialogContent(
     onSplitFpuBolusToggle: (Boolean) -> Unit = {},
     onFpuIntervalChange: (Int) -> Unit = {},
     onGiveRestLaterToggle: (Boolean) -> Unit = {},
+    onGiveRestWithSplitToggle: (Boolean) -> Unit = {},
     onSplitOverMaxToggle: (Boolean) -> Unit = {},
     onSplitIntervalChange: (Int) -> Unit = {},
     onDelayFpuInsteadOfCancelToggle: (Boolean) -> Unit = {},
@@ -964,6 +966,27 @@ internal fun WizardDialogContent(
                             }
                             Text(
                                 text = stringResource(UiStrings.wizard_give_rest_later_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                            )
+                            // 2026-11-14, per explicit request: where the held part goes. Only matters while the box above is ticked.
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    enabled = !locked && uiState.giveRestLater,
+                                    checked = uiState.giveRestWithSplit,
+                                    onCheckedChange = onGiveRestWithSplitToggle
+                                )
+                                Text(
+                                    text = stringResource(UiStrings.wizard_give_rest_with_split),
+                                    modifier = Modifier.clickable(enabled = !locked && uiState.giveRestLater) { onGiveRestWithSplitToggle(!uiState.giveRestWithSplit) }
+                                )
+                            }
+                            Text(
+                                text = stringResource(UiStrings.wizard_give_rest_with_split_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)

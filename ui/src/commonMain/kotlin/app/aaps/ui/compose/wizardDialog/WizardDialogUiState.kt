@@ -41,6 +41,8 @@ data class WizardDialogUiState(
     val delayFpuInsteadOfCancel: Boolean = true,
     /** Ticked delays the part of the bolus the fall caution removed, as hourly boluses. On by default. Unticked, that part is not given. */
     val giveRestLater: Boolean = true,
+    /** 2026-11-14: ticked (default) gives that held part with the carb split parts; unticked, with the protein/fat doses. */
+    val giveRestWithSplit: Boolean = true,
     /** Same later doses, with larger fat and protein, wizard percent 90, and the saved max bolus. */
     val unreliableSmb: Boolean = false,
     /** Halves the automatic fat and protein. With unreliableSmb ticked too, the two cancel to the average. */
