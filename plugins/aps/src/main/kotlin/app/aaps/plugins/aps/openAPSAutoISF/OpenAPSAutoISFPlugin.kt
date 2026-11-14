@@ -6402,9 +6402,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // TT (this automation never sets one of its own), so skipping the reassert whenever a TT is
             // active lets them win for their own duration without weakening OldPodInsReqBoost's own
             // purpose -- it resumes reasserting the instant their TT clears.
+            // 2026-11-14, per explicit request (12 Nov Dubai, 14:17-17:14: ~170 Profile150 switches, one per cycle):
+            // switchProfileIfNeeded() always writes a switch, so only switch when Standard110 is not already running; and
+            // yield the profile part for 35 min after LowBgTierAReset acted (recent-low caution wins over this rescue,
+            // as for LowBgTierAReset itself). The SMB x1.3 part still applies; DelOff now leaves it alone while active.
             if (preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive) && activeTtMgdl() == null) {
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) * 1.3)
-                switchProfileIfNeeded(preferences.get(StringKey.ApsAutoIsfStandard110ProfileName))
+                val oldPodProfile = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
+                val lowBgResetRecent = !readyToRun("LowBgTierAReset", 35)
+                if (!lowBgResetRecent && oldPodProfile.isNotBlank() && profileFunction.getOriginalProfileName() != oldPodProfile)
+                    switchProfileIfNeeded(oldPodProfile)
             }
         }
 
@@ -7625,7 +7632,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             && iobData.iob < 0.40 * constraintsChecker.getMaxIOBAllowed().value()
             && glucoseStatus.shortAvgDelta >= 0.0
         if (!boostHoldActive) smbBoostHoldUntilMs = 0L
-        if (!fuzzyEquals(smb_delivery_ratio, restingDeliveryBaseline) && activeTtMgdl() == null && !boostHoldActive && !(atHardStackTarget && smbStacking)) {
+        // 2026-11-14, per explicit request: no reset while OldPodInsReqBoost is active -- it re-applies baseline x1.3 every
+        // cycle with no TT, so DelOff undid it each minute (12 Nov: a DelOff note every minute, the boost never held).
+        // OldPodBstOff restores the baseline itself.
+        val oldPodBoostActive = preferences.get(BooleanKey.ApsAutoIsfOldPodInsReqBoostActive)
+        if (!fuzzyEquals(smb_delivery_ratio, restingDeliveryBaseline) && activeTtMgdl() == null && !boostHoldActive && !(atHardStackTarget && smbStacking) && !oldPodBoostActive) {
             setSmbDeliveryRatio(restingDeliveryBaseline)
             addCarePortalNote("DelOff")   // delivery ratio settled back to the (tier-aware) resting baseline
         }
