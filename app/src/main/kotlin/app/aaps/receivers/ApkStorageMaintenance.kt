@@ -1,25 +1,31 @@
 package app.aaps.receivers
 
 import app.aaps.core.keys.time.AppTimeZone
+import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import android.os.Process
 import android.os.StatFs
+import android.os.storage.StorageManager
 import android.provider.DocumentsContract
 import android.provider.DocumentsContract.Document
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import java.io.File
 import java.io.IOException
 import java.time.DayOfWeek
 import java.time.Instant
@@ -36,7 +42,8 @@ class ApkStorageMaintenance @Inject constructor(
     private val dateUtil: DateUtil,
     private val smsCommunicator: SmsCommunicator,
     private val logger: AAPSLogger,
-    private val maintenancePlugin: MaintenancePlugin
+    private val maintenancePlugin: MaintenancePlugin,
+    private val loggerUtils: LoggerUtils
 ) {
 
     @Synchronized
@@ -63,11 +70,17 @@ class ApkStorageMaintenance @Inject constructor(
         }
         if (weeklyDue) {
             preferences.put(LongNonKey.LastWeeklyApkCleanupDay, localDay)
-            reportFreeStorage(freeStorageGiB())
+            reportFreeStorage(context, freeStorageGiB())
+        }
+        // 2026-11-15, per explicit request: one extra storage SMS (with the breakdown) straight after this update, not only
+        // on Sunday. Marked sent first, so it can never repeat.
+        if (!weeklyDue && !preferences.get(BooleanNonKey.StorageBreakdownOnceSent)) {
+            preferences.put(BooleanNonKey.StorageBreakdownOnceSent, true)
+            reportFreeStorage(context, freeStorageGiB())
         }
     }
 
-    private fun reportFreeStorage(freeGiB: Double?) {
+    private fun reportFreeStorage(context: Context, freeGiB: Double?) {
         val targets = preferences.get(StringKey.SmsBattAlertNumbers).split(";")
             .map { it.filterNot(Char::isWhitespace) }
             .filter { it.isNotEmpty() }
@@ -76,8 +89,14 @@ class ApkStorageMaintenance @Inject constructor(
             logger.warn(LTag.CORE, "Weekly storage SMS skipped: Battery-alert numbers is empty")
             return
         }
+        val breakdown = try {
+            storageBreakdown(context)
+        } catch (error: Exception) {
+            logger.error(LTag.CORE, "Could not measure the storage breakdown", error)
+            null
+        }
         val text = if (freeGiB == null) "Weekly storage: free space unavailable"
-        else String.format(Locale.US, "Weekly storage: %.1fGB free", freeGiB)
+        else String.format(Locale.US, "Weekly storage: %.1fGB free", freeGiB) + (breakdown?.let { " $it" } ?: "")
         val accepted = targets.count { number ->
             try {
                 smsCommunicator.sendSMS(Sms(number, text))
@@ -88,6 +107,65 @@ class ApkStorageMaintenance @Inject constructor(
         }
         val result = "Weekly storage SMS accepted for $accepted of ${targets.size} Battery-alert numbers"
         if (accepted == targets.size) logger.info(LTag.CORE, result) else logger.warn(LTag.CORE, result)
+    }
+
+    /**
+     * What uses the space (2026-11-15, per explicit request), e.g. "of 119GB. AAPS app 2.1, logs 0.9, AAPS folder 0.6
+     * (installers 0.3), other apps and media 104". In GiB, as the free space. The AAPS app is its code, database, cache and
+     * its own Android/data folder (the hourly logs there are inside it); logs are the log folders, Documents/aapsLogs and
+     * that one; the AAPS folder is the selected Documents/AAPS folder. Other = used - app - AAPS folder - Documents logs.
+     */
+    private fun storageBreakdown(context: Context): String {
+        val stat = StatFs(Environment.getDataDirectory().path)
+        val used = (stat.totalBytes - stat.availableBytes).coerceAtLeast(0L)
+        val app = runCatching {
+            val stats = context.getSystemService(StorageStatsManager::class.java)
+                .queryStatsForUid(StorageManager.UUID_DEFAULT, Process.myUid())
+            stats.appBytes + stats.dataBytes + stats.cacheBytes
+        }.getOrNull()
+        val appSpecific = File(loggerUtils.appSpecificLogDirectory).absolutePath
+        val publicLogs = loggerUtils.logDirectory.takeIf { it.isNotBlank() && File(it).absolutePath != appSpecific }?.let { folderBytes(File(it)) } ?: 0L
+        val logs = publicLogs + folderBytes(File(appSpecific))
+        val (folder, installers) = aapsFolderBytes(context, preferences.get(StringKey.AapsDirectoryUri))
+        val other = used - (app ?: 0L) - folder - publicLogs
+        fun gib(bytes: Long) = String.format(Locale.US, "%.1f", bytes / BYTES_PER_GIB)
+        return buildList {
+            add(String.format(Locale.US, "of %.0fGB.", stat.totalBytes / BYTES_PER_GIB))
+            if (app != null) add("AAPS app ${gib(app)},")
+            add("logs ${gib(logs)},")
+            add("AAPS folder ${gib(folder)} (installers ${gib(installers)}),")
+            add(String.format(Locale.US, "other apps and media %.0f", other.coerceAtLeast(0L) / BYTES_PER_GIB))
+        }.joinToString(" ")
+    }
+
+    private fun folderBytes(dir: File): Long =
+        if (!dir.isDirectory) 0L else dir.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+
+    /** Size of the selected AAPS folder and of the installers in it, through its folder access. */
+    private fun aapsFolderBytes(context: Context, folderUri: String): Pair<Long, Long> {
+        if (folderUri.isBlank()) return 0L to 0L
+        val tree = Uri.parse(folderUri)
+        if (!DocumentsContract.isTreeUri(tree)) return 0L to 0L
+        val resolver = context.contentResolver
+        val columns = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME, Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE)
+        var total = 0L
+        var installers = 0L
+        val folders = ArrayDeque<String>()
+        folders.add(DocumentsContract.getTreeDocumentId(tree))
+        while (folders.isNotEmpty()) {
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, folders.removeLast())
+            resolver.query(children, columns, null, null, null)?.use {
+                while (it.moveToNext()) {
+                    if (it.getString(2) == Document.MIME_TYPE_DIR) folders.add(it.getString(0))
+                    else {
+                        val size = if (it.isNull(3)) 0L else it.getLong(3)
+                        total += size
+                        if (INSTALLER_EXTENSIONS.any { ext -> it.getString(1).endsWith(ext, ignoreCase = true) }) installers += size
+                    }
+                }
+            }
+        }
+        return total to installers
     }
 
     private companion object {

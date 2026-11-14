@@ -22,4 +22,6 @@ enum class BooleanNonKey(
     ObjectivesReconnectUsed("ObjectivesReconnectUsed", false),
     ObjectivesTempTargetUsed("ObjectivesTempTargetUsed", false),
     AutosensUsedOnMainPhone("used_autosens_on_main_phone", false),
+    // 2026-11-15, per explicit request: the storage breakdown SMS is sent once after the update that added it, see ApkStorageMaintenance
+    StorageBreakdownOnceSent("storage_breakdown_once_sent", false, exportable = false),
 }
