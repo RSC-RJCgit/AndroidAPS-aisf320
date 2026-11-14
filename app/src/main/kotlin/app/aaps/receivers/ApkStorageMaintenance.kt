@@ -223,7 +223,7 @@ private fun deleteOldInstallers(context: Context, folderUri: String, extraFolder
                         } else if (INSTALLER_EXTENSIONS.any { name.endsWith(it, ignoreCase = true) } && !name.equals("aapsNewestAPK.apk", ignoreCase = true)) {
                             val modified = it.getLong(3)
                             if (modified <= 0L) throw IOException("Missing installer modification time")
-                            installers.putIfAbsent(id, ArchiveInstaller(tree, id, modified, isUnwantedInstaller(name)))
+                            installers.putIfAbsent(id, ArchiveInstaller(tree, id, modified, isUnwantedInstaller(name), v3MainBuild(name)))
                         }
                     }
                 }
@@ -239,8 +239,13 @@ private fun deleteOldInstallers(context: Context, folderUri: String, extraFolder
     // 2026-11-15, per explicit request: desktop installers (.dmg, .msi) and APKs this phone never installs (wear, tandem,
     // full2) are always deleted; of the other APKs the newest 10 are kept, as before.
     val (unwanted, phoneApks) = installers.values.partition { it.unwanted }
-    val oldInstallers = unwanted +
-        phoneApks.sortedWith(compareByDescending<ArchiveInstaller> { it.modified }.thenBy { it.id }).drop(10)
+    // 2026-11-15, per explicit request: the main APK of the last 3 v3 builds (aaps-3426+ai321_NNNN.apk, not its client
+    // variants) always stays too, so newer v4 builds can never push every v3 build out of the newest 10.
+    val newestFirst = phoneApks.sortedWith(compareByDescending<ArchiveInstaller> { it.modified }.thenBy { it.id })
+    val lastV3Builds = newestFirst.mapNotNull { it.v3Build }.distinct().sortedDescending().take(3).toSet()
+    val lastV3Main = newestFirst.filter { it.v3Build in lastV3Builds }.distinctBy { it.v3Build }
+    val kept = (newestFirst.take(10) + lastV3Main).toSet()
+    val oldInstallers = unwanted + newestFirst.filter { it !in kept }
     for (installer in oldInstallers) {
         val uri = DocumentsContract.buildDocumentUriUsingTree(installer.tree, installer.id)
         val removed = try {
@@ -261,7 +266,12 @@ private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.docu
 private val INSTALLER_EXTENSIONS = setOf(".apk", ".dmg", ".msi")
 private val AAPS_ARCHIVE_FOLDERS = setOf("AAP", "AAPS", "AAPS3", "AAPS333", "AAPS4ios")
 
-private data class ArchiveInstaller(val tree: Uri, val id: String, val modified: Long, val unwanted: Boolean)
+private data class ArchiveInstaller(val tree: Uri, val id: String, val modified: Long, val unwanted: Boolean, val v3Build: Int?)
+
+/** The build number of a v3 main APK (aaps-3426+ai321_1490.apk is 1490), or null for anything else, client variants too. */
+private fun v3MainBuild(name: String): Int? = V3_MAIN_APK.find(name)?.groupValues?.get(1)?.toIntOrNull()
+
+private val V3_MAIN_APK = Regex("""ai321_(\d+)\.apk$""", RegexOption.IGNORE_CASE)
 
 /** A desktop installer, or an APK this phone never installs (watch, Tandem or full2 build). */
 private fun isUnwantedInstaller(name: String): Boolean =

@@ -121,11 +121,21 @@ internal object ShizukuAaps333Installer {
         }
         val others = archive.filter { canonicalOrAbs(it) != stagedCanon }
             .sortedByDescending { it.lastModified() }
-        val toDelete = others.drop(keep)
+        // 2026-11-15, per explicit request (as the installer cleanup in ApkStorageMaintenance): the main APK of the last 3 v3
+        // builds (aaps-3426+ai321_NNNN.apk, not its client variants) always stays too, so newer v4 builds cannot push every
+        // v3 build out of the newest [keep].
+        val lastV3Builds = others.mapNotNull { v3MainBuild(it.name) }.distinct().sortedDescending().take(3).toSet()
+        val lastV3Main = others.filter { v3MainBuild(it.name) in lastV3Builds }.distinctBy { v3MainBuild(it.name) }.toSet()
+        val toDelete = others.drop(keep).filter { it !in lastV3Main }
         var n = 0
         for (f in toDelete) if (f.delete()) n++
         return n
     }
+
+    /** The build number of a v3 main APK (aaps-3426+ai321_1490.apk is 1490), or null for anything else, client variants too. */
+    private fun v3MainBuild(name: String): Int? = V3_MAIN_APK.find(name)?.groupValues?.get(1)?.toIntOrNull()
+
+    private val V3_MAIN_APK = Regex("""ai321_(\d+)\.apk$""", RegexOption.IGNORE_CASE)
 
     private fun collectPumpApks(dir: File, into: MutableList<File>, skipNewestCopy: Boolean) {
         if (!dir.isDirectory) return
