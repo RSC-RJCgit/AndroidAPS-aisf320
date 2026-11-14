@@ -361,10 +361,11 @@ fun BgGraphCompose(
     ) else savedGraphDisplay
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
-    // 2026-10-23, per explicit request: the automatic clean graph (zoomed out past its width) also hides Raw and UKF raw BG,
-    // the insulin activity and carbs model curves. Regular bolus labels stay visible.
-    val showRaw = SeriesType.RAW_BG in bgOverlays && !automaticCleanGraph
-    val showUkf = SeriesType.UKF_BG in bgOverlays && !automaticCleanGraph
+    // 2026-10-23, per explicit request: the automatic clean graph (zoomed out past its width) hides the insulin activity and
+    // carbs model curves. Regular bolus labels stay visible. 2026-11-15, per explicit request: Raw and UKF raw BG are no
+    // longer hidden by it; they follow their own overlay switches, as set.
+    val showRaw = SeriesType.RAW_BG in bgOverlays
+    val showUkf = SeriesType.UKF_BG in bgOverlays
     val rawPredictions by viewModel.predictionsFlow.collectAsStateWithLifecycle()
     val predictions = if (showPredictions) rawPredictions else emptyList()
     // AutoISF fork: the BG parabola (pink, as in AutoISF 3.2.1). Only its extrapolation counts as a prediction.
