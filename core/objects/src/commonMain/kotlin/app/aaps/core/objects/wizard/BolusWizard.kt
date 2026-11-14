@@ -158,6 +158,12 @@ class BolusWizard(
     var splitOverMax: Boolean = true
     /** Minutes between the usual split parts. */
     var splitIntervalMinutes: Int = SPLIT_LEFTOVER_INTERVAL_MINUTES
+    /**
+     * Insulin the falling-BG caution held back (its halved wizard percent), given with the split parts so the follow-up
+     * reaches the normal wizard percent (2026-11-14, per explicit request). See [holdForFollowUp].
+     */
+    var splitHeldUnits: Double = 0.0
+        private set
     /** The calculator's own dose when [useFixedInsulin] replaced it, else null. */
     var suggestedInsulin: Double? = null
         private set
@@ -482,7 +488,7 @@ class BolusWizard(
     fun splitLeftoverTexts(): List<String> {
         if (!::profile.isInitialized || useSuperBolus || profileSwitchPercent(profile) < 100) return emptyList()
         val step = ch.bolusStep(max(insulinAfterConstraints, walkingSoonHeldUnits).coerceAtLeast(0.05))
-        val aboveMax = if (splitOverMax) splitLeftover(calculatedTotalInsulin, insulinAfterConstraints, step) ?: 0.0 else 0.0
+        val aboveMax = if (splitOverMax) splitLeftover(calculatedTotalInsulin + splitHeldUnits, insulinAfterConstraints, step) ?: 0.0 else 0.0
         val walkLeft = if (walkingSoonHeldUnits >= step / 2.0) walkingSoonHeldUnits else 0.0
         val usualLeft = if (rapidFallForSplit) walkLeft else walkLeft + aboveMax
         val rapidLeft = if (rapidFallForSplit) aboveMax else 0.0
@@ -495,6 +501,19 @@ class BolusWizard(
     /** Add insulin that the wizard held back, as later hourly doses. */
     fun addLaterUnits(units: Double) {
         warsawPlan = warsawPlanPlusUnits(warsawPlan, units)
+    }
+
+    /**
+     * The insulin the falling-BG caution held back ("Give rest later"). 2026-11-14, per explicit request: when the split
+     * runs (split box ticked, profile at 100% or more, no superbolus) it goes with the split parts, so the follow-up
+     * reaches the normal wizard percent (e.g. 80%) instead of stopping at the halved one; each part keeps its own BG
+     * check. Otherwise it is added to the later hourly doses, as before. Set [splitOverMax] first.
+     * [withSplit] false (the calculator's "with the carb split" box unticked) always uses the hourly doses.
+     */
+    fun holdForFollowUp(units: Double, withSplit: Boolean = true) {
+        if (units <= 0.0) return
+        if (withSplit && splitOverMax && !useSuperBolus && ::profile.isInitialized && profileSwitchPercent(profile) >= 100) splitHeldUnits += units
+        else addLaterUnits(units)
     }
 
     /**
