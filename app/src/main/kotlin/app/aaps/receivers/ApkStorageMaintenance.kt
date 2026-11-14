@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.LongNonKey
+import app.aaps.plugins.configuration.maintenance.MaintenancePlugin
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -34,7 +35,8 @@ class ApkStorageMaintenance @Inject constructor(
     private val preferences: Preferences,
     private val dateUtil: DateUtil,
     private val smsCommunicator: SmsCommunicator,
-    private val logger: AAPSLogger
+    private val logger: AAPSLogger,
+    private val maintenancePlugin: MaintenancePlugin
 ) {
 
     @Synchronized
@@ -44,11 +46,20 @@ class ApkStorageMaintenance @Inject constructor(
         val localDay = localTime.toLocalDate().toEpochDay()
         val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
             localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)
-        if (weeklyDue || freeStorageGiB()?.let { it < 10.0 } == true) {
+        val lowStorage = freeStorageGiB()?.let { it < 10.0 } == true
+        if (weeklyDue || lowStorage) {
             deleteOldInstallers(
                 context, preferences.get(StringKey.AapsDirectoryUri),
                 preferences.get(StringNonKey.InstallerArchiveFolders), logger
             )
+        }
+        // 2026-11-14, per explicit request: under 10 GiB the old log zips go too (the installers alone freed too little)
+        if (lowStorage) {
+            try {
+                logger.info(LTag.CORE, maintenancePlugin.trimLogsForLowStorage())
+            } catch (error: Exception) {
+                logger.error(LTag.CORE, "Could not trim the old log zips", error)
+            }
         }
         if (weeklyDue) {
             preferences.put(LongNonKey.LastWeeklyApkCleanupDay, localDay)

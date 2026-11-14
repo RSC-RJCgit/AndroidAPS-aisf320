@@ -308,6 +308,52 @@ class MaintenancePlugin @Inject constructor(
         }
     }
 
+    /**
+     * 2026-11-14, per explicit request: frees space on the loop phone when its storage is low (called with the installer
+     * cleanup, under 10 GiB). Hourly log zips older than [hourlyKeepDays] go from both log folders (the normal limit is 30
+     * days), and only the newest [bundleKeep] saved AndroidAPS_LOG_* bundles stay (normally 28). Both are also on Drive or
+     * in the e-mails. The live AndroidAPS.log is never touched. Returns a line for the log.
+     */
+    fun trimLogsForLowStorage(hourlyKeepDays: Int = 7, bundleKeep: Int = 8): String {
+        var hourlyDeleted = 0
+        var bundlesDeleted = 0
+        var freedBytes = 0L
+        fun remove(file: File): Boolean {
+            val size = file.length()
+            return (runCatching { file.delete() }.getOrDefault(false)).also { if (it) freedBytes += size }
+        }
+
+        // Hourly rolled logs: AndroidAPS._yyyy-MM-dd_HH.log.zip. Listed where the folder can be listed; where scoped storage
+        // refuses the listing, the names are probed by hour (logback names them that way and keeps 30 days).
+        val hourFormat = java.text.SimpleDateFormat("yyyy-MM-dd_HH", java.util.Locale.US)
+        val cutoff = System.currentTimeMillis() - hourlyKeepDays * 24L * 60L * 60L * 1000L
+        val cutoffStamp = hourFormat.format(java.util.Date(cutoff))
+        val hourlyName = Regex("""AndroidAPS\._(\d{4}-\d{2}-\d{2}_\d{2})\.log\.zip""")
+        val logDirs = listOf(loggerUtils.logDirectory, loggerUtils.appSpecificLogDirectory).filter { it.isNotBlank() }.distinct().map(::File)
+        for (dir in logDirs) {
+            val listed = dir.listFiles { _: File?, name: String -> hourlyName.matches(name) }
+            if (!listed.isNullOrEmpty()) {
+                listed.filter { (hourlyName.matchEntire(it.name)?.groupValues?.get(1) ?: "9") < cutoffStamp }
+                    .forEach { if (remove(it)) hourlyDeleted++ }
+            } else {
+                for (hoursAgo in hourlyKeepDays * 24 until 31 * 24) {
+                    val stamp = hourFormat.format(java.util.Date(System.currentTimeMillis() - hoursAgo * 60L * 60L * 1000L))
+                    val file = File(dir, "AndroidAPS._$stamp.log.zip")
+                    if (file.isFile && remove(file)) hourlyDeleted++
+                }
+            }
+        }
+
+        // Saved log bundles (AndroidAPS_LOG_<millis>.log.zip): newest first by name, keep [bundleKeep].
+        val bundleDirs = listOf(localLogsDir(), fileListProvider.logsPath).distinct()
+        for (dir in bundleDirs) {
+            val bundles = dir.listFiles { _: File?, name: String -> name.startsWith("AndroidAPS_LOG_") && name.endsWith(".zip") } ?: continue
+            bundles.sortedByDescending { it.name }.drop(bundleKeep).forEach { if (remove(it)) bundlesDeleted++ }
+        }
+        return "Log cleanup: $hourlyDeleted hourly zips older than $hourlyKeepDays days and $bundlesDeleted log bundles deleted, " +
+            "${freedBytes / 1_000_000} MB freed"
+    }
+
     fun deleteLogs(keep: Int) {
         val logDir = File(loggerUtils.logDirectory)
         val files = logDir.listFiles { _: File?, name: String ->
