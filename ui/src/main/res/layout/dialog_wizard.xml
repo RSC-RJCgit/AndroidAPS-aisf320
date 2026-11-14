@@ -548,6 +548,16 @@
                         android:textAppearance="?android:attr/textAppearanceSmall"
                         tools:ignore="HardcodedText,RtlSymmetry" />
 
+                    <!-- 2026-11-14, per explicit request: where that held part goes -->
+                    <CheckBox
+                        android:id="@+id/give_rest_with_split_checkbox"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="Give it with the carb split: ticked, the held part follows as the delayed bolus (when on) or in the carb split parts, so the total reaches your wizard %; unticked, it is added to the protein/fat doses only"
+                        android:textAppearance="?android:attr/textAppearanceSmall"
+                        tools:ignore="HardcodedText,RtlSymmetry" />
+
                 </LinearLayout>
 
             </TableRow>

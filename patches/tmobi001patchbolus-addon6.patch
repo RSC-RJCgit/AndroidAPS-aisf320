@@ -1,0 +1,242 @@
+diff --git a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/bolus/MasterActionExecutor.kt b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/bolus/MasterActionExecutor.kt
+index 7661ebb6d3..8c401107f7 100644
+--- a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/bolus/MasterActionExecutor.kt
++++ b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/bolus/MasterActionExecutor.kt
+@@ -285,6 +285,8 @@ interface MasterActionExecutor {
+         val walkingSoon: Boolean = false,
+         // 2026-10-22: the calculator's own boxes reach the master, which works the dose out again
+         val giveRestLater: Boolean = true,
++        // 2026-11-14: where that held part goes: with the carb split (true) or the protein/fat doses
++        val giveRestWithSplit: Boolean = true,
+         val retryFpuLater: Boolean = true,
+         val splitOverMax: Boolean = true,
+         val splitIntervalMinutes: Int = 7,
+diff --git a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanNonKey.kt b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanNonKey.kt
+index afcfffee53..6ebc790206 100644
+--- a/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanNonKey.kt
++++ b/core/keys/src/commonMain/kotlin/app/aaps/core/keys/BooleanNonKey.kt
+@@ -33,6 +33,8 @@ enum class BooleanNonKey(
+     WizardSplitFpuBolus("wizard_split_fpu_bolus", true),
+     WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", true),
+     WizardGiveRestLater("wizard_give_rest_later", true),
++    // 2026-11-14, per explicit request: the held part goes with the carb split (on) or the protein/fat doses (off)
++    WizardGiveRestWithSplit("wizard_give_rest_with_split", true),
+ 
+     // Export destination settings (managed by ExportOptionsDialog, no preferences UI)
+     ExportAllCloudEnabled("export_all_cloud_enabled", false),
+diff --git a/core/nssdk/src/commonMain/kotlin/app/aaps/core/nssdk/localmodel/clientcontrol/ClientControlMessage.kt b/core/nssdk/src/commonMain/kotlin/app/aaps/core/nssdk/localmodel/clientcontrol/ClientControlMessage.kt
+index 0a772af217..e399a67d94 100644
+--- a/core/nssdk/src/commonMain/kotlin/app/aaps/core/nssdk/localmodel/clientcontrol/ClientControlMessage.kt
++++ b/core/nssdk/src/commonMain/kotlin/app/aaps/core/nssdk/localmodel/clientcontrol/ClientControlMessage.kt
+@@ -160,6 +160,7 @@ sealed class ClientControlMessage {
+         val warsawDurationHours: Double = 5.0,
+         val maxBolus: Double? = null,
+         val giveRestLater: Boolean = true,
++        val giveRestWithSplit: Boolean = true,
+         val retryFpuLater: Boolean = true,
+         val splitOverMax: Boolean = true,
+         val splitIntervalMinutes: Int = 7,
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index 0dd6c650ac..76bc4e470b 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -508,10 +508,11 @@ class BolusWizard(
+      * runs (split box ticked, profile at 100% or more, no superbolus) it goes with the split parts, so the follow-up
+      * reaches the normal wizard percent (e.g. 80%) instead of stopping at the halved one; each part keeps its own BG
+      * check. Otherwise it is added to the later hourly doses, as before. Set [splitOverMax] first.
++     * [withSplit] false (the calculator's "with the carb split" box unticked) always uses the hourly doses.
+      */
+-    fun holdForFollowUp(units: Double) {
++    fun holdForFollowUp(units: Double, withSplit: Boolean = true) {
+         if (units <= 0.0) return
+-        if (splitOverMax && !useSuperBolus && ::profile.isInitialized && profileSwitchPercent(profile) >= 100) splitHeldUnits += units
++        if (withSplit && splitOverMax && !useSuperBolus && ::profile.isInitialized && profileSwitchPercent(profile) >= 100) splitHeldUnits += units
+         else addLaterUnits(units)
+     }
+ 
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
+index 8a00de604a..2d9d2560eb 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/QuickWizardEntry.kt
+@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.profile.ProfileFunction
+ import app.aaps.core.interfaces.utils.DateUtil
+ import app.aaps.core.interfaces.utils.MidnightTime
+ import app.aaps.core.keys.BooleanKey
++import app.aaps.core.keys.BooleanNonKey
+ import app.aaps.core.keys.IntKey
+ import app.aaps.core.keys.interfaces.Preferences
+ import app.aaps.core.objects.extensions.valueToUnits
+@@ -208,7 +209,7 @@ class QuickWizardEntry(
+         wizard.splitOverMax = splitOverMax()
+         if (giveRestLater() && extra.percentage > percentage) {
+             val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
+-            wizard.holdForFollowUp(scaled * (extra.percentage - percentage) / 100.0)
++            wizard.holdForFollowUp(scaled * (extra.percentage - percentage) / 100.0, preferences.get(BooleanNonKey.WizardGiveRestWithSplit))
+         }
+         return wizard
+     }
+diff --git a/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt b/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
+index 3bb60ddd8b..d245d65bd8 100644
+--- a/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
++++ b/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
+@@ -493,7 +493,7 @@ class MasterActionExecutorImpl(
+         // parts (so the follow-up reaches the normal wizard percent) when the split runs, else to the later hourly doses.
+         if (inputs.fixedInsulin == null && inputs.giveRestLater && inputs.percentage > percentForCalc) {
+             val scaled = wizard.insulinFromBG + wizard.insulinFromTrend + wizard.insulinFromCarbs + wizard.insulinFromCOB
+-            wizard.holdForFollowUp(scaled * (inputs.percentage - percentForCalc) / 100.0)
++            wizard.holdForFollowUp(scaled * (inputs.percentage - percentForCalc) / 100.0, inputs.giveRestWithSplit)
+         }
+         // After useFixedInsulin: a typed dose holds nothing back (prepareDelayedBolus checks it)
+         wizard.prepareDelayedBolus(standardProfileIcNow())
+diff --git a/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlReceiver.kt b/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlReceiver.kt
+index 1a0eb87fca..ad80c5cc63 100644
+--- a/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlReceiver.kt
++++ b/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlReceiver.kt
+@@ -777,7 +777,7 @@ class ClientControlReceiver(
+             profileName = message.profileName, source = Sources.NSClient, walkingSoon = message.walkingSoon,
+             protein = message.protein, fat = message.fat, warsawDurationHours = message.warsawDurationHours, maxBolus = message.maxBolus,
+             fpuIntervalMinutes = message.fpuIntervalMinutes,
+-            giveRestLater = message.giveRestLater, retryFpuLater = message.retryFpuLater, splitOverMax = message.splitOverMax,
++            giveRestLater = message.giveRestLater, giveRestWithSplit = message.giveRestWithSplit, retryFpuLater = message.retryFpuLater, splitOverMax = message.splitOverMax,
+             splitIntervalMinutes = message.splitIntervalMinutes, fixedInsulin = message.fixedInsulin,
+         )
+         return when (val result = masterActionExecutor.prepareWizard(inputs, entry.caller)) {
+diff --git a/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlRoundTrip.kt b/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlRoundTrip.kt
+index c86c20f56c..63daf08431 100644
+--- a/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlRoundTrip.kt
++++ b/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/clientcontrol/ClientControlRoundTrip.kt
+@@ -382,7 +382,7 @@ class ClientControlRoundTrip(
+                         eCarbsGrams, eCarbsDelayMinutes, eCarbsDurationHours, profileName, walkingSoon,
+                         protein = protein, fat = fat, warsawDurationHours = warsawDurationHours, maxBolus = maxBolus,
+                         fpuIntervalMinutes = fpuIntervalMinutes,
+-                        giveRestLater = giveRestLater, retryFpuLater = retryFpuLater, splitOverMax = splitOverMax,
++                        giveRestLater = giveRestLater, giveRestWithSplit = giveRestWithSplit, retryFpuLater = retryFpuLater, splitOverMax = splitOverMax,
+                         splitIntervalMinutes = splitIntervalMinutes, fixedInsulin = fixedInsulin,
+                     )
+                 }
+diff --git a/ui/src/androidMain/res/values/strings.xml b/ui/src/androidMain/res/values/strings.xml
+index a1491aed13..924efacf4f 100644
+--- a/ui/src/androidMain/res/values/strings.xml
++++ b/ui/src/androidMain/res/values/strings.xml
+@@ -416,6 +416,8 @@
+     <string name="wizard_fpu_interval">FPU interval</string>
+     <string name="wizard_give_rest_later" comment="Checkbox, on by default. The fall caution removes part of the bolus now. Ticked gives that part later as hourly boluses. The first dose waits an hour. Unticked, that part is not given.">Delay part of the bolus (safety)</string>
+     <string name="wizard_give_rest_later_hint" comment="Small text under the Delay part of the bolus checkbox. Says why part of the dose is held back and what the box does.">For safety the calculator can give only part of the dose now, when glucose is falling or you will walk soon. Ticked: the held-back part is given later, in hourly doses, if glucose allows. Unticked: it is not given.</string>
++    <string name="wizard_give_rest_with_split" comment="Checkbox under Delay part of the bolus, on by default. Ticked: the held-back part is given with the carb split parts (every few minutes, each checked against glucose). Unticked: it is given with the later protein and fat doses.">Give it with the carb split</string>
++    <string name="wizard_give_rest_with_split_hint" comment="Small text under the Give it with the carb split checkbox.">Ticked: the held-back part follows in the carb split parts, so the total reaches your wizard percent. Unticked: it is added to the later protein and fat doses.</string>
+     <string name="wizard_insulin_only_title" comment="Title of the bolus calculator when it is opened from the Insulin dialog: the typed dose is given, the calculation only shows the suggestion.">Bolus calculator: insulin only</string>
+     <string name="wizard_insulin_to_give" comment="Insulin-only mode of the bolus calculator: the dose that is given, typed by the user.">Insulin to give</string>
+     <string name="wizard_send_to_trio">Send to Trio</string>
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogScreen.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogScreen.kt
+index 17195efdc8..17c3735345 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogScreen.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogScreen.kt
+@@ -233,6 +233,7 @@ fun WizardDialogScreen(
+         onSplitFpuBolusToggle = viewModel::toggleSplitFpuBolus,
+         onFpuIntervalChange = viewModel::updateFpuInterval,
+         onGiveRestLaterToggle = viewModel::toggleGiveRestLater,
++        onGiveRestWithSplitToggle = viewModel::toggleGiveRestWithSplit,
+         onSplitOverMaxToggle = viewModel::toggleSplitOverMax,
+         onSplitIntervalChange = viewModel::updateSplitIntervalMinutes,
+         onDelayFpuInsteadOfCancelToggle = viewModel::toggleDelayFpuInsteadOfCancel,
+@@ -277,6 +278,7 @@ internal fun WizardDialogContent(
+     onSplitFpuBolusToggle: (Boolean) -> Unit = {},
+     onFpuIntervalChange: (Int) -> Unit = {},
+     onGiveRestLaterToggle: (Boolean) -> Unit = {},
++    onGiveRestWithSplitToggle: (Boolean) -> Unit = {},
+     onSplitOverMaxToggle: (Boolean) -> Unit = {},
+     onSplitIntervalChange: (Int) -> Unit = {},
+     onDelayFpuInsteadOfCancelToggle: (Boolean) -> Unit = {},
+@@ -968,6 +970,27 @@ internal fun WizardDialogContent(
+                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                 modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
+                             )
++                            // 2026-11-14, per explicit request: where the held part goes. Only matters while the box above is ticked.
++                            Row(
++                                modifier = Modifier.fillMaxWidth(),
++                                verticalAlignment = Alignment.CenterVertically
++                            ) {
++                                Checkbox(
++                                    enabled = !locked && uiState.giveRestLater,
++                                    checked = uiState.giveRestWithSplit,
++                                    onCheckedChange = onGiveRestWithSplitToggle
++                                )
++                                Text(
++                                    text = stringResource(UiStrings.wizard_give_rest_with_split),
++                                    modifier = Modifier.clickable(enabled = !locked && uiState.giveRestLater) { onGiveRestWithSplitToggle(!uiState.giveRestWithSplit) }
++                                )
++                            }
++                            Text(
++                                text = stringResource(UiStrings.wizard_give_rest_with_split_hint),
++                                style = MaterialTheme.typography.bodySmall,
++                                color = MaterialTheme.colorScheme.onSurfaceVariant,
++                                modifier = Modifier.padding(start = 48.dp, end = 8.dp, bottom = 4.dp)
++                            )
+                             Row(
+                                 modifier = Modifier.fillMaxWidth(),
+                                 verticalAlignment = Alignment.CenterVertically
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogUiState.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogUiState.kt
+index e917c4752a..2f6f0b1a18 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogUiState.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogUiState.kt
+@@ -41,6 +41,8 @@ data class WizardDialogUiState(
+     val delayFpuInsteadOfCancel: Boolean = true,
+     /** Ticked delays the part of the bolus the fall caution removed, as hourly boluses. On by default. Unticked, that part is not given. */
+     val giveRestLater: Boolean = true,
++    /** 2026-11-14: ticked (default) gives that held part with the carb split parts; unticked, with the protein/fat doses. */
++    val giveRestWithSplit: Boolean = true,
+     /** Same later doses, with larger fat and protein, wizard percent 90, and the saved max bolus. */
+     val unreliableSmb: Boolean = false,
+     /** Halves the automatic fat and protein. With unreliableSmb ticked too, the two cancel to the average. */
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt
+index 3ccb794cea..568ead6c9b 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/wizardDialog/WizardDialogViewModel.kt
+@@ -302,6 +302,7 @@ class WizardDialogViewModel(
+                 fpuInstead = defaultAutoFpu && fixedInsulin == null,
+                 smallMeal = defaultSmallMeal && fixedInsulin == null,
+                 giveRestLater = fixedInsulin == null && preferences.get(BooleanNonKey.WizardGiveRestLater),
++                giveRestWithSplit = preferences.get(BooleanNonKey.WizardGiveRestWithSplit),
+                 fixedInsulin = fixedInsulin,
+                 splitOverMax = preferences.get(BooleanKey.WizardSplitOverMaxBolus),
+                 splitIntervalMinutes = preferences.get(IntKey.WizardSplitIntervalMinutes),
+@@ -408,6 +409,13 @@ class WizardDialogViewModel(
+         recalculate()
+     }
+ 
++    // 2026-11-14, per explicit request: where the held part goes, the carb split (ticked) or the protein/fat doses
++    fun toggleGiveRestWithSplit(checked: Boolean) {
++        if (uiState.value.insulinOnly) return
++        _uiState.update { it.copy(giveRestWithSplit = checked) }
++        recalculate()
++    }
++
+     fun toggleUnreliableSmb(checked: Boolean) {
+         if (uiState.value.insulinOnly) return
+         if (checked) enableMealExtra(unreliable = true) else disableMealExtra()
+@@ -770,7 +778,7 @@ class WizardDialogViewModel(
+         if (state.giveRestLater && extra.percentage > percentForCalc) {
+             val scaled = w.insulinFromBG + w.insulinFromTrend + w.insulinFromCarbs + w.insulinFromCOB
+             val later = scaled * (extra.percentage - percentForCalc) / 100.0
+-            w.holdForFollowUp(later)
++            w.holdForFollowUp(later, state.giveRestWithSplit)
+         }
+ 
+         // Update temp target availability
+@@ -886,6 +894,7 @@ class WizardDialogViewModel(
+         preferences.put(BooleanNonKey.WizardSplitFpuBolus, state.splitFpuBolus)
+         preferences.put(BooleanNonKey.WizardDelayFpuInsteadOfCancel, state.delayFpuInsteadOfCancel)
+         preferences.put(BooleanNonKey.WizardGiveRestLater, state.giveRestLater)
++        preferences.put(BooleanNonKey.WizardGiveRestWithSplit, state.giveRestWithSplit)
+         preferences.put(BooleanKey.WizardDefaultAutoFpu, state.fpuInstead || state.unreliableSmb)
+         preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, state.unreliableSmb)
+         preferences.put(BooleanKey.WizardDefaultSmallMeal, state.smallMeal)
+@@ -918,7 +927,7 @@ class WizardDialogViewModel(
+             warsawDurationHours = state.warsawDurationHours, maxBolus = state.maxBolus,
+             fpuIntervalMinutes = state.fpuIntervalMinutes,
+             walkingSoon = state.walkingSoon,
+-            giveRestLater = state.giveRestLater, retryFpuLater = state.delayFpuInsteadOfCancel,
++            giveRestLater = state.giveRestLater, giveRestWithSplit = state.giveRestWithSplit, retryFpuLater = state.delayFpuInsteadOfCancel,
+             splitOverMax = state.splitOverMax, splitIntervalMinutes = state.splitIntervalMinutes,
+             fixedInsulin = state.fixedInsulin?.let { Round.floorTo(it, ch.bolusStep(it)) },
+         )

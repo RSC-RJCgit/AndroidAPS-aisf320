@@ -230,6 +230,8 @@ class QuickWizardEntry @Inject constructor(
         wizard.delayFpuInsteadOfCancel = retryFpuLater()
         // A fourth DelayedBolusWorker reason, as in the dialog: the held-back part can follow once BG rises.
         wizard.dropTrendCautionApplied = dropTrendCaution
+        // The calculator's remembered "Give it with the carb split" choice (2026-11-14)
+        wizard.giveRestWithSplit = preferences.get(BooleanKey.WizardGiveRestWithSplit)
         // Give rest later (2026-11-12, per explicit request, from v4): what the caution cut from the % is given later in the
         // protein/fat series, each part with the usual BG and IOB checks.
         if (dropTrendCaution && giveRestLater()) wizard.addLaterUnits(wizard.percentCutHeldBack(percentBeforeCaution.toDouble()))

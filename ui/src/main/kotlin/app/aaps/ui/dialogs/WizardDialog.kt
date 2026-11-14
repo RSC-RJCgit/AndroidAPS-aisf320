@@ -360,6 +360,7 @@ class WizardDialog : DaggerDialogFragment() {
         // suggestion (only takes effect while the boxes are not manually overridden) and recalculates.
         binding.smallMealCheckbox.setOnCheckedChangeListener { _, _ -> autoFillProteinFatFromCarbs(); calculateInsulin() }
         binding.giveRestLaterCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
+        binding.giveRestWithSplitCheckbox.setOnCheckedChangeListener { _, _ -> calculateInsulin() }
         // Turning auto FPU off clears suggested grams but keeps fields edited by the user.
         // Turning it on fills both fields again.
         binding.autoFpuCheckbox.setOnCheckedChangeListener { _, checked ->
@@ -558,6 +559,7 @@ class WizardDialog : DaggerDialogFragment() {
         preferences.put(BooleanKey.WizardSplitFpuBolus, binding.splitFpuBolusCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDelayFpuInsteadOfCancel, binding.delayFpuCheckbox.isChecked)
         preferences.put(BooleanKey.WizardGiveRestLater, binding.giveRestLaterCheckbox.isChecked)
+        preferences.put(BooleanKey.WizardGiveRestWithSplit, binding.giveRestWithSplitCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultUnreliableSmbs, binding.unreliableSmbsCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultSmallMeal, binding.smallMealCheckbox.isChecked)
         preferences.put(BooleanKey.WizardDefaultAutoFpu, binding.autoFpuCheckbox.isChecked)
@@ -588,7 +590,7 @@ class WizardDialog : DaggerDialogFragment() {
             binding.bgCheckbox, binding.ttCheckbox, binding.bgTrendCheckbox, binding.iobCheckbox, binding.cobCheckbox, binding.sbCheckbox,
             binding.bgCheckboxIcon, binding.ttCheckboxIcon, binding.trendCheckboxIcon, binding.iobCheckboxIcon, binding.cobCheckboxIcon,
             binding.walkingSoonCheckbox, binding.unreliableSmbsCheckbox, binding.smallMealCheckbox, binding.autoFpuCheckbox, binding.splitFpuBolusCheckbox,
-            binding.delayFpuCheckbox, binding.giveRestLaterCheckbox, binding.fpuIntervalInput, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
+            binding.delayFpuCheckbox, binding.giveRestLaterCheckbox, binding.giveRestWithSplitCheckbox, binding.fpuIntervalInput, binding.proteinInput, binding.fatInput, binding.warsawDurationInput, binding.correctionInput,
             binding.correctionPercent
         ).forEach { it.lockForInsulinOnly() }
         insulinOnlyControlsReady = true
@@ -722,6 +724,7 @@ class WizardDialog : DaggerDialogFragment() {
         binding.sbCheckbox.isChecked = preferences.get(BooleanKey.OverviewUseSuperBolus) && preferences.get(BooleanKey.WizardIncludeSuperBolus)
         binding.delayFpuCheckbox.isChecked = preferences.get(BooleanKey.WizardDelayFpuInsteadOfCancel)
         binding.giveRestLaterCheckbox.isChecked = preferences.get(BooleanKey.WizardGiveRestLater)
+        binding.giveRestWithSplitCheckbox.isChecked = preferences.get(BooleanKey.WizardGiveRestWithSplit)
         binding.bgTrendCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeTrend)
         binding.cobCheckbox.isChecked = preferences.get(BooleanKey.WizardIncludeCob)
         // Opens with the % tick on every time (the Corr box then shows the wizard percentage), as requested 8 Oct 2026;
@@ -990,6 +993,7 @@ class WizardDialog : DaggerDialogFragment() {
             wizard.delayFpuInsteadOfCancel = binding.delayFpuCheckbox.isChecked
             // See dropTrendCautionApplied's own doc comment -- a fourth DelayedBolusWorker trigger reason.
             wizard.dropTrendCautionApplied = dropTrendCautionActive
+            wizard.giveRestWithSplit = binding.giveRestWithSplitCheckbox.isChecked
             wizard.mealECarbs = mealECarbs
             wizard.mealECarbsDelayMinutes = carbsType.eCarbsDelayMinutes + carbTime
             wizard.mealECarbsDurationHours = carbsType.eCarbsDurationHours

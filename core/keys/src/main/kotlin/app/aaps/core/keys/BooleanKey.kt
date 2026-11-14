@@ -347,6 +347,9 @@ enum class BooleanKey(
     WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", defaultValue = true),
     // Bolus calculator "Give rest later" box, remembered from the last OK (2026-11-12, per explicit request, from v4)
     WizardGiveRestLater("wizard_give_rest_later", defaultValue = true),
+    // 2026-11-14, per explicit request: where the caution's held part goes: the delayed bolus or carb split (on), or the
+    // protein/fat doses only (off, and then the caution does not start the delayed bolus)
+    WizardGiveRestWithSplit("wizard_give_rest_with_split", defaultValue = true),
     // Bolus calculator starting state (2026-10-06, per explicit request). Settings are under Overview > Bolus calculator
     // defaults. Since 2026-11-05 the calculator also saves its last ticks here on OK, so the next run starts from them.
     WizardDefaultUnreliableSmbs("wizard_default_unreliable_smbs", defaultValue = false),
