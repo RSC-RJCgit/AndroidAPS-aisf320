@@ -383,7 +383,6 @@ class OpenAPSViewModel(
         add(KeyValueRow("enableSMB_EvenOn_OddOff_always", enableSMB_EvenOn_OddOff_always.toString()))
         add(KeyValueRow("iob_threshold_percent", iob_threshold_percent.toString()))
         add(KeyValueRow("profile_percentage", profile_percentage.toString()))
-        add(KeyValueRow("now", now.toString()))
     }
 
     private fun MealData.toRows(): List<KeyValueRow> = buildList {
