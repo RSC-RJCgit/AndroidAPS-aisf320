@@ -247,15 +247,64 @@ class NSDeviceStatusHandler @Inject constructor(
         }
     }
 
-    /** A loop result older than the newest one received, stored once (a 7 min window loaded every 5 min sees it twice). */
-    private fun storeOlderApsResult(suggested: String, clock: Long) {
+    /**
+     * A loop result older than the newest one received, stored once (a 7 min window loaded every 5 min sees it twice).
+     * 2026-11-14, per explicit request: its AIV row too, so a master's catch-up after being offline (sent after one
+     * newer status) and secondary-site batches (newest first) no longer leave gaps in the client's AIV table and graphs.
+     */
+    private fun storeOlderApsResult(suggested: String, clock: Long, enactedRate: Double?) {
         try {
-            if (persistenceLayer.getApsResults(clock, clock).isNotEmpty()) return
             val rt = RT.deserialize(suggested).apply { timestamp = clock }
-            disposable += persistenceLayer.insertOrUpdateApsResult(apsResultProvider.get().with(rt)).subscribe()
+            if (persistenceLayer.getApsResults(clock, clock).isEmpty())
+                disposable += persistenceLayer.insertOrUpdateApsResult(apsResultProvider.get().with(rt)).subscribe()
+            if (rt.autoIsfFinal != null && persistenceLayer.getAutoIsfValuesFromTimeToTime(clock, clock).isEmpty())
+                disposable += persistenceLayer.insertOrUpdateAutoIsfValues(autoIsfValuesFrom(rt, clock, enactedRate ?: 0.0)).subscribe()
         } catch (e: Exception) {
             aapsLogger.error(LTag.NSCLIENT, e.stackTraceToString())
         }
+    }
+
+    /**
+     * The AIV row for one mirrored loop result. Several AIV fields aren't exposed as dedicated RT properties, but the
+     * text they're embedded in (RT.reason, a plain string) IS part of this same @Serializable RT payload and IS synced
+     * to NS — same pattern already used for steps counts (see AutoISFHistoryDialog.kt).
+     */
+    private fun autoIsfValuesFrom(rt: RT, clock: Long, tbrRate: Double): AIV {
+        val reasonText = rt.reason.toString()
+        return AIV(
+            timestamp      = clock,
+            acceIsf        = rt.autoIsfAcce  ?: 1.0,
+            bgIsf          = rt.autoIsfBg    ?: 1.0,
+            ppIsf          = rt.autoIsfPp    ?: 1.0,
+            driftIsf       = 1.0,
+            duraIsf        = rt.autoIsfDura  ?: 1.0,
+            finalIsf       = rt.autoIsfFinal ?: 1.0,
+            iobThEffective = firstMatch(iobThEffectiveRegex, reasonText) ?: 0.0,
+            glucose        = rt.bg ?: 0.0,
+            insulinReq     = rt.insulinReq ?: 0.0,
+            tbrRate        = tbrRate,
+            smbDelivered   = rt.units ?: 0.0,
+            // Delta/SDelta text is written via convert_bg2(), which already
+            // converts mg/dL -> display units (e.g. mmol/L) before formatting —
+            // unlike bg_acce below, which stays raw mg/dL. Must convert back or
+            // this collapses to near-zero once the table divides by ~18 again.
+            delta          = firstMatch(deltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
+            shortAvgDelta  = firstMatch(sDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
+            longAvgDelta   = firstMatch(lDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
+            bgAcceleration = firstMatch(bgAcceRegex, reasonText) ?: 0.0,
+            smbDeliveryRatio = firstMatch(smbDeliveryRatioRegex, reasonText) ?: 0.0,
+            iob            = rt.IOB ?: 0.0,
+            acceIsfWeight  = firstMatch(acceIsfWeightRegex, reasonText) ?: 0.0,
+            fslCalSlope    = firstMatch(fslCalSlopeRegex, reasonText) ?: 0.0,
+            // Direct RT property (unlike the regex-parsed reason-text fields above) --
+            // uci is a genuine top-level @Serializable RT field, no fallback needed.
+            uamCarbImpact  = rt.autoIsfUamCarbImpact ?: 0.0,
+            // Also a direct RT property. The master's own computeUkfRawBgl() already
+            // used the master's own raw/noise readings -- a follower reconstructing
+            // its own value from its own locally-synced GV table could disagree
+            // slightly, so this reuses the master's already-computed number instead.
+            ukfRawBgl      = rt.autoIsfUkfRawBgl ?: 0.0
+        )
     }
 
     private fun updateOpenApsData(nsDeviceStatus: NSDeviceStatus) {
@@ -291,45 +340,7 @@ class NSDeviceStatusHandler @Inject constructor(
                             preferences.put(LongNonKey.MirroredAutoIsfSettingsTimestamp, clock)
                         }
                         if (rt.autoIsfFinal != null) {
-                            // Several AIV fields aren't exposed as dedicated RT properties, but the
-                            // text they're embedded in (RT.reason, a plain string) IS part of this
-                            // same @Serializable RT payload and IS synced to NS — same pattern
-                            // already used for steps counts (see AutoISFHistoryDialog.kt).
-                            val reasonText = rt.reason.toString()
-                            val aiv = AIV(
-                                timestamp      = clock,
-                                acceIsf        = rt.autoIsfAcce  ?: 1.0,
-                                bgIsf          = rt.autoIsfBg    ?: 1.0,
-                                ppIsf          = rt.autoIsfPp    ?: 1.0,
-                                driftIsf       = 1.0,
-                                duraIsf        = rt.autoIsfDura  ?: 1.0,
-                                finalIsf       = rt.autoIsfFinal ?: 1.0,
-                                iobThEffective = firstMatch(iobThEffectiveRegex, reasonText) ?: 0.0,
-                                glucose        = rt.bg ?: 0.0,
-                                insulinReq     = rt.insulinReq ?: 0.0,
-                                tbrRate        = processedDeviceStatusData.openAPSData.enacted?.rate ?: 0.0,
-                                smbDelivered   = rt.units ?: 0.0,
-                                // Delta/SDelta text is written via convert_bg2(), which already
-                                // converts mg/dL -> display units (e.g. mmol/L) before formatting —
-                                // unlike bg_acce below, which stays raw mg/dL. Must convert back or
-                                // this collapses to near-zero once the table divides by ~18 again.
-                                delta          = firstMatch(deltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
-                                shortAvgDelta  = firstMatch(sDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
-                                longAvgDelta   = firstMatch(lDeltaRegex, reasonText)?.let { profileUtil.convertToMgdl(it, profileUtil.units) } ?: 0.0,
-                                bgAcceleration = firstMatch(bgAcceRegex, reasonText) ?: 0.0,
-                                smbDeliveryRatio = firstMatch(smbDeliveryRatioRegex, reasonText) ?: 0.0,
-                                iob            = rt.IOB ?: 0.0,
-                                acceIsfWeight  = firstMatch(acceIsfWeightRegex, reasonText) ?: 0.0,
-                                fslCalSlope    = firstMatch(fslCalSlopeRegex, reasonText) ?: 0.0,
-                                // Direct RT property (unlike the regex-parsed reason-text fields above) --
-                                // uci is a genuine top-level @Serializable RT field, no fallback needed.
-                                uamCarbImpact  = rt.autoIsfUamCarbImpact ?: 0.0,
-                                // Also a direct RT property. The master's own computeUkfRawBgl() already
-                                // used the master's own raw/noise readings -- a follower reconstructing
-                                // its own value from its own locally-synced GV table could disagree
-                                // slightly, so this reuses the master's already-computed number instead.
-                                ukfRawBgl      = rt.autoIsfUkfRawBgl ?: 0.0
-                            )
+                            val aiv = autoIsfValuesFrom(rt, clock, processedDeviceStatusData.openAPSData.enacted?.rate ?: 0.0)
                             disposable += persistenceLayer.insertOrUpdateAutoIsfValues(aiv).subscribe()
                         }
                     }
@@ -337,7 +348,9 @@ class NSDeviceStatusHandler @Inject constructor(
                     // 2026-10-30, per explicit request: an older loop result is stored too. Loads come in batches (the
                     // second site every ~5 min, newest first), and only the newest one was kept, so the SMB cycles in
                     // between were lost and their steps arrow (StepCut=) never showed. Only the newest drives the display.
-                    storeOlderApsResult(it.toString(), clock)
+                    // This status's own enacted rate, not the newest one's.
+                    val enactedRate = nsDeviceStatus.openaps?.enacted?.let { e -> if (e.has("rate")) e.optDouble("rate") else null }
+                    storeOlderApsResult(it.toString(), clock, enactedRate)
                 }
             }
         }
