@@ -607,6 +607,10 @@
     <string name="libre_special_settings_summary">Calibrate and smooth Libre raw data</string>
     <string name="fsl_apply_smoothing_title">Apply Libre slope</string>
     <string name="fsl_apply_smoothing_summary">Turn a raw Libre reading into offset + slope times the raw value, then smooth it, before it is stored.</string>
+    <string name="pref_title_autoisf_parabola_smoothed">Parabola on smoothed values</string>
+    <string name="pref_summary_autoisf_parabola_smoothed">Off (default, as v3): with a 1 minute CGM the parabola for acce_ISF uses the 1 minute readings. It sees a rise earlier but is more nervous. On: it uses the same readings smoothed by the UKF, like the raw BG line on the graph. Calmer, but later. Can change the insulin given.</string>
+    <string name="pref_title_autoisf_parabola_min_minutes">Shortest parabola (1 minute CGM)</string>
+    <string name="pref_summary_autoisf_parabola_min_minutes">How many minutes the parabola must cover at least before AutoISF uses it, with a 1 minute CGM. 10 min is v3 and the original. Shorter reacts faster but more nervous, longer is calmer but later. Can change the insulin given.</string>
     <string name="fslCal_Offset_title">Offset of Libre calibration versus finger like in xDrip</string>
     <string name="fslCal_Offset_summary">OFFSET in the formula. Calibrated Libre = OFFSET + slope * raw Libre.</string>
     <string name="fslCal_Slope_title">Slope of Libre calibration versus finger like in xDrip</string>

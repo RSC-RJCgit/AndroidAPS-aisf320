@@ -604,6 +604,14 @@ enum class BooleanKey(
 
     // Same stored name as the old hidden switch. On until the user turns it off.
     FslApplySmoothing("fsl_apply_smoothing", true, KeysStrings.fsl_apply_smoothing_title, KeysStrings.fsl_apply_smoothing_summary),
+    // AutoISF fork (2026-11-14, from blaqone's AAPS-autoISF): the 1 minute parabola fit (acce_ISF) on UKF-smoothed readings
+    ApsAutoIsfParabolaSmoothed(
+        "autoisf_parabola_smoothed",
+        false,
+        KeysStrings.pref_title_autoisf_parabola_smoothed,
+        KeysStrings.pref_summary_autoisf_parabola_smoothed,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
 
     SiteRotationManagePump("site_rotation_manage_pump", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_pump, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
     SiteRotationManageCgm("site_rotation_manage_cgm", defaultValue = false, title = KeysStrings.pref_title_site_rotation_manage_cgm, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),

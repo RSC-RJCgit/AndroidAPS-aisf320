@@ -57,6 +57,7 @@ import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.HeartRateGraphData
 import app.aaps.core.interfaces.overview.graph.IobGraphData
+import app.aaps.core.interfaces.overview.graph.BgParabolaGraphData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.overview.graph.ProfileDisplayData
 import app.aaps.core.interfaces.overview.graph.RatioGraphData
@@ -340,6 +341,11 @@ class OverviewDataCacheImpl(
     override val heartRateGraphFlow: StateFlow<HeartRateGraphData> = _heartRateGraphFlow.asStateFlow()
     private val _stepsGraphFlow = MutableStateFlow(StepsGraphData(emptyList()))
     override val stepsGraphFlow: StateFlow<StepsGraphData> = _stepsGraphFlow.asStateFlow()
+
+    // AutoISF fork: the BG parabola on the BG graph
+    private val _bgParabolaGraphFlow = MutableStateFlow(BgParabolaGraphData(emptyList(), emptyList()))
+    override val bgParabolaGraphFlow: StateFlow<BgParabolaGraphData> = _bgParabolaGraphFlow.asStateFlow()
+
     private val _treatmentGraphFlow = MutableStateFlow(TreatmentGraphData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
     override val treatmentGraphFlow: StateFlow<TreatmentGraphData> = _treatmentGraphFlow.asStateFlow()
     private val _epsGraphFlow = MutableStateFlow<List<EpsGraphPoint>>(emptyList())
@@ -966,6 +972,10 @@ class OverviewDataCacheImpl(
             steps30 = data.steps30.finite("steps 30 min"),
             steps60 = data.steps60.finite("steps 60 min")
         )
+    }
+
+    override fun updateBgParabolaGraph(data: BgParabolaGraphData) {
+        _bgParabolaGraphFlow.value = data
     }
 
     // =========================================================================
@@ -1607,6 +1617,7 @@ class OverviewDataCacheImpl(
         _autoIsfGraphFlow.value = AutoIsfGraphData()
         _heartRateGraphFlow.value = HeartRateGraphData(emptyList())
         _stepsGraphFlow.value = StepsGraphData(emptyList())
+        _bgParabolaGraphFlow.value = BgParabolaGraphData(emptyList(), emptyList())
         _treatmentGraphFlow.value = TreatmentGraphData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
         _epsGraphFlow.value = emptyList()
         _basalGraphFlow.value = BasalGraphData(emptyList(), emptyList(), 0.0)

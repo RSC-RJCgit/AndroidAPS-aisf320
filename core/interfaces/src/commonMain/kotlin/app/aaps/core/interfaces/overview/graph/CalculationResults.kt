@@ -517,3 +517,12 @@ data class RunningModeSegment(
 data class RunningModeGraphData(
     val segments: List<RunningModeSegment>
 )
+
+/**
+ * AutoISF fork: the BG parabola on the BG graph, in the units of the graph. [fit] is the part AutoISF
+ * fitted to the readings, [extrapolation] goes on from the newest reading. Both empty when there is none.
+ */
+data class BgParabolaGraphData(
+    val fit: List<GraphDataPoint>,
+    val extrapolation: List<GraphDataPoint>
+)

@@ -392,6 +392,17 @@ enum class IntKey(
         unitType = UnitType.PERCENT,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // AutoISF fork (2026-11-14, from blaqone's AAPS-autoISF): shortest parabola that counts with a 1 minute CGM (v3: 10 minutes)
+    ApsAutoIsfParabolaMinMinutes(
+        key = "autoisf_parabola_min_minutes",
+        defaultValue = 10,
+        min = 5,
+        max = 20,
+        title = KeysStrings.pref_title_autoisf_parabola_min_minutes,
+        summary = KeysStrings.pref_summary_autoisf_parabola_min_minutes,
+        unitType = UnitType.MIN,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     // v3's split interval (2026-10-22, per explicit request): minutes between the parts of a dose over max bolus
     WizardSplitIntervalMinutes(
         key = "split_bolus_interval",

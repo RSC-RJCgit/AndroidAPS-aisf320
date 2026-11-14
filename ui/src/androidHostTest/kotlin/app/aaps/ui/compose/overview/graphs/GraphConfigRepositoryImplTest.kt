@@ -94,7 +94,7 @@ class GraphConfigRepositoryImplTest {
     fun missingOverlaysFallBackToTheDefaults() {
         val restored = GraphConfigRepositoryImpl.fromJson("{}")
 
-        assertThat(restored.bgOverlays).containsExactly(SeriesType.ACTIVITY, SeriesType.PREDICTIONS).inOrder()
+        assertThat(restored.bgOverlays).containsExactly(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.BG_PARABOLA).inOrder()
         assertThat(restored.iobOverlays).containsExactly(SeriesType.ACTIVITY)
     }
 

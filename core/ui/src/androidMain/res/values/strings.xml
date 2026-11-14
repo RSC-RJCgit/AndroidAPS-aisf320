@@ -1244,6 +1244,7 @@
     <string name="graph_steps_s60" comment="Legend of the steps graph: steps in the last 60 minutes">S60</string>
     <string name="graph_steps_sample" comment="Step sample shown when the graph is tapped. %1$s=series name, %2$d=step count, %3$s=sample date and time">%1$s = %2$d steps  %3$s</string>
     <string name="graph_pp_weight_scale" comment="Short label for the post-meal ISF weight setting line. The scale is 0 to 0.15.">PP 0–0.15</string>
+    <string name="bgParabola_shortname" comment="Short label for the BG parabola of AutoISF on the BG graph">PARAB</string>
     <string name="basal_shortname" comment="Short label for Basal, used in graph labels">BAS</string>
     <!-- Graph series short names (used as graph labels, keep very short) -->
     <string name="deviation_shortname" comment="Short label for Deviations graph series">DEV</string>
@@ -1272,6 +1273,7 @@
     <string name="graph_series_steps">Steps</string>
     <string name="graph_series_activity" comment="Insulin activity: how fast insulin is working now. Not physical exercise.">Activity</string>
     <string name="graph_series_predictions">Predictions</string>
+    <string name="graph_series_bg_parabola">BG parabola (AutoISF)</string>
 
 
     <string name="units_days">days</string>

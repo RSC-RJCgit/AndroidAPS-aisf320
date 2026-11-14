@@ -91,6 +91,8 @@ aps_incarnation_no|DiaconnIntNonKey|true
 aps_link_to_docs|ApsIntentKey|false
 autoISF_max|DoubleKey|true
 autoISF_min|DoubleKey|true
+autoisf_parabola_min_minutes|IntKey|true
+autoisf_parabola_smoothed|BooleanKey|true
 autosens_adjust_targets|BooleanKey|true
 autosens_max|DoubleKey|true
 autosens_min|DoubleKey|true

@@ -2,6 +2,7 @@ package app.aaps.core.ui.compose.preference
 
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
+import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.KeysStrings
 
 /** Slope, offset, and smooth factor. xDrip and NSClient each show this screen. */
@@ -14,5 +15,8 @@ fun libreSpecialSettings(key: String): PreferenceSubScreenDef = PreferenceSubScr
         DoubleKey.FslCalOffset,
         DoubleKey.FslCalSlope,
         DoubleKey.FslSmoothAlpha,
+        // AutoISF's 1 minute parabola (2026-11-14)
+        IntKey.ApsAutoIsfParabolaMinMinutes,
+        BooleanKey.ApsAutoIsfParabolaSmoothed,
     )
 )

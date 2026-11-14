@@ -282,6 +282,7 @@ class GraphViewModel(
     val autoIsfGraphFlow = cache.autoIsfGraphFlow
     val heartRateGraphFlow = cache.heartRateGraphFlow
     val stepsGraphFlow = cache.stepsGraphFlow
+    val bgParabolaGraphFlow = cache.bgParabolaGraphFlow
     val treatmentGraphFlow = cache.treatmentGraphFlow
     val epsGraphFlow = cache.epsGraphFlow
     val basalGraphFlow = cache.basalGraphFlow

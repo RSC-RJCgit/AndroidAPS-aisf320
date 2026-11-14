@@ -8,6 +8,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import com.google.common.truth.Truth.assertThat
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.mock
+import kotlin.math.abs
 
 /**
  * Behavioural tests for the Unscented Kalman Filter smoother. `smooth()` is pure JVM math (no Android runtime),
@@ -88,5 +89,39 @@ internal class UnscentedKalmanFilterPluginTest {
         val a = plugin().smooth(series(120.0, 118.0, 122.0, 119.0, 121.0, 120.0, 118.0))
         val b = plugin().smooth(series(120.0, 118.0, 122.0, 119.0, 121.0, 120.0, 118.0))
         a.indices.forEach { assertThat(b[it].smoothed!!).isWithin(1e-9).of(a[it].smoothed!!) }
+    }
+
+    @Test fun `median spacing uses the newest intervals and ignores gaps`() {
+        assertThat(medianSpacingMinutes(series(*DoubleArray(10) { 100.0 }, stepMin = 1))).isWithin(1e-9).of(1.0)
+        assertThat(medianSpacingMinutes(series(*DoubleArray(10) { 100.0 }, stepMin = 5))).isWithin(1e-9).of(5.0)
+        val withGap = series(*DoubleArray(12) { 100.0 }, stepMin = 1).also { list ->
+            for (i in 6 until list.size) {
+                list[i] = InMemoryGlucoseValue(timestamp = list[i].timestamp - 40 * 60_000L, value = 100.0)
+            }
+        }
+        assertThat(medianSpacingMinutes(withGap)).isWithin(1e-9).of(1.0)
+        assertThat(medianSpacingMinutes(series(100.0, 100.0, 100.0, 100.0, stepMin = 1))).isNull()
+    }
+
+    @Test fun `one minute spacing is filtered instead of returned unchanged`() {
+        val base = 1_700_000_000_000L
+        val raw = (0 until 60).map { i -> 120.0 + if (i % 2 == 0) 3.0 else -3.0 }
+        val data = raw.mapIndexed { i, v ->
+            InMemoryGlucoseValue(timestamp = base - i * 60_000L, value = v)
+        }.toMutableList()
+
+        val out = plugin().smooth(data)
+        assertThat(out.any { abs(it.smoothed!! - it.value) > 1e-6 }).isTrue()
+    }
+
+    @Test fun `dense cadence seeds the initial rate from the oldest interval`() {
+        val base = 1_700_000_000_000L
+        val data = (0 until 20).map { i ->
+            val minute = 20L - i
+            InMemoryGlucoseValue(timestamp = base - minute * 60_000L, value = 140.0 + minute)
+        }.toMutableList() // newest-first, +1 mg/dL/min
+
+        val out = plugin().smooth(data)
+        assertThat(out[18].smoothed!!).isWithin(1.0).of(out[18].value)
     }
 }

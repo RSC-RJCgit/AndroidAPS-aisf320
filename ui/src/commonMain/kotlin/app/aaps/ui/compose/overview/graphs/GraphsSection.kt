@@ -180,11 +180,11 @@ private val PREDICTION_SPOKEN_ORDER = listOf(
 )
 
 /** Series types available as BG graph overlays */
-private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.RAW_BG, SeriesType.UKF_BG)
+private val BG_OVERLAY_SERIES = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.RAW_BG, SeriesType.UKF_BG, SeriesType.BG_PARABOLA)
 
 /** Series types available for user-configurable secondary graphs (IOB + UI-only overlays excluded) */
 internal val CONFIGURABLE_SERIES = SeriesType.entries.filter {
-    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.RAW_BG && it != SeriesType.UKF_BG
+    it != SeriesType.IOB && it != SeriesType.PREDICTIONS && it != SeriesType.RAW_BG && it != SeriesType.UKF_BG && it != SeriesType.BG_PARABOLA
 }
 
 @OptIn(FlowPreview::class)
@@ -1189,7 +1189,7 @@ fun GraphsSection(
             GraphSeriesBottomSheet(
                 title = stringResource(CoreUiStrings.graph_bg),
                 selectedSeries = graphConfig.bgOverlays,
-                availableSeries = BG_OVERLAY_SERIES,
+                availableSeries = if (autoIsfActive) BG_OVERLAY_SERIES else BG_OVERLAY_SERIES.filter { it !in GraphConfig.AUTOISF_ONLY_TYPES },
                 height = graphConfig.bgHeight,
                 maxHeight = GraphConfig.MAX_BG_GRAPH_HEIGHT_DP,
                 onHeightChange = { h ->
@@ -1539,6 +1539,7 @@ private fun seriesShortNameId(type: SeriesType): TextRef = when (type) {
     SeriesType.IOB_TH          -> CoreUiStrings.iob_threshold_shortname
     SeriesType.RAW_BG          -> CoreUiStrings.raw_bg_shortname
     SeriesType.UKF_BG          -> CoreUiStrings.ukf_bg_shortname
+    SeriesType.BG_PARABOLA     -> CoreUiStrings.bgParabola_shortname
 }
 
 // =========================================================================
