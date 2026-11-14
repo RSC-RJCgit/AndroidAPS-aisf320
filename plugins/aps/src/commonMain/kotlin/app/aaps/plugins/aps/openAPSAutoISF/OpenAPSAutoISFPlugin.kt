@@ -1995,7 +1995,10 @@ open class OpenAPSAutoISFPlugin(
                     runMarks.recent(RunMark.BOLUS_GIVEN_MILD, 2, now) ||
                     runMarks.recent(RunMark.BOLUS_GIVEN_MILD_FAILSAFE, 2, now),
                 boostHoldActive = boostHoldActive,
-            )
+            ) &&
+            // 2026-11-14, per explicit request: not while OldPodInsReqBoost is active -- it re-applies baseline x1.3 each
+            // loop with no temp target, so this reset undid it every minute (v3 Live 12 Nov). OldPodBstOff restores it.
+            !preferences.get(BooleanNonKey.ApsAutoIsfOldPodInsReqBoostActive)
         ) {
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, resting)
             carePortalNote("DelOff")
@@ -4967,7 +4970,11 @@ open class OpenAPSAutoISFPlugin(
             val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, baseline * 1.3)
             val standard110 = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName).trim()
-            if (standard110.isNotBlank()) switchToStandardFor(standard110, 0, now, "AutoISF: old pod boost")
+            // 2026-11-14, per explicit request (v3 Live 12 Nov: ~170 per-minute switches): switch only when Standard110 is not
+            // already running, and not within 35 min of LowBgTierAReset acting (recent-low caution wins over this rescue).
+            if (standard110.isNotBlank() && profileFunction.getOriginalProfileName() != standard110 &&
+                !runMarks.recent(RunMark.LOW_BG_TIER_A, 35, now)
+            ) switchToStandardFor(standard110, 0, now, "AutoISF: old pod boost")
         }
     }
 
