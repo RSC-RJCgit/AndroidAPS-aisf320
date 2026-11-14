@@ -32,10 +32,8 @@ class DiaconnG8Pump(
 
     var isPumpLogUploadFailed: Boolean = false
 
-    //var bleResultInfo: Pair<Int?, Boolean> = Pair(null, false)
-    var bolusConfirmMessage: Byte = 0
-
-    var isReadyToBolus: Boolean = false
+    /** The pump's answer to the last confirm of a setting: 0 = taken. Null until it comes. */
+    @Volatile var confirmResult: Int? = null
     var maxBolusePerDay: Double = 0.0
     var pumpIncarnationNum: Int = 65536
     var isPumpVersionGe2_63: Boolean = false // the pump firmware is 2.63 or later
@@ -269,9 +267,14 @@ class DiaconnG8Pump(
     var maxBasal = 0.0
 
     // User settings
-    var setUserOptionType = 0 // ALARM:0, LCD:1, LANG:2, BOLUS_SPEED:3
-    var beepAndAlarm = 0
-    var alarmIntensity = 0
+    /**
+     * The user setting `DiaconnG8Service.setUserSettings` writes next, kept apart from the values a status read stores.
+     * The screen put the new value into those: a status read queued before the write put the pump's old value over it,
+     * and the old value was written and reported as saved.
+     */
+    @Volatile var userOptionToSet: UserOption? = null
+    var beepAndAlarm = 0 // 1 sound, 2 vibrate, 3 silent, as the pump sends and takes it; 0 before the first read
+    var alarmIntensity = 0 // 1 low, 2 middle, 3 high
     var lcdOnTimeSec = 0
     var selectedLanguage = 0
     var bolusSpeed = 0
@@ -281,9 +284,22 @@ class DiaconnG8Pump(
     // Bolus settings
     var bolusingDetailedBolusInfo: DetailedBolusInfo? = null // actually delivered treatment
     var bolusProgressLastTimeStamp: Long = 0 // timestamp of last bolus progress message
-    var bolusStopped = false // bolus finished
-    var bolusStopForced = false // bolus forced to stop by user
-    var bolusDone = false // success end
+    // The bolus end report sets these on the Bluetooth thread, while the bolus waits for them on another one.
+    @Volatile var bolusStopped = false // bolus finished
+    @Volatile var bolusStopForced = false // bolus forced to stop by user
+    @Volatile var bolusDone = false // the end report came
+
+    /** The end report of the last bolus: the pump gave all it was set to give. */
+    @Volatile var bolusGivenInFull = false
+
+    /**
+     * How many confirm reports (0xE8) came from the pump. It sends one when it has carried out a setting it confirmed;
+     * see `DiaconnG8Service.awaitCarriedOut`. Written only on the Bluetooth thread.
+     */
+    @Volatile var confirmReports = 0
+
+    /** The pump stopped the last bolus itself, as at an occlusion: it gave less, and the user did not stop it. */
+    val bolusStoppedByPump: Boolean get() = bolusDone && !bolusGivenInFull && !bolusStopForced
 
     val pumpUid: String
         get() = "$country-$productType-$makeYear-${makeMonth.toString().padStart(2, '0')}-${makeDay.toString().padStart(2, '0')}-${lotNo.toString().padStart(3, '0')}-${
@@ -372,6 +388,28 @@ class DiaconnG8Pump(
 
     // 6. bolus speed status.
     var speed = 0 // bolus speed (1 ~ 8)
+
+    /** The seconds the pump takes for one unit at its bolus [speed], 12 when the speed is not known. */
+    val secondsPerUnit: Int
+        get() = when (speed) {
+            1    -> 60
+            2    -> 30
+            3    -> 20
+            4    -> 15
+            6    -> 10
+            7    -> 9
+            8    -> 8
+            else -> 12
+        }
+
+    /**
+     * The time a bolus of [units] started, from the time the pump logged it. Real G8 fw 2.50 (2026-11-11): the pump logs
+     * a bolus when it ends. A 1 U bolus confirmed 21:10:58 was logged 21:11:20, and one the user stopped was logged at the
+     * stop. Stored at the log time, a bolus longer than a minute no longer matched the bolus AAPS asked for, so it lost
+     * its type (an SMB, a bolus of the wizard), and its insulin counted from its end. Seen for the normal bolus; the meal
+     * bolus and the first part of a dual bolus are given the same way, but were not seen on a real pump.
+     */
+    fun bolusStartOf(loggedAt: Long, units: Double): Long = loggedAt - (max(units, 0.0) * secondsPerUnit * 1000).toLong()
     var maxBasalPerHours = 0.0
 
     // 7. Tempbasal status
@@ -476,13 +514,15 @@ class DiaconnG8Pump(
     var bolusingSpeed = 0
     var bolusingInjProgress = 0
 
+    /** A user setting to write: its kind ([ALARM], [LCD] or [LANG]) and its values as the pump takes them. */
+    data class UserOption(val kind: Int, val value: Int, val second: Int = 0)
+
     companion object {
 
         // User settings
         const val ALARM = 0
         const val LCD = 1
         const val LANG = 2
-        const val BOLUS_SPEED = 3
     }
 
 }

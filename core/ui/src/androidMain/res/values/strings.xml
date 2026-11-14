@@ -1331,4 +1331,5 @@
     <string name="scene_action_iobth" comment="%1$d = iobTH in percent of max IOB. Example: iobTH 70 %">iobTH %1$d %%</string>
     <string name="scene_revert_autoisf">AutoISF settings go back to the values before the scene</string>
 
+    <string name="pump_stopped_bolus" comment="%1$s=insulin given, with unit. Example: 0.30 U">The pump stopped the bolus after %1$s. Check the pump before the next bolus.</string>
 </resources>

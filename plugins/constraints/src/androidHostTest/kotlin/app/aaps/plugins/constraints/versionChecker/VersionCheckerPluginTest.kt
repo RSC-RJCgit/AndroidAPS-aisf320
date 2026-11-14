@@ -33,9 +33,9 @@ class VersionCheckerPluginTest : TestBaseWithProfile() {
         val c2 = ConstraintObject(Double.MAX_VALUE, aapsLogger)
         assertThat(versionCheckerPlugin.applyMaxIOBConstraints(c2).value()).isEqualTo(Double.MAX_VALUE)
 
-        // Expired
+        // Expired: AutoISF fork - the expiry no longer limits max IOB
         whenever(preferences.get(LongComposedKey.AppExpiration, config.VERSION_NAME)).thenReturn(now - 1000)
         val c3 = ConstraintObject(Double.MAX_VALUE, aapsLogger)
-        assertThat(versionCheckerPlugin.applyMaxIOBConstraints(c3).value()).isEqualTo(0.0)
+        assertThat(versionCheckerPlugin.applyMaxIOBConstraints(c3).value()).isEqualTo(Double.MAX_VALUE)
     }
 }

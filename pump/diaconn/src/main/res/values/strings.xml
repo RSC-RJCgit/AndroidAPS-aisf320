@@ -26,7 +26,6 @@
     <string name="commanderror">Command error</string>
     <string name="speederror">Speed error</string>
     <string name="insulinlimitviolation">Insulin limit violation</string>
-    <string name="boluserrorcode">Asked: %1$.2f U Delivered: %2$.2f U Error code: %3$s</string>
 
     <string name="selectedpump">Selected pump</string>
     <string name="bolus_step">Bolus Step</string>

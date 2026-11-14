@@ -14,7 +14,6 @@ import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.versionChecker.VersionCheckerUtils
-import app.aaps.core.keys.LongComposedKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.plugins.constraints.ConstraintsStrings
 import app.aaps.plugins.constraints.versionChecker.keys.VersionCheckerLongKey
@@ -48,12 +47,13 @@ class VersionCheckerPlugin(
     aapsLogger, rh, preferences, notificationManager
 ), PluginConstraints {
 
+    /**
+     * AutoISF fork (2026-11-15, per explicit request, as in blaqone's AAPS-autoISF): this build is not an official AAPS
+     * version, so the expiry no longer sets max IOB to 0 ("application expired"), which would end closed looping some
+     * time after an official release. The version check itself still runs, so its notices still appear.
+     */
     override suspend fun applyMaxIOBConstraints(maxIob: Constraint<Double>): Constraint<Double> {
         versionCheckerUtils.triggerCheckVersion()
-        val endDate = preferences.get(LongComposedKey.AppExpiration, config.VERSION_NAME)
-        return if (endDate != 0L && dateUtil.now() > endDate)
-            maxIob.set(0.0, rh.gs(ConstraintsStrings.application_expired), this)
-        else
-            maxIob
+        return maxIob
     }
 }
