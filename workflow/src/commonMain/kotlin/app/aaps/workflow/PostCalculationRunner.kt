@@ -4,13 +4,18 @@ import app.aaps.core.data.time.AppTimeZone
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.SourceSensor
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+import app.aaps.core.interfaces.aps.bgParabolaCurve
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.configuration.Config
+import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.BgParabolaGraphData
+import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.interfaces.overview.graph.BgType
 import app.aaps.core.interfaces.overview.graph.IobGraphData
@@ -51,7 +56,8 @@ class PostCalculationRunner(
     private val processedDeviceStatusData: ProcessedDeviceStatusData,
     private val profileUtil: ProfileUtil,
     private val preferences: Preferences,
-    private val sceneExpiryCheck: SceneExpiryCheck
+    private val sceneExpiryCheck: SceneExpiryCheck,
+    private val glucoseStatusProvider: GlucoseStatusProvider
 ) : CalculationPhase {
 
     /** Runs the phase that follows the prepare pass. [isStopped] is asked between steps. */
@@ -74,6 +80,8 @@ class PostCalculationRunner(
                 preferences.get(StringKey.NsClientUrl), data.overviewData.fromTime, min(data.overviewData.toTime, now)
             )?.let { data.cache.updateIobGraph(IobGraphData(iob = it, predictions = emptyList())) }
         }
+        if (isStopped()) return WorkOutcome.Stopped
+        prepareBgParabola(data)
         if (isStopped()) return WorkOutcome.Stopped
 
         data.signals.emitProgress(CalculationWorkflow.ProgressData.DRAW_FINAL, 100)
@@ -127,6 +135,21 @@ class PostCalculationRunner(
             if (loop.lastRun?.lastAPSRun == decisionBefore) loop.lastBgTriggeredRun = previousTrigger
             throw e
         }
+    }
+
+    /**
+     * AutoISF fork: the BG parabola for the BG graph, as AutoISF 3.2.1 draws it. The glucose status is
+     * read fresh here, like the original does, so the curve follows every new reading and not only the
+     * loop runs. Only AutoISF gives a [GlucoseStatusAutoIsf]; with any other APS, and on a client, the
+     * curve is empty. Display only.
+     */
+    private fun prepareBgParabola(data: PostCalculationData) {
+        val status = if (config.APS) glucoseStatusProvider.glucoseStatusData as? GlucoseStatusAutoIsf else null
+        val curve = status?.bgParabolaCurve()
+        fun List<GraphDataPoint>.inUnits() = map { GraphDataPoint(it.timestamp, profileUtil.fromMgdlToUnits(it.value)) }
+        data.cache.updateBgParabolaGraph(
+            BgParabolaGraphData(fit = curve?.fit?.inUnits() ?: emptyList(), extrapolation = curve?.extrapolation?.inUnits() ?: emptyList())
+        )
     }
 
     private fun preparePredictions(data: PostCalculationData) {

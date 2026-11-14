@@ -561,12 +561,13 @@ class UnscentedKalmanFilterPlugin(
 
         val segments = mutableListOf<DataSegment>()
         var segmentStart = 0
+        val minSpacingMinutes = if (denseCadence(data)) DENSE_MIN_SPACING_MINUTES else 2.0
 
         for (i in 0 until data.size - 1) {
             val timeDiff = (data[i].timestamp - data[i + 1].timestamp) / millisPerMinute
 
             // Segment at major gaps (>60 min), invalid spacing, or error code.
-            if (timeDiff !in 2.0..majorGapThreshold || data[i].value == 38.0) {
+            if (timeDiff !in minSpacingMinutes..majorGapThreshold || data[i].value == 38.0) {
                 // Close current segment if it has enough points.
                 if (i - segmentStart >= 2) {
                     segments.add(DataSegment(segmentStart, i))
@@ -688,7 +689,8 @@ class UnscentedKalmanFilterPlugin(
 
         if (endIdx > 0) {
             val dt = (data[endIdx - 1].timestamp - data[endIdx].timestamp) / millisPerMinute
-            if (dt in 3.0..7.0) {
+            val rateInitMinDt = if (denseCadence(data)) DENSE_MIN_SPACING_MINUTES else 3.0
+            if (dt in rateInitMinDt..7.0) {
                 initialRate = (data[endIdx - 1].calibratedOrValue - data[endIdx].calibratedOrValue) / dt
                 initialRate = initialRate.coerceIn(-4.0, 4.0)
             }
@@ -1424,3 +1426,33 @@ class UnscentedKalmanFilterPlugin(
  */
 private fun Double.fmt(decimals: Int): String =
     NumberFormat.withDecimalsHalfUp(decimals).format(this, NumberFormatPlatform.SEPARATOR_DOT)
+
+// A source whose median spacing is at most this (minutes) is treated as dense. The segment gate and
+// the rate-seeding window assume the 5-minute grid otherwise, which a 1-minute source never matches:
+// the gate rejected every interval (the plugin silently returned the input) and the rate was never
+// seeded (the filter started flat).
+private const val DENSE_CADENCE_MAX_MINUTES = 3.5
+private const val DENSE_MIN_SPACING_MINUTES = 0.5
+private const val CADENCE_SAMPLE_INTERVALS = 30
+private const val CADENCE_MIN_INTERVALS = 5
+private const val CADENCE_MAX_INTERVAL_MINUTES = 7.0
+
+/**
+ * Median spacing in minutes of the newest readings (newest-first list), ignoring gaps and duplicate
+ * timestamps; null when there are too few usable intervals to judge.
+ */
+internal fun medianSpacingMinutes(data: List<InMemoryGlucoseValue>): Double? {
+    val intervals = data.asSequence()
+        .zipWithNext { newer, older -> (newer.timestamp - older.timestamp) / 60_000.0 }
+        .filter { it > 0.0 && it <= CADENCE_MAX_INTERVAL_MINUTES }
+        .take(CADENCE_SAMPLE_INTERVALS)
+        .sorted()
+        .toList()
+    if (intervals.size < CADENCE_MIN_INTERVALS) return null
+    val mid = intervals.size / 2
+    return if (intervals.size % 2 == 1) intervals[mid] else (intervals[mid - 1] + intervals[mid]) / 2.0
+}
+
+/** True when the source reports at least every few minutes, so the 5-minute grid bounds do not apply. */
+private fun denseCadence(data: List<InMemoryGlucoseValue>): Boolean =
+    (medianSpacingMinutes(data) ?: Double.MAX_VALUE) <= DENSE_CADENCE_MAX_MINUTES

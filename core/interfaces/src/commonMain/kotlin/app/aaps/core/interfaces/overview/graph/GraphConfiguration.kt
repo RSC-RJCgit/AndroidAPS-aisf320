@@ -33,7 +33,10 @@ enum class SeriesType {
     FINAL_ISF,
     IOB_TH,
     RAW_BG,
-    UKF_BG
+    UKF_BG,
+
+    /** AutoISF fork: the BG parabola, an overlay of the BG graph only (2026-11-14, from blaqone's AAPS-autoISF) */
+    BG_PARABOLA
 }
 
 /**
@@ -62,7 +65,7 @@ data class SecondaryGraph(
  *   Max 3 series per graph. FIFO: adding a 4th deselects the oldest.
  */
 data class GraphConfig(
-    val bgOverlays: List<SeriesType> = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS),
+    val bgOverlays: List<SeriesType> = listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.BG_PARABOLA),
     // 2026-10-24, per explicit request: the graphs a new install starts with (until the graphs are changed and saved).
     // G1 (this fixed IOB graph) IOB and COB; G2 acce and pp ISF; G3 final, dura and bg ISF; G4 iobTH; G5 steps.
     val iobOverlays: List<SeriesType> = listOf(SeriesType.COB),

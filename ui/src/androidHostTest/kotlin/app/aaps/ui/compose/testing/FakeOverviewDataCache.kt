@@ -14,6 +14,7 @@ import app.aaps.core.interfaces.overview.graph.DeviationsGraphData
 import app.aaps.core.interfaces.overview.graph.EpsGraphPoint
 import app.aaps.core.interfaces.overview.graph.HeartRateGraphData
 import app.aaps.core.interfaces.overview.graph.IobGraphData
+import app.aaps.core.interfaces.overview.graph.BgParabolaGraphData
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.overview.graph.ProfileDisplayData
 import app.aaps.core.interfaces.overview.graph.RatioGraphData
@@ -63,6 +64,7 @@ class FakeOverviewDataCache : OverviewDataCache {
     override val autoIsfGraphFlow = MutableStateFlow(AutoIsfGraphData())
     override val heartRateGraphFlow = MutableStateFlow(HeartRateGraphData(emptyList()))
     override val stepsGraphFlow = MutableStateFlow(StepsGraphData(emptyList()))
+    override val bgParabolaGraphFlow = MutableStateFlow(BgParabolaGraphData(emptyList(), emptyList()))
 
     override val treatmentGraphFlow = MutableStateFlow(TreatmentGraphData(emptyList(), emptyList(), emptyList(), emptyList(), emptyList()))
     override val epsGraphFlow = MutableStateFlow<List<EpsGraphPoint>>(emptyList())
@@ -95,6 +97,7 @@ class FakeOverviewDataCache : OverviewDataCache {
     override fun updateAutoIsfGraph(data: AutoIsfGraphData) { autoIsfGraphFlow.value = data }
     override fun updateHeartRateGraph(data: HeartRateGraphData) { heartRateGraphFlow.value = data }
     override fun updateStepsGraph(data: StepsGraphData) { stepsGraphFlow.value = data }
+    override fun updateBgParabolaGraph(data: BgParabolaGraphData) { bgParabolaGraphFlow.value = data }
 
     override fun reset() = Unit
 }

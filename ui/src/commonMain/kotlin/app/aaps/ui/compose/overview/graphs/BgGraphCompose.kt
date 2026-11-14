@@ -145,6 +145,10 @@ private const val SERIES_PRED_UAM = "pred_uam"
 private const val SERIES_PRED_ZT = "pred_zt"
 private const val SERIES_BOLUS = "bolus"
 
+/** AutoISF fork (2026-11-14, from blaqone's AAPS-autoISF): the BG parabola, the fitted part and its extrapolation */
+private const val SERIES_PARABOLA_FIT = "parabola_fit"
+private const val SERIES_PARABOLA_EXTRAPOLATION = "parabola_extrapolation"
+
 /** A zero-bolus arrow is this much larger than an SMB arrow. */
 private const val ZERO_BOLUS_ARROW_SCALE = 1.5f
 private const val SERIES_CARBS = "carbs"
@@ -363,6 +367,13 @@ fun BgGraphCompose(
     val showUkf = SeriesType.UKF_BG in bgOverlays && !automaticCleanGraph
     val rawPredictions by viewModel.predictionsFlow.collectAsStateWithLifecycle()
     val predictions = if (showPredictions) rawPredictions else emptyList()
+    // AutoISF fork: the BG parabola (pink, as in AutoISF 3.2.1). Only its extrapolation counts as a prediction.
+    val rawBgParabola by viewModel.bgParabolaGraphFlow.collectAsStateWithLifecycle()
+    val bgParabolaPoints = remember(rawBgParabola, bgOverlays, showPredictions, automaticCleanGraph) {
+        fun List<GraphDataPoint>.asBg() = map { BgDataPoint(it.timestamp, it.value, BgRange.IN_RANGE, BgType.REGULAR) }
+        if (SeriesType.BG_PARABOLA !in bgOverlays || automaticCleanGraph) emptyList<BgDataPoint>() to emptyList()
+        else rawBgParabola.fit.asBg() to (if (showPredictions) rawBgParabola.extrapolation.asBg() else emptyList())
+    }
     val rawBasalData = basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value
     val targetData by viewModel.targetLineFlow.collectAsStateWithLifecycle()
 
@@ -508,6 +519,18 @@ fun BgGraphCompose(
                             .sortedBy { it.first }
                         series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
                         activeSeries.add(extra)
+                    }
+                }
+
+                // AutoISF fork: the BG parabola, one point per minute
+                for (parabola in listOf(SERIES_PARABOLA_FIT, SERIES_PARABOLA_EXTRAPOLATION)) {
+                    val parabolaPoints = seriesRegistry[parabola]
+                    if (parabolaPoints != null && parabolaPoints.size >= 2) {
+                        val dataPoints = parabolaPoints
+                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .sortedBy { it.first }
+                        series(x = dataPoints.map { it.first }, y = dataPoints.map { it.second })
+                        activeSeries.add(parabola)
                     }
                 }
 
@@ -715,7 +738,7 @@ fun BgGraphCompose(
     // labels showed the new one. Now one collector lives as long as the graph: the newest input waits for the running
     // rebuild, and the inputs in between are skipped.
     val rebuildInputs = listOf<Any?>(
-        bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, basalData, targetData, epsPoints, activityData, showActivity,
+        bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, bgParabolaPoints, basalData, targetData, epsPoints, activityData, showActivity,
         showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData,
         topBandLines, topBandLines5, showBasalOnBgGraph
     )
@@ -727,6 +750,8 @@ fun BgGraphCompose(
         seriesRegistry[SERIES_BUCKETED] = bucketedData
         seriesRegistry[SERIES_RAW] = rawPoints
         seriesRegistry[SERIES_UKF] = ukfPoints
+        seriesRegistry[SERIES_PARABOLA_FIT] = bgParabolaPoints.first
+        seriesRegistry[SERIES_PARABOLA_EXTRAPOLATION] = bgParabolaPoints.second
         for ((key, points) in predictionsByType) {
             seriesRegistry[key] = points
         }
@@ -891,6 +916,23 @@ fun BgGraphCompose(
         )
     }
 
+    // AutoISF fork: BG parabola - the fitted part solid, the extrapolation dashed, as in AutoISF 3.2.1
+    val bgParabolaColor = AapsTheme.generalColors.bgParabola
+    val parabolaFitLine = remember(bgParabolaColor) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(bgParabolaColor)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 2.5.dp),
+            areaFill = null
+        )
+    }
+    val parabolaExtrapolationLine = remember(bgParabolaColor) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(bgParabolaColor)),
+            stroke = LineCartesianLayer.LineStroke.Dashed(thickness = 2.5.dp, cap = StrokeCap.Round, dashLength = 4.dp, gapLength = 4.dp),
+            areaFill = null
+        )
+    }
+
     val smbMarkColor = AapsTheme.elementColors.insulin
     // Anchor both marks to glucose, with the triangle bodies on opposite sides of the reading.
     val bolusMarkLine = remember {
@@ -900,12 +942,18 @@ fun BgGraphCompose(
         createMarkerLine(Color(0xFFFF9800), ::triangleBelowShape, 28.dp)
     }
 
-    val bgLines = remember(activeSeries, regularLine, bucketedLine, rawLine, ukfLine, iobPredLine, cobPredLine, aCobPredLine, uamPredLine, ztPredLine, bolusMarkLine, carbMarkLine, normalizerLine) {
+    val bgLines = remember(
+        activeSeries, regularLine, bucketedLine, rawLine, ukfLine, parabolaFitLine, parabolaExtrapolationLine, iobPredLine, cobPredLine,
+        aCobPredLine, uamPredLine, ztPredLine, bolusMarkLine, carbMarkLine, normalizerLine
+    ) {
         buildList {
             if (SERIES_REGULAR in activeSeries) add(regularLine)
             if (SERIES_BUCKETED in activeSeries) add(bucketedLine)
             if (SERIES_RAW in activeSeries) add(rawLine)
             if (SERIES_UKF in activeSeries) add(ukfLine)
+            // Same order as the series in the BG layer (after raw and UKF, before the predictions)
+            if (SERIES_PARABOLA_FIT in activeSeries) add(parabolaFitLine)
+            if (SERIES_PARABOLA_EXTRAPOLATION in activeSeries) add(parabolaExtrapolationLine)
             if (SERIES_PRED_IOB in activeSeries) add(iobPredLine)
             if (SERIES_PRED_COB in activeSeries) add(cobPredLine)
             if (SERIES_PRED_ACOB in activeSeries) add(aCobPredLine)

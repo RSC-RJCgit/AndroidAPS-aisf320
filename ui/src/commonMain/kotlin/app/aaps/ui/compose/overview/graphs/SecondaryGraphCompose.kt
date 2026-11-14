@@ -335,7 +335,7 @@ fun SecondaryGraphCompose(
         SeriesType.STEPS           -> viewModel.stepsGraphFlow.collectAsStateWithLifecycle().value.steps
         SeriesType.ACTIVITY        -> viewModel.activityGraphFlow.collectAsStateWithLifecycle().value.activity
         SeriesType.PREDICTIONS     -> emptyList() // UI-only overlay flag, not a secondary series
-        SeriesType.RAW_BG, SeriesType.UKF_BG -> emptyList()
+        SeriesType.RAW_BG, SeriesType.UKF_BG, SeriesType.BG_PARABOLA -> emptyList()
     }
 
     // Cache last non-empty treatment data to survive reset() cycles
@@ -1790,6 +1790,7 @@ data class SeriesColors(
         SeriesType.DURA_ISF        -> duraIsf
         SeriesType.FINAL_ISF       -> finalIsf
         SeriesType.IOB_TH          -> iobTh
+        SeriesType.BG_PARABOLA     -> Color(0xFFFF00FF) // unused here: a BG graph overlay, not a lower graph series
     }
 }
 

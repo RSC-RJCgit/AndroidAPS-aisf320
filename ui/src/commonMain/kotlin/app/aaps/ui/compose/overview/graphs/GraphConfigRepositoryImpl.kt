@@ -135,7 +135,7 @@ class GraphConfigRepositoryImpl(
 
         fun fromJson(json: String): GraphConfig {
             val obj = Json.parseToJsonElement(json) as JsonObject
-            val bgOverlays = overlaysFromJson(obj.array(KEY_BG_OVERLAYS), listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS))
+            val bgOverlays = overlaysFromJson(obj.array(KEY_BG_OVERLAYS), listOf(SeriesType.ACTIVITY, SeriesType.PREDICTIONS, SeriesType.BG_PARABOLA))
             val iobOverlays = overlaysFromJson(obj.array(KEY_IOB_OVERLAYS), listOf(SeriesType.ACTIVITY))
             val bgHeight = obj.height(KEY_BG_HEIGHT, GraphConfig.MAX_BG_GRAPH_HEIGHT_DP)
             val iobHeight = obj.height(KEY_IOB_HEIGHT)
