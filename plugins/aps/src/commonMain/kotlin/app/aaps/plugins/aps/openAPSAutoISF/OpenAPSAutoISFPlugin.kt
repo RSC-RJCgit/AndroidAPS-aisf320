@@ -84,6 +84,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_THIS_PHONE
 import app.aaps.core.objects.constraints.ConstraintObject
 import app.aaps.core.objects.extensions.asAnnouncement
 import app.aaps.core.objects.extensions.asSettingsExport
@@ -3841,6 +3842,10 @@ open class OpenAPSAutoISFPlugin(
 
     // A double tap on the IOB chip. Same change as the matching temp target, with no target and no wait.
     private suspend fun applyDirectListCode(mmol: Double) {
+        if (mmol == LOCAL_ANYDESK_THIS_PHONE) {
+            restartAnyDeskHere()
+            return
+        }
         if (config.AAPSCLIENT) return
         val code = remoteToggleCode(mmol * Constants.MMOLL_TO_MGDL) ?: return
         applyToggleAction(code)
@@ -4794,6 +4799,24 @@ open class OpenAPSAutoISFPlugin(
         }
         // Second try from the Shizuku shell, after the HOME-exit and direct launch above have run. "AdSz" = it ran, "AdSzNo" = it
         // was tried and failed, no note when Shizuku is not available (often down after a reboot or network change).
+        pluginScope.launch {
+            delay(1_500L)
+            val viaShell = withContext(Dispatchers.Default) { anyDeskFront.launchViaShell() }
+            if (viaShell != null) carePortalNote(if (viaShell) "AdSz" else "AdSzNo")
+        }
+    }
+
+    // 2026-11-16, per explicit request: List 2 "Send AnyDesk restart (local test)", as 3426's 5.180. Opens AnyDesk on the phone that was
+    // tapped (Client, Virtual or loop phone); nothing is relayed. "AdLT" first, then AdOn/AdMs and AdSz/AdSzNo as in restartAnyDesk().
+    // Not "ADesk": that note goes to the loop phone over the secondary channel.
+    private suspend fun restartAnyDeskHere() {
+        carePortalNote("AdLT")
+        anyDeskFront.bringToFront { shown ->
+            pluginScope.launch {
+                carePortalNote(if (shown) "AdOn" else "AdMs")
+                aapsLogger.info(LTag.APS, "AnyDesk local test: ${if (shown) "AnyDesk brought to front" else "AnyDesk was not opened"}")
+            }
+        }
         pluginScope.launch {
             delay(1_500L)
             val viaShell = withContext(Dispatchers.Default) { anyDeskFront.launchViaShell() }

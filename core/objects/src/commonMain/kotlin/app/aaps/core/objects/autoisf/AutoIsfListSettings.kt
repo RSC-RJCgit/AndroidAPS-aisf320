@@ -35,13 +35,16 @@ internal val autoIsfProfileRoleKeys = listOf(
 )
 
 /** List 1 row that opens the coded profile picker. */
-private val CODED_PROFILES_ROW = List1Row("Re-pick coded profiles", "Standard, Low, Steroid", 0.0, null, pickProfiles = true, loopValueKey = null)
+private val CODED_PROFILES_ROW = List1Row("Re-pick coded profiles (Standard/Low/SteroidTier)", "Standard, Low, Steroid", 0.0, null, pickProfiles = true, loopValueKey = null)
 
 /** List 2 graph switches, applied on this phone only (2026-11-16, per explicit request, as 3426's graph checkboxes). */
 const val LOCAL_UKF_CALIBRATION_ON = -44.0
 const val LOCAL_UKF_CALIBRATION_OFF = -45.0
 const val LOCAL_GRAPH5_BGL_ONLY_ON = -46.0
 const val LOCAL_GRAPH5_BGL_ONLY_OFF = -47.0
+
+/** List 2 "Send AnyDesk restart (local test)" (2026-11-16, per explicit request, as 3426's 5.180): opens AnyDesk on the phone tapped. */
+const val LOCAL_ANYDESK_THIS_PHONE = -48.0
 
 data class List1Row(
     val label: String,
@@ -63,6 +66,7 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
 
     fun profilePickerRows(): List<List1Row> = numberedListRows(listOf(CODED_PROFILES_ROW))
 
+    // 2026-11-16, per explicit request: the row names are 3426's, so the same row reads the same in v3 and v4. Codes unchanged.
     fun list1Rows(insulinPeakText: String, runningProfileName: String): List<List1Row> {
         val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
         val two: (Double) -> String = { decimalFormatter.to2Decimal(it) }
@@ -73,18 +77,18 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Tog Bst autos(all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)), 5.008, null),
             List1Row("pp ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)), 5.012, 5.014),
             List1Row("acce ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)), 5.016, 5.018),
-            List1Row("Dura weight", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
-            List1Row("Libre slope", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)), 5.026, 5.028),
-            List1Row("Libre offset", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)), 5.032, 5.034),
-            List1Row("Live Libre slope/offset", libreLiveText(), 0.0, null, readOnly = true, loopValueKey = "libreLive"),
+            List1Row("dura ISF Wt", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
+            List1Row("Libre slope (Or)", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)), 5.026, 5.028),
+            List1Row("Libre Offset (Or)", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)), 5.032, 5.034),
+            List1Row("Live Libre slope/offset (view only)", libreLiveText(), 0.0, null, readOnly = true, loopValueKey = "libreLive"),
             List1Row("SMB offset", one(preferences.get(DoubleKey.ApsAutoIsfSmbOffsetOverride)), 5.036, 5.038),
-            List1Row("Clean main graph", "no SMBs, solid green", 5.042, null, loopValueKey = null),
+            List1Row("clean grph view", "no SMBs, solid green", 5.042, null, loopValueKey = null),
             List1Row("Wizard bolus %", preferences.get(IntKey.OverviewBolusPercentage).toString(), 5.046, 5.048),
-            List1Row("Mild boost", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)), 5.052, 5.054),
+            List1Row("MildBst ratio", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)), 5.052, 5.054),
             List1Row("pp ISF Wt (High)", two(preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh)), 5.056, 5.058),
             List1Row("acce ISF Wt (High)", two(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightHigh)), 5.062, 5.064),
             List1Row("higher ISF range Wt", one(preferences.get(DoubleKey.ApsAutoIsfHighBgWeight)), 5.068, 5.070),
-            List1Row("Peak insulin time", insulinPeakText, 5.074, 5.076),
+            List1Row("peak insulin time", insulinPeakText, 5.074, 5.076),
             List1Row("autoISF max (lowBG)", one(preferences.get(DoubleKey.ApsAutoIsfMaxLow)), 5.080, 5.082),
             List1Row("autoISF max (N)", one(preferences.get(DoubleKey.ApsAutoIsfMax)), 5.086, 5.088),
             List1Row("T1 tod offset 00-02h", one(preferences.get(DoubleKey.ApsAutoIsfTodOffset0002)), 5.092, 5.094),
@@ -123,54 +127,61 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
                 choices = listOf("AlarmRecent (set)" to 5.240, "NoAlarmRecent (clear)" to 5.242),
             ),
             List1Row("Tog coded automations (all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)), 5.248, null),
-            List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
+            List1Row("Tog UKFset1 (Virtual live comparison) on/off", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
         ))
     }
 
     fun list2Rows(): List<List1Row> {
         val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
         return numberedListRows(listOf(
-            List1Row("MJ injection", "low, 0.35, 70", 5.158, null, loopValueKey = null),
+            List1Row("MJ start", "low, 0.35, 70", 5.158, null, loopValueKey = null),
             List1Row("MJ restore", "standard, 0.50, 70", 5.160, null, loopValueKey = null),
-            List1Row("Steroids on", preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName), 5.162, null),
-            List1Row("MJ buttons", onOff(preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)), 5.164, null),
-            List1Row("Steroid buttons", onOff(preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)), 5.166, null),
-            List1Row("Steroids 130", preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName), 5.168, null),
-            List1Row("Steroids 150", preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName), 5.170, null),
-            List1Row("Steroids 190", preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName), 5.172, null),
-            List1Row("Steroids 250", preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName), 5.174, null),
-            List1Row("Steroids off", preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName), 5.176, null),
-            List1Row("Tier 3 UAM boost", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)), 5.194, null),
-            List1Row("Profile batch auto", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled)), 5.210, null),
-            List1Row("Profile batch hold A", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled)), 5.212, null),
-            List1Row("Profile batch hold C", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled)), 5.214, null),
-            List1Row("AutoISF calcs UKF1", onOff(preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)), 5.196, null),
-            List1Row("Location texts", onOff(preferences.get(BooleanKey.AutomationCodedLocationsEnabled)), 5.198, null),
-            List1Row("Stepcount import from remote main AAPS phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)), 5.206, null),
-            List1Row("Fast rise", onOff(preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)), 5.226, null),
-            List1Row("LoReb", onOff(preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)), 5.228, null),
-            List1Row("T3 unrestricted", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)), 5.230, null),
-            List1Row("Insulin totals row", onOff(preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)), 5.232, null),
-            List1Row("HP1 help insulin at BG over 8.0", onOff(preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)), 5.254, null),
-            List1Row("Loop interval", if (preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)) "every 1 min" else "every 5 min", 5.234, null),
-            List1Row("Location text phone", preferences.get(StringKey.AutomationLocationSmsDeviceModel).ifBlank { onOff(false) }, 5.204, null),
+            List1Row("Steroid start", preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName), 5.162, null),
+            List1Row("MJ Kotlin buttons on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)), 5.164, null),
+            List1Row("Steroid Kotlin button on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)), 5.166, null),
+            List1Row("Steroid increase 110 to 130", preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName), 5.168, null),
+            List1Row("Steroid increase 130 to 150", preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName), 5.170, null),
+            List1Row("Steroid increase 150 to 190", preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName), 5.172, null),
+            List1Row("Steroid increase 190 to 250", preferences.get(StringKey.ApsAutoIsfSteroid250ProfileName), 5.174, null),
+            List1Row("Steroids OFF", preferences.get(StringKey.ApsAutoIsfSteroid100ProfileName), 5.176, null),
+            List1Row("Tier 3 UAM Boost on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)), 5.194, null),
+            List1Row("Profile batch auto on/off (Toggle1)", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchAutoEnabled)), 5.210, null),
+            List1Row("Revert profile batch to basic (Toggle2)", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertEnabled)), 5.212, null),
+            List1Row("Revert profile batch to TierC (Toggle3)", onOff(preferences.get(BooleanNonKey.ApsAutoIsfProfileBatchRevertCEnabled)), 5.214, null),
+            List1Row("AutoISF calcs: UKF1 vs LibreSpecial EMA", onOff(preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)), 5.196, null),
+            List1Row("Location SMS + CarePortal notes on/off", onOff(preferences.get(BooleanKey.AutomationCodedLocationsEnabled)), 5.198, null),
+            List1Row("Stepcount import from remote main AAPS phone on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)), 5.206, null),
+            List1Row("FastRise SMB tiers on/off (test)", onOff(preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)), 5.226, null),
+            List1Row("Post-low rebound guard LoReb on/off (test)", onOff(preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)), 5.228, null),
+            List1Row("T3 unrestricted compare on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)), 5.230, null),
+            List1Row("Insulin totals row on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)), 5.232, null),
+            List1Row("HP1 help insulin at BG over 8.0 on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)), 5.254, null),
+            List1Row("Loop interval: every 1 min / every 5 min", if (preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)) "every 1 min" else "every 5 min", 5.234, null),
+            List1Row("Location SMS from the loop phone (model)", preferences.get(StringKey.AutomationLocationSmsDeviceModel).ifBlank { onOff(false) }, 5.204, null),
             List1Row("Send AnyDesk restart", "send now", 5.178, null, loopValueKey = null),
             List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null),
             List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null),
-            List1Row("ADB wireless: attempt Shizuku start", adbPortText(), 5.208, null),
-            List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
-            List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
-            List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
-            List1Row("MJ state copy from the loop phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
-            List1Row(
-                "Graph: UKF line uses libre slope & offset (this phone)", onOff(preferences.get(BooleanKey.Ukf1ApplyLibreCalibration)),
-                LOCAL_UKF_CALIBRATION_ON, null, loopValueKey = null,
-                choices = listOf("On" to LOCAL_UKF_CALIBRATION_ON, "Off" to LOCAL_UKF_CALIBRATION_OFF),
-            ),
-            List1Row(
-                "Graph5 BGL only (this phone)", onOff(preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly)),
-                LOCAL_GRAPH5_BGL_ONLY_ON, null, loopValueKey = null,
-                choices = listOf("On" to LOCAL_GRAPH5_BGL_ONLY_ON, "Off" to LOCAL_GRAPH5_BGL_ONLY_OFF),
+            List1Row("ADB wireless: attempt Shizuku start (Virtual only)", adbPortText(), 5.208, null),
+            List1Row("Boost scale (boost_scale)", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
+            List1Row("Boost max (boost_max, U)", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
+            List1Row("Boost max IOB (% of max_iob)", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
+            List1Row("MJ state copy from the loop phone on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
+            List1Row(
+                "Graph: UKF line uses libre slope & offset (this phone)", onOff(preferences.get(BooleanKey.Ukf1ApplyLibreCalibration)),
+                LOCAL_UKF_CALIBRATION_ON, null, loopValueKey = null,
+                choices = listOf("On" to LOCAL_UKF_CALIBRATION_ON, "Off" to LOCAL_UKF_CALIBRATION_OFF),
+            ),
+            List1Row(
+                "Graph5 BGL only (this phone)", onOff(preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly)),
+                LOCAL_GRAPH5_BGL_ONLY_ON, null, loopValueKey = null,
+                choices = listOf("On" to LOCAL_GRAPH5_BGL_ONLY_ON, "Off" to LOCAL_GRAPH5_BGL_ONLY_OFF),
+            ),
+            // 2026-11-16, per explicit request: v3's row 33. Nothing goes to the loop phone. Android only: the Windows client and
+            // iPhone have no AnyDesk for Android and record "AdMs" (not opened).
+            List1Row(
+                "Send AnyDesk restart (local test, this phone, Android only)", "opens AnyDesk on this phone",
+                LOCAL_ANYDESK_THIS_PHONE, null, loopValueKey = null,
+                choices = listOf("Open AnyDesk on this phone" to LOCAL_ANYDESK_THIS_PHONE),
             ),
         ))
     }

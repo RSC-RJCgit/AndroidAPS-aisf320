@@ -51,6 +51,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.autoisf.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
 import app.aaps.core.objects.autoisf.AutoIsfListSettings
+import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_THIS_PHONE
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_OFF
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_ON
 import app.aaps.core.objects.autoisf.LOCAL_UKF_CALIBRATION_OFF
@@ -498,6 +499,11 @@ class ChipsViewModel(
             LOCAL_GRAPH5_BGL_ONLY_ON, LOCAL_GRAPH5_BGL_ONLY_OFF -> {
                 preferences.put(BooleanKey.ApsAutoIsfGraph5BglOnly, mmol == LOCAL_GRAPH5_BGL_ONLY_ON)
                 list2Generation++
+                return
+            }
+            // 2026-11-16, per explicit request: AnyDesk local test. The plugin opens AnyDesk on this phone, even on a Client; no relay.
+            LOCAL_ANYDESK_THIS_PHONE -> {
+                rxBus.send(EventAutoIsfDirectTtCode(mmol))
                 return
             }
         }

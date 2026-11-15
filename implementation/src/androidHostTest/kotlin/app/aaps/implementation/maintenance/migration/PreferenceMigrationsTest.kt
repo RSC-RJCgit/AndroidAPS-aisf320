@@ -433,4 +433,38 @@ class PreferenceMigrationsTest {
         verify(profileUtil).convertToMgdlDetect(100.0)
     }
 
+    private val factoryPresetsJson =
+        """[{"id":"eatingsoon","reason":"Eating Soon","targetValue":90.0,"duration":2700000,"isDeletable":false},""" +
+            """{"id":"activity","reason":"Activity","targetValue":140.0,"duration":5400000,"isDeletable":false},""" +
+            """{"id":"hypo","reason":"Hypo","targetValue":160.0,"duration":3600000,"isDeletable":false}]"""
+
+    /** 2026-11-16: factory presets seeded before the old values arrived are rebuilt from them, once. */
+    @Test fun `factory presets are replaced by the old keys and the old keys go`() = runTest {
+        val store = storeOf(
+            "temp_target_presets" to factoryPresetsJson,
+            "eatingsoon_target" to "79.2", "eatingsoon_duration" to "20",
+            "activity_target" to "122.4", "activity_duration" to "150",
+            "hypo_target" to "144.0", "hypo_duration" to "20"
+        )
+        whenever(profileUtil.convertToMgdlDetect(79.2)).thenReturn(79.2)
+        whenever(profileUtil.convertToMgdlDetect(122.4)).thenReturn(122.4)
+        whenever(profileUtil.convertToMgdlDetect(144.0)).thenReturn(144.0)
+
+        sut().migrate(store)
+
+        val presets = store.getString("temp_target_presets", "").toTTPresets()
+        assertThat(presets.map { it.targetValue }).containsExactly(79.2, 122.4, 144.0).inOrder()
+        assertThat(presets.map { it.duration }).containsExactly(1_200_000L, 9_000_000L, 1_200_000L).inOrder()
+        assertThat(store.contains("eatingsoon_target")).isFalse()
+    }
+
+    @Test fun `changed presets are not replaced by the old keys`() = runTest {
+        val changed = factoryPresetsJson.replace("\"targetValue\":90.0", "\"targetValue\":95.0")
+        val store = storeOf("temp_target_presets" to changed, "eatingsoon_target" to "79.2", "eatingsoon_duration" to "20")
+
+        sut().migrate(store)
+
+        assertThat(store.getString("temp_target_presets", "")).isEqualTo(changed)
+    }
+
 }

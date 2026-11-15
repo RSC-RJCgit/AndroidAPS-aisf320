@@ -103,6 +103,7 @@ class HistoryFilesWriter(
         for (key in DoubleKey.entries) if (isAutoIsfKey(key.key)) lines += key.key to decimalFormatter.to2Decimal(preferences.get(key))
         for (key in IntKey.entries) if (isAutoIsfKey(key.key)) lines += key.key to preferences.get(key).toString()
         for (key in StringKey.entries) if (isAutoIsfKey(key.key)) lines += key.key to preferences.get(key)
+        lines += tempTargetPresetSettings(preferences)
         return lines
     }
 

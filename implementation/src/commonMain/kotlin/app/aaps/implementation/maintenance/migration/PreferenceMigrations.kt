@@ -14,6 +14,7 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.sharedPreferences.KeyValueStore
 import app.aaps.core.interfaces.tempTargets.toJson
+import app.aaps.core.interfaces.tempTargets.toTTPresets
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanComposedKey
 import app.aaps.core.keys.BooleanKey
@@ -24,6 +25,7 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.UnitDoubleKey
 import dev.zacsweers.metro.Inject
+import kotlin.math.abs
 
 /**
  * The preference migrations, as an ordered list of functions over the store they are given.
@@ -190,9 +192,16 @@ class PreferenceMigrations(
         // A client adopts the presets from the master over the sync channel; writing here would push a
         // client→master round-trip. The master migrates and publishes, the client follows.
         if (config.AAPSCLIENT) return
-        // Already a document, so there is nothing to rebuild.
-        if (sp.getString(TEMP_TARGET_PRESETS, "").let { it.isNotEmpty() && it != "[]" }) return
         if (!sp.contains(PRESETS.first().targetName)) return
+        // Already a document, so there is nothing to rebuild - unless it is only the three factory presets.
+        // 2026-11-16, per explicit request: a phone that started before the 3426 values were imported got the
+        // factory three first (MainApp seeds them), and this then never ran, so the user's own values sat in the
+        // old keys unused (Tablet, Nov 2026: 4.4 mmol 20 min, 6.8 mmol 150 min, 8.0 mmol 20 min). Factory presets
+        // are rebuilt from the old keys once; the old keys are then removed, so presets set later are never
+        // overwritten. A document the user has changed in any way is left alone.
+        val existing = sp.getString(TEMP_TARGET_PRESETS, "")
+        val replaceFactory = existing.isNotEmpty() && existing != "[]" && isFactoryPresets(existing)
+        if (existing.isNotEmpty() && existing != "[]" && !replaceFactory) return
 
         // Read again, so the zeroes removed just above are gone rather than taken for real values.
         val values = sp.getAll()
@@ -208,7 +217,29 @@ class PreferenceMigrations(
             )
         }
         if (presets.isEmpty()) return skip(PRESETS.first().targetName, "no preset could be read")
+        if (replaceFactory) {
+            // Keep any preset the factory three did not cover (one the old keys did not have).
+            val rebuilt = presets + existing.toTTPresets().filter { old -> presets.none { it.id == old.id } }
+            sp.putString(TEMP_TARGET_PRESETS, rebuilt.toJson())
+            PRESETS.forEach { sp.remove(it.targetName); sp.remove(it.durationName) }
+            aapsLogger.info(LTag.CORE, "Temp target presets: factory presets replaced by the values from the old keys")
+            return
+        }
         sp.putString(TEMP_TARGET_PRESETS, presets.toJson())
+    }
+
+    /** True when [json] holds exactly the three presets `MainApp` seeds on a new install, unchanged. */
+    private fun isFactoryPresets(json: String): Boolean {
+        val factory = mapOf(
+            "eatingsoon" to (Constants.DEFAULT_TT_EATING_SOON_TARGET to Constants.DEFAULT_TT_EATING_SOON_DURATION),
+            "activity" to (Constants.DEFAULT_TT_ACTIVITY_TARGET to Constants.DEFAULT_TT_ACTIVITY_DURATION),
+            "hypo" to (Constants.DEFAULT_TT_HYPO_TARGET to Constants.DEFAULT_TT_HYPO_DURATION)
+        )
+        val presets = json.toTTPresets()
+        return presets.size == factory.size && presets.all { preset ->
+            val (target, minutes) = factory[preset.id] ?: return@all false
+            preset.name == null && abs(preset.targetValue - target) < 0.01 && preset.duration == minutes * 60L * 1000L
+        }
     }
 
     /** A zero mark is not a setting, it is a value 3.3 could leave behind. Remove it so the default wins. */

@@ -191,6 +191,7 @@ class AutoIsfAapsLogsExporter(
         for (key in LongNonKey.entries) if (isAutoIsfKey(key.key)) settings += "${key.key} = ${preferences.get(key)}"
         settings += "${DoubleKey.FslCalSlope.key} = ${decimalFormatter.to2Decimal(preferences.get(DoubleKey.FslCalSlope))}"
         settings += "${DoubleKey.FslCalOffset.key} = ${decimalFormatter.to2Decimal(preferences.get(DoubleKey.FslCalOffset))}"
+        tempTargetPresetSettings(preferences).forEach { (key, value) -> settings += "$key = $value" }
         return lines.joinToString("\n") + "\n" + settings.sorted().joinToString("\n") + "\n"
     }
 

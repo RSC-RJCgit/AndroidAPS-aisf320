@@ -26,6 +26,7 @@ import app.aaps.implementation.maintenance.cloud.CloudConstants
 import app.aaps.implementation.maintenance.cloud.CloudStorageManager
 import app.aaps.implementation.maintenance.exportNamedFile
 import app.aaps.implementation.maintenance.exportScopeName
+import app.aaps.implementation.maintenance.tempTargetPresetSettings
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
@@ -122,6 +123,7 @@ class DesktopHistoryExport(
         for (key in DoubleKey.entries) if (isAutoIsfKey(key.key)) lines += key.key to decimalFormatter.to2Decimal(preferences.get(key))
         for (key in IntKey.entries) if (isAutoIsfKey(key.key)) lines += key.key to preferences.get(key).toString()
         for (key in StringKey.entries) if (isAutoIsfKey(key.key)) lines += key.key to preferences.get(key)
+        lines += tempTargetPresetSettings(preferences)
         return lines
     }
 
