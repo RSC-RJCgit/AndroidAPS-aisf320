@@ -712,6 +712,13 @@ class DetermineBasalAutoISF @Inject constructor(
             } else {
                 adjusted_sens
             }
+        // 2026-11-15, per explicit request: the BG forecast and the hypo guard use the AutoISF ISF capped at
+        // PRED_SENS_CAP x the profile ISF. On 15 Nov evening a curving-down BG fit pushed the AutoISF ISF to 21.7 mmol/U
+        // (profile 4.0), the forecast crashed (minPredBG -16) and minGuardBG < threshold blocked SMBs while BG sat at 9-10.
+        // Dosing (insulinReq and the worst-case checks) still uses sens.
+        val predSens = if (autoIsfMode) min(sens, PRED_SENS_CAP * profile.sens) else sens
+        val predSensCapped = predSens < sens
+        if (predSensCapped) consoleError.add("predSens ${convert_isf(predSens)} (AutoISF ISF ${convert_isf(sens)} capped at ${PRED_SENS_CAP}x profile)")
         consoleError.add("CR: ${round(profile.carb_ratio, 2)}")
 
         if (autoIsfMode) {
@@ -745,7 +752,7 @@ class DetermineBasalAutoISF @Inject constructor(
             )
         }
 
-        val bgi = round((-iob_data.activity * sens * 5), 2)
+        val bgi = round((-iob_data.activity * predSens * 5), 2)
         var deviation = round(30 / 5 * (minDelta - bgi))
         if (deviation < 0) {
             deviation = round((30 / 5) * (minAvgDelta - bgi))
@@ -756,7 +763,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
         val naive_eventualBG =
             if (autoIsfMode)
-                round(bg - (iob_data.iob * sens), 0)
+                round(bg - (iob_data.iob * predSens), 0)
             else {
                 if (iob_data.iob > 0) round(bg - (iob_data.iob * sens), 0)
                 else round(bg - (iob_data.iob * min(sens, profile.sens)), 0)
@@ -805,6 +812,7 @@ class DetermineBasalAutoISF @Inject constructor(
             consoleError = consoleError,
             variable_sens = profile.variable_sens
         )
+        if (predSensCapped) rT.reason.append("predSens: ${convert_isf(predSens)} (AutoISF ISF ${convert_isf(sens)} capped) ;")
 
         var COBpredBGs = mutableListOf<Double>()
         var aCOBpredBGs = mutableListOf<Double>()
@@ -889,10 +897,10 @@ class DetermineBasalAutoISF @Inject constructor(
         var COBpredBG: Double? = null
         var aCOBpredBG: Double?
         iobArray.forEach { iobTick ->
-            val predBGI: Double = round((-iobTick.activity * sens * 5), 2)
+            val predBGI: Double = round((-iobTick.activity * predSens * 5), 2)
             val IOBpredBGI: Double = predBGI
             iobTick.iobWithZeroTemp ?: error("iobTick.iobWithZeroTemp missing")
-            val predZTBGI = round((-iobTick.iobWithZeroTemp!!.activity * sens * 5), 2)
+            val predZTBGI = round((-iobTick.iobWithZeroTemp!!.activity * predSens * 5), 2)
             val predUAMBGI = predBGI
             val predDev: Double = ci * (1 - min(1.0, IOBpredBGs.size / (60.0 / 5.0)))
             IOBpredBG = IOBpredBGs[IOBpredBGs.size - 1] + IOBpredBGI + predDev
@@ -2744,3 +2752,6 @@ class DetermineBasalAutoISF @Inject constructor(
         }
     }
 }
+
+/** The forecast and the hypo guard use at most this many times the profile ISF (2026-11-15, see predSens). */
+private const val PRED_SENS_CAP = 2.0

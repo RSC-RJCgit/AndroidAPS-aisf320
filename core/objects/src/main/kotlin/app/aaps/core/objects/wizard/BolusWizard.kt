@@ -2070,7 +2070,11 @@ class BolusWizard @Inject constructor(
             val gs = glucoseStatusProvider.glucoseStatusData
             // 2026-10-18, per explicit request: the same rule as v4 - BG above 5.5 mmol and both deltas at least +0.05 mmol
             // (was BG >= 7.0 and not falling, which cancelled most doses on 17 Oct Live while BG was 5.5-7.0).
-            val bgOk = gs != null && gs.glucose > 99.1 /* 5.5 mmol */ && gs.delta >= 0.90 /* 0.05 mmol */ && gs.shortAvgDelta >= 0.90 /* 0.05 mmol */
+            // 2026-11-15, per explicit request (15 Nov: parts 8 and 9 cancelled while BG sat flat at 7.5-8): also BG 7.0 or more and
+            // not falling (neither delta -0.05 mmol or lower), as v4. The insulinReq cap below still decides how much, if any.
+            val rising = gs != null && gs.glucose > 99.1 /* 5.5 mmol */ && gs.delta >= 0.90 /* 0.05 mmol */ && gs.shortAvgDelta >= 0.90 /* 0.05 mmol */
+            val highNotFalling = gs != null && gs.glucose >= 126.0 /* 7.0 mmol */ && gs.delta > -0.90 /* -0.05 mmol */ && gs.shortAvgDelta > -0.90 /* -0.05 mmol */
+            val bgOk = rising || highNotFalling
             if (!bgOk) {
                 deferOrCancel("BG safety check failed (${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())})", "BG safety check failed")
                 return@postDelayed
