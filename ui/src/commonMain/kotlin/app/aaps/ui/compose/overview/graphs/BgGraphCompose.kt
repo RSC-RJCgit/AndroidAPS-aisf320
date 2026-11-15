@@ -936,11 +936,12 @@ fun BgGraphCompose(
 
     val smbMarkColor = AapsTheme.elementColors.insulin
     // Anchor both marks to glucose, with the triangle bodies on opposite sides of the reading.
+    // About 15% smaller since 2026-11-15, per explicit request (were 32 and 28 dp)
     val bolusMarkLine = remember {
-        createMarkerLine(Color(0xFFFF00FF), ::invertedTriangleShape, 32.dp)
+        createMarkerLine(Color(0xFFFF00FF), ::invertedTriangleShape, 27.dp)
     }
     val carbMarkLine = remember {
-        createMarkerLine(Color(0xFFFF9800), ::triangleBelowShape, 28.dp)
+        createMarkerLine(Color(0xFFFF9800), ::triangleBelowShape, 24.dp)
     }
 
     val bgLines = remember(

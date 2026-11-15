@@ -516,10 +516,11 @@ fun triangleBelowShape(tipInset: Float = 0f): Shape = GenericShape { size, _ ->
  * The largest, with the BG graph's tip gap added on both sides, must stay within [NORMALIZER_POINT_SIZE].
  */
 internal val MarkerTier.markerSize: Dp
+    // About 15% smaller since 2026-11-15, per explicit request (were 12, 17 and 22 dp)
     get() = when (this) {
-        MarkerTier.SMALL  -> 12.dp
-        MarkerTier.MEDIUM -> 17.dp
-        MarkerTier.LARGE  -> 22.dp
+        MarkerTier.SMALL  -> 10.dp
+        MarkerTier.MEDIUM -> 14.dp
+        MarkerTier.LARGE  -> 19.dp
     }
 
 /**
