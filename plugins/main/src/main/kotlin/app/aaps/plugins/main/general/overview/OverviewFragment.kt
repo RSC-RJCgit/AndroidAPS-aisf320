@@ -1683,6 +1683,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // apply immediately; Client relays the TT to Live (Client does not send location SMS).
         LOCATION_SMS_THIS_PHONE("Location SMS from the loop phone (model)", 5.204),
         ANYDESK_RESTART("Send AnyDesk restart", 5.178),
+        // 2026-11-16, per explicit request: MJ state copy from the loop phone (ApsAutoIsfUseLiveMjStateOnVirtual, also a Settings
+        // switch), as in v4. Same EventAutoIsfDirectTtCode dispatch as the toggles above; Client relays 5.236 to the loop phone.
+        LIVE_MJ_STATE_TOGGLE("MJ state copy from the loop phone on/off", 5.236),
         // Local-test-only companion: records the same local "ADesk" click Note, then queues a fresh
         // command revision without depending on an NS round-trip or TT. The receiving handler writes
         // a route/device-specific AcLTx Note when it accepts that queued trigger.
@@ -1793,7 +1796,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     }
 
     private fun runBasalDirectAction(action: BasalDirectAction) {
-        if (action == BasalDirectAction.ANYDESK_LOCAL_TEST) {
+        // 2026-11-16, per explicit request: "Send AnyDesk restart" is shown on every phone, so the row numbers match v4. On the loop
+        // phone itself it records the ADesk note and starts AnyDesk here, as the local test does: a relay TT would be a real target.
+        if (action == BasalDirectAction.ANYDESK_LOCAL_TEST || (action == BasalDirectAction.ANYDESK_RESTART && !config.AAPSCLIENT)) {
             saveAnyDeskRestartCommandNote(allowLocalTest = true) {
                 queueAnyDeskRestartLocalTest()
             }
@@ -1879,6 +1884,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.T3_UNRESTRICTED_TOGGLE,
                 BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE,
                 BasalDirectAction.HP1_OVERRIDE_TOGGLE,
+                BasalDirectAction.LIVE_MJ_STATE_TOGGLE,
                 BasalDirectAction.LOOP_INTERVAL_TOGGLE,
                 BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
@@ -1929,6 +1935,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             BasalDirectAction.T3_UNRESTRICTED_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
             BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfShowInsulinTotals)
             BasalDirectAction.HP1_OVERRIDE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfHp1OverrideEnabled)
+            BasalDirectAction.LIVE_MJ_STATE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)
             BasalDirectAction.LOOP_INTERVAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLoopEveryMinute)
                 .replace("OFF", "every 5 min").replace("ON", "every 1 min")
             BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {
@@ -2042,13 +2049,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun showBasalDirectActionListDialog() {
         activity?.let { act ->
-            val actionEntries = BasalDirectAction.values().filter {
-                it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
-            }
-            // 2026-11-16, per explicit request: the AnyDesk local test row (v3 only) goes after the Boost rows, so the rows shared with
-            // v4 have the same numbers in both: actions, Boost rows, then the v3-only rows.
-            val mainEntries = actionEntries.filter { it != BasalDirectAction.ANYDESK_LOCAL_TEST }
-            val tailEntries = actionEntries.filter { it == BasalDirectAction.ANYDESK_LOCAL_TEST }
+            // 2026-11-16, per explicit request: every row on every phone (AnyDesk restart was Client only), so the numbers match v4.
+            val actionEntries = BasalDirectAction.values().toList()
+            // 2026-11-16, per explicit request: MJ state copy and the AnyDesk local test (v3 only) go after the Boost rows, so the rows
+            // shared with v4 have the same numbers in both: actions, Boost rows, MJ state copy, then the v3-only rows.
+            val tail = setOf(BasalDirectAction.LIVE_MJ_STATE_TOGGLE, BasalDirectAction.ANYDESK_LOCAL_TEST)
+            val mainEntries = actionEntries.filter { it !in tail }
+            val tailEntries = actionEntries.filter { it in tail }
             // Numbered by place on screen (2026-10-07), as in the KMP lists.
             val labels = (mainEntries.map { list2ActionLabel(it) } + list2SteppedEntries.map { it.label } +
                 tailEntries.map { list2ActionLabel(it) } + graphToggleEntries.map { it.label })
@@ -2982,10 +2989,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // toggle path left anywhere in this custom TT-code/graph-checkbox system -- 5.154 was freed up,
         // not reused. If it ever needs to be toggled again, either restore a TT code at 5.154 or a
         // plain (non-syncing) preference toggle.
-        TtCode.Single(
-            "Tog UKFset1 (Virtual live comparison) on/off", 5.152,
-            currentValue = { "Current: ${if (preferences.get(BooleanKey.FslUseUkfSmoothing)) "ON" else "OFF"}" }
-        ),
         TtCode.Single("Sensor age code", 5.156, currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)) "ON" else "OFF"}" }),
         // 2026-10-09, per explicit request: sets or clears the AlarmHypo state by hand. Setting also writes the saved alarm time (now),
         // because the stale-state clear removes AlarmRecent whose alarm time is missing or old. Relays 5.240 (set) and 5.242 (clear).
@@ -3000,7 +3003,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 .setNegativeButton(rh.gs(app.aaps.core.ui.R.string.cancel)) { _, _ -> showTtCodesListDialog() }
                 .setOnCancelListener { showTtCodesListDialog() }
                 .show()
-        }
+        },
+        // 2026-11-16, per explicit request: last, as it shows on Virtual only, so the rows above have the same numbers as v4.
+        TtCode.Single(
+            "Tog UKFset1 (Virtual live comparison) on/off", 5.152,
+            currentValue = { "Current: ${if (preferences.get(BooleanKey.FslUseUkfSmoothing)) "ON" else "OFF"}" }
+        )
         // Graph toggle entries (UKF1 + Graph5 only; UKF2/UKF3 removed 2026-09-02) live in list2
         // (basal rate icon), not list1 (this one, IOB icon).
     )

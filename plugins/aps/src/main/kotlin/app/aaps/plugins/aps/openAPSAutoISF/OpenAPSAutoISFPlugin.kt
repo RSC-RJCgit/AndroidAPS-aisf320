@@ -602,6 +602,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("HP1h${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local HP1 override toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("HP1 override toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.236) <= 0.0000001) {
+                        // 2026-11-16: MJ state copy from the loop phone, from List 2 as in v4. Same shape as 5.254 above.
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)
+                        preferences.put(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, newState)
+                        sendSms("MJ state copy from the loop phone: ${if (newState) "ON" else "OFF"}", noteTag = true)
+                        addCarePortalNote("LMJ${if (newState) "On" else "Off"}", smsText = lastSmsText)
+                        aapsLogger.info(LTag.APS, "Applied local MJ state copy toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("MJ state copy toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.230) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
                         preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
@@ -3790,6 +3798,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "LowReboundGuardToggleTT" -> 5.228
         "T3UnrestrictedToggleTT" -> 5.230
         "InsulinTotalsToggleTT" -> 5.232
+        "Hp1OverrideToggleTT" -> 5.254
+        "LiveMjStateToggleTT" -> 5.236
         else -> null
     }
 
@@ -4734,6 +4744,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("HP1h${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("HP1 override toggled", true))
             markRun("Hp1OverrideToggleTT")
+        }
+        if (readyToRun("LiveMjStateToggleTT", 2) && activeTtNear(5.236, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)
+            preferences.put(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, newState)
+            cancelCurrentTempTarget()
+            sendSms("MJ state copy from the loop phone: ${if (newState) "ON" else "OFF"}", noteTag = true)
+            addCarePortalNote("LMJ${if (newState) "On" else "Off"}", smsText = lastSmsText)
+            rxBus.send(EventRefreshOverview("MJ state copy toggled", true))
+            markRun("LiveMjStateToggleTT")
         }
         if (readyToRun("T3UnrestrictedToggleTT", 2) && activeTtNear(5.230, 0.0001)) {
             val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)

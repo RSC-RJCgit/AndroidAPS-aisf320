@@ -82,6 +82,7 @@ internal object ClientLocalListCodes {
         put(5.230, Change.Toggle(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled))
         put(5.232, Change.Toggle(BooleanKey.ApsAutoIsfShowInsulinTotals))
         put(5.254, Change.Toggle(BooleanKey.ApsAutoIsfHp1OverrideEnabled))
+        put(5.236, Change.Toggle(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual))
         put(5.234, Change.Toggle(BooleanKey.ApsAutoIsfLoopEveryMinute))
     }
 
