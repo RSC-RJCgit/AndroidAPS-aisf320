@@ -1695,6 +1695,14 @@ interface PersistenceLayer {
      */
     suspend fun insertOrUpdateStepsCounts(stepsCounts: List<SC>): TransactionResult<SC>
 
+    // AutoISF AIV table (2026-11-15, ported from the AaAPS v4 fork). Default bodies so test fakes need no change.
+
+    /** Stores one loop run's row. False when a row for that time already exists, or nothing was stored. */
+    suspend fun insertAutoIsfValueOnce(aiv: app.aaps.core.data.model.AIV): Boolean = false
+
+    /** The rows from [startTime] to [endTime], oldest first. */
+    suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<app.aaps.core.data.model.AIV> = emptyList()
+
     // VersionChange
 
     /**

@@ -4,6 +4,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 import app.aaps.database.entities.TABLE_APS_RESULTS
+import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
 import app.aaps.database.entities.TABLE_BOLUSES
 import app.aaps.database.entities.TABLE_CALIBRATION_ENTRIES
 import app.aaps.database.entities.TABLE_EFFECTIVE_PROFILE_SWITCHES
@@ -422,6 +423,43 @@ private val migration35to36 = object : Migration(35, 36) {
     }
 }
 
+/**
+ * The AutoISF AIV table (2026-11-15, ported from the AaAPS v4 fork): one row per loop run, for the table that a long
+ * press on the AutoISF chip opens. Existing rows of every other table are left as they are.
+ */
+private val migration36to37 = object : Migration(36, 37) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL(
+            "CREATE TABLE IF NOT EXISTS `$TABLE_AUTO_ISF_VALUES` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`timestamp` INTEGER NOT NULL, " +
+                "`acceIsf` REAL NOT NULL, " +
+                "`bgIsf` REAL NOT NULL, " +
+                "`ppIsf` REAL NOT NULL, " +
+                "`duraIsf` REAL NOT NULL, " +
+                "`finalIsf` REAL NOT NULL, " +
+                "`glucose` REAL NOT NULL, " +
+                "`delta` REAL NOT NULL, " +
+                "`shortAvgDelta` REAL NOT NULL, " +
+                "`longAvgDelta` REAL NOT NULL, " +
+                "`bgAcceleration` REAL NOT NULL, " +
+                "`iob` REAL NOT NULL, " +
+                "`smbDelivered` REAL NOT NULL, " +
+                "`iobThEffective` REAL NOT NULL, " +
+                "`targetMgdl` REAL NOT NULL, " +
+                "`smbDeliveryRatio` REAL NOT NULL, " +
+                "`cob` REAL NOT NULL, " +
+                "`basal` REAL NOT NULL, " +
+                "`steps5` INTEGER NOT NULL, " +
+                "`steps15` INTEGER NOT NULL, " +
+                "`steps30` INTEGER NOT NULL, " +
+                "`steps60` INTEGER NOT NULL)"
+        )
+        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_autoIsfValues_timestamp` ON `$TABLE_AUTO_ISF_VALUES` (`timestamp`)")
+        dropCustomIndexes(connection)
+    }
+}
+
 /** Every migration, in order. Passed to the Room builder by each platform. */
 internal val databaseMigrations: Array<Migration> = arrayOf(
     migration22to23,
@@ -438,4 +476,5 @@ internal val databaseMigrations: Array<Migration> = arrayOf(
     migration33to34,
     migration34to35,
     migration35to36,
+    migration36to37,
 )

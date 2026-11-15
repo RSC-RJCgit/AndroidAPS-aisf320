@@ -2,6 +2,8 @@ package app.aaps.plugins.sync.nsclientV3.data
 
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.RT
+import app.aaps.core.interfaces.aps.autoIsfRow
+import app.aaps.core.data.model.SC
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
@@ -157,7 +159,7 @@ class NSDeviceStatusHandler(
      * A loop result as it came with a device status. Older clients stored it with [deviceStatusTime], not
      * with the master's own time, so a result stored by them is found by that time.
      */
-    private class ReceivedResult(val apsResult: APSResult, val deviceStatusTime: Long)
+    private class ReceivedResult(val apsResult: APSResult, val deviceStatusTime: Long, val rt: RT? = null, val device: String? = null)
 
     /**
      * Stores the master's loop results that are not stored yet, then tells the calculation about them.
@@ -177,6 +179,46 @@ class NSDeviceStatusHandler(
             .distinctBy { it.date }
         newResults.forEach { persistenceLayer.insertOrUpdateApsResult(it) }
         newResults.minOfOrNull { it.date }?.let { iobCobCalculator().apsResultsStored(it) }
+        storeAutoIsfRows(received)
+    }
+
+    /**
+     * AIV table and steps (2026-11-15, ported from the AaAPS v4 fork): every received AutoISF loop result becomes one
+     * AIV row, at the loop's own time, the same row the master stored. On a client its step counts also become a step
+     * row, so the steps graph shows the master's steps. A row that is already there for that time is skipped.
+     */
+    private suspend fun storeAutoIsfRows(received: List<ReceivedResult>) {
+        received.distinctBy { it.deviceStatusTime }.forEach { item ->
+            val rt = item.rt ?: return@forEach
+            try {
+                rt.autoIsfRow(item.deviceStatusTime)?.let { persistenceLayer.insertAutoIsfValueOnce(it) }
+                val factors = rt.autoIsf
+                if (config.AAPSCLIENT && factors?.steps5 != null) {
+                    val time = item.deviceStatusTime
+                    if (persistenceLayer.getStepsCountFromTimeToTime(time, time).isEmpty()) {
+                        persistenceLayer.insertOrUpdateStepsCounts(
+                            listOf(
+                                SC(
+                                    duration = 5 * 60_000L,
+                                    timestamp = time,
+                                    steps5min = factors.steps5 ?: 0,
+                                    steps10min = factors.steps10 ?: 0,
+                                    steps15min = factors.steps15 ?: 0,
+                                    steps30min = factors.steps30 ?: 0,
+                                    steps60min = factors.steps60 ?: 0,
+                                    steps180min = 0,
+                                    device = item.device ?: "master"
+                                )
+                            )
+                        )
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                aapsLogger.error(LTag.NSCLIENT, "Could not store the received AutoISF row", e)
+            }
+        }
     }
 
     /**
@@ -287,7 +329,7 @@ class NSDeviceStatusHandler(
                             aapsLogger.debug(LTag.NSCLIENT, "APS result without algorithm from ${nsDeviceStatus.device}, not stored")
                         // Calculated nothing, and the master did not store it either. Also shown from the data above.
                         apsResult.stoppedEarly -> Unit
-                        else -> apsResults.add(ReceivedResult(apsResult, clock))
+                        else -> apsResults.add(ReceivedResult(apsResult, clock, rt, nsDeviceStatus.device))
                     }
                 }
             }

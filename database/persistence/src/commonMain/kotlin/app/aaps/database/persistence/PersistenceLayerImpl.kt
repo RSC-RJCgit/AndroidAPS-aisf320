@@ -2608,6 +2608,20 @@ class PersistenceLayerImpl(
         repository.getLastStepsCountFromTimeToTime(startTime, endTime)?.fromDb()
     }
 
+    override suspend fun insertAutoIsfValueOnce(aiv: app.aaps.core.data.model.AIV): Boolean = withContext(aapsIoDispatcher) {
+        try {
+            repository.insertAutoIsfValueOnce(aiv.toDb())
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.DATABASE, "Could not store the AutoISF row", e)
+            false
+        }
+    }
+
+    override suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<app.aaps.core.data.model.AIV> =
+        withContext(aapsIoDispatcher) { repository.getAutoIsfValuesFromTimeToTime(startTime, endTime).map { it.fromDb() } }
+
     override suspend fun insertOrUpdateStepsCounts(stepsCounts: List<SC>): PersistenceLayer.TransactionResult<SC> = withContext(aapsIoDispatcher) {
         if (stepsCounts.isEmpty()) return@withContext PersistenceLayer.TransactionResult<SC>()
         try {

@@ -104,7 +104,8 @@ data class AutoIsfFactorsUiState(
  * - Closed: the AutoISF symbol and the pinned values, right-aligned.
  * - Open: every value in a grid. A tap on a value pins it to the closed chip or removes it
  *   (at most [AUTOISF_MAX_PINNED]). [extraContent] is shown under the grid.
- * - A tap on the chip opens or closes it, a long click anywhere opens the AutoISF screen (APS tab).
+ * - A tap on the chip opens or closes it. A long click on the chip opens the AIV table (2026-11-15) when
+ *   [onOpenAivTable] is given, else the AutoISF screen (APS tab).
  *
  * Display only, nothing here changes dosing.
  */
@@ -116,8 +117,12 @@ fun AutoIsfChip(
     onExpandedChange: (Boolean) -> Unit,
     onTogglePin: (String) -> Unit,
     modifier: Modifier = Modifier,
-    extraContent: (@Composable () -> Unit)? = null
+    extraContent: (@Composable () -> Unit)? = null,
+    aivTable: AivTable? = null,
+    onOpenAivTable: (() -> Unit)? = null,
+    onCloseAivTable: () -> Unit = {}
 ) {
+    AivTableDialog(aivTable, onCloseAivTable)
     if (!state.visible) return
     val openAps = { state.apsPluginClassName?.let { onNavigate(NavigationRequest.Plugin(it)) } ?: Unit }
     val openLabel = stringResource(UiStrings.overview_autoisf_open)
@@ -132,8 +137,8 @@ fun AutoIsfChip(
             .padding(horizontal = AapsSpacing.medium, vertical = AapsSpacing.extraSmall)
             .combinedClickable(
                 onClickLabel = toggleLabel,
-                onLongClickLabel = openLabel,
-                onLongClick = openAps,
+                onLongClickLabel = if (onOpenAivTable != null) "AIV" else openLabel,
+                onLongClick = onOpenAivTable ?: openAps,
                 onClick = { onExpandedChange(!state.expanded) }
             )
     ) {

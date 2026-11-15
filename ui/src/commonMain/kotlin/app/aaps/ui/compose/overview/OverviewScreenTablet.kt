@@ -186,7 +186,10 @@ fun OverviewScreenTablet(
                     state = autoIsfFactorsUiState,
                     onNavigate = onNavigate,
                     onExpandedChange = chipsViewModel::setAutoIsfChipExpanded,
-                    onTogglePin = chipsViewModel::toggleAutoIsfPin
+                    onTogglePin = chipsViewModel::toggleAutoIsfPin,
+                    aivTable = chipsViewModel.aivTable.collectAsStateWithLifecycle().value,
+                    onOpenAivTable = chipsViewModel::openAivTable,
+                    onCloseAivTable = chipsViewModel::closeAivTable
                 )
 
                 OverviewStatusSection(

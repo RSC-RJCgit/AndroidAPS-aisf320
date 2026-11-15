@@ -10,9 +10,11 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutoIsfFactors
+import app.aaps.core.interfaces.aps.autoIsfRow
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
+import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
 import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.configuration.Config
@@ -441,7 +443,30 @@ open class OpenAPSAutoISFPlugin(
             auto_isf_consoleLog = consoleLog,
             activity = activity
         ).also {
-            it.autoIsf = autoIsfFactors.finiteOnly()
+            // AIV table (2026-11-15, ported from the AaAPS v4 fork): the rest of the row travels in the result too, so
+            // clients build the same row; deltas, acceleration and target in mg/dL
+            it.autoIsf = autoIsfFactors.copy(
+                delta = glucoseStatus.delta,
+                shortAvgDelta = glucoseStatus.shortAvgDelta,
+                longAvgDelta = glucoseStatus.longAvgDelta,
+                bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration,
+                smbDeliveryRatio = smbRatio,
+                targetMgdl = targetBg,
+                steps5 = steps?.last5,
+                steps10 = steps?.let { s -> s.last5 + s.before5 },
+                steps15 = steps?.last15Sum,
+                steps30 = steps?.last30,
+                steps60 = steps?.last60
+            ).finiteOnly()
+            it.autoIsfRow(it.timestamp ?: now)?.let { row ->
+                try {
+                    persistenceLayer.insertAutoIsfValueOnce(row)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    aapsLogger.error(LTag.APS, "Could not store the AutoISF row", e)
+                }
+            }
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
             determineBasalResult.inputConstraints = inputConstraints

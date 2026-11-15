@@ -18,6 +18,7 @@ import app.aaps.database.entities.HeartRate
 import app.aaps.database.entities.ProfileSwitch
 import app.aaps.database.entities.RunningMode
 import app.aaps.database.entities.StepsCount
+import app.aaps.database.entities.AutoIsfValues
 import app.aaps.database.entities.TemporaryBasal
 import app.aaps.database.entities.TemporaryTarget
 import app.aaps.database.entities.TherapyEvent
@@ -233,6 +234,7 @@ class AppRepository internal constructor(
             removed.add(Pair("RunningMode", database.runningModeDao.deleteOlderThan(than)))
         removed.add(Pair("HeartRate", database.heartRateDao.deleteOlderThan(than)))
         removed.add(Pair("StepsCount", database.stepsCountDao.deleteOlderThan(than)))
+        removed.add(Pair("AutoIsfValues", database.autoIsfValuesDao.deleteOlderThan(than)))
 
         if (deleteTrackedChanges) {
             removed.add(Pair("CHANGES APSResult", database.apsResultDao.deleteTrackedChanges()))
@@ -966,6 +968,14 @@ class AppRepository internal constructor(
 
     suspend fun getLastStepsCountFromTimeToTime(startMillis: Long, endMillis: Long): StepsCount? =
         database.stepsCountDao.getLastStepsCountFromTimeToTime(startMillis, endMillis)
+
+    /** AIV table (2026-11-15): one row per loop time; a second row for the same time is not stored. */
+    suspend fun insertAutoIsfValueOnce(entry: AutoIsfValues): Boolean =
+        if (database.autoIsfValuesDao.countAt(entry.timestamp) > 0) false
+        else database.autoIsfValuesDao.insert(entry) > 0
+
+    suspend fun getAutoIsfValuesFromTimeToTime(startMillis: Long, endMillis: Long): List<AutoIsfValues> =
+        database.autoIsfValuesDao.getFromTimeToTime(startMillis, endMillis)
 
     suspend fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int) = NewEntries(
         apsResults = database.apsResultDao.getNewEntriesSince(since, until, limit, offset),

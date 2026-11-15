@@ -17,7 +17,21 @@ data class AutoIsfFactors(
     var ppIsf: Double? = null,
     var duraIsf: Double? = null,
     var finalIsf: Double? = null,
-    var iobThEffective: Double? = null
+    var iobThEffective: Double? = null,
+    // AIV table (2026-11-15, ported from the AaAPS v4 fork): the rest of one AIV row, so a client builds the same row
+    // from the loop result it receives. Deltas, acceleration and target in mg/dL.
+    var delta: Double? = null,
+    var shortAvgDelta: Double? = null,
+    var longAvgDelta: Double? = null,
+    var bgAcceleration: Double? = null,
+    var smbDeliveryRatio: Double? = null,
+    var targetMgdl: Double? = null,
+    var steps5: Int? = null,
+    /** Only for the clients' step rows; the AIV table has no 10 min column */
+    var steps10: Int? = null,
+    var steps15: Int? = null,
+    var steps30: Int? = null,
+    var steps60: Int? = null
 ) {
 
     /**
@@ -30,8 +44,51 @@ data class AutoIsfFactors(
         ppIsf = ppIsf.finiteOrNull(),
         duraIsf = duraIsf.finiteOrNull(),
         finalIsf = finalIsf.finiteOrNull(),
-        iobThEffective = iobThEffective.finiteOrNull()
+        iobThEffective = iobThEffective.finiteOrNull(),
+        delta = delta.finiteOrNull(),
+        shortAvgDelta = shortAvgDelta.finiteOrNull(),
+        longAvgDelta = longAvgDelta.finiteOrNull(),
+        bgAcceleration = bgAcceleration.finiteOrNull(),
+        smbDeliveryRatio = smbDeliveryRatio.finiteOrNull(),
+        targetMgdl = targetMgdl.finiteOrNull(),
+        steps5 = steps5,
+        steps10 = steps10,
+        steps15 = steps15,
+        steps30 = steps30,
+        steps60 = steps60
     )
 
     private fun Double?.finiteOrNull(): Double? = this?.takeIf { it.isFinite() }
+}
+
+/**
+ * The AIV table row of one loop result (2026-11-15, ported from the AaAPS v4 fork). The master builds it from its own
+ * result, a client from the result it received, so both tables hold the same rows. Null without AutoISF factors.
+ */
+fun RT.autoIsfRow(timestamp: Long): app.aaps.core.data.model.AIV? {
+    val f = autoIsf ?: return null
+    return app.aaps.core.data.model.AIV(
+        timestamp = timestamp,
+        acceIsf = f.acceIsf ?: 1.0,
+        bgIsf = f.bgIsf ?: 1.0,
+        ppIsf = f.ppIsf ?: 1.0,
+        duraIsf = f.duraIsf ?: 1.0,
+        finalIsf = f.finalIsf ?: 1.0,
+        glucose = bg ?: 0.0,
+        delta = f.delta ?: 0.0,
+        shortAvgDelta = f.shortAvgDelta ?: 0.0,
+        longAvgDelta = f.longAvgDelta ?: 0.0,
+        bgAcceleration = f.bgAcceleration ?: 0.0,
+        iob = IOB ?: 0.0,
+        smbDelivered = units ?: 0.0,
+        iobThEffective = f.iobThEffective ?: 0.0,
+        targetMgdl = f.targetMgdl ?: 0.0,
+        smbDeliveryRatio = f.smbDeliveryRatio ?: 0.0,
+        cob = COB ?: 0.0,
+        basal = rate ?: 0.0,
+        steps5 = f.steps5 ?: 0,
+        steps15 = f.steps15 ?: 0,
+        steps30 = f.steps30 ?: 0,
+        steps60 = f.steps60 ?: 0
+    )
 }

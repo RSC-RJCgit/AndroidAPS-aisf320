@@ -15,6 +15,7 @@ import app.aaps.database.daos.PreferenceChangeDao
 import app.aaps.database.daos.ProfileSwitchDao
 import app.aaps.database.daos.RunningModeDao
 import app.aaps.database.daos.StepsCountDao
+import app.aaps.database.daos.AutoIsfValuesDao
 import app.aaps.database.daos.TemporaryBasalDao
 import app.aaps.database.daos.TemporaryTargetDao
 import app.aaps.database.daos.TherapyEventDao
@@ -51,5 +52,6 @@ internal interface AppDatabaseDaos {
     val runningModeDao: RunningModeDao
     val heartRateDao: HeartRateDao
     val stepsCountDao: StepsCountDao
+    val autoIsfValuesDao: AutoIsfValuesDao
     val calibrationEntryDao: CalibrationEntryDao
 }

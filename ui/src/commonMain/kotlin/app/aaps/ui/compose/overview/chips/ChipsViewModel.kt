@@ -4,7 +4,10 @@ import androidx.compose.runtime.Stable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.BS
 import app.aaps.core.interfaces.aps.APSResult
+import app.aaps.core.interfaces.aps.AutoIsfFactors
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.RT
 import app.aaps.core.interfaces.configuration.Config
@@ -18,6 +21,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
@@ -35,6 +39,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.time.Clock
 
 @Stable
 @AssistedInject
@@ -156,9 +161,14 @@ class ChipsViewModel(
         initialValue = AutoIsfFactorsUiState()
     )
 
-    private fun buildAutoIsfFactorsUiState(): AutoIsfFactorsUiState {
-        if (!isAutoIsfActive()) return AutoIsfFactorsUiState()
-        val factors = (loop.lastRun?.request?.rawData() as? RT)?.autoIsf ?: return AutoIsfFactorsUiState()
+    private suspend fun buildAutoIsfFactorsUiState(): AutoIsfFactorsUiState {
+        // A client has no loop of its own: its chip shows the master's newest AIV row (2026-11-15, so the AIV table is
+        // reachable there too)
+        val factors = when {
+            isAutoIsfActive()  -> (loop.lastRun?.request?.rawData() as? RT)?.autoIsf
+            config.AAPSCLIENT -> newestReceivedFactors()
+            else               -> null
+        } ?: return AutoIsfFactorsUiState()
         fun factor(key: String, value: Double?) = AutoIsfValue(
             key = key,
             value = value?.let { decimalFormatter.to2Decimal(it) } ?: "-",
@@ -184,6 +194,40 @@ class ChipsViewModel(
             expanded = preferences.get(BooleanNonKey.OverviewAutoIsfChipExpanded),
             apsPluginClassName = activePlugin.activeAPS?.let { it::class.simpleName }
         )
+    }
+
+    /** The master's newest AIV row of the last 15 minutes, as factors, or null. */
+    private suspend fun newestReceivedFactors(): AutoIsfFactors? {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val row = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AIV_CHIP_MAX_AGE_MS, now).lastOrNull() ?: return null
+        return AutoIsfFactors(
+            acceIsf = row.acceIsf, bgIsf = row.bgIsf, ppIsf = row.ppIsf, duraIsf = row.duraIsf, finalIsf = row.finalIsf,
+            iobThEffective = row.iobThEffective
+        )
+    }
+
+    /** The AIV table a long press on the AutoISF chip opens (2026-11-15): the last 24 hours, newest first. Null = closed. */
+    val aivTable = MutableStateFlow<AivTable?>(null)
+
+    fun openAivTable() {
+        viewModelScope.launch {
+            val now = Clock.System.now().toEpochMilliseconds()
+            val from = now - AIV_TABLE_HOURS * 60 * 60_000L
+            val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(from, now).reversed()
+            // Manual, calculator, carb-split and protein/fat boluses (not SMBs, not priming), each counted in the first row at
+            // or after it (2026-11-15, per explicit request)
+            val boluses = persistenceLayer.getBolusesFromTimeToTime(from - 10 * 60_000L, now, true)
+                .filter { it.isValid && it.amount > 0.0 && it.type != BS.Type.SMB && it.type != BS.Type.PRIMING }
+            val bolusByTime = rows.mapIndexed { index, row ->
+                val older = rows.getOrNull(index + 1)?.timestamp ?: (row.timestamp - 5 * 60_000L)
+                row.timestamp to boluses.filter { it.timestamp > older && it.timestamp <= row.timestamp }.sumOf { it.amount }
+            }.toMap()
+            aivTable.value = AivTable(rows, mmol = preferences.get(StringKey.GeneralUnits) == "mmol", bolusByTime = bolusByTime)
+        }
+    }
+
+    fun closeAivTable() {
+        aivTable.value = null
     }
 
     /** The pinned keys in their saved order, only those that exist, at most [AUTOISF_MAX_PINNED]. */
@@ -234,3 +278,9 @@ class ChipsViewModel(
         }
     }
 }
+
+/** The rows of the AIV table, newest first, and whether glucose is shown in mmol/L. */
+data class AivTable(val rows: List<AIV>, val mmol: Boolean, val bolusByTime: Map<Long, Double> = emptyMap())
+
+private const val AIV_CHIP_MAX_AGE_MS = 15 * 60_000L
+private const val AIV_TABLE_HOURS = 24
