@@ -325,6 +325,19 @@ enum class BooleanKey(
         KeysStrings.pref_title_aps_show_graph5,
         KeysStrings.pref_summary_aps_show_graph5
     ),
+    // 2026-11-16, per explicit request: the two graph checkboxes of 3426's List 2, local to each phone (display only).
+    Ukf1ApplyLibreCalibration(
+        "ukf1_apply_libre_calibration",
+        false,
+        KeysStrings.pref_title_ukf1_apply_libre_calibration,
+        KeysStrings.pref_summary_ukf1_apply_libre_calibration
+    ),
+    ApsAutoIsfGraph5BglOnly(
+        "graph5_bgl_only",
+        false,
+        KeysStrings.pref_title_aps_graph5_bgl_only,
+        KeysStrings.pref_summary_aps_graph5_bgl_only
+    ),
     ApsAutoIsfUseUkf1ForDosing(
         "autoisf_use_ukf1_for_dosing",
         false,

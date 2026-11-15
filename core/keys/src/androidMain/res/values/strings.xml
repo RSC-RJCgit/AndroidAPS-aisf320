@@ -114,6 +114,10 @@
     <string name="pref_title_aps_show_carb_model_curve">Carb model curve</string>
     <string name="pref_summary_aps_show_carb_model_curve">Dashed curve of expected carb absorption on the main graph. Peak is 90 minutes. Off hides the curve.</string>
     <string name="pref_title_aps_show_graph5">Graph 5</string>
+    <string name="pref_title_ukf1_apply_libre_calibration">UKF line uses libre slope and offset</string>
+    <string name="pref_summary_ukf1_apply_libre_calibration">On: the UKF line on the graphs uses the libre slope and offset, so it can be compared with the BG line. Off (default): the UKF line as smoothed. Display only, on this phone.</string>
+    <string name="pref_title_aps_graph5_bgl_only">Graph 5 BGL only</string>
+    <string name="pref_summary_aps_graph5_bgl_only">On: Graph 5 hides the insulin activity and carb lines and keeps BG, basal and the top band lines. Off (default): Graph 5 shows them. Display only, on this phone.</string>
     <string name="pref_summary_aps_show_graph5">A second copy of the main glucose graph, with a range that follows the glucose. Off hides it.</string>
     <string name="pref_title_aps_use_ukf1_for_dosing">AutoISF calcs UKF1</string>
     <string name="pref_summary_aps_use_ukf1_for_dosing">Off by default. On a virtual pump, the loop uses UKF1 deltas instead of the live glucose deltas. A real pump ignores this.</string>

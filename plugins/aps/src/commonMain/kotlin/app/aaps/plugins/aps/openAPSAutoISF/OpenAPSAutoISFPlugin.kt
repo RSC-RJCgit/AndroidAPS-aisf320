@@ -1742,6 +1742,8 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfHp1OverrideEnabled,
             BooleanKey.ApsAutoIsfShowCarbModelCurve,
             BooleanKey.ApsAutoIsfShowGraph5,
+            BooleanKey.ApsAutoIsfGraph5BglOnly,
+            BooleanKey.Ukf1ApplyLibreCalibration,
             BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled,
             BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled,
             BooleanKey.ApsAutoIsfShowInsulinTotals,

@@ -3,6 +3,7 @@ package app.aaps.workflow
 import app.aaps.core.data.time.AppTimeZone
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
+import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.AIV
 import app.aaps.core.data.model.CA
 import app.aaps.core.data.model.TE
@@ -263,8 +264,13 @@ class PrepareGraphDataRunner(
             .filter { it.timestamp in fromTime..toTime && (it.noise ?: 0.0) > 10.0 }
             .sortedByDescending { it.timestamp }
         val smoothedRaw = displayRawSmoothing.smoothForDisplay(newestFirstRaw.map { it.timestamp to it.noise!! })
+        // 2026-11-16, per explicit request (as 3426): with the switch on, the UKF line uses the libre slope and offset, so it can be
+        // compared with the BG line. Off (default) leaves it as smoothed. Display only.
+        val ukfCalibrated = preferences.get(BooleanKey.Ukf1ApplyLibreCalibration)
+        val ukfSlope = preferences.get(DoubleKey.FslCalSlope)
+        val ukfOffsetMgdl = preferences.get(DoubleKey.FslCalOffset) * if (profileUtil.units == GlucoseUnit.MMOL) Constants.MMOLL_TO_MGDL else 1.0
         val ukfByTime = newestFirstRaw.mapIndexedNotNull { index, bg ->
-            smoothedRaw.getOrNull(index)?.let { bg.timestamp to it }
+            smoothedRaw.getOrNull(index)?.let { bg.timestamp to if (ukfCalibrated) max(40.0, it * ukfSlope + ukfOffsetMgdl) else it }
         }.toMap()
 
         val bgDataPoints = bgReadingsArray

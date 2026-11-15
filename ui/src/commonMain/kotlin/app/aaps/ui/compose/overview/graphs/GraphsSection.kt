@@ -363,6 +363,7 @@ fun GraphsSection(
     val g5ScrollState = rememberSafeScrollState(scrollEnabled = true, initialScroll = Scroll.Absolute.End)
     val g5ZoomState = rememberSafeZoomState(zoomEnabled = vicoZoomEnabled, initialZoom = startZoom, minZoom = bgMinZoom, maxZoom = bgMaxZoom)
     val showGraph5 by graphViewModel.showGraph5.collectAsStateWithLifecycle()
+    val graph5BglOnly by graphViewModel.graph5BglOnly.collectAsStateWithLifecycle()
     val showGraph5Now = rememberUpdatedState(showGraph5)
 
     // Active graph count — rememberUpdatedState so coroutines always read the latest value
@@ -1340,6 +1341,7 @@ fun GraphsSection(
                     visibleTimeRange = bgVisibleTimeRange,
                     inspect = inspect,
                     topBandLines = true,
+                    bglOnly = graph5BglOnly,
                     basalSnapshot = basalSnapshot,
                     onRenderReady = { renderedGraphs = renderedGraphs + (-3 to it) },
                     modifier = Modifier

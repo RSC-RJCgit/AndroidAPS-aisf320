@@ -655,13 +655,12 @@ class AutomationRuntime(
         // Exact names stay blocked while this switch is on. Close names stay blocked unless the
         // review allowed that exact title. Other names are never touched. The switch does nothing
         // unless AutoISF is the running algorithm, because the coded names belong to that algorithm.
-        // codedAutomationBodiesPresent stays false: many coded automations now run in OpenAPSAutoISFPlugin
-        // (2026-10-19), but blocking same-named native ones is not switched on yet.
-        // An imported 3.2.1 file can already have this switch on. That must not stop a native
-        // automation while nothing in this app replaces it.
-        val codedAutomationBodiesPresent = false
-        val customAutomationsOn = codedAutomationBodiesPresent &&
-            preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled) &&
+        // 2026-11-16, per explicit request: switched on, as in 3426. The coded automations run in OpenAPSAutoISFPlugin, so a
+        // native automation with the same name ran as well and could do the same thing twice. It is blocked only while the coded
+        // automations themselves run (their master switch is on too). The few registry names this app has no code for are
+        // never blocked (CodedAutomationNames.NOT_CODED_HERE).
+        val customAutomationsOn = preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled) &&
+            preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled) &&
             activePlugin.activeAPS?.algorithm?.name == "AUTO_ISF"
         val codedDecisions = if (customAutomationsOn) loadCodedAutomationDecisions() else emptyMap()
         val iterator = eventsLock.withLock { automationEvents.toMutableList().iterator() }

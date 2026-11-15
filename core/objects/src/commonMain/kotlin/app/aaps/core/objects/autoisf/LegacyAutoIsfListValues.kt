@@ -63,6 +63,8 @@ private val legacyListKeys = mapOf(
     "5.232" to "show_insulin_totals_row",
     "5.234" to "autoisf_loop_every_minute",
     "5.236" to "autoisf_use_live_mj_state_on_virtual",
+    // 2026-11-16: the 3426 master switch for its coded automations, under the same List 1 code as this app's.
+    "5.248" to "autoisf_custom_automations_enabled",
 )
 
 fun legacyAutoIsfListValues(report: String?): Map<String, String> {
@@ -74,8 +76,6 @@ fun legacyAutoIsfListValues(report: String?): Map<String, String> {
     if ("configuration_version" !in legacy) return emptyMap()
 
     return buildMap {
-        put("unsupported:5.248", "true")
-        put("unsupported:5.236", "true")
         for ((code, key) in legacyListKeys) {
             val value = legacy[key] ?: continue
             put(code, when (code) {
@@ -145,6 +145,7 @@ private val legacyToggleKeys = setOf(
     "automation_coded_locations_enabled",
     "autoisf_use_live_steps_on_virtual",
     "autoisf_use_live_mj_state_on_virtual",
+    "autoisf_custom_automations_enabled",
     "autoisf_profile_batch_auto_enabled",
     "autoisf_profile_batch_revert_enabled",
     "autoisf_profile_batch_revert_c_enabled",

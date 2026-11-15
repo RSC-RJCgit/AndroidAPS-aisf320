@@ -303,6 +303,8 @@ fun BgGraphCompose(
     visibleTimeRange: Pair<Long, Long>? = null,
     /** Graph 5 only: draw SMB delivery, acce weight, pp weight and profile basal in the top band of the BG axis. */
     topBandLines: Boolean = false,
+    /** Graph 5 only (2026-11-16, per explicit request): no insulin activity and no carb lines. */
+    bglOnly: Boolean = false,
     automaticCleanGraph: Boolean = false,
     /** With [automaticCleanGraph]: also hide the text lines (the "Clean graph hides text lines" setting). */
     cleanGraphHidesTextLines: Boolean = false,
@@ -384,8 +386,8 @@ fun BgGraphCompose(
     val showBasalOnBgGraph = graphDisplay.basalOnBgGraph || topBandLines
     val basalData = if (showBasalOnBgGraph) rawBasalData else BasalGraphData(emptyList(), emptyList(), 0.0)
     val epsPoints by viewModel.epsGraphFlow.collectAsStateWithLifecycle()
-    val showActivity = SeriesType.ACTIVITY in bgOverlays && !automaticCleanGraph
-    val showCarbModel = !automaticCleanGraph
+    val showActivity = SeriesType.ACTIVITY in bgOverlays && !automaticCleanGraph && !bglOnly
+    val showCarbModel = !automaticCleanGraph && !bglOnly
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
     val chartConfig by viewModel.chartConfigFlow.collectAsStateWithLifecycle()
     val treatments by viewModel.treatmentGraphFlow.collectAsStateWithLifecycle()

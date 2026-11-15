@@ -14,9 +14,9 @@ import kotlinx.serialization.json.put
  * [MatchType.EXACT] means the names are the same. [MatchType.CLOSE] means one name contains the other.
  * [MatchType.NONE] means there is no match, and that automation is left alone.
  *
- * The list is the 3.2.1 registry. Many of these now run as code in OpenAPSAutoISFPlugin, each under its own
- * switch or none (2026-10-19). Blocking same-named native automations is still off: see
- * `AutomationRuntime.processActions`.
+ * The list is the 3.2.1 registry. Nearly all of these run as code in OpenAPSAutoISFPlugin, each under its own
+ * switch or none (2026-10-19). Since 2026-11-16 a native automation with one of these names is blocked while the coded
+ * automations run (see `AutomationRuntime.processActions`), except the names in [NOT_CODED_HERE].
  */
 object CodedAutomationNames {
 
@@ -62,6 +62,9 @@ object CodedAutomationNames {
         "WizardPctUpTT", "iobTHDaytimeFloor"
     )
 
+    /** Registry names with no coded body in this app (checked 2026-11-16, 183 of 188 have one). A native one is never blocked. */
+    val NOT_CODED_HERE: Set<String> = setOf("LibreSpecialShadowMetricsLog", "LibreUkf2ToggleTT", "Test3", "UkfSet1DeltaMetricsLog")
+
     fun classify(nativeTitle: String): MatchType {
         val normalizedTitle = normalize(nativeTitle)
         if (normalizedTitle.isEmpty()) return MatchType.NONE
@@ -94,6 +97,8 @@ object CodedAutomationNames {
      */
     fun nativeEventSuppressed(title: String, decisions: Map<String, Boolean>, customAutomationsOn: Boolean): Boolean {
         if (!customAutomationsOn) return false
+        val normalizedTitle = normalize(title)
+        if (NOT_CODED_HERE.any { normalize(it) == normalizedTitle }) return false
         return when (classify(title)) {
             MatchType.EXACT -> true
             MatchType.CLOSE -> decisions[title] != true

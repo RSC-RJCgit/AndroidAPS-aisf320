@@ -37,6 +37,12 @@ internal val autoIsfProfileRoleKeys = listOf(
 /** List 1 row that opens the coded profile picker. */
 private val CODED_PROFILES_ROW = List1Row("Re-pick coded profiles", "Standard, Low, Steroid", 0.0, null, pickProfiles = true, loopValueKey = null)
 
+/** List 2 graph switches, applied on this phone only (2026-11-16, per explicit request, as 3426's graph checkboxes). */
+const val LOCAL_UKF_CALIBRATION_ON = -44.0
+const val LOCAL_UKF_CALIBRATION_OFF = -45.0
+const val LOCAL_GRAPH5_BGL_ONLY_ON = -46.0
+const val LOCAL_GRAPH5_BGL_ONLY_OFF = -47.0
+
 data class List1Row(
     val label: String,
     val current: String,
@@ -116,8 +122,8 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
                 "Hypo alarm state (manual)", "AlarmRecent (set) or NoAlarmRecent (clear)", 5.240, null, loopValueKey = null,
                 choices = listOf("AlarmRecent (set)" to 5.240, "NoAlarmRecent (clear)" to 5.242),
             ),
-            List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
             List1Row("Tog coded automations (all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)), 5.248, null),
+            List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
         ))
     }
 
@@ -155,7 +161,17 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
             List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
             List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
-            List1Row("MJ state copy from the loop phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
+            List1Row("MJ state copy from the loop phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
+            List1Row(
+                "Graph: UKF line uses libre slope & offset (this phone)", onOff(preferences.get(BooleanKey.Ukf1ApplyLibreCalibration)),
+                LOCAL_UKF_CALIBRATION_ON, null, loopValueKey = null,
+                choices = listOf("On" to LOCAL_UKF_CALIBRATION_ON, "Off" to LOCAL_UKF_CALIBRATION_OFF),
+            ),
+            List1Row(
+                "Graph5 BGL only (this phone)", onOff(preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly)),
+                LOCAL_GRAPH5_BGL_ONLY_ON, null, loopValueKey = null,
+                choices = listOf("On" to LOCAL_GRAPH5_BGL_ONLY_ON, "Off" to LOCAL_GRAPH5_BGL_ONLY_OFF),
+            ),
         ))
     }
 

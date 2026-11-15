@@ -129,6 +129,9 @@ class GraphViewModel(
     /** Second copy of the main glucose graph. Off until the Graph 5 switch is turned on. */
     val showGraph5: StateFlow<Boolean> = preferences.observe(BooleanKey.ApsAutoIsfShowGraph5)
 
+    /** Graph 5 without the insulin activity and carb lines (2026-11-16). */
+    val graph5BglOnly: StateFlow<Boolean> = preferences.observe(BooleanKey.ApsAutoIsfGraph5BglOnly)
+
     /** Max IOB setting. The profile basal line on Graph 5 uses 0 to 30% of it as its scale. */
     val smbMaxIob: Double get() = preferences.get(DoubleKey.ApsSmbMaxIob)
 

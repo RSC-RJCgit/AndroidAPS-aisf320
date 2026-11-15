@@ -323,8 +323,6 @@ internal class NSDeviceStatusHandlerTest {
                 "5.006" to "ON",
                 "5.156" to "OFF",
                 "role:autoisf_standard_profile_name" to "",
-                "unsupported:5.236" to "true",
-                "unsupported:5.248" to "true",
             ),
             openAPSData.autoIsfListSnapshot.value?.values
         )

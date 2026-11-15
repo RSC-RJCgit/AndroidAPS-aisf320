@@ -37,6 +37,7 @@ import app.aaps.core.interfaces.overview.graph.autoIsfListsFor
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
+import app.aaps.core.interfaces.rx.events.EventCalibrationChanged
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
@@ -50,6 +51,10 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.autoisf.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
 import app.aaps.core.objects.autoisf.AutoIsfListSettings
+import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_OFF
+import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_ON
+import app.aaps.core.objects.autoisf.LOCAL_UKF_CALIBRATION_OFF
+import app.aaps.core.objects.autoisf.LOCAL_UKF_CALIBRATION_ON
 import app.aaps.core.objects.autoisf.List1Row
 import app.aaps.core.objects.autoisf.numberedListRows
 import app.aaps.core.objects.autoisf.loadAutoIsfHistoryRows
@@ -482,6 +487,20 @@ class ChipsViewModel(
     }
 
     fun applyList1(mmol: Double) {
+        // 2026-11-16, per explicit request: List 2's graph switches change this phone's display only. No relay, SMS or note.
+        when (mmol) {
+            LOCAL_UKF_CALIBRATION_ON, LOCAL_UKF_CALIBRATION_OFF -> {
+                preferences.put(BooleanKey.Ukf1ApplyLibreCalibration, mmol == LOCAL_UKF_CALIBRATION_ON)
+                rxBus.send(EventCalibrationChanged())
+                list2Generation++
+                return
+            }
+            LOCAL_GRAPH5_BGL_ONLY_ON, LOCAL_GRAPH5_BGL_ONLY_OFF -> {
+                preferences.put(BooleanKey.ApsAutoIsfGraph5BglOnly, mmol == LOCAL_GRAPH5_BGL_ONLY_ON)
+                list2Generation++
+                return
+            }
+        }
         if (readOnlyClient && !masterRunsAutoIsf()) {
             notAutoIsfNotice = true
             return
