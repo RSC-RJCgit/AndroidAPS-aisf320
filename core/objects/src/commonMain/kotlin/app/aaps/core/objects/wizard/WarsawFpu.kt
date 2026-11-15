@@ -116,12 +116,21 @@ fun profileSwitchPercent(profile: Profile): Int =
 /**
  * Glucose must be above 5.5 mmol, and both delta and short delta at least 0.05 mmol (2026-10-18, per explicit request; was
  * above 0.2 mmol, which cancelled most doses on 17 Oct Live while BG was only slowly rising).
+ *
+ * Or glucose 7.0 mmol or more and not falling: neither delta -0.05 mmol or lower (2026-11-15, per explicit request; on 15 Nov
+ * parts 8 and 9 were cancelled while BG sat flat at 7.5-8). The insulinReq cap still decides how much, if any.
  */
 fun warsawDoseBgAllows(glucoseMgdl: Double?, delta: Double?, shortDelta: Double?): Boolean {
     if (glucoseMgdl == null || delta == null || shortDelta == null) return false
     val toMmol = Constants.MGDL_TO_MMOLL
-    return glucoseMgdl * toMmol > 5.5 && delta * toMmol >= WARSAW_MIN_DELTA_MMOL && shortDelta * toMmol >= WARSAW_MIN_DELTA_MMOL
+    val rising = glucoseMgdl * toMmol > 5.5 && delta * toMmol >= WARSAW_MIN_DELTA_MMOL && shortDelta * toMmol >= WARSAW_MIN_DELTA_MMOL
+    val highNotFalling = glucoseMgdl * toMmol >= WARSAW_HIGH_MMOL &&
+        delta * toMmol > -WARSAW_MIN_DELTA_MMOL && shortDelta * toMmol > -WARSAW_MIN_DELTA_MMOL
+    return rising || highNotFalling
 }
+
+/** From this glucose, in mmol, a flat (not falling) BG also lets a delayed protein/fat dose go. */
+const val WARSAW_HIGH_MMOL = 7.0
 
 /** Smallest rise per 5 min, in mmol, that still lets a delayed protein/fat dose go. */
 const val WARSAW_MIN_DELTA_MMOL = 0.05

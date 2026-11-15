@@ -121,4 +121,17 @@ class WarsawFpuTest {
         assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.3 * mmol, 0.04 * mmol))
         assertFalse(warsawDoseBgAllows(null, 0.3 * mmol, 0.3 * mmol))
     }
+
+    @Test
+    fun bgGateLetsFlatHighBgThrough() {
+        val mmol = Constants.MMOLL_TO_MGDL
+        // 2026-11-15: 7.0 mmol or more and not falling goes too (15 Nov fpu9: BG 7.5, deltas -0.01 / +0.02)
+        assertTrue(warsawDoseBgAllows(7.5 * mmol, -0.01 * mmol, 0.02 * mmol))
+        assertTrue(warsawDoseBgAllows(7.01 * mmol, 0.0, 0.0))
+        // Falling by 0.05 mmol or more on either delta still stops it (15 Nov fpu8: BG 8.1, delta -0.07)
+        assertFalse(warsawDoseBgAllows(8.1 * mmol, -0.07 * mmol, 0.01 * mmol))
+        assertFalse(warsawDoseBgAllows(8.1 * mmol, 0.01 * mmol, -0.06 * mmol))
+        // Below 7.0 a flat BG is still not enough
+        assertFalse(warsawDoseBgAllows(6.9 * mmol, 0.0, 0.0))
+    }
 }

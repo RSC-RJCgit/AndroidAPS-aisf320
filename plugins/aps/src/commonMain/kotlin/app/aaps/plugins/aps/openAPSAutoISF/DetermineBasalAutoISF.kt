@@ -1362,6 +1362,13 @@ class DetermineBasalAutoISF(
                 adjusted_sens
                 //console.log(" (autosens ratio "+sensitivityRatio+")");
             }
+        // 2026-11-15, per explicit request (as v3): the BG forecast and the hypo guard use the AutoISF ISF capped at
+        // PRED_SENS_CAP x the profile ISF. On 15 Nov evening (v3 Live) a curving-down BG fit pushed the AutoISF ISF to 21.7 mmol/U
+        // (profile 4.0), the forecast crashed (minPredBG -16) and minGuardBG < threshold blocked SMBs while BG sat at 9-10.
+        // Dosing (insulinReq and the worst-case checks) still uses sens.
+        val predSens = if (autoIsfMode) min(sens, PRED_SENS_CAP * profile.sens) else sens
+        val predSensCapped = predSens < sens
+        if (predSensCapped) consoleError.add("predSens $predSens (AutoISF ISF $sens capped at ${PRED_SENS_CAP}x profile)")
         consoleError.add("CR: ${profile.carb_ratio}")
 
         if (autoIsfMode) {
@@ -1389,7 +1396,7 @@ class DetermineBasalAutoISF(
         }
 
         //calculate BG impact: the amount BG "should" be rising or falling based on insulin activity alone
-        val bgi = round((-iob_data.activity * sens * 5), 2)
+        val bgi = round((-iob_data.activity * predSens * 5), 2)
         // project deviations for 30 minutes
         var deviation = round(30 / 5 * (minDelta - bgi), "deviation")
         // don't overreact to a big negative delta: use minAvgDelta if deviation is negative
@@ -1404,7 +1411,7 @@ class DetermineBasalAutoISF(
         // calculate the naive (bolus calculator math) eventual BG based on net IOB and sensitivity
         val naive_eventualBG =
             if (autoIsfMode)
-                round(bg - (iob_data.iob * sens), 0)
+                round(bg - (iob_data.iob * predSens), 0)
             else {
                 if (iob_data.iob > 0) round(bg - (iob_data.iob * sens), 0)
                 else  // if IOB is negative, be more conservative and use the lower of sens, profile.sens
@@ -1472,6 +1479,7 @@ class DetermineBasalAutoISF(
             consoleError = consoleError,
             variable_sens = profile.variable_sens
         )
+        if (predSensCapped) rT.reason.append("predSens: ${convert_bg(predSens)} (AutoISF ISF ${convert_bg(sens)} capped) ;")
 
         // generate predicted future BGs based on IOB, COB, and current absorption rate
 
@@ -1611,10 +1619,10 @@ class DetermineBasalAutoISF(
         var aCOBpredBG: Double?
         iobArray.forEach { iobTick ->
             //console.error(iobTick);
-            val predBGI: Double = round((-iobTick.activity * sens * 5), 2)
+            val predBGI: Double = round((-iobTick.activity * predSens * 5), 2)
             val IOBpredBGI: Double = predBGI
             iobTick.iobWithZeroTemp ?: error("iobTick.iobWithZeroTemp missing")
-            val predZTBGI = round((-iobTick.iobWithZeroTemp!!.activity * sens * 5), 2)
+            val predZTBGI = round((-iobTick.iobWithZeroTemp!!.activity * predSens * 5), 2)
             val predUAMBGI = predBGI
             // for IOBpredBGs, predicted deviation impact drops linearly from current deviation down to zero
             // over 60 minutes (data points every 5m)
@@ -2518,3 +2526,6 @@ class DetermineBasalAutoISF(
         }
     }
 }
+
+/** The forecast and the hypo guard use at most this many times the profile ISF (2026-11-15, see predSens). */
+private const val PRED_SENS_CAP = 2.0
