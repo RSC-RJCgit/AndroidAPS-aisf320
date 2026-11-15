@@ -2045,8 +2045,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             val actionEntries = BasalDirectAction.values().filter {
                 it != BasalDirectAction.ANYDESK_RESTART || config.AAPSCLIENT
             }
+            // 2026-11-16, per explicit request: the AnyDesk local test row (v3 only) goes after the Boost rows, so the rows shared with
+            // v4 have the same numbers in both: actions, Boost rows, then the v3-only rows.
+            val mainEntries = actionEntries.filter { it != BasalDirectAction.ANYDESK_LOCAL_TEST }
+            val tailEntries = actionEntries.filter { it == BasalDirectAction.ANYDESK_LOCAL_TEST }
             // Numbered by place on screen (2026-10-07), as in the KMP lists.
-            val labels = (actionEntries.map { list2ActionLabel(it) } + list2SteppedEntries.map { it.label } + graphToggleEntries.map { it.label })
+            val labels = (mainEntries.map { list2ActionLabel(it) } + list2SteppedEntries.map { it.label } +
+                tailEntries.map { list2ActionLabel(it) } + graphToggleEntries.map { it.label })
                 .mapIndexed { index, label -> "${index + 1}. $label" }
             val adapter = object : ArrayAdapter<String>(act, 0, labels) {
                 override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
@@ -2061,8 +2066,13 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             androidx.appcompat.app.AlertDialog.Builder(act)
                 .setTitle("Direct actions" + if (config.AAPSCLIENT) queuedRelayTitleSuffix() else "")
                 .setAdapter(adapter) { _, which ->
-                    if (which < actionEntries.size) {
-                        val action = actionEntries[which]
+                    val steppedEnd = mainEntries.size + list2SteppedEntries.size
+                    val action = when {
+                        which < mainEntries.size -> mainEntries[which]
+                        which >= steppedEnd && which < steppedEnd + tailEntries.size -> tailEntries[which - steppedEnd]
+                        else -> null
+                    }
+                    if (action != null) {
                         val code = action.clientRelayMmol
                         val localValue = if (config.AAPSCLIENT) ClientLocalListCodes.toggleValue(preferences, code) else null
                         if (localValue == null) {
@@ -2094,8 +2104,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 .setOnCancelListener { showBasalDirectActionListDialog() }
                                 .show()
                         }
-                    } else if (which < actionEntries.size + list2SteppedEntries.size) {
-                        val entry = list2SteppedEntries[which - actionEntries.size]
+                    } else if (which < steppedEnd) {
+                        val entry = list2SteppedEntries[which - mainEntries.size]
                         showSteppedDialog(
                             act, entry,
                             onApply = { applyTtControl(it, origin = "basal double-tap action") },
