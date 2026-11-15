@@ -63,7 +63,6 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("SMBdel base + mild-Bst", "base=${two(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))}, mildBst=${two(preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio))}", 5.002, 5.004),
             List1Row("Tog Libre sens on/off", onOff(preferences.get(BooleanNonKey.ApsAutoIsfOldSensorAdjEnabled)), 5.006, null),
             List1Row("Tog Bst autos(all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)), 5.008, null),
-            List1Row("Tog coded automations (all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)), 5.248, null),
             List1Row("pp ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)), 5.012, 5.014),
             List1Row("acce ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)), 5.016, 5.018),
             List1Row("Dura weight", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
@@ -106,6 +105,7 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Sensor age code", onOff(preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)), 5.156, null),
             List1Row("Hypo alarm state: set AlarmRecent", "sets the alarm time to now", 5.240, null, loopValueKey = null),
             List1Row("Hypo alarm state: clear", "NoAlarmRecent", 5.242, null, loopValueKey = null),
+            List1Row("Tog coded automations (all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)), 5.248, null),
         ))
     }
 
@@ -129,21 +129,21 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("AutoISF calcs UKF1", onOff(preferences.get(BooleanKey.ApsAutoIsfUseUkf1ForDosing)), 5.196, null),
             List1Row("Location texts", onOff(preferences.get(BooleanKey.AutomationCodedLocationsEnabled)), 5.198, null),
             List1Row("Stepcount import from remote main AAPS phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual)), 5.206, null),
-            List1Row("MJ state copy from the loop phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
             List1Row("Fast rise", onOff(preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)), 5.226, null),
             List1Row("LoReb", onOff(preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)), 5.228, null),
-            List1Row("HP1 help insulin at BG over 8.0", onOff(preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)), 5.254, null),
             List1Row("T3 unrestricted", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)), 5.230, null),
             List1Row("Insulin totals row", onOff(preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)), 5.232, null),
+            List1Row("HP1 help insulin at BG over 8.0", onOff(preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)), 5.254, null),
             List1Row("Loop interval", if (preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)) "every 1 min" else "every 5 min", 5.234, null),
             List1Row("Location text phone", preferences.get(StringKey.AutomationLocationSmsDeviceModel).ifBlank { onOff(false) }, 5.204, null),
             List1Row("Send AnyDesk restart", "send now", 5.178, null, loopValueKey = null),
-            List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
-            List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
-            List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
             List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null),
             List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null),
             List1Row("ADB wireless: attempt Shizuku start", adbPortText(), 5.208, null),
+            List1Row("Boost scale", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostScale)), 5.182, 5.184),
+            List1Row("Boost max", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
+            List1Row("Boost IOB max", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
+            List1Row("MJ state copy from the loop phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
         ))
     }
 

@@ -943,10 +943,10 @@ class DetermineBasalAutoISF(
 
     // Set only when a Tier 3 raise is still the SMB that gets delivered.
     var uamBoostFiredThisCycle: Boolean = false
+        private set
 
     // The HP1 override SMB given this loop, for the plugin's 2 h log. Null when the override did not give one.
     var hp1OverrideDoseToStore: Double? = null
-        private set
         private set
 
     // DuraCap (2026-10-21, per explicit request), the same rule as the 3426 loop phone: set by the plugin each cycle.
