@@ -1,6 +1,5 @@
 package app.aaps.core.objects.wizard
 
-import app.aaps.core.data.time.SystemTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
@@ -8,11 +7,13 @@ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.utils.DateUtil
-import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.extensions.round
 import kotlin.math.roundToLong
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 
 // The live checks the Bolus Wizard makes before it calculates, shared with QuickWizard (2026-10-21, per explicit request:
 // a QuickWizard gives the same dose as the Bolus Wizard with the same options). They were private to the wizard screen.
@@ -62,7 +63,8 @@ suspend fun dropTrendCautionNow(
         hp1Mmol = hp1Mmol,
         iobUnits = bolusIob + basalIob,
         bgRiseMgdl = if (recentMin == null) 0.0 else bgMgdl - recentMin,
-        minuteOfDay = MidnightTime.secondsFromMidnight(dateUtil.now(), SystemTimeZone.current()) / 60,
+        // blaqone has no SystemTimeZone / MidnightTime.secondsFromMidnight: the phone's own zone, as its AutoISF plugin uses
+        minuteOfDay = Instant.fromEpochMilliseconds(dateUtil.now()).toLocalDateTime(TimeZone.currentSystemDefault()).let { it.hour * 60 + it.minute },
         activityTempTarget = tt != null && WizardDropTrendCaution.isActivityTempTarget(tt.lowTarget, tt.duration),
     )
 }
