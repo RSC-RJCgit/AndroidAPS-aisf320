@@ -606,7 +606,8 @@ class BolusWizard @Inject constructor(
                     (if (splitHeldUnits > 0.0) insulinAfterConstraints else maxBolusAllowed)
                 parts.add(
                     "Carb split: ${decimalFormatter.to2Decimal(residual)}U left, in parts every ${manualSplitBolusIntervalMins} min " +
-                        "while BG is 7.0 or more and not falling"
+                        // 2026-11-15: the gate as it is (see scheduleReducedPartsSplitBolus), not the old 7.0 rule
+                        "while BG is 6.0 or more (and not falling below 8.0) and HP1 is 4.0 or more"
                 )
             }
         }
