@@ -3639,7 +3639,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
             graphData.addTherapyEvents()
         // 2026-10-23, per explicit request: the automatic clean graph (more than CLEAN_GRAPH_ABOVE_HOURS, or CLEAN_GRAPH_PORTRAIT_ABOVE_HOURS in portrait, shown) also leaves out
-        // the insulin activity and carbs model curves and Raw and smoothed raw BG
+        // the insulin activity and carbs model curves. 2026-11-15, per explicit request: Raw and smoothed raw (UKF) BG are no
+        // longer left out; they follow their own graph menu switches, as set (as in v4).
         val cleanGraph = PointsWithLabelGraphSeries.automaticCleanGraph
         if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal] && !cleanGraph)
             graphData.addActivity(0.8)
@@ -3660,9 +3661,9 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addCombinedCarbs(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal) && !cleanGraph)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
             graphData.addRawBg(false)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) && !cleanGraph)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
             graphData.addRawBgSmoothed(false)
         if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
             graphData.addBasals()
