@@ -175,7 +175,29 @@ private fun DirectListDialog(
         }
     }
     val row = rows.firstOrNull { it.label == pickedLabel }
-    if (row != null && canApplyHere(row)) {
+    if (row != null && row.choices.isNotEmpty()) {
+        // A combined row (2026-11-16, per explicit request): one button per code. These go to the loop phone only.
+        AlertDialog(
+            onDismissRequest = { pickedLabel = null },
+            title = { Text(row.label) },
+            text = {
+                Column {
+                    if (showLoopValues && row.loopValueKey != null) ListSettingValues(row, loopSnapshot, loopReportedAt)
+                    else Text(row.current)
+                    row.choices.forEach { (name, code) ->
+                        TextButton(onClick = {
+                            onApply(code)
+                            pickedLabel = null
+                        }) { Text(name) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { pickedLabel = null }) { Text("Cancel") }
+            }
+        )
+    } else if (row != null && canApplyHere(row)) {
         ApplyHereDialog(
             row, loopSnapshot, loopReportedAt, onDismiss = { pickedLabel = null }, onApply = onApply, onApplyHere = onApplyHere
         )

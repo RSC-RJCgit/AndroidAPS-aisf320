@@ -45,6 +45,8 @@ data class List1Row(
     val readOnly: Boolean = false,
     val pickProfiles: Boolean = false,
     val loopValueKey: String? = downMmol.takeIf { it > 0 }?.toString(),
+    // One row with several codes, each its own button (2026-11-16, per explicit request: the rows v3 combines). downMmol is the first.
+    val choices: List<Pair<String, Double>> = emptyList(),
 )
 
 fun numberedListRows(rows: List<List1Row>): List<List1Row> =
@@ -90,21 +92,31 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Tog Graph2 (carb model curve) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve)), 5.138, null),
             List1Row("Cloud logs upload", "send now", 5.140, null, loopValueKey = null),
             List1Row("Tog Graph5 (main clone) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowGraph5)), 5.142, null),
-            List1Row("MJ state: MJ active", "set this state", 5.222, null, loopValueKey = null),
-            List1Row("MJ state: MJ2", "set this state", 5.224, null, loopValueKey = null),
-            List1Row("MJ state: MJ3", "set this state", 5.146, null, loopValueKey = null),
-            List1Row("MJ state: NOMJremains", "set this state", 5.144, null, loopValueKey = null),
-            List1Row("Profile: Standard", preferences.get(StringKey.ApsAutoIsfStandardProfileName), 5.148, null),
-            List1Row("Profile: Low", preferences.get(StringKey.ApsAutoIsfLowProfileName), 5.150, null),
-            List1Row("Tier now", tierNowText(runningProfileName), 0.0, null, readOnly = true, loopValueKey = "tierNow"),
-            List1Row("Tier set A", "Standard and Low", 5.216, null, loopValueKey = null),
-            List1Row("Tier set B", "Standard and Low", 5.218, null, loopValueKey = null),
-            List1Row("Tier set C", "Standard and Low", 5.220, null, loopValueKey = null),
+            // 2026-11-16, per explicit request: these rows are combined and in the same order as v3, so both have the same numbers.
+            List1Row(
+                "MJ state (manual override)", "MJ active, MJ2, MJ3 or NOMJremains", 5.222, null, loopValueKey = null,
+                choices = listOf("MJ active" to 5.222, "MJ2" to 5.224, "MJ3" to 5.146, "NOMJremains" to 5.144),
+            ),
+            List1Row(
+                "Switch to Standard/Low profile now",
+                "Standard ${preferences.get(StringKey.ApsAutoIsfStandardProfileName)}, Low ${preferences.get(StringKey.ApsAutoIsfLowProfileName)}",
+                5.148, null, loopValueKey = null,
+                choices = listOf(
+                    "Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})" to 5.148,
+                    "Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})" to 5.150,
+                ),
+            ),
+            List1Row(
+                "Set Standard+Low tier (A/B/C)", tierNowText(runningProfileName), 5.216, null, loopValueKey = "tierNow",
+                choices = listOf("Tier A" to 5.216, "Tier B" to 5.218, "Tier C" to 5.220),
+            ),
             CODED_PROFILES_ROW,
-            List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
             List1Row("Sensor age code", onOff(preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)), 5.156, null),
-            List1Row("Hypo alarm state: set AlarmRecent", "sets the alarm time to now", 5.240, null, loopValueKey = null),
-            List1Row("Hypo alarm state: clear", "NoAlarmRecent", 5.242, null, loopValueKey = null),
+            List1Row(
+                "Hypo alarm state (manual)", "AlarmRecent (set) or NoAlarmRecent (clear)", 5.240, null, loopValueKey = null,
+                choices = listOf("AlarmRecent (set)" to 5.240, "NoAlarmRecent (clear)" to 5.242),
+            ),
+            List1Row("Libre UKF set 1", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
             List1Row("Tog coded automations (all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)), 5.248, null),
         ))
     }
@@ -151,6 +163,9 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
         (list1Rows(insulinPeakText, runningProfileName) + list2Rows()).forEach { row ->
             row.loopValueKey?.let { put(it, row.current) }
         }
+        // The Standard and Low names, under the codes their rows had before the combined row (2026-11-16).
+        put("5.148", preferences.get(StringKey.ApsAutoIsfStandardProfileName))
+        put("5.150", preferences.get(StringKey.ApsAutoIsfLowProfileName))
         // Publish only whether ADB has a port, not the port number.
         put("5.208", if (preferences.get(IntKey.ApsAutoIsfAdbConnectPort) > 0) "Port configured" else "Port not set")
         autoIsfProfileRoleKeys.forEach { key -> put("role:${key.key}", preferences.get(key)) }
