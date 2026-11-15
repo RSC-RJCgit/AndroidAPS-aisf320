@@ -186,6 +186,8 @@ enum class StringNonKey(
     ClientGraphMasterTimeZone(key = "client_graph_master_time_zone", defaultValue = "", exportable = false),
     /** The master's last free storage, "timestamp;GB", so it survives a restart (2026-11-15, see MasterFreeStorage). */
     ClientMasterFreeStorage(key = "client_master_free_storage", defaultValue = "", exportable = false),
+    /** HP1 override SMBs of the last 2 h, "time:units;..." (2026-11-15, see hp1OverrideDose in DetermineBasalAutoISF). */
+    ApsAutoIsfHp1OverrideLog(key = "autoisf_hp1_override_log", defaultValue = "", exportable = false),
     /**
      * The bolus calculator's meal type (a CarbsType name) from the last confirmed meal calculation, so the next run starts
      * on it like the remembered ticks (2026-11-12, per explicit request). An unknown name reads as BREAD.

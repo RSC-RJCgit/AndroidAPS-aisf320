@@ -122,6 +122,8 @@
     <string name="pref_title_aps_ukf1_delta_compensation_offset">UKF1 delta offset</string>
     <string name="pref_summary_aps_ukf1_delta_compensation_offset" comment="mg/dL per 5 min added to the three UKF1 deltas. Example: 0.0. Range -5.0 to 5.0.">Added to the three UKF1 deltas, in mg/dL per 5 min. Not added to acceleration.</string>
     <string name="pref_title_aps_low_rebound_guard_enabled">Low rebound guard</string>
+    <string name="pref_title_aps_hp1_override_enabled">Use HP1 to help insulin when BG over 8.0</string>
+    <string name="pref_summary_aps_hp1_override_enabled" comment="0.1 U and 0.3 U are insulin amounts. HP1ov is a note code, do not translate.">On = when the hypo guard stops insulin with an absurd forecast (minGuard or minPredBG under 2.0) while BG is 8.0 or more and not falling, HP1 is 6.0 or more and IOB is under iobTH, the profile basal keeps running and a small SMB is allowed: 0.1 U at a time, 0.3 U per 2 hours (HP1ov note). Off (default) = the guard sets a zero temp as usual.</string>
     <string name="pref_title_meal_bolus_in_smb_cap">Count boluses in the 30 min SMB cap</string>
     <string name="pref_summary_meal_bolus_in_smb_cap">A meal or correction bolus of the last 30 minutes counts in the 2.1 U per 30 minutes SMB cap, so SMBs pause after a large bolus.</string>
     <string name="pref_summary_aps_low_rebound_guard_enabled" comment="0.10 U and 0.25 U are insulin amounts. Three quarters and half are the SMB size cuts.">On turns the LoReb guard on. After a recent low, a carb or artifact rebound trims SMB above 0.10 U: three quarters up to 0.25 U, and half above that. FastRise size tiers also stay off during that window. Off means the guard never runs.</string>

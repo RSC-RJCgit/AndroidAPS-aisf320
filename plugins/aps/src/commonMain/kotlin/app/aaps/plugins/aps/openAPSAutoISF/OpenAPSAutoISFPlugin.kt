@@ -989,6 +989,9 @@ open class OpenAPSAutoISFPlugin(
             uamBoostScale = preferences.get(DoubleKey.ApsAutoIsfUamBoostScale) * tier3Activity,
             daytimeGateBypass = codedOn && (newPodHighBypass(now, glucoseStatus.glucose) || runMarks.recent(RunMark.USUAL2, 90, now)),
             recentLowBg = recentLowBgMgdl(now),
+            hp1OverrideEnabled = preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled),
+            hp1Mmol = hp1Now?.takeIf { it.isFinite() },
+            hp1Override2hU = hp1OverrideUsedU(preferences.get(StringNonKey.ApsAutoIsfHp1OverrideLog), now),
         ).also {
             appendStepLines(it.reason, now)
             val iobThEffective = if (autoIsfFactors.recorded && use_iobTH) iobTHvirtual / iobTHtolerance * 100.0
@@ -1017,6 +1020,16 @@ open class OpenAPSAutoISFPlugin(
             }
             if (determineBasalAutoISF.uamBoostFiredThisCycle) {
                 runMarks.mark(RunMark.UAM_BST, now)
+            }
+            determineBasalAutoISF.hp1OverrideDoseToStore?.let { dose ->
+                preferences.put(
+                    StringNonKey.ApsAutoIsfHp1OverrideLog,
+                    hp1OverrideLogWith(preferences.get(StringNonKey.ApsAutoIsfHp1OverrideLog), now, dose)
+                )
+                if (runMarks.ready(RunMark.HP1_OVERRIDE_NOTE, 30, now)) {
+                    carePortalNote("HP1ov")
+                    runMarks.mark(RunMark.HP1_OVERRIDE_NOTE, now)
+                }
             }
             val determineBasalResult = apsResultProvider().with(it)
             // Preserve input data
@@ -1726,6 +1739,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfFastRiseEnabled,
             BooleanKey.ApsAutoIsfMealBolusInSmbCap,
             BooleanKey.ApsAutoIsfLowReboundGuardEnabled,
+            BooleanKey.ApsAutoIsfHp1OverrideEnabled,
             BooleanKey.ApsAutoIsfShowCarbModelCurve,
             BooleanKey.ApsAutoIsfShowGraph5,
             BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled,
@@ -3719,6 +3733,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.TIER_SET_C -> RunMark.TIER_SET_C
             RemoteToggleCode.FAST_RISE -> RunMark.FAST_RISE
             RemoteToggleCode.LOW_REBOUND -> RunMark.LOW_REBOUND
+            RemoteToggleCode.HP1_OVERRIDE -> RunMark.HP1_OVERRIDE
             RemoteToggleCode.T3_UNRESTRICTED -> RunMark.T3_UNRESTRICTED
             RemoteToggleCode.BOOST_SCALE_DOWN -> RunMark.BOOST_SCALE_DOWN
             RemoteToggleCode.BOOST_SCALE_UP -> RunMark.BOOST_SCALE_UP
@@ -4078,6 +4093,7 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.TIER_SET_C -> setSharedTier(2, "C", "TierSetC")
             RemoteToggleCode.FAST_RISE -> toggleBool(BooleanKey.ApsAutoIsfFastRiseEnabled, "Fast rise", "FR")
             RemoteToggleCode.LOW_REBOUND -> toggleBool(BooleanKey.ApsAutoIsfLowReboundGuardEnabled, "LoReb", "LR")
+            RemoteToggleCode.HP1_OVERRIDE -> toggleBool(BooleanKey.ApsAutoIsfHp1OverrideEnabled, "HP1 insulin help", "HP1h")
             RemoteToggleCode.T3_UNRESTRICTED -> toggleBool(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, "T3 unrestricted", "T3U")
             RemoteToggleCode.BOOST_SCALE_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfUamBoostScale, -0.25, 0.1, 2.9, "BoostScaleDown", "BS", 2)
             RemoteToggleCode.BOOST_SCALE_UP -> nudgeDouble(DoubleKey.ApsAutoIsfUamBoostScale, 0.25, 0.1, 2.9, "BoostScaleUp", "BS", 2)

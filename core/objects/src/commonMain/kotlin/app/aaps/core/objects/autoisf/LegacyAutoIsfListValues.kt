@@ -58,6 +58,7 @@ private val legacyListKeys = mapOf(
     "5.214" to "autoisf_profile_batch_revert_c_enabled",
     "5.226" to "autoisf_fast_rise_enabled",
     "5.228" to "autoisf_low_rebound_guard_enabled",
+    "5.254" to "autoisf_hp1_override_enabled",
     "5.23" to "autoisf_uam_boost_unrestricted_enabled",
     "5.232" to "show_insulin_totals_row",
     "5.234" to "autoisf_loop_every_minute",
@@ -149,6 +150,7 @@ private val legacyToggleKeys = setOf(
     "autoisf_profile_batch_revert_c_enabled",
     "autoisf_fast_rise_enabled",
     "autoisf_low_rebound_guard_enabled",
+    "autoisf_hp1_override_enabled",
     "autoisf_uam_boost_unrestricted_enabled",
     "show_insulin_totals_row",
 )

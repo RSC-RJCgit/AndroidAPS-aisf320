@@ -302,6 +302,14 @@ enum class BooleanKey(
         KeysStrings.pref_summary_aps_low_rebound_guard_enabled,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // 2026-11-15, per explicit request: off by default. See hp1OverrideDose in DetermineBasalAutoISF.
+    ApsAutoIsfHp1OverrideEnabled(
+        "autoisf_hp1_override_enabled",
+        false,
+        KeysStrings.pref_title_aps_hp1_override_enabled,
+        KeysStrings.pref_summary_aps_hp1_override_enabled,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     // Local to each phone (2026-10-21, per explicit request): a display or phone choice, so a master never changes it.
     ApsAutoIsfShowCarbModelCurve(
         "show_carb_model_curve",

@@ -174,6 +174,9 @@ internal object RunMark {
     const val TIER_SET_C = "ProfileBatchSetCTT"
     const val FAST_RISE = "FastRiseToggleTT"
     const val LOW_REBOUND = "LoRebToggleTT"
+    const val HP1_OVERRIDE = "Hp1OverrideToggleTT"
+    // At most one HP1ov note in 30 minutes (2026-11-15).
+    const val HP1_OVERRIDE_NOTE = "Hp1OverrideNote"
     const val T3_UNRESTRICTED = "T3UnrestrictedToggleTT"
     const val STAGE_APK = "StageAaps333NewestTT"
     const val INSTALL_APK = "ShizukuApkInstallTT"

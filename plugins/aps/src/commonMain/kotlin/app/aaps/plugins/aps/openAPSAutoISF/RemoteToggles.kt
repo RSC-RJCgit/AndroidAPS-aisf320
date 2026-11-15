@@ -75,6 +75,7 @@ internal enum class RemoteToggleCode {
     TIER_SET_C,
     FAST_RISE,
     LOW_REBOUND,
+    HP1_OVERRIDE,
     T3_UNRESTRICTED,
     BOOST_SCALE_DOWN,
     BOOST_SCALE_UP,
@@ -174,6 +175,7 @@ internal fun remoteToggleCode(ttMgdl: Double): RemoteToggleCode? = when {
     ttNear(ttMgdl, 5.220, 0.0001) -> RemoteToggleCode.TIER_SET_C
     ttNear(ttMgdl, 5.226, 0.0001) -> RemoteToggleCode.FAST_RISE
     ttNear(ttMgdl, 5.228, 0.0001) -> RemoteToggleCode.LOW_REBOUND
+    ttNear(ttMgdl, 5.254, 0.0001) -> RemoteToggleCode.HP1_OVERRIDE
     ttNear(ttMgdl, 5.230, 0.0001) -> RemoteToggleCode.T3_UNRESTRICTED
     ttNear(ttMgdl, 5.182, 0.0001) -> RemoteToggleCode.BOOST_SCALE_DOWN
     ttNear(ttMgdl, 5.184, 0.0001) -> RemoteToggleCode.BOOST_SCALE_UP

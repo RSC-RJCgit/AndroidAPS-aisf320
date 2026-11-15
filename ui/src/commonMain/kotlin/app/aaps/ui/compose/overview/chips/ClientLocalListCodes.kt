@@ -32,7 +32,7 @@ internal object ClientLocalListCodes {
         5.138, 5.142, 5.152, 5.156,
         // List 2 settings rows
         5.164, 5.166, 5.182, 5.184, 5.186, 5.188, 5.190, 5.192, 5.194, 5.196, 5.198, 5.206, 5.210, 5.212, 5.214,
-        5.226, 5.228, 5.230, 5.232, 5.234, 5.236,
+        5.226, 5.228, 5.230, 5.232, 5.234, 5.236, 5.254,
     )
 
     fun supports(vararg mmol: Double): Boolean = mmol.all { code -> codes.any { abs(it - code) <= 0.0000001 } }
@@ -164,6 +164,7 @@ internal object ClientLocalListCodes {
             near(5.232) -> toggle(p, BooleanKey.ApsAutoIsfShowInsulinTotals)
             near(5.234) -> toggle(p, BooleanKey.ApsAutoIsfLoopEveryMinute)
             near(5.236) -> toggle(p, BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)
+            near(5.254) -> toggle(p, BooleanKey.ApsAutoIsfHp1OverrideEnabled)
             else        -> null
         }
     }

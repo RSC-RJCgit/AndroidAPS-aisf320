@@ -132,6 +132,7 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("MJ state copy from the loop phone", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
             List1Row("Fast rise", onOff(preferences.get(BooleanKey.ApsAutoIsfFastRiseEnabled)), 5.226, null),
             List1Row("LoReb", onOff(preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)), 5.228, null),
+            List1Row("HP1 help insulin at BG over 8.0", onOff(preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)), 5.254, null),
             List1Row("T3 unrestricted", onOff(preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)), 5.230, null),
             List1Row("Insulin totals row", onOff(preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)), 5.232, null),
             List1Row("Loop interval", if (preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)) "every 1 min" else "every 5 min", 5.234, null),
