@@ -2,6 +2,8 @@ package app.aaps.ui.compose.treatments
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,6 +21,7 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
+import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalProfileUtil
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -36,6 +39,7 @@ internal fun WizardInfoDialog(
     onDismiss: () -> Unit
 ) {
     val profileUtil = LocalProfileUtil.current
+    val dateUtil = LocalDateUtil.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -46,13 +50,16 @@ internal fun WizardInfoDialog(
             )
         },
         text = {
-            WizardInfoDialogContent(
-                bcr = bcr,
-                bgString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseValue),
-                isfInUnits = profileUtil.fromMgdlToUnits(bcr.isf),
-                trendString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseTrend * 3),
-                decimalFormatter = decimalFormatter
-            )
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                WizardInfoDialogContent(
+                    bcr = bcr,
+                    bgString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseValue),
+                    isfInUnits = profileUtil.fromMgdlToUnits(bcr.isf),
+                    trendString = profileUtil.fromMgdlToStringInUnits(bcr.glucoseTrend * 3),
+                    decimalFormatter = decimalFormatter,
+                    timeString = dateUtil.dateAndTimeAndSecondsString(bcr.timestamp)
+                )
+            }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
@@ -72,9 +79,15 @@ internal fun WizardInfoDialogContent(
     bgString: String,
     isfInUnits: Double,
     trendString: String,
-    decimalFormatter: DecimalFormatter
+    decimalFormatter: DecimalFormatter,
+    timeString: String = ""
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(AapsSpacing.small)) {
+        // When the calculation was made
+        if (timeString.isNotEmpty()) {
+            CalcRow(label = stringResource(CoreUiStrings.wizard_calculated_at, timeString), value = "")
+        }
+
         // === Scaled components (affected by percentage) ===
 
         // BG with ISF

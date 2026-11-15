@@ -56,7 +56,7 @@ class ElementNavigator(
             is NavigationRequest.Element           -> navigateProtected(request.type)
 
             is NavigationRequest.QuickWizard       -> guarded(ElementType.QUICK_WIZARD.protection) {
-                mainViewModel.executeQuickWizard(request.guid)
+                mainViewModel.executeQuickWizard(request.guid) { carbs, notes -> openCalculatorForQuickWizard(carbs, notes) }
             }
 
             is NavigationRequest.Plugin            -> {
@@ -93,6 +93,15 @@ class ElementNavigator(
                 go(mode)
             }
         }
+    }
+
+    /**
+     * A QuickWizard calculator entry tapped with no recent BG: open the bolus calculator with its carbs and its name as
+     * the note, where a BG can be typed in. The tap already passed the QuickWizard protection, which is the bolus
+     * protection the calculator needs, so it is not asked again.
+     */
+    fun openCalculatorForQuickWizard(carbs: Int, notes: String) {
+        navController.navigate(AppRoute.WizardDialog.createRoute(carbs = carbs, notes = notes))
     }
 
     /** Runs [action] once the protection level is granted, or straight away when none is needed. */
@@ -138,7 +147,7 @@ class ElementNavigator(
 
             // Treatment dialogs
             ElementType.CARBS                   -> navController.navigate(AppRoute.CarbsDialog.route)
-            ElementType.INSULIN                 -> navController.navigate(AppRoute.InsulinDialog.route)
+            ElementType.INSULIN                 -> navController.navigate(AppRoute.WizardDialog.createRoute(carbs = 0, insulin = 0.0))
             ElementType.TREATMENT               -> navController.navigate(AppRoute.TreatmentDialog.route)
             ElementType.FILL                    -> navController.navigate(AppRoute.FillDialog.createRoute(FillPreselect.CARTRIDGE_CHANGE.ordinal))
             ElementType.CANNULA_CHANGE          -> navController.navigate(AppRoute.FillDialog.createRoute(FillPreselect.SITE_CHANGE.ordinal))
@@ -207,7 +216,7 @@ fun ElementNavigator.handleQuickLaunchAction(action: QuickLaunchAction) {
         is QuickLaunchAction.StaticAction      -> handleNavigationRequest(NavigationRequest.Element(action.elementType))
 
         is QuickLaunchAction.QuickWizardAction -> guarded(ElementType.QUICK_WIZARD.protection) {
-            mainViewModel.executeQuickWizard(action.guid)
+            mainViewModel.executeQuickWizard(action.guid) { carbs, notes -> openCalculatorForQuickWizard(carbs, notes) }
         }
 
         is QuickLaunchAction.AutomationAction  -> mainViewModel.requestAutomationConfirmation(action.automationId)

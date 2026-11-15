@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -20,6 +21,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.keys.interfaces.ElementVisibility
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.MasterOfflineBanner
@@ -48,6 +51,7 @@ import app.aaps.core.ui.compose.preference.PreferenceSheetContent
 import app.aaps.core.ui.compose.preference.PreferenceSubScreenDef
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
+import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.main.QuickWizardItem
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,6 +73,10 @@ fun TreatmentBottomSheet(
     onNavigate: (NavigationRequest) -> Unit,
     // For settings screen
     treatmentButtonsDef: PreferenceSubScreenDef? = null,
+    // Trio button on each QuickWizard entry, null when Trio remote control is switched off (2026-11-07, per explicit request)
+    onQuickWizardTrio: ((String) -> Unit)? = null,
+    // What Trio remote control still lacks; while not empty the Trio buttons are greyed out and say so (2026-11-07)
+    quickWizardTrioMissing: List<TextRef> = emptyList(),
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showSettings by remember { mutableStateOf(false) }
@@ -88,6 +96,8 @@ fun TreatmentBottomSheet(
                 onDismiss = onDismiss,
                 onNavigate = onNavigate,
                 quickWizardItems = quickWizardItems,
+                onQuickWizardTrio = onQuickWizardTrio,
+                quickWizardTrioMissing = quickWizardTrioMissing,
                 showCgm = showCgm,
                 showCalibration = showCalibration,
                 showTreatment = showTreatment,
@@ -118,8 +128,18 @@ internal fun TreatmentSelectionContent(
     showCalculator: Boolean,
     isDexcomSource: Boolean,
     showSettingsIcon: Boolean,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onQuickWizardTrio: ((String) -> Unit)? = null,
+    quickWizardTrioMissing: List<TextRef> = emptyList()
 ) {
+    var showTrioMissing by remember { mutableStateOf(false) }
+    if (showTrioMissing)
+        AlertDialog(
+            onDismissRequest = { showTrioMissing = false },
+            title = { Text(stringResource(UiStrings.trio_remote_missing_title)) },
+            text = { Text(quickWizardTrioMissing.map { stringResource(it) }.joinToString("\n")) },
+            confirmButton = { TextButton(onClick = { showTrioMissing = false }) { Text(stringResource(CoreUiStrings.ok)) } }
+        )
     Column(
         modifier = Modifier
             .consumeOverscroll()
@@ -204,6 +224,27 @@ internal fun TreatmentSelectionContent(
                         else MaterialTheme.colorScheme.onSurface.copy(alpha = disabledAlpha),
                         enabled = itemEnabled
                     )
+                },
+                // Trio button (2026-11-07, per explicit request): sends this entry to Trio instead, worked out on this
+                // phone. Shown whenever Trio remote control is set up, even when the AAPS route is disabled.
+                trailingContent = onQuickWizardTrio?.let { sendToTrio ->
+                    {
+                        // Greyed out while Trio remote control is incomplete; a tap then says what is missing (2026-11-07)
+                        val trioMissing = quickWizardTrioMissing.isNotEmpty()
+                        TextButton(onClick = {
+                            if (trioMissing) showTrioMissing = true
+                            else {
+                                onDismiss()
+                                sendToTrio(item.guid)
+                            }
+                        }) {
+                            Text(
+                                stringResource(UiStrings.quickwizard_trio),
+                                color = if (trioMissing) MaterialTheme.colorScheme.onSurface.copy(alpha = disabledAlpha)
+                                else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 },
                 colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = if (itemEnabled) Modifier.clickable {

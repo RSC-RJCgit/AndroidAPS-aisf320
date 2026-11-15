@@ -265,10 +265,10 @@ fun NavGraphBuilder.appNavGraph(
             onRequestEditMode = {
                 requestEditModeAuthorization { quickWizardManagementViewModel.setScreenMode(ScreenMode.EDIT) }
             },
+            // The same route as a QuickWizard tap anywhere else: the navigator asks the QuickWizard protection, and with
+            // no BG it opens the bolus calculator. onExecuteQuickWizard is no longer called here.
             onExecuteClick = { guid ->
-                withProtection(ElementType.QUICK_WIZARD.protection) {
-                    onExecuteQuickWizard(guid)
-                }
+                onNavigationRequest(NavigationRequest.QuickWizard(guid), navController)
             }
         )
     }
@@ -326,6 +326,11 @@ fun NavGraphBuilder.appNavGraph(
             onNavigateBack = { navController.safePopBackStack() },
             onShowDeliveryError = { comment ->
                 onShowDeliveryError(comment, CoreUiStrings.treatmentdeliveryerror)
+            },
+            // Meal carbs go on in the calculator, which takes the Carbs dialog's place (2026-11-14)
+            onOpenCalculator = { carbs, notes ->
+                navController.safePopBackStack()
+                navController.navigate(AppRoute.WizardDialog.createRoute(carbs = carbs, notes = notes.ifEmpty { null }))
             }
         )
     }
@@ -339,6 +344,11 @@ fun NavGraphBuilder.appNavGraph(
             onNavigateBack = { navController.safePopBackStack() },
             onShowDeliveryError = { comment ->
                 onShowDeliveryError(comment, CoreUiStrings.treatmentdeliveryerror)
+            },
+            // A pump bolus goes on in the calculator's insulin-only mode, which takes the Insulin dialog's place
+            onOpenCalculator = { insulin, notes ->
+                navController.safePopBackStack()
+                navController.navigate(AppRoute.WizardDialog.createRoute(notes = notes.ifEmpty { null }, insulin = insulin))
             }
         )
     }
@@ -351,6 +361,11 @@ fun NavGraphBuilder.appNavGraph(
             onNavigateBack = { navController.safePopBackStack() },
             onShowDeliveryError = { comment ->
                 onShowDeliveryError(comment, CoreUiStrings.treatmentdeliveryerror)
+            },
+            // A pump treatment goes on in the calculator, which takes the Treatment dialog's place (2026-11-14)
+            onOpenCalculator = { insulin, carbs ->
+                navController.safePopBackStack()
+                navController.navigate(AppRoute.WizardDialog.createRoute(carbs = carbs, insulin = insulin))
             }
         )
     }
@@ -388,6 +403,11 @@ fun NavGraphBuilder.appNavGraph(
                 defaultValue = null
             },
             navArgument("notes") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument("insulin") {
                 type = NavType.StringType
                 nullable = true
                 defaultValue = null

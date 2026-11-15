@@ -45,7 +45,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.format.NumberFormat
-import app.aaps.core.data.ui.ConfirmationLine
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.ui.CoreUiStrings
@@ -84,9 +83,12 @@ fun CarbsDialogScreen(
     iobUiState: StateFlow<IobUiState>,
     cobUiState: StateFlow<CobUiState>,
     onNavigateBack: () -> Unit,
-    onShowDeliveryError: (String) -> Unit
+    onShowDeliveryError: (String) -> Unit,
+    /** Opens the calculator with the meal carbs and notes (2026-11-14). Null keeps the plain carb entry. */
+    onOpenCalculator: ((Int, String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    viewModel.calculatorRedirect = onOpenCalculator != null
     val bgInfo by bgInfoState.collectAsStateWithLifecycle()
     val iob by iobUiState.collectAsStateWithLifecycle()
     val cob by cobUiState.collectAsStateWithLifecycle()
@@ -97,7 +99,7 @@ fun CarbsDialogScreen(
     var showTimePicker by rememberSaveable { mutableStateOf(false) }
     var showButtonSettings by rememberSaveable { mutableStateOf(false) }
     // The master's prepared confirmation (bolusId + its merged lines), set via the ShowConfirmation side effect.
-    var confirmation by remember { mutableStateOf<Pair<Long, List<ConfirmationLine>>?>(null) }
+    var confirmation by remember { mutableStateOf<CarbsDialogViewModel.SideEffect.ShowConfirmation?>(null) }
 
     // Observe side effects
     LaunchedEffect(Unit) {
@@ -112,21 +114,27 @@ fun CarbsDialogScreen(
                 }
 
                 is CarbsDialogViewModel.SideEffect.ShowConfirmation -> {
-                    confirmation = effect.bolusId to effect.lines
+                    confirmation = effect
+                }
+
+                is CarbsDialogViewModel.SideEffect.OpenCalculator     -> {
+                    onOpenCalculator?.invoke(effect.carbs, effect.notes)
                 }
             }
         }
     }
 
     // Confirmation dialog — renders the MASTER's prepared lines (set via the ShowConfirmation side effect after prepare()).
-    confirmation?.let { (bolusId, lines) ->
+    confirmation?.let { shown ->
         ElementConfirmationDialog(
             elementType = ElementType.CARBS,
-            lines = lines,
+            lines = shown.lines,
             onConfirm = {
-                viewModel.commit(bolusId)
+                viewModel.commit(shown.bolusId)
                 confirmation = null
-                onNavigateBack()
+                val calculator = shown.thenCalculator
+                if (calculator != null && onOpenCalculator != null) onOpenCalculator(calculator.carbs, calculator.notes)
+                else onNavigateBack()
             },
             onDismiss = { confirmation = null }
         )

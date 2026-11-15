@@ -103,8 +103,23 @@ class InsulinDialogViewModel(
          * The MASTER prepared the batch and returned its merged confirmation [lines]; show them, then [commit] [bolusId],
          * or [discard] it on Cancel. Close it at [closeAt]: the master's SMB pause for the dose has run out by then.
          */
-        data class ShowConfirmation(val bolusId: Long, val lines: List<ConfirmationLine>, val closeAt: TimeMark) : SideEffect()
+        data class ShowConfirmation(
+            val bolusId: Long,
+            val lines: List<ConfirmationLine>,
+            val closeAt: TimeMark,
+            /** Open the calculator with this dose once the confirmed eating-soon target is set. */
+            val thenCalculator: OpenCalculator? = null
+        ) : SideEffect()
+
+        /** A pump bolus opens the calculator's insulin-only mode with the typed [insulin] (2026-11-01). */
+        data class OpenCalculator(val insulin: Double, val notes: String) : SideEffect()
     }
+
+    /**
+     * Set by the screen that can open the calculator: a pump bolus then goes through the calculator's insulin-only
+     * mode, which shows what the calculator suggests and gives the typed dose. Record-only doses stay here.
+     */
+    var calculatorRedirect = false
 
     private val _sideEffect = MutableSharedFlow<SideEffect>(
         replay = 0,
@@ -263,13 +278,18 @@ class InsulinDialogViewModel(
         appScope.launch {
             val state = uiState.value
             confirmedState = state
-            val actions = buildActions(state)
+            // A pump bolus goes to the calculator. The eating-soon target is still set from here, through its own
+            // confirmation, and the calculator opens when it is confirmed.
+            val toCalculator = if (calculatorRedirect && !state.recordOnlyChecked && state.insulin > 0.0)
+                SideEffect.OpenCalculator(Round.floorTo(state.insulin, ch.bolusStep(state.insulin)), state.notes)
+            else null
+            val actions = buildActions(if (toCalculator != null) state.copy(insulin = 0.0) else state)
             if (actions.isEmpty()) {
-                _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
+                _sideEffect.tryEmit(toCalculator ?: SideEffect.ShowNoActionDialog)
                 return@launch
             }
             when (val prepared = batchExecutor.prepare(actions, Sources.InsulinDialog, rh.gs(InterfacesStrings.bolus))) {
-                is ActionProgress.Prepared -> _sideEffect.tryEmit(SideEffect.ShowConfirmation(prepared.id, prepared.lines, closeAt))
+                is ActionProgress.Prepared -> _sideEffect.tryEmit(SideEffect.ShowConfirmation(prepared.id, prepared.lines, closeAt, toCalculator))
                 // Offline block (and a master-local failure) surface here. A client's round-trip failure already showed
                 // on the app-level modal, with the master's own text, so a client re-surfaces only NotReachable.
                 is ActionProgress.Rejected -> when {
@@ -295,7 +315,9 @@ class InsulinDialogViewModel(
             val state = confirmedState
             val result = batchExecutor.commit(bolusId, Sources.InsulinDialog, rh.gs(InterfacesStrings.bolus))
             // Non-record: remove the bolus reminder on success. Record-only: only when not back/forward-dated.
-            if (result is ActionProgress.Applied && (state == null || !state.recordOnlyChecked || state.timeOffsetMinutes == 0))
+            // Not for the target set before the calculator: the bolus is not given yet.
+            val bolusGiven = state == null || !calculatorRedirect || state.recordOnlyChecked
+            if (result is ActionProgress.Applied && bolusGiven && (state == null || !state.recordOnlyChecked || state.timeOffsetMinutes == 0))
                 automation.removeAutomationEventBolusReminder()
             // Surface a failed commit. NotReachable → the offline message; any other Rejected (ExecutionFailed,
             // NoPendingBolus, …) → the master's detail, which a client's app-level modal has shown already.

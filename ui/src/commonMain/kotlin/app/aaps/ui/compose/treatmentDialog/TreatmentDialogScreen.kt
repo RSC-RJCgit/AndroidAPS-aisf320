@@ -65,9 +65,12 @@ fun TreatmentDialogScreen(
     iobUiState: StateFlow<IobUiState>,
     cobUiState: StateFlow<CobUiState>,
     onNavigateBack: () -> Unit,
-    onShowDeliveryError: (String) -> Unit
+    onShowDeliveryError: (String) -> Unit,
+    /** Opens the calculator with the typed dose or carbs (2026-11-14). Null keeps the plain treatment. */
+    onOpenCalculator: ((insulin: Double?, carbs: Int?) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    viewModel.calculatorRedirect = onOpenCalculator != null
     val bgInfo by bgInfoState.collectAsStateWithLifecycle()
     val iob by iobUiState.collectAsStateWithLifecycle()
     val cob by cobUiState.collectAsStateWithLifecycle()
@@ -93,6 +96,10 @@ fun TreatmentDialogScreen(
                     // A newer prepare replaces one still shown (a second tap): drop the old one on the master.
                     confirmation?.let { viewModel.discard(it.bolusId) }
                     confirmation = effect
+                }
+
+                is TreatmentDialogViewModel.SideEffect.OpenCalculator     -> {
+                    onOpenCalculator?.invoke(effect.insulin, effect.carbs)
                 }
             }
         }

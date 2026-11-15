@@ -84,8 +84,22 @@ class CarbsDialogViewModel(
         data object ShowNoActionDialog : SideEffect()
 
         /** The MASTER prepared the batch and returned its merged confirmation [lines]; show them, then [commit] [bolusId]. */
-        data class ShowConfirmation(val bolusId: Long, val lines: List<ConfirmationLine>) : SideEffect()
+        data class ShowConfirmation(
+            val bolusId: Long,
+            val lines: List<ConfirmationLine>,
+            /** Open the calculator with these carbs once the confirmed eating-soon target is set. */
+            val thenCalculator: OpenCalculator? = null
+        ) : SideEffect()
+
+        /** Meal carbs go on in the bolus calculator, as a pump bolus from the Insulin dialog does (2026-11-14). */
+        data class OpenCalculator(val carbs: Int, val notes: String) : SideEffect()
     }
+
+    /**
+     * Set by the screen that can open the calculator: meal carbs (now, no duration, no hypo or activity target, no
+     * bolus reminder) then go through the calculator, which works out the bolus, split and caution. Others stay here.
+     */
+    var calculatorRedirect = false
 
     private val _sideEffect = MutableSharedFlow<SideEffect>(
         replay = 0,
@@ -310,13 +324,20 @@ class CarbsDialogViewModel(
         appScope.launch {
             val state = uiState.value
             confirmedState = state
-            val actions = buildActions(state)
+            // Meal carbs go to the calculator. An eating-soon target is still set from here, through its own
+            // confirmation, and the calculator opens when it is confirmed.
+            val toCalculator =
+                if (calculatorRedirect && state.carbs > 0 && state.timeOffsetMinutes == 0 && state.durationHours == 0 &&
+                    !state.hypoTtChecked && !state.activityTtChecked && !state.bolusReminderChecked
+                ) SideEffect.OpenCalculator(state.carbs, state.notes)
+                else null
+            val actions = buildActions(if (toCalculator != null) state.copy(carbs = 0) else state)
             if (actions.isEmpty()) {
-                _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)
+                _sideEffect.tryEmit(toCalculator ?: SideEffect.ShowNoActionDialog)
                 return@launch
             }
             when (val prepared = batchExecutor.prepare(actions, Sources.CarbDialog, rh.gs(InterfacesStrings.carbs))) {
-                is ActionProgress.Prepared -> _sideEffect.tryEmit(SideEffect.ShowConfirmation(prepared.id, prepared.lines))
+                is ActionProgress.Prepared -> _sideEffect.tryEmit(SideEffect.ShowConfirmation(prepared.id, prepared.lines, toCalculator))
                 is ActionProgress.Rejected -> when {
                     // No-op (e.g. nothing left to remove after a COB-shrink between open and confirm): neutral message, NOT the bolus-error alarm.
                     prepared.reason == FailureReason.NoAction -> _sideEffect.tryEmit(SideEffect.ShowNoActionDialog)

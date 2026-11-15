@@ -306,7 +306,14 @@ class BuiltInSearchables(
         items = listOf(
             IntKey.OverviewBolusPercentage,
             IntKey.OverviewResetBolusPercentageTime,
-            BooleanKey.OverviewUseBolusAdvisor
+            BooleanKey.OverviewUseBolusAdvisor,
+            BooleanKey.WizardDefaultUnreliableSmbs,
+            BooleanKey.WizardDefaultSmallMeal,
+            BooleanKey.WizardDefaultAutoFpu,
+            BooleanKey.WizardSplitOverMaxBolus,
+            IntKey.WizardSplitIntervalMinutes,
+            BooleanKey.WizardDelayedBolusEnabled,
+            BooleanKey.OverviewQuickWizardCarbTimeFromRise
         ),
         icon = IcCalculator
     )

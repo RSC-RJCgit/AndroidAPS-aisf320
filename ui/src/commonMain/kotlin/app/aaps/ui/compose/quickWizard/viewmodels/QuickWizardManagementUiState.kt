@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.quickWizard.viewmodels
 
+import app.aaps.core.data.model.CarbsType
 import app.aaps.core.objects.wizard.QuickWizardEntry
 import app.aaps.core.objects.wizard.QuickWizardMode
 import app.aaps.core.ui.compose.ScreenMode
@@ -20,6 +21,10 @@ data class QuickWizardManagementUiState(
     val editorButtonText: String = "",
     val editorInsulin: Double = 0.0,
     val editorCarbs: Int = 0,
+    val editorProtein: Int = 0,
+    val editorFat: Int = 0,
+    val editorWarsawDurationHours: Double = 5.0,
+    val editorMaxBolus: Double = 0.0,
     val editorCarbTime: Int = 0,
     val editorValidFrom: Int = 0,           // seconds from midnight
     val editorValidTo: Int = 86340,         // seconds from midnight (23:59)
@@ -38,6 +43,20 @@ data class QuickWizardManagementUiState(
     val editorTime: Int = 0,                // eCarbs time in minutes
     val editorDuration: Int = 0,            // eCarbs duration in hours
     val editorCarbs2: Int = 0,              // eCarbs additional carbs
+    // The Bolus Wizard's own options (2026-10-21)
+    val editorAutoFpu: Boolean = false,
+    val editorSplitFpuBolus: Boolean = true,
+    val editorFpuIntervalMinutes: Int = 30,
+    val editorSmallMeal: Boolean = false,
+    val editorCarbsType: CarbsType = CarbsType.BREAD,
+    val editorUnreliableSmb: Boolean = false,
+    val editorWalkingSoonAuto: Boolean = true,
+    val editorWalkingSoon: Boolean = false,
+    val editorRetryFpuLater: Boolean = true,
+    val editorGiveRestLater: Boolean = true,
+    val editorDirectCorrection: Double = 0.0,
+    val editorSplitOverMax: Boolean = true,
+    val editorSplitIntervalMinutes: Int = 7,
 
     // UI control
     val showNotesField: Boolean = false,
