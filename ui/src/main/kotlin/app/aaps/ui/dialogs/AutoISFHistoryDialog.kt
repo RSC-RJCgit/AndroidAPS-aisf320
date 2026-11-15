@@ -88,6 +88,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
     private var allApsResults: List<APSResult> = emptyList()
     private var allStepsCounts: List<SC> = emptyList()
     private var allSmbBoluses: List<BS> = emptyList()
+    // Manual, calculator, carb-split and protein/fat boluses (not SMBs, not priming), for the Bolus column (2026-11-15)
+    private var allBoluses: List<BS> = emptyList()
     private var allCarePortalNotes: List<TE> = emptyList()
     private var allRawReadings: List<GV> = emptyList()
     private var smbOnly = false
@@ -163,6 +165,8 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
             apsResults = persistenceLayer.getApsResults(from, now),
             steps = persistenceLayer.getStepsCountFromTimeToTime(from, now),
             smbs = persistenceLayer.getBolusesFromTimeToTime(from, now, ascending = false).filter { it.type == BS.Type.SMB },
+            boluses = persistenceLayer.getBolusesFromTimeToTime(from - 10 * 60_000L, now, ascending = false)
+                .filter { it.isValid && it.amount > 0.0 && it.type != BS.Type.SMB && it.type != BS.Type.PRIMING },
             notes = autoIsfHistoryExporter.carePortalNotesFrom(from),
             raw = persistenceLayer.getBgReadingsDataFromTimeToTime(from - 20 * 60_000L, now, ascending = false)
         )
@@ -174,6 +178,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         allApsResults = data.apsResults
         allStepsCounts = data.steps
         allSmbBoluses = data.smbs
+        allBoluses = data.boluses
         allCarePortalNotes = data.notes
         allRawReadings = data.raw
         rebuildTable()
@@ -184,6 +189,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         val apsResults: List<APSResult>,
         val steps: List<SC>,
         val smbs: List<BS>,
+        val boluses: List<BS>,
         val notes: List<TE>,
         val raw: List<GV>
     )
@@ -200,8 +206,16 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
         binding.historyHeader.removeAllViews()
         binding.historyTime.removeAllViews()
         binding.historyTable.removeAllViews()
-        val shown = if (smbOnly) allRecords.filter { it.smbDelivered > 0.0 } else allRecords
+        // A bolus row stays too, so all insulin given is shown (2026-11-15, per explicit request)
+        val shown = if (smbOnly) allRecords.filter { it.smbDelivered > 0.0 || bolusForRow(it) > 0.0 } else allRecords
         populateTable(shown, allApsResults, allStepsCounts)
+    }
+
+    /** Boluses that are not SMBs since the next older row and up to this row (allRecords is newest first). */
+    private fun bolusForRow(r: AIV): Double {
+        val index = allRecords.indexOf(r)
+        val from = allRecords.getOrNull(index + 1)?.timestamp ?: (r.timestamp - 5 * 60_000L)
+        return allBoluses.filter { it.timestamp > from && it.timestamp <= r.timestamp }.sumOf { it.amount }
     }
 
     private fun populateTable(records: List<AIV>, apsResults: List<APSResult>, stepsCountList: List<SC>) {
@@ -237,6 +251,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                     Cell(adjStr(r.duraIsf),                         colorDuraIsf),
                     Cell(df2.format(r.uamCarbImpact),               colorHeader),
                     Cell(insulinStr(r.smbDelivered),                smbIsfColor(r)),
+                    Cell(insulinStr(bolusForRow(r)),                colorInsulin),
                     Cell(autoIsfHistoryExporter.exactFastRiseStr(r.timestamp, apsResults), colorInsulin),
                     Cell(df2.format(r.smbDeliveryRatio),            colorInsulin),
                     Cell(autoIsfHistoryExporter.mildBstStr(r.timestamp, apsResults), colorInsulin),
@@ -330,7 +345,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("Final Ratio", colorFinalRatio, bold = true),
                 Cell("Adjustments", colorAcceIsf, span = 4, bold = true),
                 Cell("UAM", colorHeader, bold = true),
-                Cell("SMB", colorInsulin, span = 5, bold = true),
+                Cell("SMB", colorInsulin, span = 6, bold = true),
                 Cell("iobTH", colorHeader, bold = true),
                 Cell("Settings", colorHeader, span = 3, bold = true),
                 // acce/dAcc/dAccUkf/Δ/SΔ/LΔ/ukfRBGL/RawUKF5/RawUKF15 = 9.
@@ -358,6 +373,7 @@ class AutoISFHistoryDialog : DaggerDialogFragment() {
                 Cell("dura",   colorDuraIsf, bold = true),
                 Cell("UAMci",  colorHeader, bold = true),
                 Cell("SMB",    colorInsulin, bold = true),
+                Cell("Bolus",  colorInsulin, bold = true),
                 Cell("FR",     colorInsulin, bold = true),
                 Cell("Ratio",  colorInsulin, bold = true),
                 Cell("MildBst", colorInsulin, bold = true),
