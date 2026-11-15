@@ -1674,6 +1674,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         T3_UNRESTRICTED_TOGGLE("T3 unrestricted compare on/off", 5.230),
         // 2026-09-26: the row of 12 insulin totals on the IOB graph (Settings -> Overview switch, default off). Same dispatch.
         INSULIN_TOTALS_ROW_TOGGLE("Insulin totals row on/off", 5.232),
+        // 2026-11-15: HP1 helps insulin when the hypo guard is absurd at BG >= 8.0 (Settings switch, default off). Same dispatch.
+        HP1_OVERRIDE_TOGGLE("HP1 help insulin at BG over 8.0 on/off", 5.254),
         // 2026-10-08: loop every 1 minute / every 5 minutes (BooleanKey.ApsAutoIsfLoopEveryMinute, also a Settings switch).
         // Same EventAutoIsfDirectTtCode dispatch as the toggles above; Client relays 5.234 to the loop phone.
         LOOP_INTERVAL_TOGGLE("Loop interval: every 1 min / every 5 min", 5.234),
@@ -1876,6 +1878,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE,
                 BasalDirectAction.T3_UNRESTRICTED_TOGGLE,
                 BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE,
+                BasalDirectAction.HP1_OVERRIDE_TOGGLE,
                 BasalDirectAction.LOOP_INTERVAL_TOGGLE,
                 BasalDirectAction.LIVE_STEPS_ON_VIRTUAL_TOGGLE ->
                     rxBus.send(EventAutoIsfDirectTtCode(action.clientRelayMmol))
@@ -1925,6 +1928,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             BasalDirectAction.LOW_REBOUND_GUARD_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
             BasalDirectAction.T3_UNRESTRICTED_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
             BasalDirectAction.INSULIN_TOTALS_ROW_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfShowInsulinTotals)
+            BasalDirectAction.HP1_OVERRIDE_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfHp1OverrideEnabled)
             BasalDirectAction.LOOP_INTERVAL_TOGGLE -> mirroredOrLocalBoolean(BooleanKey.ApsAutoIsfLoopEveryMinute)
                 .replace("OFF", "every 5 min").replace("ON", "every 1 min")
             BasalDirectAction.LOCATION_SMS_THIS_PHONE -> {

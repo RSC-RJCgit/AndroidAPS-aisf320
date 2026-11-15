@@ -84,6 +84,10 @@ enum class BooleanKey(
     // LoReb: the recent-low rebound guard (halves microBolus after a recent low). Default OFF, matching the
     // hard-coded off state it replaced on 2026-09-20.
     ApsAutoIsfLowReboundGuardEnabled("autoisf_low_rebound_guard_enabled", false),
+    // HP1 override (2026-11-15, per explicit request): when the hypo guard blocks with an absurd forecast at BG >= 8.0, not
+    // falling, HP1 >= 6.0 and IOB under iobTH, keep the profile basal and allow a small SMB (0.1 U, 0.3 U per 2 h).
+    // Default OFF. Settings + List 2 5.254. See DetermineBasalAutoISF.hp1Override.
+    ApsAutoIsfHp1OverrideEnabled("autoisf_hp1_override_enabled", false),
     // Compare switch (2026-09-22): when ON, T3 skips the 20-min/SMBdel>0.50 cuts, the max_iob/9.5
     // shot cap, and the boost_max_iob_percent IOB gate. Default OFF. Not Virtual-gated -- turn on
     // only where you want the comparison (typically Virtual List 2).

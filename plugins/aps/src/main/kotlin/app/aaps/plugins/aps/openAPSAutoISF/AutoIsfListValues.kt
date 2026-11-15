@@ -89,6 +89,7 @@ internal fun autoIsfListValues(preferences: Preferences, runningProfile: String)
     toggle(5.228, BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
     toggle(5.23, BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
     toggle(5.232, BooleanKey.ApsAutoIsfShowInsulinTotals)
+    toggle(5.254, BooleanKey.ApsAutoIsfHp1OverrideEnabled)
     put("5.234", if (preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)) "every 1 min" else "every 5 min")
 
     val liveSlope = decimal(preferences.get(DoubleKey.FslCalSlope))

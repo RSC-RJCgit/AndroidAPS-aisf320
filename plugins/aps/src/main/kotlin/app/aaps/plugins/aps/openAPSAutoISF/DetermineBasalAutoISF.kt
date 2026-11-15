@@ -18,6 +18,7 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.LongKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import java.text.DecimalFormat
 import java.time.Instant
@@ -125,6 +126,48 @@ class DetermineBasalAutoISF @Inject constructor(
         get() = preferences.get(BooleanKey.ApsAutoIsfLowReboundGuardEnabled)
 
     private val consoleError = mutableListOf<String>()
+
+    /** HP1 read by the last [hp1OverrideDose] call, for the reason text. */
+    private var lastHp1Mmol = 0.0
+
+    /**
+     * HP1 override (2026-11-15, per explicit request; Settings + List 2 5.254, default off). When the hypo guard would set a
+     * zero temp, returns a small SMB instead if ALL hold: the switch is on, SMBs are allowed, BG >= 8.0 mmol and not falling
+     * (short delta >= 0), the forecast is absurd (minGuardBG or minPredBG < 2.0 mmol), IOB < iobTH, HP1 (from this cycle,
+     * at most 5 min old) >= 6.0 mmol, the last bolus is at least 1 min old, and the override's own SMBs of the last 2 h
+     * leave room. The dose is at most HP1_OVERRIDE_DOSE_U, and at most HP1_OVERRIDE_2H_U in 2 h; each one is logged in
+     * StringNonKey.ApsAutoIsfHp1OverrideLog when decided. Null = no override, the guard acts as before.
+     *
+     * Evidence (Live 27 Oct-15 Nov, 5,547 five-minute cycles): this rule fired in 55 cycles with no BG under 3.9 in the next 2 h;
+     * the extra insulin those cycles had room for was 0.12 U at the least, 0.25 U at the 10th percentile (2026-11-15: minPredBG < 2.0, was < 0: 51 cycles, 0.33 U).
+     */
+    private fun hp1OverrideDose(
+        bg: Double, minGuardBG: Double, minPredBG: Double, shortAvgDelta: Double, iob: Double, iobTH: Double, microBolusAllowed: Boolean,
+        bolusIncrement: Double, now: Long, lastBolusTime: Long
+    ): Double? {
+        if (!preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled) || !microBolusAllowed) return null
+        if (bg < 144.1 /* 8.0 mmol */ || shortAvgDelta < 0.0) return null
+        if (!(minGuardBG < 36.0 /* 2.0 mmol */ || minPredBG < 36.0)) return null
+        if (iob >= iobTH) return null
+        val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
+        if (hpAt <= 0L || hpAt > now + 60_000L || now - hpAt > 5 * 60_000L) return null
+        val hp1 = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol) / 1000.0
+        if (hp1 < 6.0) return null
+        if (now - lastBolusTime < 60_000L) return null
+        val recent = preferences.get(StringNonKey.ApsAutoIsfHp1OverrideLog).split(';').mapNotNull { entry ->
+            val parts = entry.split(':')
+            val time = parts.getOrNull(0)?.toLongOrNull() ?: return@mapNotNull null
+            val units = parts.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null
+            if (now - time in 0L until 2 * 60 * 60_000L) time to units else null
+        }
+        val room = HP1_OVERRIDE_2H_U - recent.sumOf { it.second }
+        val step = if (bolusIncrement > 0.0) bolusIncrement else 0.05
+        val dose = Math.floor(min(HP1_OVERRIDE_DOSE_U, room) / step + 1e-9) * step
+        if (dose < step - 1e-9) return null
+        preferences.put(StringNonKey.ApsAutoIsfHp1OverrideLog, (recent + (now to dose)).joinToString(";") { "${it.first}:${it.second}" })
+        lastHp1Mmol = hp1
+        return dose
+    }
     private val consoleLog = mutableListOf<String>()
 
     private fun Double.toFixed2(): String = DecimalFormat("0.00#").format(round(this, 2))
@@ -1404,6 +1447,15 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("IOB ${round(iob_data.iob, 2)} un ${round(-profile.current_basal * 20 / 60, 2)}")
             rT.reason.append(" and minDelta ${convert_bg2(minDelta)} > expectedDelta ${convert_bg2(expectedDelta)}; ")
         } else if (bg < threshold || minGuardBG < threshold) {
+            // HP1 override (2026-11-15, per explicit request, toggle default off): an absurd forecast at BG >= 8.0 keeps the
+            // profile basal and allows a small SMB instead of the zero temp. See hp1OverrideDose.
+            hp1OverrideDose(bg, minGuardBG, minPredBG, glucose_status.shortAvgDelta, iob_data.iob, iobTHvirtual, microBolusAllowed,
+                profile.bolus_increment, currentTime, iob_data.lastBolusTime)?.let { dose ->
+                rT.units = dose
+                rT.reason.append("HP1override: SMB ${round(dose, 2)} U, basal kept (HP1 ${round(lastHp1Mmol, 1)}, minGuard ${convert_bg(minGuardBG)}, minPredBG ${convert_bg(minPredBG)}) ; ")
+                consoleError.add("HP1 override: minGuardBG ${convert_bg(minGuardBG)} < ${convert_bg(threshold)} ignored, SMB ${round(dose, 2)} U, basal ${round(basal, 2)}")
+                return setTempBasal(basal, 30, profile, rT, currenttemp)
+            }
             rT.reason.append("minGuardBG ${convert_bg(minGuardBG)} < ${convert_bg(threshold)}")
             bgUndershoot = target_bg - minGuardBG
             val worstCaseInsulinReq = bgUndershoot / sens
@@ -2755,3 +2807,7 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /** The forecast and the hypo guard use at most this many times the profile ISF (2026-11-15, see predSens). */
 private const val PRED_SENS_CAP = 2.0
+
+/** HP1 override: at most this much per SMB, and at most HP1_OVERRIDE_2H_U in 2 h (2026-11-15, see hp1OverrideDose). */
+private const val HP1_OVERRIDE_DOSE_U = 0.1
+private const val HP1_OVERRIDE_2H_U = 0.3

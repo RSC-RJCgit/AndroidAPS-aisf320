@@ -594,6 +594,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("LRb${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local LoReb toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.254) <= 0.0000001) {
+                        // 2026-11-15: HP1 helps insulin when the hypo guard is absurd at BG >= 8.0. Same shape as 5.228 above.
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)
+                        preferences.put(BooleanKey.ApsAutoIsfHp1OverrideEnabled, newState)
+                        sendSms("HP1 insulin help: ${if (newState) "ON" else "OFF"}", noteTag = true)
+                        addCarePortalNote("HP1h${if (newState) "On" else "Off"}", smsText = lastSmsText)
+                        aapsLogger.info(LTag.APS, "Applied local HP1 override toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("HP1 override toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.230) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
                         preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
@@ -4717,6 +4725,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addCarePortalNote("LRb${if (newState) "On" else "Off"}", smsText = lastSmsText)
             rxBus.send(EventRefreshOverview("LoReb guard toggled", true))
             markRun("LowReboundGuardToggleTT")
+        }
+        if (readyToRun("Hp1OverrideToggleTT", 2) && activeTtNear(5.254, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfHp1OverrideEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("HP1 insulin help: ${if (newState) "ON" else "OFF"}", noteTag = true)
+            addCarePortalNote("HP1h${if (newState) "On" else "Off"}", smsText = lastSmsText)
+            rxBus.send(EventRefreshOverview("HP1 override toggled", true))
+            markRun("Hp1OverrideToggleTT")
         }
         if (readyToRun("T3UnrestrictedToggleTT", 2) && activeTtNear(5.230, 0.0001)) {
             val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
@@ -10592,6 +10609,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // still read the loop's current insulin requirement to cap its delayed dose.
             preferences.put(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU, Math.round((it.insulinReq ?: 0.0) * 1000))
             lastAPSRun = now
+            // HP1 override (2026-11-15): one HP1ov note for the first override of an episode (none in the last 30 min)
+            if (it.reason.contains("HP1override:") && (it.units ?: 0.0) > 0.0 && readyToRun("Hp1OverrideNote", 30)) {
+                addCarePortalNote("HP1ov")
+                markRun("Hp1OverrideNote")
+            }
             aapsLogger.debug(LTag.APS, "Result: $it")
             rxBus.send(EventAPSCalculationFinished())
         }
@@ -12115,6 +12137,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveStepsOnVirtual, summary = R.string.use_live_steps_on_virtual_summary, title = R.string.use_live_steps_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfFastRiseEnabled, summary = R.string.fast_rise_enabled_summary, title = R.string.fast_rise_enabled_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfLowReboundGuardEnabled, summary = R.string.low_rebound_guard_enabled_summary, title = R.string.low_rebound_guard_enabled_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfHp1OverrideEnabled, summary = R.string.hp1_override_enabled_summary, title = R.string.hp1_override_enabled_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, summary = R.string.autoisf_uam_boost_unrestricted_summary, title = R.string.autoisf_uam_boost_unrestricted_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveBatteryOnVirtual, summary = R.string.use_live_battery_on_virtual_summary, title = R.string.use_live_battery_on_virtual_title))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual, summary = R.string.use_live_mj_state_on_virtual_summary, title = R.string.use_live_mj_state_on_virtual_title))
