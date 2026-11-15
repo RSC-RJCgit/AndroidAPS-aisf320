@@ -45,12 +45,38 @@ object MasterFreeStorage {
         if (gb >= 0 && timestamp > 0L && (previous == null || timestamp > previous.timestamp)) mirrored = Mirrored(timestamp, gb)
     }
 
+    /** Where the display's changes are logged (2026-11-15, per explicit request); set by the NS device status handler. */
+    @Volatile var log: ((String) -> Unit)? = null
+    @Volatile private var lastLogged: String? = null
+
     fun display(now: Long, isMaster: Boolean): Display {
-        val known = mirrored?.takeIf { now - it.timestamp in 0L..MAX_AGE_MS }
-        if (known != null && now - known.timestamp <= FRESH_MS) return Display(known.gb, stale = false)
-        if (isMaster) localFreeStorageGb()?.let { return Display(it, stale = false) }
-        return Display(known?.gb, stale = known != null)
+        val value = mirrored
+        // A phone clock a little ahead makes a fresh value's age negative; up to 5 min counts as 0 (2026-11-15)
+        val age = value?.let { (now - it.timestamp).let { a -> if (a in -CLOCK_TOLERANCE_MS until 0L) 0L else a } }
+        val known = value?.takeIf { age != null && age in 0L..MAX_AGE_MS }
+        val fresh = known != null && age!! <= FRESH_MS
+        val local = if (!fresh && isMaster) localFreeStorageGb() else null
+        val shown = when {
+            fresh         -> Display(known!!.gb, stale = false)
+            local != null -> Display(local, stale = false)
+            else          -> Display(known?.gb, stale = known != null)
+        }
+        val state = when {
+            shown.gb == null -> "missing (mirrored ${if (value == null) "none" else "${value.gb} GB, age ${age?.div(1000)} s"})"
+            shown.stale      -> "greyed, ${shown.gb} GB, age ${age?.div(1000)} s"
+            fresh            -> "shown, ${shown.gb} GB from the master"
+            else             -> "shown, ${shown.gb} GB of this phone"
+        }
+        // Only the change from shown / greyed / missing (and the GB) is logged, not the age, so the log gets one line per change
+        val key = state.substringBefore(" (").substringBefore(", age")
+        if (key != lastLogged) {
+            lastLogged = key
+            log?.invoke("Master free storage display: $state")
+        }
+        return shown
     }
+
+    private const val CLOCK_TOLERANCE_MS = 5 * 60_000L
 
     /** The clock text with the free storage after it, e.g. "14:32  48 GB"; just the time when none is known. */
     fun withFreeStorage(time: String, now: Long, isMaster: Boolean): String {

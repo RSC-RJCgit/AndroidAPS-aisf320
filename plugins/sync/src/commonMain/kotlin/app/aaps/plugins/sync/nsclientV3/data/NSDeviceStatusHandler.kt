@@ -128,6 +128,8 @@ class NSDeviceStatusHandler(
 
     init {
         // The master's last free storage is shown again at once after a restart (2026-11-15, per explicit request)
+        // Each change of the top bar's free storage (shown / greyed / missing) is logged, with why (2026-11-15, per explicit request)
+        MasterFreeStorage.log = { aapsLogger.debug(LTag.NSCLIENT, it) }
         try {
             MasterFreeStorage.restore(preferences.get(StringNonKey.ClientMasterFreeStorage))
         } catch (error: Exception) {

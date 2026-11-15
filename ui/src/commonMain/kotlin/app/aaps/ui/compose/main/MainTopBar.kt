@@ -41,6 +41,8 @@ import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
+import app.aaps.core.ui.compose.LocalPreferences
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.objects.overview.MasterFreeStorage
 import app.aaps.core.ui.compose.icons.IcSettingsOff
 import app.aaps.core.ui.compose.stringResource
@@ -94,14 +96,21 @@ fun MainTopBar(
     val now by clock.collectAsStateWithLifecycle(initialValue = dateUtil.now())
     // The master's free storage after the clock (2026-11-14, per explicit request); a master shows its own.
     val isMaster = !LocalInspectionMode.current && LocalConfig.current.APS && !LocalConfig.current.AAPSCLIENT
+    // The saved value is read here at once (2026-11-15, per explicit request): the NS handler restored it only when it first
+    // ran, which on the Windows client could be minutes after a restart or an update, so no GB was shown until then
+    if (!LocalInspectionMode.current) {
+        val preferences = LocalPreferences.current
+        remember(preferences) { MasterFreeStorage.restore(preferences.get(StringNonKey.ClientMasterFreeStorage)) }
+    }
     // A mirrored value over 30 min old stays, greyed out, for up to 24 h (2026-11-15, per explicit request)
     val storage = MasterFreeStorage.display(now, isMaster)
     val staleColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
     val timeText = buildAnnotatedString {
         append(graphTimestamp(dateUtil, now, displayZone))
+        // No-break spaces (2026-11-15): with a normal space a short one-line bar wrapped the GB onto a hidden second line
         storage.gb?.let { gb ->
-            append("  ")
-            if (storage.stale) withStyle(SpanStyle(color = staleColor)) { append("$gb GB") } else append("$gb GB")
+            append("  ")
+            if (storage.stale) withStyle(SpanStyle(color = staleColor)) { append("$gb GB") } else append("$gb GB")
         }
     }
     if (compact) {
@@ -200,7 +209,8 @@ private fun TopBarBg(bgInfo: BgInfoData?, compact: Boolean, timeText: AnnotatedS
                 text = timeText,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
-                maxLines = 1
+                maxLines = 1,
+                softWrap = false
             )
         }
         return
