@@ -688,6 +688,15 @@ class AutoIsfHistoryExporter @Inject constructor(
         LongKey.entries.filter { it.name.contains("AutoIsf") }.forEach { lines.add("${it.key} = ${preferences.get(it)}") }
         lines.add("${DoubleKey.FslCalSlope.key} = ${df2.format(preferences.get(DoubleKey.FslCalSlope))}")
         lines.add("${DoubleKey.FslCalOffset.key} = ${df2.format(preferences.get(DoubleKey.FslCalOffset))}")
+        // 2026-11-16, per explicit request: the three temp target defaults (target in the display units), the values v4 rebuilds its presets from.
+        listOf(
+            UnitDoubleKey.OverviewEatingSoonTarget to IntKey.OverviewEatingSoonDuration,
+            UnitDoubleKey.OverviewActivityTarget to IntKey.OverviewActivityDuration,
+            UnitDoubleKey.OverviewHypoTarget to IntKey.OverviewHypoDuration,
+        ).forEach { (target, duration) ->
+            lines.add("${target.key} = ${df2.format(preferences.get(target))}")
+            lines.add("${duration.key} = ${preferences.get(duration)}")
+        }
         return lines.take(6).joinToString("\n") + "\n" + lines.drop(6).sorted().joinToString("\n") + "\n"
     }
 
