@@ -610,6 +610,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                         addCarePortalNote("LMJ${if (newState) "On" else "Off"}", smsText = lastSmsText)
                         aapsLogger.info(LTag.APS, "Applied local MJ state copy toggle immediately: $newState")
                         rxBus.send(EventRefreshOverview("MJ state copy toggled", true))
+                    } else if (kotlin.math.abs(event.mmol - 5.248) <= 0.0000001) {
+                        // 2026-11-16: the coded automations master switch from List 1, as v4's 5.248. Applied here at once: the
+                        // loop's own handlers for list codes run inside that switch's block and would never see it while it is off.
+                        val newState = !preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)
+                        preferences.put(BooleanKey.ApsAutoIsfCustomAutomationsEnabled, newState)
+                        sendSms("CodedAutomationsToggle: ${if (newState) "ON" else "OFF"}", noteTag = true)
+                        addCarePortalNote("CATg${if (newState) "On" else "Off"}", smsText = lastSmsText)
+                        aapsLogger.info(LTag.APS, "Applied local coded automations toggle immediately: $newState")
+                        rxBus.send(EventRefreshOverview("Coded automations toggled", true))
                     } else if (kotlin.math.abs(event.mmol - 5.230) <= 0.0000001) {
                         val newState = !preferences.get(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled)
                         preferences.put(BooleanKey.ApsAutoIsfUamBoostUnrestrictedEnabled, newState)
@@ -3800,6 +3809,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         "InsulinTotalsToggleTT" -> 5.232
         "Hp1OverrideToggleTT" -> 5.254
         "LiveMjStateToggleTT" -> 5.236
+        "CodedAutomationsToggleTT" -> 5.248
         else -> null
     }
 
@@ -5963,6 +5973,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // second bg3BasicCriteriaMet() call after those markRuns would always return false (the 2026-08-27
         // BMild throttle-reuse bug). Stays false when the automations block doesn't run.
         var bg3FiredThisCycle = false
+
+        // 2026-11-16, per explicit request: List 1 code 5.248 from a Client turns the coded automations on or off (as v4). It is
+        // checked here, before the block below, so it can also switch them back on while they are off.
+        if (readyToRun("CodedAutomationsToggleTT", 2) && activeTtNear(5.248, 0.0001)) {
+            val newState = !preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)
+            preferences.put(BooleanKey.ApsAutoIsfCustomAutomationsEnabled, newState)
+            cancelCurrentTempTarget()
+            sendSms("CodedAutomationsToggle: ${if (newState) "ON" else "OFF"}", noteTag = true)
+            addCarePortalNote("CATg${if (newState) "On" else "Off"}", smsText = lastSmsText)
+            rxBus.send(EventRefreshOverview("Coded automations toggled", true))
+            markRun("CodedAutomationsToggleTT")
+        }
 
         if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) {
 

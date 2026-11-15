@@ -56,7 +56,7 @@ internal fun autoIsfListValues(preferences: Preferences, runningProfile: String)
     profile(5.15, StringKey.ApsAutoIsfLowProfileName)
     toggle(5.152, BooleanKey.FslUseUkfSmoothing)
     toggle(5.156, BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)
-    put("unsupported:5.248", "true")
+    toggle(5.248, BooleanKey.ApsAutoIsfCustomAutomationsEnabled)
 
     profile(5.162, StringKey.ApsAutoIsfSteroid110ProfileName)
     toggle(5.164, BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)

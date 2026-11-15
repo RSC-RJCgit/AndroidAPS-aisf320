@@ -2747,6 +2747,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             5.148 -> mirroredProfileSetting()
             5.152 -> mirroredListSetting(BooleanKey.FslUseUkfSmoothing.key) { mirroredBoolean(it) }
             5.156 -> mirroredListSetting(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled.key) { mirroredBoolean(it) }
+            5.248 -> mirroredListSetting(BooleanKey.ApsAutoIsfCustomAutomationsEnabled.key) { mirroredBoolean(it) }
             // List 2's three Tier 3 UAM Boost tuning rows (added 2026-08-23, see list2SteppedEntries)
             // were missing from this table entirely -- real gap found 2026-08-28: Client showed its own
             // never-updated local value instead of what's actually driving Live's dosing, since
@@ -3004,6 +3005,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 .setOnCancelListener { showTtCodesListDialog() }
                 .show()
         },
+        // 2026-11-16, per explicit request: the master switch for the coded automations (Settings > Overview), as v4's 5.248.
+        TtCode.Single(
+            "Tog coded automations (all) on/off", 5.248,
+            currentValue = { "Current: ${if (preferences.get(BooleanKey.ApsAutoIsfCustomAutomationsEnabled)) "ON" else "OFF"}" }
+        ),
         // 2026-11-16, per explicit request: last, as it shows on Virtual only, so the rows above have the same numbers as v4.
         TtCode.Single(
             "Tog UKFset1 (Virtual live comparison) on/off", 5.152,
