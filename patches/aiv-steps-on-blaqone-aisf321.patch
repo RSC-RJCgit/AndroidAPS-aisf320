@@ -1,0 +1,868 @@
+diff --git a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/aps/AutoIsfFactors.kt b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/aps/AutoIsfFactors.kt
+index fa0501456a..1a0d68e4af 100644
+--- a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/aps/AutoIsfFactors.kt
++++ b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/aps/AutoIsfFactors.kt
+@@ -17,7 +17,21 @@ data class AutoIsfFactors(
+     var ppIsf: Double? = null,
+     var duraIsf: Double? = null,
+     var finalIsf: Double? = null,
+-    var iobThEffective: Double? = null
++    var iobThEffective: Double? = null,
++    // AIV table (2026-11-15, ported from the AaAPS v4 fork): the rest of one AIV row, so a client builds the same row
++    // from the loop result it receives. Deltas, acceleration and target in mg/dL.
++    var delta: Double? = null,
++    var shortAvgDelta: Double? = null,
++    var longAvgDelta: Double? = null,
++    var bgAcceleration: Double? = null,
++    var smbDeliveryRatio: Double? = null,
++    var targetMgdl: Double? = null,
++    var steps5: Int? = null,
++    /** Only for the clients' step rows; the AIV table has no 10 min column */
++    var steps10: Int? = null,
++    var steps15: Int? = null,
++    var steps30: Int? = null,
++    var steps60: Int? = null
+ ) {
+ 
+     /**
+@@ -30,8 +44,51 @@ data class AutoIsfFactors(
+         ppIsf = ppIsf.finiteOrNull(),
+         duraIsf = duraIsf.finiteOrNull(),
+         finalIsf = finalIsf.finiteOrNull(),
+-        iobThEffective = iobThEffective.finiteOrNull()
++        iobThEffective = iobThEffective.finiteOrNull(),
++        delta = delta.finiteOrNull(),
++        shortAvgDelta = shortAvgDelta.finiteOrNull(),
++        longAvgDelta = longAvgDelta.finiteOrNull(),
++        bgAcceleration = bgAcceleration.finiteOrNull(),
++        smbDeliveryRatio = smbDeliveryRatio.finiteOrNull(),
++        targetMgdl = targetMgdl.finiteOrNull(),
++        steps5 = steps5,
++        steps10 = steps10,
++        steps15 = steps15,
++        steps30 = steps30,
++        steps60 = steps60
+     )
+ 
+     private fun Double?.finiteOrNull(): Double? = this?.takeIf { it.isFinite() }
+ }
++
++/**
++ * The AIV table row of one loop result (2026-11-15, ported from the AaAPS v4 fork). The master builds it from its own
++ * result, a client from the result it received, so both tables hold the same rows. Null without AutoISF factors.
++ */
++fun RT.autoIsfRow(timestamp: Long): app.aaps.core.data.model.AIV? {
++    val f = autoIsf ?: return null
++    return app.aaps.core.data.model.AIV(
++        timestamp = timestamp,
++        acceIsf = f.acceIsf ?: 1.0,
++        bgIsf = f.bgIsf ?: 1.0,
++        ppIsf = f.ppIsf ?: 1.0,
++        duraIsf = f.duraIsf ?: 1.0,
++        finalIsf = f.finalIsf ?: 1.0,
++        glucose = bg ?: 0.0,
++        delta = f.delta ?: 0.0,
++        shortAvgDelta = f.shortAvgDelta ?: 0.0,
++        longAvgDelta = f.longAvgDelta ?: 0.0,
++        bgAcceleration = f.bgAcceleration ?: 0.0,
++        iob = IOB ?: 0.0,
++        smbDelivered = units ?: 0.0,
++        iobThEffective = f.iobThEffective ?: 0.0,
++        targetMgdl = f.targetMgdl ?: 0.0,
++        smbDeliveryRatio = f.smbDeliveryRatio ?: 0.0,
++        cob = COB ?: 0.0,
++        basal = rate ?: 0.0,
++        steps5 = f.steps5 ?: 0,
++        steps15 = f.steps15 ?: 0,
++        steps30 = f.steps30 ?: 0,
++        steps60 = f.steps60 ?: 0
++    )
++}
+diff --git a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/db/PersistenceLayer.kt b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/db/PersistenceLayer.kt
+index 2868db3f7d..0265c7ef9c 100644
+--- a/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/db/PersistenceLayer.kt
++++ b/core/interfaces/src/commonMain/kotlin/app/aaps/core/interfaces/db/PersistenceLayer.kt
+@@ -1695,6 +1695,14 @@ interface PersistenceLayer {
+      */
+     suspend fun insertOrUpdateStepsCounts(stepsCounts: List<SC>): TransactionResult<SC>
+ 
++    // AutoISF AIV table (2026-11-15, ported from the AaAPS v4 fork). Default bodies so test fakes need no change.
++
++    /** Stores one loop run's row. False when a row for that time already exists, or nothing was stored. */
++    suspend fun insertAutoIsfValueOnce(aiv: app.aaps.core.data.model.AIV): Boolean = false
++
++    /** The rows from [startTime] to [endTime], oldest first. */
++    suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<app.aaps.core.data.model.AIV> = emptyList()
++
+     // VersionChange
+ 
+     /**
+diff --git a/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabase.kt b/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabase.kt
+index fb540c1c3c..3f2dadf21d 100644
+--- a/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabase.kt
++++ b/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabase.kt
+@@ -6,6 +6,7 @@ import androidx.room.RoomDatabase
+ import androidx.room.RoomDatabaseConstructor
+ import androidx.room.TypeConverters
+ import app.aaps.database.daos.APSResultDao
++import app.aaps.database.daos.AutoIsfValuesDao
+ import app.aaps.database.daos.BolusCalculatorResultDao
+ import app.aaps.database.daos.BolusDao
+ import app.aaps.database.daos.CalibrationEntryDao
+@@ -26,6 +27,7 @@ import app.aaps.database.daos.TherapyEventDao
+ import app.aaps.database.daos.TotalDailyDoseDao
+ import app.aaps.database.daos.UserEntryDao
+ import app.aaps.database.daos.VersionChangeDao
++import app.aaps.database.entities.AutoIsfValues
+ import app.aaps.database.entities.Bolus
+ import app.aaps.database.entities.BolusCalculatorResult
+ import app.aaps.database.entities.CalibrationEntry
+@@ -47,7 +49,8 @@ import app.aaps.database.entities.TotalDailyDose
+ import app.aaps.database.entities.UserEntry
+ import app.aaps.database.entities.VersionChange
+ 
+-const val DATABASE_VERSION = 36
++// 37: the AutoISF AIV table (2026-11-15, see AutoIsfValues)
++const val DATABASE_VERSION = 37
+ 
+ @Database(
+     version = DATABASE_VERSION,
+@@ -56,7 +59,7 @@ const val DATABASE_VERSION = 36
+         TemporaryBasal::class, TemporaryTarget::class, TherapyEvent::class, TotalDailyDose::class,
+         PreferenceChange::class, VersionChange::class, UserEntry::class,
+         Food::class, DeviceStatus::class, RunningMode::class, HeartRate::class, StepsCount::class,
+-        CalibrationEntry::class],
++        CalibrationEntry::class, AutoIsfValues::class],
+     exportSchema = true
+ )
+ // @ConstructedBy is what lets this class live in commonMain: Room generates the initialiser per target
+@@ -106,6 +109,8 @@ internal abstract class AppDatabase : RoomDatabase(), AppDatabaseDaos {
+     abstract override val stepsCountDao: StepsCountDao
+ 
+     abstract override val calibrationEntryDao: CalibrationEntryDao
++
++    abstract override val autoIsfValuesDao: AutoIsfValuesDao
+ }
+ 
+ // Room supplies the actual per target. It must be `expect`, because the generated initialiser is
+diff --git a/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabaseDaos.kt b/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabaseDaos.kt
+index a6a860b3e8..5ffd2cc929 100644
+--- a/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabaseDaos.kt
++++ b/database/impl/src/commonMain/kotlin/app/aaps/database/AppDatabaseDaos.kt
+@@ -15,6 +15,7 @@ import app.aaps.database.daos.PreferenceChangeDao
+ import app.aaps.database.daos.ProfileSwitchDao
+ import app.aaps.database.daos.RunningModeDao
+ import app.aaps.database.daos.StepsCountDao
++import app.aaps.database.daos.AutoIsfValuesDao
+ import app.aaps.database.daos.TemporaryBasalDao
+ import app.aaps.database.daos.TemporaryTargetDao
+ import app.aaps.database.daos.TherapyEventDao
+@@ -51,5 +52,6 @@ internal interface AppDatabaseDaos {
+     val runningModeDao: RunningModeDao
+     val heartRateDao: HeartRateDao
+     val stepsCountDao: StepsCountDao
++    val autoIsfValuesDao: AutoIsfValuesDao
+     val calibrationEntryDao: CalibrationEntryDao
+ }
+diff --git a/database/impl/src/commonMain/kotlin/app/aaps/database/AppRepository.kt b/database/impl/src/commonMain/kotlin/app/aaps/database/AppRepository.kt
+index 163faef664..9370d376b4 100644
+--- a/database/impl/src/commonMain/kotlin/app/aaps/database/AppRepository.kt
++++ b/database/impl/src/commonMain/kotlin/app/aaps/database/AppRepository.kt
+@@ -18,6 +18,7 @@ import app.aaps.database.entities.HeartRate
+ import app.aaps.database.entities.ProfileSwitch
+ import app.aaps.database.entities.RunningMode
+ import app.aaps.database.entities.StepsCount
++import app.aaps.database.entities.AutoIsfValues
+ import app.aaps.database.entities.TemporaryBasal
+ import app.aaps.database.entities.TemporaryTarget
+ import app.aaps.database.entities.TherapyEvent
+@@ -233,6 +234,7 @@ class AppRepository internal constructor(
+             removed.add(Pair("RunningMode", database.runningModeDao.deleteOlderThan(than)))
+         removed.add(Pair("HeartRate", database.heartRateDao.deleteOlderThan(than)))
+         removed.add(Pair("StepsCount", database.stepsCountDao.deleteOlderThan(than)))
++        removed.add(Pair("AutoIsfValues", database.autoIsfValuesDao.deleteOlderThan(than)))
+ 
+         if (deleteTrackedChanges) {
+             removed.add(Pair("CHANGES APSResult", database.apsResultDao.deleteTrackedChanges()))
+@@ -967,6 +969,14 @@ class AppRepository internal constructor(
+     suspend fun getLastStepsCountFromTimeToTime(startMillis: Long, endMillis: Long): StepsCount? =
+         database.stepsCountDao.getLastStepsCountFromTimeToTime(startMillis, endMillis)
+ 
++    /** AIV table (2026-11-15): one row per loop time; a second row for the same time is not stored. */
++    suspend fun insertAutoIsfValueOnce(entry: AutoIsfValues): Boolean =
++        if (database.autoIsfValuesDao.countAt(entry.timestamp) > 0) false
++        else database.autoIsfValuesDao.insert(entry) > 0
++
++    suspend fun getAutoIsfValuesFromTimeToTime(startMillis: Long, endMillis: Long): List<AutoIsfValues> =
++        database.autoIsfValuesDao.getFromTimeToTime(startMillis, endMillis)
++
+     suspend fun collectNewEntriesSince(since: Long, until: Long, limit: Int, offset: Int) = NewEntries(
+         apsResults = database.apsResultDao.getNewEntriesSince(since, until, limit, offset),
+         bolusCalculatorResults = database.bolusCalculatorResultDao.getNewEntriesSince(since, until, limit, offset),
+diff --git a/database/impl/src/commonMain/kotlin/app/aaps/database/di/DatabaseMigrations.kt b/database/impl/src/commonMain/kotlin/app/aaps/database/di/DatabaseMigrations.kt
+index 0baa487b7e..ed73c14bbe 100644
+--- a/database/impl/src/commonMain/kotlin/app/aaps/database/di/DatabaseMigrations.kt
++++ b/database/impl/src/commonMain/kotlin/app/aaps/database/di/DatabaseMigrations.kt
+@@ -4,6 +4,7 @@ import androidx.room.migration.Migration
+ import androidx.sqlite.SQLiteConnection
+ import androidx.sqlite.execSQL
+ import app.aaps.database.entities.TABLE_APS_RESULTS
++import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
+ import app.aaps.database.entities.TABLE_BOLUSES
+ import app.aaps.database.entities.TABLE_CALIBRATION_ENTRIES
+ import app.aaps.database.entities.TABLE_EFFECTIVE_PROFILE_SWITCHES
+@@ -422,6 +423,43 @@ private val migration35to36 = object : Migration(35, 36) {
+     }
+ }
+ 
++/**
++ * The AutoISF AIV table (2026-11-15, ported from the AaAPS v4 fork): one row per loop run, for the table that a long
++ * press on the AutoISF chip opens. Existing rows of every other table are left as they are.
++ */
++private val migration36to37 = object : Migration(36, 37) {
++    override fun migrate(connection: SQLiteConnection) {
++        connection.execSQL(
++            "CREATE TABLE IF NOT EXISTS `$TABLE_AUTO_ISF_VALUES` (" +
++                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
++                "`timestamp` INTEGER NOT NULL, " +
++                "`acceIsf` REAL NOT NULL, " +
++                "`bgIsf` REAL NOT NULL, " +
++                "`ppIsf` REAL NOT NULL, " +
++                "`duraIsf` REAL NOT NULL, " +
++                "`finalIsf` REAL NOT NULL, " +
++                "`glucose` REAL NOT NULL, " +
++                "`delta` REAL NOT NULL, " +
++                "`shortAvgDelta` REAL NOT NULL, " +
++                "`longAvgDelta` REAL NOT NULL, " +
++                "`bgAcceleration` REAL NOT NULL, " +
++                "`iob` REAL NOT NULL, " +
++                "`smbDelivered` REAL NOT NULL, " +
++                "`iobThEffective` REAL NOT NULL, " +
++                "`targetMgdl` REAL NOT NULL, " +
++                "`smbDeliveryRatio` REAL NOT NULL, " +
++                "`cob` REAL NOT NULL, " +
++                "`basal` REAL NOT NULL, " +
++                "`steps5` INTEGER NOT NULL, " +
++                "`steps15` INTEGER NOT NULL, " +
++                "`steps30` INTEGER NOT NULL, " +
++                "`steps60` INTEGER NOT NULL)"
++        )
++        connection.execSQL("CREATE INDEX IF NOT EXISTS `index_autoIsfValues_timestamp` ON `$TABLE_AUTO_ISF_VALUES` (`timestamp`)")
++        dropCustomIndexes(connection)
++    }
++}
++
+ /** Every migration, in order. Passed to the Room builder by each platform. */
+ internal val databaseMigrations: Array<Migration> = arrayOf(
+     migration22to23,
+@@ -438,4 +476,5 @@ internal val databaseMigrations: Array<Migration> = arrayOf(
+     migration33to34,
+     migration34to35,
+     migration35to36,
++    migration36to37,
+ )
+diff --git a/database/impl/src/commonMain/kotlin/app/aaps/database/entities/TableNames.kt b/database/impl/src/commonMain/kotlin/app/aaps/database/entities/TableNames.kt
+index ab45274969..d0511df3e1 100644
+--- a/database/impl/src/commonMain/kotlin/app/aaps/database/entities/TableNames.kt
++++ b/database/impl/src/commonMain/kotlin/app/aaps/database/entities/TableNames.kt
+@@ -21,3 +21,4 @@ const val TABLE_THERAPY_EVENTS = "therapyEvents"
+ const val TABLE_PREFERENCE_CHANGES = "preferenceChanges"
+ const val TABLE_VERSION_CHANGES = "versionChanges"
+ const val TABLE_USER_ENTRY = "userEntry"
++const val TABLE_AUTO_ISF_VALUES = "autoIsfValues"
+diff --git a/database/persistence/src/commonMain/kotlin/app/aaps/database/persistence/PersistenceLayerImpl.kt b/database/persistence/src/commonMain/kotlin/app/aaps/database/persistence/PersistenceLayerImpl.kt
+index b0e362999b..e1b09b122a 100644
+--- a/database/persistence/src/commonMain/kotlin/app/aaps/database/persistence/PersistenceLayerImpl.kt
++++ b/database/persistence/src/commonMain/kotlin/app/aaps/database/persistence/PersistenceLayerImpl.kt
+@@ -2608,6 +2608,20 @@ class PersistenceLayerImpl(
+         repository.getLastStepsCountFromTimeToTime(startTime, endTime)?.fromDb()
+     }
+ 
++    override suspend fun insertAutoIsfValueOnce(aiv: app.aaps.core.data.model.AIV): Boolean = withContext(aapsIoDispatcher) {
++        try {
++            repository.insertAutoIsfValueOnce(aiv.toDb())
++        } catch (e: kotlinx.coroutines.CancellationException) {
++            throw e
++        } catch (e: Exception) {
++            aapsLogger.error(LTag.DATABASE, "Could not store the AutoISF row", e)
++            false
++        }
++    }
++
++    override suspend fun getAutoIsfValuesFromTimeToTime(startTime: Long, endTime: Long): List<app.aaps.core.data.model.AIV> =
++        withContext(aapsIoDispatcher) { repository.getAutoIsfValuesFromTimeToTime(startTime, endTime).map { it.fromDb() } }
++
+     override suspend fun insertOrUpdateStepsCounts(stepsCounts: List<SC>): PersistenceLayer.TransactionResult<SC> = withContext(aapsIoDispatcher) {
+         if (stepsCounts.isEmpty()) return@withContext PersistenceLayer.TransactionResult<SC>()
+         try {
+diff --git a/plugins/aps/src/commonMain/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt b/plugins/aps/src/commonMain/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
+index b4d32f0f94..b48f359ee1 100644
+--- a/plugins/aps/src/commonMain/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
++++ b/plugins/aps/src/commonMain/kotlin/app/aaps/plugins/aps/openAPSAutoISF/OpenAPSAutoISFPlugin.kt
+@@ -10,9 +10,11 @@ import app.aaps.core.interfaces.InterfacesStrings
+ import app.aaps.core.interfaces.aps.APS
+ import app.aaps.core.interfaces.aps.APSResult
+ import app.aaps.core.interfaces.aps.AutoIsfFactors
++import app.aaps.core.interfaces.aps.autoIsfRow
+ import app.aaps.core.interfaces.aps.AutosensResult
+ import app.aaps.core.interfaces.aps.CurrentTemp
+ import app.aaps.core.interfaces.aps.GlucoseStatus
++import app.aaps.core.interfaces.aps.GlucoseStatusAutoIsf
+ import app.aaps.core.interfaces.aps.OapsProfileAutoIsf
+ import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
+ import app.aaps.core.interfaces.configuration.Config
+@@ -441,7 +443,30 @@ open class OpenAPSAutoISFPlugin(
+             auto_isf_consoleLog = consoleLog,
+             activity = activity
+         ).also {
+-            it.autoIsf = autoIsfFactors.finiteOnly()
++            // AIV table (2026-11-15, ported from the AaAPS v4 fork): the rest of the row travels in the result too, so
++            // clients build the same row; deltas, acceleration and target in mg/dL
++            it.autoIsf = autoIsfFactors.copy(
++                delta = glucoseStatus.delta,
++                shortAvgDelta = glucoseStatus.shortAvgDelta,
++                longAvgDelta = glucoseStatus.longAvgDelta,
++                bgAcceleration = (glucoseStatus as? GlucoseStatusAutoIsf)?.bgAcceleration,
++                smbDeliveryRatio = smbRatio,
++                targetMgdl = targetBg,
++                steps5 = steps?.last5,
++                steps10 = steps?.let { s -> s.last5 + s.before5 },
++                steps15 = steps?.last15Sum,
++                steps30 = steps?.last30,
++                steps60 = steps?.last60
++            ).finiteOnly()
++            it.autoIsfRow(it.timestamp ?: now)?.let { row ->
++                try {
++                    persistenceLayer.insertAutoIsfValueOnce(row)
++                } catch (e: kotlinx.coroutines.CancellationException) {
++                    throw e
++                } catch (e: Exception) {
++                    aapsLogger.error(LTag.APS, "Could not store the AutoISF row", e)
++                }
++            }
+             val determineBasalResult = apsResultProvider().with(it)
+             // Preserve input data
+             determineBasalResult.inputConstraints = inputConstraints
+diff --git a/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/data/NSDeviceStatusHandler.kt b/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/data/NSDeviceStatusHandler.kt
+index 9b61cb4658..cd7c2cdb35 100644
+--- a/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/data/NSDeviceStatusHandler.kt
++++ b/plugins/sync/src/commonMain/kotlin/app/aaps/plugins/sync/nsclientV3/data/NSDeviceStatusHandler.kt
+@@ -2,6 +2,8 @@ package app.aaps.plugins.sync.nsclientV3.data
+ 
+ import app.aaps.core.interfaces.aps.APSResult
+ import app.aaps.core.interfaces.aps.RT
++import app.aaps.core.interfaces.aps.autoIsfRow
++import app.aaps.core.data.model.SC
+ import app.aaps.core.interfaces.configuration.Config
+ import app.aaps.core.interfaces.db.PersistenceLayer
+ import app.aaps.core.interfaces.iob.IobCobCalculator
+@@ -157,7 +159,7 @@ class NSDeviceStatusHandler(
+      * A loop result as it came with a device status. Older clients stored it with [deviceStatusTime], not
+      * with the master's own time, so a result stored by them is found by that time.
+      */
+-    private class ReceivedResult(val apsResult: APSResult, val deviceStatusTime: Long)
++    private class ReceivedResult(val apsResult: APSResult, val deviceStatusTime: Long, val rt: RT? = null, val device: String? = null)
+ 
+     /**
+      * Stores the master's loop results that are not stored yet, then tells the calculation about them.
+@@ -177,6 +179,46 @@ class NSDeviceStatusHandler(
+             .distinctBy { it.date }
+         newResults.forEach { persistenceLayer.insertOrUpdateApsResult(it) }
+         newResults.minOfOrNull { it.date }?.let { iobCobCalculator().apsResultsStored(it) }
++        storeAutoIsfRows(received)
++    }
++
++    /**
++     * AIV table and steps (2026-11-15, ported from the AaAPS v4 fork): every received AutoISF loop result becomes one
++     * AIV row, at the loop's own time, the same row the master stored. On a client its step counts also become a step
++     * row, so the steps graph shows the master's steps. A row that is already there for that time is skipped.
++     */
++    private suspend fun storeAutoIsfRows(received: List<ReceivedResult>) {
++        received.distinctBy { it.deviceStatusTime }.forEach { item ->
++            val rt = item.rt ?: return@forEach
++            try {
++                rt.autoIsfRow(item.deviceStatusTime)?.let { persistenceLayer.insertAutoIsfValueOnce(it) }
++                val factors = rt.autoIsf
++                if (config.AAPSCLIENT && factors?.steps5 != null) {
++                    val time = item.deviceStatusTime
++                    if (persistenceLayer.getStepsCountFromTimeToTime(time, time).isEmpty()) {
++                        persistenceLayer.insertOrUpdateStepsCounts(
++                            listOf(
++                                SC(
++                                    duration = 5 * 60_000L,
++                                    timestamp = time,
++                                    steps5min = factors.steps5 ?: 0,
++                                    steps10min = factors.steps10 ?: 0,
++                                    steps15min = factors.steps15 ?: 0,
++                                    steps30min = factors.steps30 ?: 0,
++                                    steps60min = factors.steps60 ?: 0,
++                                    steps180min = 0,
++                                    device = item.device ?: "master"
++                                )
++                            )
++                        )
++                    }
++                }
++            } catch (e: kotlinx.coroutines.CancellationException) {
++                throw e
++            } catch (e: Exception) {
++                aapsLogger.error(LTag.NSCLIENT, "Could not store the received AutoISF row", e)
++            }
++        }
+     }
+ 
+     /**
+@@ -287,7 +329,7 @@ class NSDeviceStatusHandler(
+                             aapsLogger.debug(LTag.NSCLIENT, "APS result without algorithm from ${nsDeviceStatus.device}, not stored")
+                         // Calculated nothing, and the master did not store it either. Also shown from the data above.
+                         apsResult.stoppedEarly -> Unit
+-                        else -> apsResults.add(ReceivedResult(apsResult, clock))
++                        else -> apsResults.add(ReceivedResult(apsResult, clock, rt, nsDeviceStatus.device))
+                     }
+                 }
+             }
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenSplit.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenSplit.kt
+index 18ee4200f6..f158b25db4 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenSplit.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenSplit.kt
+@@ -181,7 +181,10 @@ fun OverviewScreenSplit(
+                     state = autoIsfFactorsUiState,
+                     onNavigate = onNavigate,
+                     onExpandedChange = chipsViewModel::setAutoIsfChipExpanded,
+-                    onTogglePin = chipsViewModel::toggleAutoIsfPin
++                    onTogglePin = chipsViewModel::toggleAutoIsfPin,
++                    aivTable = chipsViewModel.aivTable.collectAsStateWithLifecycle().value,
++                    onOpenAivTable = chipsViewModel::openAivTable,
++                    onCloseAivTable = chipsViewModel::closeAivTable
+                 )
+ 
+                 OverviewStatusSection(
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenStacked.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenStacked.kt
+index 3fe13a71b4..3548c74382 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenStacked.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenStacked.kt
+@@ -154,7 +154,10 @@ fun OverviewScreenStacked(
+             state = autoIsfFactorsUiState,
+             onNavigate = onNavigate,
+             onExpandedChange = chipsViewModel::setAutoIsfChipExpanded,
+-            onTogglePin = chipsViewModel::toggleAutoIsfPin
++            onTogglePin = chipsViewModel::toggleAutoIsfPin,
++            aivTable = chipsViewModel.aivTable.collectAsStateWithLifecycle().value,
++            onOpenAivTable = chipsViewModel::openAivTable,
++            onCloseAivTable = chipsViewModel::closeAivTable
+         )
+ 
+         OverviewStatusSection(
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenTablet.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenTablet.kt
+index 266bb65798..9de9eafdd5 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenTablet.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/OverviewScreenTablet.kt
+@@ -186,7 +186,10 @@ fun OverviewScreenTablet(
+                     state = autoIsfFactorsUiState,
+                     onNavigate = onNavigate,
+                     onExpandedChange = chipsViewModel::setAutoIsfChipExpanded,
+-                    onTogglePin = chipsViewModel::toggleAutoIsfPin
++                    onTogglePin = chipsViewModel::toggleAutoIsfPin,
++                    aivTable = chipsViewModel.aivTable.collectAsStateWithLifecycle().value,
++                    onOpenAivTable = chipsViewModel::openAivTable,
++                    onCloseAivTable = chipsViewModel::closeAivTable
+                 )
+ 
+                 OverviewStatusSection(
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/AutoIsfChip.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/AutoIsfChip.kt
+index a53f3b9889..7676467013 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/AutoIsfChip.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/AutoIsfChip.kt
+@@ -104,7 +104,8 @@ data class AutoIsfFactorsUiState(
+  * - Closed: the AutoISF symbol and the pinned values, right-aligned.
+  * - Open: every value in a grid. A tap on a value pins it to the closed chip or removes it
+  *   (at most [AUTOISF_MAX_PINNED]). [extraContent] is shown under the grid.
+- * - A tap on the chip opens or closes it, a long click anywhere opens the AutoISF screen (APS tab).
++ * - A tap on the chip opens or closes it. A long click on the chip opens the AIV table (2026-11-15) when
++ *   [onOpenAivTable] is given, else the AutoISF screen (APS tab).
+  *
+  * Display only, nothing here changes dosing.
+  */
+@@ -116,8 +117,12 @@ fun AutoIsfChip(
+     onExpandedChange: (Boolean) -> Unit,
+     onTogglePin: (String) -> Unit,
+     modifier: Modifier = Modifier,
+-    extraContent: (@Composable () -> Unit)? = null
++    extraContent: (@Composable () -> Unit)? = null,
++    aivTable: AivTable? = null,
++    onOpenAivTable: (() -> Unit)? = null,
++    onCloseAivTable: () -> Unit = {}
+ ) {
++    AivTableDialog(aivTable, onCloseAivTable)
+     if (!state.visible) return
+     val openAps = { state.apsPluginClassName?.let { onNavigate(NavigationRequest.Plugin(it)) } ?: Unit }
+     val openLabel = stringResource(UiStrings.overview_autoisf_open)
+@@ -132,8 +137,8 @@ fun AutoIsfChip(
+             .padding(horizontal = AapsSpacing.medium, vertical = AapsSpacing.extraSmall)
+             .combinedClickable(
+                 onClickLabel = toggleLabel,
+-                onLongClickLabel = openLabel,
+-                onLongClick = openAps,
++                onLongClickLabel = if (onOpenAivTable != null) "AIV" else openLabel,
++                onLongClick = onOpenAivTable ?: openAps,
+                 onClick = { onExpandedChange(!state.expanded) }
+             )
+     ) {
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/ChipsViewModel.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/ChipsViewModel.kt
+index 9a3ef20d2d..b3b7834665 100644
+--- a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/ChipsViewModel.kt
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/ChipsViewModel.kt
+@@ -4,7 +4,9 @@ import androidx.compose.runtime.Stable
+ import androidx.lifecycle.ViewModel
+ import androidx.lifecycle.viewModelScope
+ import app.aaps.core.interfaces.InterfacesStrings
++import app.aaps.core.data.model.AIV
+ import app.aaps.core.interfaces.aps.APSResult
++import app.aaps.core.interfaces.aps.AutoIsfFactors
+ import app.aaps.core.interfaces.aps.Loop
+ import app.aaps.core.interfaces.aps.RT
+ import app.aaps.core.interfaces.configuration.Config
+@@ -18,6 +20,7 @@ import app.aaps.core.interfaces.rx.bus.RxBus
+ import app.aaps.core.interfaces.rx.events.EventShowDialog
+ import app.aaps.core.interfaces.utils.DecimalFormatter
+ import app.aaps.core.keys.BooleanNonKey
++import app.aaps.core.keys.StringKey
+ import app.aaps.core.keys.StringNonKey
+ import app.aaps.core.keys.interfaces.Preferences
+ import app.aaps.core.objects.extensions.round
+@@ -35,6 +38,7 @@ import kotlinx.coroutines.flow.flow
+ import kotlinx.coroutines.flow.shareIn
+ import kotlinx.coroutines.flow.stateIn
+ import kotlinx.coroutines.launch
++import kotlin.time.Clock
+ 
+ @Stable
+ @AssistedInject
+@@ -156,9 +160,14 @@ class ChipsViewModel(
+         initialValue = AutoIsfFactorsUiState()
+     )
+ 
+-    private fun buildAutoIsfFactorsUiState(): AutoIsfFactorsUiState {
+-        if (!isAutoIsfActive()) return AutoIsfFactorsUiState()
+-        val factors = (loop.lastRun?.request?.rawData() as? RT)?.autoIsf ?: return AutoIsfFactorsUiState()
++    private suspend fun buildAutoIsfFactorsUiState(): AutoIsfFactorsUiState {
++        // A client has no loop of its own: its chip shows the master's newest AIV row (2026-11-15, so the AIV table is
++        // reachable there too)
++        val factors = when {
++            isAutoIsfActive()  -> (loop.lastRun?.request?.rawData() as? RT)?.autoIsf
++            config.AAPSCLIENT -> newestReceivedFactors()
++            else               -> null
++        } ?: return AutoIsfFactorsUiState()
+         fun factor(key: String, value: Double?) = AutoIsfValue(
+             key = key,
+             value = value?.let { decimalFormatter.to2Decimal(it) } ?: "-",
+@@ -186,6 +195,31 @@ class ChipsViewModel(
+         )
+     }
+ 
++    /** The master's newest AIV row of the last 15 minutes, as factors, or null. */
++    private suspend fun newestReceivedFactors(): AutoIsfFactors? {
++        val now = Clock.System.now().toEpochMilliseconds()
++        val row = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AIV_CHIP_MAX_AGE_MS, now).lastOrNull() ?: return null
++        return AutoIsfFactors(
++            acceIsf = row.acceIsf, bgIsf = row.bgIsf, ppIsf = row.ppIsf, duraIsf = row.duraIsf, finalIsf = row.finalIsf,
++            iobThEffective = row.iobThEffective
++        )
++    }
++
++    /** The AIV table a long press on the AutoISF chip opens (2026-11-15): the last 24 hours, newest first. Null = closed. */
++    val aivTable = MutableStateFlow<AivTable?>(null)
++
++    fun openAivTable() {
++        viewModelScope.launch {
++            val now = Clock.System.now().toEpochMilliseconds()
++            val rows = persistenceLayer.getAutoIsfValuesFromTimeToTime(now - AIV_TABLE_HOURS * 60 * 60_000L, now).reversed()
++            aivTable.value = AivTable(rows, mmol = preferences.get(StringKey.GeneralUnits) == "mmol")
++        }
++    }
++
++    fun closeAivTable() {
++        aivTable.value = null
++    }
++
+     /** The pinned keys in their saved order, only those that exist, at most [AUTOISF_MAX_PINNED]. */
+     private fun pinnedAutoIsfValues(known: List<String>): List<String> =
+         preferences.get(StringNonKey.OverviewAutoIsfChipPinned)
+@@ -234,3 +268,9 @@ class ChipsViewModel(
+         }
+     }
+ }
++
++/** The rows of the AIV table, newest first, and whether glucose is shown in mmol/L. */
++data class AivTable(val rows: List<AIV>, val mmol: Boolean)
++
++private const val AIV_CHIP_MAX_AGE_MS = 15 * 60_000L
++private const val AIV_TABLE_HOURS = 24
+diff --git a/core/data/src/commonMain/kotlin/app/aaps/core/data/model/AIV.kt b/core/data/src/commonMain/kotlin/app/aaps/core/data/model/AIV.kt
+new file mode 100644
+index 0000000000..060dfdcffe
+--- /dev/null
++++ b/core/data/src/commonMain/kotlin/app/aaps/core/data/model/AIV.kt
+@@ -0,0 +1,30 @@
++package app.aaps.core.data.model
++
++/**
++ * One AutoISF loop run for the AIV table (2026-11-15, ported from the AaAPS v4 fork). Glucose, deltas and target are
++ * mg/dL, iob, smbDelivered and iobThEffective units, basal U/h. Steps are the step counts used by that loop.
++ */
++data class AIV(
++    val timestamp: Long,
++    val acceIsf: Double,
++    val bgIsf: Double,
++    val ppIsf: Double,
++    val duraIsf: Double,
++    val finalIsf: Double,
++    val glucose: Double,
++    val delta: Double,
++    val shortAvgDelta: Double,
++    val longAvgDelta: Double,
++    val bgAcceleration: Double,
++    val iob: Double,
++    val smbDelivered: Double,
++    val iobThEffective: Double = 0.0,
++    val targetMgdl: Double = 0.0,
++    val smbDeliveryRatio: Double = 0.0,
++    val cob: Double = 0.0,
++    val basal: Double = 0.0,
++    val steps5: Int = 0,
++    val steps15: Int = 0,
++    val steps30: Int = 0,
++    val steps60: Int = 0,
++)
+diff --git a/database/impl/src/commonMain/kotlin/app/aaps/database/daos/AutoIsfValuesDao.kt b/database/impl/src/commonMain/kotlin/app/aaps/database/daos/AutoIsfValuesDao.kt
+new file mode 100644
+index 0000000000..4948fe37f6
+--- /dev/null
++++ b/database/impl/src/commonMain/kotlin/app/aaps/database/daos/AutoIsfValuesDao.kt
+@@ -0,0 +1,23 @@
++package app.aaps.database.daos
++
++import androidx.room.Dao
++import androidx.room.Insert
++import androidx.room.Query
++import app.aaps.database.entities.AutoIsfValues
++import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
++
++@Dao
++internal interface AutoIsfValuesDao {
++
++    @Insert
++    suspend fun insert(entry: AutoIsfValues): Long
++
++    @Query("SELECT * FROM $TABLE_AUTO_ISF_VALUES WHERE timestamp BETWEEN :startMillis AND :endMillis ORDER BY timestamp")
++    suspend fun getFromTimeToTime(startMillis: Long, endMillis: Long): List<AutoIsfValues>
++
++    @Query("SELECT COUNT(*) FROM $TABLE_AUTO_ISF_VALUES WHERE timestamp = :timestamp")
++    suspend fun countAt(timestamp: Long): Int
++
++    @Query("DELETE FROM $TABLE_AUTO_ISF_VALUES WHERE timestamp < :than")
++    suspend fun deleteOlderThan(than: Long): Int
++}
+diff --git a/database/impl/src/commonMain/kotlin/app/aaps/database/entities/AutoIsfValues.kt b/database/impl/src/commonMain/kotlin/app/aaps/database/entities/AutoIsfValues.kt
+new file mode 100644
+index 0000000000..ed39b18084
+--- /dev/null
++++ b/database/impl/src/commonMain/kotlin/app/aaps/database/entities/AutoIsfValues.kt
+@@ -0,0 +1,45 @@
++package app.aaps.database.entities
++
++import androidx.room.Entity
++import androidx.room.Index
++import androidx.room.PrimaryKey
++
++/**
++ * One AutoISF loop run, for the AIV table (2026-11-15, ported from the AaAPS v4 fork). Local only, not uploaded:
++ * a master writes one row per loop, a client writes one row per loop result it receives from the master.
++ */
++@Entity(
++    tableName = TABLE_AUTO_ISF_VALUES,
++    indices = [Index("timestamp")]
++)
++data class AutoIsfValues(
++    @PrimaryKey(autoGenerate = true)
++    var id: Long = 0,
++    var timestamp: Long,
++    var acceIsf: Double,
++    var bgIsf: Double,
++    var ppIsf: Double,
++    var duraIsf: Double,
++    var finalIsf: Double,
++    /** mg/dL */
++    var glucose: Double,
++    /** mg/dL per 5 min */
++    var delta: Double,
++    var shortAvgDelta: Double,
++    var longAvgDelta: Double,
++    var bgAcceleration: Double,
++    var iob: Double,
++    var smbDelivered: Double,
++    /** Effective IOB threshold in units */
++    var iobThEffective: Double = 0.0,
++    /** mg/dL */
++    var targetMgdl: Double = 0.0,
++    var smbDeliveryRatio: Double = 0.0,
++    var cob: Double = 0.0,
++    /** Temp basal rate the loop set, U/h */
++    var basal: Double = 0.0,
++    var steps5: Int = 0,
++    var steps15: Int = 0,
++    var steps30: Int = 0,
++    var steps60: Int = 0,
++)
+diff --git a/database/persistence/src/commonMain/kotlin/app/aaps/database/persistence/converters/AutoIsfValuesExtension.kt b/database/persistence/src/commonMain/kotlin/app/aaps/database/persistence/converters/AutoIsfValuesExtension.kt
+new file mode 100644
+index 0000000000..d45e7b4ce4
+--- /dev/null
++++ b/database/persistence/src/commonMain/kotlin/app/aaps/database/persistence/converters/AutoIsfValuesExtension.kt
+@@ -0,0 +1,20 @@
++package app.aaps.database.persistence.converters
++
++import app.aaps.core.data.model.AIV
++import app.aaps.database.entities.AutoIsfValues
++
++fun AutoIsfValues.fromDb(): AIV = AIV(
++    timestamp = timestamp, acceIsf = acceIsf, bgIsf = bgIsf, ppIsf = ppIsf, duraIsf = duraIsf, finalIsf = finalIsf,
++    glucose = glucose, delta = delta, shortAvgDelta = shortAvgDelta, longAvgDelta = longAvgDelta, bgAcceleration = bgAcceleration,
++    iob = iob, smbDelivered = smbDelivered, iobThEffective = iobThEffective, targetMgdl = targetMgdl,
++    smbDeliveryRatio = smbDeliveryRatio, cob = cob, basal = basal,
++    steps5 = steps5, steps15 = steps15, steps30 = steps30, steps60 = steps60
++)
++
++fun AIV.toDb(): AutoIsfValues = AutoIsfValues(
++    timestamp = timestamp, acceIsf = acceIsf, bgIsf = bgIsf, ppIsf = ppIsf, duraIsf = duraIsf, finalIsf = finalIsf,
++    glucose = glucose, delta = delta, shortAvgDelta = shortAvgDelta, longAvgDelta = longAvgDelta, bgAcceleration = bgAcceleration,
++    iob = iob, smbDelivered = smbDelivered, iobThEffective = iobThEffective, targetMgdl = targetMgdl,
++    smbDeliveryRatio = smbDeliveryRatio, cob = cob, basal = basal,
++    steps5 = steps5, steps15 = steps15, steps30 = steps30, steps60 = steps60
++)
+diff --git a/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/AivTableDialog.kt b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/AivTableDialog.kt
+new file mode 100644
+index 0000000000..5d0a16b33d
+--- /dev/null
++++ b/ui/src/commonMain/kotlin/app/aaps/ui/compose/overview/chips/AivTableDialog.kt
+@@ -0,0 +1,120 @@
++package app.aaps.ui.compose.overview.chips
++
++import androidx.compose.foundation.horizontalScroll
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.Row
++import androidx.compose.foundation.layout.heightIn
++import androidx.compose.foundation.layout.padding
++import androidx.compose.foundation.layout.width
++import androidx.compose.foundation.lazy.LazyColumn
++import androidx.compose.foundation.lazy.items
++import androidx.compose.foundation.rememberScrollState
++import androidx.compose.material3.AlertDialog
++import androidx.compose.material3.HorizontalDivider
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.material3.TextButton
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.style.TextAlign
++import androidx.compose.ui.unit.Dp
++import androidx.compose.ui.unit.dp
++import app.aaps.core.data.configuration.Constants
++import app.aaps.core.data.model.AIV
++import app.aaps.core.ui.CoreUiStrings
++import app.aaps.core.ui.compose.LocalDateUtil
++import app.aaps.core.ui.compose.stringResource
++import kotlin.math.abs
++import kotlin.math.roundToLong
++
++/**
++ * The AIV table (2026-11-15, ported from the AaAPS v4 fork): one line per AutoISF loop run of the last 24 hours,
++ * newest first. Opened by a long press on the AutoISF chip, on the master and on its clients. Display only.
++ */
++@Composable
++fun AivTableDialog(table: AivTable?, onClose: () -> Unit) {
++    table ?: return
++    val dateUtil = LocalDateUtil.current
++    val scroll = rememberScrollState()
++    val columns = aivColumns(table.mmol)
++    AlertDialog(
++        onDismissRequest = onClose,
++        title = { Text("AIV  (${table.rows.size})") },
++        text = {
++            if (table.rows.isEmpty()) Text("No AutoISF rows in the last 24 hours")
++            else Column(modifier = Modifier.horizontalScroll(scroll)) {
++                Row {
++                    AivCell("Time", TIME_WIDTH, bold = true)
++                    columns.forEach { AivCell(it.title, it.width, bold = true) }
++                }
++                HorizontalDivider()
++                LazyColumn(modifier = Modifier.heightIn(max = 480.dp).width(TIME_WIDTH + columns.fold(0.dp) { sum, c -> sum + c.width })) {
++                    items(table.rows, key = { it.timestamp }) { row ->
++                        Row {
++                            AivCell(dateUtil.timeString(row.timestamp), TIME_WIDTH)
++                            columns.forEach { AivCell(it.value(row), it.width) }
++                        }
++                    }
++                }
++            }
++        },
++        confirmButton = { TextButton(onClick = onClose) { Text(stringResource(CoreUiStrings.close)) } }
++    )
++}
++
++@Composable
++private fun AivCell(text: String, width: Dp, bold: Boolean = false) {
++    Text(
++        text = text,
++        modifier = Modifier.width(width).padding(horizontal = 2.dp, vertical = 1.dp),
++        style = MaterialTheme.typography.labelSmall,
++        fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
++        textAlign = TextAlign.End,
++        maxLines = 1
++    )
++}
++
++private class AivColumn(val title: String, val width: Dp, val value: (AIV) -> String)
++
++private fun aivColumns(mmol: Boolean): List<AivColumn> {
++    fun bg(mgdl: Double) = if (mmol) fixed(mgdl * Constants.MGDL_TO_MMOLL, 1) else fixed(mgdl, 0)
++    fun delta(mgdl: Double) = if (mmol) fixed(mgdl * Constants.MGDL_TO_MMOLL, 2) else fixed(mgdl, 1)
++    return listOf(
++        AivColumn("BG", 40.dp) { bg(it.glucose) },
++        AivColumn("Δ", 44.dp) { delta(it.delta) },
++        AivColumn("sΔ", 44.dp) { delta(it.shortAvgDelta) },
++        AivColumn("lΔ", 44.dp) { delta(it.longAvgDelta) },
++        AivColumn("acce", 44.dp) { fixed(it.bgAcceleration, 2) },
++        AivColumn("ACCE", 40.dp) { fixed(it.acceIsf, 2) },
++        AivColumn("BG", 40.dp) { fixed(it.bgIsf, 2) },
++        AivColumn("PP", 40.dp) { fixed(it.ppIsf, 2) },
++        AivColumn("DURA", 40.dp) { fixed(it.duraIsf, 2) },
++        AivColumn("FINAL", 44.dp) { fixed(it.finalIsf, 2) },
++        AivColumn("iobTH", 44.dp) { fixed(it.iobThEffective, 2) },
++        AivColumn("IOB", 40.dp) { fixed(it.iob, 2) },
++        AivColumn("SMB", 40.dp) { fixed(it.smbDelivered, 2) },
++        AivColumn("DR", 36.dp) { fixed(it.smbDeliveryRatio, 2) },
++        AivColumn("COB", 36.dp) { fixed(it.cob, 0) },
++        AivColumn("TBR", 40.dp) { fixed(it.basal, 2) },
++        AivColumn("target", 44.dp) { bg(it.targetMgdl) },
++        AivColumn("S5", 36.dp) { it.steps5.toString() },
++        AivColumn("S15", 40.dp) { it.steps15.toString() },
++        AivColumn("S30", 40.dp) { it.steps30.toString() },
++        AivColumn("S60", 44.dp) { it.steps60.toString() },
++    )
++}
++
++private val TIME_WIDTH = 52.dp
++
++/** [value] with [decimals] decimals, the same text on every platform (no String.format in common code). */
++private fun fixed(value: Double, decimals: Int): String {
++    if (!value.isFinite()) return "-"
++    var factor = 1L
++    repeat(decimals) { factor *= 10 }
++    val scaled = (abs(value) * factor).roundToLong()
++    val whole = scaled / factor
++    val fraction = scaled % factor
++    val sign = if (value < 0 && scaled != 0L) "-" else ""
++    return if (decimals == 0) "$sign$whole" else "$sign$whole.${fraction.toString().padStart(decimals, '0')}"
++}

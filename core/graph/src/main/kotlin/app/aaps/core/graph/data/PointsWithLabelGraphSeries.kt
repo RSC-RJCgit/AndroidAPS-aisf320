@@ -24,6 +24,9 @@ import java.util.Locale
 /** A 0.00 bolus arrow is this much larger than the SMB arrow at the BG dot. */
 private const val ZERO_BOLUS_ARROW_SCALE = 1.5f
 
+/** Bolus and carb triangles on the BG graph (2026-11-15, per explicit request: they were too small, carbs hard to see). */
+private const val TREATMENT_TRIANGLE_SCALE = 1.6f
+
 /** The steps arrow (2026-10-29): what step counts took off an SMB, mirrored on its baseline arrowhead. */
 private val STEP_CUT_ARROW_COLOR = Color.rgb(255, 32, 32)
 
@@ -368,10 +371,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     drawArrows(points, canvas, mPaint)
                 } else if (value.shape == Shape.CARBS) {
                     mPaint.strokeWidth = 0f
+                    val carbSize = scaledPxSize * TREATMENT_TRIANGLE_SCALE
                     val points = arrayOf(
-                        Point(endX.toInt(), (endY - scaledPxSize).toInt()),
-                        Point((endX + scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt()),
-                        Point((endX - scaledPxSize).toInt(), (endY + scaledPxSize * 0.67).toInt())
+                        Point(endX.toInt(), (endY - carbSize).toInt()),
+                        Point((endX + carbSize).toInt(), (endY + carbSize * 0.67).toInt()),
+                        Point((endX - carbSize).toInt(), (endY + carbSize * 0.67).toInt())
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
@@ -855,9 +859,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, triBase, endX, triBase + scaledTextSize * 0.25f * k, mPaint)
                 } else {
-                    val halfWidth = bolusSize * 1.15f
+                    val triangleSize = bolusSize * TREATMENT_TRIANGLE_SCALE
+                    val halfWidth = triangleSize * 1.15f
                     // Leave room above the tip of a carb triangle drawn at the same reading.
-                    val apex = endY - bolusSize * 1.35f
+                    val apex = endY - triangleSize * 1.35f
                     val base = apex - halfWidth * 1.67f
                     drawArrows(arrayOf(
                         Point(endX.toInt(), apex.toInt()),
