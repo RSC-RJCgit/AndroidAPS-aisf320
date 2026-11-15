@@ -218,7 +218,7 @@
     <string name="wizard_split_fpu_bolus">Use split boluses for FPU</string>
     <string name="wizard_fpu_instead" comment="Checkbox. Ticked accepts automatic fat and protein from the carb grams. Fat is 0.35 times the carbs. Protein is 0.4 times the carbs. Those are later hourly doses. Extended carbs are off. Unticked leaves the typed fat and protein. Grams above 0 still schedule hourly doses.">Accept automatic fat and protein later</string>
     <string name="wizard_give_rest_later" comment="Checkbox, on by default. The fall caution removes part of the bolus now. Ticked gives that part later as hourly boluses. The first dose waits an hour. Unticked, that part is not given.">Delay part of the bolus (safety)</string>
-    <string name="wizard_split_over_max" comment="Checkbox in the bolus calculator and switch in a QuickWizard button. Ticked: max bolus is given now and the rest over max bolus later, in parts, while BG is 7.0 or more and not falling.">Give the rest over max bolus later, in parts</string>
+    <string name="wizard_split_over_max" comment="Checkbox in the bolus calculator and switch in a QuickWizard button. Ticked: max bolus is given now and the rest over max bolus later, in parts, while BG is 6.0 or more (and not falling below 8.0) and HP1 is 4.0 or more.">Give the rest over max bolus later, in parts</string>
     <string name="wizard_split_interval">Minutes between parts</string>
     <string name="wizard_insulin_only_title" comment="Title of the bolus calculator when it is opened from the Insulin dialog: the typed dose is given, the calculation only shows the suggestion.">Bolus calculator: insulin only</string>
     <string name="wizard_insulin_to_give" comment="Insulin-only mode of the bolus calculator: the dose that is given, typed by the user.">Insulin to give</string>
@@ -308,6 +308,7 @@
     <string name="autoisf_history_note" comment="Care-portal notes written during this loop.">notes</string>
     <string name="autoisf_history_mj" comment="Column header: the meal state (MJ) at that time, for example MJa, MJ2, MJ3 or NOM.">MJ</string>
     <string name="autoisf_history_smb">SMB</string>
+    <string name="autoisf_history_bolus" comment="Column header. Manual, calculator, carb-split and protein/fat boluses (not SMBs) since the row before.">Bolus</string>
     <string name="autoisf_history_steps_5" comment="Steps in the last 5 minutes.">S5</string>
     <string name="autoisf_history_steps_15" comment="Steps in the last 15 minutes.">S15</string>
     <string name="autoisf_history_steps_30" comment="Steps in the last 30 minutes.">S30</string>

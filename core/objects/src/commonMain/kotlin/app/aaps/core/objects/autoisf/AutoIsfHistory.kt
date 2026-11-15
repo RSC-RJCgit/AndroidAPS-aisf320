@@ -1,6 +1,7 @@
 package app.aaps.core.objects.autoisf
 
 import app.aaps.core.data.model.AIV
+import app.aaps.core.data.model.BS
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
@@ -82,7 +83,10 @@ data class AutoIsfHistoryRow(
     val steps30: String,
     val steps60: String,
     val steps180: String,
-    val fullNote: String = ""
+    val fullNote: String = "",
+    /** Manual, calculator, carb-split and protein/fat boluses since the row before (2026-11-15, per explicit request). */
+    val bolus: String = "--",
+    val hasBolus: Boolean = false
 )
 
 /** Column names for the exported files, in the order of [cells]. */
@@ -90,7 +94,9 @@ val AUTO_ISF_HISTORY_EXPORT_HEADER = listOf(
     "Time", "BGL", "UKF", "UKFd5", "UKFd15", "Final", "acce", "bg", "pp", "dura",
     "Accel", "Delta", "Short", "Long", "IOB", "IOd5", "IOBth", "SMB",
     "Target", "UCI", "SMBratio", "AccW", "ppW", "Slope", "COB", "TBR", "PBasal", "Notes", "MJ",
-    "S5", "S15", "S30", "S60", "S180"
+    "S5", "S15", "S30", "S60", "S180",
+    // Last, so the columns of older exported files keep their places (2026-11-15)
+    "Bolus"
 )
 
 /** Every cell of the row after the time, in screen order. */
@@ -101,8 +107,19 @@ fun AutoIsfHistoryRow.scrollingCells(): List<String> = listOf(
     steps5, steps15, steps30, steps60, steps180
 )
 
-/** The whole row, time first, for the exported files. */
-fun AutoIsfHistoryRow.cells(): List<String> = listOf(time) + scrollingCells()
+/** The whole row, time first, for the exported files. Bolus is last there, after the older columns. */
+fun AutoIsfHistoryRow.cells(): List<String> = listOf(time) + scrollingCells() + bolus
+
+/** The boluses that are not SMBs since the next older row and up to this row (rows newest first). */
+private fun bolusesForRow(rows: List<AIV>, index: Int, boluses: List<Pair<Long, Double>>): Double {
+    val until = rows[index].timestamp
+    val from = rows.getOrNull(index + 1)?.timestamp ?: (until - 5 * 60_000L)
+    return boluses.filter { it.first > from && it.first <= until }.sumOf { it.second }
+}
+
+/** Valid boluses that are not SMBs or priming, as (time, units), for [autoIsfHistoryRows]. */
+fun List<BS>.nonSmbBoluses(): List<Pair<Long, Double>> =
+    filter { it.isValid && it.amount > 0.0 && it.type != BS.Type.SMB && it.type != BS.Type.PRIMING }.map { it.timestamp to it.amount }
 
 /**
  * The MJ state a care-portal note sets, or null when the note is not about MJ.
@@ -179,8 +196,11 @@ fun List<AIV>.autoIsfHistoryRows(
     fromLivePhone: Boolean = false,
     ownDevice: String = "",
     smsTexts: Map<Long, String> = emptyMap(),
-    profileBasalAt: (Long) -> Double? = { null }
+    profileBasalAt: (Long) -> Double? = { null },
+    /** Boluses that are not SMBs, as (time, units); see [nonSmbBoluses]. */
+    boluses: List<Pair<Long, Double>> = emptyList()
 ): List<AutoIsfHistoryRow> = mapIndexed { index, row ->
+    val bolus = bolusesForRow(this, index, boluses)
     val factor = dominantAutoIsfFactor(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)
     val sample = LiveSteps.sampleFor(row.timestamp, steps, fromLivePhone, ownDevice)
     val rowNotes = carePortalNotesForRow(this, index, notes)
@@ -222,7 +242,9 @@ fun List<AIV>.autoIsfHistoryRows(
         steps30 = sample?.steps30min?.toString() ?: "--",
         steps60 = sample?.steps60min?.toString() ?: "--",
         steps180 = sample?.steps180min?.toString() ?: "--",
-        fullNote = rowNotes.asSequence().map { it.first }.distinct().mapNotNull { smsTexts[it] }.joinToString("\n")
+        fullNote = rowNotes.asSequence().map { it.first }.distinct().mapNotNull { smsTexts[it] }.joinToString("\n"),
+        bolus = autoIsfAmountText(bolus, format2),
+        hasBolus = bolus > 0.0
     )
 }
 
@@ -257,7 +279,9 @@ suspend fun loadAutoIsfHistoryRows(
         .map { it.timestamp to it.note.orEmpty().trim() }
     // Profile basal at each row's time (not the running/temp rate). Looked up here because the lookup is suspend.
     val profileBasal = aivRows.associate { it.timestamp to profileFunction.getProfile(it.timestamp)?.getBasal(it.timestamp) }
+    val boluses = persistenceLayer.getBolusesFromTimeToTime(from - 10 * 60_000L, now, true).nonSmbBoluses()
     return aivRows.autoIsfHistoryRows(
+        boluses = boluses,
         profileBasalAt = { profileBasal[it] },
         timeText = { dateUtil.timeString(it) },
         glucoseText = { profileUtil.fromMgdlToStringInUnits(it, units) },

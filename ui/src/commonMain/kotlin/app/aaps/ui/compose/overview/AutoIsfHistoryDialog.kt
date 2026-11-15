@@ -53,7 +53,8 @@ fun AutoIsfHistoryDialog(
     endTime: Long? = null
 ) {
     var smbOnly by remember { mutableStateOf(false) }
-    val shown = if (smbOnly) rows.filter { it.hasSmb } else rows
+    // A bolus row stays too, so all insulin given is shown (2026-11-15, per explicit request)
+    val shown = if (smbOnly) rows.filter { it.hasSmb || it.hasBolus } else rows
     val horizontal = rememberScrollState()
     val windowSize = LocalWindowInfo.current.containerSize
     val dialogWidth = with(LocalDensity.current) { windowSize.width.toDp() * 0.98f }.coerceAtLeast(1.dp)
@@ -170,6 +171,7 @@ private fun historyHeaders(): List<String> = listOf(
     stringResource(UiStrings.autoisf_history_iod5),
     stringResource(UiStrings.autoisf_history_iob_th),
     stringResource(UiStrings.autoisf_history_smb),
+    stringResource(UiStrings.autoisf_history_bolus),
     stringResource(UiStrings.autoisf_history_target),
     stringResource(UiStrings.autoisf_history_uam),
     stringResource(UiStrings.autoisf_history_smb_ratio),
@@ -189,7 +191,12 @@ private fun historyHeaders(): List<String> = listOf(
     stringResource(UiStrings.autoisf_history_full_note)
 )
 
-private fun AutoIsfHistoryRow.historyCells(): List<String> = scrollingCells() + fullNote.ifBlank { "--" }
+// On screen the bolus sits after SMB (in the exported files it is last, see cells())
+private fun AutoIsfHistoryRow.historyCells(): List<String> =
+    scrollingCells().toMutableList().apply { add(SMB_CELL_INDEX + 1, bolus) } + fullNote.ifBlank { "--" }
+
+/** Index of SMB in scrollingCells(). */
+private const val SMB_CELL_INDEX = 16
 
 @Composable
 private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
@@ -215,6 +222,7 @@ private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
         insulin,
         insulin,
         factorColor(row.smbFactor, insulin),
+        insulin,
         glucose,
         insulin,
         insulin,
