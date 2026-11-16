@@ -286,7 +286,9 @@ class ProfilePlugin @Inject constructor(
         return ProfileSource.SingleProfile(
             name = verifiedName,
             mgdl = profile.units == GlucoseUnit.MGDL,
-            dia = pureJson.getDouble("dia"),
+            // 2026-11-17, per explicit request: a store from a v4/iOS client has no "dia", and getDouble threw "No value for dia",
+            // so Live rejected every such store. Take the DIA the parsed profile already resolved (this phone's own when missing).
+            dia = if (pureJson.has("dia")) pureJson.getDouble("dia") else pureProfile.dia,
             ic = pureJson.getJSONArray("carbratio"),
             isf = pureJson.getJSONArray("sens"),
             basal = pureJson.getJSONArray("basal"),
