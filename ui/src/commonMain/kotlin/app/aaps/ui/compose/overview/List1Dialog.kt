@@ -5,16 +5,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -25,6 +23,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -33,6 +32,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData.AutoIsfListSnapshot
 import app.aaps.core.objects.autoisf.List1Row
+import app.aaps.core.objects.autoisf.ListTick
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.UiStrings
@@ -175,7 +175,9 @@ private fun DirectListDialog(
         }
     }
     val row = rows.firstOrNull { it.label == pickedLabel }
-    if (row != null && row.choices.isNotEmpty()) {
+    if (row != null && row.ticks.isNotEmpty()) {
+        TicksDialog(row, onDismiss = { pickedLabel = null }, onApply = onApply)
+    } else if (row != null && row.choices.isNotEmpty()) {
         // A combined row (2026-11-16, per explicit request): one button per code. These go to the loop phone only.
         AlertDialog(
             onDismissRequest = { pickedLabel = null },
@@ -203,6 +205,7 @@ private fun DirectListDialog(
         )
     } else if (row != null) {
         val up = row.upMmol
+        var stepChoice by remember(row.label) { mutableStateOf<Double?>(null) }
         AlertDialog(
             onDismissRequest = { pickedLabel = null },
             title = { Text(row.label) },
@@ -213,6 +216,7 @@ private fun DirectListDialog(
                     if (showLoopValues && !row.readOnly && row.upMmol != null) {
                         Text(stringResource(UiStrings.direct_list_loop_phone_only))
                     }
+                    if (!row.readOnly && up != null) StepTicks(row, stepChoice) { stepChoice = it }
                 }
             },
             confirmButton = {
@@ -224,16 +228,11 @@ private fun DirectListDialog(
                         pickedLabel = null
                     }) { Text(if (showLoopValues) stringResource(UiStrings.direct_list_loop_phone) else "OK") }
                 } else {
-                    Row {
-                        TextButton(onClick = {
-                            onApply(row.downMmol)
-                            pickedLabel = null
-                        }) { Text("Down") }
-                        TextButton(onClick = {
-                            onApply(up)
-                            pickedLabel = null
-                        }) { Text("Up") }
-                    }
+                    // 2026-11-16, per explicit request: as v3, tick Down or Up, then OK (OK with neither ticked sends nothing)
+                    TextButton(onClick = {
+                        stepChoice?.let(onApply)
+                        pickedLabel = null
+                    }) { Text(if (showLoopValues) stringResource(UiStrings.direct_list_loop_phone) else "OK") }
                 }
             },
             dismissButton = {
@@ -241,6 +240,54 @@ private fun DirectListDialog(
             }
         )
     }
+}
+
+/** Down and Up as two tick boxes, only one ticked at a time, as v3's stepped rows (2026-11-16, per explicit request). */
+@Composable
+private fun StepTicks(row: List1Row, chosen: Double?, onChosen: (Double?) -> Unit) {
+    val up = row.upMmol ?: return
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        val (downLabel, upLabel) = row.stepLabels ?: ("Down" to "Up")
+        TickLine(downLabel, chosen == row.downMmol) { onChosen(if (it) row.downMmol else null) }
+        TickLine(upLabel, chosen == up) { onChosen(if (it) up else null) }
+    }
+}
+
+@Composable
+private fun TickLine(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().clickable(role = Role.Checkbox) { onChange(!checked) }
+    ) {
+        Checkbox(checked = checked, onCheckedChange = onChange)
+        Text(label)
+    }
+}
+
+/** A row of tick boxes and OK, as v3's graph dialogs: OK sends the on or off code of each tick that was changed. */
+@Composable
+private fun TicksDialog(row: List1Row, onDismiss: () -> Unit, onApply: (Double) -> Unit) {
+    var states by remember(row.label) { mutableStateOf(row.ticks.map { it.checked }) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(row.label) },
+        text = {
+            Column {
+                row.ticks.forEachIndexed { index, tick: ListTick ->
+                    TickLine(tick.label, states[index]) { checked -> states = states.toMutableList().also { it[index] = checked } }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                row.ticks.forEachIndexed { index, tick -> if (states[index] != tick.checked) onApply(if (states[index]) tick.onCode else tick.offCode) }
+                onDismiss()
+            }) { Text("OK") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @Composable
@@ -291,11 +338,7 @@ private fun ApplyHereDialog(
                 if (!canApplyOnLoop && row.loopValueKey?.let { snapshot?.values?.containsKey(it) } == true) {
                     Text(stringResource(UiStrings.direct_list_loop_command_unsupported))
                 }
-                if (up != null) Row(modifier = Modifier.padding(top = 8.dp)) {
-                    FilterChip(selected = chosen == row.downMmol, onClick = { chosen = row.downMmol }, label = { Text("Down") })
-                    Spacer(Modifier.width(8.dp))
-                    FilterChip(selected = chosen == up, onClick = { chosen = up }, label = { Text("Up") })
-                }
+                if (up != null) StepTicks(row, chosen) { chosen = it }
             }
         },
         confirmButton = {

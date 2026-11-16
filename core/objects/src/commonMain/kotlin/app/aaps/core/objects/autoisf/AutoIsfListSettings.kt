@@ -8,6 +8,7 @@ import app.aaps.core.keys.DoubleNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.readTier
 import app.aaps.core.keys.tierSummary
@@ -46,6 +47,14 @@ const val LOCAL_GRAPH5_BGL_ONLY_OFF = -47.0
 /** List 2 "Send AnyDesk restart (local test)" (2026-11-16, per explicit request, as 3426's 5.180): opens AnyDesk on the phone tapped. */
 const val LOCAL_ANYDESK_THIS_PHONE = -48.0
 
+/** List 2 row 33 "Graph: UKF1 raw-smoothed": the UKF line on the BG graph (its overlay menu tick), this phone only (2026-11-16, as v3). */
+const val LOCAL_UKF_LINE_ON = -49.0
+const val LOCAL_UKF_LINE_OFF = -50.0
+
+/** List 2 row 34 "Graph: Graph5 panel": Graph5 on or off on this phone only (2026-11-16, as v3's Graph5 dialog). */
+const val LOCAL_GRAPH5_ON = -51.0
+const val LOCAL_GRAPH5_OFF = -52.0
+
 data class List1Row(
     val label: String,
     val current: String,
@@ -56,7 +65,44 @@ data class List1Row(
     val loopValueKey: String? = downMmol.takeIf { it > 0 }?.toString(),
     // One row with several codes, each its own button (2026-11-16, per explicit request: the rows v3 combines). downMmol is the first.
     val choices: List<Pair<String, Double>> = emptyList(),
+    // Tick boxes and OK, as v3's graph dialogs (2026-11-16, per explicit request). OK sends the on or off code of each tick that changed.
+    val ticks: List<ListTick> = emptyList(),
+    // The names of the Down and Up ticks of a stepped row: the step, as v3 (2026-11-16, per explicit request). Null = "Down" and "Up".
+    val stepLabels: Pair<String, String>? = STEP_LABELS[downMmol],
 )
+
+/** The step of each stepped row, by its Down code, as v3's tick names (2026-11-16, per explicit request). */
+val STEP_LABELS: Map<Double, Pair<String, String>> = mapOf(
+    5.002 to ("-0.01" to "+0.01"),
+    5.012 to ("-0.01" to "+0.01"),
+    5.016 to ("-0.05" to "+0.05"),
+    5.022 to ("-0.1" to "+0.1"),
+    5.026 to ("-0.01" to "+0.01"),
+    5.032 to ("-0.05" to "+0.05"),
+    5.036 to ("-0.1" to "+0.1"),
+    5.046 to ("-5%" to "+5%"),
+    5.052 to ("-0.25" to "+0.25"),
+    5.056 to ("-0.01" to "+0.01"),
+    5.062 to ("-0.01" to "+0.01"),
+    5.068 to ("-0.1" to "+0.1"),
+    5.074 to ("-5 min" to "+5 min"),
+    5.080 to ("-0.1" to "+0.1"),
+    5.086 to ("-0.1" to "+0.1"),
+    5.092 to ("-0.1" to "+0.1"),
+    5.098 to ("-0.1" to "+0.1"),
+    5.104 to ("-0.1" to "+0.1"),
+    5.110 to ("-0.1" to "+0.1"),
+    5.116 to ("-0.1" to "+0.1"),
+    5.122 to ("-0.1" to "+0.1"),
+    5.128 to ("-0.1" to "+0.1"),
+    5.134 to ("-0.1" to "+0.1"),
+    5.182 to ("-0.25" to "+0.25"),
+    5.186 to ("-0.25" to "+0.25"),
+    5.190 to ("-5%" to "+5%")
+)
+
+/** One tick box of a [List1Row]: shown ticked when [checked]; OK sends [onCode] or [offCode] when the tick was changed. */
+data class ListTick(val label: String, val checked: Boolean, val onCode: Double, val offCode: Double)
 
 fun numberedListRows(rows: List<List1Row>): List<List1Row> =
     rows.mapIndexed { index, row -> row.copy(label = "${index + 1}. ${row.label}") }
@@ -67,7 +113,9 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
     fun profilePickerRows(): List<List1Row> = numberedListRows(listOf(CODED_PROFILES_ROW))
 
     // 2026-11-16, per explicit request: the row names are 3426's, so the same row reads the same in v3 and v4. Codes unchanged.
-    fun list1Rows(insulinPeakText: String, runningProfileName: String): List<List1Row> {
+    // showUkfComparison (2026-11-16, per explicit request): row 38 only on a Virtual loop phone, as v3. It is the last row,
+    // so no other row moves.
+    fun list1Rows(insulinPeakText: String, runningProfileName: String, showUkfComparison: Boolean = true): List<List1Row> {
         val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
         val two: (Double) -> String = { decimalFormatter.to2Decimal(it) }
         val one: (Double) -> String = { decimalFormatter.to1Decimal(it) }
@@ -104,18 +152,11 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Tog Graph5 (main clone) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfShowGraph5)), 5.142, null),
             // 2026-11-16, per explicit request: these rows are combined and in the same order as v3, so both have the same numbers.
             List1Row(
-                "MJ state (manual override)", "MJ active, MJ2, MJ3 or NOMJremains", 5.222, null, loopValueKey = null,
+                // 2026-11-16, per explicit request: shows the MJ state now, as v3 (a client shows the loop phone's)
+                "MJ state (manual override)", "Now: ${automationState("MJ").ifBlank { "not set" }}", 5.222, null, loopValueKey = "mjState",
                 choices = listOf("MJ active" to 5.222, "MJ2" to 5.224, "MJ3" to 5.146, "NOMJremains" to 5.144),
             ),
-            List1Row(
-                "Switch to Standard/Low profile now",
-                "Standard ${preferences.get(StringKey.ApsAutoIsfStandardProfileName)}, Low ${preferences.get(StringKey.ApsAutoIsfLowProfileName)}",
-                5.148, null, loopValueKey = null,
-                choices = listOf(
-                    "Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})" to 5.148,
-                    "Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})" to 5.150,
-                ),
-            ),
+            standardLowRow(runningProfileName),
             List1Row(
                 "Set Standard+Low tier (A/B/C)", tierNowText(runningProfileName), 5.216, null, loopValueKey = "tierNow",
                 choices = listOf("Tier A" to 5.216, "Tier B" to 5.218, "Tier C" to 5.220),
@@ -123,15 +164,42 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             CODED_PROFILES_ROW,
             List1Row("Sensor age code", onOff(preferences.get(BooleanKey.ApsAutoIsfSensorAgeCodeEnabled)), 5.156, null),
             List1Row(
-                "Hypo alarm state (manual)", "AlarmRecent (set) or NoAlarmRecent (clear)", 5.240, null, loopValueKey = null,
+                // 2026-11-16, per explicit request: shows the AlarmHypo state now, as v3 (a client shows the loop phone's)
+                "Hypo alarm state (manual)", "Now: ${automationState("AlarmHypo").ifBlank { "not set" }}", 5.240, null, loopValueKey = "alarmHypo",
                 choices = listOf("AlarmRecent (set)" to 5.240, "NoAlarmRecent (clear)" to 5.242),
             ),
             List1Row("Tog coded automations (all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfCodedAutomationsEnabled)), 5.248, null),
-            List1Row("Tog UKFset1 (Virtual live comparison) on/off", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null),
+        ) + listOfNotNull(
+            List1Row("Tog UKFset1 (Virtual live comparison) on/off", onOff(preferences.get(BooleanNonKey.ApsAutoIsfFslUseUkfSmoothing)), 5.152, null)
+                .takeIf { showUkfComparison },
         ))
     }
 
-    fun list2Rows(): List<List1Row> {
+    /**
+     * List 1 row 32 (2026-11-16, per explicit request, as v3): says which role runs now and offers only the other one, which is
+     * v3's confirm step. With neither role running (a steroid or MJ profile, say) both are offered.
+     */
+    private fun standardLowRow(runningProfileName: String): List1Row {
+        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+        val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName)
+        val toStandard = "Switch to Standard ($standardName)" to 5.148
+        val toLow = "Switch to Low ($lowName)" to 5.150
+        val (current, choices) = when {
+            standardName.isNotBlank() && runningProfileName == standardName -> "Currently: Standard ($standardName)" to listOf(toLow)
+            lowName.isNotBlank() && runningProfileName == lowName           -> "Currently: Low ($lowName)" to listOf(toStandard)
+            else                                                            -> "Currently on neither role ($runningProfileName)" to listOf(toStandard, toLow)
+        }
+        return List1Row("Switch to Standard/Low profile now", current, 5.148, null, loopValueKey = "standardLowNow", choices = choices)
+    }
+
+    /** The current value of a named automation state (MJ, AlarmHypo), from the stored states. Empty when not set. */
+    private fun automationState(name: String): String =
+        Regex("\"" + Regex.escape(name) + "\"\\s*:\\s*\"([^\"]*)\"")
+            .find(preferences.get(StringNonKey.AutomationCurrentStates))?.groupValues?.get(1).orEmpty()
+
+    // isClient and ukfLineOn (2026-11-16, per explicit request): AnyDesk asks a client which phone, and row 33 shows this phone's
+    // UKF line, which lives in the graph layout rather than in a setting.
+    fun list2Rows(isClient: Boolean = false, ukfLineOn: Boolean = false): List<List1Row> {
         val onOff: (Boolean) -> String = { if (it) "ON" else "OFF" }
         return numberedListRows(listOf(
             List1Row("MJ start", "low, 0.35, 70", 5.158, null, loopValueKey = null),
@@ -158,7 +226,12 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("HP1 help insulin at BG over 8.0 on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled)), 5.254, null),
             List1Row("Loop interval: every 1 min / every 5 min", if (preferences.get(BooleanKey.ApsAutoIsfLoopEveryMinute)) "every 1 min" else "every 5 min", 5.234, null),
             List1Row("Location SMS from the loop phone (model)", preferences.get(StringKey.AutomationLocationSmsDeviceModel).ifBlank { onOff(false) }, 5.204, null),
-            List1Row("Send AnyDesk restart", "send now", 5.178, null, loopValueKey = null),
+            // 2026-11-16, per explicit request: one AnyDesk row. A loop phone restarts AnyDesk on itself; a client picks this phone or
+            // the loop phone. The separate local-test row is gone (v3 row 33, v4 row 35).
+            if (isClient) List1Row(
+                "Send AnyDesk restart", "this phone or the loop phone", 5.178, null, loopValueKey = null,
+                choices = listOf("This phone (Android only)" to LOCAL_ANYDESK_THIS_PHONE, "Loop phone" to 5.178),
+            ) else List1Row("Send AnyDesk restart", "restarts AnyDesk on this phone", 5.178, null, loopValueKey = null),
             List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null),
             List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null),
             List1Row("ADB wireless: attempt Shizuku start (Virtual only)", adbPortText(), 5.208, null),
@@ -166,22 +239,24 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Boost max (boost_max, U)", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfUamBoostMaxBolus)), 5.186, 5.188),
             List1Row("Boost max IOB (% of max_iob)", preferences.get(IntKey.ApsAutoIsfUamBoostMaxIobPercent).toString(), 5.190, 5.192),
             List1Row("MJ state copy from the loop phone on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfUseLiveMjStateOnVirtual)), 5.236, null),
+            // 2026-11-16, per explicit request: the two graph dialogs as v3's rows 33 and 34 (two ticks, then OK), this phone only
             List1Row(
-                "Graph: UKF line uses libre slope & offset (this phone)", onOff(preferences.get(BooleanKey.Ukf1ApplyLibreCalibration)),
-                LOCAL_UKF_CALIBRATION_ON, null, loopValueKey = null,
-                choices = listOf("On" to LOCAL_UKF_CALIBRATION_ON, "Off" to LOCAL_UKF_CALIBRATION_OFF),
+                "Graph: UKF1 raw-smoothed",
+                "UKF1 line ${onOff(ukfLineOn)}, Use libre slope & offset ${onOff(preferences.get(BooleanKey.Ukf1ApplyLibreCalibration))}",
+                LOCAL_UKF_LINE_ON, null, loopValueKey = null,
+                ticks = listOf(
+                    ListTick("Use libre slope & offset", preferences.get(BooleanKey.Ukf1ApplyLibreCalibration), LOCAL_UKF_CALIBRATION_ON, LOCAL_UKF_CALIBRATION_OFF),
+                    ListTick("Graph on", ukfLineOn, LOCAL_UKF_LINE_ON, LOCAL_UKF_LINE_OFF),
+                ),
             ),
             List1Row(
-                "Graph5 BGL only (this phone)", onOff(preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly)),
-                LOCAL_GRAPH5_BGL_ONLY_ON, null, loopValueKey = null,
-                choices = listOf("On" to LOCAL_GRAPH5_BGL_ONLY_ON, "Off" to LOCAL_GRAPH5_BGL_ONLY_OFF),
-            ),
-            // 2026-11-16, per explicit request: v3's row 33. Nothing goes to the loop phone. Android only: the Windows client and
-            // iPhone have no AnyDesk for Android and record "AdMs" (not opened).
-            List1Row(
-                "Send AnyDesk restart (local test, this phone, Android only)", "opens AnyDesk on this phone",
-                LOCAL_ANYDESK_THIS_PHONE, null, loopValueKey = null,
-                choices = listOf("Open AnyDesk on this phone" to LOCAL_ANYDESK_THIS_PHONE),
+                "Graph: Graph5 panel",
+                "Graph5 ${onOff(preferences.get(BooleanKey.ApsAutoIsfShowGraph5))}, BGL only ${onOff(preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly))}",
+                LOCAL_GRAPH5_ON, null, loopValueKey = null,
+                ticks = listOf(
+                    ListTick("BGL only (hide IA/carbs x3)", preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly), LOCAL_GRAPH5_BGL_ONLY_ON, LOCAL_GRAPH5_BGL_ONLY_OFF),
+                    ListTick("Graph on", preferences.get(BooleanKey.ApsAutoIsfShowGraph5), LOCAL_GRAPH5_ON, LOCAL_GRAPH5_OFF),
+                ),
             ),
         ))
     }

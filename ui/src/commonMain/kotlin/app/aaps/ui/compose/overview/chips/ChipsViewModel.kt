@@ -27,7 +27,11 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.maintenance.Maintenance
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
+import app.aaps.core.interfaces.overview.graph.SeriesType
+import app.aaps.core.interfaces.pump.VirtualPump
+import app.aaps.ui.compose.overview.graphs.GraphConfigRepositoryImpl
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
@@ -54,8 +58,12 @@ import app.aaps.core.objects.autoisf.AutoIsfListSettings
 import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_THIS_PHONE
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_OFF
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_ON
+import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_OFF
+import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_ON
 import app.aaps.core.objects.autoisf.LOCAL_UKF_CALIBRATION_OFF
 import app.aaps.core.objects.autoisf.LOCAL_UKF_CALIBRATION_ON
+import app.aaps.core.objects.autoisf.LOCAL_UKF_LINE_OFF
+import app.aaps.core.objects.autoisf.LOCAL_UKF_LINE_ON
 import app.aaps.core.objects.autoisf.List1Row
 import app.aaps.core.objects.autoisf.numberedListRows
 import app.aaps.core.objects.autoisf.loadAutoIsfHistoryRows
@@ -501,6 +509,23 @@ class ChipsViewModel(
                 list2Generation++
                 return
             }
+            // 2026-11-16, per explicit request: List 2 row 34 also turns Graph5 itself on or off here, as v3's Graph5 dialog
+            LOCAL_GRAPH5_ON, LOCAL_GRAPH5_OFF -> {
+                preferences.put(BooleanKey.ApsAutoIsfShowGraph5, mmol == LOCAL_GRAPH5_ON)
+                list1Generation++
+                list2Generation++
+                return
+            }
+            // 2026-11-16, per explicit request: List 2 row 33's UKF1 line is the UKF tick of the BG graph's overlay menu. Written to
+            // the graph layout setting, which the graph repository watches, so the graph and its menu follow.
+            LOCAL_UKF_LINE_ON, LOCAL_UKF_LINE_OFF -> {
+                val graphConfig = graphConfigNow()
+                val overlays = graphConfig.bgOverlays - SeriesType.UKF_BG
+                val updated = graphConfig.copy(bgOverlays = if (mmol == LOCAL_UKF_LINE_ON) overlays + SeriesType.UKF_BG else overlays)
+                preferences.put(StringNonKey.ComposeGraphConfig, GraphConfigRepositoryImpl.toJson(updated))
+                list2Generation++
+                return
+            }
             // 2026-11-16, per explicit request: AnyDesk local test. The plugin opens AnyDesk on this phone, even on a Client; no relay.
             LOCAL_ANYDESK_THIS_PHONE -> {
                 rxBus.send(EventAutoIsfDirectTtCode(mmol))
@@ -584,9 +609,22 @@ class ChipsViewModel(
     fun loopListTime(timestamp: Long): String = dateUtil.dateAndTimeString(timestamp)
 
     fun list1Rows(): List<List1Row> =
-        if (autoIsfLists()) listSettings.list1Rows(insulinPeakText, runningProfileForTier) else listSettings.profilePickerRows()
+        if (autoIsfLists()) listSettings.list1Rows(insulinPeakText, runningProfileForTier, showUkfComparison = ukfComparisonRowShown())
+        else listSettings.profilePickerRows()
 
-    fun list2Rows(): List<List1Row> = listSettings.list2Rows()
+    // List 1 row 38 (UKFset1) on a Virtual loop phone only, as v3 (2026-11-16, per explicit request)
+    private fun ukfComparisonRowShown(): Boolean =
+        !config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() is VirtualPump
+
+    fun list2Rows(): List<List1Row> = listSettings.list2Rows(isClient = config.AAPSCLIENT, ukfLineOn = ukfLineOn())
+
+    private fun ukfLineOn(): Boolean =
+        SeriesType.UKF_BG in graphConfigNow().bgOverlays
+
+    // The graph layout as the graph repository reads it; a blank or unreadable one counts as the default layout
+    private fun graphConfigNow(): GraphConfig =
+        preferences.get(StringNonKey.ComposeGraphConfig).takeIf { it.isNotBlank() }
+            ?.let { runCatching { GraphConfigRepositoryImpl.fromJson(it) }.getOrNull() } ?: GraphConfig()
 
     fun profileNames(): List<String> =
         profileRepository.profile.value?.getProfileList()?.map { it.toString() } ?: emptyList()
