@@ -1,6 +1,7 @@
 """Upload a desktop installer (Windows .msi or macOS .dmg) using the same Drive secret and folder as Branch CI."""
 
 import base64
+from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -59,23 +60,43 @@ def find_file(token, name, parent=None, folder=False):
     return files[0]["id"] if files else None
 
 
-def get_folder(token, name, parent=None, wait_seconds=5):
+# A build folder younger than this may have a twin that Drive's search does not show yet (see get_folder).
+NEW_FOLDER_SECONDS = 120
+
+
+def folder_age_seconds(token, folder_id):
+    """How long ago Drive created this folder."""
+    created = json_request(f"{DRIVE}/{urllib.parse.quote(folder_id)}?fields=createdTime", token)["createdTime"]
+    return time.time() - datetime.fromisoformat(created.replace("Z", "+00:00")).timestamp()
+
+
+def get_folder(token, name, parent=None, wait_seconds=60):
     """The oldest folder with this name, created when there is none.
 
     Branch CI and the other installer jobs start at the same time and use the same folder name. Drive allows two
     folders with one name, so each job could create its own and the files were split between them (2026-10-20).
-    find_file() returns the oldest one, and a job that created a folder looks again after a short wait, in case
-    another job created one first. Then every job ends in the same folder.
+    find_file() returns the oldest one. Drive's search by name can take longer than a few seconds to show a folder
+    just created (2026-11-16: a 5 s wait was not enough, and an APK went to a second folder the PC does not show).
+    So a job that created the folder, or found one less than NEW_FOLDER_SECONDS old, waits and looks again before
+    using it; a folder it created that turns out not to be the oldest is still empty then, and goes to the trash.
     """
     existing = find_file(token, name, parent, folder=True)
+    created = None
     if existing:
-        return existing
-    metadata = {"name": name, "mimeType": "application/vnd.google-apps.folder"}
-    if parent:
-        metadata["parents"] = [parent]
-    created = json_request(DRIVE, token, metadata, "POST")["id"]
+        if folder_age_seconds(token, existing) >= NEW_FOLDER_SECONDS:
+            return existing
+        chosen = existing
+    else:
+        metadata = {"name": name, "mimeType": "application/vnd.google-apps.folder"}
+        if parent:
+            metadata["parents"] = [parent]
+        created = json_request(DRIVE, token, metadata, "POST")["id"]
+        chosen = created
     time.sleep(wait_seconds)
-    return find_file(token, name, parent, folder=True) or created
+    oldest = find_file(token, name, parent, folder=True) or chosen
+    if created and oldest != created:
+        json_request(f"{DRIVE}/{urllib.parse.quote(created)}", token, {"trashed": True}, "PATCH")
+    return oldest
 
 
 def received_bytes(headers):

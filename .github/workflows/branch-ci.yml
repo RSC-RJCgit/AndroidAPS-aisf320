@@ -266,31 +266,54 @@ jobs:
           echo "📁 Checking or creating build folder: $DRIVE_FOLDER"
           # Drive allows two folders with one name. The desktop installer jobs start at the same time as this one and
           # use the same folder name, so two jobs could each create their own folder and split the files between them.
-          # Every job therefore uses the OLDEST folder with this name, and a job that created one looks again after a
-          # short wait, in case another job was first.
+          # Every job therefore uses the OLDEST folder with this name. Drive's search by name can take longer than a few
+          # seconds to show a folder just created (2026-11-16: a 5 s wait was not enough, and the aapsclient2 APK went to
+          # a second folder the PC does not show). So a job that created the folder, or found one less than 2 minutes
+          # old, waits 60 s and looks again before uploading; a folder it created that turns out not to be the oldest is
+          # still empty then, and goes to the trash.
           oldest_build_folder() {
             curl -s -X GET \
               -H "Authorization: Bearer $ACCESS_TOKEN" \
-              "https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FOLDER}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false&orderBy=createdTime&fields=files(id)" \
-              | jq -r '.files[0].id'
+              "https://www.googleapis.com/drive/v3/files?q=name='${DRIVE_FOLDER}'+and+mimeType='application/vnd.google-apps.folder'+and+'$AAPS_FOLDER_ID'+in+parents+and+trashed=false&orderBy=createdTime&fields=files(id,createdTime)" \
+              | jq -r 'if (.files | length) > 0 then "\(.files[0].id) \(.files[0].createdTime)" else "" end'
           }
-          VERSION_FOLDER_ID=$(oldest_build_folder)
+          OLDEST=$(oldest_build_folder)
+          VERSION_FOLDER_ID="${OLDEST%% *}"
+          CREATED_HERE=""
+          LOOK_AGAIN=""
 
-          if [ "$VERSION_FOLDER_ID" == "null" ] || [ -z "$VERSION_FOLDER_ID" ]; then
+          if [ -z "$VERSION_FOLDER_ID" ]; then
             VERSION_FOLDER_ID=$(curl -s -X POST \
               -H "Authorization: Bearer $ACCESS_TOKEN" \
               -H "Content-Type: application/json" \
               -d "{\"name\": \"${DRIVE_FOLDER}\", \"mimeType\": \"application/vnd.google-apps.folder\", \"parents\": [\"$AAPS_FOLDER_ID\"]}" \
               "https://www.googleapis.com/drive/v3/files" | jq -r '.id')
             echo "📂 Created version folder: $VERSION_FOLDER_ID"
-            sleep 5
-            OLDEST_FOLDER_ID=$(oldest_build_folder)
-            if [ "$OLDEST_FOLDER_ID" != "null" ] && [ -n "$OLDEST_FOLDER_ID" ] && [ "$OLDEST_FOLDER_ID" != "$VERSION_FOLDER_ID" ]; then
-              echo "📂 Another job created this folder first, using it: $OLDEST_FOLDER_ID"
-              VERSION_FOLDER_ID=$OLDEST_FOLDER_ID
-            fi
+            CREATED_HERE="$VERSION_FOLDER_ID"
+            LOOK_AGAIN=1
           else
             echo "📂 Found version folder: $VERSION_FOLDER_ID"
+            FOLDER_AGE=$(( $(date -u +%s) - $(date -u -d "${OLDEST#* }" +%s 2>/dev/null || date -u +%s) ))
+            if [ "$FOLDER_AGE" -lt 120 ]; then LOOK_AGAIN=1; fi
+          fi
+
+          if [ -n "$LOOK_AGAIN" ]; then
+            echo "⏳ The folder is new: waiting 60 s, then looking again for an older one"
+            sleep 60
+            OLDEST_FOLDER_ID=$(oldest_build_folder)
+            OLDEST_FOLDER_ID="${OLDEST_FOLDER_ID%% *}"
+            if [ -n "$OLDEST_FOLDER_ID" ] && [ "$OLDEST_FOLDER_ID" != "$VERSION_FOLDER_ID" ]; then
+              echo "📂 Another job created this folder first, using it: $OLDEST_FOLDER_ID"
+              if [ -n "$CREATED_HERE" ]; then
+                curl -s -o /dev/null -X PATCH \
+                  -H "Authorization: Bearer $ACCESS_TOKEN" \
+                  -H "Content-Type: application/json" \
+                  -d '{"trashed": true}' \
+                  "https://www.googleapis.com/drive/v3/files/${CREATED_HERE}" \
+                  && echo "🗑️ Empty folder this job created moved to the trash: $CREATED_HERE"
+              fi
+              VERSION_FOLDER_ID=$OLDEST_FOLDER_ID
+            fi
           fi
 
           upload_to_gdrive() {
@@ -301,37 +324,46 @@ jobs:
               exit 26
             fi
 
-            echo "📄 Checking if file $NAME already exists in Google Drive..."
-            QUERY="name='${NAME}' and '${VERSION_FOLDER_ID}' in parents and trashed=false"
-            ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$QUERY'''))")
-            FILE_ID=$(curl -s \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              "https://www.googleapis.com/drive/v3/files?q=${ENCODED_QUERY}&fields=files(id)" \
-              | jq -r '.files[0].id')
-
-            if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
-              echo "🗑️ Deleting existing file with ID: $FILE_ID"
-              curl -s -X DELETE \
+            # Drive sometimes answers a large upload with a 5xx (HTTP 502 for the virtual APK on 2026-11-16, which failed the
+            # job). Such an answer, or no answer at all (000), is tried again, up to 5 times with a growing wait. Each try
+            # first removes a copy of the file in case Drive kept the earlier one after all, so there is never two.
+            for ATTEMPT in 1 2 3 4 5; do
+              echo "📄 Checking if file $NAME already exists in Google Drive..."
+              QUERY="name='${NAME}' and '${VERSION_FOLDER_ID}' in parents and trashed=false"
+              ENCODED_QUERY=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$QUERY'''))")
+              FILE_ID=$(curl -s \
                 -H "Authorization: Bearer $ACCESS_TOKEN" \
-                "https://www.googleapis.com/drive/v3/files/${FILE_ID}"
-            fi
+                "https://www.googleapis.com/drive/v3/files?q=${ENCODED_QUERY}&fields=files(id)" \
+                | jq -r '.files[0].id')
 
-            echo "⬆️ Uploading $FILE as $NAME to Google Drive..."
-            RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gdrive_response.json \
-              -X POST \
-              -H "Authorization: Bearer $ACCESS_TOKEN" \
-              -F "metadata={\"name\":\"$NAME\", \"parents\":[\"$VERSION_FOLDER_ID\"]};type=application/json;charset=UTF-8" \
-              -F "file=@$FILE;type=application/vnd.android.package-archive" \
-              "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+              if [[ -n "$FILE_ID" && "$FILE_ID" != "null" ]]; then
+                echo "🗑️ Deleting existing file with ID: $FILE_ID"
+                curl -s -X DELETE \
+                  -H "Authorization: Bearer $ACCESS_TOKEN" \
+                  "https://www.googleapis.com/drive/v3/files/${FILE_ID}"
+              fi
 
-            HTTP_CODE="${RESPONSE: -3}"
-            if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
+              echo "⬆️ Uploading $FILE as $NAME to Google Drive (try $ATTEMPT of 5)..."
+              RESPONSE=$(curl -s -w "%{http_code}" -o /tmp/gdrive_response.json \
+                -X POST \
+                -H "Authorization: Bearer $ACCESS_TOKEN" \
+                -F "metadata={\"name\":\"$NAME\", \"parents\":[\"$VERSION_FOLDER_ID\"]};type=application/json;charset=UTF-8" \
+                -F "file=@$FILE;type=application/vnd.android.package-archive" \
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart" || true)
+
+              HTTP_CODE="${RESPONSE: -3}"
+              if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "201" ]]; then
+                echo "✅ Uploaded: $NAME"
+                return 0
+              fi
               echo "❌ Upload failed with HTTP status: $HTTP_CODE"
-              cat /tmp/gdrive_response.json
-              exit 1
-            fi
-
-            echo "✅ Uploaded: $NAME"
+              head -c 2000 /tmp/gdrive_response.json 2>/dev/null; echo
+              if [[ "$HTTP_CODE" != 5* && "$HTTP_CODE" != "000" ]] || [ "$ATTEMPT" -eq 5 ]; then
+                exit 1
+              fi
+              echo "⏳ Drive error, trying again in $((30 * ATTEMPT)) s"
+              sleep $((30 * ATTEMPT))
+            done
           }
 
           upload_to_gdrive "aaps-${VERSION}${VERSION_SUFFIX}.apk" "aaps-${VERSION}${VERSION_SUFFIX}.apk"
