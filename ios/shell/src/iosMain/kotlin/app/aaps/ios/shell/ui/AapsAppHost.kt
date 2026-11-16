@@ -673,7 +673,10 @@ private fun AapsApp(app: StartedApp) {
                             if (result.grantedLevel != null) onGranted()
                         }
                     },
-                    onRefreshPermissions = { reportNotAvailable("permission refresh") },
+                    // Called after every plugin switch, so the shared screens can re-check Android permissions. iOS has
+                    // nothing to re-check, and the plugin switch itself has worked, so a message on screen only alarmed
+                    // (2026-11-16, per explicit request). Logged, not shown.
+                    onRefreshPermissions = { logger.notOnThisPlatform("permission refresh") },
                     onExecuteQuickWizard = { guid -> reportNotReady("quick wizard $guid") },
                     onRequestDirectoryAccess = { reportNotReady("directory access - iOS needs a document picker") },
                     onRequestPermission = { group -> reportNotAvailable("permission request $group") },

@@ -366,7 +366,7 @@ class IosRileyLinkHeartbeat(
         if (syncGate.shouldRequestSync(dateUtil.now())) {
             try {
                 nsClient.resend(reason)
-                aapsLogger.debug(LTag.CORE, "Heartbeat sync requested: $reason (five-minute interval)")
+                aapsLogger.debug(LTag.CORE, "Heartbeat sync requested: $reason (once per tick)")
             } catch (e: Exception) {
                 // A failed network request must not skip this heartbeat's local alarm checks.
                 aapsLogger.error(LTag.CORE, "Heartbeat sync request failed", e)

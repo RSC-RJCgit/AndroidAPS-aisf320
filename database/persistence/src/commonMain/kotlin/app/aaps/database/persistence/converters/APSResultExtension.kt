@@ -30,22 +30,22 @@ fun app.aaps.database.entities.APSResult.fromDb(apsResultProvider: () -> APSResu
             apsResultProvider().with(rtJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = this.glucoseStatusJson?.toGlucoseStatus(GlucoseStatusSMB.serializer())
-                result.currentTemp = this.currentTempJson?.let { Json.decodeFromString(it) }
-                result.iobData = this.iobDataJson?.let { Json.decodeFromString(it) }
-                result.oapsProfile = this.profileJson?.let { Json.decodeFromString(it) }
-                result.mealData = this.mealDataJson?.let { Json.decodeFromString(it) }
-                result.autosensResult = this.autosensDataJson?.let { Json.decodeFromString(it) }
+                result.currentTemp = this.currentTempJson?.decodeOrNull()
+                result.iobData = this.iobDataJson?.decodeOrNull()
+                result.oapsProfile = this.profileJson?.decodeOrNull()
+                result.mealData = this.mealDataJson?.decodeOrNull()
+                result.autosensResult = this.autosensDataJson?.decodeOrNull()
             }
 
         app.aaps.database.entities.APSResult.Algorithm.AUTO_ISF ->
             apsResultProvider().with(rtJson.decodeFromString(this.resultJson)).also { result ->
                 result.date = this.timestamp
                 result.glucoseStatus = this.glucoseStatusJson?.toGlucoseStatus(GlucoseStatusAutoIsf.serializer())
-                result.currentTemp = this.currentTempJson?.let { Json.decodeFromString(it) }
-                result.iobData = this.iobDataJson?.let { Json.decodeFromString(it) }
-                result.oapsProfileAutoIsf = this.profileJson?.let { Json.decodeFromString(it) }
-                result.mealData = this.mealDataJson?.let { Json.decodeFromString(it) }
-                result.autosensResult = this.autosensDataJson?.let { Json.decodeFromString(it) }
+                result.currentTemp = this.currentTempJson?.decodeOrNull()
+                result.iobData = this.iobDataJson?.decodeOrNull()
+                result.oapsProfileAutoIsf = this.profileJson?.decodeOrNull()
+                result.mealData = this.mealDataJson?.decodeOrNull()
+                result.autosensResult = this.autosensDataJson?.decodeOrNull()
             }
 
         else                                                    -> error("Unsupported")
@@ -63,6 +63,23 @@ private fun <T : GlucoseStatus> String.toGlucoseStatus(serializer: KSerializer<T
     try {
         rtJson.decodeFromString(serializer, this)
     } catch (_: SerializationException) {
+        null
+    }
+
+/**
+ * Reads one stored detail of a loop result, or null when it cannot be read (2026-11-16, per explicit request).
+ *
+ * A row written by v3 keeps `half_basal_exercise_target` as a decimal in the user's units (6.9 mmol/L), where v4 has a
+ * whole number in mg/dL. One such row made every read of the loop results fail, so the overview graph crashed the Flip5
+ * master at each start. Such a row now loses only that detail; its time and reason text, which the graph uses, stay.
+ * Dosing never reads these details back: each loop builds them from its own settings.
+ */
+private inline fun <reified T> String.decodeOrNull(): T? =
+    try {
+        Json.decodeFromString<T>(this)
+    } catch (_: SerializationException) {
+        null
+    } catch (_: IllegalArgumentException) {
         null
     }
 

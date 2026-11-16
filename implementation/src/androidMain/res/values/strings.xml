@@ -166,7 +166,7 @@
     <string name="ios_heartbeat_overview_disconnected" comment="%1$s=device name, %2$s=last received time">Heartbeat: %1$s — DISCONNECTED, last received %2$s</string>
     <string name="ios_heartbeat_overview_waiting">Heartbeat: WAITING — no heartbeat received yet</string>
     <string name="ios_heartbeat_overview_off">Heartbeat: OFF</string>
-    <string name="ios_heartbeat_sync_interval">Heartbeat-triggered Nightscout sync: every 5 minutes. Heartbeat reception and alarm checks continue on each tick.</string>
+    <string name="ios_heartbeat_sync_interval">Heartbeat-triggered Nightscout sync: every tick (about every minute). Heartbeat reception and alarm checks continue on each tick.</string>
     <string name="ios_heartbeat_sync_last" comment="%1$s=date/time of the last heartbeat-triggered sync request">Last heartbeat-triggered sync request: %1$s</string>
     <string name="ios_background_stopped">AAPS has stopped running in the background. Open it to start it again.</string>
     <string name="ios_battery_falling" comment="iOS phone battery alarm. %1$d=battery percent now, %2$d=how many percent it fell in the last 30 minutes. Example: Phone battery 45% and falling fast: 6% in the last 30 minutes.">Phone battery %1$d%% and falling fast: %2$d%% in the last 30 minutes.</string>
