@@ -467,4 +467,16 @@ class PreferenceMigrationsTest {
         assertThat(store.getString("temp_target_presets", "")).isEqualTo(changed)
     }
 
+    @Test fun `a client builds its own presets from the old keys`() = runTest {
+        val store = storeOf("eatingsoon_target" to "79.2", "eatingsoon_duration" to "20")
+        whenever(profileUtil.convertToMgdlDetect(79.2)).thenReturn(79.2)
+
+        sut(client = true).migrate(store)
+
+        val presets = store.getString("temp_target_presets", "").toTTPresets()
+        assertThat(presets.map { it.id }).containsExactly("eatingsoon")
+        assertThat(presets[0].targetValue).isWithin(0.01).of(79.2)
+        assertThat(presets[0].duration).isEqualTo(1_200_000L)
+    }
+
 }

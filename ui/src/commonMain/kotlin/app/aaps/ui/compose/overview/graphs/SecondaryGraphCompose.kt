@@ -1573,8 +1573,8 @@ private fun bottomHalfSpecs(
 // =========================================================================
 
 /**
- * The settled window widened by one screen-width on each side (2026-11-12, per explicit request, as the basal look-ahead
- * in [basalAxisMax]). The axis is only refitted after a scroll settles, so a scroll of up to one screen then meets no
+ * The settled window widened by one screen-width on each side (2026-11-12, per explicit request; the basal scale had the
+ * same until 16 Nov). The axis is only refitted after a scroll settles, so a scroll of up to one screen then meets no
  * value outside the scale already set. Null in, null out.
  */
 internal fun lookAheadRange(minX: Double?, maxX: Double?): Pair<Double?, Double?> {

@@ -32,6 +32,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerType
@@ -137,9 +139,33 @@ class GraphInspectState {
     private var windowFocused = true
     private var layoutSize: IntSize? = null
 
+    /** The graphs' logger, set by [GraphInspectEffects], for the press lines (2026-11-16). */
+    var log: (String) -> Unit = {}
+
+    /**
+     * Starts a hold at [px] from the graph's own geometry (2026-11-16, per explicit request): the backup for a finger press
+     * that the graph library missed, see [graphInspectTouch]. False when a hold runs already or cannot start.
+     */
+    internal fun startHoldAt(px: Float): Boolean {
+        if (fingerDown || !pointerDown || !windowFocused) return false
+        val x = xAtPx(px) ?: return false
+        targetX = x
+        fingerDown = true
+        return true
+    }
+
+    /** For the press lines in the log */
+    internal fun pressState(): String = "pointerDown=$pointerDown focused=$windowFocused graph drawn=${pxPerX > 0f}"
+
     /** One owner watches the whole graph area, including mouse exit and button release. */
     internal fun onPointerState(pressed: Boolean, startsPress: Boolean = false) {
         val wasPressed = pointerDown
+        // A real press in the graphs is proof that the window has focus (2026-11-16, per explicit request, finger and mouse).
+        // A late or missed focus update (after a screenshot, Control Center, a return to the app) refused every press until then.
+        if (pressed && startsPress && !windowFocused) {
+            windowFocused = true
+            log("Graph inspect: press while the window counted as unfocused - taken as focused")
+        }
         pointerDown = pressed && windowFocused && (wasPressed || startsPress)
         if (!pointerDown) {
             fingerDown = false
@@ -152,6 +178,7 @@ class GraphInspectState {
 
     /** Desktop focus changes can lose the mouse-up event; discard the held inspection explicitly. */
     fun onWindowFocusChanged(focused: Boolean) {
+        if (focused != windowFocused) log("Graph inspect: window focus $focused")
         windowFocused = focused
         if (focused) return
         clearInspection()
@@ -212,7 +239,9 @@ class GraphInspectState {
         // Only a long press starts it; it ends on lift or zoom
         override fun shouldAcceptInteraction(interaction: Interaction, targets: List<CartesianMarker.Target>): Boolean =
             when (interaction) {
-                is Interaction.LongPress -> pointerDown && windowFocused
+                is Interaction.LongPress -> (pointerDown && windowFocused).also { accepted ->
+                    if (!accepted) log("Graph inspect: long press refused, ${pressState()}")
+                }
                 is Interaction.Move -> pointerDown && windowFocused && fingerDown
                 // The parent may already have cleared fingerDown. Vico still needs the closing
                 // interaction; rejecting it keeps Vico's previous marker position active.
@@ -371,7 +400,41 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
             if (state.fingerDown && event.type == PointerEventType.Move) event.changes.forEach { it.consume() }
         }
     }
+}.pointerInput(state) {
+    // Backup hold for a finger (2026-11-16, per explicit request). On the iPhone a second long press opened no pill and
+    // logged no "hold started". The graph library's own long press is lost when the chart is rebuilt during its wait,
+    // when the page or the graph takes a slightly drifting finger as a scroll, and when the press only stopped a page
+    // fling. This node is not rebuilt with the chart and sees the press first, so after the long-press time with the
+    // finger still within the touch slop it starts the hold itself. A mouse keeps the library's path (Windows works).
+    // One line per press in the log says which path started the hold, or why none did.
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        if (down.type == PointerType.Mouse) return@awaitEachGesture
+        val slop = viewConfiguration.touchSlop
+        val stopped: String? = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis + BACKUP_HOLD_EXTRA_MS) {
+            var reason: String? = null
+            while (reason == null) {
+                val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                reason = when {
+                    change == null || !change.pressed                      -> "lifted"
+                    (change.position - down.position).getDistance() > slop -> "moved"
+                    else                                                    -> null
+                }
+            }
+            reason
+        }
+        val outcome = when {
+            stopped != null                  -> if (state.fingerDown) "hold by the graph" else "no hold ($stopped)"
+            state.fingerDown                 -> "hold by the graph"
+            state.startHoldAt(down.position.x) -> "hold by the backup"
+            else                             -> "no hold (${state.pressState()})"
+        }
+        state.log("Graph inspect: finger press, $outcome")
+    }
 }
+
+/** The backup hold waits this much longer than the library's own long press, so the library's hold comes first when it works. */
+private const val BACKUP_HOLD_EXTRA_MS = 60L
 
 /**
  * Closes the pill that stays after a lift or a tap as soon as the graphs are touched again. Only
@@ -439,6 +502,7 @@ fun GraphInspectEffects(
     LaunchedEffect(inspect, windowFocused) {
         inspect.onWindowFocusChanged(windowFocused)
     }
+    SideEffect { inspect.log = graphViewModel::logInspect }
 
     LaunchedEffect(inspect, haptic) {
         snapshotFlow { Triple(inspect.fingerDown, inspect.targetX, inspect.tapX) }.collect { (fingerDown, targetX, tapX) ->

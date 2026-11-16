@@ -55,6 +55,7 @@ import app.aaps.desktop.shell.platform.chooseFolder
 import app.aaps.implementation.maintenance.DesktopFolders
 import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
+import app.aaps.implementation.preference.TempTargetPresetSeed
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import app.aaps.shared.clientbindings.ClientViewModelFactory
 import app.aaps.shared.impl.sharedPreferences.StoreUnreadableException
@@ -222,6 +223,8 @@ private fun startApp(storage: DesktopStorage.Opened): DesktopAppGraph {
     // A new install starts with the fork's settings, as on Android and iOS (2026-11-01, per explicit request). Before the
     // plugins start, so they read them.
     FreshInstallDefaults.apply(graph.preferences, graph.config)
+    // The three factory TT presets when this device has none; a client keeps its own (2026-11-16, per explicit request).
+    TempTargetPresetSeed.apply(graph.preferences, graph.config)
     // The agreed switches too, as on Android and iOS. Once only, on a fresh install.
     BuildDefaultsReset.apply(graph.preferences, graph.config, graph.preferences.get(StringNonKey.ActivePluginPump))
     startPlugins(graph)

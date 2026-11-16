@@ -61,6 +61,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
@@ -535,12 +537,39 @@ fun GraphsSection(
             }
     }
 
+    // Back in the foreground (2026-11-16, per explicit request): on iOS the graphs stay alive in the background, so after
+    // "Away for 8304s" they opened on the hours they showed before, not on now. Each return counts here; it follows the
+    // current time again, puts it on the right edge at once and starts the startup guard below again.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var foregroundCount by remember { mutableIntStateOf(0) }
+    LaunchedEffect(lifecycle) {
+        var wasResumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        lifecycle.currentStateFlow.collect { state ->
+            val resumed = state.isAtLeast(Lifecycle.State.RESUMED)
+            if (resumed && !wasResumed) foregroundCount++
+            wasResumed = resumed
+        }
+    }
+    LaunchedEffect(bgScrollState, foregroundCount) {
+        if (foregroundCount == 0 || fitWholeWindow) return@LaunchedEffect
+        val nowMs = dateUtil.now()
+        // A finger on the graphs right now keeps its place
+        if (nowMs - lastTouchMs[0] < GRAPH_TOUCH_WINDOW_MS) return@LaunchedEffect
+        followNow = true
+        val range = latestTimeRange.value
+        graphViewModel.graphSyncLog("foreground", "back in the foreground - rangeFirst=${range?.first} bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue}")
+        if (range == null) return@LaunchedEffect
+        skipInteractionUntilMs[0] = nowMs + 1000L
+        bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, nowMs))
+    }
+
     // Startup guard (2026-10-07): a cold start sometimes left every graph on the OLDEST hours, with the current time off
     // the right edge, and neither the placement below nor the next reading moved it back. For the first
     // STARTUP_GUARD_MS, while the user has not touched a graph (followNow) and the visible window ends well before
     // now, put the current time on the right edge again; the sync above copies it to the other graphs. The println
     // lines (tag "GraphStart", visible in logcat) record what the placement and sync steps see, to find the real cause.
-    LaunchedEffect(bgScrollState) {
+    // Also runs again after each return to the foreground (2026-11-16).
+    LaunchedEffect(bgScrollState, foregroundCount) {
         if (fitWholeWindow) return@LaunchedEffect
         val startedAt = dateUtil.now()
         while (dateUtil.now() - startedAt < STARTUP_GUARD_MS) {
@@ -573,8 +602,9 @@ fun GraphsSection(
             }
             if (visible == null) continue
             val nowX = timestampToX(nowMs, range.first)
-            if (visible.second < nowX - STARTUP_GUARD_GAP_MINUTES) {
-                graphViewModel.graphSyncLog("guard", "window ends at ${visible.second} min, now is at $nowX min - putting now on the right edge")
+            // Now off either edge (2026-11-16): a window that starts after now does not show it either
+            if (visible.second < nowX - STARTUP_GUARD_GAP_MINUTES || visible.first > nowX) {
+                graphViewModel.graphSyncLog("guard", "window ${visible.first}..${visible.second} min, now is at $nowX min - putting now on the right edge")
                 skipInteractionUntilMs[0] = nowMs + 1000L
                 bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, nowMs))
             }

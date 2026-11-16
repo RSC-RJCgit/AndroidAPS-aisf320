@@ -15,11 +15,8 @@ import android.os.HandlerThread
 import android.os.LocaleList
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
-import app.aaps.core.data.configuration.Constants
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.TE
-import app.aaps.core.data.model.TT
-import app.aaps.core.data.model.TTPreset
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -33,7 +30,6 @@ import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.pump.emulator.PumpEmulators
 import app.aaps.core.interfaces.rx.events.EventAppInitialized
-import app.aaps.core.interfaces.tempTargets.toJson
 import app.aaps.plugins.aps.openAPSAutoISF.PhoneStepListener
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
@@ -55,6 +51,7 @@ import app.aaps.implementation.maintenance.migration.LegacyInsulin
 import app.aaps.implementation.maintenance.migration.PreferenceMigrations
 import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
+import app.aaps.implementation.preference.TempTargetPresetSeed
 import app.aaps.implementation.maintenance.migration.ProfileDiaHarvest
 import app.aaps.implementation.receivers.BTReceiver
 import app.aaps.implementation.receivers.ChargingStateReceiver
@@ -739,36 +736,15 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
      * lives in `PreferenceMigrations`; this half cannot, because it INVENTS values, and over an
      * imported file it would write factory presets on top of the ones the user actually has.
      *
-     * Skipped on a client, which adopts the presets from the master over the sync channel - a local
-     * put here would trigger a client-to-master round trip at startup.
+     * A client seeds its own too (2026-11-16, per explicit request): it keeps its own settings and never
+     * takes the master's, so before this a client had no presets at all. [TempTargetPresetSeed] writes a
+     * client's list on this phone only, with no round trip to the master.
      */
     private fun seedTempTargetPresets() {
-        if (config.AAPSCLIENT) return
-        val existing = preferences.get(StringNonKey.TempTargetPresets)
-        if (existing != "[]" && existing.isNotEmpty()) return
         // Only when there is nothing to migrate from. PreferenceMigrations has already run and would
         // have written the document if the old keys were there.
         if (sp.contains("eatingsoon_target")) return
-
-        val presets = listOf(
-            TTPreset(
-                id = "eatingsoon", reason = TT.Reason.EATING_SOON,
-                targetValue = Constants.DEFAULT_TT_EATING_SOON_TARGET,
-                duration = Constants.DEFAULT_TT_EATING_SOON_DURATION * 60L * 1000L, isDeletable = false
-            ),
-            TTPreset(
-                id = "activity", reason = TT.Reason.ACTIVITY,
-                targetValue = Constants.DEFAULT_TT_ACTIVITY_TARGET,
-                duration = Constants.DEFAULT_TT_ACTIVITY_DURATION * 60L * 1000L, isDeletable = false
-            ),
-            TTPreset(
-                id = "hypo", reason = TT.Reason.HYPOGLYCEMIA,
-                targetValue = Constants.DEFAULT_TT_HYPO_TARGET,
-                duration = Constants.DEFAULT_TT_HYPO_DURATION * 60L * 1000L, isDeletable = false
-            )
-        )
-        preferences.put(StringNonKey.TempTargetPresets, presets.toJson())
-        aapsLogger.debug(LTag.CORE, "Seeded default temp target presets")
+        if (TempTargetPresetSeed.apply(preferences, config)) aapsLogger.debug(LTag.CORE, "Seeded default temp target presets")
     }
 
     private suspend fun dataMigrations() {

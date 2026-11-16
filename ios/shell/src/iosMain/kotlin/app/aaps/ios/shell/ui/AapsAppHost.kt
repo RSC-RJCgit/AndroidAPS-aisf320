@@ -64,6 +64,7 @@ import app.aaps.core.utils.gitRemoteShort
 import app.aaps.implementation.lifecycle.IosProtectionLifecycle
 import app.aaps.implementation.preference.BuildDefaultsReset
 import app.aaps.implementation.preference.FreshInstallDefaults
+import app.aaps.implementation.preference.TempTargetPresetSeed
 import app.aaps.implementation.receivers.IosTimeDateOrTZChangeWatcher
 import app.aaps.implementation.logging.AAPSLoggerIos
 import app.aaps.implementation.protection.IosBiometricPrompt
@@ -283,6 +284,8 @@ private fun startApp(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivit
     IosCrashLog.install(logger)
     // A brand-new install starts read-only, as on Android (see FreshInstallDefaults). Before anything reads the setting.
     FreshInstallDefaults.apply(graph.preferences, graph.config)
+    // The three factory TT presets when this device has none; a client keeps its own (2026-11-16, per explicit request).
+    TempTargetPresetSeed.apply(graph.preferences, graph.config)
     // Initialize a fresh client. Updates wait for the built-in settings choice.
     BuildDefaultsReset.apply(graph.preferences, graph.config, graph.preferences.get(StringNonKey.ActivePluginPump))
 

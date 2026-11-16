@@ -189,9 +189,8 @@ class PreferenceMigrations(
             if (LegacyPreferenceValue.asDouble(beforeCleanup[preset.targetName]) == 0.0) sp.remove(preset.targetName)
         }
 
-        // A client adopts the presets from the master over the sync channel; writing here would push a
-        // client→master round-trip. The master migrates and publishes, the client follows.
-        if (config.AAPSCLIENT) return
+        // A client migrates its own presets too (2026-11-16, per explicit request): it keeps its own settings and never
+        // takes the master's. This writes the store directly, below Preferences, so nothing is sent to the master.
         if (!sp.contains(PRESETS.first().targetName)) return
         // Already a document, so there is nothing to rebuild - unless it is only the three factory presets.
         // 2026-11-16, per explicit request: a phone that started before the 3426 values were imported got the

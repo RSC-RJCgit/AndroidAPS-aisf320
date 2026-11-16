@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
@@ -40,6 +41,7 @@ import app.aaps.core.keys.BooleanKey
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -490,6 +492,14 @@ fun MainScreen(
                         var lastPillPlace by remember { mutableStateOf("") }
                         val summary = topBarPillHost.summaryContent
                         val graphs = topBarPillHost.current
+                        // Steady pill during a hold (2026-11-16, per explicit request): it was as wide as its text and centred, and
+                        // grew and shrank by a row, so it jumped sideways and up and down at every reading (iPhone log 16 Nov:
+                        // 830 <-> 1075 px wide, 892 / 951 / 1010 px high, several times a second). Now it is as wide as the bar and
+                        // keeps the tallest height of this hold until it closes.
+                        val pillShown by remember(graphs) { derivedStateOf { graphs != null && graphs.inspect.pill != null } }
+                        var holdMinHeightPx by remember { mutableIntStateOf(0) }
+                        LaunchedEffect(pillShown) { if (!pillShown) holdMinHeightPx = 0 }
+                        val holdMinHeight = with(LocalDensity.current) { holdMinHeightPx.toDp() }
                         Box(
                             modifier = Modifier.onGloballyPositioned { coordinates ->
                                 if (graphs == null && summary == null) return@onGloballyPositioned
@@ -505,7 +515,16 @@ fun MainScreen(
                             when {
                                 summary != null -> summary()
                                 // A group of its own for each graph section, so new graphs never reuse the old graphs' pill
-                                graphs != null  -> key(graphs) { GraphInspectPillOf(inspect = graphs.inspect, graphViewModel = graphs.graphViewModel) }
+                                graphs != null  -> key(graphs) {
+                                    GraphInspectPillOf(
+                                        inspect = graphs.inspect,
+                                        graphViewModel = graphs.graphViewModel,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = holdMinHeight)
+                                            .onSizeChanged { if (it.height > holdMinHeightPx) holdMinHeightPx = it.height }
+                                    )
+                                }
                             }
                         }
                     }
