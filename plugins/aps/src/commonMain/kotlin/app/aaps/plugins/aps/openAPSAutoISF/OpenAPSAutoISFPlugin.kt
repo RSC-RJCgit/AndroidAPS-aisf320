@@ -1800,6 +1800,7 @@ open class OpenAPSAutoISFPlugin(
                     DoubleKey.ApsAutoIsfPpWeightNormal,
                     DoubleKey.ApsAutoIsfPpWeightHigh,
                     DoubleKey.ApsAutoIsfDuraWeight,
+                    DoubleKey.ApsAutoIsfDuraWeightNormal,
                     IntKey.ApsAutoIsfIobThPercent,
                     IntKey.ApsAutoIsfIobThPercentNormal,
                     IntKey.ApsAutoIsfProfilePercentNormal
@@ -4108,8 +4109,22 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.BOOST_MAX_UP -> nudgeDouble(DoubleKey.ApsAutoIsfUamBoostMaxBolus, 0.25, 0.1, 10.0, "BoostMaxUp", "BMx", 2)
             RemoteToggleCode.BOOST_IOB_DOWN -> nudgeBoostIob(-5, "BoostIobMaxDown")
             RemoteToggleCode.BOOST_IOB_UP -> nudgeBoostIob(5, "BoostIobMaxUp")
-            RemoteToggleCode.DURA_WEIGHT_DOWN -> nudgeDouble(DoubleKey.ApsAutoIsfDuraWeight, -0.1, 0.0, 3.0, "DuraWeightDown", "D", 2)
-            RemoteToggleCode.DURA_WEIGHT_UP -> nudgeDouble(DoubleKey.ApsAutoIsfDuraWeight, 0.1, 0.0, 3.0, "DuraWeightUp", "D", 2)
+            // 2026-11-16, per explicit request: as 3426 and the pp/acce rows, the normal (Or) dura weight moves, and the live one with it
+            // while the two are equal. No baseline yet (first use on this phone): it starts from the live value.
+            RemoteToggleCode.DURA_WEIGHT_DOWN, RemoteToggleCode.DURA_WEIGHT_UP -> {
+                if (preferences.getIfExists(DoubleKey.ApsAutoIsfDuraWeightNormal) == null) {
+                    preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, preferences.get(DoubleKey.ApsAutoIsfDuraWeight))
+                }
+                val delta = if (code == RemoteToggleCode.DURA_WEIGHT_UP) 0.1 else -0.1
+                val current = preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)
+                val live = preferences.get(DoubleKey.ApsAutoIsfDuraWeight)
+                val next = (current + delta).coerceIn(0.0, 3.0)
+                preferences.put(DoubleKey.ApsAutoIsfDuraWeightNormal, next)
+                if (liveMatchesBaseline(live, current)) preferences.put(DoubleKey.ApsAutoIsfDuraWeight, (live + delta).coerceIn(0.0, 3.0))
+                val smsName = if (code == RemoteToggleCode.DURA_WEIGHT_UP) "DuraWeightUp" else "DuraWeightDown"
+                sendAutoSms("$smsName: duraISFwt_orig=${decimals(next, 2)}", noteTag = true)
+                carePortalNote(compactSettingNote("D", next, 2), smsText = lastSmsText)
+            }
             RemoteToggleCode.LIBRE_SLOPE_DOWN -> nudgeLibreSlope(-0.01, "LibreSlopeDown")
             RemoteToggleCode.LIBRE_SLOPE_UP -> nudgeLibreSlope(0.01, "LibreSlopeUp")
             RemoteToggleCode.LIBRE_OFFSET_DOWN -> nudgeLibreOffset(-0.05, "LibreOffsetDown")

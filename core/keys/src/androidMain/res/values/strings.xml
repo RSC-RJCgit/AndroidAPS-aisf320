@@ -590,6 +590,8 @@
     <string name="pref_title_pp_weight">Post-prandial ISF weight</string>
     <string name="openapsama_pp_ISF_weight_summary">This is the weight applied while glucose is rising and which strengthens ISF thereby potentially increasing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>
     <string name="pref_title_dura_weight">Duration ISF weight</string>
+    <string name="pref_title_aps_dura_weight_normal">Duration ISF weight baseline</string>
+    <string name="pref_summary_aps_dura_weight_normal" comment="A weight from 0.00 to 3.00. Default 1.20. List 1 row 6 changes it.">Normal (Or) duration ISF weight. List 1 row 6 changes it, and the live weight with it while the two are the same. Default 1.20.</string>
     <string name="openapsama_dura_ISF_weight_summary">This is the weight applied during longer lasting, elevated glucose plateaus and which strengthens ISF thereby potentially increasing insulin delivery.\n\nThe default value 0.0 effectively shuts off this effect.</string>
     <string name="pref_title_smb_delivery_ratio">SMB delivery ratio</string>
     <string name="openapsama_smb_delivery_ratio_summary">Default value: 0.5. This is another key OpenAPS safety cap, and specifies what share of the total insulin required can be delivered as SMB. This is to prevent people from getting into dangerous territory by setting SMB requests from the caregivers phone at the same time. Increase this experimental value slowly and with caution.</string>

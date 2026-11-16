@@ -77,7 +77,7 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             List1Row("Tog Bst autos(all) on/off", onOff(preferences.get(BooleanKey.ApsAutoIsfBoostAutomationsEnabled)), 5.008, null),
             List1Row("pp ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal)), 5.012, 5.014),
             List1Row("acce ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal)), 5.016, 5.018),
-            List1Row("dura ISF Wt", decimalFormatter.to2Decimal(preferences.get(DoubleKey.ApsAutoIsfDuraWeight)), 5.022, 5.024),
+            List1Row("dura ISF Wt (Or)", two(preferences.get(DoubleKey.ApsAutoIsfDuraWeightNormal)), 5.022, 5.024),
             List1Row("Libre slope (Or)", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreSlopeOrig)), 5.026, 5.028),
             List1Row("Libre Offset (Or)", decimalFormatter.to2Decimal(preferences.get(DoubleNonKey.ApsAutoIsfLibreOffsetOrig)), 5.032, 5.034),
             List1Row("Live Libre slope/offset (view only)", libreLiveText(), 0.0, null, readOnly = true, loopValueKey = "libreLive"),

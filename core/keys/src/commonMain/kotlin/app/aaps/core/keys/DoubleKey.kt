@@ -465,6 +465,19 @@ enum class DoubleKey(
         unitType = UnitType.DOUBLE_2,
         sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
     ),
+    // 2026-11-16, per explicit request: the normal ("Or") dura weight, as 3426's autoisf_dura_isf_weight_normal and the pp/acce
+    // baselines. List 1 row 6 changes this, and the live dura_ISF_weight with it while the two are equal.
+    ApsAutoIsfDuraWeightNormal(
+        key = "autoisf_dura_isf_weight_normal",
+        defaultValue = 1.2,
+        min = 0.0,
+        max = 3.0,
+        title = KeysStrings.pref_title_aps_dura_weight_normal,
+        summary = KeysStrings.pref_summary_aps_dura_weight_normal,
+        defaultedBySM = true,
+        unitType = UnitType.DOUBLE_2,
+        sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)
+    ),
     ApsAutoIsfTddFactorFallback(
         key = "autoisf_tdd_factor_fallback",
         defaultValue = 1.0,
