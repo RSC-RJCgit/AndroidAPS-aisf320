@@ -2050,10 +2050,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     private fun showBasalDirectActionListDialog() {
         activity?.let { act ->
             // 2026-11-16, per explicit request: every row on every phone (AnyDesk restart was Client only), so the numbers match v4.
-            val actionEntries = BasalDirectAction.values().toList()
-            // 2026-11-16, per explicit request: MJ state copy and the AnyDesk local test (v3 only) go after the Boost rows, so the rows
-            // shared with v4 have the same numbers in both: actions, Boost rows, MJ state copy, then the v3-only rows.
-            val tail = setOf(BasalDirectAction.LIVE_MJ_STATE_TOGGLE, BasalDirectAction.ANYDESK_LOCAL_TEST)
+            // 2026-11-16, per explicit request: no separate AnyDesk local-test row any more. Row 25 "Send AnyDesk restart" restarts it on
+            // a loop phone, and on a Client asks this phone or the loop phone, as v4.
+            val actionEntries = BasalDirectAction.values().filter { it != BasalDirectAction.ANYDESK_LOCAL_TEST }
+            // 2026-11-16, per explicit request: MJ state copy goes after the Boost rows, so the rows shared with v4 have the same numbers
+            // in both: actions, Boost rows, MJ state copy, then the two graph rows.
+            val tail = setOf(BasalDirectAction.LIVE_MJ_STATE_TOGGLE)
             val mainEntries = actionEntries.filter { it !in tail }
             val tailEntries = actionEntries.filter { it in tail }
             // Numbered by place on screen (2026-10-07), as in the KMP lists.
@@ -2079,7 +2081,29 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                         which >= steppedEnd && which < steppedEnd + tailEntries.size -> tailEntries[which - steppedEnd]
                         else -> null
                     }
-                    if (action != null) {
+                    if (action == BasalDirectAction.ANYDESK_RESTART && config.AAPSCLIENT) {
+                        // 2026-11-16, per explicit request: which phone. This phone = the old local test (ADesk note, AnyDesk here);
+                        // loop phone = the ADesk note and the relay TT, with the usual confirmation.
+                        androidx.appcompat.app.AlertDialog.Builder(act)
+                            .setTitle(action.label)
+                            .setMessage("Restart AnyDesk on this phone or on the loop phone?")
+                            .setPositiveButton(R.string.direct_list_loop_phone) { _, _ ->
+                                OKDialog.showConfirmation(
+                                    act,
+                                    act.getString(app.aaps.core.ui.R.string.confirmation),
+                                    basalDirectActionConfirmation(action),
+                                    Runnable { runBasalDirectAction(action); showBasalDirectActionListDialog() },
+                                    Runnable { showBasalDirectActionListDialog() }
+                                )
+                            }
+                            .setNeutralButton(R.string.direct_list_this_phone) { _, _ ->
+                                runBasalDirectAction(BasalDirectAction.ANYDESK_LOCAL_TEST)
+                                showBasalDirectActionListDialog()
+                            }
+                            .setNegativeButton(app.aaps.core.ui.R.string.cancel) { _, _ -> showBasalDirectActionListDialog() }
+                            .setOnCancelListener { showBasalDirectActionListDialog() }
+                            .show()
+                    } else if (action != null) {
                         val code = action.clientRelayMmol
                         val localValue = if (config.AAPSCLIENT) ClientLocalListCodes.toggleValue(preferences, code) else null
                         if (localValue == null) {
