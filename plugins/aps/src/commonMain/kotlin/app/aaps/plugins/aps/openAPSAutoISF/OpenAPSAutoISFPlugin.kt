@@ -3002,6 +3002,8 @@ open class OpenAPSAutoISFPlugin(
     // The low-glucose tier A reset is last, so it can undo a step from the same loop.
     // True from the low battery SMS until the battery is reported above 1% again, so the SMS goes out once per episode
     private var lowBatteryWarned = false
+    // Battery level the Batt10% check saw last loop (null until the phone has reported it), for its "falling" test
+    private var batt10LastSeen: Int? = null
 
     private suspend fun applyProfileBatch(now: Long, bg: Double, delta: Double, shortDelta: Double) {
         // The three hypo-driven drops to a lower tier below (gentle-hypo step down, alarm role revert, low-glucose reset)
@@ -3023,6 +3025,21 @@ open class OpenAPSAutoISFPlugin(
             sendAutoSms("LowBattery", noteTag = true)
             sendAutoSmsToNumbers("LowBattery", StringKey.SmsBattAlertNumbers)
             carePortalNote("Bt<1%", smsText = lastSmsText)
+        }
+        // Batt10% (2026-11-16, per explicit request): SMS when the phone battery is under 10%, not charging and lower than the
+        // level seen last loop; at most once per 2 h. Real loop phone only, like Battery1%. "Falling" needs a previous reading,
+        // so nothing is sent until the first drop after a start. Sends to the normal and the Battery-alert numbers, plus a
+        // "Bt<10%" note. Independent of the 1% warning and its safety-profile switch.
+        val batt10Charging = receiverStatusStore.chargingStatusFlow.value?.isCharging == true
+        val batt10Prev = batt10LastSeen
+        batt10LastSeen = battery
+        if (battery != null && batt10Prev != null && battery < 10 && battery < batt10Prev && !batt10Charging && livePump
+            && runMarks.ready(RunMark.BATTERY_10_SMS, 120, now)) {
+            val text = "LowBattery <10% ($battery%)"
+            sendAutoSms(text)
+            sendAutoSmsToNumbers(text, StringKey.SmsBattAlertNumbers)
+            carePortalNote("Bt<10%")
+            runMarks.mark(RunMark.BATTERY_10_SMS, now)
         }
         if (battery1ShouldFire(
                 ready = runMarks.ready(RunMark.BATTERY_1, 20, now),

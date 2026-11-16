@@ -80,6 +80,8 @@ internal object RunMark {
     const val PROFILE_ROLE_SANITY = "ProfileRoleSanityCheck"
     const val BATTERY_1 = "Battery1pc"
     const val BATTERY_OVER_1 = "BatteryOver1pc"
+    // At most one Batt10% SMS in 2 hours (2026-11-16).
+    const val BATTERY_10_SMS = "Batt10pcSms"
     const val CARBS_STOP_TT1 = "CarbsStopTT1"
     const val CARBS_STOP_TT57 = "CarbsStopTT57"
     const val CARBS_TH_OFF = "CarbsTHoff"
