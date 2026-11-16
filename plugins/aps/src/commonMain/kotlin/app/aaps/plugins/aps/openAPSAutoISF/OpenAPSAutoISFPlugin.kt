@@ -993,6 +993,7 @@ open class OpenAPSAutoISFPlugin(
             hp1OverrideEnabled = preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled),
             hp1Mmol = hp1Now?.takeIf { it.isFinite() },
             hp1Override2hU = hp1OverrideUsedU(preferences.get(StringNonKey.ApsAutoIsfHp1OverrideLog), now),
+            hp1LowBg50Recent = statesOn && states().inState("LowBG", "50recent"),
         ).also {
             appendStepLines(it.reason, now)
             val iobThEffective = if (autoIsfFactors.recorded && use_iobTH) iobTHvirtual / iobTHtolerance * 100.0

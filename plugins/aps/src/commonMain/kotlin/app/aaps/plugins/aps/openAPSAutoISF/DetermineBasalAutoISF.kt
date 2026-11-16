@@ -1213,6 +1213,8 @@ class DetermineBasalAutoISF(
         hp1OverrideEnabled: Boolean = false,
         hp1Mmol: Double? = null,
         hp1Override2hU: Double = 0.0,
+        // HP1 override BG 10+ tier (2026-11-16): LowBG state "50recent" blocks the higher tier. See hp1OverrideHiTier.
+        hp1LowBg50Recent: Boolean = false,
     ): RT {
         consoleError = mutableListOf()
         consoleLog = mutableListOf()
@@ -1979,15 +1981,16 @@ class DetermineBasalAutoISF(
         } else if (bg < threshold || minGuardBG < threshold) {
             // 2026-11-15, per explicit request (setting, off by default): with an absurd forecast and a high, steady BG, keep the
             // profile basal and allow a small SMB instead of the zero temp. See hp1OverrideDose.
+            val hp1HiTier = hp1OverrideHiTier(bg, glucose_status.delta, glucose_status.shortAvgDelta, iob_data.iob, iobTHvirtual, hp1LowBg50Recent)
             hp1OverrideDose(
                 enabled = hp1OverrideEnabled, bg = bg, minGuardBG = minGuardBG, minPredBG = minPredBG, shortAvgDelta = glucose_status.shortAvgDelta,
                 iob = iob_data.iob, iobTH = iobTHvirtual, microBolusAllowed = microBolusAllowed, hp1Mmol = hp1Mmol, used2hU = hp1Override2hU,
-                bolusIncrement = profile.bolus_increment, now = currentTime, lastBolusTime = iob_data.lastBolusTime,
+                bolusIncrement = profile.bolus_increment, now = currentTime, lastBolusTime = iob_data.lastBolusTime, hiTier = hp1HiTier,
             )?.let { dose ->
                 rT.units = dose
                 hp1OverrideDoseToStore = dose
                 rT.reason.append(
-                    "HP1override: SMB ${round(dose, 2)} U, basal kept (HP1 ${round(hp1Mmol ?: 0.0, 1)}, minGuard ${convert_bg(minGuardBG)}, " +
+                    "HP1override: SMB ${round(dose, 2)} U (tier ≥${if (hp1HiTier) 10 else 8}, forecast <${hp1OverrideAbsurdBelowMmol(bg)}), basal kept (HP1 ${round(hp1Mmol ?: 0.0, 1)}, minGuard ${convert_bg(minGuardBG)}, " +
                         "minPredBG ${convert_bg(minPredBG)}) ; "
                 )
                 consoleError.add("HP1 override: minGuardBG ${convert_bg(minGuardBG)} < ${convert_bg(threshold)} but HP1 ${round(hp1Mmol ?: 0.0, 1)}; SMB ${round(dose, 2)} U")
@@ -2560,6 +2563,24 @@ internal const val HP1_OVERRIDE_DOSE_U = 0.1
 internal const val HP1_OVERRIDE_2H_U = 0.3
 private const val HP1_OVERRIDE_WINDOW_MS = 2 * 60 * 60_000L
 
+/** HP1 override BG 10+ tier (2026-11-16): per SMB and per 2 h. See [hp1OverrideHiTier]. */
+internal const val HP1_OVERRIDE_HI_DOSE_U = 0.2
+internal const val HP1_OVERRIDE_HI_2H_U = 0.6
+
+/** The forecast (minGuardBG or minPredBG) counts as absurd under this many mmol: 2.0, or 3.0 at BG 11.0 mmol or more (2026-11-16, per explicit request). */
+internal fun hp1OverrideAbsurdBelowMmol(bg: Double): Double = if (bg >= 198.0 /* 11.0 mmol */) 3.0 else 2.0
+
+/**
+ * BG 10+ tier (2026-11-16, per explicit request): BG >= 10.0 mmol, delta >= 0 as well as short delta >= 0, IOB under half of
+ * iobTH and no recent low (LowBG state "50recent"). Then [hp1OverrideDose] gives up to HP1_OVERRIDE_HI_DOSE_U per SMB and
+ * HP1_OVERRIDE_HI_2H_U in 2 h. One shared 2 h log: below 10 only the 0.3 U limit applies, counting everything already given.
+ * Why: on 16 Nov 19:41-19:53 the 0.3 U was used up at BG 8.4-9.3, so from 20:09 to 20:27 the guard zero-temped at BG 11.2,
+ * SDelta 0.36, IOB 2.9 (iobTH 6.65). Both real falls the guard caught (31 Oct, 6 Nov) began below 10, after SMB/temp bursts
+ * or a manual bolus, so this tier would not have fired at their start.
+ */
+internal fun hp1OverrideHiTier(bg: Double, delta: Double, shortAvgDelta: Double, iob: Double, iobTH: Double, lowBg50Recent: Boolean): Boolean =
+    bg >= 180.0 /* 10.0 mmol */ && delta >= 0.0 && shortAvgDelta >= 0.0 && iob < iobTH * 0.5 && !lowBg50Recent
+
 /**
  * HP1 override (2026-11-15, per explicit request; the setting is off by default). The hypo guard fired, but BG is 8.0 mmol or
  * more and not falling (short delta >= 0), the forecast is absurd (minGuardBG or minPredBG < 2.0 mmol), IOB < iobTH, this loop's
@@ -2572,16 +2593,18 @@ private const val HP1_OVERRIDE_WINDOW_MS = 2 * 60 * 60_000L
 internal fun hp1OverrideDose(
     enabled: Boolean, bg: Double, minGuardBG: Double, minPredBG: Double, shortAvgDelta: Double, iob: Double, iobTH: Double,
     microBolusAllowed: Boolean, hp1Mmol: Double?, used2hU: Double, bolusIncrement: Double, now: Long, lastBolusTime: Long,
+    hiTier: Boolean = false,
 ): Double? {
     if (!enabled || !microBolusAllowed) return null
     if (bg < 144.0 /* 8.0 mmol */ || shortAvgDelta < 0.0) return null
-    if (!(minGuardBG < 36.0 /* 2.0 mmol */ || minPredBG < 36.0)) return null
+    val absurdBelow = hp1OverrideAbsurdBelowMmol(bg) * 18.0
+    if (!(minGuardBG < absurdBelow || minPredBG < absurdBelow)) return null
     if (iob >= iobTH) return null
     if (hp1Mmol == null || !hp1Mmol.isFinite() || hp1Mmol < 6.0) return null
     if (now - lastBolusTime < 60_000L) return null
     val step = if (bolusIncrement > 0.0) bolusIncrement else 0.05
-    val room = HP1_OVERRIDE_2H_U - used2hU
-    val dose = floor(min(HP1_OVERRIDE_DOSE_U, room) / step + 1e-9) * step
+    val room = (if (hiTier) HP1_OVERRIDE_HI_2H_U else HP1_OVERRIDE_2H_U) - used2hU
+    val dose = floor(min(if (hiTier) HP1_OVERRIDE_HI_DOSE_U else HP1_OVERRIDE_DOSE_U, room) / step + 1e-9) * step
     return if (dose >= step - 1e-9) dose else null
 }
 
