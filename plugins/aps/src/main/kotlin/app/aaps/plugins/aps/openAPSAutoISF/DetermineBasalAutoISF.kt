@@ -141,13 +141,30 @@ class DetermineBasalAutoISF @Inject constructor(
      * Evidence (Live 27 Oct-15 Nov, 5,547 five-minute cycles): this rule fired in 55 cycles with no BG under 3.9 in the next 2 h;
      * the extra insulin those cycles had room for was 0.12 U at the least, 0.25 U at the 10th percentile (2026-11-15: minPredBG < 2.0, was < 0: 51 cycles, 0.33 U).
      */
+    /** HP1 override tier used by the last [hp1OverrideDose] call, for the reason text: "8" or "10". */
+    private var lastHp1Tier = "8"
+
+    /** Forecast threshold (mmol) used by the last [hp1OverrideDose] call, for the reason text: "2.0", or "3.0" at BG 11+. */
+    private var lastHp1AbsurdMmol = "2.0"
+
+    /*
+     * BG 10+ tier (2026-11-16, per explicit request): at BG >= 10.0 mmol with delta >= 0 as well as short delta >= 0,
+     * IOB under half of iobTH and no recent low (LowBG state "50recent"), the override gives up to HP1_OVERRIDE_HI_DOSE_U
+     * per SMB and HP1_OVERRIDE_HI_2H_U in 2 h. One shared 2 h log: below 10 only the 0.3 U limit applies, counting
+     * everything already given. Why: on 16 Nov 19:41-19:53 the 0.3 U was used up at BG 8.4-9.3, so from 20:09 to 20:27 the
+     * guard zero-temped at BG 11.2, SDelta 0.36, IOB 2.9 (iobTH 6.65). Both real falls the guard caught (31 Oct, 6 Nov)
+     * began below 10, after SMB/temp bursts or a manual bolus, so this tier would not have fired at their start.
+     */
     private fun hp1OverrideDose(
         bg: Double, minGuardBG: Double, minPredBG: Double, shortAvgDelta: Double, iob: Double, iobTH: Double, microBolusAllowed: Boolean,
-        bolusIncrement: Double, now: Long, lastBolusTime: Long
+        bolusIncrement: Double, now: Long, lastBolusTime: Long, delta: Double, recentLowActive: Boolean
     ): Double? {
         if (!preferences.get(BooleanKey.ApsAutoIsfHp1OverrideEnabled) || !microBolusAllowed) return null
         if (bg < 144.1 /* 8.0 mmol */ || shortAvgDelta < 0.0) return null
-        if (!(minGuardBG < 36.0 /* 2.0 mmol */ || minPredBG < 36.0)) return null
+        // 2026-11-16, per explicit request: at BG >= 11.0 mmol a forecast under 3.0 (not 2.0) counts as absurd.
+        val absurdBelow = if (bg >= 198.2 /* 11.0 mmol */) 54.0 /* 3.0 mmol */ else 36.0 /* 2.0 mmol */
+        if (!(minGuardBG < absurdBelow || minPredBG < absurdBelow)) return null
+        lastHp1AbsurdMmol = if (absurdBelow > 40.0) "3.0" else "2.0"
         if (iob >= iobTH) return null
         val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
         if (hpAt <= 0L || hpAt > now + 60_000L || now - hpAt > 5 * 60_000L) return null
@@ -160,9 +177,11 @@ class DetermineBasalAutoISF @Inject constructor(
             val units = parts.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null
             if (now - time in 0L until 2 * 60 * 60_000L) time to units else null
         }
-        val room = HP1_OVERRIDE_2H_U - recent.sumOf { it.second }
+        val hiTier = bg >= 180.2 /* 10.0 mmol */ && delta >= 0.0 && iob < iobTH * 0.5 && !recentLowActive
+        val room = (if (hiTier) HP1_OVERRIDE_HI_2H_U else HP1_OVERRIDE_2H_U) - recent.sumOf { it.second }
         val step = if (bolusIncrement > 0.0) bolusIncrement else 0.05
-        val dose = Math.floor(min(HP1_OVERRIDE_DOSE_U, room) / step + 1e-9) * step
+        val dose = Math.floor(min(if (hiTier) HP1_OVERRIDE_HI_DOSE_U else HP1_OVERRIDE_DOSE_U, room) / step + 1e-9) * step
+        lastHp1Tier = if (hiTier) "10" else "8"
         if (dose < step - 1e-9) return null
         preferences.put(StringNonKey.ApsAutoIsfHp1OverrideLog, (recent + (now to dose)).joinToString(";") { "${it.first}:${it.second}" })
         lastHp1Mmol = hp1
@@ -1450,9 +1469,9 @@ class DetermineBasalAutoISF @Inject constructor(
             // HP1 override (2026-11-15, per explicit request, toggle default off): an absurd forecast at BG >= 8.0 keeps the
             // profile basal and allows a small SMB instead of the zero temp. See hp1OverrideDose.
             hp1OverrideDose(bg, minGuardBG, minPredBG, glucose_status.shortAvgDelta, iob_data.iob, iobTHvirtual, microBolusAllowed,
-                profile.bolus_increment, currentTime, iob_data.lastBolusTime)?.let { dose ->
+                profile.bolus_increment, currentTime, iob_data.lastBolusTime, glucose_status.delta, recentLowActive)?.let { dose ->
                 rT.units = dose
-                rT.reason.append("HP1override: SMB ${round(dose, 2)} U, basal kept (HP1 ${round(lastHp1Mmol, 1)}, minGuard ${convert_bg(minGuardBG)}, minPredBG ${convert_bg(minPredBG)}) ; ")
+                rT.reason.append("HP1override: SMB ${round(dose, 2)} U (tier ≥$lastHp1Tier, forecast <$lastHp1AbsurdMmol), basal kept (HP1 ${round(lastHp1Mmol, 1)}, minGuard ${convert_bg(minGuardBG)}, minPredBG ${convert_bg(minPredBG)}) ; ")
                 consoleError.add("HP1 override: minGuardBG ${convert_bg(minGuardBG)} < ${convert_bg(threshold)} ignored, SMB ${round(dose, 2)} U, basal ${round(basal, 2)}")
                 return setTempBasal(basal, 30, profile, rT, currenttemp)
             }
@@ -2811,3 +2830,7 @@ private const val PRED_SENS_CAP = 2.0
 /** HP1 override: at most this much per SMB, and at most HP1_OVERRIDE_2H_U in 2 h (2026-11-15, see hp1OverrideDose). */
 private const val HP1_OVERRIDE_DOSE_U = 0.1
 private const val HP1_OVERRIDE_2H_U = 0.3
+
+/** HP1 override BG 10+ tier (2026-11-16): per SMB and per 2 h. See hp1OverrideDose. */
+private const val HP1_OVERRIDE_HI_DOSE_U = 0.2
+private const val HP1_OVERRIDE_HI_2H_U = 0.6
