@@ -68,38 +68,23 @@ data class List1Row(
     // Tick boxes and OK, as v3's graph dialogs (2026-11-16, per explicit request). OK sends the on or off code of each tick that changed.
     val ticks: List<ListTick> = emptyList(),
     // The names of the Down and Up ticks of a stepped row: the step, as v3 (2026-11-16, per explicit request). Null = "Down" and "Up".
-    val stepLabels: Pair<String, String>? = STEP_LABELS[downMmol],
+    val stepLabels: Pair<String, String>? = stepLabelsFor(downMmol),
 )
 
-/** The step of each stepped row, by its Down code, as v3's tick names (2026-11-16, per explicit request). */
-val STEP_LABELS: Map<Double, Pair<String, String>> = mapOf(
-    5.002 to ("-0.01" to "+0.01"),
-    5.012 to ("-0.01" to "+0.01"),
-    5.016 to ("-0.05" to "+0.05"),
-    5.022 to ("-0.1" to "+0.1"),
-    5.026 to ("-0.01" to "+0.01"),
-    5.032 to ("-0.05" to "+0.05"),
-    5.036 to ("-0.1" to "+0.1"),
-    5.046 to ("-5%" to "+5%"),
-    5.052 to ("-0.25" to "+0.25"),
-    5.056 to ("-0.01" to "+0.01"),
-    5.062 to ("-0.01" to "+0.01"),
-    5.068 to ("-0.1" to "+0.1"),
-    5.074 to ("-5 min" to "+5 min"),
-    5.080 to ("-0.1" to "+0.1"),
-    5.086 to ("-0.1" to "+0.1"),
-    5.092 to ("-0.1" to "+0.1"),
-    5.098 to ("-0.1" to "+0.1"),
-    5.104 to ("-0.1" to "+0.1"),
-    5.110 to ("-0.1" to "+0.1"),
-    5.116 to ("-0.1" to "+0.1"),
-    5.122 to ("-0.1" to "+0.1"),
-    5.128 to ("-0.1" to "+0.1"),
-    5.134 to ("-0.1" to "+0.1"),
-    5.182 to ("-0.25" to "+0.25"),
-    5.186 to ("-0.25" to "+0.25"),
-    5.190 to ("-5%" to "+5%")
-)
+/**
+ * The step of each stepped row, by its Down code, as v3's tick names (2026-11-16, per explicit request).
+ * A function, not a table: a top-level table here is set up after CODED_PROFILES_ROW, which is built (and asks for its step
+ * names) earlier in the same file, so the table was still null then and the whole file failed to load at start (chk506).
+ */
+fun stepLabelsFor(downMmol: Double): Pair<String, String>? = when (downMmol) {
+    5.002, 5.012, 5.026, 5.056, 5.062 -> "-0.01" to "+0.01"
+    5.016, 5.032 -> "-0.05" to "+0.05"
+    5.022, 5.036, 5.068, 5.080, 5.086, 5.092, 5.098, 5.104, 5.110, 5.116, 5.122, 5.128, 5.134 -> "-0.1" to "+0.1"
+    5.046, 5.190 -> "-5%" to "+5%"
+    5.052, 5.182, 5.186 -> "-0.25" to "+0.25"
+    5.074 -> "-5 min" to "+5 min"
+    else -> null
+}
 
 /** One tick box of a [List1Row]: shown ticked when [checked]; OK sends [onCode] or [offCode] when the tick was changed. */
 data class ListTick(val label: String, val checked: Boolean, val onCode: Double, val offCode: Double)
