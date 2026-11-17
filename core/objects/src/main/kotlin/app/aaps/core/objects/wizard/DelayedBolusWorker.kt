@@ -37,7 +37,6 @@ import java.util.concurrent.TimeUnit
 import app.aaps.core.objects.utils.StepCountSource
 import javax.inject.Inject
 import kotlin.math.max
-import kotlin.math.min
 
 /**
  * Delayed bolus (50%-profile wizard mechanism — NOT the equal-parts split bolus):
@@ -147,7 +146,7 @@ class DelayedBolusWorker(
         val profile = profileFunction.getProfile()
         val multiplierPct = (multiplier * 100).toInt()
         val capNote = if (liveInsulinReqCap != null && cappedRawDose < rawDose)
-            " (capped to InsReq -> ${Round.roundTo(cappedRawDose, 0.01)}U)"
+            " (capped half-way to InsReq -> ${Round.roundTo(cappedRawDose, 0.01)}U)"
         else ""
         // insReqLimited (2026-09-30, per explicit request): InsReq is a this-cycle delivery-rate ceiling, not a
         // re-assessment of how much is really still owed -- unlike cobFraction/multiplier, which DO legitimately
@@ -435,11 +434,17 @@ class DelayedBolusWorker(
                 if (liveInsulinReqAgeMs in 0..T.mins(10).msecs())
                     preferences.get(LongKey.ApsAutoIsfLastCycleInsulinReqMilliU) / 1000.0
                 else null
-            val cappedRawDose = if (liveInsulinReqCap != null) min(rawDose, max(0.0, liveInsulinReqCap)) else rawDose
             // True when InsReq (not cobFraction/multiplier) is the reason this check's delivery falls short
             // of the raw remainder -- 2026-09-30, per explicit request: this is the ONLY case that should
             // keep the sequence alive for another check rather than ending it.
-            val insReqLimited = liveInsulinReqCap != null && cappedRawDose < rawDose
+            val insReqLimited = liveInsulinReqCap != null && max(0.0, liveInsulinReqCap) < rawDose
+            // 2026-11-17, per explicit request: half the gap to InsReq, as the carb-split and Warsaw parts already were
+            // (followUpInsulinCap), instead of InsReq itself. Rounded down to a pump step, so never above that half-way
+            // point; an InsReq under one pump step still gives nothing. 17 Nov Db40 gave 0.05U on an InsReq of 0.03U.
+            val bolusStep = activePlugin.activePump.pumpDescription.bolusStep
+            val cappedRawDose = if (insReqLimited)
+                followUpInsulinCap(rawDose, Math.round(max(0.0, liveInsulinReqCap!!) * 1000), now, now, bolusStep) ?: rawDose
+            else rawDose
 
             val elapsedMin = attempt * POLL_MINUTES
             val movingNow = WizardActivitySteps.stillMovingNow(stepCountSource, now)

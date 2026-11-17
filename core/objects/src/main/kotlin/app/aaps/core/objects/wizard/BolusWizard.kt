@@ -463,8 +463,12 @@ class BolusWizard @Inject constructor(
         if (carbsHalvedByRecent50) {
             insulinFromCarbsOnly /= 2.0
         }
-        insulinFromProteinOnly = (protein * 0.4) / ic
-        insulinFromFatOnly = (fat * 0.9) / ic
+        // 2026-11-17, per explicit request: on a 50% profile the protein/fat series is given too (see warsawAllowedAt), sized
+        // at the Standard role's 100% IC as the delayed bolus sizes its full need (delayedNormalIc). 17 Nov 14:30: IC 12.6 on
+        // Profile70 (50%) gave 1.20U for 13 g protein / 11 g fat, against about 2.9U at Profile100's IC 5.1.
+        val fpuIc = if (activeProfileSwitchPct() == 50) delayedNormalIc(ic / 2.0) else ic
+        insulinFromProteinOnly = (protein * 0.4) / fpuIc
+        insulinFromFatOnly = (fat * 0.9) / fpuIc
         insulinFromCarbs = insulinFromCarbsOnly
         // Low-BG recent-entry rule (2026-09-24, per explicit request): see WizardRecentEntry. Only detected here;
         // the Bolus Wizard dialog and QuickWizard start their COB box unticked under it (the user can re-tick),
@@ -614,10 +618,18 @@ class BolusWizard @Inject constructor(
         warsawFpuPlan()?.let { plan ->
             val cappedNote = if (plan.capped) " [CAPPED, full tier=${decimalFormatter.to2Decimal(plan.fullTierInsulin)}U/8h]" else ""
             val gap = plan.durationMinutes / plan.numDoses.coerceAtLeast(1)
+            // 2026-11-17: say so when the series will not be scheduled, instead of describing parts that never come
+            val notScheduled = when {
+                superBolusActive                  -> "superbolus active"
+                !warsawAllowedAt(schedulingPct)   -> "profile at $schedulingPct%"
+                else                              -> null
+            }
             parts.add(
                 "Protein+Fat: ${plan.numDoses} x ${decimalFormatter.to2Decimal(plan.perDoseInsulin)}U " +
                     "(${decimalFormatter.to2Decimal(plan.totalInsulin)}U, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)}), " +
-                    "first in $gap min, then every $gap min, each only if BG and IOB allow$cappedNote"
+                    (if (notScheduled != null) "NOT scheduled ($notScheduled)"
+                    else "first in $gap min, then every $gap min, each only if BG and IOB allow") +
+                    (if (schedulingPct == 50 && notScheduled == null) ", at the Standard IC (profile 50%)" else "") + cappedNote
             )
             // Give rest later (2026-11-12): say how much of this series the falling-BG caution held back
             if (heldBackUnits > 0.0) parts.add("Includes ${decimalFormatter.to2Decimal(heldBackUnits)}U held back by the falling BG caution")
@@ -667,13 +679,14 @@ class BolusWizard @Inject constructor(
             // to 80min) is DelayedBolusWorker's own fixed poll -- see its companion object.
             val triggerLabel = if (delayedProfilePctPreview == 50) "profile=50%" else if (recent50TriggeredPreview) "recent50Triggered" else if (walkingSoonCutApplied) "walkingSoon" else "dropTrendCaution"
             val normalIc = delayedNormalIc(if (delayedProfilePctPreview == 50) ic / 2.0 else ic)
-            val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+            val profileFullRequired = delayedProfileFullRequired(normalIc)
             val cautionFullRequired = if (cautionDelays) WizardDropTrendCaution.fullRequiredFromScaled(calculatedTotalInsulin) else 0.0
             val fullRequired = max(profileFullRequired, cautionFullRequired)
             // 2026-10-23, per explicit request: say what was held back and why, and that the part over MaxBolus is the carb split's
             val overMax = max(0.0, calculatedTotalInsulin - insulinAfterConstraints)
             val splitPart = if (splitPending && overMax >= 0.01) ", ${decimalFormatter.to2Decimal(overMax)}U of it over MaxBolus is left to the carb split" else ""
-            "pending (held back by ${DelayedBolusWorker.heldBackText(triggerLabel)}: needs ${decimalFormatter.to2Decimal(fullRequired)}U without it, " +
+            "pending (held back by ${DelayedBolusWorker.heldBackText(triggerLabel)}: needs ${decimalFormatter.to2Decimal(fullRequired)}U without it " +
+                "at IC ${decimalFormatter.to2Decimal(normalIc)} ($delayedIcSource), " +
                 "${decimalFormatter.to2Decimal(insulinAfterConstraints)}U given now$splitPart; checks every 5min up to 80min)"
         }
         // IC/Profile% reporting -- added 2026-08-30 per explicit request: ic itself (set in doCalc()) is
@@ -1164,7 +1177,7 @@ class BolusWizard @Inject constructor(
                                         // was manually halved above), so ic is already the normal one.
                                         // Since 2026-11-14: the Standard profile's IC at 100%, see delayedNormalIc()
                                         val normalIc = delayedNormalIc(if (delayedProfilePct == 50) ic / 2.0 else ic)
-                                        val profileFullRequired = (carbs / normalIc + insulinFromBolusIOB) * percentageCorrection / 100.0
+                                        val profileFullRequired = delayedProfileFullRequired(normalIc)
                                         // dropTrendCautionApplied's own fullRequired undoes THAT rule's wiz%/
                                         // max-bolus scaling directly (WizardDropTrendCaution.SCALE), unrelated
                                         // to IC -- when it's the ONLY trigger, profileFullRequired above still
@@ -1408,8 +1421,9 @@ class BolusWizard @Inject constructor(
         // from no longer reflects reality. Each sub-dose is independently BG- and IOBdelta-gated, AT ITS
         // OWN delivery time, by scheduleSingleDelayedDose() — same mechanism as before, just called
         // numDoses times instead of once each for protein/fat.
+        // 2026-11-17, per explicit request: a 50% profile also schedules it, at the Standard IC (see warsawAllowedAt).
         warsawFpuPlan()?.let { plan ->
-            if (!fpuDoseScheduled && !superBolusActive && schedulingPct >= 100) {
+            if (!fpuDoseScheduled && !superBolusActive && warsawAllowedAt(schedulingPct)) {
                 fpuDoseScheduled = true
                 aapsLogger.info(
                     LTag.CORE,
@@ -1503,6 +1517,10 @@ class BolusWizard @Inject constructor(
         return pct
     }
 
+    // Protein/fat (Warsaw) parts: at 100% or more, and since 2026-11-17 (per explicit request) also on a 50% profile, where
+    // they are sized at the Standard IC (see insulinFromProteinOnly). Other reduced profiles still hold and then cancel them.
+    private fun warsawAllowedAt(pct: Int): Boolean = pct >= 100 || pct == 50
+
     /**
      * IC for the delayed bolus's "full need" (2026-11-14, per explicit request): the Standard role's profile at 100%,
      * at this time of day. The Low profile is for hypo risk with no carbs; once the delayed checks say it is safe to
@@ -1511,14 +1529,39 @@ class BolusWizard @Inject constructor(
      * carb insulin. Falls back to [fallbackIc] (the old rule) when the Standard name is unset or not in the profile store.
      */
     private fun delayedNormalIc(fallbackIc: Double): Double {
-        // String? on purpose: an unstubbed test mock returns null here
-        val standardName: String? = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
-        val standardIc = standardName?.takeIf { it.isNotBlank() }
-            ?.let { activePlugin.activeProfileSource.profile?.getSpecificProfile(it) }
-            ?.let { ProfileSealed.Pure(value = it, activePlugin = null).getIc(dateUtil.now()) }
-            ?.takeIf { it > 0.0 }
-        if (standardIc == null) aapsLogger.info(LTag.CORE, "Delayed bolus: Standard profile '$standardName' not found, IC=$fallbackIc kept")
-        return standardIc ?: fallbackIc
+        // 2026-11-17, per explicit request: then Standard tier A, before the old rule. 17 Nov 14:30 on Live gave IC 6.3
+        // (Profile70 at 50%, halved) instead of Profile100's 5.1. Which name gave the IC goes into the calculation note.
+        for (key in listOf(StringKey.ApsAutoIsfStandardProfileName, StringKey.ApsAutoIsfStandard100ProfileName)) {
+            // String? on purpose: an unstubbed test mock returns null here
+            val name: String? = preferences.get(key)
+            val standardIc = name?.trim()?.takeIf { it.isNotBlank() }
+                ?.let { activePlugin.activeProfileSource.profile?.getSpecificProfile(it) }
+                ?.let { ProfileSealed.Pure(value = it, activePlugin = null).getIc(dateUtil.now()) }
+                ?.takeIf { it > 0.0 }
+            if (standardIc != null) {
+                delayedIcSource = "Standard ${name?.trim()}"
+                return standardIc
+            }
+            aapsLogger.info(LTag.CORE, "Delayed bolus: ${key.key} '$name' not found in the profile store")
+        }
+        aapsLogger.info(LTag.CORE, "Delayed bolus: no Standard profile found, IC=$fallbackIc kept")
+        delayedIcSource = "no Standard profile found, running profile's IC"
+        return fallbackIc
+    }
+
+    /** Where the last [delayedNormalIc] came from, for the calculation note. */
+    private var delayedIcSource = ""
+
+    /**
+     * The delayed bolus's "full need" on the Standard path (2026-11-17, per explicit request, as v4): the whole calculated
+     * dose plus the carb insulin that was held back, i.e. the carbs at [normalIc] less the carb insulin of this calculation,
+     * at the calculator's percent. Before, (carbs / normalIc + bolus IOB) x percent ADDED the bolus IOB (held as a positive
+     * number) on top: 17 Nov 14:30 "needs 3.01U" = (16 / 6.3 + 1.00) x 85%. The bolus IOB, BG, trend and COB are already in
+     * the dose given now. DelayedBolusWorker takes the dose given and any carb split share off this again.
+     */
+    private fun delayedProfileFullRequired(normalIc: Double): Double {
+        val heldCarbInsulin = max(0.0, carbs / normalIc - insulinFromCarbs) * percentageCorrection / 100.0
+        return calculatedTotalInsulin + heldCarbInsulin
     }
 
     // Live total active insulin (bolus + basal IOB), matching the same calculation doCalc() itself uses
@@ -2055,7 +2098,7 @@ class BolusWizard @Inject constructor(
                 }
             }
             val pct = activeProfileSwitchPct()
-            if (pct < 100) {
+            if (!warsawAllowedAt(pct)) {
                 deferOrCancel("profile switch at $pct% (scheduled at $schedulingPct%)", "profile switch to $pct%")
                 return@postDelayed
             }

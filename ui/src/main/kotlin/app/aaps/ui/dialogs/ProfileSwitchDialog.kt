@@ -425,7 +425,10 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
     // a test action on the non-dosing device silently overwriting the actual loop phone's role state.
     // AAPSCLIENT is untouched: Client has no local role prefs at all (see submit()'s own comment), so
     // this note is its ONLY path to affect real dosing and must still be emitted there.
+    // 2026-11-17, per explicit request: not on the loop phone either. It has just set the role itself, so its own note
+    // only came back to it as a second SetRole (and an SMS), uploaded to Nightscout for nothing.
     private fun emitSetRoleNote(roleKey: StringKey, profileName: String) {
+        if (!config.AAPSCLIENT) return
         if (activePlugin.activePump is VirtualPump) return
         val te = TE(
             timestamp = dateUtil.now(),
@@ -489,7 +492,9 @@ class ProfileSwitchDialog : DialogFragmentWithDate() {
         // Fast 51–57 only when that option has a durationCode. StandardTierA / SteroidTier stay Note-only.
         val roleIndex = binding.roleAssignSpinner.selectedItemPosition
         val roleOption = roleOptions.getOrElse(roleIndex) { roleOptions[0] }
-        val roleDurationCode = if (roleOption.durationCode != null && typedDuration == 0 && percent == 100) roleOption.durationCode else null
+        // Client only (2026-11-17, per explicit request): the loop phone sets the role itself, so the coded 51–57 min
+        // switch only made it switch twice (coded, then re-issued as indefinite) and send a RoleSet SMS and note.
+        val roleDurationCode = if (config.AAPSCLIENT && roleOption.durationCode != null && typedDuration == 0 && percent == 100) roleOption.durationCode else null
         val duration = roleDurationCode
             ?: if (typedDuration in 51..57 && (roleOption.key == null || roleOption.durationCode == null)) 60
             else typedDuration
