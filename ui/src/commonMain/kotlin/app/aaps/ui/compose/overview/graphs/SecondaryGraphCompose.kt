@@ -213,6 +213,8 @@ fun SecondaryGraphCompose(
     showSmbDoseLabels: Boolean = false,
     secondaryMarks: SecondaryMarks = SecondaryMarks.NONE,
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
+    /** The window as drawn right now, during a drag too (about every 50 ms). Not debounced, unlike [onVisibleRangeChanged]. */
+    onLiveVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
     /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
@@ -552,6 +554,10 @@ fun SecondaryGraphCompose(
     val currentOnVisibleRangeChanged by rememberUpdatedState(onVisibleRangeChanged)
     LaunchedEffect(settledVisibleRange) {
         currentOnVisibleRangeChanged?.invoke(settledVisibleRange)
+    }
+    val currentOnLiveVisibleRangeChanged by rememberUpdatedState(onLiveVisibleRangeChanged)
+    LaunchedEffect(visibleRange) {
+        currentOnLiveVisibleRangeChanged?.invoke(visibleRange)
     }
 
     val visibleMinX = visibleRange?.first

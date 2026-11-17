@@ -296,6 +296,8 @@ fun GraphsSection(
     // decoration on BG's own chart, since that was tried and found to break BG's pinch-zoom
     // gesture handling.
     var iobVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    // The same window as drawn right now, during a drag too (for the basal scroll hold below)
+    var iobLiveVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
     val visibleMinutes = iobVisibleRange?.let { (start, end) -> end - start }
     val isDesktop = LocalConfig.current.platform == AppPlatform.Desktop
     val windowSize = LocalWindowInfo.current.containerSize
@@ -468,6 +470,35 @@ fun GraphsSection(
         if (!latestAllGraphsRendered) return@LaunchedEffect
         graphsReady = true
         graphViewModel.graphSyncLog("ready", "all graph models drawn after ${dateUtil.now() - graphsHiddenSince} ms")
+    }
+    // Basal scroll hold (2026-11-17, per explicit request): the basal scales are refitted only after a scroll settles
+    // (IOB graph 280 ms, BG graph 400 ms more). While a higher basal than the drawn scales were fitted to is in the live
+    // window, the columns would stand too tall, so the last frame stays on screen until every graph has drawn its new scale.
+    fun minutesToTimes(range: Pair<Double, Double>?) = derivedTimeRange?.first?.let { minTs ->
+        range?.let { (fromX, toX) -> (minTs + (fromX * 60_000).toLong()) to (minTs + (toX * 60_000).toLong()) }
+    }
+    val liveBasalTimes = minutesToTimes(iobLiveVisibleRange)
+    val basalScaleStale = liveBasalTimes != null && run {
+        val livePeak = basalAxisMax(basalSnapshot, liveBasalTimes, 1.0)
+        val drawnPeak = minOf(
+            basalAxisMax(basalSnapshot, minutesToTimes(iobVisibleRange), 1.0),
+            basalAxisMax(basalSnapshot, bgVisibleTimeRange, 1.0)
+        )
+        livePeak > drawnPeak * BASAL_SCROLL_HOLD_RATIO
+    }
+    val latestBasalScaleStale by rememberUpdatedState(basalScaleStale)
+    var basalHold by remember { mutableStateOf(false) }
+    LaunchedEffect(basalScaleStale) { if (basalScaleStale) basalHold = true }
+    LaunchedEffect(basalHold, basalScaleStale, allGraphsRendered) {
+        if (!basalHold || basalScaleStale) return@LaunchedEffect
+        if (allGraphsRendered) {
+            // As above: let the graphs mark the refitted model pending before trusting the old "drawn".
+            withFrameNanos { }
+            if (latestAllGraphsRendered && !latestBasalScaleStale) basalHold = false
+        } else {
+            delay(GRAPHS_READY_TIMEOUT_MS)
+            basalHold = false
+        }
     }
     val latestTimeRange = rememberUpdatedState(derivedTimeRange)
     val latestNow = rememberUpdatedState(nowTimestamp)
@@ -1010,7 +1041,7 @@ fun GraphsSection(
             // Upstream (2026-10-27 port): a touch anywhere on the graphs closes the inspect pill
             .closesInspectPillOnTouch(inspect)
             // Draw the pending models off screen while keeping the last ready frame visible.
-            .holdGraphFrame(graphsReady)
+            .holdGraphFrame(graphsReady && !basalHold && !basalScaleStale)
     ) {
         // HP= at the left of the − + row (2026-10-31, per explicit request). Only with a current AutoISF row (statusIsf
         // is set only then), like the HP= of the steps line, so an old prediction does not linger.
@@ -1251,6 +1282,7 @@ fun GraphsSection(
                 nowTimestamp = nowTimestamp,
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
                 onVisibleRangeChanged = { iobVisibleRange = it },
+                onLiveVisibleRangeChanged = { iobLiveVisibleRange = it },
                 basalSnapshot = basalSnapshot,
                 onRenderReady = { renderedGraphs = renderedGraphs + (-2 to it) },
                 inspect = inspect,
