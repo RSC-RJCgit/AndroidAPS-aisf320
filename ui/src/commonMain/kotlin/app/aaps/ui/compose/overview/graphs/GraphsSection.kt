@@ -1047,9 +1047,12 @@ fun GraphsSection(
         // is set only then), like the HP= of the steps line, so an old prediction does not linger.
         val autoIsfStatus by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
         val bgInfoState by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
+        // BR Δ40 AC HP (2026-11-17, per explicit request): the current basal rate (the temp basal when one runs, as the
+        // basal columns draw it) replaces SD; Δ40 is the same long delta that was labelled LD.
+        val currentBasal = basalSnapshot?.actualBasal?.lastOrNull { it.timestamp <= nowTimestamp }?.value
         val deltaText = stringResource(
             UiStrings.overview_glucose_changes,
-            autoIsfStatus.statusShortDelta ?: bgInfoState.bgInfo?.shortAvgDeltaText ?: "—",
+            currentBasal?.let { LocalDecimalFormatter.current.to2Decimal(it) } ?: "—",
             autoIsfStatus.statusLongDelta ?: bgInfoState.bgInfo?.longAvgDeltaText ?: "—",
             autoIsfStatus.statusAcceleration ?: "—"
         )
