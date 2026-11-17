@@ -136,6 +136,13 @@ class GraphInspectState {
     /** Set by the touch layer. Not a state: only read in callbacks. */
     var pointerDown = false
 
+    /**
+     * True from a second finger until every finger is lifted (2026-11-17, per explicit request). Vico's long press follows
+     * only the first finger, so on the iPhone it still fired in a pinch whose first finger rested (11:43:13, 11:43:25),
+     * opened the pill in the top bar and cut the pinch. A long press is refused while this is set.
+     */
+    var multiTouch = false
+
     private var windowFocused = true
     private var layoutSize: IntSize? = null
 
@@ -239,8 +246,8 @@ class GraphInspectState {
         // Only a long press starts it; it ends on lift or zoom
         override fun shouldAcceptInteraction(interaction: Interaction, targets: List<CartesianMarker.Target>): Boolean =
             when (interaction) {
-                is Interaction.LongPress -> (pointerDown && windowFocused).also { accepted ->
-                    if (!accepted) log("Graph inspect: long press refused, ${pressState()}")
+                is Interaction.LongPress -> (pointerDown && windowFocused && !multiTouch).also { accepted ->
+                    if (!accepted) log("Graph inspect: long press refused, ${if (multiTouch) "two fingers down" else pressState()}")
                 }
                 is Interaction.Move -> pointerDown && windowFocused && fingerDown
                 // The parent may already have cleared fingerDown. Vico still needs the closing
@@ -252,7 +259,7 @@ class GraphInspectState {
         override fun shouldShowMarker(interaction: Interaction, targets: List<CartesianMarker.Target>): Boolean {
             // Vico can deliver a queued callback after the touch layer has already seen release.
             val show = pointerDown && windowFocused &&
-                (interaction is Interaction.LongPress || interaction is Interaction.Move && fingerDown)
+                (interaction is Interaction.LongPress && !multiTouch || interaction is Interaction.Move && fingerDown)
             fingerDown = show
             if (show) targetX = fingerX(interaction.point.x, targets.firstOrNull())
             return show
@@ -397,9 +404,12 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
     awaitPointerEventScope {
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
+            val pressedCount = event.changes.count { it.pressed }
+            if (pressedCount == 0) state.multiTouch = false
             // Two fingers are a pinch (2026-11-17, per explicit request): a hold that ran already ends, and the moves go
             // through to the chart's zoom. On the iPhone a pinch whose first finger rested first was taken as a hold.
-            if (event.changes.count { it.pressed } > 1) {
+            if (pressedCount > 1) {
+                state.multiTouch = true
                 if (state.fingerDown) {
                     state.fingerDown = false
                     state.log("Graph inspect: second finger, hold ended for a pinch")

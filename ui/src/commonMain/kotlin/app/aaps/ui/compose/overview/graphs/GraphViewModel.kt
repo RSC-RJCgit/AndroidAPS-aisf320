@@ -448,7 +448,9 @@ class GraphViewModel(
         val now = dateUtil.now()
         if (now - (lastGraphSyncLogMs[kind] ?: 0L) < GRAPH_SYNC_LOG_GAP_MS) return
         lastGraphSyncLogMs[kind] = now
-        aapsLogger.debug(LTag.UI, "GraphSync $kind: $message")
+        // CORE, not UI (2026-11-17, per explicit request): UI is off by default, so the iPhone logs showed none of these while
+        // the graph jittered on opening and pinches failed. Still one line per kind every 2 seconds.
+        aapsLogger.debug(LTag.CORE, "GraphSync $kind: $message")
     }
 
     override fun onCleared() {
