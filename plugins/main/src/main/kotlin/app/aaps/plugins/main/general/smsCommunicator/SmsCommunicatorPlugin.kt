@@ -46,6 +46,7 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAnyDeskLaunchRequested
 import app.aaps.core.interfaces.rx.events.EventNSClientRestart
 import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
@@ -158,7 +159,8 @@ class SmsCommunicatorPlugin @Inject constructor(
         "SMS" to "SMS DISABLE/STOP",
         "CARBS" to "CARBS 12\nCARBS 12 23:05\nCARBS 12 11:05PM",
         "HELP" to "HELP\nHELP command",
-        "RESTART" to "RESTART\nRestart AAPS"
+        "RESTART" to "RESTART\nRestart AAPS",
+        "ANYDESK" to "ANYDESK\nBring AnyDesk to the front"
     )
 
     override fun onStart() {
@@ -388,6 +390,16 @@ class SmsCommunicatorPlugin @Inject constructor(
                     if (!remoteCommandsAllowed) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.smscommunicator_remote_command_not_allowed)))
                     else if (divided.size == 1) processRestart(receivedSms)
                     else sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.wrong_format)))
+
+                // 2026-11-17, per explicit request: AnyDesk by SMS. The ADesk note (secondary NS, about 40-70 min) and the
+                // 5.178 relay TT both need Nightscout, which Live often lacks; an SMS arrives in seconds. Same launch as those
+                // (OpenAPSAutoISFPlugin's EventAnyDeskLaunchRequested handler, AnyDesk host device only). No dosing, so no code.
+                "ANYDESK"    ->
+                    if (!remoteCommandsAllowed) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.smscommunicator_remote_command_not_allowed)))
+                    else if (divided.size == 1) {
+                        rxBus.send(EventAnyDeskLaunchRequested("SMS"))
+                        sendSMS(Sms(receivedSms.phoneNumber, "AnyDesk launch requested"))
+                    } else sendSMS(Sms(receivedSms.phoneNumber, rh.gs(R.string.wrong_format)))
 
                 else         ->
                     if (messageToConfirm?.requester?.phoneNumber == receivedSms.phoneNumber) {

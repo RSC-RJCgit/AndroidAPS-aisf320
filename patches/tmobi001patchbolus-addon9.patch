@@ -1,0 +1,156 @@
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index 4972a20..c98636f 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -140,6 +140,22 @@ class BolusWizard(
+     private var carbsHalvedByRecent50: Boolean = false
+     var warsawPlan: WarsawFpuPlan? = null
+         private set
++    /** The protein/fat inputs of the last [doCalc], so [sizeWarsawAtStandard] can size the plan again at another ratio. */
++    private data class WarsawInputs(val protein: Int, val fat: Int, val durationHours: Double, val intervalMinutes: Int)
++    private var warsawInputs: WarsawInputs? = null
++
++    /**
++     * On a 50% profile (2026-11-17, per explicit request, as the 3426 app), sizes the protein/fat series at the Standard
++     * profile's 100% carb ratio, as the delayed bolus sizes what it held back. Null keeps this profile's ratio with the 50%
++     * taken off. Call right after [doCalc], before anything adds later units to the plan.
++     */
++    fun sizeWarsawAtStandard(standardIc: Double?) {
++        if (activeProfilePct != 50 || warsawPlan == null) return
++        val inputs = warsawInputs ?: return
++        val useIc = standardIc?.takeIf { it > 0.0 } ?: return
++        warsawPlan = warsawFpuPlan(inputs.protein, inputs.fat, useIc, inputs.durationHours, inputs.intervalMinutes)
++        aapsLogger.info(LTag.CORE, "Warsaw at 50% profile: sized at the Standard IC $useIc, ${warsawPlan?.totalInsulin} U")
++    }
+     var warsawIobBaseline: Double = 0.0
+         private set
+ 
+@@ -305,8 +321,11 @@ class BolusWizard(
+         // A recent low halves only this carb insulin.
+         // Protein and fat stay out of the immediate bolus. They are spread later, one dose per hour.
+         ic = profile.getIc() * baseScale
+-        warsawPlan = warsawFpuPlan(protein, fat, ic, warsawDurationHours, fpuIntervalMinutes)
+-        if (activePct < 100 || useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) warsawPlan = null
++        // 2026-11-17, per explicit request (as the 3426 app): a 50% profile keeps the protein/fat series. It is sized here at
++        // this profile's own ratio with the 50% taken off, and [sizeWarsawAtStandard] then resizes it at the Standard profile.
++        warsawInputs = WarsawInputs(protein, fat, warsawDurationHours, fpuIntervalMinutes)
++        warsawPlan = warsawFpuPlan(protein, fat, if (activePct == 50) ic / 2.0 else ic, warsawDurationHours, fpuIntervalMinutes)
++        if (!warsawAllowedAt(activePct) || useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) warsawPlan = null
+         insulinFromCarbs = carbs / ic
+         val status = glucoseStatus
+         val wizardBgMgdl = if (bg > 0.0) profileUtil.convertToMgdl(bg, profile.units) else 0.0
+@@ -526,11 +545,12 @@ class BolusWizard(
+      *
+      * Care portal notes: "D1.30" (the amount) the first time a dose is deferred, and "C1.30" when a dose is dropped.
+      */
+-    suspend fun scheduleWarsawDoses(plan: WarsawFpuPlan, iobBaseline: Double, source: Sources, retryLater: Boolean = true) {
++    /** [allowProfile50]: the calculator's series also runs on a 50% profile (2026-11-17); the Tier 3 automation's does not. */
++    suspend fun scheduleWarsawDoses(plan: WarsawFpuPlan, iobBaseline: Double, source: Sources, retryLater: Boolean = true, allowProfile50: Boolean = false) {
+         if (plan.numDoses <= 0) return
+         if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return
+         val profile = profileFunction.getProfile() ?: return
+-        if (profileSwitchPercent(profile) < 100) return
++        if (!warsawPercentOk(profileSwitchPercent(profile), allowProfile50)) return
+         val token = WarsawScheduleGate.next()
+         val scheduledAt = dateUtil.now()
+         aapsLogger.info(
+@@ -546,7 +566,7 @@ class BolusWizard(
+             val firstDueAt = scheduledAt + delayMin * 60_000L
+             val nextIndex = (index + 1..plan.numDoses).firstOrNull { parts[it - 1] > 0.0 }
+             val nextDueAt = nextIndex?.let { scheduledAt + warsawDoseDelayMinutes(it, plan.numDoses, plan.durationMinutes, plan.intervalMinutes) * 60_000L }
+-            appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, "fpu$index of ${plan.numDoses}") }
++            appScope.launch { runWarsawDose(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, "fpu$index of ${plan.numDoses}", allowProfile50 = allowProfile50) }
+         }
+     }
+ 
+@@ -560,6 +580,7 @@ class BolusWizard(
+         retryLater: Boolean,
+         label: String,
+         initialDueAt: Long = firstDueAt,
++        allowProfile50: Boolean = false,
+     ) {
+         var dueAt = initialDueAt
+         var deferralNoted = false
+@@ -582,12 +603,12 @@ class BolusWizard(
+                 recordCancelledDose(label, planned, expired, iobBaseline, source, useIobRise = false)
+                 return
+             }
+-            val reason = tryDeliverWarsawDose(planned, iobBaseline, source) { remaining, nextBaseline ->
++            val reason = tryDeliverWarsawDose(planned, iobBaseline, source, allowProfile50) { remaining, nextBaseline ->
+                 appScope.launch {
+                     val now = dateUtil.now()
+                     if (warsawCanRetry(now, firstDueAt, nextDueAt)) {
+                         runWarsawDose(remaining, nextBaseline, source, token, firstDueAt, nextDueAt, retryLater, label,
+-                            initialDueAt = now + WARSAW_RETRY_MINUTES * 60_000L)
++                            initialDueAt = now + WARSAW_RETRY_MINUTES * 60_000L, allowProfile50 = allowProfile50)
+                     } else {
+                         val expired = "insulinReq-limited remainder expired"
+                         warsawNote("C", remaining, expired, source, fpuWhat(label, remaining))
+@@ -630,10 +651,16 @@ class BolusWizard(
+     }
+ 
+     /** Null when the dose was handed to the pump. Otherwise the reason it was not given now. */
+-    private suspend fun tryDeliverWarsawDose(planned: Double, iobBaseline: Double, source: Sources, onCappedRemainder: (Double, Double) -> Unit): String? {
++    private fun warsawPercentOk(percent: Int, allowProfile50: Boolean): Boolean =
++        if (allowProfile50) warsawAllowedAt(percent) else percent >= 100
++
++    private suspend fun tryDeliverWarsawDose(
++        planned: Double, iobBaseline: Double, source: Sources, allowProfile50: Boolean, onCappedRemainder: (Double, Double) -> Unit
++    ): String? {
+         if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return "superbolus active"
+         val profile = profileFunction.getProfile() ?: return "no profile"
+-        if (profileSwitchPercent(profile) < 100) return "profile under 100%"
++        val percent = profileSwitchPercent(profile)
++        if (!warsawPercentOk(percent, allowProfile50)) return if (allowProfile50) "profile at $percent%" else "profile under 100%"
+         val status = glucoseStatusProvider.glucoseStatusData
+         if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) return "glucose check failed"
+         val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt
+index db4f12b..b8798cc 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt
+@@ -113,6 +113,12 @@ fun warsawNoteAmount(units: Double): String {
+ fun profileSwitchPercent(profile: Profile): Int =
+     if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
+ 
++/**
++ * Profile percents at which the calculator's protein/fat series runs: 100% or more, and since 2026-11-17 (per explicit
++ * request, as the 3426 app) also a 50% profile, where the series is sized at the Standard profile's carb ratio.
++ */
++fun warsawAllowedAt(percent: Int): Boolean = percent >= 100 || percent == 50
++
+ /**
+  * Glucose must be above 5.5 mmol, and both delta and short delta at least 0.05 mmol (2026-10-18, per explicit request; was
+  * above 0.2 mmol, which cancelled most doses on 17 Oct Live while BG was only slowly rising).
+diff --git a/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt b/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
+index d245d65..9a62dfc 100644
+--- a/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
++++ b/implementation/src/commonMain/kotlin/app/aaps/implementation/bolus/MasterActionExecutorImpl.kt
+@@ -344,6 +344,8 @@ class MasterActionExecutorImpl(
+         } finally {
+             if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
+         }
++        // On a 50% profile the protein/fat series is sized at the Standard profile (2026-11-17)
++        wizard.sizeWarsawAtStandard(standardProfileIcNow())
+         wizard.splitOverMax = entry.splitOverMax()
+         wizard.splitIntervalMinutes = entry.splitIntervalMinutes()
+         wizard.prepareDelayedBolus(standardProfileIcNow())
+@@ -471,6 +473,9 @@ class MasterActionExecutorImpl(
+                 fpuIntervalMinutes = inputs.fpuIntervalMinutes,
+                 walkingSoon = inputs.walkingSoon,
+             ).also { w ->
++                // On a 50% profile the protein/fat series is sized at the Standard profile (2026-11-17), before the saved
++                // calculation and before holdForFollowUp adds any later units to it.
++                w.sizeWarsawAtStandard(standardProfileIcNow())
+                 // Insulin-only mode (2026-11-01): the typed dose replaces the suggestion, under the same max bolus.
+                 // The calculation saved with the bolus is made first, so it keeps what the calculator suggested.
+                 inputs.fixedInsulin?.let { fixed ->
+@@ -1002,7 +1007,7 @@ class MasterActionExecutorImpl(
+         } else {
+             bolusWizardProvider().cancelLeftoverSplit()
+         }
+-        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source, p.warsawRetryLater) }
++        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source, p.warsawRetryLater, allowProfile50 = true) }
+         if (carbs2 > 0) deliverECarbs(carbs2, eventTime, duration, eCarbsDelay, notes, source, onError)
+         p.entry?.markAsUsed()
+         return MasterActionExecutor.ConfirmResult.Delivered
