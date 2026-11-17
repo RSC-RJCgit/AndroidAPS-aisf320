@@ -397,6 +397,15 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
     awaitPointerEventScope {
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
+            // Two fingers are a pinch (2026-11-17, per explicit request): a hold that ran already ends, and the moves go
+            // through to the chart's zoom. On the iPhone a pinch whose first finger rested first was taken as a hold.
+            if (event.changes.count { it.pressed } > 1) {
+                if (state.fingerDown) {
+                    state.fingerDown = false
+                    state.log("Graph inspect: second finger, hold ended for a pinch")
+                }
+                continue
+            }
             if (state.fingerDown && event.type == PointerEventType.Move) event.changes.forEach { it.consume() }
         }
     }
@@ -414,8 +423,10 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
         val stopped: String? = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis + BACKUP_HOLD_EXTRA_MS) {
             var reason: String? = null
             while (reason == null) {
-                val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                val changes = awaitPointerEvent(PointerEventPass.Initial).changes
+                val change = changes.firstOrNull { it.id == down.id }
                 reason = when {
+                    changes.count { it.pressed } > 1                       -> "second finger"
                     change == null || !change.pressed                      -> "lifted"
                     (change.position - down.position).getDistance() > slop -> "moved"
                     else                                                    -> null
