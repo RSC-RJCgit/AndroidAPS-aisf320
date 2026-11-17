@@ -465,11 +465,11 @@ fun SecondaryGraphCompose(
     val processedBasalProfile = remember(basalData, stableTimeRange) {
         if (!hasRealTimeRange || basalData == null) return@remember emptyList()
         val pts = processStepPoints(basalData.profileBasal, minTimestamp, minX, maxX)
-        pts.map { (x, y) -> x to -y } // negate: y=0 at top, -maxBasal at bottom
+        pts.map { (x, y) -> x to -basalLogHeight(y) } // negate: y=0 at top, -maxBasal at bottom; log curve, see basalLogHeight
     }
     fun flipBasal(points: List<GraphDataPoint>): List<Pair<Double, Double>> {
         if (!hasRealTimeRange || basalData == null) return emptyList()
-        return processStepPoints(points, minTimestamp, minX, maxX).map { (x, y) -> x to -y }
+        return processStepPoints(points, minTimestamp, minX, maxX).map { (x, y) -> x to -basalLogHeight(y) }
     }
     val processedAcceBasal = remember(basalData, stableTimeRange) { flipBasal(basalData?.acceTemp.orEmpty()) }
     val processedBgBasal = remember(basalData, stableTimeRange) { flipBasal(basalData?.bgTemp.orEmpty()) }
@@ -478,7 +478,7 @@ fun SecondaryGraphCompose(
     val processedBasalActual = remember(basalData, stableTimeRange) {
         if (!hasRealTimeRange || basalData == null) return@remember emptyList()
         val pts = processStepPoints(basalData.actualBasal, minTimestamp, minX, maxX)
-        pts.map { (x, y) -> x to -y }
+        pts.map { (x, y) -> x to -basalLogHeight(y) }
     }
 
     val hasBasalLayer = hasIob && basalData != null && !isDualAxis
@@ -1109,24 +1109,10 @@ fun SecondaryGraphCompose(
             else                         -> CartesianLayerRangeProvider.fixed(minX = 0.0, maxX = maxX)
         }
     }
-    // The flipped basal layer uses the same visible peak as the main graph, with its own height fraction.
-    // Look-ahead while scrolling (2026-11-17, per explicit request, replacing the scroll hold): at rest the scale fits the
-    // window in view; once a drag moves the window away from the settled one, the scale fits one screen more on each side
-    // (lookAheadRange), so a higher basal coming into view during the drag no longer stands too tall. When the scroll settles,
-    // the scale fits the new window again. Only this graph: the main graph rebuilding during a gesture broke its pinch zoom.
-    val scrolling = run {
-        val live = visibleRange
-        val settled = settledVisibleRange
-        live != null && settled != null && (abs(live.first - settled.first) > 0.5 || abs(live.second - settled.second) > 0.5)
-    }
-    val basalMaxY = remember(basalData, settledVisibleRange, minTimestamp, scrolling) {
-        val window = settledVisibleRange?.let { (from, to) -> if (scrolling) lookAheadRange(from, to) else from to to }
-        val visibleBasalTimes = window?.let { (from, to) ->
-            if (from == null || to == null) null
-            else (minTimestamp + (from * 60_000).toLong()) to (minTimestamp + (to * 60_000).toLong())
-        }
-        basalAxisMax(basalData, visibleBasalTimes, BASAL_HEIGHT_FRACTION)
-    }
+    // The flipped basal layer (2026-11-18, per explicit request, replacing the 17 Nov look-ahead while scrolling): log curve,
+    // scaled once to the highest basal in the whole loaded period, so a scroll or pinch never refits or rebuilds it.
+    // Low basal draws as small columns when a tall temp is in the loaded period; the log curve keeps them readable.
+    val basalMaxY = remember(basalData) { basalLogAxisMax(basalData, BASAL_HEIGHT_FRACTION) }
     // Empty strip above 0 (2026-10-14): the columns start one text line down, so the hourly basal peak numbers
     // (pinned to the top edge) sit above the columns instead of on them.
     val basalRangeProvider = remember(maxX, basalMaxY) {

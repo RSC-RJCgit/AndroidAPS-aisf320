@@ -47,6 +47,7 @@ import kotlinx.datetime.toLocalDateTime
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.ln
 import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.time.ExperimentalTime
@@ -335,6 +336,24 @@ internal fun basalAxisMax(data: BasalGraphData?, visibleTimeRange: Pair<Long, Lo
     }.maxOrNull()
     val peak = visibleMax ?: data.maxBasal
     return if (peak > 0.0) peak / heightFraction else 1.0
+}
+
+/**
+ * Graph 1 basal columns on a log curve (2026-11-18, per explicit request): column height is `ln(1 + rate / BASAL_LOG_KNEE)`,
+ * so low basal stays readable and a tall temp no longer dwarfs the rest. With a 4 U/h top, 0.5 / 1 / 2 U/h draw at about
+ * 39% / 57% / 78% of the band (a straight scale gave 12% / 25% / 50%). The numbers shown (hourly peaks, tap readout) stay real rates.
+ */
+const val BASAL_LOG_KNEE = 0.25
+
+internal fun basalLogHeight(rate: Double): Double = if (rate > 0.0) ln(1.0 + rate / BASAL_LOG_KNEE) else 0.0
+
+/**
+ * Graph 1's basal scale on the log curve, fitted once to the highest basal in the whole loaded period (2026-11-18, per
+ * explicit request), so scrolling and zooming never refit it: no rebuild during a drag or pinch, no look-ahead switch.
+ */
+internal fun basalLogAxisMax(data: BasalGraphData?, heightFraction: Double): Double {
+    val top = basalLogHeight(data?.maxBasal ?: 0.0)
+    return if (top > 0.0) top / heightFraction else 1.0
 }
 
 /** Empty space above the flipped basal columns on graph 1, as a share of the basal scale (about 13% of the graph), for the hourly basal peak numbers. */
