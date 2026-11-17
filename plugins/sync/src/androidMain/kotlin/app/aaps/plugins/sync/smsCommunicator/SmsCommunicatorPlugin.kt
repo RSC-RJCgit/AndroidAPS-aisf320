@@ -39,6 +39,9 @@ import app.aaps.core.interfaces.profile.ProfileUtil
 import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.queue.CommandQueue
+import app.aaps.core.interfaces.rx.bus.RxBus
+import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
+import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_THIS_PHONE
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
@@ -144,7 +147,8 @@ class SmsCommunicatorPlugin(
     // automation's ActionFactory needs SmsCommunicator, which is this plugin. Nothing here touches the
     // executor while the graph is being built - it is only used once a command arrives.
     private val masterActionExecutorProvider: () -> MasterActionExecutor,
-    val repository: SmsCommunicatorRepository
+    val repository: SmsCommunicatorRepository,
+    private val rxBus: RxBus
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.SYNC)
@@ -186,7 +190,8 @@ class SmsCommunicatorPlugin(
         "SMS" to "SMS DISABLE/STOP",
         "CARBS" to "CARBS 12\nCARBS 12 23:05\nCARBS 12 11:05PM",
         "HELP" to "HELP\nHELP command",
-        "RESTART" to "RESTART\nRestart AAPS"
+        "RESTART" to "RESTART\nRestart AAPS",
+        "ANYDESK" to "ANYDESK\nBring AnyDesk to the front"
     )
 
     override fun requiredPermissions(): List<PermissionGroup> = listOf(
@@ -414,6 +419,16 @@ class SmsCommunicatorPlugin(
                     if (!remoteCommandsAllowed) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.smscommunicator_remote_command_not_allowed)))
                     else if (divided.size == 1) processRestart(receivedSms)
                     else sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.wrong_format)))
+
+                // 2026-11-17, per explicit request (as the 3426 app): AnyDesk by SMS, in seconds and without Nightscout. Same
+                // launch as List 2 "Send AnyDesk restart" > "This phone" (OpenAPSAutoISFPlugin.restartAnyDeskHere: HOME-exit,
+                // AnyDesk, Shizuku fallback, AdLT/AdOn/AdMs notes): only the phone the SMS is sent to. No dosing, so no code.
+                "ANYDESK"  ->
+                    if (!remoteCommandsAllowed) sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.smscommunicator_remote_command_not_allowed)))
+                    else if (divided.size == 1) {
+                        rxBus.send(EventAutoIsfDirectTtCode(LOCAL_ANYDESK_THIS_PHONE))
+                        sendSMS(Sms(receivedSms.phoneNumber, "AnyDesk launch requested"))
+                    } else sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.wrong_format)))
 
                 else       ->
                     if (messageToConfirm?.requester?.phoneNumber == receivedSms.phoneNumber) {

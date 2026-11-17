@@ -144,7 +144,7 @@ class SmsCommunicatorPluginTest : TestBaseWithProfile() {
             aapsLogger, text, smsManager, preferences, constraintChecker, profileFunction, profileUtil, activePlugin, profileRepository,
             commandQueue, loop, iobCobCalculator, xDripBroadcast, otp, config, dateUtilMocked, uel,
             smbGlucoseStatusProvider, decimalFormatter, configBuilder, pumpStatusProvider, notificationManager,
-            runningModeGuard, bolusProgressData, { masterActionExecutor }, repository
+            runningModeGuard, bolusProgressData, { masterActionExecutor }, repository, rxBus
         )
         smsCommunicatorPlugin.setPluginEnabledBlocking(PluginType.SYNC, true)
         // Pump commands go through the executor now; the plugin itself only reads the pump status.
