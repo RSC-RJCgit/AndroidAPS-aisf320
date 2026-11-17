@@ -13,6 +13,8 @@ enum class BooleanNonKey(
     /** This installation has successfully applied the built-in settings at least once. */
     BuiltInSettingsAppliedBefore("built_in_settings_applied_before", false, exportable = false),
     SetupWizardIUnderstand("I_understand", false),
+    /** Profile store owner (2026-11-17): the one-time "Client" defaults of ProfileStoreOwner.applyClientDefaults ran on this client. */
+    NsClientProfileClientDefaultsApplied("nsclient_profile_client_defaults_applied", false, exportable = false),
     /** Statistics, Sensor tab (2026-11-04, per explicit request): draw the sensor's raw signal (the default) or BG */
     StatsSensorRaw("stats_sensor_raw", true),
     ObjectivesLoopUsed("ObjectivesLoopUsed", false),

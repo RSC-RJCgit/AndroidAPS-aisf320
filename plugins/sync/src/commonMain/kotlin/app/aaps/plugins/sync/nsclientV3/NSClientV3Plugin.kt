@@ -286,6 +286,7 @@ class NSClientV3Plugin(
 
     override suspend fun onStart() {
         super.onStart()
+        ProfileStoreOwner.applyClientDefaults(preferences, config.AAPSCLIENT)
 
         // A client takes glucose from its main site unless the user said otherwise. The key defaults to on, which is
         // right for a master or Virtual that reads Live's site, but a client with a second site then skipped the main

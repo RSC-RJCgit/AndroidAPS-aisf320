@@ -1,5 +1,8 @@
 package app.aaps.plugins.sync.nsclientV3
 
+import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.StringKey
+import app.aaps.core.keys.interfaces.Preferences
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -36,6 +39,25 @@ object ProfileStoreOwner {
 
     /** A new owner ID for a master that has none yet, for example "aaps-3f9c1a". The user can rename it. */
     fun newOwnerId(): String = "aaps-" + Random.nextInt(0x100000, 0x1000000).toString(16)
+
+    /** The shared owner ID and accept value every client gets by default (2026-11-17, per explicit request). */
+    const val CLIENT_ID = "Client"
+
+    /**
+     * Once per client install or update (2026-11-17, per explicit request): "Accept profile store only from" becomes
+     * [CLIENT_ID] unless it is [ANY], and the owner ID becomes [CLIENT_ID] when it is empty or an automatic "aaps-" one.
+     * A name typed by hand is kept, and later changes stick because this runs only once. Masters are left alone.
+     * Same rule as `ProfileStoreOwner.applyClientDefaults` in the v3 line.
+     */
+    fun applyClientDefaults(preferences: Preferences, isClient: Boolean) {
+        if (!isClient || preferences.get(BooleanNonKey.NsClientProfileClientDefaultsApplied)) return
+        if (preferences.get(StringKey.NsClientProfileAcceptFrom).trim() != ANY)
+            preferences.put(StringKey.NsClientProfileAcceptFrom, CLIENT_ID)
+        val ownerId = preferences.get(StringKey.NsClientProfileOwnerId).trim()
+        if (ownerId.isEmpty() || ownerId.startsWith("aaps-"))
+            preferences.put(StringKey.NsClientProfileOwnerId, CLIENT_ID)
+        preferences.put(BooleanNonKey.NsClientProfileClientDefaultsApplied, true)
+    }
 
     enum class Decision {
 

@@ -38,7 +38,6 @@ import app.aaps.core.ui.compose.icons.IcTtManual
 import app.aaps.core.ui.compose.navigation.label
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.core.ui.compose.stringResourceOrNull
-import app.aaps.core.ui.compose.ttReasonColor
 import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.main.TempTargetChipState
 
@@ -57,14 +56,16 @@ fun TempTargetChip(
     sceneManaged: Boolean = false,
     enabled: Boolean = true
 ) {
+    // Active temp target (2026-11-17, per explicit request): solid yellow with dark text and icon, as v3's ribbon
+    // (ribbonWarning #F4D700, ribbonTextWarning #303030), instead of a faint tint of the reason colour.
     val iconColor = when (state) {
-        TempTargetChipState.Active   -> reason.toIconColor()
+        TempTargetChipState.Active   -> TT_ACTIVE_TEXT
         TempTargetChipState.Adjusted -> AapsTheme.generalColors.adjusted
         TempTargetChipState.None     -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = if (state == TempTargetChipState.Active) TT_ACTIVE_TEXT else MaterialTheme.colorScheme.onSurfaceVariant
     val containerColor = when (state) {
-        TempTargetChipState.Active   -> iconColor.copy(alpha = 0.2f)
+        TempTargetChipState.Active   -> TT_ACTIVE_BACKGROUND
         TempTargetChipState.Adjusted -> iconColor.copy(alpha = 0.2f)
         TempTargetChipState.None     -> Color.Transparent
     }
@@ -138,8 +139,9 @@ fun TempTargetChip(
     }
 }
 
-@Composable
-private fun TT.Reason?.toIconColor(): Color = ttReasonColor(AapsTheme.generalColors)
+/** v3's ribbonWarning / ribbonTextWarning, used for an active temp target. */
+private val TT_ACTIVE_BACKGROUND = Color(0xFFF4D700)
+private val TT_ACTIVE_TEXT = Color(0xFF303030)
 
 /**
  * Why the temp target is running, in words. Same wording as `TranslatorImpl.translate(TT.Reason?)`,

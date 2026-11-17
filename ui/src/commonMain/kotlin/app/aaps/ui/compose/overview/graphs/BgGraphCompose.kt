@@ -623,7 +623,8 @@ fun BgGraphCompose(
             // (actScale: maxY * 0.8 / peak). currentMaxBgY is the axis top without the Graph 5 top band, so the
             // peaks stay below the band lanes.
             lineModel {
-                val floor = axisMin
+                // From 0 as on v3 (2026-11-17), not from the axis bottom (2.0 mmol/L on the main graph).
+                val floor = 0.0
                 val headroom = (currentMaxBgY - floor).coerceAtLeast(1.0)
                 val activityTop = headroom * 0.8
                 val maxAct = currentActivityData.maxActivity
@@ -824,7 +825,11 @@ fun BgGraphCompose(
             nearest(carb.timestamp)?.let { carb.timestamp to it }
         }
         // Activity scales to the axis as it is without the Graph 5 top band, so its peak never reaches the band lanes.
-        val activityAxisMax = if (!showActivity) maxBgY else if (topBandLines) niceScale(dataMin, axisDataMax).max else niceBgScale.max
+        // Main graph (2026-11-17, per explicit request "Match v3 exactly"): the activity height follows the 3426 panel top
+        // (24 h highest or high mark, rounded, plus a margin), not the fixed 2-12 axis, so the peak lands where v3 puts it.
+        // On high days that is above 12 mmol/L and the peak is cut off at the axis top.
+        val activityAxisMax = if (!showActivity) maxBgY else if (topBandLines) niceScale(dataMin, axisDataMax).max
+        else activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)
         // Upstream's treatment markers (2026-10 merge): only the measured values here (calibrations, BG checks). Boluses
         // and carbs keep the fork's own marks on the curve (bolusPoints / carbPoints above), so they are not drawn twice.
         val axisSpan = niceBgScale.max - niceBgScale.min
