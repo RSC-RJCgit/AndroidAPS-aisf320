@@ -115,6 +115,7 @@ class NSClientPlugin @Inject constructor(
     override fun onStart() {
         context.bindService(Intent(context, NSClientService::class.java), mConnection, Context.BIND_AUTO_CREATE)
         super.onStart()
+        app.aaps.plugins.sync.nsShared.ProfileStoreOwner.applyClientDefaults(preferences, config.AAPSCLIENT)
         receiverDelegate.grabReceiversState()
         simulatorBgReplay.start()
         disposable += Observable.interval(0, 1, TimeUnit.MINUTES, aapsSchedulers.io)
