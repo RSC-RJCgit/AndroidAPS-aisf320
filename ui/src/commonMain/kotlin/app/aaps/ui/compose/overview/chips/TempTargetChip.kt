@@ -56,16 +56,16 @@ fun TempTargetChip(
     sceneManaged: Boolean = false,
     enabled: Boolean = true
 ) {
-    // Active temp target (2026-11-17, per explicit request): solid yellow with dark text and icon, as v3's ribbon
-    // (ribbonWarning #F4D700, ribbonTextWarning #303030), instead of a faint tint of the reason colour.
+    // Active temp target (2026-11-17, per explicit request): yellow text and icon on a faint yellow, as the profile chip
+    // shows a timed or changed profile (inProgress). Earlier the same day it was v3's solid yellow ribbon with dark text.
     val iconColor = when (state) {
-        TempTargetChipState.Active   -> TT_ACTIVE_TEXT
+        TempTargetChipState.Active   -> AapsTheme.generalColors.inProgress
         TempTargetChipState.Adjusted -> AapsTheme.generalColors.adjusted
         TempTargetChipState.None     -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val textColor = if (state == TempTargetChipState.Active) TT_ACTIVE_TEXT else MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = if (state == TempTargetChipState.Active) iconColor else MaterialTheme.colorScheme.onSurfaceVariant
     val containerColor = when (state) {
-        TempTargetChipState.Active   -> TT_ACTIVE_BACKGROUND
+        TempTargetChipState.Active   -> iconColor.copy(alpha = 0.2f)
         TempTargetChipState.Adjusted -> iconColor.copy(alpha = 0.2f)
         TempTargetChipState.None     -> Color.Transparent
     }
@@ -138,10 +138,6 @@ fun TempTargetChip(
         }
     }
 }
-
-/** v3's ribbonWarning / ribbonTextWarning, used for an active temp target. */
-private val TT_ACTIVE_BACKGROUND = Color(0xFFF4D700)
-private val TT_ACTIVE_TEXT = Color(0xFF303030)
 
 /**
  * Why the temp target is running, in words. Same wording as `TranslatorImpl.translate(TT.Reason?)`,

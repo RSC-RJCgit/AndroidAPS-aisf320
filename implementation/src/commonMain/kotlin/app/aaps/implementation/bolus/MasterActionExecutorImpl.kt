@@ -359,6 +359,8 @@ class MasterActionExecutorImpl(
         } finally {
             if (buttonMax != null) preferences.put(DoubleKey.SafetyMaxBolus, savedMaxBolus)
         }
+        // On a 50% profile the protein/fat series is sized at the Standard profile (2026-11-17)
+        wizard.sizeWarsawAtStandard(standardProfileIcNow())
         wizard.splitOverMax = entry.splitOverMax()
         wizard.splitIntervalMinutes = entry.splitIntervalMinutes()
         wizard.prepareDelayedBolus(standardProfileIcNow())
@@ -486,6 +488,9 @@ class MasterActionExecutorImpl(
                 fpuIntervalMinutes = inputs.fpuIntervalMinutes,
                 walkingSoon = inputs.walkingSoon,
             ).also { w ->
+                // On a 50% profile the protein/fat series is sized at the Standard profile (2026-11-17), before the saved
+                // calculation and before holdForFollowUp adds any later units to it.
+                w.sizeWarsawAtStandard(standardProfileIcNow())
                 // Insulin-only mode (2026-11-01): the typed dose replaces the suggestion, under the same max bolus.
                 // The calculation saved with the bolus is made first, so it keeps what the calculator suggested.
                 inputs.fixedInsulin?.let { fixed ->
@@ -1046,7 +1051,7 @@ class MasterActionExecutorImpl(
         } else {
             bolusWizardProvider().cancelLeftoverSplit()
         }
-        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source, p.warsawRetryLater) }
+        p.warsawPlan?.let { plan -> bolusWizardProvider().scheduleWarsawDoses(plan, p.warsawIobBaseline, source, p.warsawRetryLater, allowProfile50 = true) }
         // Without insulin there is no bolus to wait for: the eCarbs are stored at once, as the carbs are
         if (eCarbs != null && eCarbsWithBolus == null) deliverECarbs(carbs2, eventTime, duration, eCarbsDelay, notes, source, onError)
         p.entry?.markAsUsed()

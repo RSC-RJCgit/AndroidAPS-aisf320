@@ -114,6 +114,12 @@ fun profileSwitchPercent(profile: Profile): Int =
     if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
 
 /**
+ * Profile percents at which the calculator's protein/fat series runs: 100% or more, and since 2026-11-17 (per explicit
+ * request, as the 3426 app) also a 50% profile, where the series is sized at the Standard profile's carb ratio.
+ */
+fun warsawAllowedAt(percent: Int): Boolean = percent >= 100 || percent == 50
+
+/**
  * Glucose must be above 5.5 mmol, and both delta and short delta at least 0.05 mmol (2026-10-18, per explicit request; was
  * above 0.2 mmol, which cancelled most doses on 17 Oct Live while BG was only slowly rising).
  *

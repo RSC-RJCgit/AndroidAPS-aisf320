@@ -14,8 +14,12 @@ import kotlin.math.abs
 /** How far before a bolus its calculation may lie: the calculation is saved on OK, the bolus when the pump confirms it. */
 internal const val CALCULATION_BEFORE_BOLUS_MS = 10 * 60_000L
 
-/** How far after a bolus its calculation may lie (clock rounding, records that came in from Nightscout). */
-internal const val CALCULATION_AFTER_BOLUS_MS = 60_000L
+/**
+ * How far after a bolus its calculation may lie (clock rounding, records that came in from Nightscout). 3 min since
+ * 2026-11-17 (was 1 min): a delayed bolus writes its calculation once the pump has confirmed the dose. The 15:06:04 Db35
+ * dose of 17 Nov has its calculation at 15:07:18 and showed "Calculation unavailable".
+ */
+internal const val CALCULATION_AFTER_BOLUS_MS = 3 * 60_000L
 
 /**
  * Calculations and treatments have no shared ID. The calculation is saved when OK is pressed and the bolus when the
