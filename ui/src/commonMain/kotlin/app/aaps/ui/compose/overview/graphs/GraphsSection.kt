@@ -592,6 +592,9 @@ fun GraphsSection(
                 graphViewModel.graphSyncLog("guard", "followNow was false with no touch since start - following the current time again")
                 followNow = true
             }
+            // 2026-11-18, per explicit request: once a finger has touched the graphs since this run started, the guard is done.
+            // A new reading had set followNow again and the guard then pulled a scrolled-back view to now (iPhone 06:59:24).
+            if (lastTouchMs[0] >= startedAt) continue
             if (!followNow || range == null || sinceInteraction < INTERACTION_GRACE_MS) continue
             // The lower graphs (IOB, the secondary graphs, graph 5, the belt) start from their own first-layout positions,
             // such as 2043 px = about 14 hours back, and nothing copies the main graph's place onto them until the main
@@ -653,6 +656,8 @@ fun GraphsSection(
     var lastMainZoom by remember { mutableFloatStateOf(Float.NaN) }
     val lastFollowerScroll = remember { FloatArray(8) { Float.NaN } }
     val lastFollowerZoom = remember { FloatArray(8) { Float.NaN } }
+    // When any graph's zoom last changed, see ZOOM_SETTLE_MS
+    val lastZoomChangeMs = remember { longArrayOf(0L) }
     // 2026-10-20: why the main graph was set up again. A whole new graph area ("sectionShown") is a new screen; a
     // "stateNew" alone means the main graph's position and zoom were made again inside the same screen.
     DisposableEffect(Unit) {
@@ -753,6 +758,16 @@ fun GraphsSection(
                 }
                 if (lastMainScroll.isNaN()) lastMainScroll = bgScroll
                 if (bgMax <= 1f) return@collect
+                // A zoom change on any graph this tick (see ZOOM_SETTLE_MS): the lower graphs' scroll moves that follow it
+                // are not finger drags.
+                val tickMs = dateUtil.now()
+                val anyZoomMoved = (zoomOk && !lastMainZoom.isNaN() && abs(bgZoom - lastMainZoom) > 0.001f) ||
+                    states.indices.any { i ->
+                        i < lastFollowerZoom.size && !lastFollowerZoom[i].isNaN() && states[i].second.isFinite() &&
+                            abs(states[i].second - lastFollowerZoom[i]) > 0.001f
+                    }
+                if (anyZoomMoved) lastZoomChangeMs[0] = tickMs
+                val zoomSettling = tickMs - lastZoomChangeMs[0] < ZOOM_SETTLE_MS
                 // The main graph moved. Its own effect already copies that place to the other graphs.
                 // A lower graph that is still on the old place is not a finger, so it must not pull the main graph back.
                 if (abs(bgScroll - lastMainScroll) > 1f) {
@@ -823,6 +838,7 @@ fun GraphsSection(
                     var newer: Float? = null
                     var newerIndex = -1
                     for (i in states.indices) {
+                        if (zoomSettling) break
                         if (i >= lastFollowerScroll.size) break
                         val scroll = states[i].first
                         val prev = lastFollowerScroll[i]
@@ -846,6 +862,7 @@ fun GraphsSection(
                     var finger: Float? = null
                     var fingerIndex = -1
                     for (i in states.indices) {
+                        if (zoomSettling) break
                         if (i >= lastFollowerScroll.size) break
                         val scroll = states[i].first
                         if (!scroll.isFinite()) continue

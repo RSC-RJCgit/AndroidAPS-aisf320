@@ -219,14 +219,23 @@ const val MIN_GRAPH_ZOOM_MINUTES = 30.0
 /**
  * Grace period after the last user pan/zoom during which auto-scroll on new BG is suppressed,
  * so the viewport doesn't snap back while the user is examining the graph.
+ * 5 minutes since 2026-11-18, per explicit request: at 60 s a look back in time was cut short by the next reading
+ * (iPhone 18 Nov 06:59:19).
  */
-const val INTERACTION_GRACE_MS = 60_000L
+const val INTERACTION_GRACE_MS = 300_000L
 
 /** Startup guard in GraphsSection: how long after opening it keeps putting the current time on the right edge, how often it checks, and how many minutes early the window may end before it acts. */
 const val STARTUP_GUARD_MS = 180_000L
 
 /** A lower graph that moves counts as a finger drag only within this long of a real touch on the graphs area (GraphsSection). */
 const val GRAPH_TOUCH_WINDOW_MS = 3_000L
+
+/**
+ * After any zoom change (a pinch, or the copy of it to the other graphs), a lower graph's scroll move within this long
+ * is a side effect of the zoom, not a finger drag (2026-11-18, per explicit request). iPhone 18 Nov 07:00:33: a pinch on
+ * the main graph was copied down, the lower graphs' scroll shifted with it and pulled every graph toward now.
+ */
+const val ZOOM_SETTLE_MS = 600L
 
 /** How long after the last copied move a still-moving graph (a fling) counts as the user's move. */
 const val GRAPH_FLING_CHAIN_MS = 1_000L
