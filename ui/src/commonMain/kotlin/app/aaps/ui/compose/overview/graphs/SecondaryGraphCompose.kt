@@ -213,8 +213,6 @@ fun SecondaryGraphCompose(
     showSmbDoseLabels: Boolean = false,
     secondaryMarks: SecondaryMarks = SecondaryMarks.NONE,
     onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
-    /** The window as drawn right now, during a drag too (about every 50 ms). Not debounced, unlike [onVisibleRangeChanged]. */
-    onLiveVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
     /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
@@ -554,10 +552,6 @@ fun SecondaryGraphCompose(
     val currentOnVisibleRangeChanged by rememberUpdatedState(onVisibleRangeChanged)
     LaunchedEffect(settledVisibleRange) {
         currentOnVisibleRangeChanged?.invoke(settledVisibleRange)
-    }
-    val currentOnLiveVisibleRangeChanged by rememberUpdatedState(onLiveVisibleRangeChanged)
-    LaunchedEffect(visibleRange) {
-        currentOnLiveVisibleRangeChanged?.invoke(visibleRange)
     }
 
     val visibleMinX = visibleRange?.first
@@ -1116,9 +1110,20 @@ fun SecondaryGraphCompose(
         }
     }
     // The flipped basal layer uses the same visible peak as the main graph, with its own height fraction.
-    val basalMaxY = remember(basalData, settledVisibleRange, minTimestamp) {
-        val visibleBasalTimes = settledVisibleRange?.let { (from, to) ->
-            (minTimestamp + (from * 60_000).toLong()) to (minTimestamp + (to * 60_000).toLong())
+    // Look-ahead while scrolling (2026-11-17, per explicit request, replacing the scroll hold): at rest the scale fits the
+    // window in view; once a drag moves the window away from the settled one, the scale fits one screen more on each side
+    // (lookAheadRange), so a higher basal coming into view during the drag no longer stands too tall. When the scroll settles,
+    // the scale fits the new window again. Only this graph: the main graph rebuilding during a gesture broke its pinch zoom.
+    val scrolling = run {
+        val live = visibleRange
+        val settled = settledVisibleRange
+        live != null && settled != null && (abs(live.first - settled.first) > 0.5 || abs(live.second - settled.second) > 0.5)
+    }
+    val basalMaxY = remember(basalData, settledVisibleRange, minTimestamp, scrolling) {
+        val window = settledVisibleRange?.let { (from, to) -> if (scrolling) lookAheadRange(from, to) else from to to }
+        val visibleBasalTimes = window?.let { (from, to) ->
+            if (from == null || to == null) null
+            else (minTimestamp + (from * 60_000).toLong()) to (minTimestamp + (to * 60_000).toLong())
         }
         basalAxisMax(basalData, visibleBasalTimes, BASAL_HEIGHT_FRACTION)
     }

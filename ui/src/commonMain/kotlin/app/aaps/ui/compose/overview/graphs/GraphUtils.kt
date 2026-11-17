@@ -337,12 +337,6 @@ internal fun basalAxisMax(data: BasalGraphData?, visibleTimeRange: Pair<Long, Lo
     return if (peak > 0.0) peak / heightFraction else 1.0
 }
 
-/**
- * Basal scroll hold (2026-11-17): the graphs keep their last frame while the highest basal in the live window is more
- * than this many times the peak the drawn basal scales were fitted to (10% taller columns are let through).
- */
-const val BASAL_SCROLL_HOLD_RATIO = 1.10
-
 /** Empty space above the flipped basal columns on graph 1, as a share of the basal scale (about 13% of the graph), for the hourly basal peak numbers. */
 const val BASAL_LABEL_STRIP = 0.15
 
