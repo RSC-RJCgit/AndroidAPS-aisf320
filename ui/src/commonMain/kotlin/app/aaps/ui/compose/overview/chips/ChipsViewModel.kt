@@ -55,6 +55,7 @@ import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.autoisf.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
 import app.aaps.core.objects.autoisf.AutoIsfListSettings
+import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_LOOP_PHONE_SMS
 import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_THIS_PHONE
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_OFF
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_ON
@@ -527,7 +528,8 @@ class ChipsViewModel(
                 return
             }
             // 2026-11-16, per explicit request: AnyDesk local test. The plugin opens AnyDesk on this phone, even on a Client; no relay.
-            LOCAL_ANYDESK_THIS_PHONE -> {
+            // 2026-11-17, per explicit request: "Loop phone by SMS" is sent from this phone by the SMS plugin; no relay.
+            LOCAL_ANYDESK_THIS_PHONE, LOCAL_ANYDESK_LOOP_PHONE_SMS -> {
                 rxBus.send(EventAutoIsfDirectTtCode(mmol))
                 return
             }

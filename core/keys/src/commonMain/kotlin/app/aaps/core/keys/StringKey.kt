@@ -259,6 +259,14 @@ enum class StringKey(
         summary = KeysStrings.smscommunicator_battalertnumbers_summary,
         validator = StringValidator.multiPhone()
     ),
+    /** The loop phone's number, for List 2's "Loop phone by SMS" AnyDesk choice (2026-11-17, per explicit request). */
+    SmsAnyDeskLoopNumbers(
+        key = "smscommunicator_anydesk_loop_numbers",
+        defaultValue = "",
+        title = KeysStrings.smscommunicator_anydesk_loop_numbers,
+        summary = KeysStrings.smscommunicator_anydesk_loop_numbers_summary,
+        validator = StringValidator.multiPhone()
+    ),
     SmsAlarmHypo1Numbers(
         key = "smscommunicator_alarmhypo1numbers",
         defaultValue = "",

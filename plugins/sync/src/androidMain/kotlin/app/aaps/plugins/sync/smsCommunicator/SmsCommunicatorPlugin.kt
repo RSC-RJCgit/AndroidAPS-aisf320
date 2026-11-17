@@ -41,6 +41,7 @@ import app.aaps.core.interfaces.pump.PumpStatusProvider
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
+import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_LOOP_PHONE_SMS
 import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_THIS_PHONE
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.smsCommunicator.Sms
@@ -104,6 +105,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.runBlocking
@@ -215,6 +217,24 @@ class SmsCommunicatorPlugin(
             .drop(1)
             .onEach { processSettings() }
             .launchIn(newScope)
+        // 2026-11-17, per explicit request: List 2 "Send AnyDesk restart" > "Loop phone by SMS" texts ANYDESK to the loop phone,
+        // which runs it as the SMS command above. No Nightscout involved.
+        rxBus.toFlow(EventAutoIsfDirectTtCode::class)
+            .filter { it.mmol == LOCAL_ANYDESK_LOOP_PHONE_SMS }
+            .onEach { sendAnyDeskToLoopPhone() }
+            .launchIn(newScope)
+    }
+
+    private fun sendAnyDeskToLoopPhone() {
+        val numbers = preferences.get(StringKey.SmsAnyDeskLoopNumbers).split(";").map { it.trim() }.filter { it.isNotEmpty() }
+        if (numbers.isEmpty()) {
+            aapsLogger.warn(LTag.SMS, "AnyDesk by SMS: no loop phone number set")
+            return
+        }
+        numbers.forEach { number ->
+            val sent = sendSMS(Sms(number, "ANYDESK"))
+            aapsLogger.info(LTag.SMS, "AnyDesk by SMS to $number: sent=$sent")
+        }
     }
 
     override suspend fun onStop() {
@@ -1123,6 +1143,7 @@ class SmsCommunicatorPlugin(
             StringKey.SmsAllowedNumbers,
             StringKey.SmsBroadcastExcludeNumbers,
             StringKey.SmsBattAlertNumbers,
+            StringKey.SmsAnyDeskLoopNumbers,
             StringKey.SmsAlarmHypo1Numbers,
             StringKey.SmsAlarmHypo2Numbers,
             StringKey.SmsPod2Numbers,

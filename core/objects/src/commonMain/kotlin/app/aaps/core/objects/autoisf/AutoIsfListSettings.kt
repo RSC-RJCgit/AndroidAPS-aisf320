@@ -47,6 +47,12 @@ const val LOCAL_GRAPH5_BGL_ONLY_OFF = -47.0
 /** List 2 "Send AnyDesk restart (local test)" (2026-11-16, per explicit request, as 3426's 5.180): opens AnyDesk on the phone tapped. */
 const val LOCAL_ANYDESK_THIS_PHONE = -48.0
 
+/**
+ * List 2 "Send AnyDesk restart" > "Loop phone by SMS" (2026-11-17, per explicit request): this phone texts ANYDESK to the loop
+ * phone's number (StringKey.SmsAnyDeskLoopNumbers). The SMS plugin sends it; no Nightscout relay. Android only.
+ */
+const val LOCAL_ANYDESK_LOOP_PHONE_SMS = -53.0
+
 /** List 2 row 33 "Graph: UKF1 raw-smoothed": the UKF line on the BG graph (its overlay menu tick), this phone only (2026-11-16, as v3). */
 const val LOCAL_UKF_LINE_ON = -49.0
 const val LOCAL_UKF_LINE_OFF = -50.0
@@ -215,7 +221,11 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
             // the loop phone. The separate local-test row is gone (v3 row 33, v4 row 35).
             if (isClient) List1Row(
                 "Send AnyDesk restart", "this phone or the loop phone", 5.178, null, loopValueKey = null,
-                choices = listOf("This phone (Android only)" to LOCAL_ANYDESK_THIS_PHONE, "Loop phone" to 5.178),
+                choices = listOf(
+                    "This phone (Android only)" to LOCAL_ANYDESK_THIS_PHONE,
+                    "Loop phone" to 5.178,
+                    "Loop phone by SMS (Android only)" to LOCAL_ANYDESK_LOOP_PHONE_SMS
+                ),
             ) else List1Row("Send AnyDesk restart", "restarts AnyDesk on this phone", 5.178, null, loopValueKey = null),
             List1Row("Stage newest APK (keep 20)", newestApkText(), 5.202, null),
             List1Row("Install newest APK (Shizuku)", newestApkText(), 5.200, null),

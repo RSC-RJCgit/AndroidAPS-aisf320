@@ -452,6 +452,8 @@
     <string name="smscommunicator_broadcastexcludenumbers_summary" comment="Numbers from the allowed list, separated by a semicolon. Example: +XXXXXXXXXX;+YYYYYYYYYY. They can still send commands.">Numbers listed here do not get general automation texts. They can still send commands. Use +XXXXXXXXXX;+YYYYYYYYYY.</string>
     <string name="smscommunicator_battalertnumbers">Battery-alert numbers</string>
     <string name="smscommunicator_battalertnumbers_summary" comment="Example numbers separated by a semicolon.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers receive low-storage and critical phone-battery alerts.</string>
+    <string name="smscommunicator_anydesk_loop_numbers">Loop phone number for AnyDesk by SMS</string>
+    <string name="smscommunicator_anydesk_loop_numbers_summary" comment="Example number. ANYDESK is the SMS command word and is not translated.">+XXXXXXXXXX. List 2 "Send AnyDesk restart" > "Loop phone by SMS" texts ANYDESK to this number. On the loop phone, this phone's number must be an allowed number and remote commands must be on.</string>
     <string name="smscommunicator_alarmhypo1numbers">AlarmHypo1-alert numbers</string>
     <string name="smscommunicator_alarmhypo1numbers_summary" comment="Example numbers separated by a semicolon. These are extra recipients, not a replacement for the general broadcast.">+XXXXXXXXXX;+YYYYYYYYYY. These numbers also get the AlarmHypo1 alert, as well as the general automation text.</string>
     <string name="smscommunicator_alarmhypo2numbers">AlarmHypo2-alert numbers</string>
