@@ -242,7 +242,7 @@ class NSClientV3Plugin @Inject constructor(
 
     override fun onStart() {
         super.onStart()
-        app.aaps.plugins.sync.nsShared.ProfileStoreOwner.applyClientDefaults(preferences, config.AAPSCLIENT)
+        app.aaps.plugins.sync.nsShared.ProfileStoreOwner.applyClientDefaults(preferences)
         handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
 
         lastLoadedSrvModified = Json.decodeFromString(preferences.get(NsclientStringKey.V3LastModified))

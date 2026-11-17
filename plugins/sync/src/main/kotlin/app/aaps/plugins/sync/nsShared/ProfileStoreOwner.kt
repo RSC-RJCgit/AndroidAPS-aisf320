@@ -48,16 +48,21 @@ object ProfileStoreOwner {
         return tag(json, ownerId)
     }
 
-    /** The shared owner ID and accept value every client gets by default (2026-11-17, per explicit request). */
+    /**
+     * The shared owner ID and accept value every device gets by default (2026-11-17, per explicit request): masters stamp
+     * their profile store uploads with it and clients take only stores stamped with it. Another uploader (a plain upstream
+     * phone) cannot write the tag, is identified by its token name instead, and is ignored.
+     */
     const val CLIENT_ID = "Client"
 
     /**
-     * Once per client install or update (2026-11-17, per explicit request): "Accept profile store only from" becomes
-     * [CLIENT_ID] unless it is [ANY], and the owner ID becomes [CLIENT_ID] when it is empty or an automatic "aaps-" one.
-     * A name typed by hand is kept, and later changes stick because this runs only once. Masters are left alone.
+     * Once per install or update (2026-11-17, per explicit request): "Accept profile store only from" becomes [CLIENT_ID]
+     * unless it is [ANY], and the owner ID becomes [CLIENT_ID] when it is empty or an automatic "aaps-" one. A name typed by
+     * hand is kept, and later changes stick because this runs only once. Clients and, since the same day, masters too: a
+     * master's automatic "aaps-" ID did not match the clients' "Client". Same rule as v4's ProfileStoreOwner.
      */
-    fun applyClientDefaults(preferences: Preferences, isClient: Boolean) {
-        if (!isClient || preferences.get(BooleanNonKey.NsClientProfileClientDefaultsApplied)) return
+    fun applyClientDefaults(preferences: Preferences) {
+        if (preferences.get(BooleanNonKey.NsClientProfileClientDefaultsApplied)) return
         if (preferences.get(StringKey.NsClientProfileAcceptFrom).trim() != ANY)
             preferences.put(StringKey.NsClientProfileAcceptFrom, CLIENT_ID)
         val ownerId = preferences.get(StringKey.NsClientProfileOwnerId).trim()
