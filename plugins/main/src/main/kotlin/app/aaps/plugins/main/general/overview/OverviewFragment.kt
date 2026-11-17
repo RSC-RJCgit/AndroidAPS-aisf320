@@ -962,7 +962,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // one's own visibility rule — screen space is tight sideways and none of them are needed to
         // just view the graph/status. Portrait falls through to the normal per-button logic below,
         // which restores each button to whatever its own condition dictates.
-        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
+        // 2026-11-17, per explicit request: this runs on OverviewFragmentHandler, which can still fire after the screen
+        // was closed. `resources` then threw "not attached to a context" and took the whole app down (Live 1500, 17 Nov
+        // 08:59-09:00, three restarts in a row). A closed screen has nothing to update, so stop quietly.
+        val attachedContext = context ?: return
+        if (attachedContext.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
             runOnUiThread {
                 _binding ?: return@runOnUiThread
                 binding.buttonsLayout.root.visibility = View.GONE
@@ -1007,6 +1011,28 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             lastRun != null &&
             (lastRun.lastOpenModeAccept == 0L || lastRun.lastOpenModeAccept < lastRun.lastAPSRun) &&// never accepted or before last result
             lastRun.constraintsProcessed?.isChangeRequested == true // change is requested
+
+        // 2026-11-17, per explicit request: which user-automation buttons can run is worked out here, on the
+        // background thread, not inside runOnUiThread. canRun() reads the database (e.g. TriggerProfilePercent ->
+        // getProfile), and on Live 1500 (17 Nov 08:58) that read waited behind busy graph workers for over 10 s on the
+        // screen thread, so Android declared AAPS not responding. The screen thread now only builds the buttons.
+        val runnableUserEvents =
+            if (!loop.runningMode.isSuspended() && pump.isInitialized() && profile != null && !config.showUserActionsOnWatchOnly())
+                automation.userEvents().filter { event ->
+                    event.isEnabled && event.canRun() && !(
+                        preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
+                            event.title.lowercase(Locale.ROOT).replace(" ", "").let { title ->
+                                (title.contains("steroidsareoff") && title.contains("turnsteroidson")) ||
+                                    (title.contains("steroids110") && title.contains("increase") && title.contains("130")) ||
+                                    (title.contains("steroids130") && title.contains("increase") && title.contains("150")) ||
+                                    (title.contains("steroids150") && title.contains("increase") && title.contains("190")) ||
+                                    (title.contains("steroids190") && title.contains("increase") && title.contains("250")) ||
+                                    (title.contains("steroidsareon") && title.contains("turnoff"))
+                            }
+                        )
+                }
+            else emptyList()
+        runnableUserEvents.forEach { list += it.hashCode() }
 
         runOnUiThread {
             _binding ?: return@runOnUiThread
@@ -1355,20 +1381,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     }
                 }
             }
-            val events = automation.userEvents()
-            if (!loop.runningMode.isSuspended() && pump.isInitialized() && profile != null && !config.showUserActionsOnWatchOnly())
-                for (event in events)
-                    if (event.isEnabled && event.canRun() && !(
-                            preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled) &&
-                                event.title.lowercase(Locale.ROOT).replace(" ", "").let { title ->
-                                    (title.contains("steroidsareoff") && title.contains("turnsteroidson")) ||
-                                        (title.contains("steroids110") && title.contains("increase") && title.contains("130")) ||
-                                        (title.contains("steroids130") && title.contains("increase") && title.contains("150")) ||
-                                        (title.contains("steroids150") && title.contains("increase") && title.contains("190")) ||
-                                        (title.contains("steroids190") && title.contains("increase") && title.contains("250")) ||
-                                        (title.contains("steroidsareon") && title.contains("turnoff"))
-                                }
-                            )) {
+            for (event in runnableUserEvents) {
                         context?.let { context ->
                             SingleClickButton(context, null, app.aaps.core.ui.R.attr.customBtnStyle).also {
                                 it.setTextColor(rh.gac(context, app.aaps.core.ui.R.attr.userOptionColor))
@@ -1395,7 +1408,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                                 }
                             }
                         }
-                        list += event.hashCode()
                     }
             binding.buttonsLayout.userButtonsLayout.visibility = (binding.buttonsLayout.userButtonsLayout.childCount > 0).toVisibility()
         }
@@ -3492,12 +3504,12 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     var touchedSteroidsOffRoles = false
                     var blocked = 0
                     roleSpecs.forEachIndexed { i, spec ->
-                        val pos = spinners[i].selectedItemPosition
-                        val value = if (spec.optional) {
-                            if (pos == 0) "" else profileNames[pos - 1]
-                        } else {
-                            profileNames[pos]
-                        }
+                        // 2026-11-17, per explicit request: the name shown, not a position looked up in profileNames.
+                        // spinnerFor() puts a role's saved name that is missing from this phone's list first, which shifted
+                        // every position by one: OK saved the profile above the one picked, and the last one crashed
+                        // (IndexOutOfBoundsException, Virtual 1515, 17 Nov 12:06).
+                        val shown = spinners[i].selectedItem?.toString().orEmpty()
+                        val value = if (shown == notSetSentinel) "" else shown
                         if (spec.key in steroidsOffRoleKeys && isSteroidMarkedProfileName(value)) {
                             blocked++
                             return@forEachIndexed
