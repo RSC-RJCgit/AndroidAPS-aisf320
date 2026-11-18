@@ -48,7 +48,8 @@ class IosMemoryLog(
         }
     }
 
-    @OptIn(NativeRuntimeApi::class)
+    // GC.lastGCInfo needs both (TestFlight B38 failed on the missing ExperimentalStdlibApi, 2026-11-18)
+    @OptIn(NativeRuntimeApi::class, ExperimentalStdlibApi::class)
     private fun log() {
         val footprint = footprintBytes()
         val gc = GC.lastGCInfo
