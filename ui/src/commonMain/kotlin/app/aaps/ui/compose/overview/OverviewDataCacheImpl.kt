@@ -1045,6 +1045,36 @@ class OverviewDataCacheImpl(
         rebuild()
     }
 
+    // StepCut of each loop result already read, by its time (2026-11-18). The reason text of a result does not change,
+    // so each one goes through the StepCut patterns once instead of at every rebuild.
+    private val stepCutMutex = Mutex()
+    private val stepCutCache = HashMap<Long, Double>()
+    private var stepCutCacheOldReasons = false
+
+    /**
+     * Every loop result's time and StepCut from [from] to [to], oldest first.
+     *
+     * Reads only the reason texts (2026-11-18). This ran about once a minute and used to decode all 24 hours of loop
+     * results in full (about 1,350 rows, 9 MB of JSON, on a client), while the iOS AAPSClient2 held 0.4 to 1 GB and
+     * about 10 % CPU (jetsam reports 11-17 Nov 2026).
+     */
+    private suspend fun stepCutsFor(from: Long, to: Long, oldReasons: Boolean): List<Pair<Long, Double>> {
+        val reasons = persistenceLayer.getLoopReasons(from, to)
+        return stepCutMutex.withLock {
+            if (oldReasons != stepCutCacheOldReasons) {
+                stepCutCache.clear()
+                stepCutCacheOldReasons = oldReasons
+            }
+            val cuts = reasons.map { row -> row.timestamp to stepCutCache.getOrPut(row.timestamp) { stepCutFrom(row.reason, oldReasons) } }
+            // Only the range just read is kept, so the cache stays the size of one graph range
+            if (stepCutCache.size > reasons.size + 64) {
+                val inRange = reasons.mapTo(HashSet()) { it.timestamp }
+                stepCutCache.keys.retainAll(inRange)
+            }
+            cuts
+        }
+    }
+
     /** The newest loop result from [STEP_CUT_MATCH_MS] before the SMB to 30 s after it: its StepCut, or 0. */
     private fun stepCutForSmb(results: List<Pair<Long, Double>>, smbTime: Long): Double =
         results.lastOrNull { it.first in (smbTime - STEP_CUT_MATCH_MS)..(smbTime + 30_000L) }?.second ?: 0.0
@@ -1061,7 +1091,7 @@ class OverviewDataCacheImpl(
         // Older v3 results without the token are read from their reason text, unless that is switched off.
         val oldReasons = preferences.get(BooleanKey.ApsAutoIsfStepCutFromOldReasons)
         val loopResults = if (boluses.none { it.type == BS.Type.SMB }) emptyList()
-        else persistenceLayer.getApsResults(fromTime - STEP_CUT_MATCH_MS, toTime).map { it.date to stepCutFrom(it.reason, oldReasons) }.sortedBy { it.first }
+        else stepCutsFor(fromTime - STEP_CUT_MATCH_MS, toTime, oldReasons)
         val bolusPoints = boluses
             .map { bs ->
                 BolusGraphPoint(
@@ -1587,12 +1617,13 @@ class OverviewDataCacheImpl(
         // Without step rows (a client stores the master's step lines as rows only while it receives them), the graph is
         // built from the master's loop results: each reason carries the step line (2026-10-18).
         val rows = records.ifEmpty {
-            persistenceLayer.getApsResults(fromTime, toTime).mapNotNull { result ->
+            // Only the reason texts are read (2026-11-18), not whole results: see stepCutsFor
+            persistenceLayer.getLoopReasons(fromTime, toTime).mapNotNull { result ->
                 val buckets = LiveSteps.buckets(result.reason)
                 if (!LiveSteps.hasDosingBuckets(buckets)) null
                 // The reason text carries bins, so S15 = S5 + S10 + S15
                 else StepsRow(
-                    result.date, buckets.getValue(5), buckets.getValue(5) + (buckets[10] ?: 0) + buckets.getValue(15),
+                    result.timestamp, buckets.getValue(5), buckets.getValue(5) + (buckets[10] ?: 0) + buckets.getValue(15),
                     buckets.getValue(30), buckets.getValue(60)
                 )
             }.sortedBy { it.timestamp }

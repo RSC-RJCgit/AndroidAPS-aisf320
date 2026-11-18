@@ -1800,6 +1800,22 @@ interface PersistenceLayer {
     )
 
     /**
+     * The reason text of every APSResult in an interval, oldest first (2026-11-18). Reads only the time and the
+     * text, not the whole result, like [getVariableSensitivities]: the graph reads 24 hours of these about once a
+     * minute. On an AAPSClient these are the master's results.
+     *
+     * @param start from
+     * @param end to
+     * @return one row for every result, with "" when it has no reason
+     */
+    suspend fun getLoopReasons(start: Long, end: Long): List<LoopReason>
+
+    data class LoopReason(
+        val timestamp: Long,
+        val reason: String
+    )
+
+    /**
      * Insert or update ApsResult record
      *
      * @param apsResult record

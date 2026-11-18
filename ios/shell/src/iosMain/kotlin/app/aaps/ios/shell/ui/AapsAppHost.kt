@@ -74,6 +74,7 @@ import app.aaps.ios.shell.IosAppStartup
 import app.aaps.ios.shell.IosCrashLog
 import app.aaps.ios.shell.PluginStoreRegistry
 import app.aaps.ios.shell.di.IosAppGraph
+import app.aaps.ios.shell.IosMemoryLog
 import app.aaps.ios.shell.liveactivity.IosLiveActivityUpdater
 import app.aaps.ios.shell.liveactivity.LiveActivityBridge
 import app.aaps.ios.shell.platform.IosLanguage
@@ -370,6 +371,9 @@ private fun startApp(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivit
     // `TimeDateOrTZChangeReceiver`. Without it a flight left the IOB of the last hours calculated in
     // the old zone. Same placement: it attaches to the notification centre.
     IosTimeDateOrTZChangeWatcher(logger, graph.activePlugin, graph.appScope, graph.rxBus).start()
+
+    // A "Memory:" line every 10 minutes (2026-11-18): AAPSClient2 held 0.4 to 1 GB in the jetsam reports of 11-17 Nov.
+    IosMemoryLog(logger).start(graph.appScope)
 
     // Read once, outside the composition, for the same reason as the graph: decoding the icon on
     // every recomposition would be work for nothing.

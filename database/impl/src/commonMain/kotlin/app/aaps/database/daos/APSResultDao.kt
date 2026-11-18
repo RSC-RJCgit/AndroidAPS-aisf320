@@ -39,7 +39,22 @@ internal interface APSResultDao : TraceableDao<APSResult> {
      */
     @Query("SELECT timestamp, json_extract(resultJson, '\$.variable_sens') AS variableSens FROM $TABLE_APS_RESULTS WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp ASC")
     suspend fun getVariableSens(start: Long, end: Long): List<ApsResultVariableSens>
+
+    /**
+     * Only the time and the reason text of each result, for the graph's StepCut arrows and steps row (2026-11-18).
+     *
+     * Like [getVariableSens]. Decoding the whole rows of 24 hours (about 1,350 rows of about 6.8 kB each on a client)
+     * about once a minute held 0.4 to 1 GB and about 10 % CPU on the iOS AAPSClient2 (jetsam reports 11-17 Nov 2026).
+     */
+    @Query("SELECT timestamp, json_extract(resultJson, '\$.reason') AS reason FROM $TABLE_APS_RESULTS WHERE timestamp >= :start AND timestamp <= :end ORDER BY timestamp ASC")
+    suspend fun getReasons(start: Long, end: Long): List<ApsResultReason>
 }
+
+/** One row of [APSResultDao.getReasons]. [reason] is null when the result has none. */
+data class ApsResultReason(
+    val timestamp: Long,
+    val reason: String?
+)
 
 /** One row of [APSResultDao.getVariableSens]. [variableSens] is in mg/dL, null when the result has no value. */
 data class ApsResultVariableSens(
