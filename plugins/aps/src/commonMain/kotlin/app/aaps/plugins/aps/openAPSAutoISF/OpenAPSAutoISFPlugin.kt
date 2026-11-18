@@ -6737,9 +6737,15 @@ open class OpenAPSAutoISFPlugin(
         aapsLogger.debug(LTag.APS, "One-time Tier A revert after the loop reached 1-minute intervals: roles changed=$changed")
     }
 
-    // Compression notes (2026-10-08, per explicit request): NOTES AND AN ALERT AT THE TOP OF THE OVERVIEW ONLY, at any time
-    // of day -- nothing here changes dosing, tiers, profiles or marking. See CompressionDetector for the rules. Three stages,
-    // all on the virtual-pump phone only (Live and Client check and record nothing):
+    // Compression notes, rebuilt 2026-11-19, per explicit request (see CompressionDetector; the same as the 3426 app): on EVERY master
+    // (not a client), 22:30 to 08:00 only. The drop itself is the event: "CompSusp" note and alert at once, no 15 minute wait. Only
+    // carbs in the last 30 minutes stop it (boluses and SMBs are in the insulin-on-board check); a new drop needs 10 minutes since the
+    // last trigger. "CompConf" follows on a sharp rebound within 2 hours, as before. The notes sync, so a client shows them. Dosing: on
+    // the virtual-pump phone the deferred hypo alarm states are not set within 60 minutes of a CompSusp (compressionWarningWithinHour),
+    // now counted from the drop; other phones keep setting them as before. Where the readings carry no raw value the UKF series is
+    // built from the glucose value instead.
+    //
+    // The rules before 2026-11-19, kept for the record (Virtual only; three stages):
     //  1. TRIGGER (silent, log line only): on the UKF-smoothed series, a SUDDEN drop: >= 1.0 mmol within the last 5 minutes,
     //     out of a flat 30 minutes (swing <= 0.6 mmol) -- or, lane B, >= 1.4 mmol within 5 minutes and at least twice the
     //     steepest 5-minute fall of the half hour before (which fell <= 2.5 mmol in all), for a drop on top of a slow decline --
@@ -6753,17 +6759,16 @@ open class OpenAPSAutoISFPlugin(
     //     the low, with no carbs in the 15 minutes before it).
     // The raw series is the same one the rawBGL column and ukfRawBgl are built from (GlucoseValue.noise, else the value).
     private suspend fun compressionNotes(now: Long, iobExplainedFall5Mgdl: Double) {
-        // 2026-10-08, per explicit request: checked and recorded on the virtual-pump phone only (Live and Client do nothing).
-        if (config.AAPSCLIENT || activePlugin.activePump !is VirtualPump) return
+        // 2026-11-19, per explicit request: every master (was the virtual-pump phone only); clients record nothing.
+        if (config.AAPSCLIENT) return
         val suspectAt = preferences.get(LongNonKey.ApsAutoIsfCompressionSuspectAt)
         val confirmedAt = preferences.get(LongNonKey.ApsAutoIsfCompressionConfirmedAt)
-        val triggerAt = preferences.get(LongNonKey.ApsAutoIsfCompressionTriggerAt)
-        val triggerWaiting = triggerAt > 0L
+        // A trigger left waiting by the old rules is not used any more
+        if (preferences.get(LongNonKey.ApsAutoIsfCompressionTriggerAt) > 0L) preferences.put(LongNonKey.ApsAutoIsfCompressionTriggerAt, 0L)
         val reboundPending = suspectAt > 0L && confirmedAt < suspectAt && now - suspectAt <= CompressionDetector.PENDING_MINUTES * 60_000L
         val from = listOfNotNull(
             now - CompressionDetector.LOOKBACK_MINUTES * 60_000L,
-            if (reboundPending) suspectAt - 25 * 60_000L else null,
-            if (triggerWaiting) triggerAt - 10 * 60_000L else null
+            if (reboundPending) suspectAt - 25 * 60_000L else null
         ).min()
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
             .mapNotNull { gv -> (gv.noise?.takeIf { it > 10.0 } ?: gv.value).takeIf { it > 10.0 }?.let { gv.timestamp to it } }
@@ -6779,58 +6784,43 @@ open class OpenAPSAutoISFPlugin(
                 validMinutes = 120
             )
         }
-        if (triggerWaiting) {
-            val ukfSeries = compressionUkfSeries(from, now) ?: return
-            val level = preferences.get(LongNonKey.ApsAutoIsfCompressionTriggerLevelTenths) / 10.0
-            when (CompressionDetector.confirm(ukfSeries, triggerAt, level, now)) {
-                CompressionDetector.Pending.WAIT      -> Unit
-                CompressionDetector.Pending.CANCELLED -> {
-                    preferences.put(LongNonKey.ApsAutoIsfCompressionTriggerAt, 0L)
-                    aapsLogger.info(LTag.APS, "Compression trigger of ${dateUtil.timeString(triggerAt)} dropped: climbed back or not confirmed within 30 min")
-                }
-                CompressionDetector.Pending.CONFIRMED -> {
-                    preferences.put(LongNonKey.ApsAutoIsfCompressionTriggerAt, 0L)
-                    preferences.put(LongNonKey.ApsAutoIsfCompressionSuspectAt, now)
-                    carePortalNote("CompSusp")
-                    val before = ukfSeries.minByOrNull { kotlin.math.abs(it.first - (triggerAt - 5 * 60_000L)) }?.second ?: level
-                    val low = ukfSeries.filter { it.first >= triggerAt }.minOfOrNull { it.second } ?: level
-                    val nowValue = ukfSeries.last().second
-                    val minutes = (now - triggerAt) / 60_000L
-                    aapsLogger.info(LTag.APS, "CompSusp: confirmed $minutes min after the trigger of ${dateUtil.timeString(triggerAt)}")
-                    notificationManager.post(
-                        id = NotificationId.AUTOISF_NOTE,
-                        text = "Compression suspected: sudden fall ${decimals(before / Constants.MMOLL_TO_MGDL, 1)} to ${decimals(level / Constants.MMOLL_TO_MGDL, 1)} mmol " +
-                            "at ${dateUtil.timeString(triggerAt)}, still down after $minutes min (low ${decimals(low / Constants.MMOLL_TO_MGDL, 1)}, " +
-                            "now ${decimals(nowValue / Constants.MMOLL_TO_MGDL, 1)}). No meal or bolus. Note only.",
-                        validMinutes = 120
-                    )
-                }
-            }
-            return
-        }
-        if (now - suspectAt > CompressionDetector.SAME_EVENT_MINUTES * 60_000L && mealMinutes >= 30 && smbSum(now, 30 * 60 * 1000L) <= 0.0) {
-            val ukfSeries = compressionUkfSeries(from, now) ?: return
-            CompressionDetector.suspect(ukfSeries, iobExplainedFall5Mgdl)?.let { s ->
-                preferences.put(LongNonKey.ApsAutoIsfCompressionTriggerAt, now)
-                preferences.put(LongNonKey.ApsAutoIsfCompressionTriggerLevelTenths, kotlin.math.round(s.toMgdl * 10.0).toLong())
-                aapsLogger.info(
-                    LTag.APS,
-                    "Compression trigger: ${decimals(s.fromMgdl / Constants.MMOLL_TO_MGDL, 1)} to ${decimals(s.toMgdl / Constants.MMOLL_TO_MGDL, 1)} mmol in ${s.fallMinutes} min, " +
-                        "insulin explains ${decimals(s.explainedMgdl / Constants.MMOLL_TO_MGDL, 2)}, fall over 30 min ${decimals(s.fell30Mgdl / Constants.MMOLL_TO_MGDL, 1)}; waiting 15 min (no note yet)${if (s.steepenedLane) ", lane B (steepening on a slow decline)" else ""}"
-                )
-            }
+        val minuteOfDay = Instant.fromEpochMilliseconds(now).toLocalDateTime(AppTimeZone.current()).let { it.hour * 60 + it.minute }
+        if (!CompressionDetector.inHours(minuteOfDay)) return
+        if (now - suspectAt < CompressionDetector.MIN_GAP_MINUTES * 60_000L) return
+        // Only carbs stop it (2026-11-19): boluses and SMBs are in the insulin-on-board check
+        val recentCarbs = persistenceLayer.getCarbsFromTime(now - 30 * 60_000L, ascending = false)
+            .any { it.isValid && it.amount > 0.0 && it.timestamp <= now }
+        if (recentCarbs) return
+        val ukfSeries = compressionUkfSeries(from, now) ?: return
+        CompressionDetector.suspect(ukfSeries, iobExplainedFall5Mgdl)?.let { s ->
+            preferences.put(LongNonKey.ApsAutoIsfCompressionSuspectAt, now)
+            carePortalNote("CompSusp")
+            aapsLogger.info(
+                LTag.APS,
+                "CompSusp: ${decimals(s.fromMgdl / Constants.MMOLL_TO_MGDL, 1)} to ${decimals(s.toMgdl / Constants.MMOLL_TO_MGDL, 1)} mmol in ${s.fallMinutes} min, " +
+                    "insulin explains ${decimals(s.explainedMgdl / Constants.MMOLL_TO_MGDL, 2)}, 15 min before: steepest 5 min fall " +
+                    "${decimals(s.priorSteepestFallMgdl / Constants.MMOLL_TO_MGDL, 1)}, net ${decimals(s.priorNetChangeMgdl / Constants.MMOLL_TO_MGDL, 1)} mmol"
+            )
+            notificationManager.post(
+                id = NotificationId.AUTOISF_NOTE,
+                text = "Compression suspected: sudden fall ${decimals(s.fromMgdl / Constants.MMOLL_TO_MGDL, 1)} to ${decimals(s.toMgdl / Constants.MMOLL_TO_MGDL, 1)} mmol " +
+                    "in ${s.fallMinutes} min at ${dateUtil.timeString(now)}, after a flat or rising 15 min. No carbs. Note only.",
+                validMinutes = 120
+            )
         }
     }
 
     // The UKF-smoothed series (the ukfRawBGL column's smoother) for the compression checks, oldest first, or null when it cannot be built.
     private suspend fun compressionUkfSeries(from: Long, now: Long): List<Pair<Long, Double>>? {
+        // The raw value where the reading carries one, else the glucose value (2026-11-19: a master fed from Nightscout without the
+        // raw value never ran the compression check at all)
         val rawNewestFirst = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = false)
-            .filter { (it.noise ?: 0.0) > 10.0 }
-            .sortedByDescending { it.timestamp }
+            .mapNotNull { gv -> (gv.noise?.takeIf { it > 10.0 } ?: gv.value.takeIf { it > 10.0 })?.let { gv.timestamp to it } }
+            .sortedByDescending { it.first }
         if (rawNewestFirst.isEmpty()) return null
-        val smoothed = displayRawSmoothing.smoothForDisplay(rawNewestFirst.map { it.timestamp to it.noise!! })
+        val smoothed = displayRawSmoothing.smoothForDisplay(rawNewestFirst)
         if (smoothed.size != rawNewestFirst.size) return null
-        return rawNewestFirst.mapIndexed { i, gv -> gv.timestamp to smoothed[i] }.reversed()
+        return rawNewestFirst.mapIndexed { i, r -> r.first to smoothed[i] }.reversed()
     }
 
     private data class UkfRaw(val glucose: Double?, val delta1: Double?, val delta5: Double?, val delta15: Double?)

@@ -26,6 +26,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
+import app.aaps.core.interfaces.overview.graph.ExtendedBolusGraphPoint
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.SeriesType
@@ -787,6 +789,47 @@ internal fun basalBetween(points: List<GraphDataPoint>, from: Long, to: Long): D
         if (segEnd > segStart) total += points[i].value * (segEnd - segStart) / 3_600_000.0
     }
     return total
+}
+
+/**
+ * The insulin totals row (2026-11-19, per explicit request, ported from the 3426 app's INSULIN_INTERVAL_TOTAL row): exactly [SLICES]
+ * equal slices of the shown span [from]..[to], each the insulin delivered in it - basal (the actual rate, step points) plus every
+ * valid bolus and SMB, plus the extended boluses (the overview only loads them when the pump does not fake temp basals with them).
+ * Nothing is counted after [now].
+ */
+internal fun insulinIntervalTotals(
+    from: Long,
+    to: Long,
+    now: Long,
+    basal: List<GraphDataPoint>,
+    boluses: List<BolusGraphPoint>,
+    extended: List<ExtendedBolusGraphPoint>,
+): List<Double> {
+    if (to <= from) return emptyList()
+    val span = to - from
+    return (0 until INSULIN_TOTAL_SLICES).map { i ->
+        val s = from + span * i / INSULIN_TOTAL_SLICES
+        val e = from + span * (i + 1) / INSULIN_TOTAL_SLICES
+        val deliveredTo = minOf(e, now)
+        val basalUnits = basalBetween(basal, s, deliveredTo)
+        val bolusUnits = boluses.filter { it.isValid && it.timestamp >= s && it.timestamp < e && it.timestamp <= now }.sumOf { it.amount }
+        val extendedUnits = extended.sumOf { eb ->
+            val overlap = minOf(deliveredTo, eb.timestamp + eb.duration) - maxOf(s, eb.timestamp)
+            if (overlap > 0L) eb.rate * overlap / 3_600_000.0 else 0.0
+        }
+        basalUnits + bolusUnits + extendedUnits
+    }
+}
+
+/** Slices in the insulin totals row, the same as the 3426 app. */
+internal const val INSULIN_TOTAL_SLICES = 12
+
+/** A total as the 3426 app shows it: "0" for nothing, ".35" under 1 U, "1.20" from 1 U. */
+internal fun insulinTotalText(units: Double): String {
+    val cents = kotlin.math.round(units * 100.0).toLong()
+    if (cents <= 0L) return "0"
+    val text = "${cents / 100}.${(cents % 100).toString().padStart(2, '0')}"
+    return if (cents < 100L) text.removePrefix("0") else text
 }
 
 /** The times the basal [points] (step points, U/h) go from above zero to zero: a zero temp basal starts. */

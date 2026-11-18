@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,8 +61,10 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
 import app.aaps.core.interfaces.overview.graph.BgRange
+import app.aaps.core.keys.BooleanKey
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalConfig
+import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalDecimalFormatter
 import app.aaps.core.ui.compose.LocalProfileUtil
@@ -1686,11 +1689,33 @@ fun BgGraphCompose(
         }
     }
     }
+    // The insulin totals row (2026-11-19, per explicit request), just below the hypoprediction line: 12 equal slices of the shown
+    // span, each the insulin delivered in it, as in the 3426 app. Settings "Insulin totals" (also List 1 and SMS) turns it on and off.
+    val showInsulinTotals by LocalPreferences.current.observe(BooleanKey.ApsAutoIsfShowInsulinTotals).collectAsStateWithLifecycle()
+    val insulinTotals = remember(showInsulinTotals, visibleTimeRange, rawBasalData, treatments, nowTimestamp / 60_000L) {
+        val range = visibleTimeRange
+        if (!showInsulinTotals || range == null) emptyList()
+        else insulinIntervalTotals(range.first, range.second, nowTimestamp, rawBasalData.actualBasal, treatments.boluses, treatments.extendedBoluses)
+    }
     // The IOB graph below is pulled 8dp up under this strip, hence the extra bottom padding.
-    if (!topBandLines && autoIsfGraph.hypoPrediction != null) {
+    if (!topBandLines && (autoIsfGraph.hypoPrediction != null || insulinTotals.isNotEmpty())) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 10.dp)) {
             autoIsfGraph.hypoPrediction?.let { hypo ->
                 Text(text = "hypoprediction= ${oneDecimalText(hypo)}", color = Color.White, style = stripStyle)
+            }
+            if (insulinTotals.isNotEmpty()) {
+                // Lined up with the plot area (past the BG axis, the same start as the shown-hours label), one slice per cell
+                Row(modifier = Modifier.fillMaxWidth().padding(start = 28.dp, top = 2.dp)) {
+                    insulinTotals.forEach { units ->
+                        Text(
+                            text = insulinTotalText(units),
+                            color = Color.White,
+                            style = stripStyle,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
         }
     }
