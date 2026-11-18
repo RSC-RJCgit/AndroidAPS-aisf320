@@ -294,7 +294,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 value.shape == Shape.PP_ACC_DU_ROW ||
                 value.shape == Shape.SMB_STACK_TOTAL ||
                 value.shape == Shape.INSULIN_INTERVAL_TOTAL ||
-                value.shape == Shape.IOB_PEAK_MAIN_BOTTOM
+                value.shape == Shape.IOB_PEAK_MAIN_BOTTOM ||
+                value.shape == Shape.DOSE_CHECK_DOT
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -783,6 +784,11 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                             xCursor += mPaint.measureText(text) + 12f
                         }
                     }
+                } else if (value.shape == Shape.DOSE_CHECK_DOT) {
+                    // A carb split or delayed bolus check that gave nothing (2026-11-18): a small dot near the top of the graph
+                    mPaint.color = Color.MAGENTA
+                    mPaint.style = Paint.Style.FILL
+                    canvas.drawCircle(endX, graphTop + scaledPxSize * 1.5f, scaledPxSize * 0.6f, mPaint)
                 } else if (value.shape == Shape.NOTE_ARROWHEAD_GRAPH3) {
                     // Plain CarePortal-note arrowhead, pointing DOWN (apex at bottom) — inverted from
                     // Shape.SMB's own upward BGL-point arrowhead, with a shaft half the length of the
@@ -839,7 +845,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // BOLUS arrowhead+shaft: drawn outside overdraw gate so it always appears when x is on-screen.
             // Nonzero bolus triangles are slightly larger than carb triangles and point down toward the BG.
             if (value.shape == Shape.BOLUS && x >= 0 && x <= graphWidth) {
-                mPaint.color = if (value.hasDelayedComponent) Color.YELLOW else Color.MAGENTA
+                // Yellow for a protein/fat dose, magenta for every other bolus; the value below takes the same colour (2026-11-18)
+                val bolusColor = if (value.isFpuDose) Color.YELLOW else Color.MAGENTA
+                mPaint.color = bolusColor
                 mPaint.strokeWidth = 0f
                 mPaint.style = Paint.Style.FILL_AND_STROKE
                 val bolusSize = scaledPxSize
@@ -877,7 +885,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val labelRatY = (value.labelY - minY) / diffY
                     val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
                     val savedColor = mPaint.color
-                    mPaint.color = Color.YELLOW
+                    mPaint.color = bolusColor
                     mPaint.style = Paint.Style.FILL
                     drawLabel45Right(endX, labelEndY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                     mPaint.color = savedColor

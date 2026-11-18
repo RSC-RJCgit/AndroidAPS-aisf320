@@ -50,5 +50,9 @@ enum class Shape {
     // fromTime..toTime window (so 5 min on 1h, 15 min on 3h, 30 min on 6h, 1h on 12h, 1.5h on 18h,
     // 2h on 24h). Each number is insulin delivered in that slice: SMB + meal/manual bolus + basal
     // (temp basal absolute; extended bolus only when the pump is not faking TBR with EB).
-    INSULIN_INTERVAL_TOTAL
+    INSULIN_INTERVAL_TOTAL,
+    // 2026-11-18, per explicit request: a small magenta dot near the top of the main graph at the time of a carb split or delayed
+    // bolus check that gave nothing ("Db10 wait", "D1.30 Carb split ..., waiting"). Built from those care portal notes in
+    // PrepareTreatmentsDataWorker.kt (treatmentsSeries, so Overview and History Browse both show it). Y-independent.
+    DOSE_CHECK_DOT
 }

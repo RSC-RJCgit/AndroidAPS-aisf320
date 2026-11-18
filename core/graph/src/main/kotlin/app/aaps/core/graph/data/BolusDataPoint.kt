@@ -27,9 +27,16 @@ class BolusDataPoint(
     // (DetermineBasalAutoISF, 2026-10-29): the insulin step counts took off it. 0 when none.
     var stepCut: Double = 0.0
 
-    // Set externally (see PrepareTreatmentsDataWorker.kt) when a matching ExtendedBolus was found near
-    // this bolus's timestamp (dual-wave/combo split).
-    override var hasDelayedComponent: Boolean = false
+    // A protein/fat dose, from the note its row carries ("Delayed fpu2 of 4 dose", "Protein/fat fpu4 (last of 4) of ...:
+    // cancelled", v4's "Protein and fat"), which a Client gets through Nightscout too (2026-11-18, per explicit request).
+    override val isFpuDose: Boolean get() = isFpuNote(data.notes)
+
+    companion object {
+
+        private val FPU_NOTE = Regex("""\bfpu\d+|Protein/fat|Protein and fat""", RegexOption.IGNORE_CASE)
+
+        fun isFpuNote(notes: String?): Boolean = notes != null && FPU_NOTE.containsMatchIn(notes)
+    }
 
     override fun getX(): Double = data.timestamp.toDouble()
     override fun getY(): Double = if (data.type == BS.Type.SMB) preferences.get(UnitDoubleKey.OverviewLowMark) else yValue

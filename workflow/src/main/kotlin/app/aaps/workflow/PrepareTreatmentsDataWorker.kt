@@ -105,6 +105,36 @@ class PrepareTreatmentsDataWorker(
         // forEach comment above for why. Matches AutoIsfHistoryExporter.addExportCarePortalNote()'s exact
         // literal tag strings (that function's own require() enumerates the full set this is a subset of).
         private val EXPORT_STATUS_NOTES_HIDDEN_ON_GRAPH4 = setOf("ACEs", "AVLs", "AVCs")
+
+        // A delayed bolus check note: "Db10 wait", "Db20 covered", "Db80 end: ...". Db0 is the start, not a check.
+        private val DELAYED_CHECK_NOTE = Regex("""^Db[1-9][0-9]*\b""")
+        // ...that gave a dose: "Db15 0.8U", or Live's longer "Db15 delayed bolus (held back by ...): 0.8U delivered"
+        private val DELAYED_CHECK_GAVE = Regex("""^Db[0-9]+\s+[0-9]+(?:\.[0-9]+)?\s?U\b|[0-9]+(?:\.[0-9]+)?\s?U delivered""")
+        // A carb split part that waited: "D1.30 Carb split of ...: ... still to come, waiting: ..." (v3 and v4)
+        private val SPLIT_WAIT_NOTE = Regex("""^D[0-9]+\.[0-9]{2} Carb split\b""")
+
+        /**
+         * A carb split or delayed bolus check that gave nothing (2026-11-18, per explicit request): a dot at the top of the main
+         * graph marks it. Protein/fat waits ("D0.62 Protein/fat ...") are not included.
+         */
+        internal fun isEmptyDoseCheck(note: String?): Boolean {
+            val text = note?.trim() ?: return false
+            if (SPLIT_WAIT_NOTE.containsMatchIn(text)) return true
+            return DELAYED_CHECK_NOTE.containsMatchIn(text) && !DELAYED_CHECK_GAVE.containsMatchIn(text)
+        }
+
+        private fun doseCheckDot(x: Double) = object : DataPointWithLabelInterface {
+            override fun getX(): Double = x
+            override fun getY(): Double = 0.0
+            override fun setY(y: Double) {}
+            override val label: String = ""
+            override val duration: Long = 0L
+            override val shape = app.aaps.core.graph.data.Shape.DOSE_CHECK_DOT
+            override val size: Float = 1.0f
+            override val paintStyle = android.graphics.Paint.Style.FILL
+            // The meal bolus colour; the renderer draws this shape in it
+            override fun color(context: android.content.Context?) = android.graphics.Color.MAGENTA
+        }
     }
 
     override suspend fun doWorkAndLog(): Result {
@@ -187,21 +217,8 @@ class PrepareTreatmentsDataWorker(
             }
             filteredTreatments.add(dp)
         }
-        // Delayed-bolus detection: see DelayedBolusWorker.kt, enqueued from BolusWizard.kt.
-        // The delayed portion is delivered 10-30 min later with notes containing this marker;
-        // flag both it and the earlier bolus that triggered it so the pair shows yellow.
-        // The old "Split bolus attempt" marker is still matched for boluses recorded before
-        // the mechanism was renamed to "delayed bolus".
-        val delayedBolusMarkers = listOf("Delayed bolus attempt", "Split bolus attempt")
-        bolusDataPoints
-            .filter { dp -> delayedBolusMarkers.any { m -> dp.data.notes?.contains(m) == true } }
-            .forEach { splitDp ->
-                splitDp.hasDelayedComponent = true
-                bolusDataPoints
-                    .filter { it !== splitDp && it.x < splitDp.x && (splitDp.x - it.x) <= T.mins(40).msecs() }
-                    .maxByOrNull { it.x }
-                    ?.hasDelayedComponent = true
-            }
+        // 2026-11-18, per explicit request: a delayed bolus dose and the bolus before it are no longer marked yellow. Yellow is now
+        // only for protein/fat doses, which BolusDataPoint.isFpuDose reads from each bolus's own note.
         val carbsExpanded = persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime, endTime, true)
         carbsExpanded
             .map { CarbsDataPoint(it, rh) }
@@ -269,6 +286,8 @@ class PrepareTreatmentsDataWorker(
                     it.data.type == TE.Type.NOTE && CodedAutomationNames.isAnyDeskLaunchNote(it.data.note)
                 ) return@forEach
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
+                // A carb split or delayed bolus check that gave nothing: a small magenta dot at the top of the main graph (2026-11-18)
+                if (it.data.type == TE.Type.NOTE && isEmptyDoseCheck(it.data.note)) filteredTreatments.add(doseCheckDot(it.x))
                 if (it.data.type == TE.Type.NOTE) {
                     it.colorOverride = dominantIsfColorAt(aivList, it.x.toLong())
                     // Excludes the routine periodic export-status "success" notes (added 2026-08-30 at

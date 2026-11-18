@@ -33,7 +33,8 @@ interface DataPointWithLabelInterface : DataPointInterface {
     // counts took off this SMB. Only BolusDataPoint overrides this.
     val stepCutShaftMultiplier: Int get() = 0
 
-    // Shape.BOLUS only: true when this bolus has a paired delayed/extended portion (dual-wave/combo,
-    // e.g. a 50% now / 50% extended split) — drawn yellow instead of the normal bolus color.
-    val hasDelayedComponent: Boolean get() = false
+    // Shape.BOLUS only: true for a protein/fat (FPU) dose, given or 0 U — its triangle and value are drawn yellow, every
+    // other bolus (meal, carb split part, delayed bolus) magenta (2026-11-18, per explicit request). Only BolusDataPoint
+    // overrides this.
+    val isFpuDose: Boolean get() = false
 }
