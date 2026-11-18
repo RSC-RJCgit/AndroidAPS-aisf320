@@ -2,47 +2,61 @@ package app.aaps.ui.compose.overview.graphs
 
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
+import kotlin.math.ln
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The basal scale fits the basal in view, including the rate already running at the left edge (2026-11-16). */
+/**
+ * The fixed basal scale (2026-11-19): a 30% floor plus a log curve with knee 1 U/h, full height at the max basal setting.
+ * It replaced the scale fitted to the basal in view (2026-11-16), which changed column heights on every scroll.
+ */
 class BasalAxisMaxTest {
 
     private val hour = 3_600_000L
 
-    // 0.5 U/h until hour 6, a 3.0 U/h temp from hour 6 to 7, then 0.5 U/h again up to hour 12.
-    private val data = BasalGraphData(
+    private fun data(scaleTop: Double) = BasalGraphData(
         profileBasal = listOf(GraphDataPoint(0L, 0.5), GraphDataPoint(12 * hour, 0.5)),
-        actualBasal = listOf(GraphDataPoint(0L, 0.5), GraphDataPoint(6 * hour, 3.0), GraphDataPoint(7 * hour, 0.5), GraphDataPoint(12 * hour, 0.5)),
-        maxBasal = 3.0
+        actualBasal = listOf(GraphDataPoint(0L, 0.5), GraphDataPoint(6 * hour, 3.0), GraphDataPoint(7 * hour, 0.5)),
+        maxBasal = 3.0,
+        scaleTop = scaleTop
     )
 
+    private fun expected(rate: Double, top: Double) = 0.30 + 0.70 * ln(1.0 + rate) / ln(1.0 + top)
+
     @Test
-    fun aTempJustOffScreenToTheRightDoesNotCount() {
-        // View 3..5 h: the temp starts at 6 h, outside the view.
-        assertEquals(0.5 / 0.5, basalAxisMax(data, 3 * hour to 5 * hour, 0.5), 1e-9)
+    fun noBasalHasNoColumn() {
+        assertEquals(0.0, basalScaleHeight(0.0, 5.0), 1e-9)
+        assertEquals(0.0, basalScaleHeight(Double.NaN, 5.0), 1e-9)
     }
 
     @Test
-    fun aTempJustOffScreenToTheLeftDoesNotCount() {
-        // View 8..10 h: the temp ended at 7 h.
-        assertEquals(0.5 / 0.5, basalAxisMax(data, 8 * hour to 10 * hour, 0.5), 1e-9)
+    fun theExamplesPageHeightsAtAFiveUnitTop() {
+        assertEquals(1.0, basalScaleHeight(5.0, 5.0), 1e-9)
+        assertEquals(expected(2.5, 5.0), basalScaleHeight(2.5, 5.0), 1e-9)
+        assertEquals(expected(0.5, 5.0), basalScaleHeight(0.5, 5.0), 1e-9)
+        // Any rate above 0 gets at least the floor
+        assertEquals(0.30, basalScaleHeight(0.0001, 5.0), 1e-3)
     }
 
     @Test
-    fun aTempInViewCounts() {
-        // View 5..8 h: the temp at 6..7 h is in view.
-        assertEquals(3.0 / 0.5, basalAxisMax(data, 5 * hour to 8 * hour, 0.5), 1e-9)
+    fun aRateAboveTheTopIsDrawnAtFullHeight() {
+        assertEquals(1.0, basalScaleHeight(8.0, 5.0), 1e-9)
     }
 
     @Test
-    fun aTempRunningAtTheLeftEdgeCounts() {
-        // View 6.5..8 h: the temp started before the view and is still running at its left edge.
-        assertEquals(3.0 / 0.5, basalAxisMax(data, (6.5 * hour).toLong() to 8 * hour, 0.5), 1e-9)
+    fun theTopIsTheMaxBasalSettingWhenSet() {
+        assertEquals(5.0, basalScaleTop(data(scaleTop = 5.0)), 1e-9)
     }
 
     @Test
-    fun noWindowUsesTheHighestBasal() {
-        assertEquals(3.0 / 0.22, basalAxisMax(data, null, 0.22), 1e-9)
+    fun withoutTheSettingTheTopIsTheHighestBasalLoaded() {
+        assertEquals(3.0, basalScaleTop(data(scaleTop = 0.0)), 1e-9)
+        assertEquals(1.0, basalScaleTop(null), 1e-9)
+    }
+
+    @Test
+    fun theAxisIsFixedWhateverIsInView() {
+        assertEquals(1.0 / 0.22, basalScaleAxisMax(0.22), 1e-9)
+        assertEquals(1.0 / 0.5, basalScaleAxisMax(0.5), 1e-9)
     }
 }

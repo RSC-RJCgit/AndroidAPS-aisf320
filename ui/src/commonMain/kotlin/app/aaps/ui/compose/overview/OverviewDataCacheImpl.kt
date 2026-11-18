@@ -99,6 +99,7 @@ import app.aaps.core.interfaces.utils.TrendCalculator
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.workflow.CalculationSignals
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.UnitDoubleKey
@@ -1368,7 +1369,9 @@ class OverviewDataCacheImpl(
             acceTemp = factorTemps.acce,
             bgTemp = factorTemps.bg,
             ppTemp = factorTemps.pp,
-            duraTemp = factorTemps.dura
+            duraTemp = factorTemps.dura,
+            // The fixed top of the basal columns on both graphs: the max basal setting (2026-11-19, per explicit request)
+            scaleTop = preferences.get(DoubleKey.ApsMaxBasal).takeIf { it.isFinite() && it > 0.0 } ?: 0.0
         )
 
         // Everything needed to see a short line for what it is, without a second run. The last

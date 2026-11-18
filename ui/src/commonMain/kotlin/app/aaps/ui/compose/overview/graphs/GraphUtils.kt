@@ -327,43 +327,30 @@ fun Modifier.onScrollOrZoomGesture(
 const val BASAL_HEIGHT_FRACTION = 0.5
 
 /**
- * Scale to the highest basal in view, including the rates already in effect at the left edge.
- *
- * The usual scale again once a scroll has stopped (2026-11-16, per explicit request). The look-ahead of 12 Nov (one
- * screen-width more on each side) kept a tall temp just off screen squashing every column in view. The scale is only
- * refitted after a scroll settles, so during a drag a higher basal scrolled into view can stand too tall until then.
+ * Basal column height on both graphs, a fixed scale (2026-11-19, per explicit request, chosen on the scale examples page):
+ * 0 U/h has no column; any rate above 0 is [BASAL_SCALE_FLOOR] of full height plus the rest on a log curve with
+ * [BASAL_SCALE_KNEE], reaching full height at [top] (the max basal setting, see [basalScaleTop]). A rate above [top] is
+ * drawn at full height. With a 5 U/h top, 5.0 / 2.5 / 1.0 / 0.5 / 0.1 U/h draw at 100% / 79% / 57% / 46% / 34%.
+ * Scrolling and zooming never change it: the main graph used to refit to the visible window and the IOB graph to the
+ * 24 hour maximum. The numbers shown (hourly peaks, tap readout) stay real rates.
  */
-internal fun basalAxisMax(data: BasalGraphData?, visibleTimeRange: Pair<Long, Long>?, heightFraction: Double): Double {
-    if (data == null || data.maxBasal <= 0.0) return 1.0
-    if (visibleTimeRange == null) return data.maxBasal / heightFraction
-    val from = visibleTimeRange.first
-    val to = visibleTimeRange.second
-    val visibleMax = listOf(data.profileBasal, data.actualBasal).mapNotNull { series ->
-        val atStart = series.lastOrNull { it.timestamp <= from }?.value
-        val within = series.asSequence().filter { it.timestamp in from..to }.maxOfOrNull { it.value }
-        listOfNotNull(atStart, within).maxOrNull()
-    }.maxOrNull()
-    val peak = visibleMax ?: data.maxBasal
-    return if (peak > 0.0) peak / heightFraction else 1.0
+const val BASAL_SCALE_KNEE = 1.0
+const val BASAL_SCALE_FLOOR = 0.30
+
+/** Height as a fraction of full height, 0..1. */
+internal fun basalScaleHeight(rate: Double, top: Double): Double {
+    if (!(rate > 0.0)) return 0.0
+    val fullAt = if (top > 0.0) top else rate
+    val curve = ln(1.0 + rate / BASAL_SCALE_KNEE) / ln(1.0 + fullAt / BASAL_SCALE_KNEE)
+    return (BASAL_SCALE_FLOOR + (1.0 - BASAL_SCALE_FLOOR) * curve).coerceAtMost(1.0)
 }
 
-/**
- * Graph 1 basal columns on a log curve (2026-11-18, per explicit request): column height is `ln(1 + rate / BASAL_LOG_KNEE)`,
- * so low basal stays readable and a tall temp no longer dwarfs the rest. With a 4 U/h top, 0.5 / 1 / 2 U/h draw at about
- * 39% / 57% / 78% of the band (a straight scale gave 12% / 25% / 50%). The numbers shown (hourly peaks, tap readout) stay real rates.
- */
-const val BASAL_LOG_KNEE = 0.25
+/** The rate drawn at full height: the max basal setting, or the highest basal loaded when that is not set. */
+internal fun basalScaleTop(data: BasalGraphData?): Double =
+    data?.scaleTop?.takeIf { it > 0.0 } ?: data?.maxBasal?.takeIf { it > 0.0 } ?: 1.0
 
-internal fun basalLogHeight(rate: Double): Double = if (rate > 0.0) ln(1.0 + rate / BASAL_LOG_KNEE) else 0.0
-
-/**
- * Graph 1's basal scale on the log curve, fitted once to the highest basal in the whole loaded period (2026-11-18, per
- * explicit request), so scrolling and zooming never refit it: no rebuild during a drag or pinch, no look-ahead switch.
- */
-internal fun basalLogAxisMax(data: BasalGraphData?, heightFraction: Double): Double {
-    val top = basalLogHeight(data?.maxBasal ?: 0.0)
-    return if (top > 0.0) top / heightFraction else 1.0
-}
+/** Axis max for a basal layer drawn in [basalScaleHeight] fractions, so full height fills [heightFraction] of the graph. */
+internal fun basalScaleAxisMax(heightFraction: Double): Double = 1.0 / heightFraction
 
 /** Empty space above the flipped basal columns on graph 1, as a share of the basal scale (about 13% of the graph), for the hourly basal peak numbers. */
 const val BASAL_LABEL_STRIP = 0.15

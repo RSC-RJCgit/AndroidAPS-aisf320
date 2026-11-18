@@ -575,10 +575,12 @@ fun BgGraphCompose(
 
             // Block 2 → Basal layer (layer 1, end axis)
             lineModel {
+                // Each rate as its height on the fixed basal scale (2026-11-19, per explicit request), see basalScaleHeight
+                val basalTop = basalScaleTop(currentBasalData)
                 fun addBasalSeries(points: List<GraphDataPoint>) {
                     if (points.size >= 2) {
                         val pts = points
-                            .map { timestampToX(it.timestamp, minTimestamp) to it.value }
+                            .map { timestampToX(it.timestamp, minTimestamp) to basalScaleHeight(it.value, basalTop) }
                             .sortedBy { it.first }
                         series(x = pts.map { it.first }, y = pts.map { it.second })
                     } else {
@@ -1150,9 +1152,9 @@ fun BgGraphCompose(
         }
     }
 
-    val basalMaxY = remember(basalData, visibleTimeRange) {
-        basalAxisMax(basalData, visibleTimeRange, BG_GRAPH_BASAL_HEIGHT_FRACTION)
-    }
+    // Fixed: full column height always fills BG_GRAPH_BASAL_HEIGHT_FRACTION, whatever is in view (2026-11-19, per explicit
+    // request). It used to refit to the highest basal in the visible window, so columns changed height on every scroll.
+    val basalMaxY = remember { basalScaleAxisMax(BG_GRAPH_BASAL_HEIGHT_FRACTION) }
 
     // =========================================================================
     // Decorations
@@ -1367,10 +1369,12 @@ fun BgGraphCompose(
     val basalPeaks = remember(basalData, nowTimestamp, showBasalOnBgGraph) {
         if (showBasalOnBgGraph) hourlyPeaks(basalData.actualBasal, nowTimestamp, stepped = true) else emptyList()
     }
-    val basalPeakLabel = remember(basalPeaks, minTimestamp, smbText, basalColor) {
+    val basalPeakLabel = remember(basalPeaks, minTimestamp, smbText, basalColor, basalData) {
+        val basalTop = basalScaleTop(basalData)
         basalPeaks.takeIf { it.isNotEmpty() }?.let { peaks ->
             RecentPeakLabels(
-                peaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), it.value, decimalFormatter.to2Decimal(it.value)) },
+                // At the column's own height on the basal scale; the text stays the real rate (2026-11-19)
+                peaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), basalScaleHeight(it.value, basalTop), decimalFormatter.to2Decimal(it.value)) },
                 basalColor, smbText, endAxis = true
             )
         }

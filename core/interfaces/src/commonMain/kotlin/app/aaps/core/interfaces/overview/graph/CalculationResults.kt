@@ -276,7 +276,9 @@ data class BasalGraphData(
     val acceTemp: List<GraphDataPoint> = emptyList(),
     val bgTemp: List<GraphDataPoint> = emptyList(),
     val ppTemp: List<GraphDataPoint> = emptyList(),
-    val duraTemp: List<GraphDataPoint> = emptyList()
+    val duraTemp: List<GraphDataPoint> = emptyList(),
+    /** The rate drawn at full column height: the max basal setting (U/h), 0 when unknown (2026-11-19) */
+    val scaleTop: Double = 0.0
 )
 
 /**
