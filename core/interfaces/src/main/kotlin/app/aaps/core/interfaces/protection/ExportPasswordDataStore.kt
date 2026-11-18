@@ -26,4 +26,11 @@ interface ExportPasswordDataStore {
      */
     fun getPasswordFromDataStore(context: Context): Triple<String, Boolean, Boolean>
 
+    /***
+     * Whether the last [getPasswordFromDataStore] found a stored password that had really expired (and cleared it).
+     * False when nothing was stored. Both come back from [getPasswordFromDataStore] as an empty, expired password, so this
+     * is what lets an export say which one it was (2026-11-18, per explicit request).
+     */
+    fun lastReadFoundExpired(): Boolean = false
+
     }

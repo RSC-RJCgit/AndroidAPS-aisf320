@@ -93,7 +93,11 @@ class ActionSettingsExport(injector: HasAndroidInjector) : Action(injector) {
             } else {
                 // No password or was expired and needs re-entering by user
                 exportResultComment = app.aaps.core.ui.R.string.export_expired
-                exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_expired)
+                // "No stored password" unless a stored one had really expired (2026-11-18, per explicit request)
+                exportResultMessage = rh.gs(
+                    if (exportPasswordDataStore.lastReadFoundExpired()) app.aaps.core.ui.R.string.export_result_message_expired
+                    else app.aaps.core.ui.R.string.export_result_message_no_password
+                )
                 notification = NotificationUserMessage(exportResultMessage, Notification.URGENT)  // URGENT -> e.g. color RED
                 // Clear password in datastore, then notify user
                 aapsLogger.info(LTag.AUTOMATION, "No password or was expired and needs re-entering by user")

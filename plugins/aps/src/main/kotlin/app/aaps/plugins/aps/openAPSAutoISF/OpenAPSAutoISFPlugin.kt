@@ -3495,7 +3495,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     }
                     notification = localNotification
                 } else {
-                    exportResultMessage = rh.gs(app.aaps.core.ui.R.string.export_result_message_expired)
+                    // "No stored password" unless a stored one had really expired (2026-11-18, per explicit request: Virtual said
+                    // "password expired" on 18 Nov with the 10-year window, when nothing was stored at all)
+                    exportResultMessage = rh.gs(
+                        if (exportPasswordDataStore.lastReadFoundExpired()) app.aaps.core.ui.R.string.export_result_message_expired
+                        else app.aaps.core.ui.R.string.export_result_message_no_password
+                    )
                     notification = NotificationUserMessage(exportResultMessage, Notification.URGENT)
                     exportPasswordDataStore.clearPasswordDataStore(context)
                     announceAlert = true

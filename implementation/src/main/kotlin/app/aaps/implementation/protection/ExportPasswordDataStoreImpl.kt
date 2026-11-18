@@ -145,7 +145,13 @@ class ExportPasswordDataStoreImpl @Inject constructor(
      * Get password from local phone's DataStore
      * Return Triple (ok, password string, isExpired, isAboutToExpire)
      */
+    // Set by each getPasswordFromDataStore: true only when a stored password had really expired and was cleared (2026-11-18)
+    @Volatile private var foundExpired = false
+
+    override fun lastReadFoundExpired(): Boolean = foundExpired
+
     override fun getPasswordFromDataStore(context: Context): Triple<String, Boolean, Boolean> {
+        foundExpired = false
         if (!exportPasswordStoreEnabled()) return Triple("", true, true)
 
         val passwordData = this.retrievePassword(context)
@@ -243,7 +249,11 @@ class ExportPasswordDataStoreImpl @Inject constructor(
             isAboutToExpire = expires
 
             // When expired, need to renew: clear/update password in data store
-            if (isExpired) password = clearPasswordDataStore(context)
+            if (isExpired) {
+                log.info(LTag.CORE, "$MODULE: stored password expired (saved ${dateUtil.dateAndTimeString(timestamp)}), clearing")
+                foundExpired = true
+                password = clearPasswordDataStore(context)
+            }
         }
         // Store/update password and return
         return classPasswordData
