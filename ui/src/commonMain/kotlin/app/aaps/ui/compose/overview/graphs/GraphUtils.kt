@@ -969,6 +969,37 @@ class SmbArrows(
 }
 
 /**
+ * A small dot near the top of the BG graph at each carb split or delayed bolus check that gave nothing (2026-11-18, per explicit
+ * request), in the insulin colour, the colour of a meal bolus. [xs] are minutes from minTimestamp, like the other marks.
+ * The 3426 app draws the same dot (Shape.DOSE_CHECK_DOT) in its magenta.
+ */
+class DoseCheckDots(
+    private val xs: List<Double>,
+    private val color: Color,
+) : Decoration {
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        if (xs.isEmpty()) return
+        with(context) {
+            val xStep = ranges.xStep
+            if (xStep == 0.0) return
+            with(mutableDrawScope) {
+                val radius = 2.5.dp.toPx()
+                val y = layerBounds.top + 6.dp.toPx()
+                for (x in xs) {
+                    val canvasX = layerBounds.left +
+                        layerDimensions.startPadding +
+                        layerDimensions.xSpacing * ((x - ranges.minX) / xStep).toFloat() -
+                        scroll
+                    if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                    drawCircle(color, radius, Offset(canvasX, y))
+                }
+            }
+        }
+    }
+}
+
+/**
  * Text layouts each label measurer keeps. The default is 8, and a graph can show more labels than that at once
  * (notes, arrows, SMB numbers), so every draw frame re-laid-out the text and scrolling the synced graphs got slow.
  */

@@ -177,6 +177,12 @@ private val MARKER_SIZE_CALIBRATION = 14.dp
 private val MARKER_EMPTY_Y = listOf(-10_000.0, -10_000.0)
 
 /**
+ * Protein/fat (FPU) dose triangles, values and 0 U arrows (2026-11-18, per explicit request). The yellow every bolus value had
+ * before; every other bolus now takes the insulin colour of its triangle.
+ */
+private val FPU_BOLUS_COLOR = Color(0xFFFFFF00)
+
+/**
  * CartesianChartModelProducer.update() skips notifying receivers (and thus skips recomputing axis
  * ranges) when a transaction's partials AND extraStore are both unchanged from the last one. Since
  * scrolling/zooming re-submits identical series data (only the visible window changed), stashing
@@ -690,7 +696,7 @@ fun BgGraphCompose(
             // Drawn last on purpose: a carbs marker reaches into the curve, and under the BG layer it
             // was covered by the reading dots and the profile icon. It does cover the one reading
             // it sits on.
-            // Fixed series order, always all 7: insulin small/medium/large, carbs small/medium/large,
+            // Fixed series order, always all 10: insulin small/medium/large, protein/fat insulin small/medium/large, carbs small/medium/large,
             // measured glucose. An empty slot gets a clipped dummy, so the line list below is a
             // plain fixed list instead of something that has to be matched to the data.
             lineModel {
@@ -698,7 +704,9 @@ fun BgGraphCompose(
                     if (markers.isEmpty()) series(x = listOf(0.0, 1.0), y = MARKER_EMPTY_Y)
                     else series(x = markers.map { it.x }, y = markers.map { it.y })
                 }
-                for (tier in MarkerTier.entries) markerSeries(currentMarkers.insulin.filter { it.tier == tier })
+                for (tier in MarkerTier.entries) markerSeries(currentMarkers.insulin.filter { it.tier == tier && !it.fpu })
+                // Protein/fat doses in yellow (2026-11-18, per explicit request), three more slots after the insulin ones
+                for (tier in MarkerTier.entries) markerSeries(currentMarkers.insulin.filter { it.tier == tier && it.fpu })
                 for (tier in MarkerTier.entries) markerSeries(currentMarkers.carbs.filter { it.tier == tier })
                 val measured = currentMarkers.calibrations
                 if (measured.isEmpty()) series(x = listOf(0.0, 1.0), y = MARKER_EMPTY_Y)
@@ -1120,6 +1128,10 @@ fun BgGraphCompose(
             for (tier in MarkerTier.entries) {
                 add(createMarkerLine(insulinColor, ::invertedTriangleShape, tier.markerSize))
             }
+            // Protein/fat doses (2026-11-18): the same triangles in yellow
+            for (tier in MarkerTier.entries) {
+                add(createMarkerLine(FPU_BOLUS_COLOR, ::invertedTriangleShape, tier.markerSize))
+            }
             for (tier in MarkerTier.entries) {
                 add(createMarkerLine(carbsColor, ::triangleBelowShape, tier.markerSize))
             }
@@ -1285,7 +1297,11 @@ fun BgGraphCompose(
         SmbStackLabels(uamBoostLabels, uamBoostText, pinToBottom = false)
     }
     val bolusText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
-    val bolusStack = remember(treatments, minTimestamp, lowMark) {
+    // Carb split and delayed bolus checks that gave nothing: a small dot at the top (2026-11-18, per explicit request)
+    val doseCheckDots = remember(treatments, minTimestamp, insulinColor) {
+        DoseCheckDots(treatments.doseCheckTimes.map { timestampToX(it, minTimestamp) }, insulinColor)
+    }
+    val bolusStack = remember(treatments, minTimestamp, lowMark, insulinColor) {
         val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
         val stack = smbStackIndex(boluses.map { it.timestamp })
         boluses.mapIndexed { index, bolus ->
@@ -1295,7 +1311,8 @@ fun BgGraphCompose(
                 label = bolus.number.ifEmpty { bolus.label },
                 stackIndex = stack[index],
                 anchorY = lowMark,
-                color = Color(0xFFFFFF00),
+                // Yellow for a protein/fat dose, the triangle's insulin colour for every other bolus (2026-11-18)
+                color = if (bolus.isFpu) FPU_BOLUS_COLOR else insulinColor,
                 tapTimestamp = bolus.timestamp,
             )
         }
@@ -1328,7 +1345,8 @@ fun BgGraphCompose(
                     label = bolus.number.ifEmpty { bolus.label },
                     stackIndex = 0,
                     anchorY = bgReadings.minByOrNull { abs(it.timestamp - bolus.timestamp) }?.value,
-                    color = Color(0xFFFF00FF),
+                    // A 0 U protein/fat dose is yellow too (2026-11-18)
+                    color = if (bolus.isFpu) FPU_BOLUS_COLOR else Color(0xFFFF00FF),
                 )
             },
             scale = ZERO_BOLUS_ARROW_SCALE
@@ -1379,8 +1397,8 @@ fun BgGraphCompose(
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true, masterZone = masterZone)
     // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
     val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
-    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines) {
-        listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter) +
+    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines, doseCheckDots) {
+        listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, doseCheckDots, tapReporter) +
             listOfNotNull(renderReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
 

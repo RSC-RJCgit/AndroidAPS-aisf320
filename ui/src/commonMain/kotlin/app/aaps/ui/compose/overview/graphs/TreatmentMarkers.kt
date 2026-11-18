@@ -30,8 +30,11 @@ internal const val MARKER_PAIR_MS = 5 * 60_000L
 /** Marker size, from the amount relative to the other markers of the same kind. */
 enum class MarkerTier { SMALL, MEDIUM, LARGE }
 
-/** One treatment marker. [x] is minutes from minTimestamp, [y] is in the BG axis' units. */
-data class TreatmentMarker(val x: Double, val y: Double, val tier: MarkerTier)
+/**
+ * One treatment marker. [x] is minutes from minTimestamp, [y] is in the BG axis' units. [fpu] marks a protein/fat dose, drawn
+ * yellow instead of the insulin colour (2026-11-18, per explicit request).
+ */
+data class TreatmentMarker(val x: Double, val y: Double, val tier: MarkerTier, val fpu: Boolean = false)
 
 /** The markers of one rebuild, split by kind because each kind has its own shape and color. */
 data class TreatmentMarkers(
@@ -165,7 +168,8 @@ fun treatmentMarkers(
         TreatmentMarker(
             x = x,
             y = (pairedY(bolus.timestamp, carbsTimes) + gap).coerceIn(minY, maxY),
-            tier = tierOf(bolus.amount, bolusAmounts)
+            tier = tierOf(bolus.amount, bolusAmounts),
+            fpu = bolus.isFpu
         )
     }
     val carbsMarkers = validCarbs.mapNotNull { entry ->

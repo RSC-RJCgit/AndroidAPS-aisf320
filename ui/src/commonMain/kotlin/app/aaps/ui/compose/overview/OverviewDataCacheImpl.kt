@@ -160,6 +160,29 @@ private const val URGENT_BATTERY_PERCENT = 20.0
 private const val WARN_BATTERY_VOLTAGE = 1.35
 private const val URGENT_BATTERY_VOLTAGE = 1.3
 
+// A protein/fat dose, from the note its bolus row carries: this app's "Protein and fat", a v3 master's "Delayed fpu2 of 4 dose" or
+// "Protein/fat fpu4 (last of 4) of ...: cancelled". A client gets these through Nightscout (2026-11-18, per explicit request).
+private val FPU_NOTE = Regex("""\bfpu\d+|Protein/fat|Protein and fat""", RegexOption.IGNORE_CASE)
+
+internal fun isFpuNote(notes: String?): Boolean = notes != null && FPU_NOTE.containsMatchIn(notes)
+
+// A delayed bolus check note: "Db10 wait", "Db20 covered", "Db80 end: ...". Db0 is the start, not a check.
+private val DELAYED_CHECK_NOTE = Regex("""^Db[1-9][0-9]*\b""")
+// ...that gave a dose: "Db15 0.80 U", or a v3 master's "Db15 delayed bolus (held back by ...): 0.8U delivered"
+private val DELAYED_CHECK_GAVE = Regex("""^Db[0-9]+\s+[0-9]+(?:\.[0-9]+)?\s?U\b|[0-9]+(?:\.[0-9]+)?\s?U delivered""")
+// A carb split part that waited: "D1.30 Carb split of ...: ... still to come, waiting: ..." (this app and v3)
+private val SPLIT_WAIT_NOTE = Regex("""^D[0-9]+\.[0-9]{2} Carb split\b""")
+
+/**
+ * A carb split or delayed bolus check that gave nothing (2026-11-18, per explicit request), marked by a dot at the top of the BG
+ * graph. Protein/fat waits ("D0.62 Protein/fat ...") are not included. The same rule as the 3426 app's PrepareTreatmentsDataWorker.
+ */
+internal fun isEmptyDoseCheck(note: String?): Boolean {
+    val text = note?.trim() ?: return false
+    if (SPLIT_WAIT_NOTE.containsMatchIn(text)) return true
+    return DELAYED_CHECK_NOTE.containsMatchIn(text) && !DELAYED_CHECK_GAVE.containsMatchIn(text)
+}
+
 /** How far before an SMB its own loop result can be: the loop runs, then the pump delivers. */
 private const val STEP_CUT_MATCH_MS = 3 * 60_000L
 private val STEP_CUT_REGEX = Regex("""\bStepCut=([0-9]+(?:\.[0-9]+)?)""")
@@ -1102,7 +1125,8 @@ class OverviewDataCacheImpl(
                     label = decimalFormatter.toPumpSupportedBolusWithUnits(bs.amount, bolusStep),
                     // A zero bolus is just "0" on the graphs (2026-10-27, per explicit request), not "0.00"
                     number = if (bs.amount == 0.0) "0" else decimalFormatter.toPumpSupportedBolus(bs.amount, bolusStep),
-                    stepCut = if (bs.type == BS.Type.SMB) stepCutForSmb(loopResults, bs.timestamp) else 0.0
+                    stepCut = if (bs.type == BS.Type.SMB) stepCutForSmb(loopResults, bs.timestamp) else 0.0,
+                    isFpu = bs.type == BS.Type.NORMAL && isFpuNote(bs.notes)
                 )
             }
 
@@ -1133,8 +1157,14 @@ class OverviewDataCacheImpl(
         } else emptyList()
 
         // Therapy events
-        val therapyEventPoints = persistenceLayer.getTherapyEventDataFromToTime(fromTime - T.hours(6).msecs(), toTime)
+        val therapyEvents = persistenceLayer.getTherapyEventDataFromToTime(fromTime - T.hours(6).msecs(), toTime)
             .filter { te -> endOf(te.timestamp, te.duration) >= fromTime && te.timestamp <= toTime }
+        // Carb split and delayed bolus checks that gave nothing, from their notes (this app's, or a v3 master's on a client)
+        val doseCheckTimes = therapyEvents
+            .filter { te -> te.type == TE.Type.NOTE && te.timestamp >= fromTime && isEmptyDoseCheck(te.note) }
+            .map { it.timestamp }
+            .sorted()
+        val therapyEventPoints = therapyEvents
             .map { te ->
                 val teType = when {
                     te.type == TE.Type.NS_MBG                -> TherapyEventType.MBG
@@ -1173,7 +1203,8 @@ class OverviewDataCacheImpl(
             carbs = nonFinite.drop("carbs", carbsPoints, { it.timestamp }, { it.amount }),
             extendedBoluses = nonFinite.drop("extended boluses", extendedBolusPoints, { it.timestamp }, { it.amount }),
             therapyEvents = nonFinite.drop("therapy event glucose", therapyEventPoints, { it.timestamp }, { it.glucoseUserUnits }),
-            calibrations = nonFinite.drop("calibrations", calibrationPoints, { it.timestamp }, { it.fingerstickUserUnits })
+            calibrations = nonFinite.drop("calibrations", calibrationPoints, { it.timestamp }, { it.fingerstickUserUnits }),
+            doseCheckTimes = doseCheckTimes
         )
     }
 

@@ -311,7 +311,9 @@ data class BolusGraphPoint(
     val isValid: Boolean,
     val label: String,         // Pre-formatted amount with unit (e.g. "0.30 U")
     val number: String = "",   // The same amount without the unit (e.g. "0.30"), for the number on the BG graph (2026-10-23)
-    val stepCut: Double = 0.0  // SMB only: insulin step counts took off it, from the loop's "StepCut=" (2026-10-29), for the red arrow
+    val stepCut: Double = 0.0, // SMB only: insulin step counts took off it, from the loop's "StepCut=" (2026-10-29), for the red arrow
+    /** A protein/fat (FPU) dose, given or 0 U, from its note: drawn yellow, every other bolus in the insulin colour (2026-11-18) */
+    val isFpu: Boolean = false
 )
 
 /**
@@ -405,7 +407,9 @@ data class TreatmentGraphData(
     val carbs: List<CarbsGraphPoint>,
     val extendedBoluses: List<ExtendedBolusGraphPoint>,
     val therapyEvents: List<TherapyEventGraphPoint>,
-    val calibrations: List<CalibrationGraphPoint>
+    val calibrations: List<CalibrationGraphPoint>,
+    /** Times of carb split and delayed bolus checks that gave nothing, each a small dot at the top of the BG graph (2026-11-18) */
+    val doseCheckTimes: List<Long> = emptyList()
 )
 
 // ============================================================================
