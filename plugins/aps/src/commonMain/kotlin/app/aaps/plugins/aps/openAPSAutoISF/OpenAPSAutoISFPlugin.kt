@@ -5805,7 +5805,14 @@ open class OpenAPSAutoISFPlugin(
                 exported = importExportPrefs.exportSharedPreferencesNonInteractive(password)
                 message = if (exported) "Settings exported" else "Settings export failed"
             } else {
-                message = "Settings export password missing or expired"
+                // Says which, like the automation export (2026-11-18, per explicit request)
+                message = rh.gs(
+                    when (exportPasswordDataStore.lastMissReason()) {
+                        ExportPasswordDataStore.MissReason.EXPIRED        -> CoreUiStrings.export_result_message_expired
+                        ExportPasswordDataStore.MissReason.MASTER_CHANGED -> CoreUiStrings.export_result_message_master_changed
+                        else                                              -> CoreUiStrings.export_result_message_no_password
+                    }
+                )
                 exportPasswordDataStore.clearPasswordDataStore()
             }
             if (passwordWasValid && !exported && runMarks.ready(RunMark.SETTINGS_EXPORT_ACCESS, 360, dateUtil.now())) {

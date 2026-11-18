@@ -135,17 +135,28 @@ class ExportPasswordDataStoreImpl(
         return storePassword(password)
     }
 
+    // Why the last read gave nothing usable (2026-11-18): an export says "password expired" only when it really had
+    private var lastMissReason = ExportPasswordDataStore.MissReason.NONE
+
+    override fun lastMissReason(): ExportPasswordDataStore.MissReason = lastMissReason
+
     /** The encrypted secret with its expiry state, or empty and expired when there is nothing usable. */
     override fun getPasswordFromDataStore(): Triple<String, Boolean, Boolean> {
+        lastMissReason = ExportPasswordDataStore.MissReason.NONE
         if (!exportPasswordStoreEnabled()) return EXPIRED
 
         val stored = retrievePassword()
-        if (stored.password.isEmpty()) return EXPIRED
+        if (stored.password.isEmpty()) {
+            lastMissReason = if (stored.isExpired && stored.timestamp != 0L) ExportPasswordDataStore.MissReason.EXPIRED
+            else ExportPasswordDataStore.MissReason.NOT_STORED
+            return EXPIRED
+        }
 
         val masterHash = preferences.getIfExists(StringKey.ProtectionMasterPassword)
         if (masterHash.isNullOrEmpty() || !passwordHasher.checkPassword(secureEncrypt.decrypt(stored.password), masterHash)) {
             aapsLogger.info(LTag.CORE, "$MODULE: stored password no longer matches the master password, clearing")
             clearPasswordDataStore()
+            lastMissReason = ExportPasswordDataStore.MissReason.MASTER_CHANGED
             return EXPIRED
         }
 
@@ -192,6 +203,7 @@ class ExportPasswordDataStoreImpl(
 
         val (expired, aboutToExpire) = isInValidityWindow(stored.timestamp)
         if (expired) {
+            aapsLogger.info(LTag.CORE, "$MODULE: stored password expired (saved ${dateUtil.dateAndTimeString(stored.timestamp)}), clearing")
             clearPasswordDataStore()
             return PasswordData("", stored.timestamp, isExpired = true, isAboutToExpire = true)
         }
@@ -216,8 +228,12 @@ class ExportPasswordDataStoreImpl(
         const val KEYSTORE_ALIAS = "UnattendedExportAliasV2"
         private const val MASTER_SETTINGS_ALIAS = "SettingsMasterPasswordV1"
 
-        /** Five weeks, the grace period included. */
-        private const val DEFAULT_VALIDITY_WINDOW = 35 * 24 * 3600 * 1000L
+        /**
+         * Ten years, the grace period included: effectively never expires, entered once per install. The 3426 app has had this
+         * since 12 Jun 2026 (d451251944); the port took upstream's five weeks instead, so a v4 master stopped its unattended
+         * export every 35 days (2026-11-18, per explicit request).
+         */
+        internal const val DEFAULT_VALIDITY_WINDOW = 3650 * 24 * 3600 * 1000L
 
         /** The last week of the window, where the user is told it is about to expire. */
         private const val DEFAULT_GRACE_PERIOD = 7 * 24 * 3600 * 1000L

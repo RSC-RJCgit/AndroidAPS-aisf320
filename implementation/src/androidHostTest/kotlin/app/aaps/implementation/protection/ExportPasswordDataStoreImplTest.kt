@@ -1,6 +1,7 @@
 package app.aaps.implementation.protection
 
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.protection.ExportPasswordDataStore
 import app.aaps.core.interfaces.protection.ExportPasswordPlatform
 import app.aaps.core.interfaces.protection.PasswordHasher
 import app.aaps.core.interfaces.protection.SecureEncrypt
@@ -50,6 +51,9 @@ class ExportPasswordDataStoreImplTest {
     private val currentSecret = "hash:${ExportPasswordDataStoreImpl.KEYSTORE_ALIAS}:iv:cipher"
     private val now = 1_000_000_000_000L
     private val fiveWeeks = 35 * 24 * 3600 * 1000L
+    // The validity window: ten years since 2026-11-18, as the 3426 app
+    private val window = ExportPasswordDataStoreImpl.DEFAULT_VALIDITY_WINDOW
+    private val day = 24 * 3600 * 1000L
 
     /** In memory storage. The real ones write to DataStore or to a file; the rules do not care. */
     private class FakePlatform : ExportPasswordPlatform {
@@ -160,8 +164,8 @@ class ExportPasswordDataStoreImplTest {
     fun `warns that a password is about to expire inside the grace period`() {
         enable()
         masterPasswordMatches(true)
-        // Written 30 days ago: past the point where the last week starts, but not yet expired.
-        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - 30 * 24 * 3600 * 1000L)
+        // Three days short of the window: past the point where the last week starts, but not yet expired.
+        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - (window - 3 * day))
 
         val (password, expired, aboutToExpire) = sut.getPasswordFromDataStore()
         assertEquals(currentSecret, password)
@@ -172,10 +176,22 @@ class ExportPasswordDataStoreImplTest {
     @Test
     fun `drops a password once the validity window has passed`() {
         enable()
-        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - fiveWeeks - 1)
+        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - window - 1)
 
         assertEquals(Triple("", true, true), sut.getPasswordFromDataStore())
         assertNull(platform.stored)
+        assertEquals(ExportPasswordDataStore.MissReason.EXPIRED, sut.lastMissReason())
+    }
+
+    @Test
+    fun `keeps a password written five weeks ago`() {
+        // 2026-11-18: the port had upstream's five weeks, so a v4 master stopped its unattended export every 35 days
+        enable()
+        masterPasswordMatches(true)
+        platform.stored = ExportPasswordPlatform.Stored(currentSecret, now - fiveWeeks - 1)
+
+        assertEquals(Triple(currentSecret, false, false), sut.getPasswordFromDataStore())
+        assertEquals(ExportPasswordDataStore.MissReason.NONE, sut.lastMissReason())
     }
 
     @Test
@@ -188,6 +204,7 @@ class ExportPasswordDataStoreImplTest {
 
         assertEquals(Triple("", true, true), sut.getPasswordFromDataStore())
         assertNull(platform.stored)
+        assertEquals(ExportPasswordDataStore.MissReason.MASTER_CHANGED, sut.lastMissReason())
     }
 
     @Test
@@ -230,5 +247,7 @@ class ExportPasswordDataStoreImplTest {
 
         assertEquals(Triple("", true, true), sut.getPasswordFromDataStore())
         assertEquals(0, platform.clearCount)
+        // Nothing stored is not "expired": the export says "no stored password" (2026-11-18)
+        assertEquals(ExportPasswordDataStore.MissReason.NOT_STORED, sut.lastMissReason())
     }
 }

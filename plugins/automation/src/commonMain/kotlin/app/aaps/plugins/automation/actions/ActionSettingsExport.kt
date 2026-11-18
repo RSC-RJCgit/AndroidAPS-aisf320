@@ -98,7 +98,14 @@ class ActionSettingsExport(
             } else {
                 // No password or was expired and needs re-entering by user
                 exportResultComment = CoreUiStrings.export_expired
-                exportResultMessage = rh.gs(CoreUiStrings.export_result_message_expired)
+                // Says which: really expired, master password changed, or nothing stored (2026-11-18, per explicit request)
+                exportResultMessage = rh.gs(
+                    when (exportPasswordDataStore.lastMissReason()) {
+                        ExportPasswordDataStore.MissReason.EXPIRED        -> CoreUiStrings.export_result_message_expired
+                        ExportPasswordDataStore.MissReason.MASTER_CHANGED -> CoreUiStrings.export_result_message_master_changed
+                        else                                              -> CoreUiStrings.export_result_message_no_password
+                    }
+                )
                 exportResultLevel = NotificationLevel.IMPORTANT  // URGENT -> e.g. color RED
                 // Clear password in datastore, then notify user
                 aapsLogger.info(LTag.AUTOMATION, "No password or was expired and needs re-entering by user")
