@@ -212,7 +212,8 @@ fun SecondaryGraphCompose(
     cobOverlay: Boolean = false,
     showSmbDoseLabels: Boolean = false,
     secondaryMarks: SecondaryMarks = SecondaryMarks.NONE,
-    onVisibleRangeChanged: ((Pair<Double, Double>?) -> Unit)? = null,
+    /** The visible window as times (ms), from the drawn model's own start (2026-11-19) */
+    onVisibleRangeChanged: ((Pair<Long, Long>?) -> Unit)? = null,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
     /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
@@ -552,9 +553,16 @@ fun SecondaryGraphCompose(
     // Expose this graph's own (already debounced) visible window upward — used by BgGraphCompose
     // to window its own axis from this graph's synced scroll/zoom instead of attaching its own
     // decoration (that was tried and found to break BG's own pinch-zoom gesture handling).
+    // As times (2026-11-19, per explicit request), counted from the start the drawn model was built from, not the current
+    // range: after a long time away the two were 10 hours apart and the startup guard moved the view 10 hours back.
     val currentOnVisibleRangeChanged by rememberUpdatedState(onVisibleRangeChanged)
     LaunchedEffect(settledVisibleRange) {
-        currentOnVisibleRangeChanged?.invoke(settledVisibleRange)
+        val origin = visibleRangeHolder.originMs
+        currentOnVisibleRangeChanged?.invoke(
+            settledVisibleRange?.let { (fromX, toX) ->
+                origin?.let { (it + (fromX * 60_000.0).toLong()) to (it + (toX * 60_000.0).toLong()) }
+            }
+        )
     }
 
     val visibleMinX = visibleRange?.first
@@ -1266,6 +1274,8 @@ fun SecondaryGraphCompose(
             // updated primaryRangeProvider.
             extras {
                 it[GRAPH_RENDER_TOKEN] = renderToken
+                // The start time this model's x values count from, see GRAPH_ORIGIN_MS
+                it[GRAPH_ORIGIN_MS] = minTimestamp
                 it[AXIS_SCALE_KEY] = axisScale
                 processedIobTreatments.maxManualBolus?.let { max -> it[MAX_MANUAL_BOLUS_KEY] = max }
                 processedCarbs.maxOfOrNull { carbs -> carbs.second }?.let { max -> it[MAX_CARBS_KEY] = max }

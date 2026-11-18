@@ -1137,10 +1137,25 @@ class VisibleRangeHolder {
     private val _value = MutableStateFlow<Pair<Double, Double>?>(null)
     val value: StateFlow<Pair<Double, Double>?> = _value.asStateFlow()
 
-    fun report(range: Pair<Double, Double>) {
+    /**
+     * The time x = 0 stands for in the model that drew [value] (see [GRAPH_ORIGIN_MS]), null when the model carries none.
+     * Set before [value], so a collector of [value] always finds the matching one here.
+     */
+    var originMs: Long? = null
+        private set
+
+    fun report(range: Pair<Double, Double>, origin: Long?) {
+        originMs = origin
         _value.value = range
     }
 }
+
+/**
+ * The time (ms) that x = 0 stands for in a chart model (2026-11-19, per explicit request). The overview's time range can move
+ * before a chart's model is rebuilt - after 10.6 h away it moved 10 hours while the IOB graph still drew its old model - so x
+ * values read off a drawn chart are turned into times with the start its own model was built from, never the current one.
+ */
+internal val GRAPH_ORIGIN_MS = ExtraStore.Key<Long>()
 
 /**
  * Reports the currently visible x-range (same "minutes from minTimestamp" unit as [timestampToX])
@@ -1163,7 +1178,7 @@ class VisibleRangeReporter(
 
             val visibleMinX = ranges.minX + xStep * (scroll - layerDimensions.startPadding) / xSpacing
             val visibleWidth = xStep * layerBounds.width / xSpacing
-            holder.report(visibleMinX to (visibleMinX + visibleWidth))
+            holder.report(visibleMinX to (visibleMinX + visibleWidth), model.extraStore.getOrNull(GRAPH_ORIGIN_MS))
         }
     }
 
@@ -1196,10 +1211,21 @@ class ChartGeometry(
     val xStep: Double,
     val baseSpacing: Float,
     val baseScalableStart: Float,
-    val unscalableStart: Float
+    val unscalableStart: Float,
+    /** Width of the drawing area in px, 0 when not known (2026-11-19, for the minutes-shown log) */
+    val layerWidth: Float = 0f
 ) {
 
     private fun startPadding(zoom: Float): Float = unscalableStart + baseScalableStart * zoom
+
+    /** Minutes the drawing area shows at this [zoom], or null without a known width (2026-11-19). */
+    fun minutesShown(zoom: Float): Double? =
+        if (layerWidth > 0f && zoom > 0f && baseSpacing > 0f) layerWidth * xStep / (baseSpacing * zoom) else null
+
+    /** The layout in one line for the graph sync log: minutes shown, width, x step and spacing (2026-11-19). */
+    fun describe(zoom: Float): String =
+        "shown=${minutesShown(zoom)?.let { (it * 10).toLong() / 10.0 } ?: "?"} min width=${layerWidth.toInt()}px " +
+            "xStep=$xStep spacing=$baseSpacing"
 
     /** The x value (minutes from the axis start) at the left edge for this [scroll] at this [zoom]. */
     fun xAt(scroll: Float, zoom: Float): Double = minX + xStep * (scroll - startPadding(zoom)) / (baseSpacing * zoom)
@@ -1229,7 +1255,8 @@ class ChartGeometryReporter(private val holder: ChartGeometryHolder) : Decoratio
                 xStep = xStep,
                 baseSpacing = layerDimensions.xSpacing / zoom,
                 baseScalableStart = layerDimensions.scalableStartPadding / zoom,
-                unscalableStart = layerDimensions.unscalableStartPadding
+                unscalableStart = layerDimensions.unscalableStartPadding,
+                layerWidth = layerBounds.width
             )
         }
     }

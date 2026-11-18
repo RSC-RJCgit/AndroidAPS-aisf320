@@ -385,9 +385,13 @@ class GraphViewModel(
             //
             // With no history at all, the calculated window is the honest left edge: it is the same
             // 24 hours the branch above uses, so an empty graph keeps the axis it had.
-            val minTime = historyTimestamps.minOrNull()
+            // Never more than GRAPH_TIME_RANGE_HOURS back (2026-11-19, per explicit request): after 10.6 h in the background
+            // the readings still held the old day, so the axis came back about 34 hours wide until the calculation caught up.
+            // (History Browse takes the fullWindow branch above and keeps its day.)
+            val oldestShown = now - Constants.GRAPH_TIME_RANGE_HOURS * 3600_000L
+            val minTime = (historyTimestamps.minOrNull()?.coerceAtLeast(oldestShown))
                 ?: cacheTimeRange?.fromTime
-                ?: (dateUtil.now() - Constants.GRAPH_TIME_RANGE_HOURS * 3600_000L)
+                ?: oldestShown
             val maxTime = allTimestamps.maxOrNull() ?: return@combine null
             // Predictions may sit past now. With them off, stop at now instead of the next hour.
             val effectiveMax = if (showPredictions) {

@@ -295,19 +295,16 @@ fun GraphsSection(
     // (its scroll/zoom are synced to BG's, see the sync LaunchedEffect below) — not from a
     // decoration on BG's own chart, since that was tried and found to break BG's pinch-zoom
     // gesture handling.
-    var iobVisibleRange by remember { mutableStateOf<Pair<Double, Double>?>(null) }
-    val visibleMinutes = iobVisibleRange?.let { (start, end) -> end - start }
+    // As times in ms (2026-11-19, per explicit request), see SecondaryGraphCompose's onVisibleRangeChanged
+    var iobVisibleRange by remember { mutableStateOf<Pair<Long, Long>?>(null) }
+    val visibleMinutes = iobVisibleRange?.let { (start, end) -> (end - start) / 60_000.0 }
     val isDesktop = LocalConfig.current.platform == AppPlatform.Desktop
     val windowSize = LocalWindowInfo.current.containerSize
     val windowWidthDp = with(LocalDensity.current) { windowSize.width.toDp().value.toDouble() }
     // Phones: the SMBs in the visible window count too (see useCleanGraphForPhone)
     val treatments by graphViewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
-    val smbsInView = if (isDesktop) 0 else derivedTimeRange?.first?.let { minTs ->
-        iobVisibleRange?.let { (startX, endX) ->
-            val from = minTs + (startX * 60_000).toLong()
-            val to = minTs + (endX * 60_000).toLong()
-            treatments.boluses.count { it.bolusType == BolusType.SMB && it.isValid && it.timestamp in from..to }
-        }
+    val smbsInView = if (isDesktop) 0 else iobVisibleRange?.let { (from, to) ->
+        treatments.boluses.count { it.bolusType == BolusType.SMB && it.isValid && it.timestamp in from..to }
     } ?: 0
     val cleanGraphForWindow =
         if (isDesktop) useCleanGraphForDesktopWindow(visibleMinutes, DEFAULT_GRAPH_ZOOM_MINUTES, windowWidthDp, splitLayout)
@@ -332,18 +329,15 @@ fun GraphsSection(
     // axis range on every ~80ms tick during an active gesture kept changing the Y-axis label
     // width/layerDimensions mid-gesture and broke pinch-zoom. Only update once the window has
     // been stable for a bit, i.e. after the gesture ends.
-    var iobVisibleRangeSettled by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var iobVisibleRangeSettled by remember { mutableStateOf<Pair<Long, Long>?>(null) }
     LaunchedEffect(Unit) {
         snapshotFlow { iobVisibleRange }
             .debounce(400)
             .collect { iobVisibleRangeSettled = it }
     }
 
-    val bgVisibleTimeRange = derivedTimeRange?.first?.let { minTs ->
-        iobVisibleRangeSettled?.let { (minXv, maxXv) ->
-            (minTs + (minXv * 60_000).toLong()) to (minTs + (maxXv * 60_000).toLong())
-        }
-    }
+    // Already times (2026-11-19)
+    val bgVisibleTimeRange = iobVisibleRangeSettled
 
     // Treatment belt graph - non-interactive, synced from BG
     val beltScrollState = rememberSafeScrollState(
@@ -607,10 +601,15 @@ fun GraphsSection(
                 for (i in 0 until activeCount) secScrollStates[i].copyPixelsIfDifferent(scrollForGraph(mainScroll, secScrollStates[i]), null)
             }
             if (visible == null) continue
-            val nowX = timestampToX(nowMs, range.first)
-            // Now off either edge (2026-11-16): a window that starts after now does not show it either
-            if (visible.second < nowX - STARTUP_GUARD_GAP_MINUTES || visible.first > nowX) {
-                graphViewModel.graphSyncLog("guard", "window ${visible.first}..${visible.second} min, now is at $nowX min - putting now on the right edge")
+            // Now off either edge (2026-11-16): a window that starts after now does not show it either. Compared as times
+            // (2026-11-19): in minutes from two different starts it once saw now 600 min off a window that ended on it.
+            if (visible.second < nowMs - (STARTUP_GUARD_GAP_MINUTES * 60_000).toLong() || visible.first > nowMs) {
+                val nowX = timestampToX(nowMs, range.first)
+                graphViewModel.graphSyncLog(
+                    "guard",
+                    "window ${timestampToX(visible.first, range.first)}..${timestampToX(visible.second, range.first)} min, " +
+                        "now is at $nowX min - putting now on the right edge"
+                )
                 skipInteractionUntilMs[0] = nowMs + 1000L
                 bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, nowMs))
             }
@@ -778,7 +777,9 @@ fun GraphsSection(
                     if (zoomOk && (lastMainZoom.isNaN() || abs(bgZoom - lastMainZoom) > 0.001f)) {
                         graphViewModel.graphSyncLog(
                             "mainZoom",
-                            "zoom $lastMainZoom -> $bgZoom scroll $scrollBefore -> $bgScroll max=$bgMax followNow=$followNow"
+                            "zoom $lastMainZoom -> $bgZoom scroll $scrollBefore -> $bgScroll max=$bgMax followNow=$followNow " +
+                                // 2026-11-19: whether the time span really changed, and what changed under it
+                                "touch=${recentTouch()} ${bgGeometry.value?.describe(bgZoom) ?: "layout unknown"}"
                         )
                         // 2026-10-21, per explicit request: a pinch on the main graph is the user's too. It kept "follow now" on, so the next
                         // reading moved the window back to the current time. A zoom made by code (the -/+ buttons) is not.
@@ -890,7 +891,8 @@ fun GraphsSection(
                         // 2026-10-20: a pinch on the main graph, with where it was before and after
                         graphViewModel.graphSyncLog(
                             "mainZoom",
-                            "zoom $lastMainZoom -> $bgZoom scroll $lastMainScroll -> $bgScroll max=$bgMax followNow=$followNow"
+                            "zoom $lastMainZoom -> $bgZoom scroll $lastMainScroll -> $bgScroll max=$bgMax followNow=$followNow " +
+                                "touch=${recentTouch()} ${bgGeometry.value?.describe(bgZoom) ?: "layout unknown"}"
                         )
                         if (recentTouch() && dateUtil.now() > skipInteractionUntilMs[0]) {
                             followNow = false
