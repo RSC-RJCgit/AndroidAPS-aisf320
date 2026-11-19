@@ -711,6 +711,15 @@ enum class BooleanKey(
         KeysStrings.pref_summary_basal_off_iob_graph,
         dependency = OverviewBasalOnBgGraph
     ),
+    // Fork (2026-11-19, per explicit request): the columns at the bottom of the BG graph show the insulin delivered in each of
+    // the 12 slices of the shown span (as the totals row) instead of basal. Only with basal on the BG graph. This phone only.
+    OverviewInsulinTotalColumns(
+        "overview_insulin_total_columns",
+        false,
+        KeysStrings.pref_title_insulin_total_columns,
+        KeysStrings.pref_summary_insulin_total_columns,
+        dependency = OverviewBasalOnBgGraph
+    ),
     VirtualShowStepText(
         "virtual_show_step_text",
         true,

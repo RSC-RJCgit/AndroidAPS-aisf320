@@ -45,8 +45,33 @@ class BasalAxisMaxTest {
     }
 
     @Test
-    fun theTopIsTheMaxBasalSettingWhenSet() {
-        assertEquals(5.0, basalScaleTop(data(scaleTop = 5.0)), 1e-9)
+    fun theTopIsTheHighestBasalLoadedAtMostTheSetting() {
+        // 2026-11-19: the day's highest basal (3.0 here) when it is below the max basal setting
+        assertEquals(3.0, basalScaleTop(data(scaleTop = 5.0)), 1e-9)
+        // ... and the setting when the day went above it
+        assertEquals(2.0, basalScaleTop(data(scaleTop = 2.0)), 1e-9)
+    }
+
+    @Test
+    fun insulinColumnTopIsTheLargestSliceAtMostMaxBolusPlus03() {
+        val totals = listOf(0L to 0.4, 1L to 1.9, 2L to 0.0)
+        assertEquals(1.9, insulinColumnTop(totals, maxBolus = 2.5), 1e-9)
+        assertEquals(2.8, insulinColumnTop(listOf(0L to 6.0), maxBolus = 2.5), 1e-9)
+        assertEquals(1.9, insulinColumnTop(totals, maxBolus = 0.0), 1e-9)
+        assertEquals(1.0, insulinColumnTop(emptyList(), maxBolus = 0.0), 1e-9)
+    }
+
+    @Test
+    fun insulinSliceTotalsCountBasalAndBolusesPerSlice() {
+        val basal = listOf(GraphDataPoint(0L, 1.2), GraphDataPoint(2 * hour, 1.2))
+        val bolus = app.aaps.core.interfaces.overview.graph.BolusGraphPoint(
+            timestamp = 90 * 60_000L, amount = 2.0, bolusType = app.aaps.core.interfaces.overview.graph.BolusType.NORMAL,
+            isValid = true, label = "2.00 U"
+        )
+        val totals = insulinSliceTotals(0L, 2 * hour, hour, now = 2 * hour, basal = basal, boluses = listOf(bolus), extended = emptyList())
+        assertEquals(listOf(0L, hour), totals.map { it.first })
+        assertEquals(1.2, totals[0].second, 1e-9)
+        assertEquals(3.2, totals[1].second, 1e-9)
     }
 
     @Test

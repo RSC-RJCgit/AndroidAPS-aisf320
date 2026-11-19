@@ -139,6 +139,12 @@ private data class AxisScale(
  */
 internal const val IOB_GRAPH_TICK_COUNT = 3
 
+/** Highest top of the IOB graph's axis in U (2026-11-19, per explicit request): lower when the loaded 24 h stay lower. */
+internal const val IOB_AXIS_MAX_TOP = 5.0
+
+/** Highest top of the steps graph's axis in steps (2026-11-19, per explicit request; st60 200): lower when the 24 h stay lower. */
+internal const val STEPS_AXIS_MAX_TOP = 200.0
+
 /** Tick count for series that use the graph's full height (COB, BGI/DEV/ACTIVITY/STEPS, VAR_SENS/HEART_RATE, DEV_SLOPE). */
 internal const val SECONDARY_GRAPH_TICK_COUNT = 5
 
@@ -588,10 +594,24 @@ fun SecondaryGraphCompose(
     // Deliberately does NOT include the activity overlay: that one is mapped into this axis' units
     // (see processedActivityOverlay below), so feeding it back in here would be circular.
     // Fork (kept in the 2026-10-16 merge): windowed to the SETTLED range, so the axis is rebuilt once the finger stops.
+    // 2026-11-19, per explicit request: the IOB and steps graphs keep a nearly fixed axis instead: the highest value of the
+    // whole loaded 24 hours, but at most IOB_AXIS_MAX_TOP U / STEPS_AXIS_MAX_TOP steps (a higher value is cut off at the top).
+    // Their axis then does not change when a scroll or pinch stops, so that no longer rebuilds their model (a redraw that cost
+    // 1.2-1.4 s on Android, uncompiled).
+    val nearlyFixedAxis = primaryType == SeriesType.IOB || primaryType == SeriesType.STEPS
+    val axisMinX = if (nearlyFixedAxis) null else scaleMinX
+    val axisMaxX = if (nearlyFixedAxis) null else scaleMaxX
     val primaryYValues = remember(
-        processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, scaleMinX, scaleMaxX
+        processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, axisMinX, axisMaxX,
+        primaryType
     ) {
-        windowedPrimaryY(scaleMinX, scaleMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
+        val values = windowedPrimaryY(axisMinX, axisMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
+        when {
+            values.isEmpty()                    -> values
+            primaryType == SeriesType.IOB       -> values.map { it.coerceAtMost(IOB_AXIS_MAX_TOP) }
+            primaryType == SeriesType.STEPS     -> values.map { it.coerceAtMost(STEPS_AXIS_MAX_TOP) }
+            else                                -> values
+        }
     }
 
     // Zero-floor nice range of the primary layer, windowed — 0 if the visible window has no

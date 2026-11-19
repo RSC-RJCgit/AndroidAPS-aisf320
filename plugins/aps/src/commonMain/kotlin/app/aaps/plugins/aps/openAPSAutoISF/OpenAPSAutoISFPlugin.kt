@@ -1754,6 +1754,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfShowGraphText,
             BooleanKey.OverviewBasalOnBgGraph,
             BooleanKey.OverviewBasalOffIobGraph,
+            BooleanKey.OverviewInsulinTotalColumns,
             BooleanKey.VirtualShowStepText,
             BooleanKey.ApsAutoIsfAutoCleanGraph,
             BooleanKey.ApsUseSmbWithHighTt,

@@ -64,6 +64,7 @@ import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
 import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalPreferences
@@ -395,6 +396,10 @@ fun BgGraphCompose(
     // main graph (fork). Graph 5 always shows it (2026-11-09, per explicit request), whatever that setting says.
     // Keep the layer structure intact (dummy data) to avoid chart restructuring.
     val showBasalOnBgGraph = graphDisplay.basalOnBgGraph || topBandLines
+    // 2026-11-19, per explicit request: Settings > AutoISF "Insulin total columns on the BG graph" puts the insulin delivered per
+    // slice in place of basal. Main graph only (Graph 5 keeps basal for its top band).
+    val insulinColumns = graphDisplay.bgGraphInsulinColumns && !topBandLines
+    val maxBolusSetting = LocalPreferences.current.get(DoubleKey.SafetyMaxBolus)
     val basalData = if (showBasalOnBgGraph) rawBasalData else BasalGraphData(emptyList(), emptyList(), 0.0)
     val epsPoints by viewModel.epsGraphFlow.collectAsStateWithLifecycle()
     val showActivity = SeriesType.ACTIVITY in bgOverlays && !automaticCleanGraph && !bglOnly
@@ -572,10 +577,10 @@ fun BgGraphCompose(
             lineModel {
                 // Each rate as its height on the fixed basal scale (2026-11-19, per explicit request), see basalScaleHeight
                 val basalTop = basalScaleTop(currentBasalData)
-                fun addBasalSeries(points: List<GraphDataPoint>) {
+                fun addBasalSeries(points: List<GraphDataPoint>, top: Double = basalTop) {
                     if (points.size >= 2) {
                         val pts = points
-                            .map { timestampToX(it.timestamp, minTimestamp) to basalScaleHeight(it.value, basalTop) }
+                            .map { timestampToX(it.timestamp, minTimestamp) to basalScaleHeight(it.value, top) }
                             .sortedBy { it.first }
                         series(x = pts.map { it.first }, y = pts.map { it.second })
                     } else {
@@ -583,13 +588,29 @@ fun BgGraphCompose(
                         series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     }
                 }
-                addBasalSeries(currentBasalData.profileBasal)
-                addBasalSeries(currentBasalData.actualBasal)
-                val colouredBasal = !graphDisplay.uniformGreenBg
-                addBasalSeries(if (colouredBasal) currentBasalData.acceTemp else emptyList())
-                addBasalSeries(if (colouredBasal) currentBasalData.bgTemp else emptyList())
-                addBasalSeries(if (colouredBasal) currentBasalData.ppTemp else emptyList())
-                addBasalSeries(if (colouredBasal) currentBasalData.duraTemp else emptyList())
+                if (insulinColumns) {
+                    // Insulin-total columns (2026-11-19, per explicit request): a twelfth of the shown span per column, on a grid
+                    // from the loaded range's start, in the actual-basal slot (same style and log curve). Full height is the day's
+                    // largest slice, at most the max bolus setting + 0.3 U (insulinColumnTop).
+                    val span = currentVisibleTimeRange?.let { it.second - it.first } ?: (maxTimestamp - minTimestamp)
+                    val sliceMs = (span / INSULIN_TOTAL_SLICES / 60_000L).coerceAtLeast(1L) * 60_000L
+                    val totals = insulinSliceTotals(
+                        minTimestamp, maxTimestamp, sliceMs, nowTimestamp, currentBasalData.actualBasal, treatments.boluses, treatments.extendedBoluses
+                    )
+                    val steps = totals.map { (start, units) -> GraphDataPoint(start, units) } +
+                        listOfNotNull(totals.lastOrNull()?.let { (start, units) -> GraphDataPoint(start + sliceMs, units) })
+                    addBasalSeries(emptyList())
+                    addBasalSeries(steps, insulinColumnTop(totals, maxBolusSetting))
+                    repeat(4) { addBasalSeries(emptyList()) }
+                } else {
+                    addBasalSeries(currentBasalData.profileBasal)
+                    addBasalSeries(currentBasalData.actualBasal)
+                    val colouredBasal = !graphDisplay.uniformGreenBg
+                    addBasalSeries(if (colouredBasal) currentBasalData.acceTemp else emptyList())
+                    addBasalSeries(if (colouredBasal) currentBasalData.bgTemp else emptyList())
+                    addBasalSeries(if (colouredBasal) currentBasalData.ppTemp else emptyList())
+                    addBasalSeries(if (colouredBasal) currentBasalData.duraTemp else emptyList())
+                }
             }
 
             // Block 3 → Target line layer (layer 2, start axis)
@@ -749,7 +770,7 @@ fun BgGraphCompose(
     val rebuildInputs = listOf<Any?>(
         bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, bgParabolaPoints, basalData, targetData, epsPoints, activityData, showActivity,
         showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData,
-        topBandLines, topBandLines5, showBasalOnBgGraph
+        topBandLines, topBandLines5, showBasalOnBgGraph, insulinColumns, maxBolusSetting
     )
     val renderToken = remember(rebuildInputs) { GraphRenderToken() }
     ReportGraphReady(renderReporter, renderToken, derivedTimeRange == null || visibleTimeRange != null, onRenderReady)
@@ -928,7 +949,7 @@ fun BgGraphCompose(
     // Labels, arrows and decorations (2026-11-19): in their own function, see rememberBgGraphDecorations
     val decorations = rememberBgGraphDecorations(
         treatments, bgReadings, bucketedData, graphDisplay, minTimestamp, maxTimestamp, nowTimestamp, lowMark, epsLabelAnchors,
-        seriesRegistry, showRaw, showUkf, basalData, showBasalOnBgGraph, tapTargets, topBandTap, topBandLines, geometryHolder, masterZone,
+        seriesRegistry, showRaw, showUkf, basalData, showBasalOnBgGraph && !insulinColumns, tapTargets, topBandTap, topBandLines, geometryHolder, masterZone,
         renderReporter, inRangeBox, nowLine, inspectLine
     )
 

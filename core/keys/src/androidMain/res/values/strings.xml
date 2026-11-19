@@ -646,6 +646,8 @@
     <string name="pref_summary_basal_on_bg_graph">On: the basal columns are also drawn upright at the bottom of the main BG graph, as in v3, and its scale starts at 0. Basal stays on the IOB graph as well. Off (default): basal hangs from the top of the IOB graph only. Graph 5 always shows basal at the bottom.</string>
     <string name="pref_title_basal_off_iob_graph">No basal on the IOB graph</string>
     <string name="pref_summary_basal_off_iob_graph">Only with basal on the BG graph. On: the IOB graph leaves out the basal columns and their hourly numbers, so IOB and COB use its whole height. Off (default): basal is on both graphs.</string>
+    <string name="pref_title_insulin_total_columns">Insulin total columns on the BG graph</string>
+    <string name="pref_summary_insulin_total_columns">Only with basal on the BG graph. On: its columns show all insulin delivered (basal, boluses, SMBs) in each of the 12 slices of the shown span, as the totals row, instead of basal. Full height is the day\'s largest slice, at most the max bolus + 0.3 U. Off (default): basal columns.</string>
     <string name="pref_title_coded_locations">Location texts</string>
     <string name="pref_summary_coded_locations">Send a text and a note when this phone arrives at or leaves a saved place. Starts off.</string>
     <string name="pref_title_location_sms_model">Location text phone</string>

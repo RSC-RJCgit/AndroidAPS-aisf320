@@ -62,9 +62,14 @@ data class GraphDisplay(
     val basalOnBgGraph: Boolean = false,
     /** Fork (2026-11-19): Settings > AutoISF "No basal on the IOB graph". Only counts while [basalOnBgGraph] is on. */
     val basalOffIobGraph: Boolean = false,
+    /** Fork (2026-11-19): Settings > AutoISF "Insulin total columns on the BG graph". Only counts while [basalOnBgGraph] is on. */
+    val insulinTotalColumns: Boolean = false,
 ) {
     /** The IOB graph leaves basal out: only while basal is on the BG graph, so it never vanishes from both. */
     val iobGraphWithoutBasal: Boolean get() = basalOnBgGraph && basalOffIobGraph
+
+    /** The BG graph's columns show insulin totals instead of basal: only while basal is on the BG graph. */
+    val bgGraphInsulinColumns: Boolean get() = basalOnBgGraph && insulinTotalColumns
 
     val showSmbArrows: Boolean get() = basalToggleIndex == 0
     val uniformGreenBg: Boolean get() = basalToggleIndex == 2
@@ -268,6 +273,9 @@ class GraphViewModel(
             .launchIn(viewModelScope)
         preferences.observe(BooleanKey.OverviewBasalOffIobGraph)
             .onEach { off -> _graphDisplay.update { it.copy(basalOffIobGraph = off) } }
+            .launchIn(viewModelScope)
+        preferences.observe(BooleanKey.OverviewInsulinTotalColumns)
+            .onEach { on -> _graphDisplay.update { it.copy(insulinTotalColumns = on) } }
             .launchIn(viewModelScope)
     }
 

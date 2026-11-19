@@ -331,7 +331,8 @@ const val BASAL_HEIGHT_FRACTION = 0.5
 /**
  * Basal column height on both graphs, a fixed scale (2026-11-19, per explicit request, chosen on the scale examples page):
  * 0 U/h has no column; any rate above 0 is [BASAL_SCALE_FLOOR] of full height plus the rest on a log curve with
- * [BASAL_SCALE_KNEE], reaching full height at [top] (the max basal setting, see [basalScaleTop]). A rate above [top] is
+ * [BASAL_SCALE_KNEE], reaching full height at [top] (the day's highest basal, at most the max basal setting, see
+ * [basalScaleTop]; for the insulin-total columns see [insulinColumnTop]). A rate above [top] is
  * drawn at full height. With a 5 U/h top, 5.0 / 2.5 / 1.0 / 0.5 / 0.1 U/h draw at 100% / 82% / 60% / 46% / 24%.
  * Scrolling and zooming never change it: the main graph used to refit to the visible window and the IOB graph to the
  * 24 hour maximum. The numbers shown (hourly peaks, tap readout) stay real rates.
@@ -349,9 +350,55 @@ internal fun basalScaleHeight(rate: Double, top: Double): Double {
     return (BASAL_SCALE_FLOOR + (1.0 - BASAL_SCALE_FLOOR) * curve).coerceAtMost(1.0)
 }
 
-/** The rate drawn at full height: the max basal setting, or the highest basal loaded when that is not set. */
-internal fun basalScaleTop(data: BasalGraphData?): Double =
-    data?.scaleTop?.takeIf { it > 0.0 } ?: data?.maxBasal?.takeIf { it > 0.0 } ?: 1.0
+/**
+ * The rate drawn at full height (2026-11-19, per explicit request): the highest basal loaded (the last 24 hours), at most the
+ * max basal setting. Before this it was always the max basal setting, so a day that never went above 1 U/h drew short columns
+ * against a 5 U/h top. Either one alone when the other is unknown.
+ */
+internal fun basalScaleTop(data: BasalGraphData?): Double {
+    val setting = data?.scaleTop?.takeIf { it > 0.0 }
+    val highest = data?.maxBasal?.takeIf { it > 0.0 }
+    return when {
+        setting != null && highest != null -> minOf(setting, highest)
+        else                               -> setting ?: highest ?: 1.0
+    }
+}
+
+/**
+ * Insulin-total columns on the BG graph (2026-11-19, per explicit request), see Settings > AutoISF "Insulin total columns on
+ * the BG graph": slices of [sliceMs] (a twelfth of the shown span, as the totals row) on a grid from [from], each the insulin
+ * delivered in it, counted as in [insulinIntervalTotals]. The grid starts at the loaded range's start, so scrolling does not
+ * move the slices; only a zoom (a new slice width) does. Returns (slice start, units) for every slice up to [to].
+ */
+internal fun insulinSliceTotals(
+    from: Long,
+    to: Long,
+    sliceMs: Long,
+    now: Long,
+    basal: List<GraphDataPoint>,
+    boluses: List<BolusGraphPoint>,
+    extended: List<ExtendedBolusGraphPoint>,
+): List<Pair<Long, Double>> {
+    if (to <= from || sliceMs <= 0L) return emptyList()
+    val count = ((to - from + sliceMs - 1) / sliceMs).toInt()
+    return (0 until count).map { i ->
+        val s = from + sliceMs * i
+        s to insulinBetween(s, s + sliceMs, now, basal, boluses, extended)
+    }
+}
+
+/**
+ * Full height of the insulin-total columns (2026-11-19, per explicit request): the day's largest slice, at most the max bolus
+ * setting + 0.3 U. A slice above it is drawn at full height.
+ */
+internal fun insulinColumnTop(totals: List<Pair<Long, Double>>, maxBolus: Double): Double {
+    val largest = totals.maxOfOrNull { it.second }?.takeIf { it > 0.0 }
+    val cap = (maxBolus + 0.3).takeIf { maxBolus > 0.0 }
+    return when {
+        largest != null && cap != null -> minOf(largest, cap)
+        else                           -> largest ?: cap ?: 1.0
+    }
+}
 
 /** Axis max for a basal layer drawn in [basalScaleHeight] fractions, so full height fills [heightFraction] of the graph. */
 internal fun basalScaleAxisMax(heightFraction: Double): Double = 1.0 / heightFraction
@@ -812,15 +859,27 @@ internal fun insulinIntervalTotals(
     return (0 until INSULIN_TOTAL_SLICES).map { i ->
         val s = from + span * i / INSULIN_TOTAL_SLICES
         val e = from + span * (i + 1) / INSULIN_TOTAL_SLICES
-        val deliveredTo = minOf(e, now)
-        val basalUnits = basalBetween(basal, s, deliveredTo)
-        val bolusUnits = boluses.filter { it.isValid && it.timestamp >= s && it.timestamp < e && it.timestamp <= now }.sumOf { it.amount }
-        val extendedUnits = extended.sumOf { eb ->
-            val overlap = minOf(deliveredTo, eb.timestamp + eb.duration) - maxOf(s, eb.timestamp)
-            if (overlap > 0L) eb.rate * overlap / 3_600_000.0 else 0.0
-        }
-        basalUnits + bolusUnits + extendedUnits
+        insulinBetween(s, e, now, basal, boluses, extended)
     }
+}
+
+/** Insulin delivered from [s] to [e], nothing after [now]: basal, every valid bolus and SMB, and extended boluses. */
+internal fun insulinBetween(
+    s: Long,
+    e: Long,
+    now: Long,
+    basal: List<GraphDataPoint>,
+    boluses: List<BolusGraphPoint>,
+    extended: List<ExtendedBolusGraphPoint>,
+): Double {
+    val deliveredTo = minOf(e, now)
+    val basalUnits = basalBetween(basal, s, deliveredTo)
+    val bolusUnits = boluses.filter { it.isValid && it.timestamp >= s && it.timestamp < e && it.timestamp <= now }.sumOf { it.amount }
+    val extendedUnits = extended.sumOf { eb ->
+        val overlap = minOf(deliveredTo, eb.timestamp + eb.duration) - maxOf(s, eb.timestamp)
+        if (overlap > 0L) eb.rate * overlap / 3_600_000.0 else 0.0
+    }
+    return basalUnits + bolusUnits + extendedUnits
 }
 
 /** Slices in the insulin totals row, the same as the 3426 app. */
