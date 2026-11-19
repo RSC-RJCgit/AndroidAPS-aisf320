@@ -108,6 +108,10 @@ class DetermineBasalAutoISF @Inject constructor(
     // note for the reason, set by the plugin each cycle
     var smbCap30ForCap: Double = 2.1
     var smbCap30Note: String = ""
+
+    // Shower cap (2026-11-19, per explicit request): minutes since the Shower12 automation fired (its Shwr12 note), set by
+    // the plugin each cycle; null when it has not fired since the app started. See SHOWER / TWILIGHT AM PROTECTION.
+    var showerMinutesAgo: Int? = null
     // True when smbCap30ForCap is the halved walking cap (for the steps arrow)
     var smbCap30Walking: Boolean = false
 
@@ -2107,7 +2111,11 @@ class DetermineBasalAutoISF @Inject constructor(
                 // (~0.86U, +0.14U) — still well under Shower12's 12% iobTH (~1.14U). Per-SMB
                 // 0.04 and the early-AM 0.8x gate at IOB>0.075 stay; those were not the bind.
                 val iobTHvirtualHARDshower = 0.09 * profile.max_iob
-                if (((nowHour >= 5) && (nowHour < 10)) &&
+                // 2026-11-19, per explicit request: both shower branches only in the 15 minutes after a Shwr12 note. Before
+                // this they ran on every fast morning rise under 8.0 with no shower at all (Live 19 Nov 09:34-09:40: SMBs cut
+                // to 0.05 U and then 0 while BG rose 6.9 -> 8.0). Without a shower the chain goes on to the glitch throttle.
+                val afterShower = showerMinutesAgo?.let { it <= 15 } == true
+                if (afterShower && ((nowHour >= 5) && (nowHour < 10)) &&
                     bg <= 8.0 * 18 &&
                     (Steps60M ?: 0) < 10 &&
                     COB <= 0 &&
@@ -2128,7 +2136,7 @@ class DetermineBasalAutoISF @Inject constructor(
                         rT.reason.append("microBolus + IOB ov iobTHvirtualHARD fast rise 0.714 shower = ${round(microBolus - microBolus1, 2)} diff = ")
                     }
                     stepCutDirect += (microBolus1 - microBolus.coerceAtLeast(0.0)).coerceAtLeast(0.0)
-                } else if (((nowHour >= 5) && (nowHour < 10)) &&
+                } else if (afterShower && ((nowHour >= 5) && (nowHour < 10)) &&
                     bg <= 8.0 * 18 &&
                     (Steps60M ?: 0) < 100 &&
                     COB <= 0 &&

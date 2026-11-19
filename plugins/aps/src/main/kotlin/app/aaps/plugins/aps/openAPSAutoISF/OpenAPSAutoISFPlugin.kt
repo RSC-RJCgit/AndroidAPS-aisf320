@@ -5341,11 +5341,18 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val mcapOn = preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)
         determineBasalAutoISF.bolusSum30ForCap = if (mcapOn) normalBolusSum30Min() else 0.0
         // Mcap (2026-10-26): smaller cap for a stronger profile (real ISF values, name only as fallback) and while walking
+        // Shower cap (2026-11-19, per explicit request): only in the 15 minutes after Shower12 fired, see DetermineBasalAutoISF
+        determineBasalAutoISF.showerMinutesAgo = lastRunTimestamps["Shower12"]?.takeIf { it > 0L }
+            ?.let { ((dateUtil.now() - it) / 60_000L).toInt().coerceAtLeast(0) }
         if (mcapOn) {
+            // 2026-11-19, per explicit request: while the stuck-high Tier C rescue runs, its stronger profile is the rescue
+            // itself, so it does not shrink the cap (Live 19 Nov 10:02-10:08: 186% gave a 1.13 U cap and every SMB was cut to 0).
+            val tierCRescue = preferences.get(BooleanKey.ApsAutoIsfStuckHighTierCActive)
             val strength = profileStrengthNow()
             val walkingForCap = mcapWalking(recentSteps5Minutes, recentSteps30Minutes)
-            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walkingForCap)
-            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walkingForCap) ", walking" else ""
+            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(if (tierCRescue) 100.0 else strength, walkingForCap)
+            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + (if (tierCRescue) " Tier C, not cut" else "") +
+                if (walkingForCap) ", walking" else ""
             determineBasalAutoISF.smbCap30Walking = walkingForCap
         } else {
             determineBasalAutoISF.smbCap30ForCap = 2.1
@@ -5686,6 +5693,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // not a raw bounce at target while the loop line is still falling.
             val deliverySuppressedBg3 = smbCount5Min() <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4
                 && g >= 117.1 /* 6.5 mmol */ && d >= 0.0
+            // Fast onset (2026-11-19, per explicit request): a sharp rise from flat, while IOB is still low, stands in for
+            // both the IOB-rise test and the long-delta test, which lag such a rise. Live 19 Nov 09:37: Delta 0.65, SDelta
+            // 0.50, IOB 0.81, LDelta only 0.25, Tier 3 waited to 09:41. Replay of Live 27 Oct-19 Nov (08:30-24:00): 14
+            // episodes, opened 2-6 min earlier in 8, a new Tier 3 in 6 (peaks 9.2-14.5), no BG under 4.0 within 3 h that
+            // the current gate would not have had too. IOB < 1.0 dropped 31 Oct 17:38 and 18 Nov 17:58 (both to 3.6).
+            // The raw rise (rawDelta5 >= 0.8) below still applies. Not scaled by stackK, as replayed.
+            val fastOnsetBg3 = d >= 10.8 /* 0.60 mmol */ && glucoseStatus.shortAvgDelta >= 8.1 /* 0.45 mmol */
+                && totalIobAt(dateUtil.now()) < 1.0
             // Window extended 22:00 -> end of day (2026-08-14). Deliberately NOT extended into the
             // 00:00-06:00 overnight guard territory -- see isTimeBetween()'s own doc comment for why
             // endH=0/endM=0 here means "runs to end of day," not "wraps past midnight."
@@ -5696,7 +5711,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // getOriginalProfileName() -- see sourceRoleRung()'s 2026-09-14 doc comment.
             val profileName = profileFunction.getOriginalProfileName()
             return (isTimeBetween(8, 30, 0, 0) || daytimeGateBypassOk(g) || riseHold)
-                && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3)
+                && ((iobChange5 > 0.85 * stackK * thresholdScale && d >= 10.8 * stackK /* 0.60 mmol */) || deliverySuppressedBg3 || fastOnsetBg3)
                 && rawDelta5 >= 14.4 * stackK /* 0.8 mmol */ && rawDelta1FloorOkBg3
                 // Upper BG ceiling (was g <= 171.2 / 9.5mmol) REMOVED 2026-08-30: real data showed a
                 // sustained 12+mmol plateau where bg3 was the only mechanism strict enough to have
@@ -5718,7 +5733,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // did not clear 0.4 until 15:48 -- the whole steep part of the rise. deliverySuppressed
                 // already requires rawD5 AND rawD1 >= 0.8 mmol and smbCount5Min <= 1, which is stricter
                 // raw confirmation than LDelta and does not lag it.
-                && (deliverySuppressedBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
+                && (deliverySuppressedBg3 || fastOnsetBg3 || glucoseStatus.longAvgDelta > 7.2 /* 0.4 mmol */)
         }
 
         // Live HP1 cache (2026-09-30, per explicit request): lets BolusWizard's new WizardDropTrendCaution
