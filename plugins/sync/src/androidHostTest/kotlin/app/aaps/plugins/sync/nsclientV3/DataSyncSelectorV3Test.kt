@@ -1218,6 +1218,15 @@ class DataSyncSelectorV3Test : TestBaseWithProfile() {
         verify(preferences, Times(1)).put(NsclientLongKey.CarbsLastSyncedId, 8L)
     }
 
+    // 2026-11-20: a client never adds BG readings to Nightscout; a master does
+    @Test
+    fun clientAddsNoBgReadings() {
+        whenever(config.AAPSCLIENT).thenReturn(true)
+        assertThat(sut.clientMustNotAddBg()).isTrue()
+        whenever(config.AAPSCLIENT).thenReturn(false)
+        assertThat(sut.clientMustNotAddBg()).isFalse()
+    }
+
     // 2026-10-23: a "v3 style only" client sends the delete of a BG reading or calibration, and nothing else of the master's
     @Test
     fun readOnlyClientSendsOnlyDeletes() {

@@ -156,6 +156,9 @@ class DataSyncSelectorV3(
      */
     internal fun clientMustNotUpdate(nightscoutId: String?): Boolean = config.AAPSCLIENT && nightscoutId != null
 
+    /** A client never adds a BG reading to Nightscout (2026-11-20, per explicit request); see processChangedGlucoseValues. */
+    internal fun clientMustNotAddBg(): Boolean = config.AAPSCLIENT
+
     /**
      * True for the delete of a BG reading or a calibration on a read-only ("v3 style only") client, which sends it as a 3.4
      * client does (2026-10-23, per explicit request; see `RoleBranch.CLIENT_REMOVABLE`). Any other change to those stays
@@ -578,6 +581,13 @@ class DataSyncSelectorV3(
                         // only NsId changed, no need to upload
                         gv.first.onlyNsIdAdded(gv.second)                                -> {
                             aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring GlucoseValue. Only NS id changed: ${gv.second.id}")
+                            ignored++
+                        }
+                        // A client adds no BG readings to its Nightscout (2026-11-20, per explicit request): Flip3's client was copying
+                        // the BG it read from its second site into its main site (five.ns.com.hr) every minute, so that site looked as if
+                        // a master fed it. Its deletes of BG readings (readOnlyClientDelete) still go out.
+                        gv.first.ids.nightscoutId == null && clientMustNotAddBg()        -> {
+                            aapsLogger.debug(LTag.NSCLIENT_SYNC, "Ignoring GlucoseValue. A client adds no BG to Nightscout: ${gv.second.id}")
                             ignored++
                         }
                         // without nsId = create new
