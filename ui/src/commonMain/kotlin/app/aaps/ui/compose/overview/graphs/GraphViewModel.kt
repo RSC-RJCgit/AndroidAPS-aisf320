@@ -455,6 +455,14 @@ class GraphViewModel(
      * developer console only, so an exported log never showed why the lower graphs lost their place. At most one line
      * of each [kind] every 2 seconds: a drag repeats the same decision many times a second.
      */
+    /**
+     * One line per two-finger gesture on the graphs, never throttled (2026-11-19, per explicit request): iPhone 06:47:20 and
+     * 06:47:23 two-finger presses changed no zoom and left no trace, because the sync lines only appear when a zoom changes.
+     */
+    fun graphGestureLog(message: String) {
+        aapsLogger.debug(LTag.CORE, "GraphGesture: $message")
+    }
+
     fun graphSyncLog(kind: String, message: String) {
         // Only called from the graphs' own effects, on the main thread, so the map needs no lock
         val now = dateUtil.now()

@@ -51,6 +51,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -470,6 +472,11 @@ fun GraphsSection(
     // instead, see SecondaryGraphCompose's basalMaxY.
     val latestTimeRange = rememberUpdatedState(derivedTimeRange)
     val latestNow = rememberUpdatedState(nowTimestamp)
+    // For the two-finger gesture log (2026-11-19): its pointer loop starts once, so it reads the current states through these
+    val latestGraphsReady = rememberUpdatedState(graphsReady)
+    val latestBgZoomState = rememberUpdatedState(bgZoomState)
+    val latestIobZoomState = rememberUpdatedState(iobZoomState)
+    val latestBgScrollState = rememberUpdatedState(bgScrollState)
 
     SideEffect {
         graphViewModel.aivHistoryEndTime = if (followNow) null
@@ -1023,6 +1030,48 @@ fun GraphsSection(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
+            // Diagnostics (2026-11-19, per explicit request): one log line per two-finger gesture, whether or not it zoomed.
+            // Watches only (Initial pass, nothing consumed), so Vico's own pinch and drag are unchanged.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    var startMs = 0L
+                    var fingers = 0
+                    var readyAtStart = true
+                    var heldDuring = false
+                    var bgZoomBefore = Float.NaN
+                    var iobZoomBefore = Float.NaN
+                    var bgScrollBefore = Float.NaN
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val down = event.changes.count { it.pressed }
+                        if (startMs == 0L && down >= 2) {
+                            startMs = dateUtil.now()
+                            fingers = down
+                            readyAtStart = latestGraphsReady.value
+                            heldDuring = !readyAtStart
+                            bgZoomBefore = latestBgZoomState.value.value
+                            iobZoomBefore = latestIobZoomState.value.value
+                            bgScrollBefore = latestBgScrollState.value.value
+                        } else if (startMs != 0L) {
+                            fingers = maxOf(fingers, down)
+                            if (!latestGraphsReady.value) heldDuring = true
+                            if (down == 0) {
+                                val bgZoomAfter = latestBgZoomState.value.value
+                                val iobZoomAfter = latestIobZoomState.value.value
+                                val zoomed = abs(bgZoomAfter - bgZoomBefore) > 0.0005f || abs(iobZoomAfter - iobZoomBefore) > 0.0005f
+                                graphViewModel.graphGestureLog(
+                                    "two-finger ${dateUtil.now() - startMs} ms, $fingers fingers, " +
+                                        "${if (zoomed) "zoomed" else "NO ZOOM"}: main $bgZoomBefore -> $bgZoomAfter, " +
+                                        "IOB $iobZoomBefore -> $iobZoomAfter, main scroll $bgScrollBefore -> ${latestBgScrollState.value.value}, " +
+                                        "graphs ${if (readyAtStart) "ready" else "redrawing"} at start" +
+                                        if (heldDuring) ", held (redrawing) during it" else ""
+                                )
+                                startMs = 0L
+                            }
+                        }
+                    }
+                }
+            }
             .graphZoomControls(zoomStep, panStep, isHolding = { inspect.fingerDown })
             .onScrollOrZoomGesture(onVerticalScroll = {
                 // Cancel any recent horizontal drag/fling permission as soon as a page scroll starts.
