@@ -8,15 +8,16 @@ import kotlin.math.max
  * minutes before the drop, then 15 minutes still down and under 6.0 before any note) caught none of the four compressions on the
  * night of 19 Nov (01:29, 02:20, 06:34, 07:03): they were short V-shaped dips, often one after another, that recovered within
  * 10-15 minutes. Now the DROP is the event:
- *  - the UKF-smoothed raw series falls at least 1.0 mmol within the last 5 minutes;
+ *  - the raw series falls at least 1.0 mmol within the last 5 minutes (the UKF-smoothed series until 2026-11-20: it lags at the
+ *    newest reading and spreads the fall back into the 15 minutes before, so on Live's 20 Nov 01:09-01:13 drop it never fired);
  *  - the 15 minutes before it were flat or rising: no 5-minute fall of more than 0.5 mmol in them, and no net fall of more than
  *    0.6 mmol across them (a rebound or a rise before it is fine, which is what the dips that follow one another look like);
  *  - the fall is at least 1.25 times what the insulin on board explains over those 5 minutes (the loop's BGI), which the caller
  *    passes in.
  * There is no level cap and no wait for confirmation. The caller adds the hours ([inHours], 22:30-08:00), the carbs check and the
  * 10 minute gap between triggers ([MIN_GAP_MINUTES]). A sharp rebound afterwards ([rebounded]) marks a true compression.
- * Series are (timestamp ms, mg/dL), oldest first, about one per minute: the UKF-smoothed series for [suspect], the raw series for
- * [rebounded].
+ * Series are (timestamp ms, mg/dL), oldest first, about one per minute: the raw series for both [suspect] and [rebounded]. The
+ * caller adds a note only when [suspect] flags on two loop cycles in a row ([secondCycle]), so a single stray raw reading cannot.
  */
 internal object CompressionDetector {
 
@@ -66,6 +67,13 @@ internal object CompressionDetector {
         /** Last minus first reading of the 15 minutes before (mg/dL, positive = rising) */
         val priorNetChangeMgdl: Double,
     )
+
+    /** A second flag counts when the first was at most this long before: the next cycle at a 1 minute loop, and also at a 5 minute one. */
+    const val SECOND_CYCLE_WITHIN_MS = 6 * MINUTE
+
+    /** True when this cycle's flag follows one at [firstFlagAt] (0 = none) within [SECOND_CYCLE_WITHIN_MS]. */
+    fun secondCycle(firstFlagAt: Long, now: Long): Boolean =
+        firstFlagAt > 0L && now > firstFlagAt && now - firstFlagAt <= SECOND_CYCLE_WITHIN_MS
 
     private fun valueNear(series: List<Pair<Long, Double>>, time: Long): Double? =
         series.minByOrNull { abs(it.first - time) }?.takeIf { abs(it.first - time) <= NEAREST_TOLERANCE }?.second
