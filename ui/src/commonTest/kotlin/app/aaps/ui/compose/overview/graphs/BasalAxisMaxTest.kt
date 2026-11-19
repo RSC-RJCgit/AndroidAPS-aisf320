@@ -1,6 +1,10 @@
 package app.aaps.ui.compose.overview.graphs
 
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
+import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.BgRange
+import app.aaps.core.interfaces.overview.graph.BgType
+import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import kotlin.math.ln
 import kotlin.test.Test
@@ -84,5 +88,32 @@ class BasalAxisMaxTest {
     fun theAxisIsFixedWhateverIsInView() {
         assertEquals(1.0 / 0.22, basalScaleAxisMax(0.22), 1e-9)
         assertEquals(1.0 / 0.5, basalScaleAxisMax(0.5), 1e-9)
+    }
+
+    @Test
+    fun aColumnTakesTheIsfColourAtItsStart() {
+        val min = 60_000L
+        fun reading(t: Long, isf: DominantIsf) = BgDataPoint(t, 6.0, BgRange.IN_RANGE, BgType.REGULAR, dominantIsf = isf)
+        val readings = listOf(reading(0L, DominantIsf.ACCE), reading(5 * min, DominantIsf.BG), reading(9 * min, DominantIsf.DURA))
+        val totals = listOf(0L to 1.0, 10 * min to 0.5, 60 * min to 0.2)
+        val columns = insulinColumnsOf(totals, 10 * min, readings, coloured = true)
+        assertEquals(listOf(DominantIsf.ACCE, DominantIsf.DURA, DominantIsf.NONE), columns.map { it.isf })
+        assertEquals(20 * min, columns[1].end)
+        // Settings "Uniform green BG": no colour
+        assertEquals(List(3) { DominantIsf.NONE }, insulinColumnsOf(totals, 10 * min, readings, coloured = false).map { it.isf })
+    }
+
+    @Test
+    fun columnStepsRiseAtTheStartAndFallAtTheEnd() {
+        val columns = listOf(
+            InsulinColumn(0L, 10L, 1.0, DominantIsf.NONE),
+            InsulinColumn(10L, 20L, 0.0, DominantIsf.NONE),
+            InsulinColumn(20L, 30L, 0.5, DominantIsf.NONE),
+            InsulinColumn(30L, 40L, 0.4, DominantIsf.NONE),
+        )
+        assertEquals(
+            listOf(0L to 0.0, 1L to 1.0, 9L to 1.0, 10L to 0.0, 20L to 0.0, 21L to 0.5, 29L to 0.5, 30L to 0.0, 31L to 0.4, 39L to 0.4, 40L to 0.0),
+            insulinColumnSteps(columns).map { it.timestamp to it.value }
+        )
     }
 }

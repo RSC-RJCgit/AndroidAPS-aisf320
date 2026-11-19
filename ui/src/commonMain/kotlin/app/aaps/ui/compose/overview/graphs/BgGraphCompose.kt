@@ -452,6 +452,24 @@ fun BgGraphCompose(
         dayAgo to now
     }
 
+    // Insulin-total columns (2026-11-19/20, per explicit request), shared by the column layer and their value labels: a twelfth of
+    // the shown span per column, on a grid from the loaded range's start, each in the ISF colour of the reading nearest its start.
+    // Full height is the day's largest slice, at most the max bolus setting + 0.3 U (insulinColumnTop).
+    val insulinColumnData = remember(
+        insulinColumns, visibleTimeRange, basalData, treatments, bgReadings, minTimestamp, maxTimestamp, maxBolusSetting,
+        graphDisplay.uniformGreenBg, nowTimestamp / 60_000L
+    ) {
+        if (!insulinColumns) emptyList<InsulinColumn>() to 1.0
+        else {
+            val span = visibleTimeRange?.let { it.second - it.first } ?: (maxTimestamp - minTimestamp)
+            val sliceMs = (span / INSULIN_TOTAL_SLICES / 60_000L).coerceAtLeast(1L) * 60_000L
+            val totals = insulinSliceTotals(
+                minTimestamp, maxTimestamp, sliceMs, nowTimestamp, basalData.actualBasal, treatments.boluses, treatments.extendedBoluses
+            )
+            insulinColumnsOf(totals, sliceMs, bgReadings, coloured = !graphDisplay.uniformGreenBg) to insulinColumnTop(totals, maxBolusSetting)
+        }
+    }
+
     // Single model producer shared by all layers
     val modelProducer = remember { CartesianChartModelProducer() }
 
@@ -594,10 +612,14 @@ fun BgGraphCompose(
             lineModel {
                 // Each rate as its height on the fixed basal scale (2026-11-19, per explicit request), see basalScaleHeight
                 val basalTop = basalScaleTop(currentBasalData)
-                fun addBasalSeries(points: List<GraphDataPoint>, top: Double = basalTop) {
+                fun addBasalSeries(points: List<GraphDataPoint>, top: Double = basalTop, linear: Boolean = false) {
                     if (points.size >= 2) {
                         val pts = points
-                            .map { timestampToX(it.timestamp, minTimestamp) to basalScaleHeight(it.value, top) }
+                            .map {
+                                timestampToX(it.timestamp, minTimestamp) to
+                                    if (linear) (if (it.value > 0.0) (it.value / top).coerceAtMost(1.0) else 0.0)
+                                    else basalScaleHeight(it.value, top)
+                            }
                             .sortedBy { it.first }
                         series(x = pts.map { it.first }, y = pts.map { it.second })
                     } else {
@@ -606,19 +628,17 @@ fun BgGraphCompose(
                     }
                 }
                 if (insulinColumns) {
-                    // Insulin-total columns (2026-11-19, per explicit request): a twelfth of the shown span per column, on a grid
-                    // from the loaded range's start, in the actual-basal slot (same style and log curve). Full height is the day's
-                    // largest slice, at most the max bolus setting + 0.3 U (insulinColumnTop).
-                    val span = currentVisibleTimeRange?.let { it.second - it.first } ?: (maxTimestamp - minTimestamp)
-                    val sliceMs = (span / INSULIN_TOTAL_SLICES / 60_000L).coerceAtLeast(1L) * 60_000L
-                    val totals = insulinSliceTotals(
-                        minTimestamp, maxTimestamp, sliceMs, nowTimestamp, currentBasalData.actualBasal, treatments.boluses, treatments.extendedBoluses
-                    )
-                    val steps = totals.map { (start, units) -> GraphDataPoint(start, units) } +
-                        listOfNotNull(totals.lastOrNull()?.let { (start, units) -> GraphDataPoint(start + sliceMs, units) })
+                    // Insulin-total columns (insulinColumnData): linear heights (2026-11-19, per explicit request). Each column goes in
+                    // the basal slot of its ISF colour (2026-11-20, per explicit request), as the coloured basal columns; NONE stays in
+                    // the actual-basal slot.
+                    val (columns, columnTop) = insulinColumnData
+                    fun stepsOf(kind: DominantIsf) = insulinColumnSteps(columns.filter { it.isf == kind })
                     addBasalSeries(emptyList())
-                    addBasalSeries(steps, insulinColumnTop(totals, maxBolusSetting))
-                    repeat(4) { addBasalSeries(emptyList()) }
+                    addBasalSeries(stepsOf(DominantIsf.NONE), columnTop, linear = true)
+                    addBasalSeries(stepsOf(DominantIsf.ACCE), columnTop, linear = true)
+                    addBasalSeries(stepsOf(DominantIsf.BG), columnTop, linear = true)
+                    addBasalSeries(stepsOf(DominantIsf.PP), columnTop, linear = true)
+                    addBasalSeries(stepsOf(DominantIsf.DURA), columnTop, linear = true)
                 } else {
                     addBasalSeries(currentBasalData.profileBasal)
                     addBasalSeries(currentBasalData.actualBasal)
@@ -785,7 +805,7 @@ fun BgGraphCompose(
     // labels showed the new one. Now one collector lives as long as the graph: the newest input waits for the running
     // rebuild, and the inputs in between are skipped.
     val rebuildInputs = listOf<Any?>(
-        bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, bgParabolaPoints, basalData, targetData, epsPoints, activityData, showActivity,
+        insulinColumnData, bgReadings, bucketedData, predictionsByType, rawPoints, ukfPoints, bgParabolaPoints, basalData, targetData, epsPoints, activityData, showActivity,
         showCarbModel, chartConfig, stableTimeRange, visibleTimeRange, treatments, graphDisplay.uniformGreenBg, autoIsfGraph, rawBasalData,
         topBandLines, topBandLines5, showBasalOnBgGraph, insulinColumns, maxBolusSetting
     )
@@ -967,7 +987,7 @@ fun BgGraphCompose(
     val decorations = rememberBgGraphDecorations(
         treatments, bgReadings, bucketedData, graphDisplay, minTimestamp, maxTimestamp, nowTimestamp, lowMark, epsLabelAnchors,
         seriesRegistry, showRaw, showUkf, basalData, showBasalOnBgGraph && !insulinColumns, tapTargets, topBandTap, topBandLines, geometryHolder, masterZone,
-        renderReporter, inRangeBox, nowLine, inspectLine
+        renderReporter, inRangeBox, nowLine, inspectLine, insulinColumnData
     )
 
     // =========================================================================
@@ -1142,7 +1162,7 @@ fun BgGraphCompose(
     )
     }
     // Hypoprediction line and insulin totals row (2026-11-19): in their own function, see BgGraphBottomStrip
-    BgGraphBottomStrip(topBandLines, autoIsfGraph, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
+    BgGraphBottomStrip(topBandLines, insulinColumns, autoIsfGraph, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
     }
 }
 
@@ -1477,6 +1497,7 @@ private fun rememberBgGraphDecorations(
     inRangeBox: Decoration,
     nowLine: Decoration,
     inspectLine: Decoration?,
+    insulinColumnData: Pair<List<InsulinColumn>, Double>,
 ): List<Decoration> {
     val decimalFormatter = LocalDecimalFormatter.current
     val profileUtil = LocalProfileUtil.current
@@ -1697,6 +1718,24 @@ private fun rememberBgGraphDecorations(
             )
         }
     }
+    // The insulin-total columns' values (2026-11-20, per explicit request): on top of each column, in its colour. They replace
+    // the insulin totals row while the columns are on.
+    val insulinColumnLabel = remember(insulinColumnData, minTimestamp, smbText, basalColor, acceColor, bgIsfColor, ppColor, duraColor) {
+        val (columns, columnTop) = insulinColumnData
+        columns.filter { it.units > 0.0 }.sortedByDescending { it.start }.takeIf { it.isNotEmpty() }?.let { shown ->
+            RecentPeakLabels(
+                shown.map { column ->
+                    PeakMark(
+                        timestampToX(column.start + (column.end - column.start) / 2, minTimestamp),
+                        (column.units / columnTop).coerceAtMost(1.0),
+                        insulinTotalText(column.units),
+                        if (column.isf == DominantIsf.NONE) basalColor else isfColor(column.isf)
+                    )
+                },
+                basalColor, smbText, endAxis = true, dots = false
+            )
+        }
+    }
     val generalColors = AapsTheme.generalColors
     val lastBgMark = remember(bgReadings, minTimestamp, smbText, profileUtil, generalColors) {
         // The newest reading: the list is newest first, so lastOrNull() was the oldest, off screen on the left (2026-10-28).
@@ -1719,9 +1758,9 @@ private fun rememberBgGraphDecorations(
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true, masterZone = masterZone)
     // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
     val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
-    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandLines, doseCheckDots) {
+    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandLines, doseCheckDots) {
         listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, doseCheckDots, tapReporter) +
-            listOfNotNull(renderReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
+            listOfNotNull(renderReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
     return decorations
 }
@@ -1878,6 +1917,7 @@ private fun BoxScope.BgGraphOverlays(
 @Composable
 private fun BgGraphBottomStrip(
     topBandLines: Boolean,
+    insulinColumns: Boolean,
     autoIsfGraph: AutoIsfGraphData,
     visibleTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
@@ -1888,9 +1928,10 @@ private fun BgGraphBottomStrip(
     // The insulin totals row (2026-11-19, per explicit request), just below the hypoprediction line: 12 equal slices of the shown
     // span, each the insulin delivered in it, as in the 3426 app. Settings "Insulin totals" (also List 1 and SMS) turns it on and off.
     val showInsulinTotals by LocalPreferences.current.observe(BooleanKey.ApsAutoIsfShowInsulinTotals).collectAsStateWithLifecycle()
-    val insulinTotals = remember(showInsulinTotals, visibleTimeRange, rawBasalData, treatments, nowTimestamp / 60_000L) {
+    // Not while the insulin-total columns are on: their values sit on top of the columns (2026-11-20, per explicit request).
+    val insulinTotals = remember(showInsulinTotals, insulinColumns, visibleTimeRange, rawBasalData, treatments, nowTimestamp / 60_000L) {
         val range = visibleTimeRange
-        if (!showInsulinTotals || range == null) emptyList()
+        if (!showInsulinTotals || insulinColumns || range == null) emptyList()
         else insulinIntervalTotals(range.first, range.second, nowTimestamp, rawBasalData.actualBasal, treatments.boluses, treatments.extendedBoluses)
     }
     // The IOB graph below is pulled 8dp up under this strip, hence the extra bottom padding.

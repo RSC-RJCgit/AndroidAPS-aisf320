@@ -26,7 +26,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
+import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.ExtendedBolusGraphPoint
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
@@ -398,6 +400,45 @@ internal fun insulinColumnTop(totals: List<Pair<Long, Double>>, maxBolus: Double
         largest != null && cap != null -> minOf(largest, cap)
         else                           -> largest ?: cap ?: 1.0
     }
+}
+
+/**
+ * One insulin-total column (2026-11-20, per explicit request): [start]..[end], [units] delivered in it, and [isf], the ISF colour
+ * at its start (the reading nearest the start, as the SMB labels pick theirs). NONE keeps the basal colour.
+ */
+internal data class InsulinColumn(val start: Long, val end: Long, val units: Double, val isf: DominantIsf)
+
+/** Readings further than this from a column's start leave it in the basal colour. */
+private const val INSULIN_COLUMN_COLOUR_REACH_MS = 15 * 60_000L
+
+/**
+ * The insulin-total columns from [insulinSliceTotals]: each one coloured by the reading nearest its start, unless [coloured] is
+ * false (Settings "Uniform green BG", as for the basal columns).
+ */
+internal fun insulinColumnsOf(totals: List<Pair<Long, Double>>, sliceMs: Long, readings: List<BgDataPoint>, coloured: Boolean): List<InsulinColumn> {
+    val sorted = if (coloured) readings.sortedBy { it.timestamp } else emptyList()
+    val times = sorted.map { it.timestamp }
+    fun isfAt(time: Long): DominantIsf {
+        if (times.isEmpty()) return DominantIsf.NONE
+        val i = times.binarySearch(time).let { if (it >= 0) it else -it - 1 }
+        val near = listOfNotNull(sorted.getOrNull(i - 1), sorted.getOrNull(i)).minByOrNull { abs(it.timestamp - time) }
+            ?: return DominantIsf.NONE
+        return if (abs(near.timestamp - time) <= INSULIN_COLUMN_COLOUR_REACH_MS) near.dominantIsf else DominantIsf.NONE
+    }
+    return totals.map { (start, units) -> InsulinColumn(start, start + sliceMs, units, isfAt(start)) }
+}
+
+/** Step points for one colour's columns: up at the column's start, down at its end, zero between columns. */
+internal fun insulinColumnSteps(columns: List<InsulinColumn>): List<GraphDataPoint> {
+    val points = mutableListOf<GraphDataPoint>()
+    for (column in columns.sortedBy { it.start }) {
+        if (column.units <= 0.0) continue
+        if ((points.lastOrNull()?.timestamp ?: Long.MIN_VALUE) < column.start) points.add(GraphDataPoint(column.start, 0.0))
+        points.add(GraphDataPoint(column.start + 1L, column.units))
+        points.add(GraphDataPoint(column.end - 1L, column.units))
+        points.add(GraphDataPoint(column.end, 0.0))
+    }
+    return points
 }
 
 /** Axis max for a basal layer drawn in [basalScaleHeight] fractions, so full height fills [heightFraction] of the graph. */

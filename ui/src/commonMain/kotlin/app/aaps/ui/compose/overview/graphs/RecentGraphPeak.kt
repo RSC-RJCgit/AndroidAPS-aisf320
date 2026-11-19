@@ -54,8 +54,8 @@ internal fun hourlyPeaks(points: List<GraphDataPoint>, now: Long, stepped: Boole
     return peaks
 }
 
-/** One hourly peak label: [x] on the chart's x axis, [y] on the axis of its line or basal column. */
-internal class PeakMark(val x: Double, val y: Double, val label: String)
+/** One hourly peak label: [x] on the chart's x axis, [y] on the axis of its line or basal column; [color] overrides the labels' colour. */
+internal class PeakMark(val x: Double, val y: Double, val label: String, val color: Color? = null)
 
 /**
  * Small labels at the real points, using the same axis as their line or basal column. [marks] are newest
@@ -69,13 +69,14 @@ internal class RecentPeakLabels(
     private val textMeasurer: TextMeasurer,
     private val endAxis: Boolean = false,
     private val pinToTop: Boolean = false,
+    private val dots: Boolean = true,
 ) : Decoration {
     override fun drawOverLayers(context: CartesianDrawingContext) {
         with(context) {
             if (ranges.xStep == 0.0) return
             val range = ranges.getYRange(if (endAxis) Axis.Position.Vertical.End else Axis.Position.Vertical.Start)
             if (range.length <= 0.0) return
-            val style = TextStyle(color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            val baseStyle = TextStyle(color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             val drawn = mutableListOf<Rect>()
             for (mark in marks) {
                 val px = layerBounds.left + layerDimensions.startPadding +
@@ -83,7 +84,8 @@ internal class RecentPeakLabels(
                 if (px < layerBounds.left || px > layerBounds.right) continue
                 if (mark.y !in range.minY..range.maxY) continue
                 val py = layerBounds.bottom - layerBounds.height * ((mark.y - range.minY) / range.length).toFloat()
-                val layout = textMeasurer.measure(mark.label, style)
+                val markColor = mark.color ?: color
+                val layout = textMeasurer.measure(mark.label, if (mark.color == null) baseStyle else baseStyle.copy(color = markColor))
                 val left = (px - layout.size.width / 2f).coerceIn(layerBounds.left, maxOf(layerBounds.left, layerBounds.right - layout.size.width))
                 val top = if (pinToTop) layerBounds.top
                 else (py - layout.size.height - 3f).coerceIn(layerBounds.top, maxOf(layerBounds.top, layerBounds.bottom - layout.size.height))
@@ -91,7 +93,7 @@ internal class RecentPeakLabels(
                 if (drawn.any { it.overlaps(bounds) }) continue
                 drawn += bounds
                 with(mutableDrawScope) {
-                    if (!pinToTop) drawCircle(color, radius = 2f, center = Offset(px, py))
+                    if (!pinToTop && dots) drawCircle(markColor, radius = 2f, center = Offset(px, py))
                     drawText(layout, topLeft = Offset(left, top))
                 }
             }
