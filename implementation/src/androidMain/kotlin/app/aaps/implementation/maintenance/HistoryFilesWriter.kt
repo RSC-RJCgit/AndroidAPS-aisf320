@@ -57,7 +57,10 @@ class HistoryFilesWriter(
         val entries = persistenceLayer.getUserEntryFilteredDataFromTime(now - USER_ENTRIES_EXPORT_WINDOW_MS)
         val stamp = LocalDateTime.now().format(STAMP)
         val scope = exportScopeName(preferences.get(StringKey.GeneralInstanceName), Build.MODEL)
-        val dir = File(loggerUtils.logDirectory)
+        // 2026-11-19, per explicit request: the log is in its own per-app folder (Documents/aapsLogs/<package>, see logback.xml),
+        // but these files stay in Documents/aapsLogs itself, where they always were, so the PC copies keep their place.
+        val logDir = File(loggerUtils.logDirectory)
+        val dir = logDir.parentFile?.takeIf { it.name == "aapsLogs" } ?: logDir
         if (!dir.exists() && !dir.mkdirs()) {
             aapsLogger.error(LTag.CORE, "EXPORT_STATUS trigger=$trigger component=AIV_LOCAL result=FAILURE reason=no log directory")
             return
