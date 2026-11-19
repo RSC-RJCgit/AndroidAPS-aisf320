@@ -1022,6 +1022,9 @@ open class OpenAPSAutoISFPlugin(
             }
             if (determineBasalAutoISF.uamBoostFiredThisCycle) {
                 runMarks.mark(RunMark.UAM_BST, now)
+                // 2026-11-19, per explicit request: the same "UamBst" note the 3426 loop phone writes, so the graphs can show the
+                // Tier 3 dose's value in the bottom row (BgGraphCompose, tier3Values) on this phone and its clients.
+                carePortalNote(RunMark.UAM_BST)
             }
             determineBasalAutoISF.hp1OverrideDoseToStore?.let { dose ->
                 preferences.put(

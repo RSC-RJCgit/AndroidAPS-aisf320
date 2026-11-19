@@ -126,6 +126,23 @@ import kotlin.math.roundToLong
  */
 private const val BG_GRAPH_BASAL_HEIGHT_FRACTION = 0.22
 
+/** The note the 3426 loop phone and (since 2026-11-19) the v4 masters write when Tier 3's UAM boost fires. */
+private const val TIER3_NOTE = "UamBst"
+
+/**
+ * The Tier 3 UAM boost SMBs (2026-11-19, per explicit request): every SMB above 0 from 1 min before to 3 min after a
+ * [TIER3_NOTE] note (the note is written in the loop run that asks for the dose, which is given just after).
+ */
+internal fun tier3Values(treatments: TreatmentGraphData): List<BolusGraphPoint> {
+    val notes = treatments.therapyEvents
+        .filter { (it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION) && it.label.split(' ', ',', ';').any { word -> word.trim() == TIER3_NOTE } }
+        .map { it.timestamp }
+    if (notes.isEmpty()) return emptyList()
+    return treatments.boluses
+        .filter { it.bolusType == BolusType.SMB && it.isValid && it.amount > 0.0 }
+        .filter { smb -> notes.any { note -> smb.timestamp - note in -60_000L..180_000L } }
+}
+
 /** The announcement text Live writes for its Tier 3 UAM boost, drawn over the BG as on Live's main graph. */
 private const val UAM_BOOST_GRAPH_MARK = "B"
 
@@ -1595,9 +1612,12 @@ private fun rememberBgGraphDecorations(
     val doseCheckDots = remember(treatments, minTimestamp, insulinColor) {
         DoseCheckDots(treatments.doseCheckTimes.map { timestampToX(it, minTimestamp) }, insulinColor)
     }
-    val bolusStack = remember(treatments, minTimestamp, lowMark, insulinColor) {
+    val bolusStack = remember(treatments, bgReadings, minTimestamp, lowMark, insulinColor) {
         val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
-        val stack = smbStackIndex(boluses.map { it.timestamp })
+        // 2026-11-19, per explicit request: a Tier 3 UAM boost SMB also gets its value in this row, in the ISF colour of
+        // that moment. Its "B", SMB arrow and bottom arrow stay as they are. Found by the "UamBst" note (tier3Values).
+        val tier3 = tier3Values(treatments)
+        val stack = smbStackIndex(boluses.map { it.timestamp } + tier3.map { it.timestamp })
         boluses.mapIndexed { index, bolus ->
             SmbStackItem(
                 x = timestampToX(bolus.timestamp, minTimestamp),
@@ -1608,6 +1628,14 @@ private fun rememberBgGraphDecorations(
                 // Yellow for a protein/fat dose, the triangle's insulin colour for every other bolus (2026-11-18)
                 color = if (bolus.isFpu) FPU_BOLUS_COLOR else insulinColor,
                 tapTimestamp = bolus.timestamp,
+            )
+        } + tier3.mapIndexed { index, smb ->
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smb.number.ifEmpty { formatBolusLabel(smb.amount, decimalFormatter) },
+                stackIndex = stack[boluses.size + index],
+                anchorY = lowMark,
+                color = isfColor(bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }?.dominantIsf),
             )
         }
     }
