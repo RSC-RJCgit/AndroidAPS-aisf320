@@ -41,6 +41,7 @@ import app.aaps.core.data.configuration.Constants
 import app.aaps.core.graph.vico.AdaptiveStep
 import app.aaps.core.graph.vico.Square
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
+import app.aaps.core.interfaces.overview.graph.IobGraphData
 import app.aaps.core.interfaces.overview.graph.BolusType
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.TherapyEventType
@@ -720,100 +721,11 @@ fun SecondaryGraphCompose(
     // =========================================================================
 
     val seriesColors = rememberSeriesColors()
-    val iobLineStyle = rememberIobLineStyles()
-    val cobLineStyle = rememberCobLineStyles()
     val normalizerLine = remember { createNormalizerLine() }
-
-    val smbDoseFormatter = LocalDecimalFormatter.current
-    val smbDoseColor = AapsTheme.elementColors.insulin
-    val smbDoseLine = remember(smbDoseColor, smbDoseFormatter) {
-        LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
-            areaFill = null,
-            pointProvider = LineCartesianLayer.PointProvider.single(
-                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(smbDoseColor), shape = TriangleShape), size = 10.dp)
-            ),
-            dataLabel = TextComponent(textStyle = TextStyle(color = Color.White, fontSize = 10.sp)),
-            dataLabelPosition = Position.Vertical.Top,
-            dataLabelValueFormatter = CartesianValueFormatter { _, value, _ -> formatBolusLabel(value, smbDoseFormatter) }
-        )
-    }
-
-    // The normalizer comes first, here and in the model below (upstream #5376, ported 2026-10-27). Vico pairs lines and
-    // series by index, and when the series of this graph change it draws the new lines with the old model until the new
-    // model is built. With the normalizer at index 0 it is still paired with itself then, so the point spacing stays the
-    // same as in the other graphs. When it came last, the spacing shrank for that moment, Vico cut the scroll down to the
-    // new end, and the graph stayed shifted sideways.
-    val lines = remember(primarySeries, seriesColors, iobLineStyle, cobLineStyle, normalizerLine, smbDoseLine) {
-        buildList {
-            add(normalizerLine)
-            for (spec in primarySeries) {
-                add(
-                    when (val slot = spec.slot) {
-                        is SeriesSlot.DeviationLine -> createColumnLine(deviationColor(slot.type))
-                        SeriesSlot.IobLine          -> iobLineStyle.iobLine
-                        SeriesSlot.SmallSmb         -> iobLineStyle.smallSmbLine
-                        SeriesSlot.MediumSmb        -> iobLineStyle.mediumSmbLine
-                        SeriesSlot.LargeSmb         -> iobLineStyle.largeSmbLine
-                        SeriesSlot.NormalBolus      -> iobLineStyle.bolusLine
-                        SeriesSlot.ExtBolus         -> iobLineStyle.extBolusLine
-                        SeriesSlot.CobLine          -> cobLineStyle.cobLine
-                        SeriesSlot.FailoverDots     -> cobLineStyle.failoverDotsLine
-                        SeriesSlot.CarbsMarker      -> cobLineStyle.carbsLine
-                        SeriesSlot.SmbDoseLabel     -> smbDoseLine
-                        SeriesSlot.DevSlopeMin      -> createDevSlopeMinLine()
-                        SeriesSlot.ActivityOverlay  -> createSeriesLine(SeriesType.ACTIVITY, seriesColors)
-                        SeriesSlot.SmbDelivery      -> bottomHalfLine(SMB_DELIVERY_COLOR)
-                        SeriesSlot.AcceWeight       -> bottomHalfLine(seriesColors.acceIsf)
-                        SeriesSlot.PpWeight         -> bottomHalfLine(seriesColors.ppIsf)
-                        is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
-                        is SeriesSlot.StepsLine     -> createStepsLine(slot.index)
-                    }
-                )
-            }
-        }
-    }
-
-    // Basal layer line styles — same as BG graph (profile dashed, actual solid with fill)
-    val basalColor = AapsTheme.elementColors.tempBasal
-    val basalProfileLine = remember(basalColor) {
-        LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(basalColor)),
-            stroke = LineCartesianLayer.LineStroke.Dashed(
-                thickness = 1.dp,
-                cap = StrokeCap.Round,
-                dashLength = 1.dp,
-                gapLength = 2.dp
-            ),
-            areaFill = null,
-            interpolator = Square
-        )
-    }
-    val basalActualLine = remember(basalColor) {
-        LineCartesianLayer.Line(
-            fill = LineCartesianLayer.LineFill.single(Fill(basalColor)),
-            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.dp),
-            areaFill = LineCartesianLayer.AreaFill.single(Fill(basalColor.copy(alpha = 0.3f))),
-            interpolator = Square
-        )
-    }
-    val acceColor = AapsTheme.generalColors.acceIsf
-    val bgIsfColor = AapsTheme.generalColors.bgIsf
-    val ppColor = AapsTheme.generalColors.ppIsf
-    val duraColor = AapsTheme.generalColors.duraIsf
-    fun coloredBasal(color: Color) = LineCartesianLayer.Line(
-        fill = LineCartesianLayer.LineFill.single(Fill(color)),
-        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.dp),
-        areaFill = LineCartesianLayer.AreaFill.single(Fill(color.copy(alpha = 0.7f))),
-        interpolator = Square
-    )
-    val acceBasalLine = remember(acceColor) { coloredBasal(acceColor) }
-    val bgBasalLine = remember(bgIsfColor) { coloredBasal(bgIsfColor) }
-    val ppBasalLine = remember(ppColor) { coloredBasal(ppColor) }
-    val duraBasalLine = remember(duraColor) { coloredBasal(duraColor) }
-    val basalLines = remember(basalActualLine, basalProfileLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine) {
-        listOf(basalActualLine, basalProfileLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine)
-    }
+    // Line styles (2026-11-19): in their own function, so this one stays small enough for Android to compile
+    val lineStyles = rememberSecondaryGraphLines(primarySeries, seriesColors, normalizerLine)
+    val lines = lineStyles.lines
+    val basalLines = lineStyles.basalLines
 
     // =========================================================================
     // Chart rendering
@@ -825,144 +737,15 @@ fun SecondaryGraphCompose(
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
     // Upstream's press-and-hold inspect line (2026-10-16 merge), drawn with our labels.
     val inspectLine = rememberInspectLine(inspect)
-    val smbText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
-    val bgDots = if (showSmbDoseLabels || secondaryMarks == SecondaryMarks.NOTES) viewModel.bgReadingsFlow.collectAsStateWithLifecycle().value else emptyList()
-    val smbStack = remember(showSmbDoseLabels, treatmentData, minTimestamp, bgDots, acceColor, bgIsfColor, ppColor, duraColor) {
-        if (!showSmbDoseLabels) return@remember emptyList()
-        val smbs = treatmentData?.boluses.orEmpty().filter { it.bolusType == BolusType.SMB && it.amount > 0.0 }
-        val dots = bgDots
-        val stack = smbStackIndex(smbs.map { it.timestamp })
-        smbs.mapIndexed { index, smb ->
-            val kind = dots.minByOrNull { abs(it.timestamp - smb.timestamp) }?.dominantIsf
-            SmbStackItem(
-                x = timestampToX(smb.timestamp, minTimestamp),
-                label = smbDoseFormatter.to2Decimal(smb.amount),
-                stackIndex = stack[index],
-                color = when (kind) {
-                    DominantIsf.ACCE -> acceColor
-                    DominantIsf.BG   -> bgIsfColor
-                    DominantIsf.PP   -> ppColor
-                    DominantIsf.DURA -> duraColor
-                    else             -> Color.White
-                },
-            )
-        }
-    }
-    val smbLabelSize = rememberSmbLabelSize()
-    val smbNumbers = remember(smbStack, smbText, smbLabelSize) {
-        SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.65f, labelSize = smbLabelSize)
-    }
-    // Actual basal (U/h step points), only collected for the SMB-totals graph. Used for the "b0.35" line above each total.
-    val basalForTotals = if (secondaryMarks == SecondaryMarks.SMB_TOTALS) (basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value).actualBasal else emptyList()
-    val smbTotals = remember(secondaryMarks, treatmentData, minTimestamp, smbText, basalForTotals, nowTimestamp) {
-        if (secondaryMarks != SecondaryMarks.SMB_TOTALS) return@remember null
-        val doses = treatmentData?.boluses.orEmpty().filter { it.amount > 0.0 }.map { it.timestamp to it.amount }
-        val totals = smbTimedTotals(doses)
-        val stack = smbStackIndex(totals.map { it.first }, windowMs = 30 * 60_000L)
-        // 2026-10-08, per explicit request: the time of the last dose inside each total's 20-minute window.
-        val lastDoseInWindow = totals.map { total -> doses.filter { it.first in (total.first - 20 * 60_000L)..total.first }.maxOfOrNull { it.first } }
-        // 2026-10-07, per explicit request: a basal line. 2026-10-08: from the LAST dose of the PRECEDING stack to this total's own
-        // time (up to now). 2026-10-24, per explicit request: also a label where basal drops to zero after a stack, the next
-        // stack counts from that drop, and the first total counts from the last zero temp basal start (see totalsBasal).
-        val basal = totalsBasal(basalForTotals, totals, lastDoseInWindow, nowTimestamp)
-        val items = totals.mapIndexed { index, total ->
-            val basalLine = basal.perTotal[index]?.let { "b" + smbDoseFormatter.to2Decimal(it) }
-            SmbStackItem(
-                x = timestampToX(total.first, minTimestamp),
-                label = formatBolusLabel(total.second, smbDoseFormatter),
-                stackIndex = stack[index],
-                color = Color(0xFFFFFF00),
-                subLabel = basalLine,
-            )
-        }
-        // The drop-to-zero labels: the basal line only, in its light blue
-        val dropItems = basal.drops.map { (time, units) ->
-            SmbStackItem(x = timestampToX(time, minTimestamp), label = "b" + smbDoseFormatter.to2Decimal(units), stackIndex = 0, color = Color(0xFF64C8FF))
-        }
-        SmbStackLabels(items + dropItems, smbText, pinToBottom = true, stackStepFraction = 0.65f)
-    }
-    val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor, masterZone) {
-        if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()
-        val notes = visibleCareNotes(
-            // ANNOUNCEMENT included: care-portal announcements such as the Tier 3 UAM boost "B" are text labels on the
-            // 3426 notes graph. They also stay as icons on the treatment belt.
-            treatmentData?.therapyEvents.orEmpty().filter {
-                it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION ||
-                    it.eventType == TherapyEventType.ANNOUNCEMENT
-            }.map { it.timestamp to it.label }
-        )
-        var anchor = Long.MIN_VALUE
-        val arrows = notes.map { note ->
-            val first = anchor == Long.MIN_VALUE || note.first - anchor >= 25 * 60_000L
-            if (first) anchor = note.first
-            val kind = bgDots.minByOrNull { abs(it.timestamp - note.first) }
-                ?.takeIf { abs(it.timestamp - note.first) <= 10 * 60_000L }
-                ?.dominantIsf
-            val color = when (kind) {
-                DominantIsf.ACCE -> acceColor
-                DominantIsf.BG -> bgIsfColor
-                DominantIsf.PP -> ppColor
-                DominantIsf.DURA -> duraColor
-                else -> Color(0xFFFFFF00)
-            }
-            val clock = graphTimestamp(dateUtil, note.first, masterZone).replace(":", "")
-            SmbStackItem(
-                x = timestampToX(note.first, minTimestamp),
-                label = if (first) clock else "",
-                stackIndex = 0,
-                color = color,
-            )
-        }
-        val stack = smbStackIndex(notes.map { it.first }, windowMs = 25 * 60_000L)
-        val texts = notes.mapIndexed { index, note ->
-            SmbStackItem(
-                x = timestampToX(note.first, minTimestamp),
-                label = note.second,
-                stackIndex = stack[index],
-                color = arrows[index].color,
-            )
-        }
-        listOf(
-            NoteArrows(arrows, smbText),
-            // 2026-10-21, per explicit request: the notes nearly touch. At half a line each covered half of the one below it,
-            // and a full line (the text box includes space above and below the letters) left gaps. The SMB stacks above went
-            // from 0.5 to 0.65 to match.
-            SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 0.75f),
-        )
-    }
-    // One label per hour, counted back from now. The newest is drawn first, so it always shows.
-    val iobPeaks = remember(iobData, nowTimestamp) {
-        hourlyPeaks(iobData?.iob.orEmpty(), nowTimestamp)
-    }
-    val basalPeaks = remember(basalData, nowTimestamp, hasBasalLayer) {
-        if (hasBasalLayer) hourlyPeaks(basalData?.actualBasal.orEmpty(), nowTimestamp, stepped = true) else emptyList()
-    }
-    val peakLabels = remember(iobPeaks, basalPeaks, minTimestamp, smbText, seriesColors.iob, basalColor, basalData) {
-        val basalTop = basalScaleTop(basalData)
-        listOf(
-            RecentPeakLabels(
-                iobPeaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), it.value, smbDoseFormatter.to2Decimal(it.value)) },
-                seriesColors.iob, smbText
-            ),
-            RecentPeakLabels(
-                // At the column's own height on the basal scale; the text stays the real rate (2026-11-19)
-                basalPeaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), -basalScaleHeight(it.value, basalTop), smbDoseFormatter.to2Decimal(it.value)) },
-                basalColor, smbText, endAxis = true, pinToTop = true
-            )
-        )
-    }
-    val geometryReporter = rememberChartGeometryReporter(geometryHolder)
     val stepsTapTarget = remember { StepsTapTarget() }
     val stepsTapReporter = stepsTapTarget.takeIf { stepsData != null }
-    val cornerLabelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface)
-    val cornerLabelMark = remember(cornerLabel, cornerLabelStyle, smbText) {
-        cornerLabel?.let { PlotCornerLabelDecoration(it, cornerLabelStyle, smbText) }
-    }
     val renderReporter = remember { GraphRenderReporter() }
-    val decorations = remember(renderReporter, nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark) {
-        listOf(renderReporter, nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels +
-            listOfNotNull(inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark)
-    }
+    // Labels and decorations (2026-11-19): in their own function, so this one stays small enough for Android to compile
+    val decorations = rememberSecondaryGraphDecorations(
+        viewModel, showSmbDoseLabels, secondaryMarks, treatmentData, iobData, basalData, basalSnapshot, hasBasalLayer, minTimestamp,
+        nowTimestamp, masterZone, seriesColors, geometryHolder, cornerLabel, renderReporter, nowLine, visibleRangeReporter, inspectLine,
+        stepsTapReporter,
+    )
 
     // Dual-axis zero alignment.
     // Why: Vico computes each vertical axis range independently, so y=0 on the
@@ -973,88 +756,7 @@ fun SecondaryGraphCompose(
     // fraction from both data extents and extend each side's range to match it.
     // Only applied to true dual-axis case (no basal overlay, secondary present).
     val dualAxisRanges = remember(isDualAxis, hasBasalLayer, primaryYValues, processedSecondary, scaleMinX, scaleMaxX) {
-        if (!isDualAxis || hasBasalLayer) return@remember null
-        val secondaryY = windowedY(processedSecondary, scaleMinX, scaleMaxX)
-        if (primaryYValues.isEmpty() || secondaryY.isEmpty()) return@remember null
-
-        // An ISF line keeps the UK scale (1.0 in the middle, the peak at the top). An IOB
-        // threshold line keeps zero in the middle. The other series keeps its own numbers.
-        val primaryIsIsf = primaryType in AUTO_ISF_SERIES_TYPES
-        val secondaryIsIsf = secondaryType in AUTO_ISF_SERIES_TYPES
-        val primaryIsTh = primaryType == SeriesType.IOB_TH
-        val secondaryIsTh = secondaryType == SeriesType.IOB_TH
-        if (primaryIsIsf || secondaryIsIsf || primaryIsTh || secondaryIsTh) {
-            val left = when {
-                primaryIsIsf -> isfAxis(primaryYValues.max())
-                primaryIsTh  -> iobThAxis(primaryYValues.min(), primaryYValues.max())
-                else         -> null
-            }
-            val right = when {
-                secondaryIsIsf -> isfAxis(secondaryY.max())
-                secondaryIsTh  -> iobThAxis(secondaryY.min(), secondaryY.max())
-                else           -> null
-            }
-            return@remember AlignedRanges(
-                left?.min ?: primaryYValues.min(),
-                left?.max ?: primaryYValues.max(),
-                right?.min ?: secondaryY.min(),
-                right?.max ?: secondaryY.max()
-            )
-        }
-
-        val primaryIsPivot = primaryType == SeriesType.SENSITIVITY || primaryType == SeriesType.DEV_SLOPE
-        val secondaryIsPivot = secondaryType == SeriesType.SENSITIVITY || secondaryType == SeriesType.DEV_SLOPE
-        if (primaryIsPivot != secondaryIsPivot) {
-            // Exactly one side is pivot-centered (SENS/DEV_SLOPE), the other zero-floor-style
-            // (e.g. COB, BGI) — see [pivotZeroFloorPairing] for how each side's range is built.
-            val isSensPivot = primaryType == SeriesType.SENSITIVITY || secondaryType == SeriesType.SENSITIVITY
-            val pivot = if (isSensPivot) 100.0 else 0.0
-            val pivotMinDeviation = if (isSensPivot) SENS_MIN_DEVIATION else 0.0
-            val pivotTickCount = if (isSensPivot) SENS_PIVOT_TICK_COUNT else SECONDARY_GRAPH_TICK_COUNT
-            return@remember if (primaryIsPivot) {
-                val pairing = pivotZeroFloorPairing(primaryYValues, secondaryY, pivot, pivotMinDeviation, pivotTickCount)
-                // Primary is the pivot itself here — its own axis is fully meaningful in both
-                // directions, no label clamping needed.
-                AlignedRanges(pairing.pivotNice.min, pairing.pivotNice.max, -pairing.zeroFloorHalf, pairing.zeroFloorHalf)
-            } else {
-                val pairing = pivotZeroFloorPairing(secondaryY, primaryYValues, pivot, pivotMinDeviation, pivotTickCount)
-                // Primary is the zero-floor side, pushed into a symmetric container purely to
-                // align its zero with the pivot's center — its own real floor (e.g. 0 for COB)
-                // must still be the lowest label shown, or its axis reads as if COB/BGI/etc. can
-                // go negative when it can't.
-                AlignedRanges(-pairing.zeroFloorHalf, pairing.zeroFloorHalf, pairing.pivotNice.min, pairing.pivotNice.max, primaryLabelFloor = pairing.zeroFloorMin)
-            }
-        }
-        if (primaryIsPivot || secondaryIsPivot) {
-            // Both sides pivot-centered (SENS + DEV_SLOPE together — unusual but possible): keep
-            // the existing pivot-aware zero alignment, both are symmetric around their own pivot
-            // anyway so the old mechanism is adequate here.
-            val primaryPivot = if (primaryType == SeriesType.SENSITIVITY) 100.0 else 0.0
-            val secondaryPivot = if (secondaryType == SeriesType.SENSITIVITY) 100.0 else 0.0
-            return@remember alignZeros(primaryYValues.min(), primaryYValues.max(), secondaryY.min(), secondaryY.max(), primaryPivot, secondaryPivot)
-        }
-
-        // Neither series is pivot-centered (e.g. COB + VAR_SENSITIVITY, or BGI + STEPS): primary
-        // stays nice-scaled and zero-floored, secondary stays raw. Each series' own "negative
-        // fraction" is computed independently — primary from its nice bounds, secondary from its
-        // raw bounds — and the shared target is their average, so neither curve's height dominates
-        // the compromise. Each axis is then widened just enough to hit that shared fraction,
-        // anchored at whichever of its own real/nice bounds avoids clipping (see
-        // fractionAlignedRange / fractionAlignedNiceRange) so nothing is ever clipped.
-        val primaryNice = zeroFloorNiceRange(primaryYValues.min(), primaryYValues.max().coerceAtLeast(0.1), SECONDARY_GRAPH_TICK_COUNT)
-        val primaryFraction = if (primaryNice.max > primaryNice.min) -primaryNice.min / (primaryNice.max - primaryNice.min) else 0.0
-
-        val secondaryMax = secondaryY.max().coerceAtLeast(0.1)
-        val secondaryFraction = if (secondaryY.min() < 0.0) -secondaryY.min() / (secondaryMax - secondaryY.min()) else 0.0
-
-        val sharedFraction = (primaryFraction + secondaryFraction) / 2.0
-
-        val (aMin, aMax) = fractionAlignedNiceRange(primaryNice.min, primaryNice.max, sharedFraction)
-        val (bMin, bMax) = fractionAlignedRange(secondaryY.min(), secondaryMax, sharedFraction)
-        // primaryNice.min is primary's own real floor (0 unless it has a genuine negative sliver);
-        // aMin can be pushed below that purely to align zero with secondary — clamp labels back to
-        // primary's own floor so its axis never shows a fake negative tick.
-        AlignedRanges(aMin, aMax, bMin, bMax, primaryLabelFloor = primaryNice.min)
+        dualAxisRangesFor(isDualAxis, hasBasalLayer, primaryYValues, processedSecondary, scaleMinX, scaleMaxX, primaryType, secondaryType)
     }
 
     // Empty graph (only the normalizer series at y=0) would auto-range to a degenerate [0,0]
@@ -1489,6 +1191,386 @@ fun SecondaryGraphCompose(
             }
         }
     }
+}
+
+/**
+ * The labels and other decorations of [SecondaryGraphCompose], moved out of it unchanged (2026-11-19, per explicit request),
+ * for the same reason as [dualAxisRangesFor]. Each `remember` works as it did inline: this is called once per
+ * recomposition, always at the same place. Returns the decoration list the chart draws.
+ */
+@Composable
+private fun rememberSecondaryGraphDecorations(
+    viewModel: GraphViewModel,
+    showSmbDoseLabels: Boolean,
+    secondaryMarks: SecondaryMarks,
+    treatmentData: TreatmentGraphData?,
+    iobData: IobGraphData?,
+    basalData: BasalGraphData?,
+    basalSnapshot: BasalGraphData?,
+    hasBasalLayer: Boolean,
+    minTimestamp: Long,
+    nowTimestamp: Long,
+    masterZone: TimeZone?,
+    seriesColors: SeriesColors,
+    geometryHolder: ChartGeometryHolder?,
+    cornerLabel: String?,
+    renderReporter: Decoration,
+    nowLine: Decoration,
+    visibleRangeReporter: Decoration,
+    inspectLine: Decoration?,
+    stepsTapReporter: Decoration?,
+): List<Decoration> {
+    val dateUtil = LocalDateUtil.current
+    val smbDoseFormatter = LocalDecimalFormatter.current
+    val basalColor = AapsTheme.elementColors.tempBasal
+    val acceColor = AapsTheme.generalColors.acceIsf
+    val bgIsfColor = AapsTheme.generalColors.bgIsf
+    val ppColor = AapsTheme.generalColors.ppIsf
+    val duraColor = AapsTheme.generalColors.duraIsf
+    val smbText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
+    val bgDots = if (showSmbDoseLabels || secondaryMarks == SecondaryMarks.NOTES) viewModel.bgReadingsFlow.collectAsStateWithLifecycle().value else emptyList()
+    val smbStack = remember(showSmbDoseLabels, treatmentData, minTimestamp, bgDots, acceColor, bgIsfColor, ppColor, duraColor) {
+        if (!showSmbDoseLabels) return@remember emptyList()
+        val smbs = treatmentData?.boluses.orEmpty().filter { it.bolusType == BolusType.SMB && it.amount > 0.0 }
+        val dots = bgDots
+        val stack = smbStackIndex(smbs.map { it.timestamp })
+        smbs.mapIndexed { index, smb ->
+            val kind = dots.minByOrNull { abs(it.timestamp - smb.timestamp) }?.dominantIsf
+            SmbStackItem(
+                x = timestampToX(smb.timestamp, minTimestamp),
+                label = smbDoseFormatter.to2Decimal(smb.amount),
+                stackIndex = stack[index],
+                color = when (kind) {
+                    DominantIsf.ACCE -> acceColor
+                    DominantIsf.BG   -> bgIsfColor
+                    DominantIsf.PP   -> ppColor
+                    DominantIsf.DURA -> duraColor
+                    else             -> Color.White
+                },
+            )
+        }
+    }
+    val smbLabelSize = rememberSmbLabelSize()
+    val smbNumbers = remember(smbStack, smbText, smbLabelSize) {
+        SmbStackLabels(smbStack, smbText, pinToBottom = true, stackStepFraction = 0.65f, labelSize = smbLabelSize)
+    }
+    // Actual basal (U/h step points), only collected for the SMB-totals graph. Used for the "b0.35" line above each total.
+    val basalForTotals = if (secondaryMarks == SecondaryMarks.SMB_TOTALS) (basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value).actualBasal else emptyList()
+    val smbTotals = remember(secondaryMarks, treatmentData, minTimestamp, smbText, basalForTotals, nowTimestamp) {
+        if (secondaryMarks != SecondaryMarks.SMB_TOTALS) return@remember null
+        val doses = treatmentData?.boluses.orEmpty().filter { it.amount > 0.0 }.map { it.timestamp to it.amount }
+        val totals = smbTimedTotals(doses)
+        val stack = smbStackIndex(totals.map { it.first }, windowMs = 30 * 60_000L)
+        // 2026-10-08, per explicit request: the time of the last dose inside each total's 20-minute window.
+        val lastDoseInWindow = totals.map { total -> doses.filter { it.first in (total.first - 20 * 60_000L)..total.first }.maxOfOrNull { it.first } }
+        // 2026-10-07, per explicit request: a basal line. 2026-10-08: from the LAST dose of the PRECEDING stack to this total's own
+        // time (up to now). 2026-10-24, per explicit request: also a label where basal drops to zero after a stack, the next
+        // stack counts from that drop, and the first total counts from the last zero temp basal start (see totalsBasal).
+        val basal = totalsBasal(basalForTotals, totals, lastDoseInWindow, nowTimestamp)
+        val items = totals.mapIndexed { index, total ->
+            val basalLine = basal.perTotal[index]?.let { "b" + smbDoseFormatter.to2Decimal(it) }
+            SmbStackItem(
+                x = timestampToX(total.first, minTimestamp),
+                label = formatBolusLabel(total.second, smbDoseFormatter),
+                stackIndex = stack[index],
+                color = Color(0xFFFFFF00),
+                subLabel = basalLine,
+            )
+        }
+        // The drop-to-zero labels: the basal line only, in its light blue
+        val dropItems = basal.drops.map { (time, units) ->
+            SmbStackItem(x = timestampToX(time, minTimestamp), label = "b" + smbDoseFormatter.to2Decimal(units), stackIndex = 0, color = Color(0xFF64C8FF))
+        }
+        SmbStackLabels(items + dropItems, smbText, pinToBottom = true, stackStepFraction = 0.65f)
+    }
+    val noteMarks = remember(secondaryMarks, treatmentData, minTimestamp, bgDots, smbText, acceColor, bgIsfColor, ppColor, duraColor, masterZone) {
+        if (secondaryMarks != SecondaryMarks.NOTES) return@remember emptyList()
+        val notes = visibleCareNotes(
+            // ANNOUNCEMENT included: care-portal announcements such as the Tier 3 UAM boost "B" are text labels on the
+            // 3426 notes graph. They also stay as icons on the treatment belt.
+            treatmentData?.therapyEvents.orEmpty().filter {
+                it.eventType == TherapyEventType.GENERAL || it.eventType == TherapyEventType.GENERAL_WITH_DURATION ||
+                    it.eventType == TherapyEventType.ANNOUNCEMENT
+            }.map { it.timestamp to it.label }
+        )
+        var anchor = Long.MIN_VALUE
+        val arrows = notes.map { note ->
+            val first = anchor == Long.MIN_VALUE || note.first - anchor >= 25 * 60_000L
+            if (first) anchor = note.first
+            val kind = bgDots.minByOrNull { abs(it.timestamp - note.first) }
+                ?.takeIf { abs(it.timestamp - note.first) <= 10 * 60_000L }
+                ?.dominantIsf
+            val color = when (kind) {
+                DominantIsf.ACCE -> acceColor
+                DominantIsf.BG -> bgIsfColor
+                DominantIsf.PP -> ppColor
+                DominantIsf.DURA -> duraColor
+                else -> Color(0xFFFFFF00)
+            }
+            val clock = graphTimestamp(dateUtil, note.first, masterZone).replace(":", "")
+            SmbStackItem(
+                x = timestampToX(note.first, minTimestamp),
+                label = if (first) clock else "",
+                stackIndex = 0,
+                color = color,
+            )
+        }
+        val stack = smbStackIndex(notes.map { it.first }, windowMs = 25 * 60_000L)
+        val texts = notes.mapIndexed { index, note ->
+            SmbStackItem(
+                x = timestampToX(note.first, minTimestamp),
+                label = note.second,
+                stackIndex = stack[index],
+                color = arrows[index].color,
+            )
+        }
+        listOf(
+            NoteArrows(arrows, smbText),
+            // 2026-10-21, per explicit request: the notes nearly touch. At half a line each covered half of the one below it,
+            // and a full line (the text box includes space above and below the letters) left gaps. The SMB stacks above went
+            // from 0.5 to 0.65 to match.
+            SmbStackLabels(texts, smbText, pinToBottom = true, stackStepFraction = 0.75f),
+        )
+    }
+    // One label per hour, counted back from now. The newest is drawn first, so it always shows.
+    val iobPeaks = remember(iobData, nowTimestamp) {
+        hourlyPeaks(iobData?.iob.orEmpty(), nowTimestamp)
+    }
+    val basalPeaks = remember(basalData, nowTimestamp, hasBasalLayer) {
+        if (hasBasalLayer) hourlyPeaks(basalData?.actualBasal.orEmpty(), nowTimestamp, stepped = true) else emptyList()
+    }
+    val peakLabels = remember(iobPeaks, basalPeaks, minTimestamp, smbText, seriesColors.iob, basalColor, basalData) {
+        val basalTop = basalScaleTop(basalData)
+        listOf(
+            RecentPeakLabels(
+                iobPeaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), it.value, smbDoseFormatter.to2Decimal(it.value)) },
+                seriesColors.iob, smbText
+            ),
+            RecentPeakLabels(
+                // At the column's own height on the basal scale; the text stays the real rate (2026-11-19)
+                basalPeaks.map { PeakMark(timestampToX(it.timestamp, minTimestamp), -basalScaleHeight(it.value, basalTop), smbDoseFormatter.to2Decimal(it.value)) },
+                basalColor, smbText, endAxis = true, pinToTop = true
+            )
+        )
+    }
+    val geometryReporter = rememberChartGeometryReporter(geometryHolder)
+    val cornerLabelStyle = MaterialTheme.typography.labelSmall.copy(color = MaterialTheme.colorScheme.onSurface)
+    val cornerLabelMark = remember(cornerLabel, cornerLabelStyle, smbText) {
+        cornerLabel?.let { PlotCornerLabelDecoration(it, cornerLabelStyle, smbText) }
+    }
+    val decorations = remember(renderReporter, nowLine, visibleRangeReporter, smbNumbers, smbTotals, noteMarks, peakLabels, inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark) {
+        listOf(renderReporter, nowLine, visibleRangeReporter, smbNumbers) + listOfNotNull(smbTotals) + noteMarks + peakLabels +
+            listOfNotNull(inspectLine, geometryReporter, stepsTapReporter, cornerLabelMark)
+    }
+    return decorations
+}
+
+/**
+ * The zero-aligned ranges of a dual-axis graph, see the comment where [SecondaryGraphCompose] calls it. Moved out of that
+ * function unchanged (2026-11-19, per explicit request): Android does not compile a method past its instruction limit
+ * ("Method exceeds compiler instruction limit: 19794"), so the graph ran slowly, uncompiled.
+ */
+private fun dualAxisRangesFor(
+    isDualAxis: Boolean,
+    hasBasalLayer: Boolean,
+    primaryYValues: List<Double>,
+    processedSecondary: List<Pair<Double, Double>>,
+    scaleMinX: Double?,
+    scaleMaxX: Double?,
+    primaryType: SeriesType,
+    secondaryType: SeriesType?,
+): AlignedRanges? {
+    if (!isDualAxis || hasBasalLayer) return null
+    val secondaryY = windowedY(processedSecondary, scaleMinX, scaleMaxX)
+    if (primaryYValues.isEmpty() || secondaryY.isEmpty()) return null
+
+    // An ISF line keeps the UK scale (1.0 in the middle, the peak at the top). An IOB
+    // threshold line keeps zero in the middle. The other series keeps its own numbers.
+    val primaryIsIsf = primaryType in AUTO_ISF_SERIES_TYPES
+    val secondaryIsIsf = secondaryType in AUTO_ISF_SERIES_TYPES
+    val primaryIsTh = primaryType == SeriesType.IOB_TH
+    val secondaryIsTh = secondaryType == SeriesType.IOB_TH
+    if (primaryIsIsf || secondaryIsIsf || primaryIsTh || secondaryIsTh) {
+        val left = when {
+            primaryIsIsf -> isfAxis(primaryYValues.max())
+            primaryIsTh  -> iobThAxis(primaryYValues.min(), primaryYValues.max())
+            else         -> null
+        }
+        val right = when {
+            secondaryIsIsf -> isfAxis(secondaryY.max())
+            secondaryIsTh  -> iobThAxis(secondaryY.min(), secondaryY.max())
+            else           -> null
+        }
+        return AlignedRanges(
+            left?.min ?: primaryYValues.min(),
+            left?.max ?: primaryYValues.max(),
+            right?.min ?: secondaryY.min(),
+            right?.max ?: secondaryY.max()
+        )
+    }
+
+    val primaryIsPivot = primaryType == SeriesType.SENSITIVITY || primaryType == SeriesType.DEV_SLOPE
+    val secondaryIsPivot = secondaryType == SeriesType.SENSITIVITY || secondaryType == SeriesType.DEV_SLOPE
+    if (primaryIsPivot != secondaryIsPivot) {
+        // Exactly one side is pivot-centered (SENS/DEV_SLOPE), the other zero-floor-style
+        // (e.g. COB, BGI) — see [pivotZeroFloorPairing] for how each side's range is built.
+        val isSensPivot = primaryType == SeriesType.SENSITIVITY || secondaryType == SeriesType.SENSITIVITY
+        val pivot = if (isSensPivot) 100.0 else 0.0
+        val pivotMinDeviation = if (isSensPivot) SENS_MIN_DEVIATION else 0.0
+        val pivotTickCount = if (isSensPivot) SENS_PIVOT_TICK_COUNT else SECONDARY_GRAPH_TICK_COUNT
+        return if (primaryIsPivot) {
+            val pairing = pivotZeroFloorPairing(primaryYValues, secondaryY, pivot, pivotMinDeviation, pivotTickCount)
+            // Primary is the pivot itself here — its own axis is fully meaningful in both
+            // directions, no label clamping needed.
+            AlignedRanges(pairing.pivotNice.min, pairing.pivotNice.max, -pairing.zeroFloorHalf, pairing.zeroFloorHalf)
+        } else {
+            val pairing = pivotZeroFloorPairing(secondaryY, primaryYValues, pivot, pivotMinDeviation, pivotTickCount)
+            // Primary is the zero-floor side, pushed into a symmetric container purely to
+            // align its zero with the pivot's center — its own real floor (e.g. 0 for COB)
+            // must still be the lowest label shown, or its axis reads as if COB/BGI/etc. can
+            // go negative when it can't.
+            AlignedRanges(-pairing.zeroFloorHalf, pairing.zeroFloorHalf, pairing.pivotNice.min, pairing.pivotNice.max, primaryLabelFloor = pairing.zeroFloorMin)
+        }
+    }
+    if (primaryIsPivot || secondaryIsPivot) {
+        // Both sides pivot-centered (SENS + DEV_SLOPE together — unusual but possible): keep
+        // the existing pivot-aware zero alignment, both are symmetric around their own pivot
+        // anyway so the old mechanism is adequate here.
+        val primaryPivot = if (primaryType == SeriesType.SENSITIVITY) 100.0 else 0.0
+        val secondaryPivot = if (secondaryType == SeriesType.SENSITIVITY) 100.0 else 0.0
+        return alignZeros(primaryYValues.min(), primaryYValues.max(), secondaryY.min(), secondaryY.max(), primaryPivot, secondaryPivot)
+    }
+
+    // Neither series is pivot-centered (e.g. COB + VAR_SENSITIVITY, or BGI + STEPS): primary
+    // stays nice-scaled and zero-floored, secondary stays raw. Each series' own "negative
+    // fraction" is computed independently — primary from its nice bounds, secondary from its
+    // raw bounds — and the shared target is their average, so neither curve's height dominates
+    // the compromise. Each axis is then widened just enough to hit that shared fraction,
+    // anchored at whichever of its own real/nice bounds avoids clipping (see
+    // fractionAlignedRange / fractionAlignedNiceRange) so nothing is ever clipped.
+    val primaryNice = zeroFloorNiceRange(primaryYValues.min(), primaryYValues.max().coerceAtLeast(0.1), SECONDARY_GRAPH_TICK_COUNT)
+    val primaryFraction = if (primaryNice.max > primaryNice.min) -primaryNice.min / (primaryNice.max - primaryNice.min) else 0.0
+
+    val secondaryMax = secondaryY.max().coerceAtLeast(0.1)
+    val secondaryFraction = if (secondaryY.min() < 0.0) -secondaryY.min() / (secondaryMax - secondaryY.min()) else 0.0
+
+    val sharedFraction = (primaryFraction + secondaryFraction) / 2.0
+
+    val (aMin, aMax) = fractionAlignedNiceRange(primaryNice.min, primaryNice.max, sharedFraction)
+    val (bMin, bMax) = fractionAlignedRange(secondaryY.min(), secondaryMax, sharedFraction)
+    // primaryNice.min is primary's own real floor (0 unless it has a genuine negative sliver);
+    // aMin can be pushed below that purely to align zero with secondary — clamp labels back to
+    // primary's own floor so its axis never shows a fake negative tick.
+    return AlignedRanges(aMin, aMax, bMin, bMax, primaryLabelFloor = primaryNice.min)
+}
+
+/** The line styles of the [SecondaryGraphCompose] layers, built by [rememberSecondaryGraphLines]. */
+private class SecondaryGraphLines(val lines: List<LineCartesianLayer.Line>, val basalLines: List<LineCartesianLayer.Line>)
+
+/**
+ * The line styles of [SecondaryGraphCompose], moved out of it unchanged (2026-11-19, per explicit request), for the same
+ * reason as [dualAxisRangesFor].
+ */
+@Composable
+private fun rememberSecondaryGraphLines(
+    primarySeries: List<PrimarySeriesSpec>,
+    seriesColors: SeriesColors,
+    normalizerLine: LineCartesianLayer.Line,
+): SecondaryGraphLines {
+    val iobLineStyle = rememberIobLineStyles()
+    val cobLineStyle = rememberCobLineStyles()
+
+    val smbDoseFormatter = LocalDecimalFormatter.current
+    val smbDoseColor = AapsTheme.elementColors.insulin
+    val smbDoseLine = remember(smbDoseColor, smbDoseFormatter) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(Color.Transparent)),
+            areaFill = null,
+            pointProvider = LineCartesianLayer.PointProvider.single(
+                LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(smbDoseColor), shape = TriangleShape), size = 10.dp)
+            ),
+            dataLabel = TextComponent(textStyle = TextStyle(color = Color.White, fontSize = 10.sp)),
+            dataLabelPosition = Position.Vertical.Top,
+            dataLabelValueFormatter = CartesianValueFormatter { _, value, _ -> formatBolusLabel(value, smbDoseFormatter) }
+        )
+    }
+
+    // The normalizer comes first, here and in the model below (upstream #5376, ported 2026-10-27). Vico pairs lines and
+    // series by index, and when the series of this graph change it draws the new lines with the old model until the new
+    // model is built. With the normalizer at index 0 it is still paired with itself then, so the point spacing stays the
+    // same as in the other graphs. When it came last, the spacing shrank for that moment, Vico cut the scroll down to the
+    // new end, and the graph stayed shifted sideways.
+    val lines = remember(primarySeries, seriesColors, iobLineStyle, cobLineStyle, normalizerLine, smbDoseLine) {
+        buildList {
+            add(normalizerLine)
+            for (spec in primarySeries) {
+                add(
+                    when (val slot = spec.slot) {
+                        is SeriesSlot.DeviationLine -> createColumnLine(deviationColor(slot.type))
+                        SeriesSlot.IobLine          -> iobLineStyle.iobLine
+                        SeriesSlot.SmallSmb         -> iobLineStyle.smallSmbLine
+                        SeriesSlot.MediumSmb        -> iobLineStyle.mediumSmbLine
+                        SeriesSlot.LargeSmb         -> iobLineStyle.largeSmbLine
+                        SeriesSlot.NormalBolus      -> iobLineStyle.bolusLine
+                        SeriesSlot.ExtBolus         -> iobLineStyle.extBolusLine
+                        SeriesSlot.CobLine          -> cobLineStyle.cobLine
+                        SeriesSlot.FailoverDots     -> cobLineStyle.failoverDotsLine
+                        SeriesSlot.CarbsMarker      -> cobLineStyle.carbsLine
+                        SeriesSlot.SmbDoseLabel     -> smbDoseLine
+                        SeriesSlot.DevSlopeMin      -> createDevSlopeMinLine()
+                        SeriesSlot.ActivityOverlay  -> createSeriesLine(SeriesType.ACTIVITY, seriesColors)
+                        SeriesSlot.SmbDelivery      -> bottomHalfLine(SMB_DELIVERY_COLOR)
+                        SeriesSlot.AcceWeight       -> bottomHalfLine(seriesColors.acceIsf)
+                        SeriesSlot.PpWeight         -> bottomHalfLine(seriesColors.ppIsf)
+                        is SeriesSlot.SimpleLine    -> createSeriesLine(slot.type, seriesColors)
+                        is SeriesSlot.StepsLine     -> createStepsLine(slot.index)
+                    }
+                )
+            }
+        }
+    }
+
+    // Basal layer line styles — same as BG graph (profile dashed, actual solid with fill)
+    val basalColor = AapsTheme.elementColors.tempBasal
+    val basalProfileLine = remember(basalColor) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(basalColor)),
+            stroke = LineCartesianLayer.LineStroke.Dashed(
+                thickness = 1.dp,
+                cap = StrokeCap.Round,
+                dashLength = 1.dp,
+                gapLength = 2.dp
+            ),
+            areaFill = null,
+            interpolator = Square
+        )
+    }
+    val basalActualLine = remember(basalColor) {
+        LineCartesianLayer.Line(
+            fill = LineCartesianLayer.LineFill.single(Fill(basalColor)),
+            stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.dp),
+            areaFill = LineCartesianLayer.AreaFill.single(Fill(basalColor.copy(alpha = 0.3f))),
+            interpolator = Square
+        )
+    }
+    val acceColor = AapsTheme.generalColors.acceIsf
+    val bgIsfColor = AapsTheme.generalColors.bgIsf
+    val ppColor = AapsTheme.generalColors.ppIsf
+    val duraColor = AapsTheme.generalColors.duraIsf
+    fun coloredBasal(color: Color) = LineCartesianLayer.Line(
+        fill = LineCartesianLayer.LineFill.single(Fill(color)),
+        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 1.dp),
+        areaFill = LineCartesianLayer.AreaFill.single(Fill(color.copy(alpha = 0.7f))),
+        interpolator = Square
+    )
+    val acceBasalLine = remember(acceColor) { coloredBasal(acceColor) }
+    val bgBasalLine = remember(bgIsfColor) { coloredBasal(bgIsfColor) }
+    val ppBasalLine = remember(ppColor) { coloredBasal(ppColor) }
+    val duraBasalLine = remember(duraColor) { coloredBasal(duraColor) }
+    val basalLines = remember(basalActualLine, basalProfileLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine) {
+        listOf(basalActualLine, basalProfileLine, acceBasalLine, bgBasalLine, ppBasalLine, duraBasalLine)
+    }
+    return SecondaryGraphLines(lines, basalLines)
 }
 
 private fun insulinLabelsFor(samples: List<GraphDataPoint>, start: Long, end: Long): List<String> {

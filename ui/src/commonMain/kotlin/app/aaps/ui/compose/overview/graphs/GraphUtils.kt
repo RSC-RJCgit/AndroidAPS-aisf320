@@ -332,11 +332,12 @@ const val BASAL_HEIGHT_FRACTION = 0.5
  * Basal column height on both graphs, a fixed scale (2026-11-19, per explicit request, chosen on the scale examples page):
  * 0 U/h has no column; any rate above 0 is [BASAL_SCALE_FLOOR] of full height plus the rest on a log curve with
  * [BASAL_SCALE_KNEE], reaching full height at [top] (the max basal setting, see [basalScaleTop]). A rate above [top] is
- * drawn at full height. With a 5 U/h top, 5.0 / 2.5 / 1.0 / 0.5 / 0.1 U/h draw at 100% / 74% / 48% / 34% / 20%.
+ * drawn at full height. With a 5 U/h top, 5.0 / 2.5 / 1.0 / 0.5 / 0.1 U/h draw at 100% / 82% / 60% / 46% / 24%.
  * Scrolling and zooming never change it: the main graph used to refit to the visible window and the IOB graph to the
  * 24 hour maximum. The numbers shown (hourly peaks, tap readout) stay real rates.
  */
-const val BASAL_SCALE_KNEE = 1.0
+// 0.25 U/h (2026-11-19, per explicit request; was 1.0, which drew 74% / 48% / 34% / 20% for 2.5 / 1.0 / 0.5 / 0.1)
+const val BASAL_SCALE_KNEE = 0.25
 // 15% (2026-11-19, per explicit request; was 30%): low basal columns stand less tall
 const val BASAL_SCALE_FLOOR = 0.15
 

@@ -7,7 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * The fixed basal scale (2026-11-19): a 15% floor (30% until later the same day) plus a log curve with knee 1 U/h, full height at the max basal setting.
+ * The fixed basal scale (2026-11-19): a 15% floor (30% until later the same day) plus a log curve with knee 0.25 U/h (1 U/h until later the same day), full height at the max basal setting.
  * It replaced the scale fitted to the basal in view (2026-11-16), which changed column heights on every scroll.
  */
 class BasalAxisMaxTest {
@@ -21,7 +21,8 @@ class BasalAxisMaxTest {
         scaleTop = scaleTop
     )
 
-    private fun expected(rate: Double, top: Double) = BASAL_SCALE_FLOOR + (1.0 - BASAL_SCALE_FLOOR) * ln(1.0 + rate) / ln(1.0 + top)
+    private fun expected(rate: Double, top: Double) =
+        BASAL_SCALE_FLOOR + (1.0 - BASAL_SCALE_FLOOR) * ln(1.0 + rate / BASAL_SCALE_KNEE) / ln(1.0 + top / BASAL_SCALE_KNEE)
 
     @Test
     fun noBasalHasNoColumn() {

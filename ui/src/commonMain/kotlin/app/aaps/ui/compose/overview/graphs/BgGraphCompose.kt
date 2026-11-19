@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -60,6 +61,7 @@ import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.overview.graph.BolusGraphPoint
+import app.aaps.core.interfaces.overview.graph.AutoIsfGraphData
 import app.aaps.core.interfaces.overview.graph.BgRange
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.ui.compose.AapsTheme
@@ -84,6 +86,7 @@ import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.interfaces.overview.graph.TargetLineData
 import app.aaps.core.interfaces.overview.graph.TherapyEventGraphPoint
 import app.aaps.core.interfaces.overview.graph.TherapyEventType
+import app.aaps.core.interfaces.overview.graph.TreatmentGraphData
 import app.aaps.core.ui.compose.isLandscape
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.icons.IcBgCheck
@@ -328,7 +331,6 @@ fun BgGraphCompose(
 ) {
     val dateUtil = LocalDateUtil.current
     val decimalFormatter = LocalDecimalFormatter.current
-    val profileUtil = LocalProfileUtil.current
     val tapTargets = remember { GraphTapTargets() }
     var selectedBg by remember { mutableStateOf<BgDataPoint?>(null) }
     var selectedBolus by remember { mutableStateOf<BolusGraphPoint?>(null) }
@@ -444,18 +446,8 @@ fun BgGraphCompose(
     val ppColor = AapsTheme.generalColors.ppIsf
     val duraColor = AapsTheme.generalColors.duraIsf
     val basalColor = AapsTheme.elementColors.tempBasal
-    val targetLineColor = AapsTheme.elementColors.tempTarget
-    val activityColor = AapsTheme.elementColors.activity
     val insulinColor = AapsTheme.elementColors.insulin
-    val carbsColor = AapsTheme.elementColors.carbs
-    val bgCheckColor = AapsTheme.elementColors.bgCheck
 
-    // Prediction colors
-    val iobPredColor = AapsTheme.generalColors.iobPrediction
-    val cobPredColor = AapsTheme.generalColors.cobPrediction
-    val aCobPredColor = AapsTheme.generalColors.aCobPrediction
-    val uamPredColor = AapsTheme.generalColors.uamPrediction
-    val ztPredColor = AapsTheme.generalColors.ztPrediction
 
     // Calculate x-axis range (must match COB graph for alignment)
     val maxX = remember(minTimestamp, maxTimestamp) {
@@ -892,6 +884,269 @@ fun BgGraphCompose(
     val timeFormatter = rememberTimeFormatter(minTimestamp, masterZone)
     val bottomAxisItemPlacer = rememberBottomAxisItemPlacer(minTimestamp, masterZone)
 
+    // Line styles of the layers (2026-11-19): in their own function, so this one stays small enough for Android to compile
+    val lines = rememberBgGraphLines(
+        readingPointProvider, bucketedPointProvider, activeSeriesState.value, basalColor, acceColor, bgIsfColor, ppColor, duraColor, insulinColor
+    )
+    val bgLines = lines.bgLines
+    val basalLines = lines.basalLines
+    val targetLines = lines.targetLines
+    val epsLines = lines.epsLines
+    val activityLines = lines.activityLines
+    val topBandLineList = lines.topBandLineList
+    val treatmentLines = lines.treatmentLines
+
+    // Fixed: full column height always fills BG_GRAPH_BASAL_HEIGHT_FRACTION, whatever is in view (2026-11-19, per explicit
+    // request). It used to refit to the highest basal in the visible window, so columns changed height on every scroll.
+    val basalMaxY = remember { basalScaleAxisMax(BG_GRAPH_BASAL_HEIGHT_FRACTION) }
+
+    // =========================================================================
+    // Decorations
+    // =========================================================================
+
+    val nowLineColor = MaterialTheme.colorScheme.onSurface
+    val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
+
+    // In-range belt — translucent band between lowMark and highMark on the BG axis
+    val lowMark = chartConfig.lowMark
+    val highMark = chartConfig.highMark
+    // Drawn under the layers (upstream, ported 2026-10-27): Vico's HorizontalBox drew over them, and its translucent
+    // colour tinted every reading and marker inside the band. The fork keeps its own theme colour for the band.
+    val targetRangeArea = AapsTheme.generalColors.bgTargetRangeArea
+    val inRangeBox = remember(lowMark, highMark, targetRangeArea) {
+        InRangeBand(low = lowMark, high = highMark, color = targetRangeArea)
+    }
+
+    // Upstream's press-and-hold inspect: the marker draws nothing, the inspect line draws the line and the dot on the
+    // reading (2026-10-27 port: a hold works on every graph).
+    val inspectMarker = remember(inspect) { inspect?.let { SilentInspectMarker } }
+    // Always called, so the composable calls do not depend on inspect
+    val defaultMarkerController = CartesianMarkerController.rememberShowOnPress()
+    val inspectLine = rememberInspectLine(inspect, dotOnReading = true)
+    // The tap handler is set up once, so it reads the current time range through this
+    val latestMinTimestamp by rememberUpdatedState(minTimestamp)
+    // Labels, arrows and decorations (2026-11-19): in their own function, see rememberBgGraphDecorations
+    val decorations = rememberBgGraphDecorations(
+        treatments, bgReadings, bucketedData, graphDisplay, minTimestamp, maxTimestamp, nowTimestamp, lowMark, epsLabelAnchors,
+        seriesRegistry, showRaw, showUkf, basalData, showBasalOnBgGraph, tapTargets, topBandTap, topBandLines, geometryHolder, masterZone,
+        renderReporter, inRangeBox, nowLine, inspectLine
+    )
+
+    // =========================================================================
+    // Range providers — hoisted out of rememberCartesianChart so keys are re-evaluated on recomposition
+    // =========================================================================
+
+    // startAxisRangeProvider (BG axis) is created once, further up, and mutated in place — see
+    // MutableYRangeProvider and the LaunchedEffect above.
+    val endAxisRangeProvider = remember(maxX, basalMaxY) {
+        CartesianLayerRangeProvider.fixed(minX = 0.0, maxX = maxX, minY = 0.0, maxY = basalMaxY)
+    }
+
+    // =========================================================================
+    // Chart — multi layer
+    // =========================================================================
+
+    val axisLock = remember { GraphAxisLock() }
+    // 2026-10-09, per explicit request, MAIN graph only (Graph 5 is unchanged): the ISF line and steps line sit in a strip directly above
+    // the chart, and the hypo prediction line in a strip directly under it, with the DR line and target offset below ISF and steps, both off the plot. The chart keeps the height it
+    // was given; the two strips add height.
+    val stripSp = 11.sp
+    val stripStyle = TextStyle(
+        fontSize = stripSp,
+        lineHeight = stripSp,
+        fontWeight = FontWeight.Bold,
+        lineHeightStyle = LineHeightStyle(
+            alignment = LineHeightStyle.Alignment.Center,
+            trim = LineHeightStyle.Trim.Both
+        )
+    )
+    Column(modifier = Modifier.fillMaxWidth()) {
+    // The press-and-hold pill shows these rows, on the overview and in the History browser (2026-10-28), so a graph with a
+    // pill does not draw them. Hidden rows reserve no band.
+    if (inspect == null && !isLandscape() && graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
+            autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 40.dp, top = 2.dp, bottom = 2.dp)
+        ) {
+            // The last item of the first three lines (smb=, HP=, IOd5=) is left off the strip. It is still in the data, so the
+            // AutoISF detail dialog shows the whole line.
+            autoIsfGraph.statusIsf?.let { line ->
+                IsfStatusLine(line.withoutLastItem("smb="), stripStyle, acceColor, bgIsfColor, ppColor, duraColor)
+            }
+            autoIsfGraph.statusSteps?.let { line ->
+                Text(text = line.withoutLastItem("HP="), color = duraColor, style = stripStyle)
+            }
+            // The DR line and the target offset line (the latter was in the corner of the IOB graph) follow, still off the plot.
+            autoIsfGraph.statusRatio?.let { line ->
+                Text(text = line.withoutLastItem("IOd5="), color = STATUS_RATIO_COLOR, style = stripStyle)
+            }
+            autoIsfGraph.statusTarget?.let { line ->
+                Text(text = line, color = STATUS_TARGET_COLOR, style = stripStyle)
+            }
+        }
+    }
+    Box(
+        modifier = modifier.fillMaxWidth().then(
+            if (isLandscape()) Modifier.nestedScroll(axisLock) else Modifier
+        )
+    ) {
+    CartesianChartHost(
+        chart = rememberCartesianChart(
+            // Layer 0: BG (start axis, visible)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(bgLines),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
+            // Layer 1: Basal (end axis, hidden — no endAxis parameter)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(basalLines),
+                rangeProvider = endAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.End
+            ),
+            // Layer 2: Target line (start axis — shares BG Y-axis range)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(targetLines),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
+            // Layer 3: EPS (start axis — Y based on profile %, same range as BG layer)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(epsLines),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
+            // Layer 4: Activity (start axis — shares BG Y-axis range, values normalized in rebuildChart)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(activityLines),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
+            // Layer 5: top band lines (start axis — shares BG Y-axis range, values placed in rebuildChart)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(topBandLineList),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
+            // Layer 6: Treatment markers (start axis — drawn last, see block 6)
+            rememberLineCartesianLayer(
+                lineProvider = LineCartesianLayer.LineProvider.series(treatmentLines),
+                rangeProvider = startAxisRangeProvider,
+                verticalAxisPosition = Axis.Position.Vertical.Start
+            ),
+            startAxis = VerticalAxis.rememberStart(
+                itemPlacer = VerticalAxis.ItemPlacer.step({ startAxisRangeProvider.yStep }),
+                valueFormatter = CartesianValueFormatter { _, value, _ -> decimalFormatter.to0Decimal(value) },
+                label = rememberTextComponent(
+                    style = TextStyle(color = MaterialTheme.colorScheme.onSurface),
+                    minWidth = TextComponent.MinWidth.fixed(30.dp)
+                ),
+                guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
+            ),
+            bottomAxis = HorizontalAxis.rememberBottom(
+                valueFormatter = timeFormatter,
+                itemPlacer = bottomAxisItemPlacer,
+                label = rememberTextComponent(
+                    style = TextStyle(color = MaterialTheme.colorScheme.onSurface)
+                ),
+                guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
+            ),
+            decorations = decorations,
+            getXStep = { _, _, _ -> 1.0 },
+            marker = inspectMarker,
+            markerVisibilityListener = inspect?.visibilityListener,
+            markerController = inspect?.controller ?: defaultMarkerController
+        ),
+        modelProducer = modelProducer,
+        animationSpec = null,
+        modifier = Modifier.fillMaxSize().pointerInput(tapTargets, topBandLines) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                var moved = false
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (event.changes.size > 1 || event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) {
+                        moved = true
+                        selectedBg = null
+                        selectedSmb = null
+                        selectedBandTime = null
+                    }
+                    if (event.changes.none { it.pressed }) {
+                        val up = event.changes.firstOrNull { it.id == down.id }
+                        if (!moved && up != null && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
+                            val hit = tapTargets.at(up.position)
+                            selectedBg = hit?.bg
+                            selectedSmb = hit?.smb
+                            hit?.bolus?.let { bolus ->
+                                calculationLoaded = false
+                                selectedBolus = bolus
+                            }
+                            // Graph 5: a tap in the top band that hit nothing else shows the four lines at that time
+                            val bandTime = if (hit == null && topBandLines) topBandTap.timestampAt(up.position, latestMinTimestamp) else null
+                            selectedBandTime = bandTime
+                            if (hit != null || bandTime != null) up.consume()
+                        }
+                        break
+                    }
+                } while (true)
+            }
+        },
+        scrollState = scrollState,
+        zoomState = zoomState
+    )
+    // Popups, legend and Graph 5 status lines (2026-11-19): in their own function, see BgGraphOverlays
+    BgGraphOverlays(
+        selectedBg = selectedBg, selectedSmb = selectedSmb, selectedBandTime = selectedBandTime,
+        onDismissBg = { selectedBg = null }, onDismissSmb = { selectedSmb = null }, onDismissBandTime = { selectedBandTime = null },
+        seriesRegistry = seriesRegistry, visibleTimeRange = visibleTimeRange, topBandLines = topBandLines, topBandLines5 = topBandLines5,
+        graphDisplay = graphDisplay, autoIsfGraph = autoIsfGraph, masterZone = masterZone,
+    )
+    }
+    // Hypoprediction line and insulin totals row (2026-11-19): in their own function, see BgGraphBottomStrip
+    BgGraphBottomStrip(topBandLines, autoIsfGraph, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
+    }
+}
+
+/** The line styles of the BG graph layers, built by [rememberBgGraphLines]. */
+private class BgGraphLines(
+    val bgLines: List<LineCartesianLayer.Line>,
+    val basalLines: List<LineCartesianLayer.Line>,
+    val targetLines: List<LineCartesianLayer.Line>,
+    val epsLines: List<LineCartesianLayer.Line>,
+    val activityLines: List<LineCartesianLayer.Line>,
+    val topBandLineList: List<LineCartesianLayer.Line>,
+    val treatmentLines: List<LineCartesianLayer.Line>,
+)
+
+/**
+ * The line styles of [BgGraphCompose], moved out of it unchanged (2026-11-19, per explicit request). Android does not compile a
+ * method past its instruction limit ("Method exceeds compiler instruction limit: 18640"), so the BG graph ran slowly, uncompiled.
+ * Each `remember` here works as it did inline: this is called once per recomposition, always at the same place.
+ */
+@Composable
+private fun rememberBgGraphLines(
+    readingPointProvider: ReadingPointProvider,
+    bucketedPointProvider: BucketedPointProvider,
+    activeSeries: List<String>,
+    basalColor: Color,
+    acceColor: Color,
+    bgIsfColor: Color,
+    ppColor: Color,
+    duraColor: Color,
+    insulinColor: Color,
+): BgGraphLines {
+    val targetLineColor = AapsTheme.elementColors.tempTarget
+    val activityColor = AapsTheme.elementColors.activity
+    val carbsColor = AapsTheme.elementColors.carbs
+    val bgCheckColor = AapsTheme.elementColors.bgCheck
+    val iobPredColor = AapsTheme.generalColors.iobPrediction
+    val cobPredColor = AapsTheme.generalColors.cobPrediction
+    val aCobPredColor = AapsTheme.generalColors.aCobPrediction
+    val uamPredColor = AapsTheme.generalColors.uamPrediction
+    val ztPredColor = AapsTheme.generalColors.ztPrediction
+    val profileSwitchColor = AapsTheme.elementColors.profileSwitch
+
     // =========================================================================
     // BG layer lines (layer 0)
     // =========================================================================
@@ -921,7 +1176,6 @@ fun BgGraphCompose(
     val uamPredLine = remember(uamPredColor) { createPredictionLine(uamPredColor) }
     val ztPredLine = remember(ztPredColor) { createPredictionLine(ztPredColor) }
 
-    val activeSeries by activeSeriesState
     val rawLine = remember {
         LineCartesianLayer.Line(
             fill = LineCartesianLayer.LineFill.single(Fill(Color(0xFFFF0000))),
@@ -954,7 +1208,6 @@ fun BgGraphCompose(
         )
     }
 
-    val smbMarkColor = AapsTheme.elementColors.insulin
     // Anchor both marks to glucose, with the triangle bodies on opposite sides of the reading.
     // About 15% smaller since 2026-11-15, per explicit request (were 32 and 28 dp)
     val bolusMarkLine = remember {
@@ -1051,7 +1304,6 @@ fun BgGraphCompose(
     // EPS layer lines (layer 3) — profile icon points
     // =========================================================================
 
-    val profileSwitchColor = AapsTheme.elementColors.profileSwitch
     val profilePainter = rememberVectorPainter(IcProfile)
 
     val epsLine = remember(profileSwitchColor, profilePainter) {
@@ -1155,33 +1407,49 @@ fun BgGraphCompose(
         }
     }
 
-    // Fixed: full column height always fills BG_GRAPH_BASAL_HEIGHT_FRACTION, whatever is in view (2026-11-19, per explicit
-    // request). It used to refit to the highest basal in the visible window, so columns changed height on every scroll.
-    val basalMaxY = remember { basalScaleAxisMax(BG_GRAPH_BASAL_HEIGHT_FRACTION) }
+    return BgGraphLines(bgLines, basalLines, targetLines, epsLines, activityLines, topBandLineList, treatmentLines)
+}
 
-    // =========================================================================
-    // Decorations
-    // =========================================================================
-
-    val nowLineColor = MaterialTheme.colorScheme.onSurface
-    val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
-
-    // In-range belt — translucent band between lowMark and highMark on the BG axis
-    val lowMark = chartConfig.lowMark
-    val highMark = chartConfig.highMark
-    // Drawn under the layers (upstream, ported 2026-10-27): Vico's HorizontalBox drew over them, and its translucent
-    // colour tinted every reading and marker inside the band. The fork keeps its own theme colour for the band.
-    val targetRangeArea = AapsTheme.generalColors.bgTargetRangeArea
-    val inRangeBox = remember(lowMark, highMark, targetRangeArea) {
-        InRangeBand(low = lowMark, high = highMark, color = targetRangeArea)
-    }
-
-    // Upstream's press-and-hold inspect: the marker draws nothing, the inspect line draws the line and the dot on the
-    // reading (2026-10-27 port: a hold works on every graph).
-    val inspectMarker = remember(inspect) { inspect?.let { SilentInspectMarker } }
-    // Always called, so the composable calls do not depend on inspect
-    val defaultMarkerController = CartesianMarkerController.rememberShowOnPress()
-    val inspectLine = rememberInspectLine(inspect, dotOnReading = true)
+/**
+ * The labels, arrows and other decorations of [BgGraphCompose], moved out of it unchanged (2026-11-19, per explicit request),
+ * for the same reason as [rememberBgGraphLines]. Returns the decoration list the chart draws.
+ */
+@Composable
+private fun rememberBgGraphDecorations(
+    treatments: TreatmentGraphData,
+    bgReadings: List<BgDataPoint>,
+    bucketedData: List<BgDataPoint>,
+    graphDisplay: GraphDisplay,
+    minTimestamp: Long,
+    maxTimestamp: Long,
+    nowTimestamp: Long,
+    lowMark: Double,
+    epsLabelAnchors: List<SmbStackItem>,
+    seriesRegistry: Map<String, List<BgDataPoint>>,
+    showRaw: Boolean,
+    showUkf: Boolean,
+    basalData: BasalGraphData,
+    showBasalOnBgGraph: Boolean,
+    tapTargets: GraphTapTargets,
+    topBandTap: TopBandTapTarget,
+    topBandLines: Boolean,
+    geometryHolder: ChartGeometryHolder?,
+    masterZone: TimeZone?,
+    renderReporter: GraphRenderReporter,
+    inRangeBox: Decoration,
+    nowLine: Decoration,
+    inspectLine: Decoration?,
+): List<Decoration> {
+    val decimalFormatter = LocalDecimalFormatter.current
+    val profileUtil = LocalProfileUtil.current
+    val acceColor = AapsTheme.generalColors.acceIsf
+    val bgIsfColor = AapsTheme.generalColors.bgIsf
+    val ppColor = AapsTheme.generalColors.ppIsf
+    val duraColor = AapsTheme.generalColors.duraIsf
+    val basalColor = AapsTheme.elementColors.tempBasal
+    val insulinColor = AapsTheme.elementColors.insulin
+    val smbMarkColor = AapsTheme.elementColors.insulin
+    val profileSwitchColor = AapsTheme.elementColors.profileSwitch
     fun isfColor(kind: DominantIsf?): Color = when (kind) {
         DominantIsf.ACCE -> acceColor
         DominantIsf.BG   -> bgIsfColor
@@ -1360,8 +1628,6 @@ fun BgGraphCompose(
     val tapReadings = bgReadings + bucketedData +
         (if (showRaw) seriesRegistry[SERIES_RAW].orEmpty() else emptyList()) +
         (if (showUkf) seriesRegistry[SERIES_UKF].orEmpty() else emptyList())
-    // The tap handler is set up once, so it reads the current time range through this
-    val latestMinTimestamp by rememberUpdatedState(minTimestamp)
     val tapReporter = remember(tapReadings, bgReadings, treatments, minTimestamp, lowMark) {
         GraphPointTapReporter(
             tapTargets, tapReadings, bgReadings, treatments.boluses.filter { it.bolusType == BolusType.NORMAL }, minTimestamp,
@@ -1408,170 +1674,36 @@ fun BgGraphCompose(
         listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, doseCheckDots, tapReporter) +
             listOfNotNull(renderReporter, basalPeakLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
+    return decorations
+}
 
-    // =========================================================================
-    // Range providers — hoisted out of rememberCartesianChart so keys are re-evaluated on recomposition
-    // =========================================================================
-
-    // startAxisRangeProvider (BG axis) is created once, further up, and mutated in place — see
-    // MutableYRangeProvider and the LaunchedEffect above.
-    val endAxisRangeProvider = remember(maxX, basalMaxY) {
-        CartesianLayerRangeProvider.fixed(minX = 0.0, maxX = maxX, minY = 0.0, maxY = basalMaxY)
-    }
-
-    // =========================================================================
-    // Chart — multi layer
-    // =========================================================================
-
-    val axisLock = remember { GraphAxisLock() }
-    // 2026-10-09, per explicit request, MAIN graph only (Graph 5 is unchanged): the ISF line and steps line sit in a strip directly above
-    // the chart, and the hypo prediction line in a strip directly under it, with the DR line and target offset below ISF and steps, both off the plot. The chart keeps the height it
-    // was given; the two strips add height.
-    val stripSp = 11.sp
-    val stripStyle = TextStyle(
-        fontSize = stripSp,
-        lineHeight = stripSp,
-        fontWeight = FontWeight.Bold,
-        lineHeightStyle = LineHeightStyle(
-            alignment = LineHeightStyle.Alignment.Center,
-            trim = LineHeightStyle.Trim.Both
-        )
-    )
-    Column(modifier = Modifier.fillMaxWidth()) {
-    // The press-and-hold pill shows these rows, on the overview and in the History browser (2026-10-28), so a graph with a
-    // pill does not draw them. Hidden rows reserve no band.
-    if (inspect == null && !isLandscape() && graphDisplay.showTextLines && !topBandLines && (autoIsfGraph.statusIsf != null || autoIsfGraph.statusSteps != null ||
-            autoIsfGraph.statusRatio != null || autoIsfGraph.statusTarget != null)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 40.dp, top = 2.dp, bottom = 2.dp)
-        ) {
-            // The last item of the first three lines (smb=, HP=, IOd5=) is left off the strip. It is still in the data, so the
-            // AutoISF detail dialog shows the whole line.
-            autoIsfGraph.statusIsf?.let { line ->
-                IsfStatusLine(line.withoutLastItem("smb="), stripStyle, acceColor, bgIsfColor, ppColor, duraColor)
-            }
-            autoIsfGraph.statusSteps?.let { line ->
-                Text(text = line.withoutLastItem("HP="), color = duraColor, style = stripStyle)
-            }
-            // The DR line and the target offset line (the latter was in the corner of the IOB graph) follow, still off the plot.
-            autoIsfGraph.statusRatio?.let { line ->
-                Text(text = line.withoutLastItem("IOd5="), color = STATUS_RATIO_COLOR, style = stripStyle)
-            }
-            autoIsfGraph.statusTarget?.let { line ->
-                Text(text = line, color = STATUS_TARGET_COLOR, style = stripStyle)
-            }
-        }
-    }
-    Box(
-        modifier = modifier.fillMaxWidth().then(
-            if (isLandscape()) Modifier.nestedScroll(axisLock) else Modifier
-        )
-    ) {
-    CartesianChartHost(
-        chart = rememberCartesianChart(
-            // Layer 0: BG (start axis, visible)
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(bgLines),
-                rangeProvider = startAxisRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.Start
-            ),
-            // Layer 1: Basal (end axis, hidden — no endAxis parameter)
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(basalLines),
-                rangeProvider = endAxisRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.End
-            ),
-            // Layer 2: Target line (start axis — shares BG Y-axis range)
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(targetLines),
-                rangeProvider = startAxisRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.Start
-            ),
-            // Layer 3: EPS (start axis — Y based on profile %, same range as BG layer)
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(epsLines),
-                rangeProvider = startAxisRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.Start
-            ),
-            // Layer 4: Activity (start axis — shares BG Y-axis range, values normalized in rebuildChart)
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(activityLines),
-                rangeProvider = startAxisRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.Start
-            ),
-            // Layer 5: top band lines (start axis — shares BG Y-axis range, values placed in rebuildChart)
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(topBandLineList),
-                rangeProvider = startAxisRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.Start
-            ),
-            // Layer 6: Treatment markers (start axis — drawn last, see block 6)
-            rememberLineCartesianLayer(
-                lineProvider = LineCartesianLayer.LineProvider.series(treatmentLines),
-                rangeProvider = startAxisRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.Start
-            ),
-            startAxis = VerticalAxis.rememberStart(
-                itemPlacer = VerticalAxis.ItemPlacer.step({ startAxisRangeProvider.yStep }),
-                valueFormatter = CartesianValueFormatter { _, value, _ -> decimalFormatter.to0Decimal(value) },
-                label = rememberTextComponent(
-                    style = TextStyle(color = MaterialTheme.colorScheme.onSurface),
-                    minWidth = TextComponent.MinWidth.fixed(30.dp)
-                ),
-                guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
-            ),
-            bottomAxis = HorizontalAxis.rememberBottom(
-                valueFormatter = timeFormatter,
-                itemPlacer = bottomAxisItemPlacer,
-                label = rememberTextComponent(
-                    style = TextStyle(color = MaterialTheme.colorScheme.onSurface)
-                ),
-                guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
-            ),
-            decorations = decorations,
-            getXStep = { _, _, _ -> 1.0 },
-            marker = inspectMarker,
-            markerVisibilityListener = inspect?.visibilityListener,
-            markerController = inspect?.controller ?: defaultMarkerController
-        ),
-        modelProducer = modelProducer,
-        animationSpec = null,
-        modifier = Modifier.fillMaxSize().pointerInput(tapTargets, topBandLines) {
-            awaitEachGesture {
-                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                var moved = false
-                do {
-                    val event = awaitPointerEvent(PointerEventPass.Initial)
-                    if (event.changes.size > 1 || event.changes.any { (it.position - down.position).getDistance() > viewConfiguration.touchSlop }) {
-                        moved = true
-                        selectedBg = null
-                        selectedSmb = null
-                        selectedBandTime = null
-                    }
-                    if (event.changes.none { it.pressed }) {
-                        val up = event.changes.firstOrNull { it.id == down.id }
-                        if (!moved && up != null && up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis) {
-                            val hit = tapTargets.at(up.position)
-                            selectedBg = hit?.bg
-                            selectedSmb = hit?.smb
-                            hit?.bolus?.let { bolus ->
-                                calculationLoaded = false
-                                selectedBolus = bolus
-                            }
-                            // Graph 5: a tap in the top band that hit nothing else shows the four lines at that time
-                            val bandTime = if (hit == null && topBandLines) topBandTap.timestampAt(up.position, latestMinTimestamp) else null
-                            selectedBandTime = bandTime
-                            if (hit != null || bandTime != null) up.consume()
-                        }
-                        break
-                    }
-                } while (true)
-            }
-        },
-        scrollState = scrollState,
-        zoomState = zoomState
-    )
+/**
+ * The point popups, the shown-hours label, the Graph 5 legend and tap dialog and the Graph 5 status lines of [BgGraphCompose],
+ * moved out of it unchanged (2026-11-19, per explicit request), for the same reason as [rememberBgGraphLines].
+ */
+@Composable
+private fun BoxScope.BgGraphOverlays(
+    selectedBg: BgDataPoint?,
+    selectedSmb: BolusGraphPoint?,
+    selectedBandTime: Long?,
+    onDismissBg: () -> Unit,
+    onDismissSmb: () -> Unit,
+    onDismissBandTime: () -> Unit,
+    seriesRegistry: Map<String, List<BgDataPoint>>,
+    visibleTimeRange: Pair<Long, Long>?,
+    topBandLines: Boolean,
+    topBandLines5: List<TopBandLine>,
+    graphDisplay: GraphDisplay,
+    autoIsfGraph: AutoIsfGraphData,
+    masterZone: TimeZone?,
+) {
+    val dateUtil = LocalDateUtil.current
+    val decimalFormatter = LocalDecimalFormatter.current
+    val profileUtil = LocalProfileUtil.current
+    val acceColor = AapsTheme.generalColors.acceIsf
+    val bgIsfColor = AapsTheme.generalColors.bgIsf
+    val ppColor = AapsTheme.generalColors.ppIsf
+    val duraColor = AapsTheme.generalColors.duraIsf
     selectedBg?.let { reading ->
         val mgdl = if (profileUtil.units == GlucoseUnit.MGDL) reading.value else reading.value * Constants.MMOLL_TO_MGDL
         val valueText = profileUtil.fromMgdlToStringWithUnits(mgdl)
@@ -1588,7 +1720,7 @@ fun BgGraphCompose(
                     Text(if (lineName != null) stringResource(CoreUiStrings.graph_point_line_value, lineName, valueText) else valueText)
                     Text(graphTimestamp(dateUtil, reading.timestamp, masterZone, showDate = true))
                 }
-                TextButton(onClick = { selectedBg = null }) { Text(stringResource(CoreUiStrings.close)) }
+                TextButton(onClick = { onDismissBg() }) { Text(stringResource(CoreUiStrings.close)) }
             }
         }
     }
@@ -1602,7 +1734,7 @@ fun BgGraphCompose(
                         Text(stringResource(CoreUiStrings.graph_smb_step_cut, stringResource(InterfacesStrings.format_insulin_units, smb.stepCut)), color = STEP_CUT_ARROW_COLOR)
                     }
                 }
-                TextButton(onClick = { selectedSmb = null }) { Text(stringResource(CoreUiStrings.close)) }
+                TextButton(onClick = { onDismissSmb() }) { Text(stringResource(CoreUiStrings.close)) }
             }
         }
     }
@@ -1642,10 +1774,10 @@ fun BgGraphCompose(
                 }
             }
             if (rows.isNotEmpty()) AlertDialog(
-                onDismissRequest = { selectedBandTime = null },
+                onDismissRequest = { onDismissBandTime() },
                 title = { Text(stringResource(CoreUiStrings.graph_number, 5)) },
                 text = { Column { rows.forEach { (text, color) -> Text(text, color = color) } } },
-                confirmButton = { TextButton(onClick = { selectedBandTime = null }) { Text(stringResource(CoreUiStrings.close)) } },
+                confirmButton = { TextButton(onClick = { onDismissBandTime() }) { Text(stringResource(CoreUiStrings.close)) } },
             )
         }
         // Two rows of two (with the ranges the names no longer fit on one row of a phone).
@@ -1688,7 +1820,22 @@ fun BgGraphCompose(
             }
         }
     }
-    }
+}
+
+/**
+ * The hypoprediction line and the insulin totals row under the main graph, moved out of [BgGraphCompose] unchanged
+ * (2026-11-19, per explicit request), for the same reason as [rememberBgGraphLines].
+ */
+@Composable
+private fun BgGraphBottomStrip(
+    topBandLines: Boolean,
+    autoIsfGraph: AutoIsfGraphData,
+    visibleTimeRange: Pair<Long, Long>?,
+    nowTimestamp: Long,
+    rawBasalData: BasalGraphData,
+    treatments: TreatmentGraphData,
+    stripStyle: TextStyle,
+) {
     // The insulin totals row (2026-11-19, per explicit request), just below the hypoprediction line: 12 equal slices of the shown
     // span, each the insulin delivered in it, as in the 3426 app. Settings "Insulin totals" (also List 1 and SMS) turns it on and off.
     val showInsulinTotals by LocalPreferences.current.observe(BooleanKey.ApsAutoIsfShowInsulinTotals).collectAsStateWithLifecycle()
@@ -1718,7 +1865,6 @@ fun BgGraphCompose(
                 }
             }
         }
-    }
     }
 }
 
