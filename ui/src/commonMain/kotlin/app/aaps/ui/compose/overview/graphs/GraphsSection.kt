@@ -579,6 +579,8 @@ fun GraphsSection(
     LaunchedEffect(bgScrollState, foregroundCount) {
         if (fitWholeWindow) return@LaunchedEffect
         val startedAt = dateUtil.now()
+        // The IOB window the guard last corrected (2026-11-19), see the check below
+        var guardCorrectedWindow: Pair<Long, Long>? = null
         while (dateUtil.now() - startedAt < STARTUP_GUARD_MS) {
             // Fast at first (the lower graphs come up on stale positions in the first seconds), then relaxed.
             delay(if (dateUtil.now() - startedAt < 30_000L) 1_000L else STARTUP_GUARD_INTERVAL_MS)
@@ -615,6 +617,18 @@ fun GraphsSection(
             // (2026-11-19): in minutes from two different starts it once saw now 600 min off a window that ended on it.
             if (visible.second < nowMs - (STARTUP_GUARD_GAP_MINUTES * 60_000).toLong() || visible.first > nowMs) {
                 val nowX = timestampToX(nowMs, range.first)
+                // 2026-11-19, per explicit request: once only for the same window. The window here is the IOB graph's, and that
+                // graph cannot scroll past its last data, so when the data ends a few minutes before now the window never
+                // moves and the guard used to scroll the main graph every 1-5 s for minutes (iPhone 17:57-17:58, 284 lines).
+                val previous = guardCorrectedWindow
+                if (previous != null && abs(visible.first - previous.first) < 60_000L && abs(visible.second - previous.second) < 60_000L) {
+                    graphViewModel.graphSyncLog(
+                        "guard",
+                        "window did not move after the last correction (data ends ${(nowMs - visible.second) / 60_000L} min before now) - guard stops"
+                    )
+                    break
+                }
+                guardCorrectedWindow = visible
                 graphViewModel.graphSyncLog(
                     "guard",
                     "window ${timestampToX(visible.first, range.first)}..${timestampToX(visible.second, range.first)} min, " +
