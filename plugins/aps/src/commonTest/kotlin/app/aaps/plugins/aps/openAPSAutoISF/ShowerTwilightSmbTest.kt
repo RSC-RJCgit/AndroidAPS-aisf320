@@ -93,6 +93,23 @@ class ShowerTwilightSmbTest {
         assertEquals(1.0, result.microBolus, 0.001)
     }
 
+    @Test
+    fun noShowerNoteLeavesTheSmbAlone() {
+        val result = showerTwilightSmb(morning(showerMinutesAgo = null))
+        assertEquals(1.0, result.microBolus, 0.001)
+        assertEquals(false, result.matched)
+    }
+
+    @Test
+    fun fifteenMinutesAfterTheShowerNoteStillCaps() {
+        assertEquals(0.4, showerTwilightSmb(morning(showerMinutesAgo = 15)).microBolus, 0.001)
+    }
+
+    @Test
+    fun sixteenMinutesAfterTheShowerNoteLeavesTheSmbAlone() {
+        assertEquals(1.0, showerTwilightSmb(morning(showerMinutesAgo = 16)).microBolus, 0.001)
+    }
+
     private fun morning(
         hour: Int = 7,
         bg: Double = 7.0 * 18.0,
@@ -107,6 +124,7 @@ class ShowerTwilightSmbTest {
         microBolus: Double = 1.0,
         iob: Double = 0.2,
         maxIob: Double = 10.0,
+        showerMinutesAgo: Int? = 5,
     ) = ShowerTwilightInput(
         hour = hour,
         bg = bg,
@@ -121,5 +139,6 @@ class ShowerTwilightSmbTest {
         microBolus = microBolus,
         iob = iob,
         maxIob = maxIob,
+        showerMinutesAgo = showerMinutesAgo,
     )
 }

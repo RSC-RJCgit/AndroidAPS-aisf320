@@ -195,6 +195,8 @@ class BoostCriteriaTest {
         rawDelta1: Double = 6.0,
         iobChange5: Double = 0.9,
         smbCount5: Int = 3,
+        shortDelta: Double = 0.0,
+        iob: Double = Double.MAX_VALUE,
     ) = bg3BoostShouldFire(
         readyBolusGiven = true,
         readyBg3 = true,
@@ -217,7 +219,30 @@ class BoostCriteriaTest {
         steps60 = 0,
         smbIntervalSec = 9999.0,
         deliveryBaseline = 0.14,
+        shortDelta = shortDelta,
+        iob = iob,
     )
+
+    // Fast onset (2026-11-19): Live 19 Nov 09:37, Delta 0.65, SDelta 0.50, LDelta 0.25, IOB 0.81, IOB rise too small.
+    @Test
+    fun bg3FastOnsetOpensWithoutTheIobRiseAndLongDelta() {
+        assertTrue(strong(delta = 11.7, longDelta = 4.5, iobChange5 = 0.3, shortDelta = 9.0, iob = 0.81))
+    }
+
+    @Test
+    fun bg3FastOnsetNeedsIobUnderOne() {
+        assertFalse(strong(delta = 11.7, longDelta = 4.5, iobChange5 = 0.3, shortDelta = 9.0, iob = 1.0))
+    }
+
+    @Test
+    fun bg3FastOnsetNeedsTheShortDelta() {
+        assertFalse(strong(delta = 11.7, longDelta = 4.5, iobChange5 = 0.3, shortDelta = 8.0, iob = 0.81))
+    }
+
+    @Test
+    fun bg3FastOnsetStillNeedsTheRawRise() {
+        assertFalse(strong(delta = 11.7, longDelta = 4.5, iobChange5 = 0.3, rawDelta5 = 14.0, shortDelta = 9.0, iob = 0.81))
+    }
 
     @Test
     fun mildFailsafeFiresOnAQuietConfirmedRise() {

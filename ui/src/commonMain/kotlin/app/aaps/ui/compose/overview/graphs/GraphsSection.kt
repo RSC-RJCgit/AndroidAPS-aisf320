@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -1031,30 +1032,51 @@ fun GraphsSection(
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
             // Diagnostics (2026-11-19, per explicit request): one log line per two-finger gesture, whether or not it zoomed.
-            // Watches only (Initial pass, nothing consumed), so Vico's own pinch and drag are unchanged.
+            // Watches only (nothing consumed), so Vico's own pinch and drag are unchanged. Final pass (was Initial), so it
+            // sees whether the graphs below took the moves: AAPSClient2 12:56:20, a pinch 2 s after a zoom changed nothing
+            // with the graphs ready. The finger spread at start and end says whether the fingers moved apart enough.
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     var startMs = 0L
                     var fingers = 0
                     var readyAtStart = true
                     var heldDuring = false
+                    var holdAtStart = false
                     var bgZoomBefore = Float.NaN
                     var iobZoomBefore = Float.NaN
                     var bgScrollBefore = Float.NaN
+                    var spreadStart = Float.NaN
+                    var spreadEnd = Float.NaN
+                    var twoFingerMoves = 0
+                    var consumedMoves = 0
                     while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val down = event.changes.count { it.pressed }
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        val pressed = event.changes.filter { it.pressed }
+                        val down = pressed.size
+                        val spread = if (down >= 2) (pressed[0].position - pressed[1].position).getDistance() else Float.NaN
                         if (startMs == 0L && down >= 2) {
                             startMs = dateUtil.now()
                             fingers = down
                             readyAtStart = latestGraphsReady.value
                             heldDuring = !readyAtStart
+                            holdAtStart = inspect.fingerDown
                             bgZoomBefore = latestBgZoomState.value.value
                             iobZoomBefore = latestIobZoomState.value.value
                             bgScrollBefore = latestBgScrollState.value.value
+                            spreadStart = spread
+                            spreadEnd = spread
+                            twoFingerMoves = 0
+                            consumedMoves = 0
                         } else if (startMs != 0L) {
                             fingers = maxOf(fingers, down)
                             if (!latestGraphsReady.value) heldDuring = true
+                            if (down >= 2) {
+                                spreadEnd = spread
+                                if (pressed.any { it.positionChanged() }) {
+                                    twoFingerMoves++
+                                    if (pressed.any { it.isConsumed }) consumedMoves++
+                                }
+                            }
                             if (down == 0) {
                                 val bgZoomAfter = latestBgZoomState.value.value
                                 val iobZoomAfter = latestIobZoomState.value.value
@@ -1064,7 +1086,10 @@ fun GraphsSection(
                                         "${if (zoomed) "zoomed" else "NO ZOOM"}: main $bgZoomBefore -> $bgZoomAfter, " +
                                         "IOB $iobZoomBefore -> $iobZoomAfter, main scroll $bgScrollBefore -> ${latestBgScrollState.value.value}, " +
                                         "graphs ${if (readyAtStart) "ready" else "redrawing"} at start" +
-                                        if (heldDuring) ", held (redrawing) during it" else ""
+                                        (if (heldDuring) ", held (redrawing) during it" else "") +
+                                        ", spread ${spreadStart.roundToInt()} -> ${spreadEnd.roundToInt()} px" +
+                                        ", moves $twoFingerMoves (taken by the graphs $consumedMoves)" +
+                                        if (holdAtStart) ", hold active at start" else ""
                                 )
                                 startMs = 0L
                             }

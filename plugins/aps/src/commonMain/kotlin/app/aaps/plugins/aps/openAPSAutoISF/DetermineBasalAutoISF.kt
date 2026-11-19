@@ -258,7 +258,12 @@ internal data class ShowerTwilightInput(
     val microBolus: Double,
     val iob: Double,
     val maxIob: Double,
+    /** Minutes since the Shower12 automation fired (its Shwr12 note), null when it has not fired since the app started. */
+    val showerMinutesAgo: Int? = null,
 )
+
+/** The shower cap only runs this long after a Shwr12 note (2026-11-19, per explicit request). */
+internal const val SHOWER_CAP_MINUTES = 15
 
 internal data class ShowerTwilightResult(
     val microBolus: Double,
@@ -271,8 +276,12 @@ internal data class ShowerTwilightResult(
 
 // Morning SMB cap from 3.2.1, hours 5 to 9. The quieter step gate is checked first.
 // determine_basal applies this before the FastRise size tiers.
+// 2026-11-19, per explicit request: only in the 15 minutes after a Shwr12 note. Before this it ran on every fast morning
+// rise under 8.0 with no shower at all (Live 19 Nov 09:34-09:40: SMBs cut to 0.05 U and then 0 while BG rose 6.9 -> 8.0).
 internal fun showerTwilightSmb(input: ShowerTwilightInput): ShowerTwilightResult {
-    val morning = input.hour in 5..9 &&
+    val afterShower = input.showerMinutesAgo != null && input.showerMinutesAgo <= SHOWER_CAP_MINUTES
+    val morning = afterShower &&
+        input.hour in 5..9 &&
         input.bg <= 8.0 * 18.0 &&
         input.cob <= 0.0 &&
         !input.tempTargetSet &&
@@ -953,6 +962,10 @@ class DetermineBasalAutoISF(
     // True while dura is the main factor, BG is flat and under 6.8 mmol, there are no carbs and IOB is already 1 U or
     // more. Then no SMB is given and a temp basal is never above the profile basal. See `duraFlatCapRule` in the plugin.
     var duraFlatCapActive: Boolean = false
+
+    // Shower cap (2026-11-19, per explicit request): minutes since the Shower12 automation fired, set by the plugin each
+    // cycle; null when it has not fired since the app started. See showerTwilightSmb.
+    var showerMinutesAgo: Int? = null
 
     // Rule A (2026-10-26, per explicit request): no SMB while HP2 is below this, in mmol. 0 = off. Set by the plugin each
     // loop from DoubleKey.ApsAutoIsfHp2NoSmbBelow; see hp2BlocksSmb.
@@ -2308,6 +2321,7 @@ class DetermineBasalAutoISF(
                             microBolus = microBolus,
                             iob = iob_data.iob,
                             maxIob = profile.max_iob,
+                            showerMinutesAgo = showerMinutesAgo,
                         ),
                         glitchInput = SensorGlitchInput(
                             bgAcceleration = bgAcceleration,

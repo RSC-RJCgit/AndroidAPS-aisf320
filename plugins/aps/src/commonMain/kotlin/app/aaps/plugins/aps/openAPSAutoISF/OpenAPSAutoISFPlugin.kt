@@ -2135,6 +2135,8 @@ open class OpenAPSAutoISFPlugin(
             smbIntervalSec = interval,
             deliveryBaseline = baseline,
             riseHold = riseHoldThisCycle,
+            shortDelta = shortDelta,
+            iob = iob,
         )
         val mild = mildBoostShouldFire(
             readyMild = readyMild,
@@ -4912,11 +4914,16 @@ open class OpenAPSAutoISFPlugin(
         determineBasalAutoISF.hp2NoSmbBelowMmol = preferences.get(DoubleKey.ApsAutoIsfHp2NoSmbBelow)
         val mcapOn = preferences.get(BooleanKey.ApsAutoIsfMealBolusInSmbCap)
         determineBasalAutoISF.bolusSum30ForCap = if (mcapOn) normalBolusSum(now, 30 * 60 * 1000L) else 0.0
+        determineBasalAutoISF.showerMinutesAgo = runMarks.minutesAgo(RunMark.SHOWER12, now)
         if (mcapOn) {
+            // 2026-11-19, per explicit request: while the stuck-high Tier C rescue runs, its stronger profile is the rescue
+            // itself, so it does not shrink the cap (Live 19 Nov 10:02-10:08: 186% gave a 1.13 U cap and every SMB was cut to 0).
+            val tierCRescue = preferences.get(BooleanNonKey.ApsAutoIsfStuckHighTierCActive)
             val strength = profileStrengthNow()
             val walkingForCap = mcapWalking(steps5(now), steps30(now))
-            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(strength, walkingForCap)
-            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + if (walkingForCap) ", walking" else ""
+            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(if (tierCRescue) 100.0 else strength, walkingForCap)
+            determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + (if (tierCRescue) " Tier C, not cut" else "") +
+                if (walkingForCap) ", walking" else ""
             determineBasalAutoISF.smbCap30Walking = walkingForCap
         } else {
             determineBasalAutoISF.smbCap30ForCap = 2.1

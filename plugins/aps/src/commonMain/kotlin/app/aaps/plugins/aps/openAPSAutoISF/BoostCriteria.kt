@@ -107,15 +107,22 @@ internal fun bg3BoostShouldFire(
     smbIntervalSec: Double,
     deliveryBaseline: Double,
     riseHold: Boolean = false,
+    // Fast onset (2026-11-19, per explicit request): mg/dL and total IOB in U. The defaults leave the fast-onset path off.
+    shortDelta: Double = 0.0,
+    iob: Double = Double.MAX_VALUE,
 ): Boolean {
     if (!(profilePercent == 100 && boostAutomationsOn && readyBolusGiven && readyBg3)) return false
     val stackK = if (smbIntervalSec <= 70.0) 1.10 else 1.0
     val thresholdScale = deliveryBaseline / 0.17
     val rawDelta1FloorOk = bg < 162.1 || rawDelta1 >= 4.5 * stackK
     val deliverySuppressed = smbCount5 <= 1 && rawDelta5 >= 14.4 && rawDelta1 >= 14.4 && bg >= 117.1 && delta >= 0.0
+    // A sharp rise from flat while IOB is still low stands in for the IOB-rise and long-delta tests, which lag it. Same rule
+    // as the 3426 loop phone: Delta >= 0.60, short delta >= 0.45, IOB < 1.0 (replayed on Live 27 Oct-19 Nov; Live 19 Nov
+    // 09:37 would have opened 4 min earlier). The raw rise test below still applies. Not scaled by stackK, as replayed.
+    val fastOnset = delta >= 10.8 && shortDelta >= 8.1 && iob < 1.0
     val inWindow = timeWindowContains(minuteOfDay, 8, 30, 0, 0) || daytimeBypass || riseHold
     return inWindow &&
-        ((iobChange5 > 0.85 * stackK * thresholdScale && delta >= 10.8 * stackK) || deliverySuppressed) &&
+        ((iobChange5 > 0.85 * stackK * thresholdScale && delta >= 10.8 * stackK) || deliverySuppressed || fastOnset) &&
         rawDelta5 >= 14.4 * stackK &&
         rawDelta1FloorOk &&
         !onLowProfile &&
@@ -124,7 +131,7 @@ internal fun bg3BoostShouldFire(
         steps5 <= 20 &&
         steps30 <= 100 &&
         steps60 < 300 &&
-        (deliverySuppressed || longDelta > 7.2)
+        (deliverySuppressed || fastOnset || longDelta > 7.2)
 }
 
 /**

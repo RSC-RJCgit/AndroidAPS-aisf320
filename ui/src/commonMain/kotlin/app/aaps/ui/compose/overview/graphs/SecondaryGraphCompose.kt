@@ -1095,6 +1095,10 @@ fun SecondaryGraphCompose(
     val primarySingleAxisScale = remember(primaryType, dualAxisRanges, hasBasalLayer, primaryYValues) {
         if (dualAxisRanges != null || hasBasalLayer || primaryYValues.isEmpty()) return@remember null
         when (primaryType) {
+            // 2026-11-19, per explicit request: IOB without the basal layer ("No basal on the IOB graph") keeps the zero-floored
+            // scale it has with basal, minus the basal band. Before this it fell to the raw min..max of the visible window, so the
+            // axis could start well above 0 and a small IOB change filled the whole height.
+            SeriesType.IOB                                    -> zeroFloorNiceRange(primaryYValues.min(), primaryYValues.max().coerceAtLeast(0.1), IOB_GRAPH_TICK_COUNT)
             SeriesType.COB                                    -> niceScale(0.0, primaryYValues.max().coerceAtLeast(0.0), SECONDARY_GRAPH_TICK_COUNT)
             in ZERO_FLOOR_SERIES_TYPES                         -> zeroFloorNiceRange(primaryYValues.min(), primaryYValues.max(), SECONDARY_GRAPH_TICK_COUNT)
             SeriesType.VAR_SENSITIVITY, SeriesType.HEART_RATE  -> niceScale(primaryYValues.min(), primaryYValues.max(), SECONDARY_GRAPH_TICK_COUNT)

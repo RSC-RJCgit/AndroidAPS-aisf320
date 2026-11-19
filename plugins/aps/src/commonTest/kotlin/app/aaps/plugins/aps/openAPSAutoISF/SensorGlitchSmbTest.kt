@@ -198,6 +198,7 @@ class SensorGlitchSmbTest {
                 microBolus = 0.1,
                 iob = 0.2,
                 maxIob = 10.0,
+                showerMinutesAgo = 5,
             ),
             glitchInput = calm(
                 delta = 0.0,

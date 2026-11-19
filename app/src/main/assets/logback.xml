@@ -1,7 +1,11 @@
 <configuration>
     <!-- AutoISF fork: the log goes to Documents/aapsLogs with an hourly zip, as in AutoISF 3.4, so the AutoISF
-         emulator tools can read it. AAPS itself writes to Android/data/<package>, which other apps cannot read. -->
-    <property name="EXT_FILES_DIR" scope="context" value="/storage/emulated/0/Documents/aapsLogs" />
+         emulator tools can read it. AAPS itself writes to Android/data/<package>, which other apps cannot read.
+         2026-11-19, per explicit request: one subfolder per app (PACKAGE_NAME is set by logback-android). In the shared
+         folder an app cannot write a file another app made: AAPSClient2 wrote no log from 15 Nov, because an
+         uninstalled app's 8 Nov AndroidAPS.log was there, and sending logs found nothing new. Two v4 apps on one
+         phone also no longer write into the same file. The in-app log sending reads this same property. -->
+    <property name="EXT_FILES_DIR" scope="context" value="/storage/emulated/0/Documents/aapsLogs/${PACKAGE_NAME}" />
     <appender name="file" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <file>${EXT_FILES_DIR}/AndroidAPS.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
