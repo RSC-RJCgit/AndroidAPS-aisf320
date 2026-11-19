@@ -170,6 +170,15 @@ class PrepareTreatmentsDataWorker(
         val stepCutRegex = Regex("""\bStepCut=([0-9]+(?:\.[0-9]+)?)""")
         // Older results without the token are read from their reason text, unless that is switched off
         val stepCutOldReasons = preferences.get(BooleanKey.ApsAutoIsfStepCutFromOldReasons)
+        // Tier 3 UAM boost (2026-11-19, per explicit request): the times of its "UamBst" notes. An SMB from 1 min before to 3 min
+        // after one is that boost's dose, and also gets its value in the manual bolus row (BolusDataPoint.tier3).
+        // Not on a Virtual phone with its own UAM boost off: those notes are Live's echoes (same rule as hideLiveUamBoostEchoes below).
+        val uamBoostEchoesOnly = activePlugin.activePump is VirtualPump && !config.AAPSCLIENT &&
+            !preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled)
+        val uamBoostNoteTimes = if (uamBoostEchoesOnly) emptyList()
+        else persistenceLayer.getTherapyEventDataFromToTime(fromTime - T.mins(5).msecs(), endTime).blockingGet()
+            .filter { it.type == TE.Type.NOTE && CodedAutomationNames.isUamBoostNote(it.note) }
+            .map { it.timestamp }
         val bolusDataPoints = persistenceLayer.getBolusesFromTimeToTime(fromTime, endTime, true)
             .map { BolusDataPoint(it, rh, activePlugin.activePump.pumpDescription.bolusStep, preferences, decimalFormatter) }
             .filter { it.data.type == BS.Type.NORMAL || it.data.type == BS.Type.SMB }
@@ -215,6 +224,9 @@ class PrepareTreatmentsDataWorker(
                     stepCutRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: if (stepCutOldReasons) oldStepCutFrom(r.reason) else 0.0
                 } ?: 0.0
             }
+            if (dp.data.type == BS.Type.SMB && dp.data.amount > 0.0 &&
+                uamBoostNoteTimes.any { note -> dp.x.toLong() - note in -T.mins(1).msecs()..T.mins(3).msecs() }
+            ) dp.tier3 = true
             filteredTreatments.add(dp)
         }
         // 2026-11-18, per explicit request: a delayed bolus dose and the bolus before it are no longer marked yellow. Yellow is now

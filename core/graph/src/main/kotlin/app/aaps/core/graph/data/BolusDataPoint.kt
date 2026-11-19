@@ -27,6 +27,13 @@ class BolusDataPoint(
     // (DetermineBasalAutoISF, 2026-10-29): the insulin step counts took off it. 0 when none.
     var stepCut: Double = 0.0
 
+    // Set externally (see PrepareTreatmentsDataWorker.kt, 2026-11-19, per explicit request): this SMB is a Tier 3 UAM boost
+    // dose (a "UamBst" note within 1 min before to 3 min after it). Its value is then also drawn in the manual bolus row.
+    var tier3: Boolean = false
+
+    /** The value as the manual bolus row writes it ("1.05", not the SMB's ".95" style). */
+    val bolusRowLabel: String get() = decimalFormatter.toPumpSupportedBolus(data.amount, bolusStep)
+
     // A protein/fat dose, from the note its row carries ("Delayed fpu2 of 4 dose", "Protein/fat fpu4 (last of 4) of ...:
     // cancelled", v4's "Protein and fat"), which a Client gets through Nightscout too (2026-11-18, per explicit request).
     override val isFpuDose: Boolean get() = isFpuNote(data.notes)

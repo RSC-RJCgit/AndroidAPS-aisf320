@@ -891,6 +891,23 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.color = savedColor
                 }
             }
+            // Tier 3 UAM boost SMB (2026-11-19, per explicit request): its value also in the manual bolus row, in its ISF colour.
+            // An SMB point sits at the low mark (BolusDataPoint.getY), the same height as a manual bolus's value (its labelY).
+            // Its "B", SMB arrow and bottom arrow are drawn as before.
+            val tier3Smb = (value as? BolusDataPoint)?.takeIf { it.tier3 && value.shape == Shape.SMB }
+            if (tier3Smb != null && x >= 0 && x <= graphWidth) {
+                val savedColor = mPaint.color
+                mPaint.color = value.color(graphView.context)
+                mPaint.style = Paint.Style.FILL
+                val py = endY - scaledPxSize
+                canvas.withRotation(-45f, endX, py) {
+                    mPaint.textSize = (scaledTextSize * 0.7f * 0.8).toFloat()
+                    mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.NORMAL))
+                    mPaint.isFakeBoldText = true
+                    drawText(tier3Smb.bolusRowLabel, endX + scaledPxSize, py, mPaint)
+                }
+                mPaint.color = savedColor
+            }
         }
 
         if (hourPeakLabels.isNotEmpty()) {
