@@ -63,6 +63,7 @@ import app.aaps.core.objects.extensions.lowValueToUnitsToString
 import app.aaps.core.objects.extensions.round
 import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.utils.HtmlHelper
+import app.aaps.core.utils.MidnightUtils
 import app.aaps.core.utils.JsonHelper
 import android.os.Handler
 import android.os.Looper
@@ -1536,7 +1537,9 @@ class BolusWizard @Inject constructor(
             val name: String? = preferences.get(key)
             val standardIc = name?.trim()?.takeIf { it.isNotBlank() }
                 ?.let { activePlugin.activeProfileSource.profile?.getSpecificProfile(it) }
-                ?.let { ProfileSealed.Pure(value = it, activePlugin = null).getIc(dateUtil.now()) }
+                // The profile's own IC at this time of day. Not getIc(): with no APS given it throws "APS not defined", which
+                // crashed Virtual on 19 Nov 18:55 and 18:56 (QuickWizard button and Wizard dialog), 2026-11-19 fix.
+                ?.let { ProfileSealed.Pure(value = it, activePlugin = null).getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight(dateUtil.now())) }
                 ?.takeIf { it > 0.0 }
             if (standardIc != null) {
                 delayedIcSource = "Standard ${name?.trim()}"

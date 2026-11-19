@@ -1402,11 +1402,7 @@ private fun writeUserEntriesAivLocal(
         }
     }
     val currentText = File(outputDir, "UserEntries_30h${nameSuffix}.txt")
-    try {
-        currentText.writeText(textContents, Charsets.UTF_8)
-    } catch (e: Exception) {
-        aapsLogger.debug(LTag.CORE, "${CloudConstants.LOG_PREFIX} UserEntries stable output/ copy skipped: ${e.message}")
-    }
+    writeStableCopy(currentText, textContents, aapsLogger)
     var datedCsv: File? = null
     var currentCsv: File? = null
     try {
@@ -1424,8 +1420,10 @@ private fun writeUserEntriesAivLocal(
             csvContents,
             aapsLogger
         )
-        currentCsv = File(outputDir, "UserEntries${nameSuffix}.csv")
-        currentCsv.writeText(csvContents, Charsets.UTF_8)
+        // 2026-11-19, per explicit request: the fixed-name copy on its own. Before this, its failure (Virtual 19 Nov 18:21 and
+        // 18:39: Permission denied) was logged as the whole 90-day CSV export skipped, although the dated CSV was written.
+        val stableCsv = File(outputDir, "UserEntries${nameSuffix}.csv")
+        currentCsv = stableCsv.takeIf { writeStableCopy(it, csvContents, aapsLogger) }
     } catch (e: Exception) {
         aapsLogger.error(LTag.CORE, "${CloudConstants.LOG_PREFIX} CSV_EXPORT 90-day UserEntries CSV skipped", e)
     }
@@ -1484,6 +1482,33 @@ private fun withMirroredLiveEntries(
     }
     val extra = mirrored.filter { m -> entries.none { it.action == m.action && kotlin.math.abs(it.timestamp - m.timestamp) <= 5_000L } }
     return (entries + extra).sortedByDescending { it.timestamp }
+}
+
+/**
+ * Overwrites a fixed-name copy in output/ (2026-11-19, per explicit request). Android does not let an app write a file in
+ * shared storage that another install made (an earlier install of the same app counts), so such a copy is deleted and
+ * written new; deleting it is not allowed either, so the dated copy is then the only one and this says so once per export.
+ */
+private fun writeStableCopy(file: File, contents: String, aapsLogger: AAPSLogger): Boolean {
+    try {
+        file.writeText(contents, Charsets.UTF_8)
+        return true
+    } catch (first: Exception) {
+        try {
+            if (file.exists() && file.delete()) {
+                file.writeText(contents, Charsets.UTF_8)
+                return true
+            }
+        } catch (ignored: Exception) {
+            // reported below
+        }
+        aapsLogger.debug(
+            LTag.CORE,
+            "${CloudConstants.LOG_PREFIX} UserEntries stable output/ copy not updated (made by another install, delete it once): " +
+                "${file.absolutePath}: ${first.message}"
+        )
+        return false
+    }
 }
 
 private fun writeUtf8FirstWritable(candidates: List<File>, contents: String, aapsLogger: AAPSLogger): File {
