@@ -36,6 +36,7 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.objects.utils.StepCountSource
@@ -43,6 +44,7 @@ import app.aaps.core.objects.workflow.LoggingWorker
 import app.aaps.core.utils.receivers.DataWorkerStorage
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
+import kotlin.math.ln
 
 private val OLD_HIGH_STEPS_REGEX = Regex("""microBolus \* 0\.7 extra; microBolus = (-?[0-9.]+)""")
 private val OLD_LOW_STEPS_REGEX = Regex("""microBolus \* 0\.75 low-steps fast-rise extra cut \([^)]*\); microBolus = (-?[0-9.]+)""")
@@ -100,6 +102,10 @@ class PrepareTreatmentsDataWorker(
     )
 
     companion object {
+
+        // The insulin-total columns' log curve (2026-11-19), the same as v4's basal columns: knee 0.25 U, floor 15% of full height
+        private const val INSULIN_COLUMN_KNEE = 0.25
+        private const val INSULIN_COLUMN_FLOOR = 0.15
 
         // Routine periodic export-status "success" note tags, hidden from graph4 -- see this file's own
         // forEach comment above for why. Matches AutoIsfHistoryExporter.addExportCarePortalNote()'s exact
@@ -490,6 +496,7 @@ class PrepareTreatmentsDataWorker(
             }
         }
         data.overviewData.insulinIntervalTotalSeries = PointsWithLabelGraphSeries(insulinIntervalLabels.toTypedArray())
+        data.overviewData.insulinColumnSeries = insulinTotalColumns(data, windowStart, windowEnd)
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())
@@ -606,6 +613,77 @@ class PrepareTreatmentsDataWorker(
 
         rxBus.send(EventIobCalculationProgress(CalculationWorkflow.ProgressData.PREPARE_TREATMENTS_DATA, 100, null))
         return Result.success()
+    }
+
+    /**
+     * The main graph's insulin-total columns (2026-11-19, per explicit request), drawn in place of its basal columns (Graph 5
+     * keeps basal): the 12 slices of the displayed window, as the totals row, each all insulin delivered in it (basal at the
+     * pump's actual rate, boluses, SMBs, extended boluses). Full height is the largest slice of the same width over the last
+     * 24 hours, at most the max bolus setting + 0.3 U; a larger slice is drawn at full height. Heights follow v4's log curve
+     * (knee 0.25, floor 15%), as fractions of full height; GraphData.addInsulinTotalColumns sets the band.
+     */
+    private fun insulinTotalColumns(data: PrepareTreatmentsData, windowStart: Long, windowEnd: Long): LineGraphSeries<ScaledDataPoint> {
+        val span = windowEnd - windowStart
+        val sliceMs = span / 12
+        if (span <= 0L || sliceMs <= 0L) return LineGraphSeries()
+        val now = System.currentTimeMillis()
+        val dayStart = windowEnd - T.hours(24).msecs()
+        // Slices on a grid from the window start, back through the last 24 hours
+        val firstIndex = -((windowStart - dayStart).coerceAtLeast(0L) / sliceMs).toInt()
+        val sliceStarts = (firstIndex until 12).map { windowStart + it * sliceMs }
+        val gridStart = sliceStarts.first()
+        val totals = DoubleArray(sliceStarts.size)
+        fun indexOf(ts: Long): Int = ((ts - gridStart) / sliceMs).toInt()
+        var t = gridStart
+        while (t < minOf(windowEnd, now)) {
+            profileFunction.getProfile(t)?.let { profile ->
+                val i = indexOf(t)
+                if (i in totals.indices) totals[i] += data.iobCobCalculator.getBasalData(profile, t).tempBasalAbsolute / 60.0
+            }
+            t += 60_000L
+        }
+        persistenceLayer.getBolusesFromTimeToTime(gridStart, windowEnd, true)
+            .filter { (it.type == BS.Type.NORMAL || it.type == BS.Type.SMB) && it.isValid && it.timestamp <= now }
+            .forEach { bolus -> indexOf(bolus.timestamp).takeIf { it in totals.indices }?.let { totals[it] += bolus.amount } }
+        if (!activePlugin.activePump.isFakingTempsByExtendedBoluses) {
+            persistenceLayer.getExtendedBolusesStartingFromTimeToTime(gridStart - T.hours(12).msecs(), windowEnd, true)
+                .filter { it.isValid && it.duration > 0 && !it.isEmulatingTempBasal }
+                .forEach { eb ->
+                    for (i in totals.indices) {
+                        val s = sliceStarts[i]
+                        val overlap = minOf(s + sliceMs, eb.end, now) - maxOf(s, eb.timestamp)
+                        if (overlap > 0L) totals[i] += eb.rate * overlap / 3_600_000.0
+                    }
+                }
+        }
+        val largest = totals.maxOrNull()?.takeIf { it > 0.0 }
+        val maxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
+        val cap = (maxBolus + 0.3).takeIf { maxBolus > 0.0 }
+        val top = when {
+            largest != null && cap != null -> minOf(largest, cap)
+            else                           -> largest ?: cap ?: 1.0
+        }
+        fun height(units: Double): Double {
+            if (!(units > 0.0)) return 0.0
+            val curve = ln(1.0 + units / INSULIN_COLUMN_KNEE) / ln(1.0 + top / INSULIN_COLUMN_KNEE)
+            return (INSULIN_COLUMN_FLOOR + (1.0 - INSULIN_COLUMN_FLOOR) * curve).coerceAtMost(1.0)
+        }
+        val scale = data.overviewData.insulinColumnScale
+        val points = ArrayList<ScaledDataPoint>()
+        val visibleFrom = sliceStarts.indexOf(windowStart)
+        points.add(ScaledDataPoint(windowStart, 0.0, scale))
+        for (i in visibleFrom until sliceStarts.size) {
+            val s = sliceStarts[i]
+            val h = height(totals[i])
+            points.add(ScaledDataPoint(s, h, scale))
+            points.add(ScaledDataPoint(s + sliceMs, h, scale))
+        }
+        points.add(ScaledDataPoint(windowStart + 12 * sliceMs, 0.0, scale))
+        return LineGraphSeries(Array(points.size) { points[it] }).also {
+            it.isDrawBackground = true
+            it.backgroundColor = rh.gac(null, app.aaps.core.ui.R.attr.tempBasalColor)
+            it.thickness = 0
+        }
     }
 
     private fun addUpperChartMargin(maxBgValue: Double) =
