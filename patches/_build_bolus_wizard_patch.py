@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.34.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.35.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -68,13 +68,28 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .34, 2026-11-12)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .35, 2026-11-19)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.34.patch
-  git apply bolus-calculator-on-3426-aisf321.34.patch
+  git apply --check bolus-calculator-on-3426-aisf321.35.patch
+  git apply bolus-calculator-on-3426-aisf321.35.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .35 (2026-11-19), all in the bolus calculator code (BolusWizard, DelayedBolusWorker):
+- Delayed bolus at the Standard profile: once the delayed checks say it is safe to give the rest of a meal, its full
+  need is sized at the Standard profile's IC at this time of day (the profile named in StringKey
+  ApsAutoIsfStandardProfileName, else ApsAutoIsfStandard100ProfileName), not "the running 50% profile's IC / 2".
+  With neither name set or found, the old rule stays. Both keys are new in the patch, empty by default, with no
+  settings screen (set them only if you use those profile names).
+- Protein/fat parts are also planned on a 50% profile, sized at that Standard IC.
+- Split parts: also given while BG is 7.0 or more and not falling (neither delta -0.05 mmol or lower), not only while
+  rising. The note shows the gate as it is (BG 6.0 or more, not falling below 8.0, HP1 4.0 or more).
+- The 0 U "IOB/COB covered" marker gets pump-style ids, so the Nightscout upload takes it and clients see it.
+- Fix: the Standard-IC lookup no longer crashes with "APS not defined" (the QuickWizard buttons and the calculator
+  on a 50% profile); it reads the profile's own IC for the time of day.
+- Includes the .34 addons (1-4), among them the "Give it with the carb split" tick: new BooleanKey
+  WizardGiveRestWithSplit (on, remembered).
 
 Changes in patch .34 (2026-11-12):
 - "Give rest later" (from v4), in the bolus calculator and per QuickWizard button, on by default. When the falling-BG
@@ -446,6 +461,47 @@ def write(root: Path, p: str, text: str) -> None:
     dest.write_text(text, encoding="utf-8", newline="\n")
 
 
+def apply_addon_text(staging: Path, addon: Path) -> None:
+    """Applies a unified diff's hunks to files already in [staging] as exact text (patch .35, for the .34 addons)."""
+    path = None
+    hunks: dict[str, list[tuple[str, str]]] = {}
+    old_lines: list[str] = []
+    new_lines: list[str] = []
+    in_hunk = False
+
+    def close() -> None:
+        if path is not None and in_hunk:
+            hunks.setdefault(path, []).append(("".join(old_lines), "".join(new_lines)))
+
+    for line in addon.read_text(encoding="utf-8").splitlines(keepends=True):
+        if line.startswith("diff --git "):
+            close()
+            in_hunk = False
+            path = None
+        elif line.startswith("+++ b/"):
+            path = line[6:].rstrip("\r\n")
+        elif line.startswith("@@"):
+            close()
+            in_hunk = True
+            old_lines, new_lines = [], []
+        elif in_hunk and line.startswith("\\"):
+            continue
+        elif in_hunk and line[:1] in (" ", "-", "+"):
+            body = line[1:].replace("\r\n", "\n")
+            if line[0] != "+":
+                old_lines.append(body)
+            if line[0] != "-":
+                new_lines.append(body)
+    close()
+    for p, parts in hunks.items():
+        if not (staging / rel(p)).exists():
+            raise SystemExit(f"addon {addon.name}: {p} is not in the patch")
+        t = read(staging, p)
+        for i, (o, n) in enumerate(parts):
+            t = must_replace(t, o, n, f"{addon.name} {p} hunk {i + 1}")
+        write(staging, p, t)
+
+
 def must_replace(text: str, old: str, new: str, label: str) -> str:
     if old not in text:
         raise SystemExit(f"anchor not found: {label}")
@@ -642,6 +698,20 @@ def apply_surgical(staging: Path) -> None:
     )
     write(staging, p, t)
 
+    # StringKey (patch .35): the Standard profile names the delayed bolus sizes its full need at (BolusWizard.delayedNormalIc).
+    p = "core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt"
+    t = read(BASE, p)
+    t = must_replace(
+        t,
+        '    PumpCommonTbrStorage("pump_sync_storage_tbr", ""),\n}',
+        '    PumpCommonTbrStorage("pump_sync_storage_tbr", ""),\n'
+        '    // Patch .35: the profile the delayed bolus sizes its full need at (its IC at this time of day). Empty: the old rule.\n'
+        '    ApsAutoIsfStandardProfileName("autoisf_standard_profile_name", ""),\n'
+        '    ApsAutoIsfStandard100ProfileName("autoisf_standard100_profile_name", ""),\n}',
+        "StringKey Standard profile names",
+    )
+    write(staging, p, t)
+
     # StringNonKey (patch .33): the bolus calculator's remembered meal type, read and saved by WizardDialog.kt.
     p = "core/keys/src/main/kotlin/app/aaps/core/keys/StringNonKey.kt"
     t = read(BASE, p)
@@ -685,6 +755,9 @@ def apply_surgical(staging: Path) -> None:
         '    WizardDelayFpuInsteadOfCancel("wizard_delay_fpu_instead_of_cancel", defaultValue = true),\n'
         '    // Patch .34: the "Give rest later" tick, remembered from the last OK.\n'
         '    WizardGiveRestLater("wizard_give_rest_later", defaultValue = true),\n'
+        '    // Patch .35 (shipped in .34 addon3): where the caution held part goes: the delayed bolus or carb split (on),\n'
+        '    // or the protein/fat doses only (off, and then the caution does not start the delayed bolus). Remembered tick.\n'
+        '    WizardGiveRestWithSplit("wizard_give_rest_with_split", defaultValue = true),\n'
         '    // Patch .34: read by the full-copy QuickWizardEntry (carbs dated back from the rise onset). On, as in the fork; the\n'
         '    // patch has no settings switch for it.\n'
         '    OverviewQuickWizardCarbTimeFromRise("quickwizard_carb_time_from_rise", true, defaultedBySM = true),\n'
@@ -1801,6 +1874,7 @@ def main() -> None:
             "core/keys/src/main/kotlin/app/aaps/core/keys/BooleanKey.kt",
             "core/keys/src/main/kotlin/app/aaps/core/keys/IntKey.kt",
             "core/keys/src/main/kotlin/app/aaps/core/keys/LongKey.kt",
+            "core/keys/src/main/kotlin/app/aaps/core/keys/StringKey.kt",
             "core/keys/src/main/kotlin/app/aaps/core/keys/StringNonKey.kt",
             "core/objects/src/main/kotlin/app/aaps/core/objects/di/CoreModule.kt",
             "core/interfaces/src/main/kotlin/app/aaps/core/interfaces/pump/BolusProgressData.kt",
@@ -1874,6 +1948,12 @@ def main() -> None:
             encoding="utf-8",
             newline="\n",
         )
+
+        # Patch .35: fold in the .34 addons 2 (carbs alone no longer replace waiting carb-split / protein-fat doses) and 4
+        # (OpenAPSAutoISFPlugin), shipped as separate files until now. Each hunk is applied as exact text on the staged file,
+        # so a later fork or base change that moves the text stops the build here instead of shipping a broken patch.
+        for addon in ("bolus-calculator-on-3426-aisf321.34-addon2.patch", "bolus-calculator-on-3426-aisf321.34-addon4.patch"):
+            apply_addon_text(new, OURS / "patches" / addon)
 
         relpaths = sorted(set(collect_relpaths(old)) | set(collect_relpaths(new)))
         chunks = []

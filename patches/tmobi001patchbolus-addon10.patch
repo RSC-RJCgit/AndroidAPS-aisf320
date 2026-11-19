@@ -1,0 +1,24 @@
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index c98636f501..d3a29c20b7 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -1154,6 +1154,8 @@ class BolusWizard(
+                         cancelSplitPart(remaining, "glucose unsafe $count times", iobBaseline, source)
+                     } else {
+                         aapsLogger.info(LTag.CORE, "Split leftover waiting: glucose unsafe $count of $unsafeLimit, ${remaining} U left")
++                        // A note for each check that gave nothing, so the graph can dot it (2026-11-18, per explicit request)
++                        warsawNote("D", remaining, "glucose unsafe $count of $unsafeLimit; check again in $intervalMinutes min", source, splitCancelWhat(remaining))
+                         launchSplitPart(
+                             remaining, previousPart, iobBaseline, token, source,
+                             now + intervalMinutes * 60_000L, deadline, count, intervalMinutes, unsafeLimit,
+@@ -1177,6 +1179,10 @@ class BolusWizard(
+                     if (dose <= 0.0) {
+                         val reason = if (cappedDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
+                         aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${reducedRemaining} U left")
++                        // A check that gave nothing gets a note (2026-11-18) - not the 2 min retries, which would dot every 2 min
++                        if (budget.dose <= 0.0) {
++                            warsawNote("D", reducedRemaining, "$reason; check again in $intervalMinutes min", source, splitCancelWhat(reducedRemaining))
++                        }
+                         launchSplitPart(
+                             reducedRemaining, previousPart, max(iobBaseline, liveIob), token, source,
+                             now + (if (budget.dose > 0.0) 120_000L else intervalMinutes * 60_000L), deadline, 0, intervalMinutes, unsafeLimit,
