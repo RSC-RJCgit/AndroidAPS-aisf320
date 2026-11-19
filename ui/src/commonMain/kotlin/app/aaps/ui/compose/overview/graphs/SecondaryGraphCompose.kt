@@ -304,7 +304,10 @@ fun SecondaryGraphCompose(
     // Basal overlay only when IOB is primary and single-axis (no room for basal with dual-axis)
     // Fork: kept here also when Settings > AutoISF "Basal on the BG graph (as v3)" draws it on the BG graph (2026-11-09, per
     // explicit request; before, it moved from here to the BG graph).
-    val basalData = if (hasIob && !isDualAxis) basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
+    // 2026-11-19, per explicit request: Settings > AutoISF "No basal on the IOB graph" (only with basal on the BG graph) leaves it
+    // out here. With no basal layer the IOB graph's own no-basal scale gives IOB and COB the whole height.
+    val iobGraphWithoutBasal = viewModel.graphDisplay.collectAsStateWithLifecycle().value.iobGraphWithoutBasal
+    val basalData = if (hasIob && !isDualAxis && !iobGraphWithoutBasal) basalSnapshot ?: viewModel.basalGraphFlow.collectAsStateWithLifecycle().value else null
 
     // Collect flow for secondary (right axis) series - (emptyList() if DEV and BGI together)
     val secondaryLineData = if (!isDualAxis) emptyList() else when (secondaryType) {

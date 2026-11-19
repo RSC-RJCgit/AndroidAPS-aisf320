@@ -60,7 +60,12 @@ data class GraphDisplay(
     val showStepText: Boolean = true,
     /** Fork: Settings > AutoISF "Basal on the BG graph (as v3)": basal upright on the BG graph instead of on the IOB graph. */
     val basalOnBgGraph: Boolean = false,
+    /** Fork (2026-11-19): Settings > AutoISF "No basal on the IOB graph". Only counts while [basalOnBgGraph] is on. */
+    val basalOffIobGraph: Boolean = false,
 ) {
+    /** The IOB graph leaves basal out: only while basal is on the BG graph, so it never vanishes from both. */
+    val iobGraphWithoutBasal: Boolean get() = basalOnBgGraph && basalOffIobGraph
+
     val showSmbArrows: Boolean get() = basalToggleIndex == 0
     val uniformGreenBg: Boolean get() = basalToggleIndex == 2
 }
@@ -260,6 +265,9 @@ class GraphViewModel(
             .launchIn(viewModelScope)
         preferences.observe(BooleanKey.OverviewBasalOnBgGraph)
             .onEach { onBg -> _graphDisplay.update { it.copy(basalOnBgGraph = onBg) } }
+            .launchIn(viewModelScope)
+        preferences.observe(BooleanKey.OverviewBasalOffIobGraph)
+            .onEach { off -> _graphDisplay.update { it.copy(basalOffIobGraph = off) } }
             .launchIn(viewModelScope)
     }
 

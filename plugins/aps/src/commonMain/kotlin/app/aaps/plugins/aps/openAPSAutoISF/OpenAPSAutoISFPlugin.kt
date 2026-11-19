@@ -1753,6 +1753,7 @@ open class OpenAPSAutoISFPlugin(
             BooleanKey.ApsAutoIsfLoopEveryMinute,
             BooleanKey.ApsAutoIsfShowGraphText,
             BooleanKey.OverviewBasalOnBgGraph,
+            BooleanKey.OverviewBasalOffIobGraph,
             BooleanKey.VirtualShowStepText,
             BooleanKey.ApsAutoIsfAutoCleanGraph,
             BooleanKey.ApsUseSmbWithHighTt,

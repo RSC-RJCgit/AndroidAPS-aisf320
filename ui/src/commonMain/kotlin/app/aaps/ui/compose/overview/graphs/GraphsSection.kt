@@ -1284,10 +1284,12 @@ fun GraphsSection(
                 // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates"),
                 // at the bottom left because the hourly basal peak numbers use the top line of this graph. Drawn by the chart
                 // at its plot's bottom (2026-10-30): a fixed gap above the graph's edge still covered the time labels.
+                // Without "Basal  Max rates" when Settings > AutoISF "No basal on the IOB graph" leaves basal out (2026-11-19)
                 cornerLabel = (
                     listOf(stringResource(UiStrings.graph_short_number, 1), stringResource(CoreUiStrings.iob)) +
                         graphConfig.iobOverlays.map { stringResource(seriesShortNameId(it)) } +
-                        listOf(stringResource(UiStrings.graph_label_basal), stringResource(UiStrings.graph_label_max_rates))
+                        (if (graphViewModel.graphDisplay.collectAsStateWithLifecycle().value.iobGraphWithoutBasal) emptyList()
+                        else listOf(stringResource(UiStrings.graph_label_basal), stringResource(UiStrings.graph_label_max_rates)))
                     ).joinToString("  "),
                 modifier = Modifier
                     .fillMaxWidth()

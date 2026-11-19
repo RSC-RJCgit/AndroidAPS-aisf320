@@ -702,6 +702,15 @@ enum class BooleanKey(
         KeysStrings.pref_title_basal_on_bg_graph,
         KeysStrings.pref_summary_basal_on_bg_graph
     ),
+    // Fork (2026-11-19, per explicit request): with basal on the BG graph, leave it off the IOB graph, so IOB and COB get the
+    // whole height. Only available while "Basal on the BG graph" is on, so basal never vanishes from both. This phone only.
+    OverviewBasalOffIobGraph(
+        "overview_basal_off_iob_graph",
+        false,
+        KeysStrings.pref_title_basal_off_iob_graph,
+        KeysStrings.pref_summary_basal_off_iob_graph,
+        dependency = OverviewBasalOnBgGraph
+    ),
     VirtualShowStepText(
         "virtual_show_step_text",
         true,

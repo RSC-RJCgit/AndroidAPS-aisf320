@@ -80,6 +80,7 @@ internal class GraphViewModelTest {
         whenever(preferences.observe(BooleanKey.ApsAutoIsfShowGraph5)).thenReturn(MutableStateFlow(true))
         whenever(preferences.observe(BooleanKey.ApsAutoIsfShowGraphText)).thenReturn(MutableStateFlow(true))
         whenever(preferences.observe(BooleanKey.OverviewBasalOnBgGraph)).thenReturn(MutableStateFlow(false))
+        whenever(preferences.observe(BooleanKey.OverviewBasalOffIobGraph)).thenReturn(MutableStateFlow(false))
         whenever(preferences.observe(BooleanNonKey.ApsAutoIsfCleanGraphRequested)).thenReturn(MutableStateFlow(false))
         whenever(preferences.observe(BooleanNonKey.ApsAutoIsfGraphResetRequested)).thenReturn(MutableStateFlow(false))
         // fullWindow = false: the overview behaviour, where the axis hugs the data.
