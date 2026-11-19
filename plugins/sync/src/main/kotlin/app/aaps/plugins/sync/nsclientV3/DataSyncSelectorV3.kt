@@ -407,6 +407,10 @@ class DataSyncSelectorV3 @Inject constructor(
                         // only NsId changed, no need to upload
                         gv.first.onlyNsIdAdded(gv.second)                                ->
                             aapsLogger.info(LTag.NSCLIENT, "Ignoring GlucoseValue. Only NS id changed ID: ${gv.second.id} ")
+                        // A client adds no BG readings to its Nightscout (2026-11-20, per explicit request, as in v4): a v4 client was
+                        // copying the BG it read from its second site into its main site (five.ns.com.hr) every minute.
+                        gv.first.ids.nightscoutId == null && config.AAPSCLIENT           ->
+                            aapsLogger.info(LTag.NSCLIENT, "Ignoring GlucoseValue. A client adds no BG to Nightscout: ${gv.second.id} ")
                         // without nsId = create new
                         gv.first.ids.nightscoutId == null                                ->
                             cont = activePlugin.activeNsClient?.nsAdd("entries", DataSyncSelector.PairGlucoseValue(gv.first, gv.second.id), "$startId/$lastDbId") == true
