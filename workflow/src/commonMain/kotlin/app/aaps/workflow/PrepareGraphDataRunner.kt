@@ -889,8 +889,14 @@ class PrepareGraphDataRunner(
         val varSensListCompose = persistenceLayer.getVariableSensitivities(fromTime, endTime)
             .map { GraphDataPoint(it.timestamp, profileUtil.fromMgdlToUnits(it.valueMgdl)) }
 
+        // A client does not work out IOB itself (2026-11-20, per explicit request): the loop phone's IOB from its status, or when
+        // that history is missing or empty, the loop phone's IOB from its loop results (the AutoISF rows). Its own sum of the
+        // synced boluses and temp basals differed from Live by 1.5 U on 20 Nov (2.8 against 1.28 at 00:12).
         val reportedIob = if (config.AAPSCLIENT)
             processedDeviceStatusData.trioIobHistory(preferences.get(StringKey.NsClientUrl), fromTime, min(endTime, now.toLong()))
+                ?.takeIf { it.isNotEmpty() }
+                ?: persistenceLayer.getAutoIsfValuesFromTimeToTime(fromTime, endTime).sortedBy { it.timestamp }
+                    .map { GraphDataPoint(it.timestamp, it.iob) }
         else null
         data.cache.updateIobGraph(
             if (reportedIob != null) IobGraphData(iob = reportedIob, predictions = emptyList())
@@ -929,6 +935,7 @@ class PrepareGraphDataRunner(
                 smbDelivery = autoIsfRows.map { GraphDataPoint(it.timestamp, it.smbDeliveryRatio) },
                 acceWeight = autoIsfRows.map { GraphDataPoint(it.timestamp, it.acceIsfWeight) },
                 ppWeight = autoIsfRows.map { GraphDataPoint(it.timestamp, it.ppIsfWeight) },
+                loopIob = autoIsfRows.map { GraphDataPoint(it.timestamp, it.iob) },
                 hypoPrediction = hypoPrediction,
                 statusTarget = currentAutoIsf?.let { statusTargetLine(it) },
                 statusIsf = currentAutoIsf?.let { statusIsfLine(it) },

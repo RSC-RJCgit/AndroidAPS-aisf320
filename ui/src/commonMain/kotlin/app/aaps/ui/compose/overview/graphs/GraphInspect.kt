@@ -510,6 +510,8 @@ fun GraphInspectEffects(
     minTimestamp: Long?
 ) {
     val iobGraph by graphViewModel.iobGraphFlow.collectAsStateWithLifecycle()
+    // Read through the delegate inside the effect below, so a hold always sees the newest loop rows
+    val autoIsfLoop by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
     val cobGraph by graphViewModel.cobGraphFlow.collectAsStateWithLifecycle()
     val basalGraph by graphViewModel.basalGraphFlow.collectAsStateWithLifecycle()
     val treatmentGraph by graphViewModel.treatmentGraphFlow.collectAsStateWithLifecycle()
@@ -537,6 +539,7 @@ fun GraphInspectEffects(
                 bgReadings = currentBgReadings,
                 predictions = predictions,
                 iob = iobGraph.iob,
+                loopIob = autoIsfLoop.loopIob,
                 cob = cobGraph.cob,
                 actualBasal = basalGraph.actualBasal,
                 profileBasal = basalGraph.profileBasal,
@@ -639,7 +642,9 @@ fun inspectDataAt(
     carbs: List<CarbsGraphPoint>,
     calibrations: List<CalibrationGraphPoint>,
     therapyEvents: List<TherapyEventGraphPoint>,
-    runningModes: List<RunningModeSegment> = emptyList()
+    runningModes: List<RunningModeSegment> = emptyList(),
+    /** The loop's own IOB per loop row (AutoISF rows). Shown in place of [iob] when a row is within 3 minutes (2026-11-20). */
+    loopIob: List<GraphDataPoint> = emptyList()
 ): InspectData {
     // The time snaps to a reading or, after the last reading, to a prediction point. So a hold on
     // any graph steps through the same times as a hold on the BG graph, in steps of a reading, not
@@ -651,7 +656,11 @@ fun inspectDataAt(
     return InspectData(
         timestamp = time,
         bg = bg,
-        iob = iob.nearest(time) { it.timestamp }?.value,
+        // The loop's own IOB where a loop row is close (2026-11-20, per explicit request): on a client the IOB curve could
+        // differ from the loop phone's by 1.5 U (2.8 against Live's 1.28 at 00:12 on 20 Nov), while the AutoISF table showed the
+        // loop's. The IOB curve is only used between loop rows or without them.
+        iob = loopIob.nearest(time) { it.timestamp }?.takeIf { abs(it.timestamp - time) <= LOOP_IOB_REACH_MS }?.value
+            ?: iob.nearest(time) { it.timestamp }?.value,
         cob = cob.nearest(time) { it.timestamp }?.value,
         basal = basal,
         tbrState = tbrState(basal, profileBasal.lastOrNull { it.timestamp <= time }?.value),
@@ -714,6 +723,9 @@ internal fun tbrState(basal: Double?, profileBasal: Double?): TbrState = when {
 
 /** COB in whole grams, or null at 0 g so it is left out. */
 internal fun shownCob(cob: Double?): Int? = cob?.roundToInt()?.takeIf { it > 0 }
+
+/** A loop row further than this from the shown time leaves the IOB to the IOB curve. */
+private const val LOOP_IOB_REACH_MS = 3 * 60_000L
 
 private fun <T> List<T>.nearest(timestamp: Long, time: (T) -> Long): T? =
     minByOrNull { abs(time(it) - timestamp) }?.takeIf { abs(time(it) - timestamp) <= INSPECT_MATCH_MS }

@@ -7,6 +7,7 @@ import app.aaps.core.data.model.SC
 import app.aaps.core.data.model.TE
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.overview.graph.DominantIsf
 import app.aaps.core.interfaces.overview.graph.dominantIsf
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -18,7 +19,10 @@ import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.notes.NoteSmsTexts
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 // The screen and exported files share these rows. Full SMS text is shown only on the phone that has it.
 
@@ -86,8 +90,133 @@ data class AutoIsfHistoryRow(
     val fullNote: String = "",
     /** Manual, calculator, carb-split and protein/fat boluses since the row before (2026-11-15, per explicit request). */
     val bolus: String = "--",
-    val hasBolus: Boolean = false
+    val hasBolus: Boolean = false,
+    // The columns below are on the screen only, so the table matches the 3426 app's (2026-11-20, per explicit request). The
+    // exported files keep their columns. "--" when the source is missing (see [loadAutoIsfHistoryRows]).
+    /** Hypo prediction with the raw (Libre) 5 minute change, in the user's units; see [hypoPredictionMgdl]. */
+    val hp: String = "--",
+    /** Hypo prediction with the UKF 5 minute change, in the user's units; see [hypoPredictionMgdl]. */
+    val hp2: String = "--",
+    /** Fast-rise SMB factor from the loop's reason text; see [fastRiseText]. */
+    val fastRise: String = "--",
+    /** Mild boost base from the loop's reason text. */
+    val mildBst: String = "--",
+    /** Mean seconds between the SMBs of the last 5 minutes; see [smbInterval5Sec]. */
+    val smbI5: String = "--",
+    /** Change in BG acceleration (delta_accl) from the loop's reason text. */
+    val deltaAcce: String = "--",
+    /** UKF 5 minute change against the 15 minute one, in %; see [deltaAcceUkfPercent]. */
+    val deltaAcceUkf: String = "--",
+    /** Insulin required from the loop's result. */
+    val insulinReq: String = "--",
+    /** Carbs on board including unannounced carbs; see [calculatedCobT]. Not on a client. */
+    val cobT: String = "--",
+    /** Carb absorption per 5 minutes. Not on a client. */
+    val carbAbs: String = "--"
 )
+
+/** What the table reads from one stored loop result: its time, its reason text and its insulin required. */
+data class LoopResultText(val date: Long, val reason: String, val insulinReq: Double?)
+
+private const val LOOP_RESULT_REACH_MS = 15 * 60_000L
+
+/** The loop result nearest [timestamp], within 15 minutes, as the 3426 app picks it. */
+internal fun nearestLoopResult(results: List<LoopResultText>, timestamp: Long): LoopResultText? =
+    results.minByOrNull { abs(it.date - timestamp) }?.takeIf { abs(it.date - timestamp) < LOOP_RESULT_REACH_MS }
+
+private val fastRiseFullRegex = Regex("""fast\s*rise\s*([0-9]+\.[0-9]+)""", RegexOption.IGNORE_CASE)
+private val fastRiseFactorRegex = Regex("""=\s*microBolus\s*\*\s*([0-9.]+)\s*;""")
+private val mildBstRegex = Regex("""MildBst:\s*([0-9.]+)""")
+private val deltaAcclRegex = Regex("""delta_accl:\s*(-?[0-9.]+)""")
+
+/**
+ * The fast-rise SMB factor in the 3426 app's form: the full ratio without its point ("fast rise 0.750" gives 750), else the
+ * "microBolus * 0.9" factor times 10 (9). "--" when the caps were skipped or tapered, since they then did not cap the SMB.
+ */
+fun fastRiseText(reason: String): String {
+    if (reason.contains("fast-rise caps skipped", ignoreCase = true)) return "--"
+    if (reason.contains("fast-rise caps tapered", ignoreCase = true)) return "--"
+    fastRiseFullRegex.find(reason)?.groupValues?.get(1)?.let { full ->
+        val (whole, frac) = full.split('.')
+        return (whole + (frac + "000").take(3)).trimStart('0').ifEmpty { "0" }
+    }
+    val factor = fastRiseFactorRegex.find(reason)?.groupValues?.get(1)?.toDoubleOrNull() ?: return "--"
+    return (factor * 10).roundToInt().toString()
+}
+
+fun mildBstValue(reason: String): Double? = mildBstRegex.find(reason)?.groupValues?.get(1)?.toDoubleOrNull()
+
+fun deltaAcceValue(reason: String): Double? = deltaAcclRegex.find(reason)?.groupValues?.get(1)?.toDoubleOrNull()
+
+/** Mean seconds between the SMBs given in the 5 minutes up to [timestamp], or null with fewer than two. */
+fun smbInterval5Sec(timestamp: Long, smbTimes: List<Long>): Int? {
+    val inWindow = smbTimes.filter { it in (timestamp - 5 * 60_000L)..timestamp }
+    if (inWindow.size < 2) return null
+    return ((inWindow.max() - inWindow.min()) / 1000.0 / (inWindow.size - 1)).roundToInt()
+}
+
+/** UKF change per 5 minutes over about [minutesBack] minutes, in mg/dL, or null without UKF values. */
+fun ukfDeltaMgdl(rows: List<AIV>, index: Int, minutesBack: Int): Double? {
+    val row = rows[index]
+    if (row.ukfRawBgl <= 0.0) return null
+    val target = row.timestamp - minutesBack * 60_000L
+    val prior = rows.minByOrNull { abs(it.timestamp - target) } ?: return null
+    if (abs(prior.timestamp - target) > 3 * 60_000L || prior.ukfRawBgl <= 0.0) return null
+    val actualMin = (row.timestamp - prior.timestamp) / 60_000.0
+    if (actualMin <= 0.0) return null
+    return (row.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0
+}
+
+/** The UKF 5 minute change against the 15 minute one, in % of the 15 minute one, as the 3426 app's dAccUkf. */
+fun deltaAcceUkfPercent(rows: List<AIV>, index: Int): Double? {
+    val fast = ukfDeltaMgdl(rows, index, 5) ?: return null
+    val slow = ukfDeltaMgdl(rows, index, 15) ?: return null
+    if (slow == 0.0) return null
+    return (fast - slow) / abs(slow) * 100.0
+}
+
+/**
+ * The raw (Libre noise) change over about 5 minutes at [timestamp], in mg/dL, as the 3426 app's HP column uses it. [raw] is
+ * (time, raw value) newest first. Null when the readings or their raw values are missing.
+ */
+fun rawDelta5Mgdl(timestamp: Long, raw: List<Pair<Long, Double?>>): Double? {
+    val inWindow = raw.filter { it.first in (timestamp - 7 * 60_000L)..timestamp }
+    if (inWindow.size < 2) return null
+    val newest = inWindow.first()
+    val newestValue = newest.second ?: return null
+    val ref = inWindow.minByOrNull { abs(it.first - (timestamp - 5 * 60_000L)) } ?: return null
+    if (ref.first == newest.first) return null
+    return newestValue - (ref.second ?: return null)
+}
+
+/**
+ * Carbs on board including what unannounced carbs add (the 3426 app's COBt, for display only): the autosens COB at each row,
+ * plus, within each run of rows where the UAM carb impact exceeds the modelled absorption, the excess still to come.
+ * [autosensAt] gives (COB, absorption per 5 minutes) at a time.
+ */
+fun calculatedCobT(rows: List<AIV>, autosensAt: (Long) -> Pair<Double, Double>?): Map<Long, Double> {
+    if (rows.isEmpty()) return emptyMap()
+    val result = rows.associate { it.timestamp to (autosensAt(it.timestamp)?.first ?: 0.0) }.toMutableMap()
+    val positive = rows.sortedBy { it.timestamp }.mapNotNull { r ->
+        val excess = (r.uamCarbImpact - (autosensAt(r.timestamp)?.second ?: 0.0)).coerceAtLeast(0.0)
+        if (excess > 0.05) r.timestamp to excess else null
+    }
+    val episodes = mutableListOf<MutableList<Pair<Long, Double>>>()
+    for (point in positive) {
+        val current = episodes.lastOrNull()
+        if (current == null || point.first - current.last().first > 15 * 60_000L) episodes.add(mutableListOf(point))
+        else current.add(point)
+    }
+    for (episode in episodes) {
+        var remainingExtra = 0.0
+        for (i in episode.indices.reversed()) {
+            val minutes = if (i < episode.lastIndex) ((episode[i + 1].first - episode[i].first) / 60_000.0).coerceIn(0.0, 5.0) else 1.0
+            remainingExtra += episode[i].second * minutes / 5.0
+            result[episode[i].first] = (result[episode[i].first] ?: 0.0) + remainingExtra
+        }
+    }
+    return result
+}
 
 /** Column names for the exported files, in the order of [cells]. */
 val AUTO_ISF_HISTORY_EXPORT_HEADER = listOf(
@@ -178,6 +307,17 @@ fun ukfDeltaText(rows: List<AIV>, index: Int, minutesBack: Int, deltaText: (Doub
     return deltaText((row.ukfRawBgl - prior.ukfRawBgl) / actualMin * 5.0)
 }
 
+/**
+ * Hypo prediction for one row, in mg/dL (2026-11-20, per explicit request), the 3426 app's HP and HP2 formula:
+ * (glucose - IOB) + 0.25 x short delta + 0.25 x [delta5Mgdl] + COB/12, from the row's own values, IOB in U and COB in g turned
+ * into mg/dL. HP passes the raw (Libre) 5 minute change ([rawDelta5Mgdl]), HP2 the UKF one ([ukfDeltaMgdl]). COB is the loop
+ * phone's, as stored with the row (also on a client).
+ */
+fun hypoPredictionMgdl(row: AIV, delta5Mgdl: Double): Double {
+    val mgdlPerMmol = 18.0182
+    return row.glucose - row.iob * mgdlPerMmol + 0.25 * row.shortAvgDelta + 0.25 * delta5Mgdl + row.cob / 12.0 * mgdlPerMmol
+}
+
 /** The notes written after the next older row and up to this row (rows newest first). */
 private fun carePortalNotesForRow(rows: List<AIV>, index: Int, notes: List<Pair<Long, String>>): List<Pair<Long, String>> {
     val until = rows[index].timestamp
@@ -198,13 +338,51 @@ fun List<AIV>.autoIsfHistoryRows(
     smsTexts: Map<Long, String> = emptyMap(),
     profileBasalAt: (Long) -> Double? = { null },
     /** Boluses that are not SMBs, as (time, units); see [nonSmbBoluses]. */
-    boluses: List<Pair<Long, Double>> = emptyList()
-): List<AutoIsfHistoryRow> = mapIndexed { index, row ->
+    boluses: List<Pair<Long, Double>> = emptyList(),
+    // For the screen-only columns (2026-11-20); empty or null leaves them "--"
+    format1: (Double) -> String = format2,
+    /** Readings as (time, raw value), newest first, for HP. */
+    rawReadings: List<Pair<Long, Double?>> = emptyList(),
+    /** SMB times, for SMBi5. */
+    smbTimes: List<Long> = emptyList(),
+    /** Stored loop results, for FR, MildBst, dAcc and Req. */
+    loopResults: List<LoopResultText> = emptyList(),
+    /** (COB, absorption per 5 minutes) at a time, for COBt and carbAbs; null where none is worked out (a client). */
+    autosensAt: ((Long) -> Pair<Double, Double>?)? = null
+): List<AutoIsfHistoryRow> {
+    val cobT = autosensAt?.let { calculatedCobT(this, it) } ?: emptyMap()
+    return mapIndexed { index, row -> historyRow(index, row, timeText, glucoseText, deltaText, format2, steps, notes, fromLivePhone,
+        ownDevice, smsTexts, profileBasalAt, boluses, format1, rawReadings, smbTimes, loopResults, autosensAt, cobT) }
+}
+
+private fun List<AIV>.historyRow(
+    index: Int,
+    row: AIV,
+    timeText: (Long) -> String,
+    glucoseText: (Double) -> String,
+    deltaText: (Double) -> String,
+    format2: (Double) -> String,
+    steps: List<SC>,
+    notes: List<Pair<Long, String>>,
+    fromLivePhone: Boolean,
+    ownDevice: String,
+    smsTexts: Map<Long, String>,
+    profileBasalAt: (Long) -> Double?,
+    boluses: List<Pair<Long, Double>>,
+    format1: (Double) -> String,
+    rawReadings: List<Pair<Long, Double?>>,
+    smbTimes: List<Long>,
+    loopResults: List<LoopResultText>,
+    autosensAt: ((Long) -> Pair<Double, Double>?)?,
+    cobT: Map<Long, Double>,
+): AutoIsfHistoryRow {
+    val loop = nearestLoopResult(loopResults, row.timestamp)
+    val autosens = autosensAt?.invoke(row.timestamp)
     val bolus = bolusesForRow(this, index, boluses)
     val factor = dominantAutoIsfFactor(row.acceIsf, row.bgIsf, row.ppIsf, row.duraIsf)
     val sample = LiveSteps.sampleFor(row.timestamp, steps, fromLivePhone, ownDevice)
     val rowNotes = carePortalNotesForRow(this, index, notes)
-    AutoIsfHistoryRow(
+    return AutoIsfHistoryRow(
         time = timeText(row.timestamp),
         glucose = glucoseText(row.glucose),
         ukf = if (row.ukfRawBgl == 0.0) "--" else glucoseText(row.ukfRawBgl),
@@ -244,7 +422,17 @@ fun List<AIV>.autoIsfHistoryRows(
         steps180 = sample?.steps180min?.toString() ?: "--",
         fullNote = rowNotes.asSequence().map { it.first }.distinct().mapNotNull { smsTexts[it] }.joinToString("\n"),
         bolus = autoIsfAmountText(bolus, format2),
-        hasBolus = bolus > 0.0
+        hasBolus = bolus > 0.0,
+        hp = rawDelta5Mgdl(row.timestamp, rawReadings)?.let { glucoseText(hypoPredictionMgdl(row, it)) } ?: "--",
+        hp2 = ukfDeltaMgdl(this, index, 5)?.let { glucoseText(hypoPredictionMgdl(row, it)) } ?: "--",
+        fastRise = loop?.let { fastRiseText(it.reason) } ?: "--",
+        mildBst = loop?.let { mildBstValue(it.reason) }?.let(format2) ?: "--",
+        smbI5 = smbInterval5Sec(row.timestamp, smbTimes)?.toString() ?: "--",
+        deltaAcce = loop?.let { deltaAcceValue(it.reason) }?.let(format1) ?: "--",
+        deltaAcceUkf = deltaAcceUkfPercent(this, index)?.let(format1) ?: "--",
+        insulinReq = loop?.insulinReq?.let { autoIsfAmountText(it, format2) } ?: "--",
+        cobT = cobT[row.timestamp]?.let(format1) ?: "--",
+        carbAbs = autosens?.second?.let(format2) ?: "--"
     )
 }
 
@@ -262,7 +450,14 @@ suspend fun loadAutoIsfHistoryRows(
     config: Config,
     preferences: Preferences,
     activePlugin: ActivePlugin,
-    includeFullNotes: Boolean = false
+    includeFullNotes: Boolean = false,
+    /**
+     * Also fill the screen-only columns (HP, HP2, FR, MildBst, SMBi5, dAcc, dAccUkf, Req, COBt, carbAbs; 2026-11-20). The exported
+     * files do not show them, so they skip the extra reads. COBt and carbAbs need [iobCobCalculator] and are left out on a client,
+     * which does not work out carb absorption itself.
+     */
+    includeScreenColumns: Boolean = false,
+    iobCobCalculator: IobCobCalculator? = null
 ): List<AutoIsfHistoryRow> {
     val from = now - AUTO_ISF_HISTORY_WINDOW_MS
     val units = profileFunction.getUnits()
@@ -279,8 +474,29 @@ suspend fun loadAutoIsfHistoryRows(
         .map { it.timestamp to it.note.orEmpty().trim() }
     // Profile basal at each row's time (not the running/temp rate). Looked up here because the lookup is suspend.
     val profileBasal = aivRows.associate { it.timestamp to profileFunction.getProfile(it.timestamp)?.getBasal(it.timestamp) }
-    val boluses = persistenceLayer.getBolusesFromTimeToTime(from - 10 * 60_000L, now, true).nonSmbBoluses()
+    val allBoluses = persistenceLayer.getBolusesFromTimeToTime(from - 10 * 60_000L, now, true)
+    val boluses = allBoluses.nonSmbBoluses()
+    // The screen-only columns' sources. A client keeps the loop phone's results from Nightscout, so the reason-text columns
+    // work there too; it does not work out carb absorption, so COBt and carbAbs stay "--" there.
+    val rawReadings = if (!includeScreenColumns) emptyList() else
+        persistenceLayer.getBgReadingsDataFromTimeToTime(from - 10 * 60_000L, now, false).map { it.timestamp to it.noise?.takeIf { n -> n > 10.0 } }
+    val smbTimes = if (!includeScreenColumns) emptyList() else
+        allBoluses.filter { it.isValid && it.type == BS.Type.SMB && it.amount > 0.0 }.map { it.timestamp }
+    val loopResults = if (!includeScreenColumns) emptyList() else
+        persistenceLayer.getApsResults(from - 15 * 60_000L, now).map { result ->
+            val insulinReq = runCatching { result.json()?.get("insulinReq")?.jsonPrimitive?.doubleOrNull }.getOrNull()
+            LoopResultText(result.date, result.reason, insulinReq)
+        }
+    val ads = iobCobCalculator?.ads?.takeIf { includeScreenColumns && !config.AAPSCLIENT }
+    val autosensAt: ((Long) -> Pair<Double, Double>?)? = ads?.let { store ->
+        { time: Long -> store.getAutosensDataAtTime(time)?.let { it.cob to it.this5MinAbsorption } }
+    }
     return aivRows.autoIsfHistoryRows(
+        format1 = { decimalFormatter.to1Decimal(it) },
+        rawReadings = rawReadings,
+        smbTimes = smbTimes,
+        loopResults = loopResults,
+        autosensAt = autosensAt,
         boluses = boluses,
         profileBasalAt = { profileBasal[it] },
         timeText = { dateUtil.timeString(it) },

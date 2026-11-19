@@ -294,7 +294,10 @@ class ChipsViewModel(
 
     /** Rows for the history table, newest first. Glucose and deltas are in the user's units. */
     suspend fun loadAutoIsfHistory(endTime: Long = dateUtil.now()): List<AutoIsfHistoryRow> =
-        loadAutoIsfHistoryRows(endTime, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin, includeFullNotes = true)
+        loadAutoIsfHistoryRows(
+            endTime, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin,
+            includeFullNotes = true, includeScreenColumns = true, iobCobCalculator = iobCobCalculator
+        )
 
     var list1Open by mutableStateOf(false)
         private set

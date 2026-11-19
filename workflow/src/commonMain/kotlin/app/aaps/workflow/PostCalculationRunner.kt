@@ -78,7 +78,7 @@ class PostCalculationRunner(
             val now = Clock.System.now().toEpochMilliseconds()
             processedDeviceStatusData.trioIobHistory(
                 preferences.get(StringKey.NsClientUrl), data.overviewData.fromTime, min(data.overviewData.toTime, now)
-            )?.let { data.cache.updateIobGraph(IobGraphData(iob = it, predictions = emptyList())) }
+            )?.takeIf { it.isNotEmpty() }?.let { data.cache.updateIobGraph(IobGraphData(iob = it, predictions = emptyList())) }
         }
         if (isStopped()) return WorkOutcome.Stopped
         prepareBgParabola(data)

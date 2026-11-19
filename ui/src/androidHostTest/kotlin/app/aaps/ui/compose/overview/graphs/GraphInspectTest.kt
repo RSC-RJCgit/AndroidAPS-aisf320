@@ -32,6 +32,29 @@ class GraphInspectTest {
     private val readings = listOf(bg(0, 5.0), bg(5, 5.5), bg(10, 6.0))
 
     @Test
+    fun `the loop's own IOB is shown when a loop row is close, the IOB curve otherwise`() {
+        fun at(minutes: Int, loopIob: List<GraphDataPoint>) = inspectDataAt(
+            timestamp = t0 + minutes * minute,
+            bgReadings = readings,
+            predictions = emptyList(),
+            iob = listOf(point(0, 2.8), point(5, 2.8), point(10, 2.8)),
+            cob = emptyList(),
+            actualBasal = emptyList(),
+            profileBasal = emptyList(),
+            boluses = emptyList(),
+            carbs = emptyList(),
+            calibrations = emptyList(),
+            therapyEvents = emptyList(),
+            loopIob = loopIob
+        )
+        // 20 Nov 00:12: the client's curve said 2.8, the loop 1.28
+        assertThat(at(5, listOf(point(4, 1.28))).iob).isEqualTo(1.28)
+        // No loop row within 3 minutes: the curve
+        assertThat(at(10, listOf(point(4, 1.28))).iob).isEqualTo(2.8)
+        assertThat(at(5, emptyList()).iob).isEqualTo(2.8)
+    }
+
+    @Test
     fun `snaps to the nearest reading and takes the values at its time`() {
         val data = inspectDataAt(
             timestamp = t0 + 6 * minute,

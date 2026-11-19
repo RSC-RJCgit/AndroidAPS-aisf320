@@ -216,6 +216,8 @@ data class AutoIsfGraphData(
     val acceWeight: List<GraphDataPoint> = emptyList(),
     /** Post-meal ISF weight setting in force for this loop. Scale on the graph is 0 to 0.20. */
     val ppWeight: List<GraphDataPoint> = emptyList(),
+    /** The loop's own IOB at each loop row, in U (on a client: the loop phone's, from its results); see the long-press panel. */
+    val loopIob: List<GraphDataPoint> = emptyList(),
     /** Latest hypo prediction in mmol, or null when the UKF 5 minute change is missing. */
     val hypoPrediction: Double? = null,
     /** Target, boost, and IOB threshold line for the main graph. Null before the first loop row. */

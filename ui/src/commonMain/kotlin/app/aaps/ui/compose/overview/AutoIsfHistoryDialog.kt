@@ -35,7 +35,6 @@ import androidx.compose.ui.window.DialogProperties
 import app.aaps.core.objects.autoisf.AutoIsfFactor
 import app.aaps.core.objects.autoisf.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
-import app.aaps.core.objects.autoisf.scrollingCells
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalDateUtil
@@ -152,95 +151,46 @@ fun AutoIsfHistoryDialog(
     }
 }
 
+// 2026-11-20, per explicit request: the same columns, names and order as the 3426 app's AutoISF history table
+// (AutoISFHistoryDialog there). historyHeaders(), historyCells() and rowColors() must stay in the same order. The exported
+// files keep their own columns (cells()).
 @Composable
 private fun historyHeaders(): List<String> = listOf(
-    stringResource(UiStrings.autoisf_history_bgl),
-    stringResource(UiStrings.autoisf_history_ukf),
-    stringResource(UiStrings.autoisf_history_ukf_delta_5),
-    stringResource(UiStrings.autoisf_history_ukf_delta_15),
-    stringResource(UiStrings.autoisf_history_final),
-    stringResource(UiStrings.autoisf_history_acce),
-    stringResource(UiStrings.autoisf_history_bg),
-    stringResource(UiStrings.autoisf_history_pp),
-    stringResource(UiStrings.autoisf_history_dura),
-    stringResource(UiStrings.autoisf_history_accel),
-    stringResource(UiStrings.autoisf_history_delta),
-    stringResource(UiStrings.autoisf_history_short_delta),
-    stringResource(UiStrings.autoisf_history_long_delta),
-    stringResource(UiStrings.autoisf_history_iob),
-    stringResource(UiStrings.autoisf_history_iod5),
-    stringResource(UiStrings.autoisf_history_iob_th),
-    stringResource(UiStrings.autoisf_history_smb),
-    stringResource(UiStrings.autoisf_history_bolus),
-    stringResource(UiStrings.autoisf_history_target),
-    stringResource(UiStrings.autoisf_history_uam),
-    stringResource(UiStrings.autoisf_history_smb_ratio),
-    stringResource(UiStrings.autoisf_history_acce_weight),
-    stringResource(UiStrings.autoisf_history_pp_weight),
-    stringResource(UiStrings.autoisf_history_slope),
-    stringResource(UiStrings.autoisf_history_cob),
-    stringResource(UiStrings.autoisf_history_basal),
-    stringResource(UiStrings.autoisf_history_profile_basal),
-    stringResource(UiStrings.autoisf_history_note),
-    stringResource(UiStrings.autoisf_history_mj),
-    stringResource(UiStrings.autoisf_history_steps_5),
-    stringResource(UiStrings.autoisf_history_steps_15),
-    stringResource(UiStrings.autoisf_history_steps_30),
-    stringResource(UiStrings.autoisf_history_steps_60),
-    stringResource(UiStrings.autoisf_history_steps_180),
-    stringResource(UiStrings.autoisf_history_full_note)
+    "BGL", "Target", "Final", "acce", "bg", "pp", "dura", "UAMci",
+    "SMB", "Bolus", "FR", "Ratio", "MildBst", "SMBi5",
+    "iobTH", "acWt", "ppWt", "Lslope",
+    "acce", "dAcc", "dAccUkf", "Δ", "SΔ", "LΔ", "ukfRBGL", "RawUKF5", "RawUKF15",
+    "Req", "TBR", "IOB", "IOBΔ5", "Basal", "COB", "COBt", "carbAbs", "HP", "HP2",
+    "S5", "S15", "S30", "S60", "S180",
+    "MJ", "Notes", stringResource(UiStrings.autoisf_history_full_note)
 )
 
-// On screen the bolus sits after SMB (in the exported files it is last, see cells())
-private fun AutoIsfHistoryRow.historyCells(): List<String> =
-    scrollingCells().toMutableList().apply { add(SMB_CELL_INDEX + 1, bolus) } + fullNote.ifBlank { "--" }
-
-/** Index of SMB in scrollingCells(). */
-private const val SMB_CELL_INDEX = 16
+private fun AutoIsfHistoryRow.historyCells(): List<String> = listOf(
+    glucose, target, finalIsf, acceIsf, bgIsf, ppIsf, duraIsf, uam,
+    smb, bolus, fastRise, smbRatio, mildBst, smbI5,
+    iobTh, acceWeight, ppWeight, slope,
+    acceleration, deltaAcce, deltaAcceUkf, delta, shortDelta, longDelta, ukf, ukfDelta5, ukfDelta15,
+    insulinReq, basal, iob, iob5, profileBasal, cob, cobT, carbAbs, hp, hp2,
+    steps5, steps15, steps30, steps60, steps180,
+    mj, note, fullNote.ifBlank { "--" }
+)
 
 @Composable
 private fun rowColors(row: AutoIsfHistoryRow): List<Color> {
     val glucose = AapsTheme.generalColors.bgInRange
     val insulin = AapsTheme.generalColors.activeInsulinText
     val time = MaterialTheme.colorScheme.onSurface
-    return listOf(
-        time,
-        glucose,
-        glucose,
-        glucose,
-        glucose,
-        factorColor(row.finalFactor, AapsTheme.generalColors.finalIsf),
-        AapsTheme.generalColors.acceIsf,
-        AapsTheme.generalColors.bgIsf,
-        AapsTheme.generalColors.ppIsf,
-        AapsTheme.generalColors.duraIsf,
-        glucose,
-        glucose,
-        glucose,
-        glucose,
-        insulin,
-        insulin,
-        insulin,
-        factorColor(row.smbFactor, insulin),
-        insulin,
-        glucose,
-        insulin,
-        insulin,
-        insulin,
-        insulin,
-        insulin,
-        insulin,
-        insulin,
-        insulin,
-        time,
-        time,
-        time,
-        time,
-        time,
-        time,
-        time,
-        time
-    )
+    val header = MaterialTheme.colorScheme.onSurfaceVariant
+    return listOf(time) +
+        listOf(glucose, glucose, factorColor(row.finalFactor, AapsTheme.generalColors.finalIsf)) +
+        listOf(AapsTheme.generalColors.acceIsf, AapsTheme.generalColors.bgIsf, AapsTheme.generalColors.ppIsf, AapsTheme.generalColors.duraIsf) +
+        listOf(header) +                                                            // UAMci
+        listOf(factorColor(row.smbFactor, insulin)) + List(5) { insulin } +       // SMB, Bolus, FR, Ratio, MildBst, SMBi5
+        List(4) { header } +                                                         // iobTH, acWt, ppWt, Lslope
+        List(9) { glucose } +                                                        // acce .. RawUKF15
+        List(10) { insulin } +                                                       // Req .. HP2
+        List(5) { header } +                                                         // S5 .. S180
+        List(3) { time }                                                             // MJ, Notes, Full note
 }
 
 @Composable
