@@ -295,7 +295,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 value.shape == Shape.SMB_STACK_TOTAL ||
                 value.shape == Shape.INSULIN_INTERVAL_TOTAL ||
                 value.shape == Shape.IOB_PEAK_MAIN_BOTTOM ||
-                value.shape == Shape.DOSE_CHECK_DOT
+                value.shape == Shape.DOSE_CHECK_DOT ||
+                value.shape == Shape.INSULIN_COLUMNS_TITLE
             if (!yIndependentShape) {
                 if (y < 0) { // end bottom
                     overdraw = true
@@ -728,6 +729,17 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                             canvas.drawText(line, graphLeft + 10f, nearBottomPy + (hpLines.size + lineIndex) * scaledTextSize * 0.6f, mPaint)
                         }
                         mPaint.color = hpWhiteColor
+                    }
+                } else if (value.shape == Shape.INSULIN_COLUMNS_TITLE) {
+                    // One line above the hypoprediction row (HP_ROW_BOTTOM), same size and position from the left
+                    mPaint.strokeWidth = 0f
+                    if (value.label.isNotEmpty()) {
+                        mPaint.textSize = (scaledTextSize * 0.6f).toFloat()
+                        mPaint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD))
+                        mPaint.style = Paint.Style.FILL
+                        mPaint.textAlign = Paint.Align.LEFT
+                        mPaint.color = Color.WHITE
+                        canvas.drawText(value.label, graphLeft + 10f, nearBottomPy - scaledTextSize * 0.6f, mPaint)
                     }
                 } else if (value.shape == Shape.TARGET_OFFSET_DUT_GRAPH1) {
                     mPaint.strokeWidth = 0f

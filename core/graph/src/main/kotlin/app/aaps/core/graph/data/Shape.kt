@@ -54,5 +54,8 @@ enum class Shape {
     // 2026-11-18, per explicit request: a small magenta dot near the top of the main graph at the time of a carb split or delayed
     // bolus check that gave nothing ("Db10 wait", "D1.30 Carb split ..., waiting"). Built from those care portal notes in
     // PrepareTreatmentsDataWorker.kt (treatmentsSeries, so Overview and History Browse both show it). Y-independent.
-    DOSE_CHECK_DOT
+    DOSE_CHECK_DOT,
+    // 2026-11-20, per explicit request: "total insulin columns, basal in graph 5" on the main graph, one line above the
+    // hypoprediction row (Shape.HP_ROW_BOTTOM). Part of the insulin-total column series, so it shows only with the columns.
+    INSULIN_COLUMNS_TITLE
 }

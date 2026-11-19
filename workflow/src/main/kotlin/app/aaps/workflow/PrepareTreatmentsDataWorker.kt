@@ -703,7 +703,19 @@ class PrepareTreatmentsDataWorker(
                 it.thickness = 0
             }
         }
-        return columns + PointsWithLabelGraphSeries(labels.toTypedArray())
+        // The row's title, one line above the hypoprediction row (2026-11-20, per explicit request). In the middle of the window,
+        // so it is never culled as off screen; Shape.INSULIN_COLUMNS_TITLE draws it at the left.
+        val title = object : ScaledDataPoint(windowStart + 6 * sliceMs, 0.0, scale), DataPointWithLabelInterface {
+            override fun setY(y: Double) {}
+            override val label: String = "total insulin columns, basal in graph 5"
+            override val duration: Long = 0L
+            override val shape = app.aaps.core.graph.data.Shape.INSULIN_COLUMNS_TITLE
+            override val size: Float = 0f
+            override val paintStyle = android.graphics.Paint.Style.FILL
+            override fun color(context: Context?): Int = android.graphics.Color.WHITE
+        }
+        // The series wants its points oldest first
+        return columns + PointsWithLabelGraphSeries((labels + title).sortedBy { it.x }.toTypedArray())
     }
 
     private fun addUpperChartMargin(maxBgValue: Double) =

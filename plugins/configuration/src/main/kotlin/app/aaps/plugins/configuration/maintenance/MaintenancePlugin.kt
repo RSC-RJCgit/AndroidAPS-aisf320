@@ -401,10 +401,17 @@ class MaintenancePlugin @Inject constructor(
         // Directory resolution + scoped-storage listing fallback live in LoggerUtils.findSourceLogFiles()
         // (shared with AutoIsfHistoryExporter.exportUkfCheckText(), which needs the same multi-directory
         // search rather than trusting loggerUtils.logDirectory alone).
+        // 2026-11-20, per explicit request: every log is written twice, once in the main log folder and once in the app-specific
+        // one, a few hundred bytes apart, so every log went into the zip twice. Live's 01:35 zip held two 77 MB AndroidAPS.log
+        // copies (248 files found), and the whole zip is read into memory for the cloud upload (Live died at 01:26 after an export
+        // request). Only the first file of each name is kept (the main log folder's, which findSourceLogFiles lists first). The
+        // count setting is applied before that, so the zip covers the same hours as before at about half the size.
         val result = loggerUtils.findSourceLogFiles()
         val toIndex = minOf(amount, result.size)
         aapsLogger.debug("found ${result.size} source log file(s): ${result.joinToString { "${it.name}(${it.length()}B)" }}; returning 0 to $toIndex")
-        return result.subList(0, toIndex)
+        val chosen = result.subList(0, toIndex).distinctBy { it.name }
+        if (chosen.size < toIndex) aapsLogger.debug("left out ${toIndex - chosen.size} duplicate log file(s)")
+        return chosen
     }
 
     /** Upload AIV CSV/TXT/settings files for manual, remote, and scheduled exports through one path. */
