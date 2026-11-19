@@ -3729,7 +3729,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addRawBg(false)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
             graphData.addRawBgSmoothed(false)
-        if ((pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
+        val insulinColumnsShown = (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
+        if (insulinColumnsShown)
             // 2026-11-19, per explicit request: the main graph's columns are insulin totals; Graph 5 keeps basal (addBasals there)
             graphData.addInsulinTotalColumns()
         graphData.addTargetLine()
@@ -3975,7 +3976,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
             // SMB stacked labels: swapped from graph4 to graph2 (g==1) — was on graph4, swapped
             // positions with the CarePortal notes above.
-            if (g == 0) secondGraphData.addInsulinIntervalTotals()
+            // Not while the insulin-total columns show: their values sit on top of them (2026-11-20, per explicit request)
+            if (g == 0 && !insulinColumnsShown) secondGraphData.addInsulinIntervalTotals()
             if (g == 1) secondGraphData.addSmbLabels()
             // graph3 (g==2): was the "pp= acc= du=" row (now on graph5, see graph5Data.addIsfWeightsRow()
             // above) -- replaced with the SMB-stack-total labels (was g==0/IOB-COB panel, moved here).

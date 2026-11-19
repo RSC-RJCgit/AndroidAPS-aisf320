@@ -421,12 +421,12 @@ class GraphData @Inject constructor(
     /**
      * The main graph's insulin-total columns (2026-11-19, per explicit request), in place of [addBasals] there; Graph 5 keeps
      * [addBasals]. Full height fills the same bottom band as the basal columns (the low mark / 1.2), see
-     * PrepareTreatmentsDataWorker.insulinTotalColumns.
+     * PrepareTreatmentsDataWorker.insulinTotalColumns. One series per ISF colour, then the value labels on top (2026-11-20).
      */
     fun addInsulinTotalColumns() {
         maxY = max(maxY, preferences.get(UnitDoubleKey.OverviewHighMark))
         overviewData.insulinColumnScale.multiplier = preferences.get(UnitDoubleKey.OverviewLowMark) / 1.2
-        addSeries(overviewData.insulinColumnSeries as LineGraphSeries<ScaledDataPoint>)
+        overviewData.insulinColumnSeries.forEach { addSeries(it as Series<*>) }
     }
 
     fun addInsulinIntervalTotals() {

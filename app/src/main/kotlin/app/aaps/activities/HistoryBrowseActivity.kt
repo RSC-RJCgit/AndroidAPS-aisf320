@@ -445,7 +445,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addCombinedCarbs(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
             graphData.addBgParabola(false, 1.0)
-        if (pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal])
+        val insulinColumnsShown = pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
+        if (insulinColumnsShown)
             // 2026-11-19, per explicit request: the main graph's columns are insulin totals; Graph 5 keeps basal (addBasals there)
             graphData.addInsulinTotalColumns()
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
@@ -652,7 +653,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             // Was g == 0 (graph1) here while OverviewFragment had already swapped this to g == 1 (graph2),
             // trading places with the CarePortal notes now on graph4 above. History Browse never got that
             // swap, which is why SMB labels appeared on a different panel in the two screens.
-            if (g == 0) secondGraphData.addInsulinIntervalTotals()
+            // Not while the insulin-total columns show: their values sit on top of them (2026-11-20, per explicit request)
+            if (g == 0 && !insulinColumnsShown) secondGraphData.addInsulinIntervalTotals()
             if (g == 1) secondGraphData.addSmbLabels()
             // graph3 (g==2): was the "pp= acc= du=" row -- replaced with the SMB-stack-total labels (was
             // g==0/IOB-COB panel, moved here). Unlike OverviewFragment.kt, this screen has no established
