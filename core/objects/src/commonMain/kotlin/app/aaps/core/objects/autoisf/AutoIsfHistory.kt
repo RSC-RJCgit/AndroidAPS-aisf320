@@ -116,7 +116,15 @@ data class AutoIsfHistoryRow(
 )
 
 /** What the table reads from one stored loop result: its time, its reason text and its insulin required. */
-data class LoopResultText(val date: Long, val reason: String, val insulinReq: Double?)
+data class LoopResultText(
+    val date: Long,
+    val reason: String,
+    val insulinReq: Double?,
+    /** The loop's target in mg/dL, 0 when none (for the exported files). */
+    val targetBG: Double = 0.0,
+    /** The temp basal rate the loop asked for, U/h (for the exported files). */
+    val rate: Double? = null
+)
 
 private const val LOOP_RESULT_REACH_MS = 15 * 60_000L
 
@@ -319,7 +327,7 @@ fun hypoPredictionMgdl(row: AIV, delta5Mgdl: Double): Double {
 }
 
 /** The notes written after the next older row and up to this row (rows newest first). */
-private fun carePortalNotesForRow(rows: List<AIV>, index: Int, notes: List<Pair<Long, String>>): List<Pair<Long, String>> {
+internal fun carePortalNotesForRow(rows: List<AIV>, index: Int, notes: List<Pair<Long, String>>): List<Pair<Long, String>> {
     val until = rows[index].timestamp
     val from = rows.getOrNull(index + 1)?.timestamp ?: (until - 5 * 60_000L)
     return notes.filter { it.first > from && it.first <= until }

@@ -1,5 +1,6 @@
 package app.aaps.ios.shell.missing
 
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
@@ -15,8 +16,7 @@ import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.objects.autoisf.cells
-import app.aaps.core.objects.autoisf.loadAutoIsfHistoryRows
+import app.aaps.core.objects.autoisf.loadAutoIsfV3ExportRows
 import app.aaps.implementation.maintenance.USER_ENTRIES_EXPORT_WINDOW_MS
 import app.aaps.implementation.maintenance.autoIsfExportCsv
 import app.aaps.implementation.maintenance.autoIsfExportText
@@ -76,14 +76,14 @@ class IosHistoryExportImpl(
     private val preferences: Preferences,
     private val userEntryPresentationHelper: UserEntryPresentationHelper,
     private val config: Config,
-    private val activePlugin: ActivePlugin
+    private val activePlugin: ActivePlugin,
+    private val iobCobCalculator: IobCobCalculator
 ) : IosHistoryExport {
 
     override suspend fun writeAndUpload(trigger: String) {
         val now = dateUtil.now()
-        // The same rows and columns as the table on screen (2026-10-21, per explicit request)
-        val rows = loadAutoIsfHistoryRows(now, persistenceLayer, profileFunction, profileUtil, dateUtil, decimalFormatter, config, preferences, activePlugin)
-            .map { it.cells() }
+        // 2026-11-20, per explicit request: the 3426 app's columns, names and order (see AUTO_ISF_V3_EXPORT_HEADER)
+        val rows = loadAutoIsfV3ExportRows(now, persistenceLayer, profileFunction, dateUtil, config, preferences, activePlugin, iobCobCalculator)
         val entries = persistenceLayer.getUserEntryFilteredDataFromTime(now - USER_ENTRIES_EXPORT_WINDOW_MS)
         val formatter = NSDateFormatter()
         formatter.dateFormat = "yyyy-MM-dd_HHmmss"
