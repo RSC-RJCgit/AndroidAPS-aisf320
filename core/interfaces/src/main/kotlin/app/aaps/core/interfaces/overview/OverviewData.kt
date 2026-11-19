@@ -111,6 +111,9 @@ interface OverviewData {
     var smbLabelSeries: SeriesData
     var smbStackTotalSeries: SeriesData
     var insulinIntervalTotalSeries: SeriesData
+    // Main graph's insulin-total columns (2026-11-19), in place of its basal columns; heights are fractions of the band
+    val insulinColumnScale: Scale
+    var insulinColumnSeries: SeriesData
     var maxTherapyEventValue: Double
     var therapyEventSeries: SeriesData
     // Plain TE.Type.NOTE events only (split out from therapyEventSeries) — renders on graph4 (swapped

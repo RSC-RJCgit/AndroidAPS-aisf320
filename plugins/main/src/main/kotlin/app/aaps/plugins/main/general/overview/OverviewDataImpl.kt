@@ -112,6 +112,7 @@ class OverviewDataImpl @Inject constructor(
         smbLabelSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         smbStackTotalSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         insulinIntervalTotalSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+        insulinColumnSeries = LineGraphSeries<ScaledDataPoint>()
         maxEpsValue = 0.0
         epsSeries = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
         maxTherapyEventValue = 0.0
@@ -329,6 +330,8 @@ class OverviewDataImpl @Inject constructor(
     override var smbLabelSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var smbStackTotalSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var insulinIntervalTotalSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    override val insulinColumnScale = Scale()
+    override var insulinColumnSeries: SeriesData = LineGraphSeries<ScaledDataPoint>()
     override var maxTherapyEventValue = 0.0
     override var therapyEventSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var noteEventSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
