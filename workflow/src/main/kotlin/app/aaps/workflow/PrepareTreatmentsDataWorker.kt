@@ -37,7 +37,6 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.interfaces.utils.Translator
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
-import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.utils.CodedAutomationNames
 import app.aaps.core.objects.utils.StepCountSource
@@ -102,6 +101,9 @@ class PrepareTreatmentsDataWorker(
     )
 
     companion object {
+
+        /** The largest shown insulin-total column reaches this share of full height (2026-11-20). */
+        private const val INSULIN_COLUMN_TOP_SHARE = 0.95
 
         // Routine periodic export-status "success" note tags, hidden from graph4 -- see this file's own
         // forEach comment above for why. Matches AutoIsfHistoryExporter.addExportCarePortalNote()'s exact
@@ -614,8 +616,8 @@ class PrepareTreatmentsDataWorker(
     /**
      * The main graph's insulin-total columns (2026-11-19, per explicit request), drawn in place of its basal columns (Graph 5
      * keeps basal): the 12 slices of the displayed window, as the totals row, each all insulin delivered in it (basal at the
-     * pump's actual rate, boluses, SMBs, extended boluses). Full height is the largest slice of the same width over the last
-     * 24 hours, at most the max bolus setting + 0.3 U; a larger slice is drawn at full height. Heights are linear, as fractions
+     * pump's actual rate, boluses, SMBs, extended boluses). The largest of the shown columns reaches 95% of full height
+     * (2026-11-20; was the day's largest slice, at most the max bolus setting + 0.3 U). Heights are linear, as fractions
      * of full height (2026-11-19, was the v4 log curve); GraphData.addInsulinTotalColumns sets the band.
      * 2026-11-20, per explicit request: each column takes the ISF colour at its start (the AIV row nearest it, as the SMB
      * arrows; basal colour when no factor moved the ISF), and its value is written on top of it in that colour (they replace
@@ -655,18 +657,15 @@ class PrepareTreatmentsDataWorker(
                     }
                 }
         }
-        val largest = totals.maxOrNull()?.takeIf { it > 0.0 }
-        val maxBolus = preferences.get(DoubleKey.SafetyMaxBolus)
-        val cap = (maxBolus + 0.3).takeIf { maxBolus > 0.0 }
-        val top = when {
-            largest != null && cap != null -> minOf(largest, cap)
-            else                           -> largest ?: cap ?: 1.0
-        }
+        val visibleFrom = sliceStarts.indexOf(windowStart)
+        // 2026-11-20, per explicit request: scaled to the shown span, as v3's basal columns always were. The largest of the 12
+        // shown columns reaches 95% of full height (was the day's largest slice, capped at the max bolus setting + 0.3 U).
+        val largestShown = (visibleFrom until sliceStarts.size).maxOfOrNull { totals[it] }?.takeIf { it > 0.0 }
+        val top = (largestShown ?: 1.0) / INSULIN_COLUMN_TOP_SHARE
         // Linear (2026-11-19, per explicit request; was the v4 log curve): a slice's height is its share of full height
         fun height(units: Double): Double = if (units > 0.0) (units / top).coerceAtMost(1.0) else 0.0
         val scale = data.overviewData.insulinColumnScale
         val basalColour = rh.gac(null, app.aaps.core.ui.R.attr.tempBasalColor)
-        val visibleFrom = sliceStarts.indexOf(windowStart)
         // Per colour: up at each column's start, down at its end, zero between that colour's columns
         val stepsByColour = LinkedHashMap<Int, ArrayList<ScaledDataPoint>>()
         stepsByColour[basalColour] = ArrayList()

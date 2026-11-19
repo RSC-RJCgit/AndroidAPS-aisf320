@@ -50,6 +50,9 @@ import kotlin.math.max
 
 // Share of graph5's height, from the top, used by the SMB / acce weight / pp weight / profile basal lines. See addTopBandLines().
 private const val TOP_BAND_FRACTION = 0.28
+
+/** The highest basal hangs this share of the IOB graph's height down from its top edge (2026-11-20). */
+private const val HANGING_BASAL_SHARE = 0.25
 // Graph5 band tap: a line further than this from the tapped time is left out of the popup
 private const val TOP_BAND_TAP_MAX_MS = 5 * 60_000L
 
@@ -151,6 +154,41 @@ class GraphData @Inject constructor(
         addHourPeak(overviewData.absoluteBasalGraphSeries as LineGraphSeries<ScaledDataPoint>, overviewData.basalScale,
             rh.gac(graph.context, CoreUiR.attr.tempBasalColor), stepped = true)
     }
+
+    /**
+     * The basal columns hanging from the top of the IOB graph (2026-11-20, per explicit request), as v4 draws them, now that the
+     * main graph shows insulin totals. Same scaling as Graph 5's and the main graph's basal columns were: the highest basal in
+     * the loaded data is the full column, here [HANGING_BASAL_SHARE] of the graph's height, measured down from the top edge.
+     * The scale is set in [performUpdate], once the graph's range is known.
+     */
+    fun addBasalsHangingFromTop() {
+        val sources = mutableListOf(overviewData.baseBasalGraphSeries, overviewData.tempBasalGraphSeries)
+        if (!PointsWithLabelGraphSeries.uniformGreenBg) sources += listOf(
+            overviewData.tempBasalAcceIsfSeries, overviewData.tempBasalBgIsfSeries,
+            overviewData.tempBasalPpIsfSeries, overviewData.tempBasalDuraIsfSeries
+        )
+        @Suppress("UNCHECKED_CAST")
+        val columns = sources.map { it as LineGraphSeries<ScaledDataPoint> }
+        val maxBasal = maxOf(0.1, columns.maxOf { series ->
+            series.getValues(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY).asSequence().maxOfOrNull { it.rawValue } ?: 0.0
+        })
+        val scale = Scale()
+        hangingBasal = scale to maxBasal
+        for (series in columns) {
+            val points = series.getValues(Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY).asSequence()
+                .map { ScaledDataPoint(it.x, it.rawValue, scale) }.toList()
+            if (points.isEmpty()) continue
+            addSeries(FixedLineGraphSeries(points.toTypedArray()).also {
+                it.isDrawBackground = true
+                it.fillFromTop = true
+                it.backgroundColor = series.backgroundColor
+                it.thickness = 0
+            })
+        }
+    }
+
+    /** The hanging basal's scale and the highest basal, for [performUpdate]. */
+    private var hangingBasal: Pair<Scale, Double>? = null
 
     /**
      * One label per hour, counted back from now: the highest value in now-1h..now, in now-2h..now-1h, and so on,
@@ -700,8 +738,16 @@ class GraphData @Inject constructor(
         }
         var step = 1.0
         if (maxY < 1) step = 0.1
-        graph.viewport.setMaxY(Round.ceilTo(maxY, step))
-        graph.viewport.setMinY(Round.floorTo(minY, step))
+        val top = Round.ceilTo(maxY, step)
+        val bottom = Round.floorTo(minY, step)
+        graph.viewport.setMaxY(top)
+        graph.viewport.setMinY(bottom)
+        // The hanging basal: 0 at the top edge, the highest basal HANGING_BASAL_SHARE of the height down from it
+        hangingBasal?.let { (scale, maxBasal) ->
+            scale.shift = top
+            scale.multiplier = -HANGING_BASAL_SHARE * (top - bottom) / maxBasal
+        }
+        hangingBasal = null
         graph.viewport.isYAxisBoundsManual = true
 
         // draw it

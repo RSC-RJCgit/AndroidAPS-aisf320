@@ -3938,6 +3938,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             //val maxYValueForScale = maxAutoIsfFactor    //max(maxAutoIsfFactor, 2.0 - minAutoIsfFactor)       // ensure Y=1 is in the center of the graph
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal)) secondGraphData.addAbsIob(useABSForScale, 1.0, maxCommonIob)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal)) secondGraphData.addIob(   useIobForScale,  1.0, maxCommonIob)
+            // The basal columns hang from the top of the IOB graph while the main graph shows insulin totals (2026-11-20, per explicit request)
+            if (insulinColumnsShown && overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal)) secondGraphData.addBasalsHangingFromTop()
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.COB.ordinal)) secondGraphData.addCob(useCobForScale, if (useCobForScale) 1.0 else 0.5)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB_TH.ordinal)) secondGraphData.addIobTh( useIobThForScale,   if (maxCommonIob>0.0) 1.0 else 0.8, maxCommonIob)
             if (overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.DEV.ordinal)) secondGraphData.addDeviations(useDevForScale, 1.0)

@@ -250,12 +250,17 @@ import com.jjoe64.graphview.series.DataPointInterface
         }
         if (mStyles.drawBackground) {
             // end / close path
-            mPathBackground.lineTo(lastUsedEndX.toFloat(), (graphTop - -minY / diffY * graphHeight).toFloat() + graphHeight)
-            mPathBackground.lineTo(firstX, (graphTop - -minY / diffY * graphHeight).toFloat() + graphHeight)
+            // The fill goes to the zero line, or to the top edge for columns that hang from the top (2026-11-20)
+            val fillY = if (fillFromTop) graphTop.toFloat() else (graphTop - -minY / diffY * graphHeight).toFloat() + graphHeight
+            mPathBackground.lineTo(lastUsedEndX.toFloat(), fillY)
+            mPathBackground.lineTo(firstX, fillY)
             mPathBackground.close()
             canvas.drawPath(mPathBackground, mPaintBackground)
         }
     }
+
+    /** Fill from the line up to the top edge instead of down to zero: columns that hang from the top (2026-11-20). */
+    var fillFromTop = false
 
     var thickness: Int
         /**
