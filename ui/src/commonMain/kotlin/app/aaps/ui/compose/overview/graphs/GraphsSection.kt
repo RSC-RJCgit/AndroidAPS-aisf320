@@ -264,6 +264,8 @@ fun GraphsSection(
     }
 
     // Pre-allocate secondary graph scroll/zoom states (up to MAX_SECONDARY_GRAPHS)
+    // The same zoom bounds as the BG graph (upstream 761dc737ff has the same fix): without them Vico clamps each graph to
+    // "the whole axis fills the width", so with little history their now line sat to the right of the BG one.
     // These are always created to keep Compose's remember slots stable.
     // A drag here moves the other lower graphs. A pinch uses the same width limits as the main graph,
     // so the copied width is not clamped back.
