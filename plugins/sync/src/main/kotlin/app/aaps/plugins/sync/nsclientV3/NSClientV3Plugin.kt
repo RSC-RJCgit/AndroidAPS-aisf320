@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
@@ -31,19 +32,17 @@ import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.plugin.PluginBaseWithPreferences
 import app.aaps.core.interfaces.plugin.PluginDescription
-import app.aaps.core.interfaces.pump.VirtualPump
-import app.aaps.core.objects.graph.MasterGraphTime
-import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.interfaces.profile.Profile
+import app.aaps.core.interfaces.pump.VirtualPump
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.AapsSchedulers
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventAppExit
-import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventDeviceStatusChange
-import app.aaps.core.interfaces.rx.events.EventNewNotification
+import app.aaps.core.interfaces.rx.events.EventDismissNotification
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
 import app.aaps.core.interfaces.rx.events.EventNewHistoryData
+import app.aaps.core.interfaces.rx.events.EventNewNotification
 import app.aaps.core.interfaces.rx.events.EventPreferenceChange
 import app.aaps.core.interfaces.rx.events.EventProfileStoreChanged
 import app.aaps.core.interfaces.rx.events.EventProfileSwitchChanged
@@ -68,7 +67,10 @@ import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.NSAndroidClientImpl
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
+import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 import app.aaps.core.nssdk.remotemodel.LastModified
+import app.aaps.core.objects.graph.MasterGraphTime
+import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.validators.DefaultEditTextValidator
 import app.aaps.core.validators.EditTextValidator
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
@@ -76,13 +78,14 @@ import app.aaps.core.validators.preferences.AdaptiveIntPreference
 import app.aaps.core.validators.preferences.AdaptiveStringPreference
 import app.aaps.core.validators.preferences.AdaptiveSwitchPreference
 import app.aaps.plugins.sync.R
-import app.aaps.plugins.sync.nsShared.addClientGraphTimePreferences
 import app.aaps.plugins.sync.nsShared.NSClientFragment
-import app.aaps.plugins.sync.nsShared.fullCareportalNoteTextsForUpload
-import app.aaps.plugins.sync.nsShared.liveConnectionConfigured
+import app.aaps.plugins.sync.nsShared.addClientGraphTimePreferences
 import app.aaps.plugins.sync.nsShared.events.EventConnectivityOptionChanged
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiData
 import app.aaps.plugins.sync.nsShared.events.EventNSClientUpdateGuiStatus
+import app.aaps.plugins.sync.nsShared.fullAapsOnVirtualPump
+import app.aaps.plugins.sync.nsShared.fullCareportalNoteTextsForUpload
+import app.aaps.plugins.sync.nsShared.liveConnectionConfigured
 import app.aaps.plugins.sync.nsclient.ReceiverDelegate
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolus
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolusWizard
@@ -107,17 +110,17 @@ import app.aaps.plugins.sync.nsclientV3.workers.LoadDeviceStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadFoodsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadLastModificationWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadProfileStoreWorker
+import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryBolusCarbsWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadStatusWorker
 import app.aaps.plugins.sync.nsclientV3.workers.LoadTreatmentsWorker
-import app.aaps.plugins.sync.nsclientV3.workers.LoadSecondaryBolusCarbsWorker
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import io.reactivex.rxjava3.disposables.CompositeDisposable
 import io.reactivex.rxjava3.kotlin.plusAssign
-import kotlinx.serialization.json.Json
 import java.security.InvalidParameterException
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.serialization.json.Json
 
 @Singleton
 class NSClientV3Plugin @Inject constructor(
@@ -159,6 +162,9 @@ class NSClientV3Plugin @Inject constructor(
     companion object {
 
         const val RECORDS_TO_LOAD = 500
+
+        /** The lasting "upload to the main site stopped" notice of a Virtual-pump master (2026-11-19) */
+        const val NOTIFICATION_UPLOAD_STOPPED = 9021
     }
 
     private val disposable = CompositeDisposable()
@@ -184,6 +190,91 @@ class NSClientV3Plugin @Inject constructor(
 
     internal var nsAndroidClient: NSAndroidClient? = null
     internal var nsClientV3Service: NSClientV3Service? = null
+
+    // --- Main-site upload guard of a Virtual-pump master (2026-11-19, per explicit request, ported from v4) ---
+    // A full AAPS on the Virtual pump uploads nothing to its main site while that site is where it reads BG from, a real looping
+    // phone uploads there, or the site has not been checked yet. Live and clients are never affected.
+
+    /** A full AAPS on the Virtual pump. False while the pump is not known yet. */
+    internal val virtualOnlyMaster: Boolean get() = runCatching { activePlugin.fullAapsOnVirtualPump(config) }.getOrDefault(false)
+
+    @Volatile internal var mainSiteLooperChecked = false
+    @Volatile private var realLooperSeenAt = 0L
+    @Volatile private var mainSiteBlockNotified: MainSiteUploadBlock? = null
+    private val ownDevice = "openaps://${Build.MANUFACTURER} ${Build.MODEL}"
+
+    /** Remembers the newest device status in [statuses] from a real looper, see [isRealLooperStatus]. */
+    internal fun noteRealLoopers(statuses: List<NSDeviceStatus>) {
+        if (!virtualOnlyMaster) return
+        statuses.filter { isRealLooperStatus(it, ownDevice) }
+            .mapNotNull { it.date ?: it.createdAt?.let { at -> runCatching { dateUtil.fromISODateString(at) }.getOrNull() } }
+            .maxOrNull()
+            ?.let { if (it > realLooperSeenAt) realLooperSeenAt = it }
+    }
+
+    private fun realLooperOnMainSite(now: Long): Boolean = realLooperSeenAt != 0L && now - realLooperSeenAt < REAL_LOOPER_HOLD_MS
+
+    /** BG comes from the main site: a Nightscout BG source, not taken from the Live connection. Unknown source counts as Nightscout. */
+    private val mainSiteIsBgSite: Boolean
+        get() {
+            val nsBgSource = runCatching { activePlugin.activeBgSource is NSClientSource }.getOrDefault(true)
+            val bgFromLiveConnection = preferences.get(BooleanKey.NsClientBgFromLiveSite) && preferences.liveConnectionConfigured()
+            return nsBgSource && !bgFromLiveConnection
+        }
+
+    /** Why this phone must not upload to its main site, or null. Never on Live or a client. */
+    internal val mainSiteUploadBlock: MainSiteUploadBlock?
+        get() {
+            if (!virtualOnlyMaster) return null
+            if (mainSiteIsBgSite) return MainSiteUploadBlock.BG_SITE
+            if (!mainSiteLooperChecked) return MainSiteUploadBlock.NOT_CHECKED
+            return if (realLooperOnMainSite(dateUtil.now())) MainSiteUploadBlock.REAL_LOOPER else null
+        }
+
+    internal val mainSiteUploadBlocked: Boolean get() = mainSiteUploadBlock != null
+
+    /**
+     * The first check of the main site after a start or a site change: its device statuses of the last 24 hours. Reads only,
+     * which the write guard lets through. Called before each upload pass while not done.
+     */
+    internal suspend fun ensureMainSiteChecked() {
+        if (!virtualOnlyMaster || mainSiteLooperChecked || mainSiteIsBgSite) return
+        val client = nsAndroidClient ?: return
+        try {
+            noteRealLoopers(client.getDeviceStatusModifiedSince(dateUtil.now() - REAL_LOOPER_HOLD_MS))
+            mainSiteLooperChecked = true
+            aapsLogger.debug(LTag.NSCLIENT, "Main site checked for a real looper: ${if (realLooperOnMainSite(dateUtil.now())) "found" else "none"}")
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.NSCLIENT, "Main site looper check failed, uploads stay stopped", e)
+        }
+    }
+
+    /**
+     * Shows, changes or clears the lasting notification for [mainSiteUploadBlock] and says whether uploading stops. Posted only
+     * when the reason changes. Waiting for the first check stops uploading too, but only the log says so.
+     */
+    internal fun reportMainSiteUploadBlock(): Boolean {
+        val block = mainSiteUploadBlock
+        val shown = block.takeIf { it != MainSiteUploadBlock.NOT_CHECKED }
+        if (shown != mainSiteBlockNotified) {
+            if (shown == null) rxBus.send(EventDismissNotification(NOTIFICATION_UPLOAD_STOPPED))
+            else {
+                val text = rh.gs(if (shown == MainSiteUploadBlock.REAL_LOOPER) R.string.ns_upload_stopped_real_looper else R.string.ns_upload_stopped_bg_site)
+                aapsLogger.warn(LTag.NSCLIENT, text)
+                rxBus.send(EventNSClientNewLog("● STOP", text))
+                rxBus.send(EventNewNotification(Notification(NOTIFICATION_UPLOAD_STOPPED, text, Notification.URGENT)))
+            }
+            mainSiteBlockNotified = shown
+        }
+        if (block == MainSiteUploadBlock.NOT_CHECKED) rxBus.send(EventNSClientNewLog("● WAIT", rh.gs(R.string.ns_upload_waiting_site_check)))
+        return block != null
+    }
+
+    /** A new main site: check it again before uploading there. */
+    private fun resetMainSiteCheck() {
+        mainSiteLooperChecked = false
+        realLooperSeenAt = 0L
+    }
 
     internal val isAllowed get() = receiverDelegate.allowed
     internal val blockingReason get() = receiverDelegate.blockingReason
@@ -302,6 +393,7 @@ class NSClientV3Plugin @Inject constructor(
                                    }
                                    stopService()
                                    nsAndroidClient = null
+                                   if (ev.isChanged(StringKey.NsClientUrl.key)) resetMainSiteCheck()
                                    setClient()
                                }
                                if (ev.isChanged(LongNonKey.LocalProfileLastChange.key))
@@ -408,13 +500,16 @@ class NSClientV3Plugin @Inject constructor(
 
     private fun setClient() {
         if (nsAndroidClient == null)
-            nsAndroidClient = NSAndroidClientImpl(
-                baseUrl = preferences.get(StringKey.NsClientUrl).lowercase().replace("https://", "").replace(Regex("/$"), ""),
-                accessToken = preferences.get(StringKey.NsClientAccessToken),
-                context = context,
-                logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
-                logger = { msg -> aapsLogger.debug(LTag.HTTP, msg) }
-            )
+        // Wrapped so a Virtual-pump master never writes to its main site while that is blocked (2026-11-19), see BgSiteWriteGuard
+            nsAndroidClient = BgSiteWriteGuard(
+                NSAndroidClientImpl(
+                    baseUrl = preferences.get(StringKey.NsClientUrl).lowercase().replace("https://", "").replace(Regex("/$"), ""),
+                    accessToken = preferences.get(StringKey.NsClientAccessToken),
+                    context = context,
+                    logging = l.findByName(LTag.NSCLIENT.tag).enabled && (config.isEngineeringMode() || config.isDev()),
+                    logger = { msg -> aapsLogger.debug(LTag.HTTP, msg) }
+                )
+            ) { mainSiteUploadBlocked }
         SystemClock.sleep(2000)
         if (preferences.get(BooleanKey.NsClient3UseWs)) {
             if (nsClientV3Service == null) startService()
@@ -487,6 +582,10 @@ class NSClientV3Plugin @Inject constructor(
         if (!isEnabled()) return
         if (!preferences.get(BooleanKey.NsClientUploadData)) {
             aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
+            return
+        }
+        if (mainSiteUploadBlocked) {
+            aapsLogger.debug(LTag.NSCLIENT, "Upload to the main site stopped. Message dropped")
             return
         }
         nsClientV3Service?.handleClearAlarm(originalAlarm, silenceTimeInMilliseconds)

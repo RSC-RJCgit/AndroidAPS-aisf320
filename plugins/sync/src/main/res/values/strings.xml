@@ -82,6 +82,9 @@
     <string name="ns_receive_tbr_eb_blocked_virtual_summary">Blocked: a full AAPS on VirtualPump simulates its own temp basals and never takes them from NS</string>
     <string name="ns_upload_virtual_warning_summary">WARNING (VirtualPump phone): check this is NOT the loop phone upload NS site. Simulated data uploaded to the loop phone site mixes with its record.</string>
     <string name="ns_upload">Upload data to NS</string>
+    <string name="ns_upload_stopped_real_looper" comment="2026-11-19: a Virtual-pump phone found a real looping phone uploading to its main site">Upload to this Nightscout site stopped: a phone looping a real pump uploads here. This Virtual phone uploads nothing to it while that phone has uploaded in the last 24 hours.</string>
+    <string name="ns_upload_stopped_bg_site" comment="2026-11-19: a Virtual-pump phone reads its BG from its own upload site">Upload to this Nightscout site stopped: this Virtual phone reads its BG from it. Take BG from the Live connection, or use another upload site.</string>
+    <string name="ns_upload_waiting_site_check">Upload waiting: checking this Nightscout site for a looping phone first</string>
     <string name="ns_receive_profile_store">Receive profile store</string>
     <string name="ns_receive_profile_store_summary">Synchronize profiles from NS profile editor</string>
     <string name="ns_profile_owner_id">Profile owner ID</string>

@@ -36,6 +36,8 @@ class LoadDeviceStatusWorker(
             val from = dateUtil.now() - T.mins(7).msecs()
             val deviceStatuses = nsAndroidClient.getDeviceStatusModifiedSince(from)
             aapsLogger.debug("DEVICESTATUSES: $deviceStatuses")
+            // A Virtual-pump master watches its main site for a real looper (2026-11-19), see NSClientV3Plugin.mainSiteUploadBlock
+            nsClientV3Plugin.noteRealLoopers(deviceStatuses)
             if (deviceStatuses.isNotEmpty()) {
                 rxBus.send(EventNSClientNewLog("◄ RCV", "${deviceStatuses.size} DSs from ${dateUtil.dateAndTimeAndSecondsString(from)}"))
                 nsDeviceStatusHandler.handleNewData(deviceStatuses.toTypedArray())

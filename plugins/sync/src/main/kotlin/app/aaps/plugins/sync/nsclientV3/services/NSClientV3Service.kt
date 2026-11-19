@@ -223,7 +223,11 @@ class NSClientV3Service : DaggerService() {
             nsClientV3Plugin.storeLastLoadedSrvModified()
         }
         when (collection) {
-            "devicestatus" -> docString.toNSDeviceStatus().let { nsDeviceStatusHandler.handleNewData(arrayOf(it)) }
+            "devicestatus" -> docString.toNSDeviceStatus().let {
+                // A Virtual-pump master watches its main site for a real looper (2026-11-19), see NSClientV3Plugin.mainSiteUploadBlock
+                nsClientV3Plugin.noteRealLoopers(listOf(it))
+                nsDeviceStatusHandler.handleNewData(arrayOf(it))
+            }
             "entries"      -> docString.toNSSgvV3()?.let {
                 nsIncomingDataProcessor.processSgvs(listOf(it), doFullSync = false)
                 storeDataForDb.storeGlucoseValuesToDb()

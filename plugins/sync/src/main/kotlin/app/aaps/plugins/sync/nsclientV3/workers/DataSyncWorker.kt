@@ -25,6 +25,13 @@ class DataSyncWorker(
             rxBus.send(EventNSClientNewLog("● RUN", "Full sync finished"))
             nsClientV3Plugin.endFullSync()
         }
+        // A Virtual-pump master uploads nothing to its main site while that is blocked (2026-11-19, per explicit request): it is the
+        // BG site, a real looper uploads there, or the site is not checked yet. Stopped here, so the sync cursors stay put.
+        nsClientV3Plugin.ensureMainSiteChecked()
+        if (nsClientV3Plugin.reportMainSiteUploadBlock()) {
+            rxBus.send(EventNSClientNewLog("► UPL", "Skipped: upload to the main site stopped"))
+            return Result.success()
+        }
         if (activePlugin.activeNsClient?.hasWritePermission == true || nsClientV3Plugin.nsClientV3Service?.wsConnected == true) {
             rxBus.send(EventNSClientNewLog("► UPL", "Start"))
             dataSyncSelectorV3.doUpload()
