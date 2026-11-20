@@ -234,6 +234,11 @@ fun SecondaryGraphCompose(
     geometryHolder: ChartGeometryHolder? = null,
     /** A label drawn at the plot's bottom left, just above the time labels (the G1 label). Null draws none. */
     cornerLabel: String? = null,
+    /**
+     * Simple graphs (2026-11-21, per explicit request): the curves only, without the time row, the steps legend, the SMB and
+     * bolus marks, the hourly IOB and basal values and the insulin totals row.
+     */
+    simpleGraph: Boolean = false,
     modifier: Modifier = Modifier,
     masterZone: TimeZone? = null,
     basalSnapshot: BasalGraphData? = null,
@@ -457,8 +462,8 @@ fun SecondaryGraphCompose(
     }
 
     // IOB treatment overlays processing
-    val processedIobTreatments = remember(lastTreatmentData.value, stableTimeRange) {
-        if (!hasRealTimeRange || !hasIob) return@remember ProcessedIobOverlays.EMPTY
+    val processedIobTreatments = remember(lastTreatmentData.value, stableTimeRange, simpleGraph) {
+        if (!hasRealTimeRange || !hasIob || simpleGraph) return@remember ProcessedIobOverlays.EMPTY
         processIobOverlays(lastTreatmentData.value, minTimestamp, minX, maxX)
     }
 
@@ -781,7 +786,7 @@ fun SecondaryGraphCompose(
     val decorations = rememberSecondaryGraphDecorations(
         viewModel, showSmbDoseLabels, secondaryMarks, treatmentData, iobData, basalData, basalSnapshot, hasBasalLayer, minTimestamp,
         nowTimestamp, masterZone, seriesColors, geometryHolder, cornerLabel, renderReporter, nowLine, visibleRangeReporter, inspectLine,
-        stepsTapReporter,
+        stepsTapReporter, simpleGraph,
     )
 
     // Dual-axis zero alignment.
@@ -1044,10 +1049,10 @@ fun SecondaryGraphCompose(
     val bottomAxis = HorizontalAxis.rememberBottom(
         valueFormatter = timeFormatter,
         itemPlacer = bottomAxisItemPlacer,
-        // 10 sp (2026-11-21, per explicit request): the default size let neighbouring times overlap.
+        // 10 sp (2026-11-21, per explicit request): the default size let neighbouring times overlap. None in Simple graphs.
         label = rememberTextComponent(
             style = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp)
-        ),
+        ).takeUnless { simpleGraph },
         guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
     )
 
@@ -1081,9 +1086,9 @@ fun SecondaryGraphCompose(
     val markerController = inspect?.controller ?: defaultMarkerController
 
     // Not while the main graph's insulin-total columns are on (2026-11-20, per explicit request): their values sit on the columns
-    val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp, display.bgGraphInsulinColumns) {
+    val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp, display.bgGraphInsulinColumns, simpleGraph) {
         val samples = iobData?.insulinByMinute.orEmpty()
-        if (samples.isEmpty() || display.bgGraphInsulinColumns) return@remember emptyList()
+        if (samples.isEmpty() || display.bgGraphInsulinColumns || simpleGraph) return@remember emptyList()
         val start = visibleMinX?.let { minTimestamp + (it * 60_000.0).toLong() } ?: samples.minOf { it.timestamp }
         val end = visibleMaxX?.let { minTimestamp + (it * 60_000.0).toLong() }
             ?: (samples.maxOf { it.timestamp } + 60_000L)
@@ -1091,7 +1096,7 @@ fun SecondaryGraphCompose(
     }
     Column(modifier = modifier.fillMaxWidth()) {
         // Legend of the step count lines (2026-10-19), each name in its line's colour
-        if (primaryType == SeriesType.STEPS && stepsData != null) {
+        if (primaryType == SeriesType.STEPS && stepsData != null && !simpleGraph) {
             Row(
                 // The graph title (for example, "G5 STEPS") is overlaid by GraphsSection at the top-left.
                 // Keep S5/S15/S30/S60 on the same horizontal row, starting after that title.
@@ -1258,6 +1263,7 @@ private fun rememberSecondaryGraphDecorations(
     visibleRangeReporter: Decoration,
     inspectLine: Decoration?,
     stepsTapReporter: Decoration?,
+    simpleGraph: Boolean,
 ): List<Decoration> {
     val dateUtil = LocalDateUtil.current
     val smbDoseFormatter = LocalDecimalFormatter.current
@@ -1372,12 +1378,12 @@ private fun rememberSecondaryGraphDecorations(
         )
     }
     // One label per hour, counted back from now. The newest is drawn first, so it always shows.
-    val iobPeaks = remember(iobData, nowTimestamp) {
-        hourlyPeaks(iobData?.iob.orEmpty(), nowTimestamp)
+    val iobPeaks = remember(iobData, nowTimestamp, simpleGraph) {
+        if (simpleGraph) emptyList() else hourlyPeaks(iobData?.iob.orEmpty(), nowTimestamp)
     }
-    val basalPeaks = remember(basalData, nowTimestamp, hasBasalLayer) {
+    val basalPeaks = remember(basalData, nowTimestamp, hasBasalLayer, simpleGraph) {
         // 2026-11-20, per explicit request: also every column above the profile basal
-        if (hasBasalLayer) basalLabelPoints(basalData?.actualBasal.orEmpty(), basalData?.profileBasal.orEmpty(), nowTimestamp) else emptyList()
+        if (hasBasalLayer && !simpleGraph) basalLabelPoints(basalData?.actualBasal.orEmpty(), basalData?.profileBasal.orEmpty(), nowTimestamp) else emptyList()
     }
     val peakLabels = remember(iobPeaks, basalPeaks, minTimestamp, smbText, seriesColors.iob, basalColor, basalData) {
         val basalTop = basalScaleTop(basalData)

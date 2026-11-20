@@ -546,6 +546,8 @@
     <string name="graph_bolus_calculation_unavailable">Calculation unavailable</string>
     <string name="client_settings1_chip">Set1</string>
     <string name="client_aiv_chip" comment="Button opening the AutoISF values history table">AIV</string>
+    <string name="graph_mode_simple" comment="Chip next to AIV: the overview graphs are in simple mode; a tap switches to detailed">Simple</string>
+    <string name="graph_mode_detailed" comment="Chip next to AIV: the overview graphs are in detailed mode; a tap switches to simple">Detailed</string>
     <string name="autoisf_split_title" comment="Title of the panel a tap on AIV opens: the AutoISF factors of the newest loop run">AutoISF split</string>
     <string name="autoisf_split_none" comment="Shown in that panel when no loop result from the last 30 minutes has AutoISF values">No AutoISF values from the last 30 minutes.</string>
     <string name="autoisf_split_hint" comment="Small text under the AutoISF factors">Long press AIV for the AIV table.</string>

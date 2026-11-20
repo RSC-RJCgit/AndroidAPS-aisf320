@@ -338,6 +338,13 @@ fun BgGraphCompose(
     automaticCleanGraph: Boolean = false,
     /** With [automaticCleanGraph]: also hide the text lines (the "Clean graph hides text lines" setting). */
     cleanGraphHidesTextLines: Boolean = false,
+    /**
+     * Simple graphs, main graph only (2026-11-21, per explicit request): the clean graph without basal or insulin columns, profile
+     * % numbers and stars, SMB numbers and arrows, bolus and carb values, carb split dots, zero and FPU bolus arrows, pod and
+     * sensor marks, text lines and the strip under the graph. Kept: the readings and their last value, the manual bolus
+     * triangles, the carb marks and the Tier 3 boost "B".
+     */
+    superClean: Boolean = false,
     /** Press and hold to see the values at a reading. Null turns it off. */
     inspect: GraphInspectState? = null,
     /** Filled with this graph's layout on each draw, for the time-based scroll and zoom sync (see ChartGeometry). */
@@ -387,9 +394,11 @@ fun BgGraphCompose(
     // Collect flows independently - each triggers recomposition only when it changes
     val bgReadings by viewModel.bgReadingsFlow.collectAsStateWithLifecycle()
     val savedGraphDisplay by viewModel.graphDisplay.collectAsStateWithLifecycle()
-    val graphDisplay = if (automaticCleanGraph) savedGraphDisplay.copy(
+    val graphDisplay = (if (automaticCleanGraph) savedGraphDisplay.copy(
         showSmbLabels = false, basalToggleIndex = 2, showTextLines = savedGraphDisplay.showTextLines && !cleanGraphHidesTextLines
-    ) else savedGraphDisplay
+    ) else savedGraphDisplay).let {
+        if (superClean) it.copy(showSmbLabels = false, basalToggleIndex = 2, showTextLines = false, basalOnBgGraph = false) else it
+    }
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
     // 2026-10-23, per explicit request: the automatic clean graph (zoomed out past its width) hides the insulin activity and
@@ -418,7 +427,9 @@ fun BgGraphCompose(
     val insulinColumns = graphDisplay.bgGraphInsulinColumns && !topBandLines
     val maxBolusSetting = LocalPreferences.current.get(DoubleKey.SafetyMaxBolus)
     val basalData = if (showBasalOnBgGraph) rawBasalData else BasalGraphData(emptyList(), emptyList(), 0.0)
-    val epsPoints by viewModel.epsGraphFlow.collectAsStateWithLifecycle()
+    val savedEpsPoints by viewModel.epsGraphFlow.collectAsStateWithLifecycle()
+    // Simple graphs: no profile % numbers or stars
+    val epsPoints = if (superClean) emptyList() else savedEpsPoints
     val showActivity = SeriesType.ACTIVITY in bgOverlays && !automaticCleanGraph && !bglOnly
     val showCarbModel = !automaticCleanGraph && !bglOnly
     val activityData by viewModel.activityGraphFlow.collectAsStateWithLifecycle()
@@ -885,7 +896,8 @@ fun BgGraphCompose(
         fun nearest(timestamp: Long): Double? =
             bgReadings.minByOrNull { abs(it.timestamp - timestamp) }?.value
         // A zero bolus gets a small arrow (zeroBolusArrows), not the big mark
-        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 }.mapNotNull { bolus ->
+        // Simple graphs: manual boluses only, no protein/fat (carb split) parts
+        val bolusPoints = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount > 0.0 && !(superClean && it.isFpu) }.mapNotNull { bolus ->
             nearest(bolus.timestamp)?.let { bolus.timestamp to it }
         }
         val carbPoints = treatments.carbs.mapNotNull { carb ->
@@ -991,7 +1003,7 @@ fun BgGraphCompose(
     val decorations = rememberBgGraphDecorations(
         treatments, bgReadings, bucketedData, graphDisplay, minTimestamp, maxTimestamp, nowTimestamp, lowMark, epsLabelAnchors,
         seriesRegistry, showRaw, showUkf, basalData, showBasalOnBgGraph && !insulinColumns, tapTargets, topBandTap, topBandLines, geometryHolder, masterZone,
-        renderReporter, inRangeBox, nowLine, inspectLine, insulinColumnData
+        renderReporter, inRangeBox, nowLine, inspectLine, insulinColumnData, superClean
     )
 
     // =========================================================================
@@ -1167,7 +1179,7 @@ fun BgGraphCompose(
     )
     }
     // Hypoprediction line and insulin totals row (2026-11-19): in their own function, see BgGraphBottomStrip
-    BgGraphBottomStrip(topBandLines, graphDisplay.bgGraphInsulinColumns, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
+    if (!superClean) BgGraphBottomStrip(topBandLines, graphDisplay.bgGraphInsulinColumns, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
     }
 }
 
@@ -1503,6 +1515,7 @@ private fun rememberBgGraphDecorations(
     nowLine: Decoration,
     inspectLine: Decoration?,
     insulinColumnData: Pair<List<InsulinColumn>, Double>,
+    superClean: Boolean,
 ): List<Decoration> {
     val decimalFormatter = LocalDecimalFormatter.current
     val profileUtil = LocalProfileUtil.current
@@ -1520,6 +1533,13 @@ private fun rememberBgGraphDecorations(
         DominantIsf.PP   -> ppColor
         DominantIsf.DURA -> duraColor
         else             -> smbMarkColor
+    }
+    // Simple graphs draw no SMB or bolus numbers, so their last tap areas must not stay behind
+    LaunchedEffect(superClean) {
+        if (superClean) {
+            tapTargets.smbLabels = emptyList()
+            tapTargets.labels = emptyList()
+        }
     }
     val smbText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val smbStack = remember(treatments, bgReadings, minTimestamp, graphDisplay.showSmbLabels) {
@@ -1611,10 +1631,12 @@ private fun rememberBgGraphDecorations(
     val uamBoostColor = AapsTheme.elementColors.announcement
     val uamBoostText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     val isClient = LocalConfig.current.AAPSCLIENT
-    val uamBoostLabels = remember(treatments, bgReadings, minTimestamp, uamBoostColor, isClient) {
+    val uamBoostLabels = remember(treatments, bgReadings, minTimestamp, uamBoostColor, isClient, superClean) {
         var groupStart = Long.MIN_VALUE
         var stack = 0
         bgGraphAnnouncements(treatments.therapyEvents, isClient)
+            // Simple graphs: only the Tier 3 boost "B", not G, H4 or A4
+            .filter { !superClean || it.label.trim() == UAM_BOOST_GRAPH_MARK }
             .mapNotNull { event ->
                 val y = bgReadings.minByOrNull { abs(it.timestamp - event.timestamp) }?.value ?: return@mapNotNull null
                 if (groupStart == Long.MIN_VALUE || event.timestamp - groupStart >= ANNOUNCEMENT_STACK_MS) {
@@ -1681,6 +1703,22 @@ private fun rememberBgGraphDecorations(
         )
     }
     val smbArrowMarks = remember(smbArrows) { SmbArrows(smbArrows) }
+    // Simple graphs: the arrows of the Tier 3 UAM boost SMBs only (the other SMB arrows are off)
+    val tier3ArrowMarks = remember(treatments, bgReadings, minTimestamp, superClean) {
+        SmbArrows(
+            if (!superClean) emptyList()
+            else tier3Values(treatments).map { smb ->
+                val dot = bgReadings.minByOrNull { abs(it.timestamp - smb.timestamp) }
+                SmbStackItem(
+                    x = timestampToX(smb.timestamp, minTimestamp),
+                    label = smb.label,
+                    stackIndex = 0,
+                    anchorY = dot?.value,
+                    color = isfColor(dot?.dominantIsf),
+                )
+            }
+        )
+    }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
     // A zero bolus: an SMB-style arrow under the BG dot, a little larger, in the bolus colour. Its 0 label stays at
     // the bottom (bolusStack).
@@ -1764,8 +1802,12 @@ private fun rememberBgGraphDecorations(
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true, masterZone = masterZone)
     // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
     val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
-    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandLines, doseCheckDots) {
-        listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, doseCheckDots, tapReporter) +
+    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandLines, doseCheckDots, superClean, tier3ArrowMarks) {
+        // Simple graphs (2026-11-21, per explicit request): the range band, the now line, the clock change, the "B" marks and the
+        // last reading's value, with the Tier 3 boost arrows
+        if (superClean) listOf(inRangeBox, nowLine, clockChanges, tier3ArrowMarks, uamBoostMarks, tapReporter) +
+            listOfNotNull(renderReporter, lastBgMark, inspectLine, geometryReporter)
+        else listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, doseCheckDots, tapReporter) +
             listOfNotNull(renderReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })
     }
     return decorations

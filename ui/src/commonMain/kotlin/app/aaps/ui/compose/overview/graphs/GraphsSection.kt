@@ -78,6 +78,7 @@ import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.SecondaryGraph
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.keys.interfaces.AppPlatform
@@ -121,6 +122,11 @@ import kotlin.math.abs
  * Scroll/Zoom states are pre-allocated (up to [GraphConfig.MAX_SECONDARY_GRAPHS])
  * to avoid dynamic composable state issues with Vico's remember-based states.
  */
+/** Heights of the Simple graphs (2026-11-21, per explicit request), in dp. The saved heights are kept for Detailed. */
+internal const val SIMPLE_BG_HEIGHT_DP = 200
+internal const val SIMPLE_IOB_HEIGHT_DP = 150
+internal const val SIMPLE_SECONDARY_HEIGHT_DP = 100
+
 /** Fixed graph layout used in simple mode: BG (no overlays), IOB+BAS (no overlays), COB */
 private val SIMPLE_MODE_CONFIG = GraphConfig(
     bgOverlays = emptyList(),
@@ -329,6 +335,10 @@ fun GraphsSection(
     // The setting decides only whether the automatic clean graph also hides the text lines (2026-10-21, per explicit
     // request). The SMB labels and the arrows are hidden in any case.
     val cleanGraphHidesTextLines by LocalPreferences.current.observe(BooleanKey.ApsAutoIsfAutoCleanGraph).collectAsStateWithLifecycle()
+    // Simple graphs (2026-11-21, per explicit request; the chip next to AIV): the main graph superclean at SIMPLE_BG_HEIGHT_DP, G1 at
+    // SIMPLE_IOB_HEIGHT_DP, G2 onwards curves only at SIMPLE_SECONDARY_HEIGHT_DP, without their heading and time rows. The last
+    // graph (the BG copy) is unchanged. Display only: the saved heights stay for Detailed.
+    val simpleGraphs by LocalPreferences.current.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
 
     // Settle further before feeding into BG specifically: unlike the secondary graphs (which are
     // non-interactive and unaffected by frequent updates), BG has live pinch-zoom. Updating its
@@ -1255,9 +1265,10 @@ fun GraphsSection(
                 basalSnapshot = basalSnapshot,
                 onRenderReady = { renderedGraphs = renderedGraphs + (-1 to it) },
                 masterZone = masterZone,
-                automaticCleanGraph = automaticCleanGraph,
+                automaticCleanGraph = automaticCleanGraph || simpleGraphs,
                 cleanGraphHidesTextLines = cleanGraphHidesTextLines,
-                bgOverlays = graphConfig.bgOverlays,
+                bgOverlays = if (simpleGraphs) emptyList() else graphConfig.bgOverlays,
+                superClean = simpleGraphs,
                 scrollState = bgScrollState,
                 zoomState = bgZoomState,
                 geometryHolder = bgGeometry,
@@ -1267,7 +1278,7 @@ fun GraphsSection(
                 inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(graphConfig.bgHeight.dp * graphHeightScale)
+                    .height((if (simpleGraphs) SIMPLE_BG_HEIGHT_DP else graphConfig.bgHeight).dp * graphHeightScale)
                     .onScrollOrZoomGesture {
                         graphViewModel.onGraphInteraction()
                         followNow = false
@@ -1389,6 +1400,7 @@ fun GraphsSection(
                 basalSnapshot = basalSnapshot,
                 onRenderReady = { renderedGraphs = renderedGraphs + (-2 to it) },
                 inspect = inspect,
+                simpleGraph = simpleGraphs,
                 // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates"),
                 // at the bottom left because the hourly basal peak numbers use the top line of this graph. Drawn by the chart
                 // at its plot's bottom (2026-10-30): a fixed gap above the graph's edge still covered the time labels.
@@ -1401,7 +1413,7 @@ fun GraphsSection(
                     ).joinToString("  "),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(graphConfig.iobHeight.dp * graphHeightScale)
+                    .height((if (simpleGraphs) SIMPLE_IOB_HEIGHT_DP else graphConfig.iobHeight).dp * graphHeightScale)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
             // The hypoprediction line at the left of this − + row (2026-11-20, per explicit request; was its own line under the
@@ -1457,12 +1469,14 @@ fun GraphsSection(
                     seriesTypes = secondary.series,
                     basalSnapshot = basalSnapshot,
                     onRenderReady = { renderedGraphs = renderedGraphs + (i to it) },
-                    showSmbDoseLabels = i == 0,
-                    secondaryMarks = when (i) {
-                        1 -> SecondaryMarks.SMB_TOTALS
-                        2 -> SecondaryMarks.NOTES
-                        else -> SecondaryMarks.NONE
+                    showSmbDoseLabels = i == 0 && !simpleGraphs,
+                    secondaryMarks = when {
+                        simpleGraphs -> SecondaryMarks.NONE
+                        i == 1       -> SecondaryMarks.SMB_TOTALS
+                        i == 2       -> SecondaryMarks.NOTES
+                        else         -> SecondaryMarks.NONE
                     },
+                    simpleGraph = simpleGraphs,
                     scrollState = secScrollStates[i],
                     zoomState = secZoomStates[i],
                     geometryHolder = secGeometry[i],
@@ -1470,12 +1484,12 @@ fun GraphsSection(
                     nowTimestamp = nowTimestamp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(secondary.height.dp * graphHeightScale)
+                        .height((if (simpleGraphs) SIMPLE_SECONDARY_HEIGHT_DP else secondary.height).dp * graphHeightScale)
                 )
                 // Name at the top left and the pencil at the top right, as before the merge: the bottom is the time labels.
                 // 2026-10-24, per explicit request: numbered (G2 is the first of these), full strength instead of 60%, and
                 // with what the graph draws besides its curves.
-                GraphLabel(
+                if (!simpleGraphs) GraphLabel(
                     number = i + 2,
                     // The same graphs as showSmbDoseLabels and secondaryMarks above
                     names = secondary.series.map { stringResource(seriesShortNameId(it)) } + when (i) {
@@ -1488,8 +1502,8 @@ fun GraphsSection(
                         .align(Alignment.TopStart)
                         .padding(start = 36.dp, top = 2.dp)
                 )
-                if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
-                if (!isSimpleMode) {
+                if (showZoomButtons && !simpleGraphs) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
+                if (!isSimpleMode && !simpleGraphs) {
                     GraphEditButton(
                         onClick = { editingGraphIndex = i },
                         graphName = seriesListLabel(secondary.series),
