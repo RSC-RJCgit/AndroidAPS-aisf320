@@ -29,6 +29,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.animation.core.tween
@@ -1021,6 +1022,24 @@ fun GraphsSection(
             }
         }
     }
+    // Our own pinch (2026-11-20, per explicit request), see graphPinchZoom: the ratio of the finger distance zooms the main
+    // graph (the others follow it), around the point between the fingers; with "now" at the right edge it stays there, as
+    // with the − + buttons. In order through the same lock as the buttons and the wheel.
+    val pinchZoom: (Float, Float) -> Unit = { ratio, bias ->
+        graphViewModel.onGraphInteraction()
+        zoomScope.launch {
+            wheelZoomMutex.withLock {
+                val current = bgZoomState.value
+                if (current.isFinite() && current > 0f && ratio.isFinite() && ratio > 0f) {
+                    val atNow = bgScrollState.value >= bgScrollState.maxValue - 2f
+                    bgZoomState.animateZoom(Zoom.fixed(current * ratio), animationSpec = tween(0), bias = if (atNow) 1f else bias)
+                    if (atNow) bgScrollState.scroll(Scroll.Absolute.End)
+                }
+            }
+        }
+    }
+    // The pinch handler is set up once and must not restart mid-pinch on a recomposition, so it calls the newest action
+    val latestPinchZoom by rememberUpdatedState(pinchZoom)
     val panStep: (Float) -> Unit = { px ->
         followNow = false
         zoomScope.launch {
@@ -1111,6 +1130,7 @@ fun GraphsSection(
                     }
                 }
             }
+            .graphPinchZoom { ratio, bias -> latestPinchZoom(ratio, bias) }
             .graphZoomControls(zoomStep, panStep, isHolding = { inspect.fingerDown })
             .onScrollOrZoomGesture(onVerticalScroll = {
                 // Cancel any recent horizontal drag/fling permission as soon as a page scroll starts.
@@ -1384,6 +1404,19 @@ fun GraphsSection(
                     .height(graphConfig.iobHeight.dp * graphHeightScale)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
+            // The hypoprediction line at the left of this − + row (2026-11-20, per explicit request; was its own line under the
+            // main graph), as on the main graph's own − + row
+            val g1AutoIsf by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
+            val g1Display by graphViewModel.graphDisplay.collectAsStateWithLifecycle()
+            hypoLineText(g1AutoIsf.hypoPrediction, g1Display.bgGraphInsulinColumns)?.let { line ->
+                Text(
+                    text = line,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp)
+                )
+            }
             if (!isSimpleMode) {
                 GraphEditButton(
                     onClick = { editingIobOverlays = true },

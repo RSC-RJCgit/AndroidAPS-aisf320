@@ -467,7 +467,9 @@ fun BgGraphCompose(
                 minTimestamp, maxTimestamp, sliceMs, nowTimestamp, basalData.actualBasal, treatments.boluses, treatments.extendedBoluses
             )
             // The ISF colours stay in the clean graph too (2026-11-20, per explicit request), as on the IOB graph's basal
-            insulinColumnsOf(totals, sliceMs, bgReadings, coloured = true) to insulinColumnTop(totals, maxBolusSetting)
+            // Full height: the day's largest slice (at most max bolus + 0.3 U), or only the last 12 hours' when that is over 1.5 U
+            // (2026-11-20, per explicit request)
+            insulinColumnsOf(totals, sliceMs, bgReadings, coloured = true) to insulinColumnTopLookBack(totals, maxBolusSetting, nowTimestamp)
         }
     }
 
@@ -1164,7 +1166,7 @@ fun BgGraphCompose(
     )
     }
     // Hypoprediction line and insulin totals row (2026-11-19): in their own function, see BgGraphBottomStrip
-    BgGraphBottomStrip(topBandLines, insulinColumns, autoIsfGraph, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
+    BgGraphBottomStrip(topBandLines, graphDisplay.bgGraphInsulinColumns, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
     }
 }
 
@@ -1920,7 +1922,6 @@ private fun BoxScope.BgGraphOverlays(
 private fun BgGraphBottomStrip(
     topBandLines: Boolean,
     insulinColumns: Boolean,
-    autoIsfGraph: AutoIsfGraphData,
     visibleTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     rawBasalData: BasalGraphData,
@@ -1936,16 +1937,10 @@ private fun BgGraphBottomStrip(
         if (!showInsulinTotals || insulinColumns || range == null) emptyList()
         else insulinIntervalTotals(range.first, range.second, nowTimestamp, rawBasalData.actualBasal, treatments.boluses, treatments.extendedBoluses)
     }
-    // The IOB graph below is pulled 8dp up under this strip, hence the extra bottom padding.
-    if (!topBandLines && (autoIsfGraph.hypoPrediction != null || insulinTotals.isNotEmpty() || insulinColumns)) {
+    // The IOB graph below is pulled 8dp up under this strip, hence the extra bottom padding. The hypoprediction line moved to
+    // G1's − + row (2026-11-20, per explicit request), see hypoLineText.
+    if (!topBandLines && insulinTotals.isNotEmpty()) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 10.dp)) {
-            // 2026-11-20, per explicit request: at the end of the hypoprediction line, what the main graph's columns are while the
-            // insulin-total columns are on
-            val hypoText = autoIsfGraph.hypoPrediction?.let { "hypoprediction= ${oneDecimalText(it)}" }
-            val columnsText = if (insulinColumns) "total insulin columns, basal in graph 5" else null
-            listOfNotNull(hypoText, columnsText).takeIf { it.isNotEmpty() }?.let { parts ->
-                Text(text = parts.joinToString("   "), color = Color.White, style = stripStyle)
-            }
             if (insulinTotals.isNotEmpty()) {
                 // Lined up with the plot area (past the BG axis, the same start as the shown-hours label), one slice per cell
                 Row(modifier = Modifier.fillMaxWidth().padding(start = 28.dp, top = 2.dp)) {
@@ -1962,6 +1957,16 @@ private fun BgGraphBottomStrip(
             }
         }
     }
+}
+
+/**
+ * The hypoprediction line, at the left of G1's − + row (2026-11-20, per explicit request; was its own line under the main
+ * graph). While the insulin-total columns are on, it also says where the basal went. Null when there is nothing to show.
+ */
+internal fun hypoLineText(hypoPrediction: Double?, insulinColumns: Boolean): String? = when {
+    insulinColumns          -> "hypopred=${hypoPrediction?.let { oneDecimalText(it) } ?: "--"}  insulin tot cols [basals G1 & G6]"
+    hypoPrediction != null  -> "hypoprediction= ${oneDecimalText(hypoPrediction)}"
+    else                    -> null
 }
 
 internal fun oneDecimalText(value: Double): String {

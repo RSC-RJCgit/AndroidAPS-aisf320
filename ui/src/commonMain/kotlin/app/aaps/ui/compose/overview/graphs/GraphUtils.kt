@@ -403,6 +403,22 @@ internal fun insulinColumnTop(totals: List<Pair<Long, Double>>, maxBolus: Double
 }
 
 /**
+ * Full height of the insulin-total columns with the 12-hour look-back (2026-11-20, per explicit request): [insulinColumnTop] over
+ * the loaded day, but when that comes out over [INSULIN_COLUMN_SHORT_LOOKBACK_ABOVE_U], only the slices of the last 12 hours
+ * before [now] count, so one big meal early in the day does not flatten the rest.
+ */
+internal fun insulinColumnTopLookBack(totals: List<Pair<Long, Double>>, maxBolus: Double, now: Long): Double {
+    val dayTop = insulinColumnTop(totals, maxBolus)
+    if (dayTop <= INSULIN_COLUMN_SHORT_LOOKBACK_ABOVE_U) return dayTop
+    val recent = totals.filter { it.first >= now - INSULIN_COLUMN_SHORT_LOOKBACK_MS && it.first <= now }
+    return if (recent.isEmpty()) dayTop else insulinColumnTop(recent, maxBolus)
+}
+
+/** Above this full height (U) the insulin-total columns look back only [INSULIN_COLUMN_SHORT_LOOKBACK_MS]. */
+internal const val INSULIN_COLUMN_SHORT_LOOKBACK_ABOVE_U = 1.5
+internal const val INSULIN_COLUMN_SHORT_LOOKBACK_MS = 12 * 60 * 60_000L
+
+/**
  * One insulin-total column (2026-11-20, per explicit request): [start]..[end], [units] delivered in it, and [isf], the ISF colour
  * at its start (the reading nearest the start, as the SMB labels pick theirs). NONE keeps the basal colour.
  */

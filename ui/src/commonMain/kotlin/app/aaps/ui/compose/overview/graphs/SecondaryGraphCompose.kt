@@ -1062,9 +1062,10 @@ fun SecondaryGraphCompose(
     val defaultMarkerController = CartesianMarkerController.rememberShowOnPress()
     val markerController = inspect?.controller ?: defaultMarkerController
 
-    val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp) {
+    // Not while the main graph's insulin-total columns are on (2026-11-20, per explicit request): their values sit on the columns
+    val insulinLabels = remember(iobData?.insulinByMinute, visibleMinX, visibleMaxX, minTimestamp, display.bgGraphInsulinColumns) {
         val samples = iobData?.insulinByMinute.orEmpty()
-        if (samples.isEmpty()) return@remember emptyList()
+        if (samples.isEmpty() || display.bgGraphInsulinColumns) return@remember emptyList()
         val start = visibleMinX?.let { minTimestamp + (it * 60_000.0).toLong() } ?: samples.minOf { it.timestamp }
         val end = visibleMaxX?.let { minTimestamp + (it * 60_000.0).toLong() }
             ?: (samples.maxOf { it.timestamp } + 60_000L)

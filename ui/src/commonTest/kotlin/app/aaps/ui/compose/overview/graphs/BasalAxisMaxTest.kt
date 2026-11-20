@@ -116,4 +116,17 @@ class BasalAxisMaxTest {
             insulinColumnSteps(columns).map { it.timestamp to it.value }
         )
     }
+
+    @Test
+    fun aBigDayTopLooksBackOnly12Hours() {
+        val now = 24 * hour
+        // 2.4 U 20 hours ago, at most 0.9 U since: the day's top is over 1.5, so the last 12 hours decide
+        val totals = listOf((4 * hour) to 2.4, (14 * hour) to 0.9, (20 * hour) to 0.5)
+        assertEquals(0.9, insulinColumnTopLookBack(totals, maxBolus = 5.0, now = now), 1e-9)
+        // A day top of 1.5 or less stays
+        val small = listOf((4 * hour) to 1.4, (20 * hour) to 0.5)
+        assertEquals(1.4, insulinColumnTopLookBack(small, maxBolus = 5.0, now = now), 1e-9)
+        // Nothing in the last 12 hours: the day's top
+        assertEquals(2.4, insulinColumnTopLookBack(listOf((4 * hour) to 2.4), maxBolus = 5.0, now = now), 1e-9)
+    }
 }
