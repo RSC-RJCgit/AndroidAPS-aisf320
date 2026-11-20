@@ -634,7 +634,8 @@ class BolusWizard(
                 }
             } ?: return
             val now = dateUtil.now()
-            val capWait = reason.startsWith("insulinReq")
+            // An IOB-rise hold (2026-11-20) waits and is checked again like the insulinReq cap
+            val capWait = reason.startsWith("insulinReq") || reason.startsWith("IOB rose")
             if ((retryLater || capWait) && warsawCanRetry(now, firstDueAt, nextDueAt)) {
                 aapsLogger.info(LTag.CORE, "Warsaw dose deferred: $reason, checking again in $WARSAW_RETRY_MINUTES min")
                 if (!deferralNoted) {
@@ -689,13 +690,17 @@ class BolusWizard(
         val status = glucoseStatusProvider.glucoseStatusData
         if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) return "glucose check failed"
         val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
+        // 2026-11-20, per explicit request: wait while IOB rose more than FPU_IOB_RISE_HOLD_U in the last 15 minutes
+        val iob15MinAgo = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now() - 15 * 60_000L, profile).iob
+        if (fpuIobRiseHolds(liveIob, iob15MinAgo)) return "IOB rose ${Round.roundTo(liveIob - iob15MinAgo, 0.01)} U in 15 min"
         val step = ch.bolusStep(planned)
         // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
         // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice.
         // 2026-10-19, per explicit request: cut while walking. The cut part is dropped: capRemaining below uses the cut dose.
         val walkFactor = walkingFactorNow()
         val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(planned * walkFactor, step) else planned
-        val dose = cappedFollowUpDose(walkingPlanned, step) ?: return "insulinReq missing or stale"
+        // 2026-11-20, per explicit request: the full insulinReq cap, not half the gap; the rest is checked again (onCappedRemainder)
+        val dose = cappedFollowUpDose(walkingPlanned, step, halfReduction = false) ?: return "insulinReq missing or stale"
         if (dose <= 0.0) return "insulinReq cap is below one pump step"
         val capRemaining = Round.roundTo(max(0.0, walkingPlanned - dose), 0.001)
         if (walkFactor < 1.0)
@@ -737,16 +742,16 @@ class BolusWizard(
         }
     }
 
-    private fun cappedFollowUpDose(candidate: Double, step: Double): Double? {
+    private fun cappedFollowUpDose(candidate: Double, step: Double, halfReduction: Boolean = true): Double? {
         // Trio's own insulinReq, from the loop status it uploads, when the doses go to Trio
         trioLater?.let { trio ->
             val (at, requirement) = trio.insulinReq() ?: return null
-            return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
+            return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step, halfReduction)
         }
         val at = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)
         val requirement = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqMilliU)
         if (at != preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)) return null
-        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
+        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step, halfReduction)
     }
 
     private var lastWarsawNoteAt = 0L
