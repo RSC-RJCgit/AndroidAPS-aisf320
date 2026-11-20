@@ -1,0 +1,125 @@
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index 17bbca3cb4..6d098f4600 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -635,7 +635,8 @@ class BolusWizard(
+                 }
+             } ?: return
+             val now = dateUtil.now()
+-            val capWait = reason.startsWith("insulinReq")
++            // An IOB-rise hold (2026-11-20) waits and is checked again like the insulinReq cap
++            val capWait = reason.startsWith("insulinReq") || reason.startsWith("IOB rose")
+             if ((retryLater || capWait) && warsawCanRetry(now, firstDueAt, nextDueAt)) {
+                 aapsLogger.info(LTag.CORE, "Warsaw dose deferred: $reason, checking again in $WARSAW_RETRY_MINUTES min")
+                 if (!deferralNoted) {
+@@ -686,13 +687,17 @@ class BolusWizard(
+         val status = glucoseStatusProvider.glucoseStatusData
+         if (!warsawDoseBgAllows(status?.glucose, status?.delta, status?.shortAvgDelta)) return "glucose check failed"
+         val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now(), profile).iob
++        // 2026-11-20, per explicit request: wait while IOB rose more than FPU_IOB_RISE_HOLD_U in the last 15 minutes
++        val iob15MinAgo = iobCobCalculator.calculateFromTreatmentsAndTemps(dateUtil.now() - 15 * 60_000L, profile).iob
++        if (fpuIobRiseHolds(liveIob, iob15MinAgo)) return "IOB rose ${Round.roundTo(liveIob - iob15MinAgo, 0.01)} U in 15 min"
+         val step = ch.bolusStep(planned)
+         // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
+         // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice.
+         // 2026-10-19, per explicit request: cut while walking. The cut part is dropped: capRemaining below uses the cut dose.
+         val walkFactor = walkingFactorNow()
+         val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(planned * walkFactor, step) else planned
+-        val dose = cappedFollowUpDose(walkingPlanned, step) ?: return "insulinReq missing or stale"
++        // 2026-11-20, per explicit request: the full insulinReq cap, not half the gap; the rest is checked again (onCappedRemainder)
++        val dose = cappedFollowUpDose(walkingPlanned, step, halfReduction = false) ?: return "insulinReq missing or stale"
+         if (dose <= 0.0) return "insulinReq cap is below one pump step"
+         val capRemaining = Round.roundTo(max(0.0, walkingPlanned - dose), 0.001)
+         if (walkFactor < 1.0)
+@@ -734,16 +739,16 @@ class BolusWizard(
+         }
+     }
+ 
+-    private fun cappedFollowUpDose(candidate: Double, step: Double): Double? {
++    private fun cappedFollowUpDose(candidate: Double, step: Double, halfReduction: Boolean = true): Double? {
+         // Trio's own insulinReq, from the loop status it uploads, when the doses go to Trio
+         trioLater?.let { trio ->
+             val (at, requirement) = trio.insulinReq() ?: return null
+-            return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
++            return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step, halfReduction)
+         }
+         val at = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)
+         val requirement = preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqMilliU)
+         if (at != preferences.get(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt)) return null
+-        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
++        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step, halfReduction)
+     }
+ 
+     private var lastWarsawNoteAt = 0L
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCap.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCap.kt
+index 399625c90c..6b0fc0ca89 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCap.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCap.kt
+@@ -5,12 +5,15 @@ import kotlin.math.floor
+ import kotlin.math.max
+ import kotlin.math.min
+ 
+-/** Null means no recent loop requirement; zero means no dose can be given now. */
+-fun followUpInsulinCap(candidate: Double, requirementMilliU: Long, calculatedAt: Long, now: Long, step: Double): Double? {
++/**
++ * Null means no recent loop requirement; zero means no dose can be given now.
++ * [halfReduction] false (2026-11-20, per explicit request, protein/fat parts): the full insulinReq cap, not half the gap.
++ */
++fun followUpInsulinCap(candidate: Double, requirementMilliU: Long, calculatedAt: Long, now: Long, step: Double, halfReduction: Boolean = true): Double? {
+     if (calculatedAt <= 0L || calculatedAt > now || now - calculatedAt > 300_000L) return null
+     val cap = min(max(0.0, candidate), max(0.0, requirementMilliU / 1000.0))
+     val roundedCap = Round.roundTo(floor((cap + 1e-9) / step) * step, step)
+-    if (roundedCap <= 0.0 || roundedCap >= candidate) return roundedCap
++    if (roundedCap <= 0.0 || roundedCap >= candidate || !halfReduction) return roundedCap
+ 
+     // For delayed, split, and scheduled FPU follow-up doses, apply only half of the reduction
+     // requested by insulinReq. Keep rounding to a pump-supported step and never exceed the plan.
+@@ -24,5 +27,14 @@ fun followUpInsulinCap(candidate: Double, requirementMilliU: Long, calculatedAt:
+  * all insulin on board (SMBs, temp basals, the bolus) and COB, which is why the delayed doses no longer subtract an
+  * IOB rise of their own.
+  */
++/**
++ * A protein/fat part waits while IOB rose more than this, in units, in the last 15 minutes (2026-11-20, per explicit request).
++ * On 20 Nov (Live) part 7 of 8 went at 20:08 after IOB rose 0.11 -> 2.04 U in 16 min (SMBs and temp basal on an acce spike), and
++ * BG fell to 4.4 later. Of ~60 earlier parts (29 Oct - 20 Nov) none went after a rise over 1.15 U.
++ */
++const val FPU_IOB_RISE_HOLD_U = 1.2
++
++fun fpuIobRiseHolds(iobNow: Double, iob15MinAgo: Double): Boolean = iobNow - iob15MinAgo > FPU_IOB_RISE_HOLD_U
++
+ fun followUpRequirementMilliU(insulinReq: Double, smbThisCycle: Double): Long =
+     (max(0.0, insulinReq - max(0.0, smbThisCycle)) * 1000).toLong()
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCapTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCapTest.kt
+index 1bb725ecc7..3cecb3ae43 100644
+--- a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCapTest.kt
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/FollowUpInsulinCapTest.kt
+@@ -2,7 +2,9 @@ package app.aaps.core.objects.wizard
+ 
+ import kotlin.test.Test
+ import kotlin.test.assertEquals
++import kotlin.test.assertFalse
+ import kotlin.test.assertNull
++import kotlin.test.assertTrue
+ 
+ class FollowUpInsulinCapTest {
+     @Test fun followUpDoseAppliesHalfOfInsulinRequirementReduction() {
+@@ -11,6 +13,19 @@ class FollowUpInsulinCapTest {
+         assertEquals(0.40, followUpInsulinCap(0.43, 2000L, 1_000_000L, 1_000_000L, 0.05)!!, 0.000001)
+     }
+ 
++    @Test fun fullCapForProteinFatParts() {
++        assertEquals(0.70, followUpInsulinCap(1.20, 700L, 1_000_000L, 1_000_000L, 0.05, halfReduction = false)!!, 0.000001)
++        assertEquals(0.05, followUpInsulinCap(0.50, 90L, 1_000_000L, 1_000_000L, 0.05, halfReduction = false)!!, 0.000001)
++        assertEquals(0.50, followUpInsulinCap(0.50, 1420L, 1_000_000L, 1_000_000L, 0.05, halfReduction = false)!!, 0.000001)
++    }
++
++    @Test fun iobRiseHoldAbove1point2UnitsIn15Minutes() {
++        assertTrue(fpuIobRiseHolds(1.21, 0.0))
++        assertFalse(fpuIobRiseHolds(1.19, 0.0))
++        assertTrue(fpuIobRiseHolds(2.04, 0.11))   // 20 Nov 20:08, part 7 of 8
++        assertFalse(fpuIobRiseHolds(1.44, 0.29))  // 15 Nov 16:45, +1.15 U, BG stayed above 7
++    }
++
+     @Test fun zeroNegativeAndSubStepRequirementsDoNotDeliver() {
+         for (requirement in listOf(0L, -1000L, 49L))
+             assertEquals(0.0, followUpInsulinCap(1.13, requirement, 1_000_000L, 1_000_000L, 0.05))

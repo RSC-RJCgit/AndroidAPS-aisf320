@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.36.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.37.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -68,13 +68,19 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .36, 2026-11-20)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .37, 2026-11-20)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.36.patch
-  git apply bolus-calculator-on-3426-aisf321.36.patch
+  git apply --check bolus-calculator-on-3426-aisf321.37.patch
+  git apply bolus-calculator-on-3426-aisf321.37.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .37 (2026-11-20), protein/fat (FPU) parts only (BolusWizard, FollowUpInsulinCap):
+- A part waits while IOB rose more than 1.2 U in the last 15 minutes ("IOB rose X U in 15 min") and is checked again
+  (20 Nov: part 7 of 8 went after IOB rose 0.11 -> 2.04 U, and BG fell to 4.4 later).
+- A part uses the full insulinReq cap, not half the gap; what the cap leaves is checked again in 10 minutes.
+  Carb split parts and the delayed bolus keep the half cap.
 
 Changes in patch .36 (2026-11-20), in the walking cut on delayed doses (DelayedDoseSteps, BolusWizard, WizardActivitySteps):
 - Walking levels lowered: activity x0.5 from S5 or a 5-min bin > 50, S30 > 200, S60 > 400; heavy x0.25 from
