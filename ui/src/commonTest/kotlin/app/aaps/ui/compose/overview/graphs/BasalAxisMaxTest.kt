@@ -118,15 +118,29 @@ class BasalAxisMaxTest {
     }
 
     @Test
-    fun aBigDayTopLooksBackOnly12Hours() {
+    fun aBigDayTopLooksBackOnly6Hours() {
         val now = 24 * hour
-        // 2.4 U 20 hours ago, at most 0.9 U since: the day's top is over 1.5, so the last 12 hours decide
-        val totals = listOf((4 * hour) to 2.4, (14 * hour) to 0.9, (20 * hour) to 0.5)
+        // 2.4 U 20 hours ago, 1.2 U 10 hours ago, at most 0.9 U in the last 6 hours: the day's top is over 1.5, so the last 6 hours decide
+        val totals = listOf((4 * hour) to 2.4, (14 * hour) to 1.2, (19 * hour) to 0.9, (20 * hour) to 0.5)
         assertEquals(0.9, insulinColumnTopLookBack(totals, maxBolus = 5.0, now = now), 1e-9)
         // A day top of 1.5 or less stays
         val small = listOf((4 * hour) to 1.4, (20 * hour) to 0.5)
         assertEquals(1.4, insulinColumnTopLookBack(small, maxBolus = 5.0, now = now), 1e-9)
-        // Nothing in the last 12 hours: the day's top
-        assertEquals(2.4, insulinColumnTopLookBack(listOf((4 * hour) to 2.4), maxBolus = 5.0, now = now), 1e-9)
+        // Nothing in the last 6 hours: the day's top
+        assertEquals(2.4, insulinColumnTopLookBack(listOf((4 * hour) to 2.4, (14 * hour) to 1.2), maxBolus = 5.0, now = now), 1e-9)
+    }
+
+    @Test
+    fun iobAndStepsAxesLookBack6Hours() {
+        val day = listOf(0.2, 3.1, 0.8)
+        val recent = listOf(0.2, 0.8)
+        // IOB: the 24-hour top 3.1 is over 1.5 U, so the last 6 hours decide
+        assertEquals(recent, nearlyFixedAxisValues(day, recent, onlyAbove = 1.5))
+        // IOB: a 24-hour top of 1.5 U or less keeps the 24 hours
+        assertEquals(listOf(0.2, 1.5), nearlyFixedAxisValues(listOf(0.2, 1.5), listOf(0.2), onlyAbove = 1.5))
+        // Steps: always the last 6 hours
+        assertEquals(listOf(40.0), nearlyFixedAxisValues(listOf(40.0, 900.0), listOf(40.0), onlyAbove = null))
+        // Nothing in the last 6 hours: the 24 hours
+        assertEquals(day, nearlyFixedAxisValues(day, emptyList(), onlyAbove = null))
     }
 }

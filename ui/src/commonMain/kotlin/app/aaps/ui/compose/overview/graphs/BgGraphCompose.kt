@@ -467,8 +467,8 @@ fun BgGraphCompose(
                 minTimestamp, maxTimestamp, sliceMs, nowTimestamp, basalData.actualBasal, treatments.boluses, treatments.extendedBoluses
             )
             // The ISF colours stay in the clean graph too (2026-11-20, per explicit request), as on the IOB graph's basal
-            // Full height: the day's largest slice (at most max bolus + 0.3 U), or only the last 12 hours' when that is over 1.5 U
-            // (2026-11-20, per explicit request)
+            // Full height: the day's largest slice (at most max bolus + 0.3 U), or only the last 6 hours' when that is over 1.5 U
+            // (2026-11-20, per explicit request; 6 hours since 2026-11-21, was 12)
             insulinColumnsOf(totals, sliceMs, bgReadings, coloured = true) to insulinColumnTopLookBack(totals, maxBolusSetting, nowTimestamp)
         }
     }
@@ -1109,8 +1109,9 @@ fun BgGraphCompose(
             bottomAxis = HorizontalAxis.rememberBottom(
                 valueFormatter = timeFormatter,
                 itemPlacer = bottomAxisItemPlacer,
+                // 10 sp (2026-11-21, per explicit request): the default size let neighbouring times overlap.
                 label = rememberTextComponent(
-                    style = TextStyle(color = MaterialTheme.colorScheme.onSurface)
+                    style = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp)
                 ),
                 guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
             ),

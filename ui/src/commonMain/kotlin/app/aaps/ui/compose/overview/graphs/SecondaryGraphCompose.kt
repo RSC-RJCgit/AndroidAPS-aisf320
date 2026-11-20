@@ -139,12 +139,15 @@ private data class AxisScale(
  */
 internal const val IOB_GRAPH_TICK_COUNT = 3
 
-/** Highest top of the IOB graph's axis in U (2026-11-19, per explicit request): lower when the loaded 24 h stay lower. */
+/**
+ * Highest top of the IOB graph's axis in U (2026-11-19, per explicit request): lower when the loaded 24 h stay lower (only the
+ * last 6 hours when the 24-hour top is over 1.5 U, since 2026-11-21).
+ */
 internal const val IOB_AXIS_MAX_TOP = 5.0
 
 /**
  * Lowest top of the steps graph's axis in steps (2026-11-20, per explicit request; was the highest top, 2026-11-19): the axis
- * reaches the highest step count of the loaded 24 hours, but never less than this, so a walk (S60 495-585 on 20 Nov) is not
+ * reaches the highest step count of the last 6 hours (the loaded 24 hours until 2026-11-21), but never less than this, so a walk (S60 495-585 on 20 Nov) is not
  * cut off at 200.
  */
 internal const val STEPS_AXIS_MIN_TOP = 200.0
@@ -605,11 +608,21 @@ fun SecondaryGraphCompose(
     val nearlyFixedAxis = primaryType == SeriesType.IOB || primaryType == SeriesType.STEPS
     val axisMinX = if (nearlyFixedAxis) null else scaleMinX
     val axisMaxX = if (nearlyFixedAxis) null else scaleMaxX
+    // 2026-11-21, per explicit request: as the insulin-total columns, the IOB axis looks back only the last 6 hours up to now when
+    // the 24-hour top is over 1.5 U, and the steps axis always looks back only 6 hours (see nearlyFixedAxisValues).
+    val nowMinute = nowTimestamp / 60_000L
     val primaryYValues = remember(
         processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, axisMinX, axisMaxX,
-        primaryType
+        primaryType, minTimestamp, nowMinute
     ) {
-        val values = windowedPrimaryY(axisMinX, axisMaxX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
+        fun windowed(fromX: Double?, toX: Double?) =
+            windowedPrimaryY(fromX, toX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
+        val dayValues = windowed(axisMinX, axisMaxX)
+        val values = if (!nearlyFixedAxis) dayValues else {
+            val nowX = timestampToX(nowTimestamp, minTimestamp)
+            val recentValues = windowed(nowX - INSULIN_COLUMN_SHORT_LOOKBACK_MS / 60_000.0, nowX)
+            nearlyFixedAxisValues(dayValues, recentValues, if (primaryType == SeriesType.IOB) INSULIN_COLUMN_SHORT_LOOKBACK_ABOVE_U else null)
+        }
         when {
             values.isEmpty()                    -> values
             primaryType == SeriesType.IOB       -> values.map { it.coerceAtMost(IOB_AXIS_MAX_TOP) }
@@ -1031,8 +1044,9 @@ fun SecondaryGraphCompose(
     val bottomAxis = HorizontalAxis.rememberBottom(
         valueFormatter = timeFormatter,
         itemPlacer = bottomAxisItemPlacer,
+        // 10 sp (2026-11-21, per explicit request): the default size let neighbouring times overlap.
         label = rememberTextComponent(
-            style = TextStyle(color = MaterialTheme.colorScheme.onSurface)
+            style = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp)
         ),
         guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
     )
@@ -1730,6 +1744,17 @@ internal fun windowedY(points: List<Pair<Double, Double>>, visibleMinX: Double?,
  */
 internal fun stepValueAt(points: List<Pair<Double, Double>>, x: Double): Double? =
     points.lastOrNull { it.first <= x }?.second ?: points.firstOrNull()?.second
+
+/**
+ * Axis values of the IOB and steps graphs (2026-11-21, per explicit request): [recentValues] (the last 6 hours up to now) instead
+ * of [dayValues] (the loaded 24 hours), but for IOB ([onlyAbove] = 1.5 U) only when the 24-hour top is over that. With no recent
+ * values the 24 hours are kept.
+ */
+internal fun nearlyFixedAxisValues(dayValues: List<Double>, recentValues: List<Double>, onlyAbove: Double?): List<Double> = when {
+    recentValues.isEmpty()                                                -> dayValues
+    onlyAbove != null && (dayValues.maxOrNull() ?: 0.0) <= onlyAbove      -> dayValues
+    else                                                                  -> recentValues
+}
 
 /**
  * Union of y-values across all primary-layer series (IOB, COB, simple series, DevSlope-min,
