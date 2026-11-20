@@ -457,7 +457,7 @@ fun BgGraphCompose(
     // Full height is the day's largest slice, at most the max bolus setting + 0.3 U (insulinColumnTop).
     val insulinColumnData = remember(
         insulinColumns, visibleTimeRange, basalData, treatments, bgReadings, minTimestamp, maxTimestamp, maxBolusSetting,
-        graphDisplay.uniformGreenBg, nowTimestamp / 60_000L
+        nowTimestamp / 60_000L
     ) {
         if (!insulinColumns) emptyList<InsulinColumn>() to 1.0
         else {
@@ -466,7 +466,8 @@ fun BgGraphCompose(
             val totals = insulinSliceTotals(
                 minTimestamp, maxTimestamp, sliceMs, nowTimestamp, basalData.actualBasal, treatments.boluses, treatments.extendedBoluses
             )
-            insulinColumnsOf(totals, sliceMs, bgReadings, coloured = !graphDisplay.uniformGreenBg) to insulinColumnTop(totals, maxBolusSetting)
+            // The ISF colours stay in the clean graph too (2026-11-20, per explicit request), as on the IOB graph's basal
+            insulinColumnsOf(totals, sliceMs, bgReadings, coloured = true) to insulinColumnTop(totals, maxBolusSetting)
         }
     }
 
@@ -642,11 +643,12 @@ fun BgGraphCompose(
                 } else {
                     addBasalSeries(currentBasalData.profileBasal)
                     addBasalSeries(currentBasalData.actualBasal)
-                    val colouredBasal = !graphDisplay.uniformGreenBg
-                    addBasalSeries(if (colouredBasal) currentBasalData.acceTemp else emptyList())
-                    addBasalSeries(if (colouredBasal) currentBasalData.bgTemp else emptyList())
-                    addBasalSeries(if (colouredBasal) currentBasalData.ppTemp else emptyList())
-                    addBasalSeries(if (colouredBasal) currentBasalData.duraTemp else emptyList())
+                    // The ISF colours stay in the clean graph too (2026-11-20, per explicit request: the IOB graph's basal kept them,
+                    // the main graph and Graph 5 went plain); the clean graph only makes the BG line plain green.
+                    addBasalSeries(currentBasalData.acceTemp)
+                    addBasalSeries(currentBasalData.bgTemp)
+                    addBasalSeries(currentBasalData.ppTemp)
+                    addBasalSeries(currentBasalData.duraTemp)
                 }
             }
 
