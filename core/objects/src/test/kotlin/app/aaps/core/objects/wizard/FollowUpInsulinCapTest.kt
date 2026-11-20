@@ -12,6 +12,21 @@ class FollowUpInsulinCapTest {
     }
 
     @Test
+    fun fullCapForProteinFatParts() {
+        assertThat(followUpInsulinCap(1.20, 700L, 1_000_000L, 1_000_000L, 0.05, halfReduction = false)).isWithin(0.000001).of(0.70)
+        assertThat(followUpInsulinCap(0.50, 90L, 1_000_000L, 1_000_000L, 0.05, halfReduction = false)).isWithin(0.000001).of(0.05)
+        assertThat(followUpInsulinCap(0.50, 1420L, 1_000_000L, 1_000_000L, 0.05, halfReduction = false)).isWithin(0.000001).of(0.50)
+    }
+
+    @Test
+    fun iobRiseHoldAbove1point2UnitsIn15Minutes() {
+        assertThat(fpuIobRiseHolds(1.21, 0.0)).isTrue()
+        assertThat(fpuIobRiseHolds(1.19, 0.0)).isFalse()
+        assertThat(fpuIobRiseHolds(2.04, 0.11)).isTrue()   // 20 Nov 20:08, part 7 of 8
+        assertThat(fpuIobRiseHolds(1.44, 0.29)).isFalse()  // 15 Nov 16:45, +1.15 U, BG stayed above 7
+    }
+
+    @Test
     fun doesNotIncreaseDoseWhenRequirementExceedsPlan() {
         assertThat(followUpInsulinCap(0.43, 2000L, 1_000_000L, 1_000_000L, 0.05)).isWithin(0.000001).of(0.40)
     }

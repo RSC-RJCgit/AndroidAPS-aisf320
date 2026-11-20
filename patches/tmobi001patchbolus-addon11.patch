@@ -1,0 +1,262 @@
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index d3a29c20b7..17bbca3cb4 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -593,6 +593,14 @@ class BolusWizard(
+                     warsawNote("C", planned, "superseded by a newer entry", source, fpuWhat(label, planned))
+                     return
+                 }
++                // 2026-11-20, per explicit request: super heavy activity at an earlier part's due time cancelled this meal's FPU parts
++                if (SuperHeavyFpuCancel.isCancelled(token)) {
++                    val why = "super heavy activity (steps) earlier"
++                    aapsLogger.info(LTag.CORE, "Warsaw dose $label: $why, cancelling $planned U")
++                    warsawNote("C", planned, why, source, fpuWhat(label, planned))
++                    recordCancelledDose(label, planned, why, iobBaseline, source, useIobRise = false)
++                    return
++                }
+                 val wait = dueAt - dateUtil.now()
+                 if (wait <= 0L) break
+                 delay(min(wait, 120_000L))
+@@ -603,6 +611,16 @@ class BolusWizard(
+                 recordCancelledDose(label, planned, expired, iobBaseline, source, useIobRise = false)
+                 return
+             }
++            // 2026-11-20, per explicit request: only super heavy activity cancels; it cancels this part and the meal's parts
++            // still waiting. Walking, activity and heavy activity only cut each part as it comes due (tryDeliverWarsawDose).
++            if (superHeavyNow()) {
++                SuperHeavyFpuCancel.cancel(token)
++                val why = "super heavy activity (steps)"
++                aapsLogger.info(LTag.CORE, "Warsaw dose $label: $why, cancelling $planned U and the FPU parts still waiting")
++                warsawNote("C", planned, why, source, fpuWhat(label, planned))
++                recordCancelledDose(label, planned, why, iobBaseline, source, useIobRise = false)
++                return
++            }
+             val reason = tryDeliverWarsawDose(planned, iobBaseline, source, allowProfile50) { remaining, nextBaseline ->
+                 appScope.launch {
+                     val now = dateUtil.now()
+@@ -638,16 +656,20 @@ class BolusWizard(
+     /**
+      * 2026-10-19, per explicit request: the factor a delayed dose (FPU or carb split part) is multiplied by while walking,
+      * see [delayedDoseWalkingFactor]. The cut part is dropped. No step row in the last 20 minutes gives 1 (not walking).
+-     * Watch rows hold S10/S15 as totals, so the bins are S10 - S5 and S15 - S10. Rows from Live's loop result
+-     * ("openaps://") already hold the bins.
++     * The AAPS watch sends S10 and S15 as the 5-minute bins themselves (10 and 15 minutes back), so they are used as they are.
+      */
+-    private suspend fun walkingFactorNow(): Double {
++    private suspend fun walkingFactorNow(): Double =
++        walkingStepsNow()?.let { delayedDoseWalkingFactor(it[0], it[1], it[2], it[3], it[4]) } ?: 1.0
++
++    /** Super heavy activity now (see [delayedDoseSuperHeavy]); false with no step row in the last 20 minutes. */
++    private suspend fun superHeavyNow(): Boolean =
++        walkingStepsNow()?.let { delayedDoseSuperHeavy(it[0], it[1], it[2], it[3], it[4]) } ?: false
++
++    /** S5, the S10 and S15 bins, S30, S60 of the newest watch sample; null with no step row in the last 20 minutes. */
++    private suspend fun walkingStepsNow(): List<Int>? {
+         val now = dateUtil.now()
+-        val sc = persistenceLayer.getLastStepsCountFromTimeToTime(now - 20 * 60_000L, now) ?: return 1.0
+-        val liveRow = sc.device.startsWith("openaps://")
+-        val s10Bin = if (liveRow) sc.steps10min else max(0, sc.steps10min - sc.steps5min)
+-        val s15Bin = if (liveRow) sc.steps15min else max(0, sc.steps15min - sc.steps10min)
+-        return delayedDoseWalkingFactor(sc.steps5min, s10Bin, s15Bin, sc.steps30min, sc.steps60min)
++        val sc = newestStepsSample(persistenceLayer.getStepsCountFromTimeToTime(now - 20 * 60_000L, now), now) ?: return null
++        return listOf(sc.steps5min, sc.steps10min, sc.steps15min, sc.steps30min, sc.steps60min)
+     }
+ 
+     /** Null when the dose was handed to the pump. Otherwise the reason it was not given now. */
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/DelayedDoseSteps.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/DelayedDoseSteps.kt
+index 8b8795e6bb..6a164eb8f0 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/DelayedDoseSteps.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/DelayedDoseSteps.kt
+@@ -1,21 +1,42 @@
+ package app.aaps.core.objects.wizard
+ 
++import kotlin.concurrent.Volatile
++
+ /**
+  * Delayed doses (protein/fat and carb split parts) are cut while the user walks (2026-10-19, per explicit request). The part
+  * that is cut off is dropped, not given later. [steps10Bin] and [steps15Bin] are the 5-minute bins (steps 5 to 10 and 10 to
+  * 15 minutes ago), the way the loop reads S10 and S15. Any one limit is enough:
+- * - heavy activity, the loop's activity detection (S5/S10/S15 > 300, S30 > 1500, S60 > 2500): x0.25
+- * - activity, the loop's activity detection (S5/S10/S15 > 200, S30 > 500, S60 > 800): x0.5
++ * - heavy activity (S5/S10/S15 > 100, S30 > 300, S60 > 500): x0.25
++ * - activity (S5/S10/S15 > 50, S30 > 200, S60 > 400): x0.5
++ *   (2026-11-20, per explicit request, both lowered from the loop's activity detection, 300/1500/2500 and 200/500/800: on
++ *   20 Nov 13:39 S5 199, S30 495, S60 495 counted only as little walking)
+  * - little walking, the loop's "moving" test for the SMB cut (S5 > 10, S15 > 30, S30 > 100, S60 > 300): x0.75
+  * - otherwise x1
++ * Each part is checked again when it is due; these levels never cancel the parts still to come. Only super heavy activity
++ * ([delayedDoseSuperHeavy]) does that, for protein/fat (FPU) parts.
+  */
+ fun delayedDoseWalkingFactor(steps5: Int, steps10Bin: Int, steps15Bin: Int, steps30: Int, steps60: Int): Double = when {
+-    steps5 > 300 || steps10Bin > 300 || steps15Bin > 300 || steps30 > 1500 || steps60 > 2500 -> 0.25
+-    steps5 > 200 || steps10Bin > 200 || steps15Bin > 200 || steps30 > 500 || steps60 > 800   -> 0.5
++    steps5 > 100 || steps10Bin > 100 || steps15Bin > 100 || steps30 > 300 || steps60 > 500 -> 0.25
++    steps5 > 50 || steps10Bin > 50 || steps15Bin > 50 || steps30 > 200 || steps60 > 400     -> 0.5
+     steps5 > 10 || steps15Bin > 30 || steps30 > 100 || steps60 > 300                          -> 0.75
+     else                                                                                      -> 1.0
+ }
+ 
++/**
++ * Super heavy activity (2026-11-20, per explicit request): the loop's own heavy-activity detection that the levels above first
++ * used (S5/S10/S15 > 300, S30 > 1500, S60 > 2500), any one limit. An FPU part due then is cancelled, and so are the meal's
++ * FPU parts still waiting ([SuperHeavyFpuCancel]). Carb split parts and Tier 3 keep the x0.25 of heavy activity.
++ */
++fun delayedDoseSuperHeavy(steps5: Int, steps10Bin: Int, steps15Bin: Int, steps30: Int, steps60: Int): Boolean =
++    steps5 > 300 || steps10Bin > 300 || steps15Bin > 300 || steps30 > 1500 || steps60 > 2500
++
++/** The FPU series (its schedule token) that super heavy activity cancelled: its parts still waiting are cancelled too. */
++object SuperHeavyFpuCancel {
++    @Volatile private var cancelledToken = Long.MIN_VALUE
++    fun cancel(token: Long) { cancelledToken = token }
++    fun isCancelled(token: Long): Boolean = cancelledToken == token
++}
++
+ /** The name of the level for the notes and the log. */
+ fun delayedDoseWalkingLevel(factor: Double): String = when {
+     factor <= 0.25 -> "heavy activity"
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt
+index b8798ccdfd..e48c8cc4c2 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WarsawFpu.kt
+@@ -122,13 +122,22 @@ fun warsawAllowedAt(percent: Int): Boolean = percent >= 100 || percent == 50
+ /**
+  * Glucose must be above 5.5 mmol, and both delta and short delta at least 0.05 mmol (2026-10-18, per explicit request; was
+  * above 0.2 mmol, which cancelled most doses on 17 Oct Live while BG was only slowly rising).
++ *
++ * Or glucose 7.0 mmol or more and not falling: neither delta -0.05 mmol or lower (2026-11-15, per explicit request; on 15 Nov
++ * parts 8 and 9 were cancelled while BG sat flat at 7.5-8). The insulinReq cap still decides how much, if any.
+  */
+ fun warsawDoseBgAllows(glucoseMgdl: Double?, delta: Double?, shortDelta: Double?): Boolean {
+     if (glucoseMgdl == null || delta == null || shortDelta == null) return false
+     val toMmol = Constants.MGDL_TO_MMOLL
+-    return glucoseMgdl * toMmol > 5.5 && delta * toMmol >= WARSAW_MIN_DELTA_MMOL && shortDelta * toMmol >= WARSAW_MIN_DELTA_MMOL
++    val rising = glucoseMgdl * toMmol > 5.5 && delta * toMmol >= WARSAW_MIN_DELTA_MMOL && shortDelta * toMmol >= WARSAW_MIN_DELTA_MMOL
++    val highNotFalling = glucoseMgdl * toMmol >= WARSAW_HIGH_MMOL &&
++        delta * toMmol > -WARSAW_MIN_DELTA_MMOL && shortDelta * toMmol > -WARSAW_MIN_DELTA_MMOL
++    return rising || highNotFalling
+ }
+ 
++/** From this glucose, in mmol, a flat (not falling) BG also lets a delayed protein/fat dose go. */
++const val WARSAW_HIGH_MMOL = 7.0
++
+ /** Smallest rise per 5 min, in mmol, that still lets a delayed protein/fat dose go. */
+ const val WARSAW_MIN_DELTA_MMOL = 0.05
+ 
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
+index 0a973071f8..c2c16e3d64 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
+@@ -1,5 +1,6 @@
+ package app.aaps.core.objects.wizard
+ 
++import app.aaps.core.data.model.SC
+ import app.aaps.core.data.time.SystemTimeZone
+ import app.aaps.core.data.time.T
+ import app.aaps.core.interfaces.configuration.Config
+@@ -81,7 +82,15 @@ suspend fun walkingSoonStepCounts(
+ ): Triple<Int?, Int?, Int?> {
+     val now = dateUtil.now()
+     // Patch for upstream: the fork's "use the main phone's steps on a Virtual master" branch is left out.
+-    val local = persistenceLayer.getLastStepsCountFromTimeToTime(now - 30 * 60_000L, now)
++    val local = newestStepsSample(persistenceLayer.getStepsCountFromTimeToTime(now - 30 * 60_000L, now), now)
+     if (local == null) return Triple(0, 0, 0)
+-    return Triple(local.steps5min, local.steps30min, local.steps15min)
++    // The watch sends S10 and S15 as 5-minute bins; walking soon reads S15 as the steps of the last 15 minutes.
++    return Triple(local.steps5min, local.steps30min, local.steps5min + local.steps10min + local.steps15min)
+ }
++
++/**
++ * The newest step sample (2026-11-20, per explicit request). The AAPS watch stores each sample as several rows with the same
++ * time, one per window, and only the longest row has S30, S60 and S180 filled in, so the longest row of the newest time is used.
++ */
++fun newestStepsSample(rows: List<SC>, now: Long): SC? =
++    rows.filter { it.isValid && it.timestamp <= now }.maxWithOrNull(compareBy<SC>({ it.timestamp }, { it.duration }))
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/DelayedDoseStepsTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/DelayedDoseStepsTest.kt
+index e879f5c3c9..c4f84504b2 100644
+--- a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/DelayedDoseStepsTest.kt
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/DelayedDoseStepsTest.kt
+@@ -2,6 +2,8 @@ package app.aaps.core.objects.wizard
+ 
+ import kotlin.test.Test
+ import kotlin.test.assertEquals
++import kotlin.test.assertFalse
++import kotlin.test.assertTrue
+ 
+ class DelayedDoseStepsTest {
+ 
+@@ -18,17 +20,48 @@ class DelayedDoseStepsTest {
+         assertEquals(0.75, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 301))
+     }
+ 
++    // 2026-11-20: activity from S5 or a bin over 50, S30 over 200, S60 over 400
+     @Test
+     fun activityCutsToHalf() {
+-        assertEquals(0.5, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 201, steps15Bin = 0, steps30 = 0, steps60 = 0))
+-        assertEquals(0.5, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 501, steps60 = 0))
+-        assertEquals(0.5, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 801))
++        assertEquals(0.5, delayedDoseWalkingFactor(steps5 = 51, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 0))
++        assertEquals(0.5, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 51, steps15Bin = 0, steps30 = 0, steps60 = 0))
++        assertEquals(0.5, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 201, steps60 = 0))
++        assertEquals(0.5, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 401))
+     }
+ 
++    // 2026-11-20: heavy activity from S5 or a bin over 100, S30 over 300, S60 over 500
+     @Test
+     fun heavyActivityCutsToAQuarter() {
++        assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 101, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 0))
++        assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 101, steps30 = 0, steps60 = 0))
++        assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 301, steps60 = 0))
++        assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 501))
++        // 20 Nov 13:39: S5 199, S30 495, S60 495
++        assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 199, steps10Bin = 0, steps15Bin = 0, steps30 = 495, steps60 = 495))
++    }
++
++    // 2026-11-20: super heavy activity, the loop's old heavy-activity limits; the dose factor stays x0.25
++    @Test
++    fun superHeavyActivityFromTheOldHeavyLimits() {
++        assertTrue(delayedDoseSuperHeavy(steps5 = 301, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 0))
++        assertTrue(delayedDoseSuperHeavy(steps5 = 0, steps10Bin = 301, steps15Bin = 0, steps30 = 0, steps60 = 0))
++        assertTrue(delayedDoseSuperHeavy(steps5 = 0, steps10Bin = 0, steps15Bin = 301, steps30 = 0, steps60 = 0))
++        assertTrue(delayedDoseSuperHeavy(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 1501, steps60 = 0))
++        assertTrue(delayedDoseSuperHeavy(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 2501))
+         assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 301, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 0))
+-        assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 1501, steps60 = 0))
+-        assertEquals(0.25, delayedDoseWalkingFactor(steps5 = 0, steps10Bin = 0, steps15Bin = 0, steps30 = 0, steps60 = 2501))
++    }
++
++    // 20 Nov 13:39 (S5 199, S30 495, S60 495) is heavy, not super heavy: the remaining FPU parts are not cancelled
++    @Test
++    fun heavyActivityIsNotSuperHeavy() {
++        assertFalse(delayedDoseSuperHeavy(steps5 = 199, steps10Bin = 0, steps15Bin = 0, steps30 = 495, steps60 = 495))
++        assertFalse(delayedDoseSuperHeavy(steps5 = 300, steps10Bin = 300, steps15Bin = 300, steps30 = 1500, steps60 = 2500))
++    }
++
++    @Test
++    fun superHeavyCancelMarksOnlyItsOwnSeries() {
++        SuperHeavyFpuCancel.cancel(42L)
++        assertTrue(SuperHeavyFpuCancel.isCancelled(42L))
++        assertFalse(SuperHeavyFpuCancel.isCancelled(43L))
+     }
+ }
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WarsawFpuTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WarsawFpuTest.kt
+index f11cd5e3c4..f519f99d8e 100644
+--- a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WarsawFpuTest.kt
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/WarsawFpuTest.kt
+@@ -121,4 +121,17 @@ class WarsawFpuTest {
+         assertFalse(warsawDoseBgAllows(6.0 * mmol, 0.3 * mmol, 0.04 * mmol))
+         assertFalse(warsawDoseBgAllows(null, 0.3 * mmol, 0.3 * mmol))
+     }
++
++    @Test
++    fun bgGateLetsFlatHighBgThrough() {
++        val mmol = Constants.MMOLL_TO_MGDL
++        // 2026-11-15: 7.0 mmol or more and not falling goes too (15 Nov fpu9: BG 7.5, deltas -0.01 / +0.02)
++        assertTrue(warsawDoseBgAllows(7.5 * mmol, -0.01 * mmol, 0.02 * mmol))
++        assertTrue(warsawDoseBgAllows(7.01 * mmol, 0.0, 0.0))
++        // Falling by 0.05 mmol or more on either delta still stops it (15 Nov fpu8: BG 8.1, delta -0.07)
++        assertFalse(warsawDoseBgAllows(8.1 * mmol, -0.07 * mmol, 0.01 * mmol))
++        assertFalse(warsawDoseBgAllows(8.1 * mmol, 0.01 * mmol, -0.06 * mmol))
++        // Below 7.0 a flat BG is still not enough
++        assertFalse(warsawDoseBgAllows(6.9 * mmol, 0.0, 0.0))
++    }
+ }

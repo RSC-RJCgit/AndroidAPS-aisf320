@@ -1815,11 +1815,19 @@ class BolusWizard @Inject constructor(
     // rise like 15 Sep's, instead of writing off the residual ~20min into it.
     // Explicit cancel and a newer entry still end the schedule immediately. Temporary profile, pump,
     // superbolus and low-HP1 restrictions hold delivery and retry within the same deadline.
-    private fun cappedFollowUpDose(candidate: Double, step: Double): Double? {
+    private fun cappedFollowUpDose(candidate: Double, step: Double, halfReduction: Boolean = true): Double? {
         val at = preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqAt)
         val requirement = preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqMilliU)
         if (at != preferences.get(LongKey.ApsAutoIsfFollowUpInsulinReqAt)) return null
-        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step)
+        return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step, halfReduction)
+    }
+
+    /** Total IOB now and 15 minutes ago, from the same calculation; null without a profile. */
+    private fun iobNowAnd15MinAgo(): Pair<Double, Double>? {
+        val profile = profileFunction.getProfile() ?: return null
+        val now = dateUtil.now()
+        return iobCobCalculator.calculateFromTreatmentsAndTemps(now, profile).iob to
+            iobCobCalculator.calculateFromTreatmentsAndTemps(now - T.mins(15).msecs(), profile).iob
     }
 
     private fun scheduleReducedPartsSplitBolus(
@@ -2149,6 +2157,14 @@ class BolusWizard @Inject constructor(
                 deferOrCancel("BG safety check failed (${gateGlucoseText(gs?.glucose, gs?.delta, gs?.shortAvgDelta, profileFunction.getUnits())})", "BG safety check failed")
                 return@postDelayed
             }
+            // 2026-11-20, per explicit request: wait while IOB rose more than FPU_IOB_RISE_HOLD_U in the last 15 minutes
+            iobNowAnd15MinAgo()?.let { (iobNow, iobBefore) ->
+                if (fpuIobRiseHolds(iobNow, iobBefore)) {
+                    val rise = decimalFormatter.to2Decimal(iobNow - iobBefore)
+                    deferOrCancel("IOB rose ${rise}U in 15 min", "IOB rose ${rise}U in 15 min", forceRetry = true)
+                    return@postDelayed
+                }
+            }
             val liveIob = currentTotalIob()
             val pumpStep = activePlugin.activePump.pumpDescription.bolusStep
             // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
@@ -2157,7 +2173,9 @@ class BolusWizard @Inject constructor(
             val walkFactor = walkingFactorNow()
             val iobAdjustedDose = Round.roundTo(dose * walkFactor, pumpStep)
             val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): dose x$walkFactor, ${decimalFormatter.to2Decimal(max(0.0, dose - iobAdjustedDose))}U dropped." else ""
-            val thisDose = cappedFollowUpDose(iobAdjustedDose, pumpStep)
+            // 2026-11-20, per explicit request: protein/fat parts take the full insulinReq cap, not half the gap; what the cap
+            // leaves is checked again in 10 minutes as before (capRemaining below)
+            val thisDose = cappedFollowUpDose(iobAdjustedDose, pumpStep, halfReduction = false)
             if (thisDose == null || thisDose <= 0.0) {
                 val reason = if (thisDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                 deferOrCancel(reason, reason, forceRetry = true)

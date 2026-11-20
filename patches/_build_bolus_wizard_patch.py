@@ -14,7 +14,7 @@ OURS = Path(r"C:\Users\arjay\StudioProjects\AaAPS3422a320")
 # versions of this patch applied ("patched" commits), so point BOLUS_PATCH_BASE at a `git archive a14b8c7663`
 # extraction of the needed paths instead of the clone itself.
 BASE = Path(os.environ.get("BOLUS_PATCH_BASE", r"C:\Users\arjay\StudioProjects\AndroidAPS-3426"))
-OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.35.patch"
+OUT = OURS / "patches" / "bolus-calculator-on-3426-aisf321.36.patch"
 STEPS_MIRROR_COMMIT = "ebdda50d8f"  # aisf321UK_889next: moved the wizard onto fork-only StepCountSource/LiveStepsMirror
 
 FULL_COPY = [
@@ -68,13 +68,24 @@ FULL_COPY = [
 ]
 
 PATCH_DESCRIPTION = """\
-Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .35, 2026-11-19)
+Bolus calculator on 3.4.2.6 + AutoISF 3.2.1 (patch .36, 2026-11-20)
 
 Apply on a CLEAN 3.4.2.6+aisf3.2.1 tree (commit a14b8c7663):
-  git apply --check bolus-calculator-on-3426-aisf321.35.patch
-  git apply bolus-calculator-on-3426-aisf321.35.patch
+  git apply --check bolus-calculator-on-3426-aisf321.36.patch
+  git apply bolus-calculator-on-3426-aisf321.36.patch
 (git ignores this leading text.) Turn on Overview preference "Enable delayed bolus" for the
 50%-profile / Walking soon top-up path.
+
+Changes in patch .36 (2026-11-20), in the walking cut on delayed doses (DelayedDoseSteps, BolusWizard, WizardActivitySteps):
+- Walking levels lowered: activity x0.5 from S5 or a 5-min bin > 50, S30 > 200, S60 > 400; heavy x0.25 from
+  > 100 / 300 / 500.
+- Super heavy activity: the old heavy limits (S5 or a bin > 300, S30 > 1500, S60 > 2500). Only this cancels: a
+  protein/fat part due then is cancelled, and so are the meal's protein/fat parts still waiting. Walking, activity and
+  heavy activity only cut each part as it comes due.
+- Watch steps read right: the AAPS watch sends S10 and S15 as 5-minute bins, not totals like the phone's own counter,
+  and stores each sample as 6 rows with the same time (only the longest has S30/S60). The newest sample's longest
+  row is used, and watch rows are turned into totals before the bins are taken, so walking is no longer read too low.
+  Walking soon and "still moving" read S15 as the last 15 minutes on the watch too.
 
 Changes in patch .35 (2026-11-19), all in the bolus calculator code (BolusWizard, DelayedBolusWorker):
 - Delayed bolus at the Standard profile: once the delayed checks say it is safe to give the rest of a meal, its full
@@ -557,6 +568,37 @@ def revert_steps_source(staging: Path) -> None:
         "return stillMovingNow(sample.steps5min, sample.steps30min, sample.steps15min)",
         "WAS persisted",
     )
+    # Patch .36 (2026-11-20): on the base the phone's own counter ("Smartphone", one row) stores S10/S15 as totals, but
+    # the AAPS watch sends them as 5-minute bins and stores each sample as 6 rows with the same time, only the longest
+    # holding S30/S60. Take the newest sample's longest row and turn watch rows into totals, so every reader sees totals.
+    old = must_replace(
+        old,
+        """    fun latestStepsSample(persistenceLayer: PersistenceLayer, now: Long): SC? {
+        val samples = persistenceLayer.getStepsCountFromTimeToTime(now - T.mins(15).msecs(), now)
+        return samples.maxByOrNull { it.timestamp }
+    }
+""",
+        """    /**
+     * The newest step sample, with S10 and S15 as totals (patch .36). The phone's own counter ("Smartphone") stores
+     * totals. The AAPS watch sends S10 and S15 as 5-minute bins and stores each sample as several rows with the same
+     * time, one per window, where only the longest has S30 and S60: that row is used, and its bins are added up.
+     */
+    fun latestStepsSample(persistenceLayer: PersistenceLayer, now: Long, windowMs: Long = T.mins(15).msecs()): SC? {
+        val sample = persistenceLayer.getStepsCountFromTimeToTime(now - windowMs, now)
+            .filter { it.isValid && it.timestamp <= now }
+            .maxWithOrNull(compareBy<SC>({ it.timestamp }, { it.duration })) ?: return null
+        if (sample.device == PHONE_STEPS_DEVICE) return sample
+        return sample.copy(
+            steps10min = sample.steps5min + sample.steps10min,
+            steps15min = sample.steps5min + sample.steps10min + sample.steps15min
+        )
+    }
+
+    /** The device name the AutoISF plugin gives the phone's own step rows. */
+    const val PHONE_STEPS_DEVICE = "Smartphone"
+""",
+        "WAS latest sample",
+    )
     # Patch .27 (fork aisf321UK_1074next, 2026-10-24): the Walking soon auto-tick has its own rule now, read here from
     # the newest step record like stillMovingNow. The fork reads it from StepCountSource, which the base does not have.
     old = must_replace(
@@ -650,15 +692,14 @@ def revert_steps_source(staging: Path) -> None:
     t = must_replace(
         t,
         "     * [StepCountSource] gives cumulative counts, so the bins are S10 - S5 and S15 - S10.\n",
-        "     * The step records hold S10/S15 as totals, so the bins are S10 - S5 and S15 - S10.\n",
+        "     * The step records are read as totals (WizardActivitySteps.latestStepsSample adds up the watch's 5-minute bins),\n"
+        "     * so the bins are S10 - S5 and S15 - S10.\n",
         "BW doc",
     )
     t = must_replace(
         t,
-        "        val steps = stepCountSource.latest(dateUtil.now(), T.mins(20).msecs()) ?: return 1.0\n",
-        "        val now = dateUtil.now()\n"
-        "        val sc = persistenceLayer.getStepsCountFromTimeToTime(now - T.mins(20).msecs(), now)\n"
-        "            .filter { it.isValid && it.timestamp <= now }.maxByOrNull { it.timestamp } ?: return 1.0\n"
+        "        val steps = stepCountSource.latest(dateUtil.now(), T.mins(20).msecs()) ?: return null\n",
+        "        val sc = WizardActivitySteps.latestStepsSample(persistenceLayer, dateUtil.now(), T.mins(20).msecs()) ?: return null\n"
         "        val steps = mapOf(5 to sc.steps5min, 10 to sc.steps10min, 15 to sc.steps15min, 30 to sc.steps30min, 60 to sc.steps60min)\n",
         "BW steps",
     )
