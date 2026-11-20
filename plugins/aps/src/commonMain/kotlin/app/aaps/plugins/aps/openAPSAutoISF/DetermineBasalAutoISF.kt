@@ -987,6 +987,10 @@ class DetermineBasalAutoISF(
     var stepInsulinMultiplier: Double = 1.0
     var tier3WalkingFactor: Double = 1.0
 
+    // 2026-11-20, per explicit request: a Tier 3 UAM boost dose over TIER3_STEP_CUT_ABOVE_U is cut by the same walking levels as
+    // delayed FPU and carb split parts (delayedDoseWalkingFactor), never below the ordinary SMB. Set by the plugin each loop.
+    var tier3StepDoseFactor: Double = 1.0
+
     private fun Double.toFixed2(): String = NumberFormat.DECIMAL_2_UP_TO_3.format(round(this, 2))
 
     fun round_basal(value: Double): Double = value
@@ -2279,7 +2283,15 @@ class DetermineBasalAutoISF(
                     val unwalked = tier3At(uamBoostScale / tier3WalkingFactor)
                     if (unwalked.enhanced) stepCutDirect += (unwalked.microBolus - tier3.microBolus).coerceAtLeast(0.0)
                 }
+                val ordinarySmb = microBolus
                 microBolus = tier3.microBolus
+                if (tier3.enhanced && microBolus > TIER3_STEP_CUT_ABOVE_U && tier3StepDoseFactor < 1.0) {
+                    val preStepCut = microBolus
+                    microBolus = max(ordinarySmb, floor(microBolus * tier3StepDoseFactor * roundSMBTo) / roundSMBTo)
+                    stepCutDirect += (preStepCut - microBolus).coerceAtLeast(0.0)
+                    consoleError.add("Tier 3 over ${TIER3_STEP_CUT_ABOVE_U}U while walking: ${preStepCut.toFixed2()} x $tier3StepDoseFactor -> ${microBolus.toFixed2()}U")
+                    rT.reason.append("Tier3 walking x$tier3StepDoseFactor: ${preStepCut.toFixed2()} -> ${microBolus.toFixed2()}U; ")
+                }
                 val tier3Enhanced = tier3.enhanced
                 val tier3Allowance = tier3.finalIobAllowance
                 if (tier3.reason.isNotEmpty()) rT.reason.append(tier3.reason)
@@ -2636,3 +2648,6 @@ private fun hp1OverrideEntries(log: String, now: Long): List<Pair<Long, Double>>
         val units = parts.getOrNull(1)?.toDoubleOrNull() ?: return@mapNotNull null
         if (now - time in 0..HP1_OVERRIDE_WINDOW_MS) time to units else null
     }
+
+/** A Tier 3 dose above this (U) is cut by the delayed-dose walking levels (2026-11-20, per explicit request). */
+private const val TIER3_STEP_CUT_ABOVE_U = 1.0
