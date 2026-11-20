@@ -592,6 +592,14 @@ class BolusWizard(
                     warsawNote("C", planned, "superseded by a newer entry", source, fpuWhat(label, planned))
                     return
                 }
+                // 2026-11-20, per explicit request: super heavy activity at an earlier part's due time cancelled this meal's FPU parts
+                if (SuperHeavyFpuCancel.isCancelled(token)) {
+                    val why = "super heavy activity (steps) earlier"
+                    aapsLogger.info(LTag.CORE, "Warsaw dose $label: $why, cancelling $planned U")
+                    warsawNote("C", planned, why, source, fpuWhat(label, planned))
+                    recordCancelledDose(label, planned, why, iobBaseline, source, useIobRise = false)
+                    return
+                }
                 val wait = dueAt - dateUtil.now()
                 if (wait <= 0L) break
                 delay(min(wait, 120_000L))
@@ -600,6 +608,16 @@ class BolusWizard(
                 val expired = "retry window expired"
                 warsawNote("C", planned, expired, source, fpuWhat(label, planned))
                 recordCancelledDose(label, planned, expired, iobBaseline, source, useIobRise = false)
+                return
+            }
+            // 2026-11-20, per explicit request: only super heavy activity cancels; it cancels this part and the meal's parts
+            // still waiting. Walking, activity and heavy activity only cut each part as it comes due (tryDeliverWarsawDose).
+            if (superHeavyNow()) {
+                SuperHeavyFpuCancel.cancel(token)
+                val why = "super heavy activity (steps)"
+                aapsLogger.info(LTag.CORE, "Warsaw dose $label: $why, cancelling $planned U and the FPU parts still waiting")
+                warsawNote("C", planned, why, source, fpuWhat(label, planned))
+                recordCancelledDose(label, planned, why, iobBaseline, source, useIobRise = false)
                 return
             }
             val reason = tryDeliverWarsawDose(planned, iobBaseline, source, allowProfile50) { remaining, nextBaseline ->
@@ -640,13 +658,21 @@ class BolusWizard(
      * Watch rows hold S10/S15 as totals, so the bins are S10 - S5 and S15 - S10. Rows from Live's loop result
      * ("openaps://") already hold the bins.
      */
-    private suspend fun walkingFactorNow(): Double {
+    private suspend fun walkingFactorNow(): Double =
+        walkingStepsNow()?.let { delayedDoseWalkingFactor(it[0], it[1], it[2], it[3], it[4]) } ?: 1.0
+
+    /** Super heavy activity now (see [delayedDoseSuperHeavy]); false with no step row in the last 20 minutes. */
+    private suspend fun superHeavyNow(): Boolean =
+        walkingStepsNow()?.let { delayedDoseSuperHeavy(it[0], it[1], it[2], it[3], it[4]) } ?: false
+
+    /** S5, the S10 and S15 bins, S30, S60; null with no step row in the last 20 minutes. */
+    private suspend fun walkingStepsNow(): List<Int>? {
         val now = dateUtil.now()
-        val sc = persistenceLayer.getLastStepsCountFromTimeToTime(now - 20 * 60_000L, now) ?: return 1.0
+        val sc = persistenceLayer.getLastStepsCountFromTimeToTime(now - 20 * 60_000L, now) ?: return null
         val liveRow = sc.device.startsWith("openaps://")
         val s10Bin = if (liveRow) sc.steps10min else max(0, sc.steps10min - sc.steps5min)
         val s15Bin = if (liveRow) sc.steps15min else max(0, sc.steps15min - sc.steps10min)
-        return delayedDoseWalkingFactor(sc.steps5min, s10Bin, s15Bin, sc.steps30min, sc.steps60min)
+        return listOf(sc.steps5min, s10Bin, s15Bin, sc.steps30min, sc.steps60min)
     }
 
     /** Null when the dose was handed to the pump. Otherwise the reason it was not given now. */

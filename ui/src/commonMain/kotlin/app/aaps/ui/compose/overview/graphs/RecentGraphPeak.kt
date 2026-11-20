@@ -54,6 +54,30 @@ internal fun hourlyPeaks(points: List<GraphDataPoint>, now: Long, stepped: Boole
     return peaks
 }
 
+/**
+ * Every basal column above the profile basal (2026-11-20, per explicit request), for a label as well as the hourly peaks:
+ * one point per column, in the middle of the column, at its real rate. A column counts when its rate is above the profile
+ * basal at its middle. Newest first.
+ */
+internal fun aboveProfileBasalColumns(actual: List<GraphDataPoint>, profile: List<GraphDataPoint>, now: Long): List<GraphDataPoint> {
+    val ordered = actual.filter { it.timestamp <= now && it.value.isFinite() }
+        .groupBy { it.timestamp }.values.map { it.last() }.sortedBy { it.timestamp }
+    val columns = ordered.filterIndexed { index, point -> index == 0 || point.value != ordered[index - 1].value }
+    val profileSteps = profile.filter { it.value.isFinite() }.sortedBy { it.timestamp }
+    return columns.mapIndexedNotNull { index, column ->
+        val end = columns.getOrNull(index + 1)?.timestamp ?: now
+        if (end <= column.timestamp) return@mapIndexedNotNull null
+        val middle = column.timestamp + (end - column.timestamp) / 2
+        val profileRate = profileSteps.lastOrNull { it.timestamp <= middle }?.value ?: return@mapIndexedNotNull null
+        if (column.value > profileRate + 0.005) GraphDataPoint(middle, column.value) else null
+    }.reversed()
+}
+
+/** The hourly peaks and the columns above the profile basal together, each column once, newest first. */
+internal fun basalLabelPoints(actual: List<GraphDataPoint>, profile: List<GraphDataPoint>, now: Long): List<GraphDataPoint> =
+    (hourlyPeaks(actual, now, stepped = true) + aboveProfileBasalColumns(actual, profile, now))
+        .distinctBy { it.timestamp }.sortedByDescending { it.timestamp }
+
 /** One hourly peak label: [x] on the chart's x axis, [y] on the axis of its line or basal column; [color] overrides the labels' colour. */
 internal class PeakMark(val x: Double, val y: Double, val label: String, val color: Color? = null)
 

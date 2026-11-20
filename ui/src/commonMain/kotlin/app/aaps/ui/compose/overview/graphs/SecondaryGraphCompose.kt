@@ -1362,7 +1362,8 @@ private fun rememberSecondaryGraphDecorations(
         hourlyPeaks(iobData?.iob.orEmpty(), nowTimestamp)
     }
     val basalPeaks = remember(basalData, nowTimestamp, hasBasalLayer) {
-        if (hasBasalLayer) hourlyPeaks(basalData?.actualBasal.orEmpty(), nowTimestamp, stepped = true) else emptyList()
+        // 2026-11-20, per explicit request: also every column above the profile basal
+        if (hasBasalLayer) basalLabelPoints(basalData?.actualBasal.orEmpty(), basalData?.profileBasal.orEmpty(), nowTimestamp) else emptyList()
     }
     val peakLabels = remember(iobPeaks, basalPeaks, minTimestamp, smbText, seriesColors.iob, basalColor, basalData) {
         val basalTop = basalScaleTop(basalData)
