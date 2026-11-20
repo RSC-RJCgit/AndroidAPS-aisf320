@@ -94,6 +94,7 @@ import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.delayedDoseWalkingFactor
 import app.aaps.core.objects.wizard.followUpRequirementMilliU
 import app.aaps.core.objects.wizard.warsawFpuPlan
 import app.aaps.core.ui.CoreUiStrings
@@ -4955,6 +4956,9 @@ open class OpenAPSAutoISFPlugin(
         val factor = activityFactor(iob, maxIob, steps5(now), steps30(now), steps60(now))
         // Steps arrow: 0.5 comes only from walking (0 is high IOB, not steps)
         determineBasalAutoISF.tier3WalkingFactor = if (factor > 0.0 && factor < 1.0) factor else 1.0
+        // 2026-11-20, per explicit request: a Tier 3 dose over 1 U is cut by the delayed-dose walking levels, from the loop's own
+        // steps (S10 and S15 as 5-minute bins, as delayedDoseWalkingFactor wants)
+        determineBasalAutoISF.tier3StepDoseFactor = delayedDoseWalkingFactor(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now))
         if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && runMarks.ready(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, 15, now)) {
             activityFactorNote(factor)?.let {
                 carePortalNote(it)
