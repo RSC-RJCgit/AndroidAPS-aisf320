@@ -122,6 +122,11 @@ class DetermineBasalAutoISF @Inject constructor(
     var stepInsulinMultiplier: Double = 1.0
     var tier3WalkingFactor: Double = 1.0
 
+    // 2026-11-20, per explicit request: a Tier 3 UAM boost dose over TIER3_STEP_CUT_ABOVE_U is cut by the same walking levels as
+    // delayed FPU and carb split parts (delayedDoseWalkingFactor), never below the ordinary SMB. Set by the plugin each cycle
+    // from the loop's own steps.
+    var tier3StepDoseFactor: Double = 1.0
+
     // Switch for the recent-low rebound guard ("LoReb": trims SMB after a recent low), from the setting
     // ApsAutoIsfLowReboundGuardEnabled (Settings + List 2 5.228; default OFF -- it was hard-coded off on
     // 2026-09-20 "for now" and became this toggle the same day). While off it never fires, so no LoReb note
@@ -1907,6 +1912,13 @@ class DetermineBasalAutoISF @Inject constructor(
                             consoleError.add("Tier 3 usual SMB ${round(preBoostMicroBolus, 2)}U x scale ${round(boost_scale, 2)} = ${round(boostedUsualSmbCandidate, 2)}U before Tier 3 ceilings")
                             consoleError.add("Tier 3 SMB candidate ${round(microBolus, 2)}U vs ordinary ${round(preBoostMicroBolus, 2)}U; IOB ${round(iob_data.iob, 2)}U + allowance ${round(boostIobAllowance, 2)}U under ${round(boostMaxIOBPercent, 1)}% max_iob ceiling ${round(boostMaxIOB, 2)}U")
                             rT.reason.append("UAM Boost candidate ${round(preBoostMicroBolus, 2)} -> ${round(microBolus, 2)}U; IOB ceiling ${round(boostMaxIOBPercent, 1)}%=${round(boostMaxIOB, 2)}U; ")
+                            if (microBolus > TIER3_STEP_CUT_ABOVE_U && tier3StepDoseFactor < 1.0) {
+                                val preStepCut = microBolus
+                                microBolus = max(preBoostMicroBolus, Math.floor(microBolus * tier3StepDoseFactor * roundSMBTo) / roundSMBTo)
+                                stepCutDirect += (preStepCut - microBolus).coerceAtLeast(0.0)
+                                consoleError.add("Tier 3 over ${TIER3_STEP_CUT_ABOVE_U}U while walking: ${round(preStepCut, 2)} x ${tier3StepDoseFactor} -> ${round(microBolus, 2)}U")
+                                rT.reason.append("Tier3 walking x$tier3StepDoseFactor: ${round(preStepCut, 2)} -> ${round(microBolus, 2)}U; ")
+                            }
                         }
                         if (tier3WalkingFactor > 0.0 && tier3WalkingFactor < 1.0) {
                             // Steps arrow: the same candidate at the scale before steps halved it
@@ -2834,6 +2846,9 @@ class DetermineBasalAutoISF @Inject constructor(
 
 /** The forecast and the hypo guard use at most this many times the profile ISF (2026-11-15, see predSens). */
 private const val PRED_SENS_CAP = 2.0
+
+/** A Tier 3 dose above this (U) is cut by the delayed-dose walking levels (2026-11-20, per explicit request). */
+private const val TIER3_STEP_CUT_ABOVE_U = 1.0
 
 /** HP1 override: at most this much per SMB, and at most HP1_OVERRIDE_2H_U in 2 h (2026-11-15, see hp1OverrideDose). */
 private const val HP1_OVERRIDE_DOSE_U = 0.1

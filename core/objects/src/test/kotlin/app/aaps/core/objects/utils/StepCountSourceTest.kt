@@ -1,6 +1,7 @@
 package app.aaps.core.objects.utils
 
 import app.aaps.core.data.model.SC
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -61,6 +62,28 @@ class StepCountSourceTest {
         whenever(db.getStepsCountFromTimeToTime(now - 900_000, now)).thenReturn(listOf(sample))
         assertThat(source.latest(now, 900_000)?.get(60)).isEqualTo(60)
         verifyNoInteractions(mirror)
+    }
+
+    // 2026-11-20: Live keeps no SC rows, so the newest loop result's step lines count (fpu2 of 10 went in whole at S5 199)
+    @Test fun `without SC rows the newest loop result's steps count`() {
+        whenever(db.getStepsCountFromTimeToTime(now - 1_200_000, now)).thenReturn(emptyList())
+        val older: APSResult = mock()
+        whenever(older.date).thenReturn(now - 300_000)
+        whenever(older.reason).thenReturn("Steps5M: 0; Steps10M: 0; Steps15M: 0; Steps30M: 0; Steps60M: 0")
+        val newest: APSResult = mock()
+        whenever(newest.date).thenReturn(now - 60_000)
+        whenever(newest.reason).thenReturn("Steps5M: 199; Steps10M: 0; Steps15M: 0; Steps30M: 495; Steps60M: 495")
+        whenever(db.getApsResults(now - 1_200_000, now)).thenReturn(listOf(older, newest))
+        val steps = source.latest(now, 1_200_000)
+        assertThat(steps?.get(5)).isEqualTo(199)
+        assertThat(steps?.get(30)).isEqualTo(495)
+        assertThat(steps?.get(60)).isEqualTo(495)
+    }
+
+    @Test fun `no SC rows and no loop result steps means no steps`() {
+        whenever(db.getStepsCountFromTimeToTime(now - 1_200_000, now)).thenReturn(emptyList())
+        whenever(db.getApsResults(now - 1_200_000, now)).thenReturn(emptyList())
+        assertThat(source.latest(now, 1_200_000)).isNull()
     }
 
     @Test fun `client mode does not use Virtual mirror`() {

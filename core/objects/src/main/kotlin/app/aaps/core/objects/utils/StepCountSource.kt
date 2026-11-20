@@ -31,8 +31,18 @@ class StepCountSource @Inject constructor(
         }
         val sample = persistenceLayer.getStepsCountFromTimeToTime(timestamp - maxAgeMs, timestamp)
             .filter { it.isValid && it.timestamp <= timestamp }
-            .maxByOrNull { it.timestamp } ?: return null
-        return localBuckets(sample)
+            .maxByOrNull { it.timestamp }
+        if (sample != null) return localBuckets(sample)
+        // 2026-11-20, per explicit request: without SC rows, the step lines of the newest loop result, as history() does. Live
+        // keeps no SC rows (its loop reads the phone's step sensor directly), so the delayed-dose walking cut never saw a step:
+        // 20 Nov 13:39 fpu2 of 10 went in whole (0.40 U) at S5 199, S30 495, S60 495.
+        return persistenceLayer.getApsResults(timestamp - maxAgeMs, timestamp)
+            .filter { it.date <= timestamp }
+            .sortedByDescending { it.date }
+            .firstNotNullOfOrNull { result ->
+                LiveStepsMirror.parse(result.reason).takeIf { it.isNotEmpty() }
+                    ?.let { LiveStepsMirror.Sample(result.date, "reason", it).cumulativeBuckets() }
+            }
     }
 
     /**
