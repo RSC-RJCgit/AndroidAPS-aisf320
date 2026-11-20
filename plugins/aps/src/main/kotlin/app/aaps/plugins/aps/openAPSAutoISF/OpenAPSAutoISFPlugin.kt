@@ -112,6 +112,7 @@ import app.aaps.core.objects.extensions.target
 import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.wizard.followUpRequirementMilliU
 import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.delayedDoseWalkingFactor
 import app.aaps.core.utils.Aaps333NewestApk
 import app.aaps.core.utils.MidnightUtils
 import app.aaps.core.validators.preferences.AdaptiveDoublePreference
@@ -5378,6 +5379,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // Steps arrow: the part of tier3Factor that steps alone caused (steps30 > 200, walking; 0 is high IOB, not steps)
         val tier3FactorNotSteps = minOf(if (tier3CautionNotSteps) 0.5 else 1.0, if (tier3Activity > 0.0) 1.0 else 0.0)
         determineBasalAutoISF.tier3WalkingFactor = if (tier3FactorNotSteps > 0.0 && tier3Factor < tier3FactorNotSteps) tier3Factor / tier3FactorNotSteps else 1.0
+        // 2026-11-20, per explicit request: a Tier 3 dose over 1 U is cut by the delayed-dose walking levels, from the loop's own
+        // steps (S10 and S15 are 5-minute bins here, as delayedDoseWalkingFactor wants)
+        determineBasalAutoISF.tier3StepDoseFactor = delayedDoseWalkingFactor(
+            recentSteps5Minutes, recentSteps10Minutes, recentSteps15Minutes, recentSteps30Minutes, recentSteps60Minutes
+        )
         val oapsProfile = OapsProfileAutoIsf(
             dia = 0.0, // not used
             min_5m_carbimpact = 0.0, // not used
