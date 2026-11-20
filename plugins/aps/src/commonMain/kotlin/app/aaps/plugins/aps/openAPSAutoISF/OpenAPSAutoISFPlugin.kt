@@ -1,5 +1,6 @@
 package app.aaps.plugins.aps.openAPSAutoISF
 
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.data.time.AppTimeZone
 import app.aaps.core.data.aps.SMBDefaults
 import app.aaps.core.data.configuration.Constants
@@ -170,6 +171,7 @@ open class OpenAPSAutoISFPlugin(
     private val apkInstall: ApkInstallFront,
     private val commandQueue: CommandQueue,
     private val bolusWizard: Provider<BolusWizard>,
+    private val processedDeviceStatusData: ProcessedDeviceStatusData,
 ) : PluginBaseWithPreferences(
     PluginDescription()
         .mainType(PluginType.APS)
@@ -178,7 +180,9 @@ open class OpenAPSAutoISFPlugin(
                 apsPlugin = plugin as APS,
                 rxBus = rxBus,
                 rh = rh,
-                dateUtil = dateUtil
+                dateUtil = dateUtil,
+                // 2026-11-20, per explicit request: a client never loops, so it shows the loop phone's result from NS
+                nsResult = (plugin as OpenAPSAutoISFPlugin).nsResultForScreen()
             )
         }
         .icon(IcPluginOpenAPS)
@@ -210,6 +214,16 @@ open class OpenAPSAutoISFPlugin(
     override var lastAPSRun: Long = 0
     override val algorithm = APSResult.Algorithm.AUTO_ISF
     override var lastAPSResult: APSResult? = null
+
+    /**
+     * For the AutoISF screen on a client (2026-11-20, per explicit request): the loop phone's latest result and AutoISF list
+     * values from NS. A client never loops, so it has no result of its own. Gives nothing on a looping phone.
+     */
+    internal fun nsResultForScreen() = app.aaps.plugins.aps.compose.NsApsResultSource(
+        result = { if (config.AAPSCLIENT) processedDeviceStatusData.getAPSResult() else null },
+        resultTime = { processedDeviceStatusData.openAPSData.clockSuggested },
+        autoIsfValues = { processedDeviceStatusData.openAPSData.autoIsfListSnapshot.value?.values.orEmpty() },
+    )
     private var consoleError = mutableListOf<String>()
     private var consoleLog = mutableListOf<String>()
     val autoIsfVersion = "3.0.1"

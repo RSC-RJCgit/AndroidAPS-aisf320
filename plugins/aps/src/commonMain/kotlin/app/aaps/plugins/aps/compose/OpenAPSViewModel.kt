@@ -2,6 +2,7 @@ package app.aaps.plugins.aps.compose
 
 import androidx.compose.runtime.Immutable
 import app.aaps.core.interfaces.aps.APS
+import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensResult
 import app.aaps.core.interfaces.aps.CurrentTemp
 import app.aaps.core.interfaces.aps.GlucoseStatus
@@ -49,12 +50,24 @@ data class KeyValueRow(
     val value: String
 )
 
+/**
+ * The loop phone's latest result as Nightscout brought it (2026-11-20, per explicit request), for a phone with no result of
+ * its own: a client never loops, so its AutoISF screen said "Not available". [result] is NS's "suggested" result,
+ * [resultTime] its time, [autoIsfValues] the AutoISF list values the loop phone sends (empty when none came).
+ */
+class NsApsResultSource(
+    val result: () -> APSResult?,
+    val resultTime: () -> Long,
+    val autoIsfValues: () -> Map<String, String> = { emptyMap() },
+)
+
 class OpenAPSViewModel(
     private val apsPlugin: APS,
     private val rxBus: RxBus,
     private val rh: TextResolver,
     private val dateUtil: DateUtil,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val nsResult: NsApsResultSource? = null
 ) {
 
     private val _uiState = MutableStateFlow(OpenAPSUiState())
@@ -81,7 +94,10 @@ class OpenAPSViewModel(
     }
 
     private suspend fun updateState() {
-        val lastAPSResult = apsPlugin.lastAPSResult
+        val localResult = apsPlugin.lastAPSResult
+        // No result of its own (a client): the loop phone's from NS, when there is one
+        val fromNs = if (localResult == null) nsResult?.result?.invoke() else null
+        val lastAPSResult = localResult ?: fromNs
         if (lastAPSResult == null) {
             _uiState.value = OpenAPSUiState(
                 statusMessage = rh.gs(CoreUiStrings.not_available_full)
@@ -94,6 +110,13 @@ class OpenAPSViewModel(
         val sections = buildList {
             // --- Result group ---
             add(OpenAPSSection(title = CoreUiStrings.result, isGroupHeader = true))
+
+            // From NS: the loop phone's AutoISF list values, when it sent them
+            if (fromNs != null) {
+                val values = nsResult?.autoIsfValues?.invoke().orEmpty()
+                if (values.isNotEmpty())
+                    add(OpenAPSSection(title = ApsStrings.openaps_auto_isf, rows = values.map { (key, value) -> KeyValueRow(key, value) }))
+            }
 
             // Script Debug
             lastAPSResult.scriptDebug?.let { debug ->
@@ -215,7 +238,8 @@ class OpenAPSViewModel(
         }
 
         _uiState.value = OpenAPSUiState(
-            lastRun = dateUtil.dateAndTimeString(apsPlugin.lastAPSRun),
+            lastRun = if (fromNs != null) "${dateUtil.dateAndTimeString(nsResult?.resultTime?.invoke() ?: 0L)} (loop phone, from NS)"
+            else dateUtil.dateAndTimeString(apsPlugin.lastAPSRun),
             sections = sections,
             isRefreshing = false
         )

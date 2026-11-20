@@ -37,7 +37,7 @@ class OpenAPSAutoISFPluginTest : TestBaseWithProfile() {
             iobCobCalculator, hardLimits, preferences, dateUtil, processedTbrEbData, persistenceLayer, glucoseStatusProvider,
             bgQualityCheck, notificationManager, determineBasalSMB,
             GlucoseStatusCalculatorAutoIsf(aapsLogger, iobCobCalculator, dateUtil, decimalFormatter, deltaCalculator, preferences, mock()), { apsResultProvider() }, ch,
-            tddCalculator, mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock()
+            tddCalculator, mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock(), mock()
         )
     }
 

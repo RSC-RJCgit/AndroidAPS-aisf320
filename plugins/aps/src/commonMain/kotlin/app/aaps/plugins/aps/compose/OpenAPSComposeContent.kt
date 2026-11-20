@@ -15,7 +15,9 @@ class OpenAPSComposeContent(
     private val apsPlugin: APS,
     private val rxBus: RxBus,
     private val rh: TextResolver,
-    private val dateUtil: DateUtil
+    private val dateUtil: DateUtil,
+    /** The loop phone's result from NS, for a phone with no result of its own (a client); null where not wanted. */
+    private val nsResult: NsApsResultSource? = null
 ) : ComposablePluginContent {
 
     @Composable
@@ -31,7 +33,8 @@ class OpenAPSComposeContent(
                 rxBus = rxBus,
                 rh = rh,
                 dateUtil = dateUtil,
-                scope = scope
+                scope = scope,
+                nsResult = nsResult
             )
         }
 
