@@ -1576,12 +1576,20 @@ class BolusWizard @Inject constructor(
      * [StepCountSource] gives cumulative counts, so the bins are S10 - S5 and S15 - S10.
      * Insulin that walking soon held back goes through DelayedBolusWorker, so it is never cut here.
      */
-    private fun walkingFactorNow(): Double {
-        val steps = stepCountSource.latest(dateUtil.now(), T.mins(20).msecs()) ?: return 1.0
+    private fun walkingFactorNow(): Double =
+        walkingStepsNow()?.let { delayedDoseWalkingFactor(it[0], it[1], it[2], it[3], it[4]) } ?: 1.0
+
+    /** Super heavy activity now (see delayedDoseSuperHeavy); false with no step data in the last 20 minutes. */
+    private fun superHeavyNow(): Boolean =
+        walkingStepsNow()?.let { delayedDoseSuperHeavy(it[0], it[1], it[2], it[3], it[4]) } ?: false
+
+    /** S5, the S10 and S15 bins, S30, S60; null with no step data in the last 20 minutes. */
+    private fun walkingStepsNow(): List<Int>? {
+        val steps = stepCountSource.latest(dateUtil.now(), T.mins(20).msecs()) ?: return null
         val s5 = steps[5] ?: 0
         val s10Bin = max(0, (steps[10] ?: 0) - s5)
         val s15Bin = max(0, (steps[15] ?: 0) - (steps[10] ?: 0))
-        return delayedDoseWalkingFactor(s5, s10Bin, s15Bin, steps[30] ?: 0, steps[60] ?: 0)
+        return listOf(s5, s10Bin, s15Bin, steps[30] ?: 0, steps[60] ?: 0)
     }
 
     private fun currentTotalIob(): Double {
@@ -2068,6 +2076,13 @@ class BolusWizard @Inject constructor(
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
+            // 2026-11-20, per explicit request: super heavy activity at an earlier part's due time cancelled this meal's FPU parts
+            if (SuperHeavyFpuCancel.isCancelled(myScheduleToken)) {
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): super heavy activity cancelled this meal's FPU parts — cancelling ${dose}U")
+                cancelDoseNote(fpuWhat(label, dose), dose, "super heavy activity (steps) earlier", label, iobBaseline, useIobRise = false)
+                decrementWarsawPendingRemaining(dose)
+                return@postDelayed
+            }
             // Not due yet: keep polling. Only "bolus stopped"/"superseded" (above) cancel early; the profile/
             // pump/superbolus checks below run only when this dose is actually due, so a transient condition
             // (e.g. a short 50% profile switch) can't cancel doses that aren't due for hours -- previously
@@ -2082,6 +2097,15 @@ class BolusWizard @Inject constructor(
             val doseDeadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
             if (dateUtil.now() > doseDeadline) {
                 cancelDoseNote(fpuWhat(label, dose), dose, "retry window expired", label, iobBaseline, useIobRise = false)
+                decrementWarsawPendingRemaining(dose)
+                return@postDelayed
+            }
+            // 2026-11-20, per explicit request: only super heavy activity cancels; it cancels this part and the meal's parts
+            // still waiting. Walking, activity and heavy activity only cut each part as it comes due (below).
+            if (superHeavyNow()) {
+                SuperHeavyFpuCancel.cancel(myScheduleToken)
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): super heavy activity (steps) — cancelling ${dose}U and the FPU parts still waiting")
+                cancelDoseNote(fpuWhat(label, dose), dose, "super heavy activity (steps)", label, iobBaseline, useIobRise = false)
                 decrementWarsawPendingRemaining(dose)
                 return@postDelayed
             }
