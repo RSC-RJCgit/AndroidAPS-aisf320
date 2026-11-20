@@ -140,12 +140,11 @@ class GraphData @Inject constructor(
             )
         addSeries(overviewData.baseBasalGraphSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.tempBasalGraphSeries as LineGraphSeries<ScaledDataPoint>)
-        if (!PointsWithLabelGraphSeries.uniformGreenBg) {
-            addSeries(overviewData.tempBasalAcceIsfSeries as LineGraphSeries<ScaledDataPoint>)
-            addSeries(overviewData.tempBasalBgIsfSeries as LineGraphSeries<ScaledDataPoint>)
-            addSeries(overviewData.tempBasalPpIsfSeries as LineGraphSeries<ScaledDataPoint>)
-            addSeries(overviewData.tempBasalDuraIsfSeries as LineGraphSeries<ScaledDataPoint>)
-        }
+        // The ISF colours stay in the clean graph too (2026-11-20, per explicit request); the clean graph only makes the BG line plain
+        addSeries(overviewData.tempBasalAcceIsfSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.tempBasalBgIsfSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.tempBasalPpIsfSeries as LineGraphSeries<ScaledDataPoint>)
+        addSeries(overviewData.tempBasalDuraIsfSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.basalLineGraphSeries as LineGraphSeries<ScaledDataPoint>)
         addSeries(overviewData.absoluteBasalGraphSeries as LineGraphSeries<ScaledDataPoint>)
         maxY = max(maxY, preferences.get(UnitDoubleKey.OverviewHighMark))
@@ -162,8 +161,9 @@ class GraphData @Inject constructor(
      * The scale is set in [performUpdate], once the graph's range is known.
      */
     fun addBasalsHangingFromTop() {
-        val sources = mutableListOf(overviewData.baseBasalGraphSeries, overviewData.tempBasalGraphSeries)
-        if (!PointsWithLabelGraphSeries.uniformGreenBg) sources += listOf(
+        // ISF colours in the clean graph too (2026-11-20, per explicit request)
+        val sources = listOf(
+            overviewData.baseBasalGraphSeries, overviewData.tempBasalGraphSeries,
             overviewData.tempBasalAcceIsfSeries, overviewData.tempBasalBgIsfSeries,
             overviewData.tempBasalPpIsfSeries, overviewData.tempBasalDuraIsfSeries
         )
