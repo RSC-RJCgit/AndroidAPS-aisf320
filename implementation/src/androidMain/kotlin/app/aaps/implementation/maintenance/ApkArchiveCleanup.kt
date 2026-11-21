@@ -1,5 +1,6 @@
 package app.aaps.implementation.maintenance
 
+import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
@@ -82,10 +83,56 @@ internal fun deleteOldInstallers(context: Context, folderUri: String, extraFolde
         }
         if (removed) deleted++ else failed++
     }
-    val result = "Installer cleanup: ${trees.size} folders, ${installers.size} installers, $deleted deleted, $failed failed"
+    val emptyRemoved = deleteEmptySubfolders(resolver, trees, logger)
+    val result = "Installer cleanup: ${trees.size} folders, ${installers.size} installers, $deleted deleted, $failed failed, " +
+        "$emptyRemoved empty folders removed"
     if (failed > 0) logger.warn(LTag.CORE, result)
-    else if (deleted > 0) logger.info(LTag.CORE, result)
+    else if (deleted > 0 || emptyRemoved > 0) logger.info(LTag.CORE, result)
     else logger.debug(LTag.CORE, result)
+}
+
+/** Folders this many levels below an AAPS folder or deeper can go when empty: the selected folder (0) and its own folders (1,
+ * such as ApkDownload or extra) always stay. */
+private const val EMPTY_FOLDER_MIN_DEPTH = 2
+
+/**
+ * 2026-11-21, per explicit request: deleting old installers left their per-build folders (AAPS333/ApkDownload/...) behind,
+ * empty. Deletes each empty folder [EMPTY_FOLDER_MIN_DEPTH] or more levels below each of [trees], the deepest first, so a
+ * folder holding only empty folders goes too. Returns how many were deleted.
+ */
+private fun deleteEmptySubfolders(resolver: ContentResolver, trees: List<Uri>, logger: AAPSLogger): Int {
+    val columns = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_MIME_TYPE)
+    var removed = 0
+    for (tree in trees) {
+        val root = DocumentsContract.getTreeDocumentId(tree)
+        if (root.substringAfter(':', "").isBlank()) continue
+        try {
+            val folders = mutableListOf<Pair<String, Int>>()
+            val queue = ArrayDeque<Pair<String, Int>>()
+            queue.add(root to 0)
+            while (queue.isNotEmpty()) {
+                val (id, depth) = queue.removeLast()
+                resolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, id), columns, null, null, null)?.use {
+                    while (it.moveToNext()) {
+                        if (it.getString(1) == Document.MIME_TYPE_DIR) {
+                            val child = it.getString(0) to depth + 1
+                            queue.add(child)
+                            folders.add(child)
+                        }
+                    }
+                }
+            }
+            for ((id, depth) in folders.sortedByDescending { it.second }) {
+                if (depth < EMPTY_FOLDER_MIN_DEPTH) continue
+                val empty = resolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, id), columns, null, null, null)
+                    ?.use { it.count == 0 } ?: false
+                if (empty && DocumentsContract.deleteDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, id))) removed++
+            }
+        } catch (error: Exception) {
+            logger.error(LTag.CORE, "Could not remove empty installer folders", error)
+        }
+    }
+    return removed
 }
 
 private const val EXTERNAL_STORAGE_AUTHORITY = "com.android.externalstorage.documents"

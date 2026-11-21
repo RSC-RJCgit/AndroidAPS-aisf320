@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Add
 import app.aaps.core.data.model.ActiveSceneState
 import app.aaps.core.data.model.Scene
 import app.aaps.core.data.model.SceneEndAction
+import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.alerts.EatReminder
 import app.aaps.core.interfaces.alerts.EatReminderAction
 import app.aaps.core.interfaces.alerts.EatReminderState
@@ -17,10 +18,7 @@ import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.clientcontrol.FailureReason
 import app.aaps.core.interfaces.configuration.BackgroundWorkPause
 import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.configuration.InitProgress
-import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.db.PersistenceLayer
-import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
@@ -29,7 +27,6 @@ import app.aaps.core.interfaces.overview.graph.ProfileDisplayData
 import app.aaps.core.interfaces.overview.graph.RunningModeDisplayData
 import app.aaps.core.interfaces.overview.graph.TbrDisplayData
 import app.aaps.core.interfaces.overview.graph.TempTargetDisplayData
-import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.protection.ProtectionResult
@@ -90,9 +87,9 @@ import org.mockito.kotlin.whenever
 @OptIn(ExperimentalCoroutinesApi::class)
 internal class MainViewModelTest {
 
-    @Mock private lateinit var activePlugin: ActivePlugin
     @Mock private lateinit var trioRemoteControl: TrioRemoteControl
     @Mock private lateinit var processedDeviceStatusData: ProcessedDeviceStatusData
+    @Mock private lateinit var iobCobCalculator: IobCobCalculator
     @Mock private lateinit var config: Config
     @Mock private lateinit var urlOpener: UrlOpener
     @Mock private lateinit var preferences: Preferences
@@ -100,9 +97,7 @@ internal class MainViewModelTest {
     @Mock private lateinit var rh: ResourceHelper
     @Mock private lateinit var dateUtil: DateUtil
     @Mock private lateinit var overviewDataCache: OverviewDataCache
-    @Mock private lateinit var iobCobCalculator: IobCobCalculator
     @Mock private lateinit var profileFunction: ProfileFunction
-    @Mock private lateinit var constraintChecker: ConstraintsChecker
     @Mock private lateinit var quickWizard: QuickWizard
     @Mock private lateinit var automation: Automation
     @Mock private lateinit var persistenceLayer: PersistenceLayer
@@ -146,9 +141,8 @@ internal class MainViewModelTest {
         whenever(overviewDataCache.profileFlow).thenReturn(MutableStateFlow<ProfileDisplayData?>(null))
         whenever(overviewDataCache.runningModeFlow).thenReturn(MutableStateFlow<RunningModeDisplayData?>(null))
         whenever(overviewDataCache.tbrFlow).thenReturn(MutableStateFlow<TbrDisplayData?>(null))
+        // Folded into the toolbar's combine: a QuickWizard entry outside its time window is hidden.
         whenever(quickWizard.changes).thenReturn(MutableStateFlow(0))
-        // App init, also folded into chipStateFlow: the QuickWizard items are built once it completes.
-        whenever(config.initProgressFlow).thenReturn(MutableStateFlow(InitProgress(done = true)))
 
         // Active scene state and the scene catalog, read as fields (activeSceneState, sceneExpired.map,
         // activeSceneChainTargetName's combine).
@@ -172,8 +166,8 @@ internal class MainViewModelTest {
 
     /** The one place the constructor is called, so a test can re-stub a flow and build its own instance. */
     private fun buildSut() = MainViewModel(
-        activePlugin, config, urlOpener, preferences, fabricPrivacy, rh, dateUtil,
-        overviewDataCache, iobCobCalculator, profileFunction, constraintChecker, quickWizard,
+        config, urlOpener, preferences, fabricPrivacy, rh, dateUtil,
+        overviewDataCache, profileFunction, quickWizard,
         automation, persistenceLayer, aapsLogger, quickLaunchResolver, wizardExecutor,
         batchExecutor, uel, loop, protectionCheck, sceneActions, sceneChainTargetResolver,
         sceneStore, activeSceneManager, rxBus, nsClient, visibilityContext,
@@ -181,7 +175,8 @@ internal class MainViewModelTest {
             override val paused = MutableStateFlow(false)
             override fun setPaused(paused: Boolean) {}
         },
-        CoroutineScope(UnconfinedTestDispatcher()), eatReminder, clientControlDispatcher, trioRemoteControl, processedDeviceStatusData
+        CoroutineScope(UnconfinedTestDispatcher()), eatReminder, clientControlDispatcher, trioRemoteControl, processedDeviceStatusData,
+        iobCobCalculator
     )
 
     @Test
@@ -219,7 +214,6 @@ internal class MainViewModelTest {
         // unknown, and the chip draws that as a question mark rather than claiming the loop is off.
         assertThat(state.runningMode).isNull()
         assertThat(state.tempTargetState).isEqualTo(TempTargetChipState.None)
-        assertThat(state.quickWizardItems).isEmpty()
     }
 
     @Test

@@ -128,6 +128,10 @@ class PrepareGraphDataRunner(
         }
         if (isStopped()) return WorkOutcome.Stopped
 
+        // Before anything is picked with the window: the post pass moves it on only at the end of the run (#5614).
+        // Fork: the master graph time zone (AppTimeZone), as everywhere else in the graphs
+        if (data.liveWindow) data.overviewData.moveLiveWindowTo(Instant.fromEpochMilliseconds(dateUtil.now()), AppTimeZone.current())
+
         // ===== Phase 2: Bucketed data → cache (was PrepareBucketedDataWorker) =====
         prepareBucketedData(data)
         if (isStopped()) return WorkOutcome.Stopped

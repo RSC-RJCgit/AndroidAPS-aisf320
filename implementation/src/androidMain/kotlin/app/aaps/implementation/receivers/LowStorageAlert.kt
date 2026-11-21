@@ -57,7 +57,8 @@ class LowStorageAlert(
         val weeklyDue = localTime.dayOfWeek == DayOfWeek.SUNDAY && localTime.hour >= 12 &&
             localDay > preferences.get(LongNonKey.LastWeeklyApkCleanupDay)
         val freeBefore = if (weeklyDue) null else freeStorageGiB()
-        val lowStorage = freeBefore != null && freeBefore < 10.0
+        // Under 12 GiB (2026-11-21, per explicit request; was 10) the installer cleanup and the log trim run at once
+        val lowStorage = freeBefore != null && freeBefore < 12.0
         val cleanupDue = weeklyDue || lowStorage
         if (cleanupDue) {
             deleteOldInstallers(
@@ -84,7 +85,8 @@ class LowStorageAlert(
         if (freeGiB == null) return
         val notified = preferences.get(BooleanNonKey.LowStorageNotified)
         val sent = preferences.get(BooleanNonKey.LowStorageTargetedSmsSent)
-        if (freeGiB >= 10.5) {
+        // Warning under 12 GiB, cleared again from 12.5 GiB (2026-11-21, per explicit request; was 10 and 10.5)
+        if (freeGiB >= 12.5) {
             if (notified) {
                 preferences.put(BooleanNonKey.LowStorageNotified, false)
                 notificationManager.dismiss(NotificationId.LOW_STORAGE)
@@ -93,7 +95,7 @@ class LowStorageAlert(
             lastSmsAttemptAt = 0L
             return
         }
-        if (freeGiB >= 10.0 || (notified && sent)) return
+        if (freeGiB >= 12.0 || (notified && sent)) return
 
         val text = String.format(Locale.US, "StLow %.1fGB free", freeGiB)
         val targets = smsTargets()
