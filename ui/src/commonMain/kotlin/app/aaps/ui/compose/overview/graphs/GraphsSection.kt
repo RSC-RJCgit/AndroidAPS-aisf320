@@ -1519,8 +1519,9 @@ fun GraphsSection(
         // last entry of the shared list above.
         if (showGraph5) {
             var editingGraph5 by remember { mutableStateOf(false) }
-            // Press and hold shows the same pill and time line as the other graphs (2026-10-29, per explicit request)
-            Box(modifier = Modifier.graphInspectTouch(inspect)) {
+            // Press and hold shows the same pill and time line as the other graphs (2026-10-29, per explicit request).
+            // Simple graphs: drawn 8 dp higher like the graphs above it, so no gap opens before it (2026-11-21, per explicit request)
+            Box(modifier = Modifier.then(if (simpleGraphs) Modifier.offset(y = (-8).dp) else Modifier).graphInspectTouch(inspect)) {
                 BgGraphCompose(
                     viewModel = graphViewModel,
                     masterZone = masterZone,

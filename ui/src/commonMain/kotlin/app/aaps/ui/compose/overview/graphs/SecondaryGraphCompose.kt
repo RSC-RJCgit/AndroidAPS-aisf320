@@ -1049,12 +1049,12 @@ fun SecondaryGraphCompose(
     val bottomAxis = HorizontalAxis.rememberBottom(
         valueFormatter = timeFormatter,
         itemPlacer = bottomAxisItemPlacer,
-        // 10 sp (2026-11-21, per explicit request): the default size let neighbouring times overlap. None in Simple graphs.
+        // 10 sp (2026-11-21, per explicit request): the default size let neighbouring times overlap.
         label = rememberTextComponent(
             style = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 10.sp)
-        ).takeUnless { simpleGraph },
+        ),
         guideline = LineComponent(fill = Fill(AapsTheme.generalColors.graphGrid))
-    )
+    ).takeUnless { simpleGraph } // Simple graphs: no time axis at all, so its space goes to the plot (2026-11-21, per explicit request)
 
     val latestStepsData by rememberUpdatedState(stepsData)
     val display by viewModel.graphDisplay.collectAsStateWithLifecycle()
