@@ -3693,6 +3693,19 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         PointsWithLabelGraphSeries.simpleGraphs = simpleGraphs
         updateSimpleGraphsToggle()
         setGraphHeight(binding.graphsLayout.bgGraph, if (simpleGraphs) SIMPLE_BG_GRAPH_HEIGHT_DP else skinProvider.activeSkin().mainGraphHeight)
+        // The main graph's box shares the leftover height with Graph 5's (layout_weight 1 each). Simple graphs: it wraps the
+        // graph instead, so G1 follows right under it rather than after a gap (2026-11-21, per explicit request).
+        (binding.graphsLayout.bgGraph.parent as? View)?.let { box ->
+            (box.layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+                val height = if (simpleGraphs) ViewGroup.LayoutParams.WRAP_CONTENT else 0
+                val weight = if (simpleGraphs) 0f else 1f
+                if (params.height != height || params.weight != weight) {
+                    params.height = height
+                    params.weight = weight
+                    box.layoutParams = params
+                }
+            }
+        }
         val pump = activePlugin.activePump
         val displayTimeZone = MasterGraphTime.forClient(config, preferences)
         val graphCurrentTime = MasterGraphTime.timeString(binding.root.context, dateUtil, dateUtil.now(), displayTimeZone)
@@ -3782,9 +3795,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         if (!simpleGraphs) {
             graphData.addA1DeltaAnnotation()
             graphData.addUkfDeltaAnnotation()
-            graphData.addHpAnnotation()
-            graphData.addIobPeakMainAnnotation()
         }
+        // The hypoprediction row stays in Simple graphs too (2026-11-21, per explicit request)
+        graphData.addHpAnnotation()
+        if (!simpleGraphs) graphData.addIobPeakMainAnnotation()
 
         // set manual x bounds to have nice steps
         graphData.setNumVerticalLabels()

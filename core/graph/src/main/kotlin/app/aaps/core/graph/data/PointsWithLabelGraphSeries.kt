@@ -56,8 +56,10 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         //   0: near-BGL arrowheads on,  normal per-point ISF colors
         //   1: near-BGL arrowheads off, normal per-point ISF colors
         //   2: near-BGL arrowheads off, uniform transparent green BG dots
+        // Simple graphs show the clean graph's uniform green dots too (2026-11-21, per explicit request). Shared by every graph,
+        // so Graph 5's dots go green as well, as they already do with the automatic clean graph.
         var basalToggleIndex: Int = 0
-            get() = if (automaticCleanGraph) 2 else field
+            get() = if (automaticCleanGraph || simpleGraphs) 2 else field
             set(value) { field = ((value % 3) + 3) % 3 }
 
         // Line1 (Carbs Absorption) quick show/hide, driven by direct long-press ACTIONS, not by passively
