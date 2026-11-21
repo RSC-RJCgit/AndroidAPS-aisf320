@@ -3,6 +3,7 @@ package app.aaps.activities
 import app.aaps.core.keys.time.AppTimeZone
 import android.annotation.SuppressLint
 import android.os.Bundle
+import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.RelativeLayout
@@ -10,6 +11,9 @@ import android.widget.TextView
 import app.aaps.core.data.time.T
 import app.aaps.core.graph.data.GraphViewWithCleanup
 import app.aaps.core.graph.data.PointsWithLabelGraphSeries
+import app.aaps.core.graph.data.SIMPLE_BG_GRAPH_HEIGHT_DP
+import app.aaps.core.graph.data.SIMPLE_IOB_GRAPH_HEIGHT_DP
+import app.aaps.core.graph.data.SIMPLE_SECONDARY_GRAPH_HEIGHT_DP
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -402,6 +406,16 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         binding.zoom.text = rangeToDisplay.toString()
     }
 
+    /** Sets [view]'s height to [heightDp], only when it changes (Simple graphs, 2026-11-21). */
+    private fun setGraphHeight(view: View, heightDp: Int) {
+        val params = view.layoutParams ?: return
+        val px = rh.dpToPx(heightDp)
+        if (params.height != px) {
+            params.height = px
+            view.layoutParams = params
+        }
+    }
+
     @SuppressLint("SetTextI18n")
     fun updateGUI(from: String) {
         aapsLogger.debug(LTag.UI, "updateGui $from")
@@ -412,6 +426,11 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         val pump = activePlugin.activePump
         val graphData = graphDataProvider.get().with(binding.bgGraph, historyBrowserData.overviewData, displayTimeZone)
         val menuChartSettings = overviewMenus.setting
+        // Simple graphs (2026-11-21, per explicit request): the same as OverviewFragment.updateGraph() (the word above the acce
+        // label there). Graph 5 is unchanged; the skin heights stay for Detailed.
+        val simpleGraphs = preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs)
+        PointsWithLabelGraphSeries.simpleGraphs = simpleGraphs
+        setGraphHeight(binding.bgGraphLayout, if (simpleGraphs) SIMPLE_BG_GRAPH_HEIGHT_DP else skinProvider.activeSkin().mainGraphHeight)
         graphData.addInRangeArea(
             historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime,
             preferences.get(UnitDoubleKey.OverviewLowMark),
@@ -422,36 +441,38 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         graphData.addTreatments(this) { bolus ->
             uiInteraction.runBolusCalculationDialog(supportFragmentManager, bolus.data.timestamp, bolus.data.amount, bolus.label)
         }
-        graphData.addEps(this, 0.95)
-        if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal])
+        if (!simpleGraphs) graphData.addEps(this, 0.95)
+        // Simple graphs: the renderer keeps only the Tier 3 boost "B" of these
+        if (menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal] || simpleGraphs)
             graphData.addTherapyEvents()
-        if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal])
+        if (menuChartSettings[0][OverviewMenus.CharType.ACT.ordinal] && !simpleGraphs)
             graphData.addActivity(0.8)
         // Line1: checkbox is a master gate; carbLine1QuickShow is set directly by the relevant long-press
         // ACTIONS -- OverviewFragment.kt's basal icon push0/1/2 and IOB icon press (see its matching
         // comment for the full reasoning), or this screen's own bg_graph long-press cycle (see
         // advanceHistoryGraphLongPressState() above), since this screen has no separate IOB/basal icons
         // to hang two independent gestures off of.
-        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal] && PointsWithLabelGraphSeries.carbLine1QuickShow)
+        if (menuChartSettings[0][OverviewMenus.CharType.CARB_ABS.ordinal] && PointsWithLabelGraphSeries.carbLine1QuickShow && !simpleGraphs)
             graphData.addCarbAbsorption(0.8)
         // Line2 (carb model curve) is intentionally independent of line1's own checkbox/toggle state --
         // controlled purely by its own settings switch, never affected by the CARB_ABS checkbox above or
         // any basal-icon long-press effect on line1.
-        if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve))
+        if (preferences.get(BooleanKey.ApsAutoIsfShowCarbModelCurve) && !simpleGraphs)
             graphData.addCarbModelCurve(0.8)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal))
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.UAM_CARB_IMPACT.ordinal) && !simpleGraphs)
             graphData.addUamCarbImpact(0.8)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.COMBINED_CARBS.ordinal))
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.COMBINED_CARBS.ordinal) && !simpleGraphs)
             graphData.addCombinedCarbs(0.8)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal))
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal) && !simpleGraphs)
             graphData.addBgParabola(false, 1.0)
         val insulinColumnsShown = pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
+        // Simple graphs keep the columns; the renderer leaves their values out (Shape.HOUR_PEAK)
         if (insulinColumnsShown)
             // 2026-11-19, per explicit request: the main graph's columns are insulin totals; Graph 5 keeps basal (addBasals there)
             graphData.addInsulinTotalColumns()
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal) && !simpleGraphs)
             graphData.addRawBg(false)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) && !simpleGraphs)
             graphData.addRawBgSmoothed(false)
         graphData.addTargetLine()
         graphData.addRunningModes()
@@ -644,27 +665,37 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             // tidied, so the two can still be diffed against each other. Note the indexing: the main
             // graph is index 0 and is NOT in this loop, so panel number == g + 1 -- g==0 is graph1,
             // g==1 is graph2, g==2 is graph3, g==3 is graph4.
-            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteEvents()
-            if (g == 0) {
+            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal] && !simpleGraphs) secondGraphData.addNoteEvents()
+            if (g == 0 && !simpleGraphs) {
                 secondGraphData.addStepsStackedAnnotation()
                 secondGraphData.addStepsExtra()
                 secondGraphData.addNoisyBgDeltaAnnotation()
                 secondGraphData.addIsfIndices()
             }
-            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal]) secondGraphData.addNoteArrowheads()
+            if (g == 3 && menuChartSettings[0][OverviewMenus.CharType.TREAT.ordinal] && !simpleGraphs) secondGraphData.addNoteArrowheads()
             // Was g == 0 (graph1) here while OverviewFragment had already swapped this to g == 1 (graph2),
             // trading places with the CarePortal notes now on graph4 above. History Browse never got that
             // swap, which is why SMB labels appeared on a different panel in the two screens.
             // Not while the insulin-total columns show: their values sit on top of them (2026-11-20, per explicit request)
-            if (g == 0 && !insulinColumnsShown) secondGraphData.addInsulinIntervalTotals()
-            if (g == 1) secondGraphData.addSmbLabels()
+            if (g == 0 && !insulinColumnsShown && !simpleGraphs) secondGraphData.addInsulinIntervalTotals()
+            if (g == 1 && !simpleGraphs) secondGraphData.addSmbLabels()
             // graph3 (g==2): was the "pp= acc= du=" row -- replaced with the SMB-stack-total labels (was
             // g==0/IOB-COB panel, moved here). Unlike OverviewFragment.kt, this screen has no established
             // main-graph annotation wiring (L1/A1/UKF/HP aren't ported here either), so the "pp= acc= du="
             // row had no home on this screen's OWN secondary graphs -- since graph5 was ported in above,
             // the row is back (via graph5's own addIsfWeightsRow()), just gated by
             // BooleanKey.ApsAutoIsfShowGraph5 rather than always-on the way it is on graph3 here.
-            if (g == 2) secondGraphData.addSmbStackTotalLabels()
+            if (g == 2 && !simpleGraphs) secondGraphData.addSmbStackTotalLabels()
+            // Simple graphs: their own heights (G1 SIMPLE_IOB_GRAPH_HEIGHT_DP, the others SIMPLE_SECONDARY_GRAPH_HEIGHT_DP). This
+            // screen's lower graphs have no time row in either mode.
+            setGraphHeight(
+                secondaryGraphs[g],
+                when {
+                    !simpleGraphs -> skinProvider.activeSkin().secondaryGraphHeight
+                    g == 0        -> SIMPLE_IOB_GRAPH_HEIGHT_DP
+                    else          -> SIMPLE_SECONDARY_GRAPH_HEIGHT_DP
+                }
+            )
 
             // set manual x bounds to have nice steps
             secondGraphData.formatAxis(historyBrowserData.overviewData.fromTime, historyBrowserData.overviewData.endTime)
@@ -673,6 +704,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size + 1)) {
             secondaryGraphsLabel[g].text = stepsLinesLabel(overviewMenus.enabledTypes(g + 1), rh, this)
+            // Simple graphs: G2 onwards without their label (G1 keeps its own)
+            secondaryGraphsLabel[g].visibility = if (preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs) && g > 0) View.GONE else View.VISIBLE
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal) ||

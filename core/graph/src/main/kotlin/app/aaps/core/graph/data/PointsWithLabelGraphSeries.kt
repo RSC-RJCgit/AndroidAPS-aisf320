@@ -69,6 +69,26 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         // master on/off at the call site -- this flag only matters when that checkbox is already on.
         var carbLine1QuickShow: Boolean = true
 
+        // Simple graphs (2026-11-21, per explicit request; BooleanKey.ApsAutoIsfSimpleGraphs, set by OverviewFragment and
+        // HistoryBrowseActivity before each draw): no values, no SMB marks but the Tier 3 boost arrow, no zero or protein/fat
+        // bolus arrows, no peak labels, no dose check dots, and of the therapy events only the Tier 3 boost "B" announcement.
+        // The caller also leaves the rows and notes series out. Graph 5 adds none of these, so it stays as it is.
+        var simpleGraphs: Boolean = false
+
+        /** The announcement Live writes for its Tier 3 UAM boost (CodedAutomationNames.UAM_BOOST_GRAPH_ANNOUNCEMENT). */
+        private const val UAM_BOOST_GRAPH_ANNOUNCEMENT = "B"
+
+        /** True when [simpleGraphs] leaves [value] out entirely. */
+        internal fun hiddenInSimpleGraphs(value: DataPointWithLabelInterface): Boolean = when {
+            value.shape == Shape.HOUR_PEAK || value.shape == Shape.IOB_PEAK || value.shape == Shape.IOB_PEAK_MAIN_BOTTOM ||
+                value.shape == Shape.ACTIVITY_PEAK || value.shape == Shape.DOSE_CHECK_DOT ||
+                value.shape == Shape.INSULIN_COLUMNS_TITLE || value.shape == Shape.EXTENDEDBOLUS -> true
+            value.shape == Shape.SMB                    -> (value as? BolusDataPoint)?.tier3 != true
+            value.shape == Shape.BOLUS                  -> value.isFpuDose || (value as? BolusDataPoint)?.data?.amount == 0.0
+            value is TherapyEventDataPoint              -> !(value.shape == Shape.ANNOUNCEMENT && value.label.trim() == UAM_BOOST_GRAPH_ANNOUNCEMENT)
+            else                                        -> false
+        }
+
         // Shape.SMB's "arrowhead just below the relevant BGL point" and Shape.BOLUS's arrowhead are NOT
         // affected by this — Shape.BOLUS (meal bolus arrows) always draws regardless, and the SMB
         // baseline triangle at the bottom of the graph always draws regardless too.
@@ -266,6 +286,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         val hourPeakLabels = mutableListOf<HourPeakText>()
 
         for (value in values) {
+            if (simpleGraphs && hiddenInSimpleGraphs(value)) continue
             mPaint.color = value.color(graphView.context)
             val valY = value.y - minY
             val ratY = valY / diffY
@@ -381,7 +402,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     )
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     drawArrows(points, canvas, mPaint)
-                    if (value.label.isNotEmpty()) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
+                    if (value.label.isNotEmpty() && !simpleGraphs) drawLabel45Left(endX, endY, value, canvas, scaledPxSize, scaledTextSize * 0.7f)
                 } else if (value.shape == Shape.SMB) {
                     // No spill-to-next-bucket here (unlike the Notes stack below): with a 1-min minimum
                     // SMB cadence, a genuine 10-min bucket can hold at most 11 doses (t=0..10 inclusive) --
@@ -392,7 +413,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val bgValY = value.labelY - minY
                     val bgRatY = bgValY / diffY
                     val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
-                    // original blue triangle at baseline (IOB graph zero line)
+                    // original blue triangle at baseline (IOB graph zero line). Simple graphs: only the arrow at the BG dot below.
+                    if (!simpleGraphs) {
                     mPaint.strokeWidth = 0f
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     val baseTriBase = endY + scaledPxSize * 0.67f
@@ -428,11 +450,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawLine(endX, stepBase, endX, stepBase - scaledTextSize * 0.25f * stepCutUnits, mPaint)
                         mPaint.color = savedColor
                     }
+                    }
                     // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
                     // Shaft here is the original fixed (non-dose-scaled) length; dose scaling lives on the
                     // baseline arrowhead's shaft above instead. Toggled by showBglArrowheads (long-press
                     // basal icon) — the baseline triangle/shaft above always draws regardless.
-                    if (showBglArrowheads) {
+                    if (showBglArrowheads || simpleGraphs) {
                         if (!value.hasColorOverride) mPaint.color = Color.YELLOW
                         val triTop = bgEndY + size
                         val triBase = triTop + size * 1.5f
@@ -451,7 +474,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         // fast-rise indicator (factor*10, rounded) at the bottom of this shaft, if one fired for this dose.
                         // Stacked by stackIndex (same bucket as the dose label) since close-together SMBs share
                         // a similar BG position and would otherwise overlap here.
-                        if (value.fastRiseLabel.isNotEmpty()) {
+                        if (value.fastRiseLabel.isNotEmpty() && !simpleGraphs) {
                             mPaint.style = Paint.Style.FILL
                             val fastRiseY = bgShaftEnd + scaledTextSize * 0.5f + stackIndex * (scaledTextSize * 0.6f)
                             drawLabelCentered(endX, fastRiseY, value, canvas, scaledTextSize * 0.5f, value.fastRiseLabel)
@@ -459,7 +482,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     }
                     val displayedHours = (maxX - minX) / (1000.0 * 60 * 60)
                     // label near BG dot — gated by showSmbLabels long-press, unchanged behaviour
-                    if (showSmbLabels && displayedHours <= 15.0 && value.label.isNotEmpty()) {
+                    if (showSmbLabels && !simpleGraphs && displayedHours <= 15.0 && value.label.isNotEmpty()) {
                         val labelY = bgEndY - size - stackIndex * (scaledTextSize * 0.6f)
                         val savedColor = mPaint.color
                         if (!value.hasColorOverride) mPaint.color = Color.WHITE
@@ -893,7 +916,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, base, endX, base - scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
                 }
-                if (value.label.isNotEmpty()) {
+                if (value.label.isNotEmpty() && !simpleGraphs) {
                     val labelRatY = (value.labelY - minY) / diffY
                     val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
                     val savedColor = mPaint.color
@@ -907,7 +930,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             // An SMB point sits at the low mark (BolusDataPoint.getY), the same height as a manual bolus's value (its labelY).
             // Its "B", SMB arrow and bottom arrow are drawn as before.
             val tier3Smb = (value as? BolusDataPoint)?.takeIf { it.tier3 && value.shape == Shape.SMB }
-            if (tier3Smb != null && x >= 0 && x <= graphWidth) {
+            if (tier3Smb != null && !simpleGraphs && x >= 0 && x <= graphWidth) {
                 val savedColor = mPaint.color
                 mPaint.color = value.color(graphView.context)
                 mPaint.style = Paint.Style.FILL
