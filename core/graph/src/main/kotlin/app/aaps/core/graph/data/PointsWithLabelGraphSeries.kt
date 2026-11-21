@@ -822,10 +822,14 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         }
                     }
                 } else if (value.shape == Shape.DOSE_CHECK_DOT) {
-                    // A carb split or delayed bolus check that gave nothing (2026-11-18): a small dot near the top of the graph
+                    // A carb split or delayed bolus check that gave nothing (2026-11-18): a small dot. Since 2026-11-21 (per
+                    // explicit request) just above the BG dot at that time (its y is that BG); without one, near the top.
                     mPaint.color = Color.MAGENTA
                     mPaint.style = Paint.Style.FILL
-                    canvas.drawCircle(endX, graphTop + scaledPxSize * 1.5f, scaledPxSize * 0.6f, mPaint)
+                    val dotRadius = scaledPxSize * 0.6f
+                    val dotY = if (value.y > 0.0) (endY - scaledPxSize * 2f - dotRadius).coerceIn(graphTop + dotRadius, graphTop + graphHeight - dotRadius)
+                    else graphTop + scaledPxSize * 1.5f
+                    canvas.drawCircle(endX, dotY, dotRadius, mPaint)
                 } else if (value.shape == Shape.NOTE_ARROWHEAD_GRAPH3) {
                     // Plain CarePortal-note arrowhead, pointing DOWN (apex at bottom) — inverted from
                     // Shape.SMB's own upward BGL-point arrowhead, with a shaft half the length of the

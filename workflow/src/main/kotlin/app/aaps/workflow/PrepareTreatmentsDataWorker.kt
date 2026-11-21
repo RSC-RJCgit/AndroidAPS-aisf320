@@ -127,9 +127,10 @@ class PrepareTreatmentsDataWorker(
             return DELAYED_CHECK_NOTE.containsMatchIn(text) && !DELAYED_CHECK_GAVE.containsMatchIn(text)
         }
 
-        private fun doseCheckDot(x: Double) = object : DataPointWithLabelInterface {
+        // y: the BG at that time (2026-11-21, per explicit request), so the renderer draws the dot just above the BG dot; 0 = top
+        private fun doseCheckDot(x: Double, y: Double) = object : DataPointWithLabelInterface {
             override fun getX(): Double = x
-            override fun getY(): Double = 0.0
+            override fun getY(): Double = y
             override fun setY(y: Double) {}
             override val label: String = ""
             override val duration: Long = 0L
@@ -303,7 +304,7 @@ class PrepareTreatmentsDataWorker(
                 ) return@forEach
                 if (it.y == 0.0) it.y = getNearestBg(data.overviewData, it.x.toLong())
                 // A carb split or delayed bolus check that gave nothing: a small magenta dot at the top of the main graph (2026-11-18)
-                if (it.data.type == TE.Type.NOTE && isEmptyDoseCheck(it.data.note)) filteredTreatments.add(doseCheckDot(it.x))
+                if (it.data.type == TE.Type.NOTE && isEmptyDoseCheck(it.data.note)) filteredTreatments.add(doseCheckDot(it.x, it.y))
                 if (it.data.type == TE.Type.NOTE) {
                     it.colorOverride = dominantIsfColorAt(aivList, it.x.toLong())
                     // Excludes the routine periodic export-status "success" notes (added 2026-08-30 at
