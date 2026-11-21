@@ -339,7 +339,7 @@ fun BgGraphCompose(
     /** With [automaticCleanGraph]: also hide the text lines (the "Clean graph hides text lines" setting). */
     cleanGraphHidesTextLines: Boolean = false,
     /**
-     * Simple graphs, main graph only (2026-11-21, per explicit request): the clean graph without basal or insulin columns, profile
+     * Simple graphs, main graph only (2026-11-21, per explicit request): the clean graph, its columns without their values, no profile
      * % numbers and stars, SMB numbers and arrows, bolus and carb values, carb split dots, zero and FPU bolus arrows, pod and
      * sensor marks, text lines and the strip under the graph. Kept: the readings and their last value, the manual bolus
      * triangles, the carb marks and the Tier 3 boost "B".
@@ -397,7 +397,8 @@ fun BgGraphCompose(
     val graphDisplay = (if (automaticCleanGraph) savedGraphDisplay.copy(
         showSmbLabels = false, basalToggleIndex = 2, showTextLines = savedGraphDisplay.showTextLines && !cleanGraphHidesTextLines
     ) else savedGraphDisplay).let {
-        if (superClean) it.copy(showSmbLabels = false, basalToggleIndex = 2, showTextLines = false, basalOnBgGraph = false) else it
+        // The columns stay (2026-11-21, per explicit request); their values are left out with the other decorations
+        if (superClean) it.copy(showSmbLabels = false, basalToggleIndex = 2, showTextLines = false) else it
     }
     val bucketedData by viewModel.bucketedDataFlow.collectAsStateWithLifecycle()
     val showPredictions = SeriesType.PREDICTIONS in bgOverlays
