@@ -256,6 +256,24 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
         ))
     }
 
+    /**
+     * The heading of each key [snapshot] sends (2026-11-21, per explicit request): the List 1 or List 2 row title for a row's
+     * code, and a name for the other keys, so the client's AutoISF screen shows names instead of TT codes. A key with no row
+     * (an older or newer loop phone) is left out; the caller then shows the key itself.
+     */
+    fun snapshotLabels(): Map<String, String> = buildMap {
+        (list1Rows("", "") + list2Rows()).forEach { row ->
+            row.loopValueKey?.let { key -> if (key !in this) put(key, row.label) }
+        }
+        put("5.148", "Standard profile")
+        put("5.150", "Low profile")
+        put("5.208", "ADB port")
+        autoIsfProfileRoleKeys.forEach { key ->
+            put("role:${key.key}", "Role: " + key.name.removePrefix("ApsAutoIsf").removeSuffix("ProfileName"))
+        }
+        put("runningProfile", "Running profile")
+    }
+
     fun snapshot(insulinPeakText: String, runningProfileName: String): Map<String, String> = buildMap {
         (list1Rows(insulinPeakText, runningProfileName) + list2Rows()).forEach { row ->
             row.loopValueKey?.let { put(it, row.current) }

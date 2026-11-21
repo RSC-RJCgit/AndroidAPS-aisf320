@@ -8,7 +8,10 @@ import app.aaps.core.interfaces.aps.APS
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.objects.autoisf.AutoIsfListSettings
 import app.aaps.core.ui.compose.ComposablePluginContent
+import app.aaps.core.ui.compose.LocalDecimalFormatter
+import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.ToolbarConfig
 
 class OpenAPSComposeContent(
@@ -27,6 +30,8 @@ class OpenAPSComposeContent(
         onSettings: (() -> Unit)?
     ) {
         val scope = rememberCoroutineScope()
+        // Headings for the loop phone's AutoISF list values (2026-11-21, per explicit request), from this phone's own lists
+        val listSettings = AutoIsfListSettings(LocalPreferences.current, LocalDecimalFormatter.current)
         val viewModel = remember {
             OpenAPSViewModel(
                 apsPlugin = apsPlugin,
@@ -34,7 +39,11 @@ class OpenAPSComposeContent(
                 rh = rh,
                 dateUtil = dateUtil,
                 scope = scope,
-                nsResult = nsResult
+                nsResult = nsResult,
+                autoIsfLabels = { listSettings.snapshotLabels() },
+                localAutoIsfValues = {
+                    nsResult?.localListInputs?.invoke()?.let { (peak, running) -> listSettings.snapshot(peak, running) }.orEmpty()
+                }
             )
         }
 

@@ -230,6 +230,7 @@ fun OverviewScreenStacked(
                 onOpenAutoIsfHistory = { chipsViewModel.openAutoIsfHistory(graphViewModel.aivHistoryEndTime) },
                 onOpenAutoIsfSplit = chipsViewModel::openAutoIsfSplit,
                 onOpenStats = { graphViewModel.openStatsSummary() },
+                onOpenOpenAps = { onNavigate(NavigationRequest.Plugin("OpenAPSAutoISFPlugin")) },
                 modifier = Modifier.onGloballyPositioned { coordinates ->
                     val top = coordinates.positionInParent().y.roundToInt()
                     if (statusCardTop != top) statusCardTop = top

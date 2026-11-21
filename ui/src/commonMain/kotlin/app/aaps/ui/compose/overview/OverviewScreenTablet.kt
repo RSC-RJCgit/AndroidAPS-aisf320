@@ -229,7 +229,8 @@ fun OverviewScreenTablet(
                         onOpenList3 = chipsViewModel::openList3,
                         onOpenAutoIsfHistory = { chipsViewModel.openAutoIsfHistory(graphViewModel.aivHistoryEndTime) },
                         onOpenAutoIsfSplit = chipsViewModel::openAutoIsfSplit,
-                        onOpenStats = { graphViewModel.openStatsSummary() }
+                        onOpenStats = { graphViewModel.openStatsSummary() },
+                        onOpenOpenAps = { onNavigate(NavigationRequest.Plugin("OpenAPSAutoISFPlugin")) }
                     )
                 }
                 // The QuickLaunch toolbar is centred over both columns, so this one needs space at its end too,

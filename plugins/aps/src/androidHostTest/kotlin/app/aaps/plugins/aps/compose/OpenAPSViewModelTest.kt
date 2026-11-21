@@ -92,6 +92,23 @@ internal class OpenAPSViewModelTest {
     }
 
     @Test
+    fun uiState_showsTheListRowTitle_insteadOfTheTtCode() {
+        whenever(apsPlugin.lastAPSResult).thenReturn(null)
+        whenever(dateUtil.dateAndTimeString(any())).thenReturn("20/11 21:05")
+        val ns = NsApsResultSource(result = { nsResult() }, resultTime = { 1L }, autoIsfValues = { mapOf("5.148" to "Profile70", "9.999" to "x") })
+
+        val sut = OpenAPSViewModel(
+            apsPlugin, rxBus, generatedTextResolver(), dateUtil, CoroutineScope(Dispatchers.Unconfined), ns,
+            autoIsfLabels = { mapOf("5.148" to "Standard profile") }
+        )
+
+        val rows = sut.uiState.value.sections.flatMap { it.rows }
+        assertThat(rows).contains(KeyValueRow("Standard profile", "Profile70"))
+        // A code with no title keeps its number
+        assertThat(rows).contains(KeyValueRow("9.999", "x"))
+    }
+
+    @Test
     fun uiState_staysNotAvailable_whenNsHasNoResultEither() {
         whenever(apsPlugin.lastAPSResult).thenReturn(null)
         val ns = NsApsResultSource(result = { null }, resultTime = { 0L })

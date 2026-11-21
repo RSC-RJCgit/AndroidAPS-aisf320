@@ -223,6 +223,13 @@ open class OpenAPSAutoISFPlugin(
         result = { if (config.AAPSCLIENT) processedDeviceStatusData.getAPSResult() else null },
         resultTime = { processedDeviceStatusData.openAPSData.clockSuggested },
         autoIsfValues = { processedDeviceStatusData.openAPSData.autoIsfListSnapshot.value?.values.orEmpty() },
+        enacted = { if (config.AAPSCLIENT) processedDeviceStatusData.openAPSData.enacted else null },
+        enactedTime = { processedDeviceStatusData.openAPSData.clockEnacted },
+        // The loop phone shows its own list values on this screen too (2026-11-21, per explicit request), read as LoopPlugin sends them
+        localListInputs = {
+            if (config.AAPSCLIENT) null
+            else (profileFunction.getRunningOrRequestedICfg()?.peak?.toString() ?: "--") to profileFunction.getOriginalProfileName()
+        },
     )
     private var consoleError = mutableListOf<String>()
     private var consoleLog = mutableListOf<String>()

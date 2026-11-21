@@ -1721,6 +1721,9 @@ private fun rememberBgGraphDecorations(
         )
     }
     val smbBaseArrowMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows, pinToBottom = true) }
+    // Simple graphs (2026-11-21, per explicit request): the bottom SMB arrows under the green band, with their dose shafts and no
+    // values, without the red steps arrows
+    val smbBaseOnlyMarks = remember(smbBaseArrows) { SmbArrows(smbBaseArrows.filter { !it.mirrored }, pinToBottom = true) }
     // A zero bolus: an SMB-style arrow under the BG dot, a little larger, in the bolus colour. Its 0 label stays at
     // the bottom (bolusStack).
     val zeroBolusArrowMarks = remember(treatments, bgReadings, minTimestamp) {
@@ -1803,10 +1806,10 @@ private fun rememberBgGraphDecorations(
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings, showIcon = true, masterZone = masterZone)
     // Pod and sensor changes: a dashed line and POD or SEN at the top (2026-11-01, per explicit request)
     val deviceChanges = rememberDeviceChangeDecoration(minTimestamp, treatments.therapyEvents)
-    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandLines, doseCheckDots, superClean, tier3ArrowMarks) {
+    val decorations = remember(renderReporter, inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, tapReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandLines, doseCheckDots, superClean, tier3ArrowMarks, smbBaseOnlyMarks) {
         // Simple graphs (2026-11-21, per explicit request): the range band, the now line, the clock change, the "B" marks and the
-        // last reading's value, with the Tier 3 boost arrows
-        if (superClean) listOf(inRangeBox, nowLine, clockChanges, tier3ArrowMarks, uamBoostMarks, tapReporter) +
+        // last reading's value, with the Tier 3 boost arrows and the bottom SMB arrows
+        if (superClean) listOf(inRangeBox, nowLine, clockChanges, smbBaseOnlyMarks, tier3ArrowMarks, uamBoostMarks, tapReporter) +
             listOfNotNull(renderReporter, lastBgMark, inspectLine, geometryReporter)
         else listOf(inRangeBox, nowLine, clockChanges, deviceChanges, smbNumbers, smbArrowMarks, smbBaseArrowMarks, zeroBolusArrowMarks, bolusNumbers, carbNumbers, uamBoostMarks, epsNumbers, doseCheckDots, tapReporter) +
             listOfNotNull(renderReporter, basalPeakLabel, insulinColumnLabel, lastBgMark, inspectLine, geometryReporter, topBandTap.takeIf { topBandLines })

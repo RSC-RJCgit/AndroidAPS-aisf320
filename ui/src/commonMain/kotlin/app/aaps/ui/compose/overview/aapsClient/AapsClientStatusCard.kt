@@ -67,7 +67,9 @@ fun AapsClientStatusCard(
     onOpenList3: () -> Unit = {},
     onOpenAutoIsfHistory: () -> Unit = {},
     onOpenAutoIsfSplit: () -> Unit = {},
-    onOpenStats: () -> Unit = {}
+    onOpenStats: () -> Unit = {},
+    /** A tap on the OAPS chip (2026-11-21, per explicit request): the AutoISF screen with the loop phone's result. Null: no tap. */
+    onOpenOpenAps: (() -> Unit)? = null
 ) {
     val items = listOfNotNull(statusData.pump, statusData.openAps, statusData.autoIsf, statusData.uploader)
     if (items.isEmpty()) return
@@ -121,7 +123,9 @@ fun AapsClientStatusCard(
                         )
                     }
                     statusData.openAps?.let { item ->
-                        AapsClientStatusChip(item = item)
+                        // Only with AutoISF on the loop phone: its screen is the one that shows the result from NS
+                        val open = onOpenOpenAps?.takeIf { statusData.autoIsfLists }
+                        AapsClientStatusChip(item = item, modifier = if (open != null) Modifier.clickable(onClick = open) else Modifier)
                     }
                     // A round yellow mark instead of "ST" (2026-10-29, per explicit request): the glucose statistics, like LoopFollow's ring
                     val statsLabel = stringResource(CoreUiStrings.statistics)

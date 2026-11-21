@@ -59,6 +59,14 @@ class NsApsResultSource(
     val result: () -> APSResult?,
     val resultTime: () -> Long,
     val autoIsfValues: () -> Map<String, String> = { emptyMap() },
+    /** The loop phone's enacted result from NS and its time (2026-11-21, per explicit request): what the pump was set to. */
+    val enacted: () -> RT? = { null },
+    val enactedTime: () -> Long = { 0L },
+    /**
+     * On the loop phone itself (2026-11-21, per explicit request): the insulin peak text and the running profile name its own
+     * AutoISF list values are read with. Null on a client.
+     */
+    val localListInputs: suspend () -> Pair<String, String>? = { null },
 )
 
 class OpenAPSViewModel(
@@ -67,7 +75,11 @@ class OpenAPSViewModel(
     private val rh: TextResolver,
     private val dateUtil: DateUtil,
     private val scope: CoroutineScope,
-    private val nsResult: NsApsResultSource? = null
+    private val nsResult: NsApsResultSource? = null,
+    /** The heading of each AutoISF list value key (AutoIsfListSettings.snapshotLabels); a key without one is shown as is. */
+    private val autoIsfLabels: () -> Map<String, String> = { emptyMap() },
+    /** The loop phone's own AutoISF list values (AutoIsfListSettings.snapshot), for its own screen; empty on a client. */
+    private val localAutoIsfValues: suspend () -> Map<String, String> = { emptyMap() },
 ) {
 
     private val _uiState = MutableStateFlow(OpenAPSUiState())
@@ -111,11 +123,11 @@ class OpenAPSViewModel(
             // --- Result group ---
             add(OpenAPSSection(title = CoreUiStrings.result, isGroupHeader = true))
 
-            // From NS: the loop phone's AutoISF list values, when it sent them
+            // From NS: what the loop phone's pump was set to (2026-11-21, per explicit request), as the OAPS chip's "Enacted"
             if (fromNs != null) {
-                val values = nsResult?.autoIsfValues?.invoke().orEmpty()
-                if (values.isNotEmpty())
-                    add(OpenAPSSection(title = ApsStrings.openaps_auto_isf, rows = values.map { (key, value) -> KeyValueRow(key, value) }))
+                nsResult?.enacted?.invoke()?.let { enacted ->
+                    add(OpenAPSSection(title = CoreUiStrings.enacted, rows = enactedRows(enacted, nsResult?.enactedTime?.invoke() ?: 0L)))
+                }
             }
 
             // Script Debug
@@ -139,6 +151,17 @@ class OpenAPSViewModel(
                         rows = rawData.toRows()
                     )
                 )
+            }
+
+            // The AutoISF list values (List 1 and List 2 current values): on a client the loop phone's from NS, on the loop phone
+            // its own. After the result (its "start AutoISF" ... "end AutoISF" lines), each under its row's heading, not its TT
+            // code (2026-11-21, per explicit request)
+            run {
+                val values = if (fromNs != null) nsResult?.autoIsfValues?.invoke().orEmpty() else localAutoIsfValues()
+                if (values.isNotEmpty()) {
+                    val labels = autoIsfLabels()
+                    add(OpenAPSSection(title = ApsStrings.openaps_auto_isf, rows = values.map { (key, value) -> KeyValueRow(labels[key] ?: key, value) }))
+                }
             }
 
             // Request (algorithm decision)
@@ -427,6 +450,16 @@ class OpenAPSViewModel(
         add(KeyValueRow("ratioLimit", ratioLimit))
         add(KeyValueRow("ratioFromTdd", ratioFromTdd.toString()))
         add(KeyValueRow("ratioFromCarbs", ratioFromCarbs.toString()))
+    }
+
+    /** The rows of the "Enacted" card: when, the temp basal, the SMB and the reason, as far as each was set. */
+    private fun enactedRows(enacted: RT, time: Long): List<KeyValueRow> = buildList {
+        (enacted.timestamp ?: time.takeIf { it > 0L })?.let { add(KeyValueRow("time", dateUtil.dateAndTimeString(it))) }
+        enacted.rate?.let { rate ->
+            add(KeyValueRow("temp basal", "$rate U/h" + (enacted.duration?.let { " for $it min" } ?: "")))
+        }
+        enacted.units?.let { add(KeyValueRow("SMB", "$it U")) }
+        enacted.reason.toString().takeIf { it.isNotBlank() }?.let { add(KeyValueRow("reason", it)) }
     }
 
     private fun RT.toRows(): List<KeyValueRow> = buildList {
