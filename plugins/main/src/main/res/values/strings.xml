@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="overview_bg_acceleration_label" comment="BG acceleration per 5 minutes squared, shown beside the basal rate. This is not the AutoISF acce factor.">acce</string>
-    <string name="graph_mode_simple" comment="Above the acce label: the graphs are in simple mode; a tap switches to detailed">Simple</string>
-    <string name="graph_mode_detailed" comment="Above the acce label: the graphs are in detailed mode; a tap switches to simple">Detailed</string>
+    <string name="graph_mode_simple" comment="Above the acce label, shown while the graphs are detailed: a tap switches them to simple">Simple</string>
+    <string name="graph_mode_detailed" comment="Above the acce label, shown while the graphs are simple: a tap switches them to detailed">Detailed</string>
 
     <!-- SMS Communicator & OTP Authenticator -->
 

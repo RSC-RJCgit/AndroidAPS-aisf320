@@ -390,7 +390,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingBottom="2dp"
-            android:text="@string/graph_mode_detailed"
+            android:text="@string/graph_mode_simple"
             android:textAppearance="@style/TextAppearance.AppCompat.Small"
             android:textStyle="bold" />
 

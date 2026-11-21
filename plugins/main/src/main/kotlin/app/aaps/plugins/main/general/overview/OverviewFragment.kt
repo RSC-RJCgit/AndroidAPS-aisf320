@@ -1586,10 +1586,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         activity?.let { OKDialog.show(it, rh.gs(R.string.openaps), details) }
     }
 
-    /** The Simple / Detailed word above the acce label (2026-11-21, per explicit request). */
+    /** The Simple / Detailed word above the acce label (2026-11-21, per explicit request): the mode a tap switches to. */
     private fun updateSimpleGraphsToggle() {
         _binding?.infoLayout?.simpleGraphsToggle?.text =
-            rh.gs(if (preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs)) R.string.graph_mode_simple else R.string.graph_mode_detailed)
+            rh.gs(if (preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs)) R.string.graph_mode_detailed else R.string.graph_mode_simple)
     }
 
     /** Sets [view]'s displayed height to [portraitHeightDp] (scaled in landscape), only when it changes. */
