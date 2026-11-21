@@ -186,6 +186,9 @@ private class ZeroBolusArrows(private val others: Decoration, private val fpu: D
     }
 }
 
+/** A dose check dot sits above the BG reading nearest its time when that reading is this close; else at the top. */
+private const val DOSE_CHECK_BG_REACH_MS = 10 * 60_000L
+
 /** A zero-bolus arrow is this much larger than an SMB arrow. */
 private const val ZERO_BOLUS_ARROW_SCALE = 1.5f
 private const val SERIES_CARBS = "carbs"
@@ -1671,8 +1674,15 @@ private fun rememberBgGraphDecorations(
     }
     val bolusText = rememberTextMeasurer(cacheSize = LABEL_TEXT_CACHE_SIZE)
     // Carb split and delayed bolus checks that gave nothing: a small dot at the top (2026-11-18, per explicit request)
-    val doseCheckDots = remember(treatments, minTimestamp, insulinColor) {
-        DoseCheckDots(treatments.doseCheckTimes.map { timestampToX(it, minTimestamp) }, insulinColor)
+    val doseCheckDots = remember(treatments, bgReadings, minTimestamp, insulinColor) {
+        // Each dot just above the BG reading at its time (2026-11-21, per explicit request)
+        DoseCheckDots(
+            treatments.doseCheckTimes.map { time ->
+                timestampToX(time, minTimestamp) to
+                    bgReadings.minByOrNull { abs(it.timestamp - time) }?.takeIf { abs(it.timestamp - time) <= DOSE_CHECK_BG_REACH_MS }?.value
+            },
+            insulinColor
+        )
     }
     val bolusStack = remember(treatments, bgReadings, minTimestamp, lowMark, insulinColor) {
         // A protein/fat dose of 0 U has no "0" here (2026-11-21, per explicit request): its yellow arrow is enough

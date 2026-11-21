@@ -1117,29 +1117,36 @@ class SmbArrows(
 }
 
 /**
- * A small dot near the top of the BG graph at each carb split or delayed bolus check that gave nothing (2026-11-18, per explicit
- * request), in the insulin colour, the colour of a meal bolus. [xs] are minutes from minTimestamp, like the other marks.
+ * A small dot at each carb split or delayed bolus check that gave nothing (2026-11-18, per explicit request), in the insulin
+ * colour, the colour of a meal bolus. [points] are minutes from minTimestamp, like the other marks, with the BG reading nearest
+ * that time. 2026-11-21, per explicit request: the dot sits just above that BG dot (it was a row at the top of the graph,
+ * which went unseen); without a reading, or off the scale, it keeps to the top or bottom edge.
  * The 3426 app draws the same dot (Shape.DOSE_CHECK_DOT) in its magenta.
  */
 class DoseCheckDots(
-    private val xs: List<Double>,
+    private val points: List<Pair<Double, Double?>>,
     private val color: Color,
 ) : Decoration {
 
     override fun drawOverLayers(context: CartesianDrawingContext) {
-        if (xs.isEmpty()) return
+        if (points.isEmpty()) return
         with(context) {
             val xStep = ranges.xStep
             if (xStep == 0.0) return
+            val yRange = ranges.getYRange(Axis.Position.Vertical.Start)
             with(mutableDrawScope) {
                 val radius = 2.5.dp.toPx()
-                val y = layerBounds.top + 6.dp.toPx()
-                for (x in xs) {
+                val top = layerBounds.top + 6.dp.toPx()
+                for ((x, bg) in points) {
                     val canvasX = layerBounds.left +
                         layerDimensions.startPadding +
                         layerDimensions.xSpacing * ((x - ranges.minX) / xStep).toFloat() -
                         scroll
                     if (canvasX < layerBounds.left || canvasX > layerBounds.right) continue
+                    // Just above the BG dot (6 dp across): its centre, half the dot, a gap and this dot's radius
+                    val y = if (bg == null || yRange.length == 0.0) top
+                    else (layerBounds.bottom - layerBounds.height * ((bg - yRange.minY) / yRange.length).toFloat() - 3.dp.toPx() - 3.dp.toPx() - radius)
+                        .coerceIn(top, layerBounds.bottom - radius)
                     drawCircle(color, radius, Offset(canvasX, y))
                 }
             }
