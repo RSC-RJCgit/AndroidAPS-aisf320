@@ -546,10 +546,10 @@
     <string name="graph_bolus_calculation_unavailable">Calculation unavailable</string>
     <string name="client_settings1_chip">Set1</string>
     <string name="client_aiv_chip" comment="Button opening the AutoISF values history table">AIV</string>
-    <string name="graph_mode_simple" comment="Spoken name of the S beside the sensitivity chip: the overview graphs are in simple mode; a tap switches to detailed">Simple graphs</string>
-    <string name="graph_mode_detailed" comment="Spoken name of the D beside the sensitivity chip: the overview graphs are in detailed mode; a tap switches to simple">Detailed graphs</string>
-    <string name="graph_mode_simple_short" comment="One letter beside the sensitivity chip: the overview graphs are in simple mode">S</string>
-    <string name="graph_mode_detailed_short" comment="One letter beside the sensitivity chip: the overview graphs are in detailed mode">D</string>
+    <string name="graph_mode_simple" comment="Spoken name of the S beside the sensitivity chip, shown while the graphs are detailed: a tap switches them to simple">Switch to simple graphs</string>
+    <string name="graph_mode_detailed" comment="Spoken name of the D beside the sensitivity chip, shown while the graphs are simple: a tap switches them to detailed">Switch to detailed graphs</string>
+    <string name="graph_mode_simple_short" comment="One letter beside the sensitivity chip, shown while the graphs are detailed: a tap switches them to simple">S</string>
+    <string name="graph_mode_detailed_short" comment="One letter beside the sensitivity chip, shown while the graphs are simple: a tap switches them to detailed">D</string>
     <string name="autoisf_split_title" comment="Title of the panel a tap on AIV opens: the AutoISF factors of the newest loop run">AutoISF split</string>
     <string name="autoisf_split_none" comment="Shown in that panel when no loop result from the last 30 minutes has AutoISF values">No AutoISF values from the last 30 minutes.</string>
     <string name="autoisf_split_hint" comment="Small text under the AutoISF factors">Long press AIV for the AIV table.</string>

@@ -132,15 +132,18 @@ fun OverviewChipsColumn(
     }
 }
 
-/** "S" (Simple graphs) or "D" (Detailed); a tap switches. Screen readers hear the whole word. */
+/**
+ * The mode a tap switches to (2026-11-21, per explicit request; it showed the current mode before): "D" while the graphs are
+ * Simple, "S" while they are Detailed. Screen readers hear "Switch to detailed graphs" or "Switch to simple graphs".
+ */
 @Composable
 private fun SimpleGraphsSwitch() {
     if (LocalInspectionMode.current) return
     val preferences = LocalPreferences.current
     val simpleGraphs by preferences.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
-    val name = stringResource(if (simpleGraphs) UiStrings.graph_mode_simple else UiStrings.graph_mode_detailed)
+    val name = stringResource(if (simpleGraphs) UiStrings.graph_mode_detailed else UiStrings.graph_mode_simple)
     Text(
-        text = stringResource(if (simpleGraphs) UiStrings.graph_mode_simple_short else UiStrings.graph_mode_detailed_short),
+        text = stringResource(if (simpleGraphs) UiStrings.graph_mode_detailed_short else UiStrings.graph_mode_simple_short),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
