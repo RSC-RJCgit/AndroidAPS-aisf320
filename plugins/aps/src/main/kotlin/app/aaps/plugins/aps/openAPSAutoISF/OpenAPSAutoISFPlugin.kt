@@ -5110,7 +5110,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val freeGiB = filesDir.usableSpace / (1024.0 * 1024.0 * 1024.0)
         val notified = preferences.get(BooleanKey.ApsAutoIsfLowStorageNotified)
         val sent = preferences.get(BooleanKey.ApsAutoIsfLowStorageTargetedSmsSent)
-        if (freeGiB >= 10.5) {
+        // Warning under 12 GiB, cleared again from 12.5 GiB (2026-11-21, per explicit request; was 10 and 10.5)
+        if (freeGiB >= 12.5) {
             if (notified) {
                 preferences.put(BooleanKey.ApsAutoIsfLowStorageNotified, false)
                 uiInteraction.dismissNotification(9012)
@@ -5119,7 +5120,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             lastLowStorageSmsAttemptAt = 0L
             return
         }
-        if (freeGiB >= 10.0 || (notified && sent)) return
+        if (freeGiB >= 12.0 || (notified && sent)) return
 
         val note = String.format(Locale.US, "StLow %.1fGB free", freeGiB)
         val now = dateUtil.now()
