@@ -891,7 +891,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                 if ((value as? BolusDataPoint)?.data?.amount == 0.0) {
                     // A 0.00 bolus (real, or a "Wizard: 0U calculated" point): the slim SMB arrow under the BG
                     // dot, ZERO_BOLUS_ARROW_SCALE times larger, not the big triangle a real bolus gets.
-                    val k = ZERO_BOLUS_ARROW_SCALE
+                    // A protein/fat dose of 0 U: the size of an SMB arrow (2026-11-21, per explicit request)
+                    val k = if (value.isFpuDose) 1f else ZERO_BOLUS_ARROW_SCALE
                     val triTop = endY + bolusSize
                     val triBase = triTop + bolusSize * 1.5f * k
                     val halfWidth = bolusSize * 0.25f * k
@@ -918,7 +919,9 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     mPaint.style = Paint.Style.STROKE
                     canvas.drawLine(endX, base, endX, base - scaledTextSize * 0.25f * value.shaftLengthMultiplier, mPaint)
                 }
-                if (value.label.isNotEmpty() && !simpleGraphs) {
+                // No "0" for a protein/fat dose of 0 U (2026-11-21, per explicit request): its yellow arrow is enough
+                val zeroFpu = value.isFpuDose && (value as? BolusDataPoint)?.data?.amount == 0.0
+                if (value.label.isNotEmpty() && !simpleGraphs && !zeroFpu) {
                     val labelRatY = (value.labelY - minY) / diffY
                     val labelEndY = (graphTop + graphHeight - graphHeight * labelRatY).toFloat()
                     val savedColor = mPaint.color
