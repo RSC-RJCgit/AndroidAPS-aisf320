@@ -70,7 +70,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         var carbLine1QuickShow: Boolean = true
 
         // Simple graphs (2026-11-21, per explicit request; BooleanKey.ApsAutoIsfSimpleGraphs, set by OverviewFragment and
-        // HistoryBrowseActivity before each draw): no values, no SMB marks but the Tier 3 boost arrow, no zero or protein/fat
+        // HistoryBrowseActivity before each draw): no values, of the SMB marks only the bottom arrows with their dose shafts (and
+        // the Tier 3 boost's arrow at the BG dot), no zero or protein/fat
         // bolus arrows, no peak labels, no dose check dots, and of the therapy events only the Tier 3 boost "B" announcement.
         // The caller also leaves the rows and notes series out. Graph 5 adds none of these, so it stays as it is.
         var simpleGraphs: Boolean = false
@@ -83,7 +84,6 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
             value.shape == Shape.HOUR_PEAK || value.shape == Shape.IOB_PEAK || value.shape == Shape.IOB_PEAK_MAIN_BOTTOM ||
                 value.shape == Shape.ACTIVITY_PEAK || value.shape == Shape.DOSE_CHECK_DOT ||
                 value.shape == Shape.INSULIN_COLUMNS_TITLE || value.shape == Shape.EXTENDEDBOLUS -> true
-            value.shape == Shape.SMB                    -> (value as? BolusDataPoint)?.tier3 != true
             value.shape == Shape.BOLUS                  -> value.isFpuDose || (value as? BolusDataPoint)?.data?.amount == 0.0
             value is TherapyEventDataPoint              -> !(value.shape == Shape.ANNOUNCEMENT && value.label.trim() == UAM_BOOST_GRAPH_ANNOUNCEMENT)
             else                                        -> false
@@ -413,8 +413,7 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     val bgValY = value.labelY - minY
                     val bgRatY = bgValY / diffY
                     val bgEndY = (graphTop - graphHeight * bgRatY).toFloat() + graphHeight
-                    // original blue triangle at baseline (IOB graph zero line). Simple graphs: only the arrow at the BG dot below.
-                    if (!simpleGraphs) {
+                    // original blue triangle at baseline (IOB graph zero line). Simple graphs keep it with its shaft (2026-11-21).
                     mPaint.strokeWidth = 0f
                     mPaint.style = Paint.Style.FILL_AND_STROKE
                     val baseTriBase = endY + scaledPxSize * 0.67f
@@ -433,7 +432,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                     // Steps arrow (2026-10-29, per explicit request): red, mirrored tip to tip on the baseline arrowhead,
                     // rising into the green band. Its shaft is the insulin step counts took off this SMB, same scale.
                     val stepCutUnits = value.stepCutShaftMultiplier
-                    if (stepCutUnits > 0) {
+                    // Simple graphs: no steps arrow
+                    if (stepCutUnits > 0 && !simpleGraphs) {
                         val savedColor = mPaint.color
                         mPaint.color = STEP_CUT_ARROW_COLOR
                         mPaint.strokeWidth = 0f
@@ -450,12 +450,12 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         canvas.drawLine(endX, stepBase, endX, stepBase - scaledTextSize * 0.25f * stepCutUnits, mPaint)
                         mPaint.color = savedColor
                     }
-                    }
                     // arrowhead just below the relevant BGL point — ISF color if available, else yellow.
                     // Shaft here is the original fixed (non-dose-scaled) length; dose scaling lives on the
                     // baseline arrowhead's shaft above instead. Toggled by showBglArrowheads (long-press
                     // basal icon) — the baseline triangle/shaft above always draws regardless.
-                    if (showBglArrowheads || simpleGraphs) {
+                    // Simple graphs: only the Tier 3 boost's arrow at the BG dot
+                    if (if (simpleGraphs) (value as? BolusDataPoint)?.tier3 == true else showBglArrowheads) {
                         if (!value.hasColorOverride) mPaint.color = Color.YELLOW
                         val triTop = bgEndY + size
                         val triBase = triTop + size * 1.5f
