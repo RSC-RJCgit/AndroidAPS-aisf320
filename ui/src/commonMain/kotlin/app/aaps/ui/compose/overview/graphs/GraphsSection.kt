@@ -127,6 +127,17 @@ internal const val SIMPLE_BG_HEIGHT_DP = 200
 internal const val SIMPLE_IOB_HEIGHT_DP = 150
 internal const val SIMPLE_SECONDARY_HEIGHT_DP = 100
 
+/**
+ * Simple graph heights on iOS and Windows (2026-11-21, per explicit request): G1 to G3 [SIMPLE_SECONDARY_HEIGHT_DP], G4 and G5
+ * [SIMPLE_LOWER_HEIGHT_DP], the last graph (the BG copy) [SIMPLE_LAST_GRAPH_HEIGHT_DP]. Android keeps the heights above.
+ */
+internal const val SIMPLE_LOWER_HEIGHT_DP = 130
+internal const val SIMPLE_LAST_GRAPH_HEIGHT_DP = 300
+
+/** Height of secondary graph [index] (0 = G2) in Simple graphs on iOS and Windows ([iosOrDesktop]) or on Android. */
+internal fun simpleSecondaryHeightDp(index: Int, iosOrDesktop: Boolean): Int =
+    if (iosOrDesktop && index >= 2) SIMPLE_LOWER_HEIGHT_DP else SIMPLE_SECONDARY_HEIGHT_DP
+
 /** Fixed graph layout used in simple mode: BG (no overlays), IOB+BAS (no overlays), COB */
 private val SIMPLE_MODE_CONFIG = GraphConfig(
     bgOverlays = emptyList(),
@@ -339,6 +350,8 @@ fun GraphsSection(
     // SIMPLE_IOB_HEIGHT_DP, G2 onwards curves only at SIMPLE_SECONDARY_HEIGHT_DP, without their heading and time rows. The last
     // graph (the BG copy) is unchanged. Display only: the saved heights stay for Detailed.
     val simpleGraphs by LocalPreferences.current.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
+    // iOS and Windows have their own Simple heights (2026-11-21, per explicit request), see simpleSecondaryHeightDp
+    val simpleIosOrDesktop = LocalConfig.current.platform != AppPlatform.Android
 
     // Settle further before feeding into BG specifically: unlike the secondary graphs (which are
     // non-interactive and unaffected by frequent updates), BG has live pinch-zoom. Updating its
@@ -1413,7 +1426,7 @@ fun GraphsSection(
                     ).joinToString("  "),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height((if (simpleGraphs) SIMPLE_IOB_HEIGHT_DP else graphConfig.iobHeight).dp * graphHeightScale)
+                    .height((if (simpleGraphs) (if (simpleIosOrDesktop) SIMPLE_SECONDARY_HEIGHT_DP else SIMPLE_IOB_HEIGHT_DP) else graphConfig.iobHeight).dp * graphHeightScale)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
             // The hypoprediction line at the left of this − + row (2026-11-20, per explicit request; was its own line under the
@@ -1484,7 +1497,7 @@ fun GraphsSection(
                     nowTimestamp = nowTimestamp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height((if (simpleGraphs) SIMPLE_SECONDARY_HEIGHT_DP else secondary.height).dp * graphHeightScale)
+                        .height((if (simpleGraphs) simpleSecondaryHeightDp(i, simpleIosOrDesktop) else secondary.height).dp * graphHeightScale)
                 )
                 // Name at the top left and the pencil at the top right, as before the merge: the bottom is the time labels.
                 // 2026-10-24, per explicit request: numbered (G2 is the first of these), full strength instead of 60%, and
@@ -1541,7 +1554,7 @@ fun GraphsSection(
                     onRenderReady = { renderedGraphs = renderedGraphs + (-3 to it) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(graphConfig.graph5Height.dp * graphHeightScale)
+                        .height((if (simpleGraphs && simpleIosOrDesktop) SIMPLE_LAST_GRAPH_HEIGHT_DP else graphConfig.graph5Height).dp * graphHeightScale)
                 )
                 if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
                 if (!isSimpleMode) {
