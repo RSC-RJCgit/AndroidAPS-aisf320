@@ -920,10 +920,12 @@ fun SecondaryGraphCompose(
     }
 
     // Build chart layers
-    val primaryLayer = rememberLineCartesianLayer(
+    // Simple graphs: no point margins above and below the plot (CompactLineCartesianLayer, 2026-11-21, per explicit request)
+    val primaryLayer = rememberGraphLineLayer(
         lineProvider = LineCartesianLayer.LineProvider.series(lines),
         rangeProvider = primaryRangeProvider,
-        verticalAxisPosition = Axis.Position.Vertical.Start
+        verticalAxisPosition = Axis.Position.Vertical.Start,
+        compact = simpleGraph
     )
 
     // Common axis components
@@ -1171,10 +1173,11 @@ fun SecondaryGraphCompose(
             }
         )
         if (hasBasalLayer) {
-            val basalLayer = rememberLineCartesianLayer(
+            val basalLayer = rememberGraphLineLayer(
                 lineProvider = LineCartesianLayer.LineProvider.series(basalLines),
                 rangeProvider = basalRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.End
+                verticalAxisPosition = Axis.Position.Vertical.End,
+                compact = simpleGraph
             )
             CartesianChartHost(
                 chart = rememberCartesianChart(
@@ -1189,10 +1192,11 @@ fun SecondaryGraphCompose(
                 scrollState = scrollState, zoomState = zoomState
             )
         } else if (isDualAxis) {
-            val secondaryLayer = rememberLineCartesianLayer(
+            val secondaryLayer = rememberGraphLineLayer(
                 lineProvider = LineCartesianLayer.LineProvider.series(secondaryAxisLines),
                 rangeProvider = secondaryRangeProvider,
-                verticalAxisPosition = Axis.Position.Vertical.End
+                verticalAxisPosition = Axis.Position.Vertical.End,
+                compact = simpleGraph
             )
             CartesianChartHost(
                 chart = rememberCartesianChart(
