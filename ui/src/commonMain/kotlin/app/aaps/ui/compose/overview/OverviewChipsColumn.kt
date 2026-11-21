@@ -3,11 +3,25 @@ package app.aaps.ui.compose.overview
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.ui.compose.LocalPreferences
+import app.aaps.ui.UiStrings
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.navigation.ElementType
@@ -105,12 +119,35 @@ fun OverviewChipsColumn(
             onIobChipLongClick = onIobChipLongClick,
             onIobChipDoubleClick = onIobChipDoubleClick
         )
-        SensitivityChipBlock(
-            state = sensitivityUiState,
-            onDoubleClick = onSensitivityChipDoubleClick,
-            modifier = Modifier.fillMaxWidth()
-        )
+        // Simple / Detailed graphs (2026-11-21, per explicit request): a small S or D at the end of the sensitivity row (it was
+        // next to AIV on the client card, where it made that row wrap). A tap switches; this device only.
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            SensitivityChipBlock(
+                state = sensitivityUiState,
+                onDoubleClick = onSensitivityChipDoubleClick,
+                modifier = Modifier.weight(1f)
+            )
+            SimpleGraphsSwitch()
+        }
     }
+}
+
+/** "S" (Simple graphs) or "D" (Detailed); a tap switches. Screen readers hear the whole word. */
+@Composable
+private fun SimpleGraphsSwitch() {
+    if (LocalInspectionMode.current) return
+    val preferences = LocalPreferences.current
+    val simpleGraphs by preferences.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
+    val name = stringResource(if (simpleGraphs) UiStrings.graph_mode_simple else UiStrings.graph_mode_detailed)
+    Text(
+        text = stringResource(if (simpleGraphs) UiStrings.graph_mode_simple_short else UiStrings.graph_mode_detailed_short),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier
+            .clickable(role = Role.Button) { preferences.put(BooleanNonKey.ApsAutoIsfSimpleGraphs, !simpleGraphs) }
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .semantics { contentDescription = name }
+    )
 }
 
 @Composable

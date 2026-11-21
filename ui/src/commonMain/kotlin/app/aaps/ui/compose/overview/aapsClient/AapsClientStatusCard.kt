@@ -38,12 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.interfaces.overview.graph.AapsClientStatusData
-import app.aaps.core.keys.BooleanNonKey
-import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsCard
 import app.aaps.core.ui.compose.AapsSpacing
@@ -111,17 +107,6 @@ fun AapsClientStatusCard(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.combinedClickable(onClick = onOpenAutoIsfSplit, onLongClick = onOpenAutoIsfHistory)
                     )
-                    // Simple / Detailed graphs (2026-11-21, per explicit request): a tap switches the overview graphs. This
-                    // device only; the saved graph heights are not changed.
-                    if (!LocalInspectionMode.current) {
-                        val preferences = LocalPreferences.current
-                        val simpleGraphs by preferences.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
-                        Text(
-                            text = stringResource(if (simpleGraphs) UiStrings.graph_mode_simple else UiStrings.graph_mode_detailed),
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.clickable { preferences.put(BooleanNonKey.ApsAutoIsfSimpleGraphs, !simpleGraphs) }
-                        )
-                    }
                     statusData.openAps?.let { item ->
                         // Only with AutoISF on the loop phone: its screen is the one that shows the result from NS
                         val open = onOpenOpenAps?.takeIf { statusData.autoIsfLists }

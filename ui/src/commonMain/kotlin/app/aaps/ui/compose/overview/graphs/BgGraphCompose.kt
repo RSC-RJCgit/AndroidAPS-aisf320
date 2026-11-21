@@ -173,6 +173,19 @@ private const val SERIES_BOLUS = "bolus"
 private const val SERIES_PARABOLA_FIT = "parabola_fit"
 private const val SERIES_PARABOLA_EXTRAPOLATION = "parabola_extrapolation"
 
+/** The zero-bolus arrows of [others] (larger) and of [fpu] (protein/fat, SMB size), drawn as one decoration. */
+private class ZeroBolusArrows(private val others: Decoration, private val fpu: Decoration) : Decoration {
+    override fun drawUnderLayers(context: CartesianDrawingContext) {
+        others.drawUnderLayers(context)
+        fpu.drawUnderLayers(context)
+    }
+
+    override fun drawOverLayers(context: CartesianDrawingContext) {
+        others.drawOverLayers(context)
+        fpu.drawOverLayers(context)
+    }
+}
+
 /** A zero-bolus arrow is this much larger than an SMB arrow. */
 private const val ZERO_BOLUS_ARROW_SCALE = 1.5f
 private const val SERIES_CARBS = "carbs"
@@ -1662,7 +1675,8 @@ private fun rememberBgGraphDecorations(
         DoseCheckDots(treatments.doseCheckTimes.map { timestampToX(it, minTimestamp) }, insulinColor)
     }
     val bolusStack = remember(treatments, bgReadings, minTimestamp, lowMark, insulinColor) {
-        val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() }
+        // A protein/fat dose of 0 U has no "0" here (2026-11-21, per explicit request): its yellow arrow is enough
+        val boluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.label.isNotEmpty() && !(it.isFpu && it.amount <= 0.0) }
         // 2026-11-19, per explicit request: a Tier 3 UAM boost SMB also gets its value in this row, in the ISF colour of
         // that moment. Its "B", SMB arrow and bottom arrow stay as they are. Found by the "UamBst" note (tier3Values).
         val tier3 = tier3Values(treatments)
@@ -1728,8 +1742,8 @@ private fun rememberBgGraphDecorations(
     // the bottom (bolusStack).
     val zeroBolusArrowMarks = remember(treatments, bgReadings, minTimestamp) {
         val zeroBoluses = treatments.boluses.filter { it.bolusType == BolusType.NORMAL && it.amount <= 0.0 }
-        SmbArrows(
-            zeroBoluses.map { bolus ->
+        fun arrows(boluses: List<BolusGraphPoint>, scale: Float) = SmbArrows(
+            boluses.map { bolus ->
                 SmbStackItem(
                     x = timestampToX(bolus.timestamp, minTimestamp),
                     label = bolus.number.ifEmpty { bolus.label },
@@ -1739,8 +1753,10 @@ private fun rememberBgGraphDecorations(
                     color = if (bolus.isFpu) FPU_BOLUS_COLOR else Color(0xFFFF00FF),
                 )
             },
-            scale = ZERO_BOLUS_ARROW_SCALE
+            scale = scale
         )
+        // A 0 U protein/fat dose: the size of an SMB arrow (2026-11-21, per explicit request); other zero boluses stay larger
+        ZeroBolusArrows(arrows(zeroBoluses.filterNot { it.isFpu }, ZERO_BOLUS_ARROW_SCALE), arrows(zeroBoluses.filter { it.isFpu }, 1f))
     }
     val tapReadings = bgReadings + bucketedData +
         (if (showRaw) seriesRegistry[SERIES_RAW].orEmpty() else emptyList()) +
