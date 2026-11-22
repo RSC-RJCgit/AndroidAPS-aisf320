@@ -960,28 +960,40 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private val autoIsfCache = LongSparseArray<Double>()
 
     @Synchronized
-    private fun calculateVariableIsf(timestamp: Long): Pair<String, Double?> {
-        val profile = profileFunction.getProfile(timestamp)
-        if (profile == null) return Pair("OFF", null)
-        val glucose = glucoseStatusProvider.glucoseStatusData?.glucose ?: return Pair("GLUC", null)
-        // Round down to minutesClass min and use it as a key for caching
-        // Add BG to key as it affects calculation
-        val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
-        val sensitivity = autoISF(profile)
-        if (sensitivity > 0) {
-            // can default to 0, e.g. for the first 2-3 loops in a virgin setup
-            aapsLogger.debug("calculateVariableIsf CALC ${dateUtil.dateAndTimeAndSecondsString(timestamp)} $sensitivity")
-            autoIsfCache.put(key, sensitivity)
-            if (autoIsfCache.size() > 1000) autoIsfCache.clear()
-        }
+    // 2026-11-22, per explicit request: no longer runs autoISF(). getIsfMgdl() comes here twice in every invoke() (the hard
+    // limit check and `sens`) and from the wizard and delayed bolus worker, and each call ran the whole autoISF() only to
+    // return null below - on Live (22 Nov) 3-9 s a call, 10-18 min of CPU an hour, so the phone drained and Android killed
+    // the app. invoke() runs autoISF() itself and caches its result for getAverageIsfMgdl() (cacheVariableIsf). The extra
+    // runs also wrote default-argument values into autoIsfValues (the hazard noted in the OvernightDuraRescue comment).
+    private fun calculateVariableIsf(@Suppress("UNUSED_PARAMETER") timestamp: Long): Pair<String, Double?> {
         // this return is mandatory, otherwise it messed up the AutoISF algo.
         return Pair("OFF", null)
     }
 
-    // Reasserts 100% and the requested duration even when the base name already matches.
-    private fun switchProfileIfNeeded(targetProfileName: String, durationInMinutes: Int = 0): Boolean {
+    /** The ISF invoke()'s own autoISF() worked out, for getAverageIsfMgdl(); the same key and cache calculateVariableIsf used. */
+    private fun cacheVariableIsf(timestamp: Long, glucose: Double, sensitivity: Double) {
+        if (sensitivity <= 0) return
+        val key = timestamp - timestamp % T.mins(minutesClass).msecs() + glucose.toLong()
+        autoIsfCache.put(key, sensitivity)
+        if (autoIsfCache.size() > 1000) autoIsfCache.clear()
+    }
+
+    // Reasserts 100% and the requested duration even when the base name already matches - except (2026-11-22, per explicit
+    // request) a permanent switch to the profile that already runs permanently at 100%: that one changed nothing but still
+    // wrote a switch, sent the basal program to the pod and set off two autosens recalculations (Live 22 Nov: Profile70 at
+    // 01:38:51 and again at 01:39:14). A timed switch, a different %, or a pending change still goes through.
+    // [reassertSame] true: always switch (the role changes, whose effective-profile event writes the Low/Standard roles).
+    private fun switchProfileIfNeeded(targetProfileName: String, durationInMinutes: Int = 0, reassertSame: Boolean = false): Boolean {
         val profileStore = activePlugin.activeProfileSource.profile ?: return false
         if (profileStore.getSpecificProfile(targetProfileName) == null) return false
+        val running = (profileFunction.getProfile() as? ProfileSealed.EPS)?.value
+        if (!reassertSame && durationInMinutes == 0 && running != null && !profileFunction.isProfileChangePending() &&
+            profileFunction.getOriginalProfileName() == targetProfileName && running.originalPercentage == 100 &&
+            running.originalTimeshift == 0L && running.originalDuration == 0L
+        ) {
+            aapsLogger.debug(LTag.APS, "switchProfileIfNeeded: $targetProfileName already runs at 100% - no new switch")
+            return false
+        }
         return profileFunction.createProfileSwitch(
             profileStore = profileStore,
             profileName = targetProfileName,
@@ -1421,7 +1433,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         if (switchRunning && target.isNotBlank()) {
             // v3 persistence is asynchronous. The effective-profile event writes roles after activation.
-            val requested = switchProfileIfNeeded(target)
+            val requested = switchProfileIfNeeded(target, reassertSame = true)
             if (requested && announce) sendSms("$reason: Low=$newLow Standard=$newStandard")
             return requested
         }
@@ -1677,6 +1689,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.get(if (it.low) StringKey.ApsAutoIsfLowProfileName else StringKey.ApsAutoIsfStandardProfileName).trim()
         }?.takeIf { it.isNotBlank() && profileStore.getSpecificProfile(it) != null }
         val profileName = savedName ?: currentName ?: originalName
+        // 2026-11-22, per explicit request: no new switch when this profile already runs permanently at 100% (Extra50% at 02:17:58
+        // on Live 22 Nov re-issued one) - it wrote a switch, sent the basal program to the pod and set off autosens reruns.
+        val running = (profileFunction.getProfile() as? ProfileSealed.EPS)?.value
+        if (running != null && !profileFunction.isProfileChangePending() && originalName == profileName &&
+            running.originalPercentage == 100 && running.originalTimeshift == 0L && running.originalDuration == 0L
+        ) {
+            preferences.put(StringKey.ApsAutoIsfLastReductionRoleKey, "")
+            return
+        }
         val requested = profileFunction.createProfileSwitch(
             profileStore = profileStore, profileName = profileName, durationInMinutes = 0,
             percentage = 100, timeShiftInHours = 0, timestamp = dateUtil.now(),
@@ -5329,6 +5350,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 bgAcce
             )
             variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, liveHp2, liveStepsForCycle)
+            cacheVariableIsf(dateUtil.now(), glucoseStatus.glucose, variableSensitivity)
             val flatNow = glucoseStatus.delta <= 1.8 && glucoseStatus.shortAvgDelta <= 1.8
             duraFlatSince = if (!flatNow) 0L else if (duraFlatSince == 0L) dateUtil.now() else duraFlatSince
         } else duraFlatSince = 0L
@@ -7309,7 +7331,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 else -> ""
             }
             if (restoredTarget.isNotBlank()) {
-                if (!switchProfileIfNeeded(restoredTarget)) return@run
+                if (!switchProfileIfNeeded(restoredTarget, reassertSame = true)) return@run
                 // Current roles and delivery band follow the effective-profile event, not this request.
             } else {
                 if (restoredLow.isNotBlank()) preferences.put(StringKey.ApsAutoIsfLowProfileName, restoredLow)
@@ -8106,7 +8128,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // rise (was a flat ±0.10 band). Both UKFraw D5 and the AAPS delta must be ≥ +0.10
             // mmol, so a flat/falling low no longer reverses the TT — this is what breaks the
             // Set50↔TToff flap at ~4.5–4.7.
-            val off3 = cob <= 4.0 && g >= 81.1 /* 4.5 */ && iob <= 0.8 &&
+            // 2026-11-22, per explicit request: floor 5.0 (was 4.5). Live's 183 off3 resets since Aug: 136 at BG 4.5-5.0, after
+            // which BG fell below 4.5 within an hour 12.5% of the time (8% from 5.0-5.5) and Set50/X50 fired again within 30 min
+            // 27 times (the overnight 50% <-> 100% flip-flop, e.g. 22 Nov 02:39/03:01, 03:29/03:44). The TT and 50% now hold
+            // until BG reaches 5.0.
+            val off3 = cob <= 4.0 && g >= 90.1 /* 5.0 */ && iob <= 0.8 &&
                 (ukfRawMetrics().delta5 ?: -9999.0) >= 1.8 /* UKFraw D5 ≥ +0.10 */ &&
                 d >= 1.8 /* Delta ≥ +0.10 */
 
@@ -8485,8 +8511,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // --- CarbsTHoff: sets iobTH to 70% when post-carb BGL is falling or mid-range anomaly ---
         // (was 50%; raised to 70 to match the daytime floor so it isn't just bumped up again).
         // 5-min floor throttle added on top of the preconditions (see readyToRun() usage note).
+        // 2026-11-22, per explicit request: not while Set50%/Extra50% has just acted (LowBG 50recent). On Live 22 Nov 02:16:26
+        // it fired 51 s after Set50% (whose 50% was not effective yet, so profile_percentage still read 100), put Standard at
+        // 100% and cleared LowBG - the overnight Set50 <-> reset flip-flop and 4 profile switches in 2.5 min.
         if (readyToRun("CarbsTHoff", 5) && profile_percentage == 100 && activeTtMgdl() == null
-            && checkAutomationState("Steroids", "Steroids Off")) {
+            && checkAutomationState("Steroids", "Steroids Off") && !checkAutomationState("LowBG", "50recent")) {
             val g   = glucoseStatus.glucose
             val d   = glucoseStatus.delta
             val sd  = glucoseStatus.shortAvgDelta
@@ -8505,7 +8534,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ctBlock = when { ctB1 -> "1"; ctB2 -> "2"; else -> null }
             if (ctBlock != null) {
                 setBgAccelIsfWeight(0.50)
-                switchToStandardAtSharedTier(30)
+                // Not 22:00-06:00 (2026-11-22, per explicit request): the night stays on the Low profile (OffHighProf,
+                // MJrecentCurrProfAcce, NightAcce, EveningTH), which otherwise switched straight back. The rest still applies.
+                if (!isTimeBetween(22, 0, 6, 0)) switchToStandardAtSharedTier(30)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
                 restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // daytime recovery restores delivery baseline
