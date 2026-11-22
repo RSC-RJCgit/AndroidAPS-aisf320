@@ -7,8 +7,8 @@
             <!-- hourly rollover. Make sure the path matches the one in the file element or else
              the rollover logs are placed in the working directory. -->
             <fileNamePattern>${EXT_FILES_DIR}/AndroidAPS._%d{yyyy-MM-dd_HH}.log.zip</fileNamePattern>
-            <!-- keep 30 days (hourly archives) worth of history -->
-            <maxHistory>720</maxHistory>
+            <!-- keep 7 days (hourly archives) worth of history; was 720 (30 days) until 2026-11-22, aaps.bat pulls them to the PC -->
+            <maxHistory>168</maxHistory>
         </rollingPolicy>
         <encoder>
             <pattern>%d{HH:mm:ss.SSS} [%thread] %.-1level/%logger: %msg%n</pattern>

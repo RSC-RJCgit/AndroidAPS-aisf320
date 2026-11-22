@@ -228,6 +228,9 @@ class KeepAliveWorker(
         if (lastRun < dateUtil.now() - T.days(1).msecs()) {
             val result = persistenceLayer.cleanupDatabase(6 * 31, deleteTrackedChanges = false)
             aapsLogger.debug(LTag.CORE, "Cleanup result: $result")
+            // 2026-11-22, per explicit request: loop results/device statuses only 30 days (see cleanupLoopHistory)
+            val loopResult = persistenceLayer.cleanupLoopHistory(30)
+            aapsLogger.debug(LTag.CORE, "Loop history cleanup result: $loopResult")
             preferences.put(LongNonKey.LastCleanupRun, dateUtil.now())
         }
     }

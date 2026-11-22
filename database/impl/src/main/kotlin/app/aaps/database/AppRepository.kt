@@ -135,6 +135,21 @@ class AppRepository @Inject internal constructor(
         return ret.toString()
     }
 
+    /**
+     * 2026-11-22, per explicit request: the per-minute loop records (APSResult, DeviceStatus) carry large JSON and made up
+     * most of Live's 11.77 GB database, which slowed every query ~10x. Kept for [keepDays] instead of the 186 days of
+     * [cleanupDatabase]; nothing in the app reads them further back than ~30 h. Their tracked changes go too.
+     */
+    fun cleanupLoopHistory(keepDays: Long): String {
+        val than = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(keepDays)
+        val removed = listOf(
+            Pair("APSResult", database.apsResultDao.deleteOlderThan(than)),
+            Pair("DeviceStatus", database.deviceStatusDao.deleteOlderThan(than)),
+            Pair("CHANGES APSResult", database.apsResultDao.deleteTrackedChanges())
+        )
+        return removed.filter { it.second > 0 }.joinToString(" ") { it.first + " " + it.second }
+    }
+
     fun clearCachedTddData(from: Long) {
         database.totalDailyDoseDao.deleteNewerThan(from, InterfaceIDs.PumpType.CACHE)
     }

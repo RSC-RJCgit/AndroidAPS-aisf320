@@ -49,6 +49,9 @@ interface PersistenceLayer {
      */
     fun cleanupDatabase(keepDays: Long, deleteTrackedChanges: Boolean): String
 
+    /** Remove loop results and device statuses older than [keepDays] (they are the bulk of the database). */
+    fun cleanupLoopHistory(keepDays: Long): String
+
     // BS
     /**
      * Get last bolus
