@@ -3773,9 +3773,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addCombinedCarbs(0.8)
         if (overviewMenus.isActiveCharTypeData(0,OverviewMenus.CharType.BG_PARAB.ordinal) && !simpleGraphs)
             graphData.addBgParabola(menuChartSettings[0][OverviewMenus.CharType.PRE.ordinal],1.0)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal) && !simpleGraphs)
+        // Raw and smoothed raw (UKF) BG stay in Simple graphs too, as their switches say (2026-11-21, per explicit request)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
             graphData.addRawBg(false)
-        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal) && !simpleGraphs)
+        if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
             graphData.addRawBgSmoothed(false)
         val insulinColumnsShown = (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
         // Simple graphs keep the columns; the renderer leaves their values out (Shape.HOUR_PEAK)
