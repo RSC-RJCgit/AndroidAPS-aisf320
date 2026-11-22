@@ -369,7 +369,9 @@ open class OpenAPSAutoISFPlugin(
         cycleNotes.setLength(0)
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         lastAPSResult = null
-        preferences.put(LongNonKey.ApsAutoIsfFollowUpInsulinReqAt, 0L)
+        // 2026-11-22, per explicit request: no longer blanked here. A delayed, split or protein/fat check that ran while this
+        // cycle was still working read it as missing and was dropped (Live 22 Nov 19:27, fpu1, while a slow cycle took 1.5 min).
+        // The last cycle's value stays until this one writes its own; followUpInsulinCap still refuses anything over 5 min old.
         val fetchedGlucose = glucoseStatusProvider.glucoseStatusData
         // Coded automations off (master switch): no UKF1 dosing override either
         val glucoseStatus = (fetchedGlucose as? GlucoseStatusAutoIsf)

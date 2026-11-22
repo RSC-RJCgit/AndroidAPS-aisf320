@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import app.aaps.ui.compose.boundedHeight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +48,8 @@ fun LoopActionBottomSheet(
                 .fillMaxWidth()
                 .padding(horizontal = AapsSpacing.xxLarge)
                 .padding(bottom = AapsSpacing.xxLarge)
+                // Never unbounded before the scroll: an iOS bottom sheet can measure it without a height limit (2026-11-22)
+                .boundedHeight()
                 .consumeOverscroll()
                 .verticalScroll(rememberScrollState())
         ) {

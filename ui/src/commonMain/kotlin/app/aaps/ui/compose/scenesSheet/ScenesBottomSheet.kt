@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import app.aaps.ui.compose.boundedHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Edit
@@ -58,6 +59,8 @@ fun ScenesBottomSheet(
     ) {
         Column(
             modifier = Modifier
+                // Never unbounded before the scroll: an iOS bottom sheet can measure it without a height limit (2026-11-22)
+                .boundedHeight()
                 .consumeOverscroll()
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp)
