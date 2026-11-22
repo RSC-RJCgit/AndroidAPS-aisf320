@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.main
 
+import app.aaps.ui.compose.boundedHeight
+
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
@@ -323,7 +325,8 @@ private class MainNavigationScope(private val row: RowScope? = null) {
 private fun MainNavigationContainer(vertical: Boolean, modifier: Modifier, content: @Composable MainNavigationScope.() -> Unit) {
     if (vertical) {
         NavigationRail(
-            modifier = modifier.verticalScroll(rememberScrollState()),
+            // boundedHeight: never measured without a height limit (iPhone crash after turning the phone, 22 Nov)
+            modifier = modifier.boundedHeight().verticalScroll(rememberScrollState()),
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
             windowInsets = WindowInsets(0)

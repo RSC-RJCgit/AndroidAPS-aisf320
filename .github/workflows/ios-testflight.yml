@@ -546,6 +546,21 @@ jobs:
           rm -rf "$RUNNER_TEMP/keys"
           security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
 
+      # 2026-11-21, per explicit request: the fork has no Crashlytics, so its crash reports (.ips, and the stack in the app's own
+      # log) were only addresses. These dSYMs, kept for 7 days, let a crash of this exact build be named with
+      # `atos -arch arm64 -o <dSYM>/Contents/Resources/DWARF/<app> -l <load address> <addresses>`.
+      - name: Keep the debug symbols
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-testflight-dsyms
+          path: |
+            ${{ runner.temp }}/AAPSClient.xcarchive/dSYMs
+            ${{ runner.temp }}/AAPSClient2.xcarchive/dSYMs
+            ${{ runner.temp }}/AAPS.xcarchive/dSYMs
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Keep the logs
         if: always()
         uses: actions/upload-artifact@v4

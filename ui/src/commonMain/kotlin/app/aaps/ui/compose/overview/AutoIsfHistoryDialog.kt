@@ -1,5 +1,7 @@
 package app.aaps.ui.compose.overview
 
+import app.aaps.ui.compose.boundedHeight
+
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -128,7 +130,8 @@ fun AutoIsfHistoryDialog(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        Column(modifier = Modifier.fillMaxWidth().weight(1f).verticalScroll(vertical)) {
+                        // boundedHeight: never measured without a height limit (iPhone crash after turning the phone, 22 Nov)
+                        Column(modifier = Modifier.fillMaxWidth().weight(1f).boundedHeight().verticalScroll(vertical)) {
                             shown.forEach { row ->
                                 val colors = rowColors(row)
                                 Row(modifier = Modifier.fillMaxWidth()) {

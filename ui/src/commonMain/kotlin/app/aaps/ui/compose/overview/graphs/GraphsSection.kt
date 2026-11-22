@@ -1280,7 +1280,8 @@ fun GraphsSection(
                 masterZone = masterZone,
                 automaticCleanGraph = automaticCleanGraph || simpleGraphs,
                 cleanGraphHidesTextLines = cleanGraphHidesTextLines,
-                bgOverlays = if (simpleGraphs) emptyList() else graphConfig.bgOverlays,
+                // Simple graphs keep only the Raw and UKF raw BG lines, as their switches say (2026-11-21, per explicit request)
+                bgOverlays = if (simpleGraphs) graphConfig.bgOverlays.filter { it == SeriesType.RAW_BG || it == SeriesType.UKF_BG } else graphConfig.bgOverlays,
                 superClean = simpleGraphs,
                 scrollState = bgScrollState,
                 zoomState = bgZoomState,
