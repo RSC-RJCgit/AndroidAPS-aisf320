@@ -631,7 +631,7 @@ class BolusWizard @Inject constructor(
                     "(${decimalFormatter.to2Decimal(plan.totalInsulin)}U, Warsaw FPU=${decimalFormatter.to2Decimal(plan.fpu)}), " +
                     (if (notScheduled != null) "NOT scheduled ($notScheduled)"
                     else "first in $gap min, then every $gap min, each only if BG and IOB allow") +
-                    (if (schedulingPct == 50 && notScheduled == null) ", at the Standard IC (profile 50%)" else "") + cappedNote
+                    (if (schedulingPct == 50 && notScheduled == null) ", sized at the Standard (100%) IC, not the 50% profile's" else "") + cappedNote
             )
             // Give rest later (2026-11-12): say how much of this series the falling-BG caution held back
             if (heldBackUnits > 0.0) parts.add("Includes ${decimalFormatter.to2Decimal(heldBackUnits)}U held back by the falling BG caution")

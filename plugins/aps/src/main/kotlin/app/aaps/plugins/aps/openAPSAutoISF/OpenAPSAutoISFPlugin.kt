@@ -5181,7 +5181,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         aapsLogger.debug(LTag.APS, "invoke from $initiator tempBasalFallback: $tempBasalFallback")
         smbDeliveryBoostedThisCycle = false
         lastAPSResult = null
-        preferences.put(LongKey.ApsAutoIsfFollowUpInsulinReqAt, 0L)
+        // 2026-11-22, per explicit request: no longer blanked here. A delayed, split or protein/fat check that ran while this
+        // cycle was still working read it as missing and was dropped (Live 22 Nov 19:27, fpu1, while a slow cycle took 1.5 min).
+        // The last cycle's value stays until this one writes its own; followUpInsulinCap still refuses anything over 5 min old.
         if (useLiveStepsOnVirtual() && liveStepsForCycle?.hasDosingBuckets() != true) {
             if (liveStepsMissingSince == 0L) liveStepsMissingSince = stepsCapturedAt
             preferences.put(BooleanKey.ActivityMonitorStepsActive, false)
