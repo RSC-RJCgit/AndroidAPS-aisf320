@@ -2625,7 +2625,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 val laterRiseAfterBoost = !riseHold && (postUamBstLate || iobHighNoCob)
                 if ((fastRiseNow || postUamBstLate) && microBolus > 0.0) {
                     val lateFastRiseFactor = when {
-                        laterRiseAfterBoost -> 0.50
+                        laterRiseAfterBoost -> 0.70
                         smbSum30Min >= 1.9 -> 0.50
                         smbSum30Min >= 1.5 -> 0.75
                         else -> 1.0
