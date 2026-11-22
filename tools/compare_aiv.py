@@ -11,7 +11,7 @@ from pathlib import Path
 from statistics import mean
 
 
-EXPORT_NAME = re.compile(r"AutoISF_(?:.+_)?(\d{8}_\d{6})\.csv", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"AutoISF_(?:.+_)?(\d{8}|\d{4}-\d{2}-\d{2})_(\d{6})\.csv", re.IGNORECASE)
 METRICS = ("BGL", "IOB", "Final", "acce", "bg", "pp", "dura", "Req", "SMB", "TBR")
 REQUIRED = {"Time", "Notes", "Req", "SMB", "TBR", "IOB", "Final"}
 
@@ -20,7 +20,7 @@ def export_stamp(path):
     match = EXPORT_NAME.fullmatch(path.name)
     if not match:
         raise ValueError(f"Expected a dated AutoISF CSV: {path}")
-    return datetime.strptime(match[1], "%Y%m%d_%H%M%S")
+    return datetime.strptime(match[1].replace("-", "") + match[2], "%Y%m%d%H%M%S")
 
 
 def newest_export(path):
@@ -130,6 +130,8 @@ def matched_minutes(left, right):
 def summarize(pairs, field):
     values = [(number(left[field]), number(right[field])) for left, right in pairs]
     complete = [(left, right) for left, right in values if left is not None and right is not None]
+    if field == "TBR":
+        complete = [(left, right) for left, right in complete if left >= 0 and right >= 0]
     if not complete:
         return "—"
     left, right = zip(*complete)
@@ -165,6 +167,7 @@ def compare(v3_path, v4_path):
     print(f"Overlap (Flip3 local time)  {start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M}")
     print("Matched cycles share a unique minute in both apps. Values are v3 / v4 / v4 minus v3.")
     print("SMB is summed in U. Other matched metrics are means. TBR is a rate in U/h.")
+    print("TBR averages exclude pairs with negative rates.")
     print("All-row SMB includes unmatched cycles. Both SMB columns summarize exported loop results.")
     print()
     print("\t".join(("Hour", "v3 rows", "v4 rows", "Matched", "v3 SMB all", "v4 SMB all", *metrics)))
