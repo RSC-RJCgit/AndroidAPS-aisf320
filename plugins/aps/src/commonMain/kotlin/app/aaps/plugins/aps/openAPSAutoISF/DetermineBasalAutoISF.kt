@@ -719,12 +719,13 @@ internal fun lateFastRiseTaper(
     smbSum30: Double,
     uamBoostRecent: Boolean = false,
     riseHold: Boolean = false,
+    hp1Mmol: Double? = null,
 ): SmbStepResult {
     val iobHighNoCob = iob >= 0.18 * maxIob && cob <= 0.0
     val laterRise = !riseHold && (uamBoostRecent || iobHighNoCob)
     if ((!fastRiseNow && !uamBoostRecent) || microBolus <= 0.0) return SmbStepResult(microBolus, "")
     val factor = when {
-        laterRise -> 0.70
+        laterRise -> if ((hp1Mmol ?: 0.0) >= 6.0) 0.70 else 0.50
         smbSum30 >= 1.9 -> 0.50
         smbSum30 >= 1.5 -> 0.75
         else -> 1.0
@@ -817,6 +818,7 @@ internal data class AfterFastRiseInput(
     val steps5: Int,
     val steps15: Int,
     val hypoPrediction2: Double?,
+    val hp1Mmol: Double? = null,
     val smbBoostRecent: Boolean,
     val nightFrSkipActive: Boolean,
     val uamBoostRecent: Boolean,
@@ -878,7 +880,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     smb = loReb.microBolus
     reason.append(loReb.reason)
     val taper = lateFastRiseTaper(
-        smb, input.fastRiseNow, input.iob, input.maxIob, input.cob, input.smbSum30, input.uamBoostRecent, input.riseHold
+        smb, input.fastRiseNow, input.iob, input.maxIob, input.cob, input.smbSum30, input.uamBoostRecent, input.riseHold, input.hp1Mmol
     )
     smb = taper.microBolus
     reason.append(taper.reason)
@@ -2432,6 +2434,7 @@ class DetermineBasalAutoISF(
                             steps5 = steps5,
                             steps15 = steps15,
                             hypoPrediction2 = hypoPrediction2,
+                            hp1Mmol = hp1Mmol,
                             smbBoostRecent = smbBoostRecent,
                             nightFrSkipActive = nightFrSkipActive,
                             uamBoostRecent = uamBoostRecent,

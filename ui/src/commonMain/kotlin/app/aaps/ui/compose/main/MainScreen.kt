@@ -96,6 +96,7 @@ import app.aaps.ui.compose.overview.graphs.TopBarPillHost
 import app.aaps.ui.compose.overview.graphs.LocalTopBarPillHost
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
+import app.aaps.ui.compose.quickLaunch.QuickLaunchButtonSize
 import app.aaps.ui.compose.quickLaunch.QuickLaunchToolbar
 import app.aaps.ui.compose.quickLaunch.ResolvedQuickLaunchItem
 import app.aaps.ui.compose.scenesSheet.ScenesBottomSheet
@@ -192,6 +193,27 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     var showTreatmentSheet by remember { mutableStateOf(false) }
     var showAutomationSheet by remember { mutableStateOf(false) }
+    val availableCodedActions by chipsViewModel.availableCodedActions.collectAsStateWithLifecycle()
+    val visibleQuickLaunchItems = quickLaunchItems.filter { item ->
+        val action = item.action
+        action !is QuickLaunchAction.CodedAction || action in availableCodedActions
+    }
+    var pendingCodedAction by remember { mutableStateOf<QuickLaunchAction.CodedAction?>(null) }
+    val handleQuickLaunch: (QuickLaunchAction) -> Unit = { action ->
+        if (action is QuickLaunchAction.CodedAction) pendingCodedAction = action
+        else onQuickLaunchActionClick(action)
+    }
+    pendingCodedAction?.let { action ->
+        OkCancelDialog(
+            title = stringResource(action.label),
+            message = stringResource(UiStrings.overview_action_confirm),
+            onConfirm = {
+                pendingCodedAction = null
+                chipsViewModel.confirmCodedAction(action)
+            },
+            onDismiss = { pendingCodedAction = null }
+        )
+    }
     var showLoopActionSheet by remember { mutableStateOf(false) }
     // The bottom bar's buttons in a sheet, opened by a tap on the big BG circle (2026-11-12, per explicit request)
     var showNavigationSheet by remember { mutableStateOf(false) }
@@ -283,7 +305,7 @@ fun MainScreen(
             val topBarPillHost = remember { TopBarPillHost() }
             val topBarBgInfo by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
             Scaffold { scaffoldPadding ->
-                val hasToolbar = quickLaunchItems.isNotEmpty()
+                val hasToolbar = visibleQuickLaunchItems.isNotEmpty()
                 val loopActionState = loopActionViewModel.uiState.collectAsStateWithLifecycle().value
                 // Portrait bottom bar: hidden by default (OverviewShowNavigationBar), the Quick launch bar then sits in its place.
                 // It still shows while one of its attention buttons is up, so a waiting loop suggestion or a missing setup
@@ -365,7 +387,7 @@ fun MainScreen(
                             )
                         },
                         paddingValues = contentPadding,
-                        fabBottomOffset = if (hasToolbar && showChrome && !landscapeNavigation) 64.dp else 0.dp, // 56 dp quick launch bar + 8 dp gap
+                        fabBottomOffset = if (hasToolbar && showChrome && !landscapeNavigation) QuickLaunchButtonSize + 8.dp else 0.dp,
                         bolusState = bolusState,
                         pumpStatusText = pumpStatusText,
                         queueStatusText = queueStatusText,
@@ -614,8 +636,8 @@ fun MainScreen(
                                 )
                                 if (hasToolbar) {
                                     QuickLaunchToolbar(
-                                        items = quickLaunchItems,
-                                        onActionClick = onQuickLaunchActionClick,
+                                        items = visibleQuickLaunchItems,
+                                        onActionClick = handleQuickLaunch,
                                         vertical = true
                                     )
                                 }
@@ -658,8 +680,8 @@ fun MainScreen(
                             )
                     ) {
                         QuickLaunchToolbar(
-                            items = quickLaunchItems,
-                            onActionClick = onQuickLaunchActionClick,
+                            items = visibleQuickLaunchItems,
+                            onActionClick = handleQuickLaunch,
                         )
                     }
 

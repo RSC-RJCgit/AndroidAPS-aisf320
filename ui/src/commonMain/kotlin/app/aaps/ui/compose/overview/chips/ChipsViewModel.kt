@@ -73,6 +73,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.extensions.displayText
 import app.aaps.ui.UiStrings
+import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
 import app.aaps.core.ui.extensions.toStringShort
 import dev.zacsweers.metro.Assisted
 import dev.zacsweers.metro.AssistedFactory
@@ -193,8 +194,8 @@ class ChipsViewModel(
         initialValue = CobUiState()
     )
 
-    val overviewActions: StateFlow<List<OverviewAction>> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
-        buildOverviewActions()
+    val availableCodedActions: StateFlow<List<QuickLaunchAction.CodedAction>> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
+        buildCodedActions()
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -550,19 +551,25 @@ class ChipsViewModel(
         }
     }
 
-    private suspend fun buildOverviewActions(): List<OverviewAction> {
+    fun confirmCodedAction(action: QuickLaunchAction.CodedAction) {
+        viewModelScope.launch {
+            if (action in buildCodedActions()) applyList1(action.mmol)
+        }
+    }
+
+    private suspend fun buildCodedActions(): List<QuickLaunchAction.CodedAction> {
         if (config.AAPSCLIENT) return emptyList()
         if (activePlugin.activeAPS?.algorithm != APSResult.Algorithm.AUTO_ISF) return emptyList()
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return emptyList()
         val states = preferences.get(StringNonKey.AutomationCurrentStates)
         val mj = stateValue(states, "MJ")
         val steroids = stateValue(states, "Steroids")
-        val actions = mutableListOf<OverviewAction>()
+        val actions = mutableListOf<QuickLaunchAction.CodedAction>()
         if (preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)) {
             when (mj) {
-                "NOMJremains" -> actions += OverviewAction(rh.gs(UiStrings.overview_mj_start), 5.158)
+                "NOMJremains" -> actions += QuickLaunchAction.MjStart
                 "" -> Unit
-                else -> actions += OverviewAction(rh.gs(UiStrings.overview_mj_restore), 5.160)
+                else -> actions += QuickLaunchAction.MjRestore
             }
         }
         if (preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) {
@@ -572,22 +579,22 @@ class ChipsViewModel(
             val profileName = profileFunction.getOriginalProfileName()
             val atHundred = originalPercent == 100
             if (hour >= 6 && mj == "NOMJremains" && steroids == "Steroids Off") {
-                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_on), 5.162)
+                actions += QuickLaunchAction.SteroidOn
             }
             if (atHundred && steroids == "SteroidsON" && profileName == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName)) {
-                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_130), 5.168)
+                actions += QuickLaunchAction.Steroid130
             }
             if (atHundred && steroids == "SteroidsON" && mj == "NOMJremains") {
                 if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName)) {
-                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_150), 5.170)
+                    actions += QuickLaunchAction.Steroid150
                 }
                 if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName)) {
-                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_190), 5.172)
+                    actions += QuickLaunchAction.Steroid190
                 }
                 if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName)) {
-                    actions += OverviewAction(rh.gs(UiStrings.overview_steroid_250), 5.174)
+                    actions += QuickLaunchAction.Steroid250
                 }
-                actions += OverviewAction(rh.gs(UiStrings.overview_steroid_off), 5.176)
+                actions += QuickLaunchAction.SteroidOff
             }
         }
         return actions

@@ -219,6 +219,7 @@ fun openPlugin(plugin: PluginBase, navController: NavController, activePlugin: A
  */
 fun ElementNavigator.handleQuickLaunchAction(action: QuickLaunchAction) {
     when (action) {
+        is QuickLaunchAction.CodedAction -> Unit // Confirmed and applied by MainScreen.
         is QuickLaunchAction.StaticAction      -> handleNavigationRequest(NavigationRequest.Element(action.elementType))
 
         is QuickLaunchAction.QuickWizardAction -> guarded(ElementType.QUICK_WIZARD.protection) {

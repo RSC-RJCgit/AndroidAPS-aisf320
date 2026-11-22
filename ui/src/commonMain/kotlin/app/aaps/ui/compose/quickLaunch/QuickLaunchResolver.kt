@@ -19,6 +19,7 @@ import app.aaps.core.objects.wizard.QuickWizard
 import app.aaps.core.objects.wizard.QuickWizardMode
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.formatMinutesAsDuration
+import app.aaps.core.ui.compose.icons.IcAutomation
 import app.aaps.core.ui.compose.icons.IcBolus
 import app.aaps.core.ui.compose.icons.IcCarbs
 import app.aaps.core.ui.compose.icons.IcTtActivity
@@ -72,6 +73,7 @@ class QuickLaunchResolver(
     }
 
     private fun resolveIcon(action: QuickLaunchAction): ImageVector = when (action) {
+        is QuickLaunchAction.CodedAction -> IcAutomation
         is QuickLaunchAction.QuickWizardAction -> quickWizard.get(action.guid)?.let { entry ->
             when (entry.mode()) {
                 QuickWizardMode.INSULIN -> IcBolus
@@ -157,6 +159,7 @@ class QuickLaunchResolver(
     }
 
     fun resolveLabel(action: QuickLaunchAction): String = when (action) {
+        is QuickLaunchAction.CodedAction -> rh.gs(action.label)
         is QuickLaunchAction.QuickWizardAction -> quickWizard.get(action.guid)?.buttonText() ?: "?"
         is QuickLaunchAction.AutomationAction  -> automation.findEventById(action.automationId)?.title ?: "?"
 

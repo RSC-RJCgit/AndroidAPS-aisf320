@@ -1,6 +1,8 @@
 package app.aaps.ui.compose.quickLaunch
 
 import app.aaps.core.interfaces.navigation.ElementType
+import app.aaps.core.keys.interfaces.TextRef
+import app.aaps.ui.UiStrings
 
 /**
  * Represents an action that can be placed on the quick-action toolbar.
@@ -25,6 +27,8 @@ sealed class QuickLaunchAction {
 
         override val typeId: String = elementType.name.lowercase()
     }
+
+    data class CodedAction internal constructor(override val typeId: String, val label: TextRef, val mmol: Double) : QuickLaunchAction()
 
     // ── Dynamic actions (carry runtime identifier) ──
 
@@ -104,6 +108,15 @@ sealed class QuickLaunchAction {
         val SiteRotation = StaticAction(ElementType.SITE_ROTATION)
         val QuickLaunchConfig = StaticAction(ElementType.QUICK_LAUNCH_CONFIG)
 
+        val MjStart = CodedAction("mj_start", UiStrings.overview_mj_start, 5.158)
+        val MjRestore = CodedAction("mj_restore", UiStrings.overview_mj_restore, 5.160)
+        val SteroidOn = CodedAction("steroid_on", UiStrings.overview_steroid_on, 5.162)
+        val Steroid130 = CodedAction("steroid_130", UiStrings.overview_steroid_130, 5.168)
+        val Steroid150 = CodedAction("steroid_150", UiStrings.overview_steroid_150, 5.170)
+        val Steroid190 = CodedAction("steroid_190", UiStrings.overview_steroid_190, 5.172)
+        val Steroid250 = CodedAction("steroid_250", UiStrings.overview_steroid_250, 5.174)
+        val SteroidOff = CodedAction("steroid_off", UiStrings.overview_steroid_off, 5.176)
+
         /**
          * All static actions available for the configuration screen (excluding QuickLaunchConfig).
          *
@@ -120,7 +133,8 @@ sealed class QuickLaunchAction {
             SceneManagement, AutomationManagement, FoodManagement, RunningMode,
             AuthorizedClients,
             BgCheck, Note, Exercise, Question, Announcement,
-            SensorInsert, BatteryChange, CannulaChange, Fill, SiteRotation
+            SensorInsert, BatteryChange, CannulaChange, Fill, SiteRotation,
+            MjStart, MjRestore, SteroidOn, Steroid130, Steroid150, Steroid190, Steroid250, SteroidOff
         )
 
         /**

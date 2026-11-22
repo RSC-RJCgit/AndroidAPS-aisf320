@@ -38,8 +38,6 @@ import app.aaps.ui.compose.overview.chips.IobCobChipsRow
 import app.aaps.ui.compose.overview.chips.IobUiState
 import app.aaps.ui.compose.overview.chips.ProfileChip
 import app.aaps.ui.compose.overview.chips.RunningModeChip
-import app.aaps.ui.compose.overview.chips.OverviewAction
-import app.aaps.ui.compose.overview.chips.OverviewActionButtons
 import app.aaps.ui.compose.overview.chips.SensitivityUiState
 import app.aaps.ui.compose.overview.chips.TbrChip
 import app.aaps.ui.compose.overview.chips.TempTargetChip
@@ -66,8 +64,6 @@ fun OverviewChipsColumn(
     iobUiState: IobUiState,
     cobUiState: CobUiState,
     sensitivityUiState: SensitivityUiState,
-    actionButtons: List<OverviewAction> = emptyList(),
-    onAction: (Double) -> Unit = {},
     onNavigate: (NavigationRequest) -> Unit,
     onTbrChipClick: () -> Unit,
     onTbrChipLongClick: () -> Unit = {},
@@ -85,9 +81,6 @@ fun OverviewChipsColumn(
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         // The iOS heartbeat status is shown in the graphs' press-and-hold pill since 2026-10-28, see GraphInspectPillOf
-        if (actionButtons.isNotEmpty()) {
-            OverviewActionButtons(actions = actionButtons, onAction = onAction)
-        }
         NarrowChips(
             runningMode = runningMode,
             runningModeText = runningModeText,

@@ -223,5 +223,6 @@ class QuickLaunchConfigViewModel(
      * role. Actions with no element (plugins) are visible; those are gated by showInList in [buildPluginGroups] instead.
      */
     private fun QuickLaunchAction.isVisibleInMode(): Boolean =
-        elementType?.isAvailable(visibilityContext) ?: true
+        if (this is QuickLaunchAction.CodedAction) !visibilityContext.isClient
+        else elementType?.isAvailable(visibilityContext) ?: true
 }

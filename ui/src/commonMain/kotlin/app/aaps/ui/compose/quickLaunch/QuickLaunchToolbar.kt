@@ -57,9 +57,8 @@ data class ResolvedQuickLaunchItem(
     val description: String? = null
 )
 
-/** Quick launch button and icon size (2026-11-12, per explicit request: 48 -> 56 dp, icon 24 -> 28 dp). */
-private val ToolbarItemSize = 56.dp
-private val ToolbarIconSize = 28.dp
+internal val QuickLaunchButtonSize = 48.dp
+private val ToolbarIconSize = 24.dp
 
 /**
  * Floating pill-shaped toolbar for quick actions.
@@ -88,8 +87,8 @@ fun QuickLaunchToolbar(
             vertical = if (vertical) 8.dp else 0.dp
         )
     ) {
-        BoxWithConstraints(if (vertical) Modifier.width(ToolbarItemSize) else Modifier.height(ToolbarItemSize)) {
-            val itemSizePx = with(LocalDensity.current) { ToolbarItemSize.toPx() }
+        BoxWithConstraints(if (vertical) Modifier.width(QuickLaunchButtonSize) else Modifier.height(QuickLaunchButtonSize)) {
+            val itemSizePx = with(LocalDensity.current) { QuickLaunchButtonSize.toPx() }
             val contentPaddingPx = with(LocalDensity.current) { 8.dp.toPx() }
             val availablePx = if (vertical) constraints.maxHeight else constraints.maxWidth
             val maxItems = ((availablePx - contentPaddingPx) / itemSizePx).toInt()
@@ -179,7 +178,7 @@ private fun ToolbarIconButton(
             onClick = { onActionClick(item.action) },
             enabled = item.enabled,
             modifier = Modifier
-                .size(ToolbarItemSize)
+                .size(QuickLaunchButtonSize)
         ) {
             Icon(
                 imageVector = item.icon,
@@ -201,7 +200,7 @@ private fun OverflowMenuButton(
     Box {
         IconButton(
             onClick = { showMenu = true },
-            modifier = Modifier.size(ToolbarItemSize)
+            modifier = Modifier.size(QuickLaunchButtonSize)
         ) {
             Icon(
                 imageVector = Icons.Default.MoreVert,

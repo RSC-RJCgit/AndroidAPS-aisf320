@@ -181,8 +181,6 @@ fun OverviewScreenTablet(
                             iobUiState = iobUiState,
                             cobUiState = cobUiState,
                             sensitivityUiState = sensitivityUiState,
-                            actionButtons = chipsViewModel.overviewActions.collectAsStateWithLifecycle().value,
-                            onAction = chipsViewModel::applyList1,
                             onNavigate = onNavigate,
                             onTbrChipClick = onTbrChipClick,
                             onTbrChipLongClick = graphViewModel::onBasalIconLongPress,

@@ -85,9 +85,26 @@ class AfterFastRiseSmbTest {
             maxIob = 10.0,
             cob = 0.0,
             smbSum30 = 0.0,
+            hp1Mmol = 6.0,
         )
         assertEquals(0.7, result.microBolus, 0.001)
         assertEquals("Late FastRise high IOB x0.7 SMB 0.7. ", result.reason)
+    }
+
+    @Test
+    fun lateTaperKeepsHalfWhenHp1IsBelowSixOrMissing() {
+        for (hp1 in listOf(5.999, null)) {
+            val result = lateFastRiseTaper(
+                microBolus = 1.0,
+                fastRiseNow = true,
+                iob = 1.8,
+                maxIob = 10.0,
+                cob = 0.0,
+                smbSum30 = 0.0,
+                hp1Mmol = hp1,
+            )
+            assertEquals(0.5, result.microBolus, 0.001)
+        }
     }
 
     @Test
