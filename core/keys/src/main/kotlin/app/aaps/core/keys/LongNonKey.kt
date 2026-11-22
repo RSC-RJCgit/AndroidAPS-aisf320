@@ -34,5 +34,9 @@ enum class LongNonKey(
     ApsAutoIsfRawSpikeAt("autoisf_raw_spike_at", 0L, exportable = false),
     // When the newest raw Libre dip (outside 22:30-07:30) bottomed (2026-10-29). Only opens the sensor-age slope tier for 6 h.
     ApsAutoIsfRawDipAt("autoisf_raw_dip_at", 0L, exportable = false),
+    // The newest bolus/carbs schedule token, and the one super heavy activity cancelled, kept over a restart (2026-11-22, see
+    // PendingFollowUps).
+    ApsAutoIsfDoseScheduleToken("autoisf_dose_schedule_token", 0L, exportable = false),
+    ApsAutoIsfSuperHeavyCancelledToken("autoisf_super_heavy_cancelled_token", 0L, exportable = false),
 }
 

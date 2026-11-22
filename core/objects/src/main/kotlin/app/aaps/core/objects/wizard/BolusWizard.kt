@@ -65,6 +65,7 @@ import app.aaps.core.ui.dialogs.OKDialog
 import app.aaps.core.utils.HtmlHelper
 import app.aaps.core.utils.MidnightUtils
 import app.aaps.core.utils.JsonHelper
+import org.json.JSONObject
 import android.os.Handler
 import android.os.Looper
 import java.util.Calendar
@@ -1849,10 +1850,16 @@ class BolusWizard @Inject constructor(
             return
         }
         setSplitPendingRemaining(remainingResidual)
+        PendingFollowUps.save(preferences, "$myScheduleToken|split", pendingEntry("split", myScheduleToken).apply {
+            put("remaining", remainingResidual); put("previousPartDose", previousPartDose); put("iobBaseline", iobBaselineForNextGap)
+            put("intervalMins", intervalMins); put("schedulingPct", schedulingPct); put("deliverAt", deliverAt); put("retryDeadline", retryDeadline)
+        })
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
         aapsLogger.debug(LTag.CORE, "ReducedSplitBolus: scheduling next part in ${delayMs / 1000}s, remaining residual ${remainingResidual}U, deliverAt=${dateUtil.timeString(deliverAt)}")
         Handler(Looper.getMainLooper()).postDelayed({
+            // Saved again by whatever this check schedules next; a finished or cancelled split stays removed.
+            PendingFollowUps.remove(preferences, "$myScheduleToken|split")
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: bolus was stopped — cancelling remaining ${remainingResidual}U")
                 writeLastSkippedZero(lastSkippedZero)
@@ -2067,10 +2074,18 @@ class BolusWizard @Inject constructor(
         deferNoted: Boolean = false,
         retryLater: Boolean = true
     ) {
+        val pendingKey = "$myScheduleToken|fpu|$label"
+        PendingFollowUps.save(preferences, pendingKey, pendingEntry("fpu", myScheduleToken).apply {
+            put("dose", dose); put("delayMins", delayMins); put("label", label); put("schedulingPct", schedulingPct)
+            put("iobBaseline", iobBaseline); put("deliverAt", deliverAt); put("isLast", isLast); nextDueAt?.let { put("nextDueAt", it) }
+            put("firstDueAt", firstDueAt); put("deferNoted", deferNoted); put("retryLater", retryLater)
+        })
         val pollMs = T.mins(2).msecs()
         val delayMs = min(pollMs, max(1000L, deliverAt - dateUtil.now()))
         aapsLogger.debug(LTag.CORE, "DelayedDose($label): scheduling ${dose}U in ${delayMs / 1000}s, deliverAt=${dateUtil.timeString(deliverAt)}")
         Handler(Looper.getMainLooper()).postDelayed({
+            // Saved again by whatever this check schedules next; a delivered or cancelled part stays removed.
+            PendingFollowUps.remove(preferences, pendingKey)
             if (BolusProgressData.followUpBolusCancelled) {
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): bolus was stopped — cancelling ${dose}U")
                 cancelDoseNote(fpuWhat(label, dose), dose, "bolus stopped", label, iobBaseline, useIobRise = false)
@@ -2111,7 +2126,7 @@ class BolusWizard @Inject constructor(
             // 2026-11-20, per explicit request: only super heavy activity cancels; it cancels this part and the meal's parts
             // still waiting. Walking, activity and heavy activity only cut each part as it comes due (below).
             if (superHeavyNow()) {
-                SuperHeavyFpuCancel.cancel(myScheduleToken)
+                PendingFollowUps.saveSuperHeavyCancel(preferences, myScheduleToken)
                 aapsLogger.info(LTag.CORE, "DelayedDose($label): super heavy activity (steps) — cancelling ${dose}U and the FPU parts still waiting")
                 cancelDoseNote(fpuWhat(label, dose), dose, "super heavy activity (steps)", label, iobBaseline, useIobRise = false)
                 decrementWarsawPendingRemaining(dose)
@@ -2218,6 +2233,45 @@ class BolusWizard @Inject constructor(
                 })
             }
         }, delayMs)
+    }
+
+    /** What every saved part carries besides its own arguments: its schedule token and the wizard values its notes use. */
+    private fun pendingEntry(kind: String, token: Long): JSONObject = JSONObject().apply {
+        put("kind", kind); put("token", token); put("bolusTime", timeStamp); put("quickWizard", quickWizard); put("ic", ic)
+    }
+
+    /**
+     * Takes back one part saved before an app restart (2026-11-22, per explicit request, see PendingFollowUps) and schedules
+     * its next check exactly as it was. All the usual checks run when it is due; a part whose retry window ended while the app
+     * was down is cancelled with its usual note. The carb split's remembered skipped zero is not kept (only written if the split
+     * ends without delivering).
+     */
+    fun resumePendingPart(entry: JSONObject) {
+        timeStamp = entry.optLong("bolusTime", timeStamp)
+        quickWizard = entry.optBoolean("quickWizard", quickWizard)
+        ic = entry.optDouble("ic", ic)
+        val token = entry.optLong("token")
+        when (entry.optString("kind")) {
+            "split" -> {
+                aapsLogger.info(LTag.CORE, "ReducedSplitBolus: resumed after an app restart, remaining ${entry.optDouble("remaining")}U")
+                scheduleReducedPartsSplitBolus(
+                    entry.optDouble("remaining"), entry.optDouble("previousPartDose"), entry.optDouble("iobBaseline"),
+                    entry.optInt("intervalMins"), entry.optInt("schedulingPct"), token,
+                    deliverAt = entry.optLong("deliverAt"), retryDeadline = entry.optLong("retryDeadline")
+                )
+            }
+            "fpu" -> {
+                val label = entry.optString("label")
+                aapsLogger.info(LTag.CORE, "DelayedDose($label): resumed after an app restart, ${entry.optDouble("dose")}U")
+                scheduleSingleDelayedDose(
+                    entry.optDouble("dose"), entry.optInt("delayMins"), label, entry.optInt("schedulingPct"), entry.optDouble("iobBaseline"), token,
+                    deliverAt = entry.optLong("deliverAt"), isLast = entry.optBoolean("isLast", true),
+                    nextDueAt = if (entry.has("nextDueAt")) entry.optLong("nextDueAt") else null,
+                    firstDueAt = entry.optLong("firstDueAt"), deferNoted = entry.optBoolean("deferNoted"), retryLater = entry.optBoolean("retryLater", true)
+                )
+            }
+            else -> aapsLogger.error(LTag.CORE, "Pending follow-up dose of unknown kind dropped: $entry")
+        }
     }
 
     // The meal type's extended carbs (see mealECarbs), after the bolus is confirmed. Same entry as a QuickWizard button's own eCarbs.

@@ -21,10 +21,16 @@ object ScheduledDoseSupersession {
 
     private val token = AtomicLong(0)
 
+    /** Told every new token, so it can be saved over a restart (2026-11-22, see PendingFollowUps). */
+    @Volatile var onBump: ((Long) -> Unit)? = null
+
     /** Call once a bolus or carbs entry has been successfully recorded, from any entry point. Returns
      *  the new token value — callers that are about to schedule their OWN follow-up doses should keep
      *  this as the token they claim for that schedule (see BolusWizard). */
-    fun bump(): Long = token.incrementAndGet()
+    fun bump(): Long = token.incrementAndGet().also { onBump?.invoke(it) }
+
+    /** At app start: carry on from the token saved before the restart. Does nothing once a token was handed out since. */
+    fun restore(saved: Long): Boolean = saved > 0 && token.compareAndSet(0, saved)
 
     /** True if [claimedToken] (captured via [bump] at scheduling time) still matches the current token —
      *  i.e. nothing newer has been recorded since. */

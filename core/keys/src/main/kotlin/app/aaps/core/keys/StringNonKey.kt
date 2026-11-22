@@ -38,5 +38,7 @@ enum class StringNonKey(
     CarePortalNoteSmsTexts("careportal_note_sms_texts", defaultValue = "{}", exportable = false),
     // The bolus calculator's meal type (a CarbsType name) from the last confirmed meal calculation, so the next run
     // starts on it like the remembered ticks (2026-11-12, per explicit request). An unknown name reads as BREAD.
-    WizardCarbsType("wizard_carbs_type", defaultValue = "BREAD")
+    WizardCarbsType("wizard_carbs_type", defaultValue = "BREAD"),
+    /** Carb-split and protein/fat parts still waiting, as JSON, so they survive a restart (2026-11-22, see PendingFollowUps). */
+    ApsAutoIsfPendingFollowUpDoses("autoisf_pending_follow_up_doses", "", exportable = false)
 }

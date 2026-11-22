@@ -27,6 +27,8 @@ import app.aaps.core.interfaces.configuration.ConfigBuilder
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.objects.wizard.BolusWizard
+import app.aaps.core.objects.wizard.PendingFollowUps
 import app.aaps.core.interfaces.logging.LoggerUtils
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.profile.ProfileFunction
@@ -119,6 +121,7 @@ class MainApp : DaggerApplication() {
     @Inject lateinit var fabricPrivacy: FabricPrivacy
     @Inject lateinit var loggerUtils: LoggerUtils
     @Inject lateinit var iphoneHeartbeatSender: IphoneHeartbeatSender
+    @Inject lateinit var bolusWizardProvider: Provider<BolusWizard>
     lateinit var appComponent: AppComponent
 
     private var handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
@@ -202,6 +205,13 @@ class MainApp : DaggerApplication() {
             }, 10000
         )
         KeepAliveWorker.schedule(this@MainApp)
+        // 2026-11-22, per explicit request: carb-split and protein/fat parts still waiting survive a restart. Taken now, before
+        // anything can record a bolus; handed back after a minute, when the pump, glucose and loop have started.
+        val pendingFollowUps = PendingFollowUps.restoreAtStart(preferences)
+        if (pendingFollowUps.isNotEmpty()) handler.postDelayed({
+            val resumed = PendingFollowUps.resumeAll(pendingFollowUps) { bolusWizardProvider.get() }
+            aapsLogger.info(LTag.CORE, "Resumed $resumed pending carb-split/protein-fat parts after the restart")
+        }, 60000)
         localAlertUtils.shortenSnoozeInterval()
         localAlertUtils.preSnoozeAlarms()
 
