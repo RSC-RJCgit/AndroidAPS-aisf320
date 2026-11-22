@@ -156,6 +156,12 @@ class DetermineBasalAutoISF @Inject constructor(
     /** Forecast threshold (mmol) used by the last [hp1OverrideDose] call, for the reason text: "2.0", or "3.0" at BG 11+. */
     private var lastHp1AbsurdMmol = "2.0"
 
+    private fun recentHp1Mmol(now: Long): Double? {
+        val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
+        if (hpAt <= 0L || hpAt > now + 60_000L || now - hpAt > 5 * 60_000L) return null
+        return preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol) / 1000.0
+    }
+
     /*
      * BG 10+ tier (2026-11-16, per explicit request): at BG >= 10.0 mmol with delta >= 0 as well as short delta >= 0,
      * IOB under half of iobTH and no recent low (LowBG state "50recent"), the override gives up to HP1_OVERRIDE_HI_DOSE_U
@@ -175,9 +181,7 @@ class DetermineBasalAutoISF @Inject constructor(
         if (!(minGuardBG < absurdBelow || minPredBG < absurdBelow)) return null
         lastHp1AbsurdMmol = if (absurdBelow > 40.0) "3.0" else "2.0"
         if (iob >= iobTH) return null
-        val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
-        if (hpAt <= 0L || hpAt > now + 60_000L || now - hpAt > 5 * 60_000L) return null
-        val hp1 = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol) / 1000.0
+        val hp1 = recentHp1Mmol(now) ?: return null
         if (hp1 < 6.0) return null
         if (now - lastBolusTime < 60_000L) return null
         val recent = preferences.get(StringNonKey.ApsAutoIsfHp1OverrideLog).split(';').mapNotNull { entry ->
@@ -2625,7 +2629,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 val laterRiseAfterBoost = !riseHold && (postUamBstLate || iobHighNoCob)
                 if ((fastRiseNow || postUamBstLate) && microBolus > 0.0) {
                     val lateFastRiseFactor = when {
-                        laterRiseAfterBoost -> 0.70
+                        laterRiseAfterBoost -> if ((recentHp1Mmol(currentTime) ?: 0.0) >= 6.0) 0.70 else 0.50
                         smbSum30Min >= 1.9 -> 0.50
                         smbSum30Min >= 1.5 -> 0.75
                         else -> 1.0
