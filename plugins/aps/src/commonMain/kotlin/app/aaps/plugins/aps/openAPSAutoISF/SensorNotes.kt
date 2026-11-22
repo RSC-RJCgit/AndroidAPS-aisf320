@@ -10,7 +10,8 @@ internal fun stepsSteroidsOffShouldFire(
     bg: Double,
     delta: Double,
     cob: Double,
-): Boolean = ready && steps60 >= 1000 && iob in 2.0..4.0 && bg <= 144.1 && delta >= 9.0 && cob == 0.0
+    steps180: Int = 0,
+): Boolean = ready && (steps60 >= 1000 || steps180 >= 1000) && iob in 2.0..4.0 && bg <= 144.1 && delta >= 9.0 && cob == 0.0 // 2026-11-22, per explicit request: steps180 of 1000 or more counts as high steps too (default 0 for the tests)
 
 // A missing sensor age is 0 hours, so the narrow windows stay closed. A missing pod does not block.
 internal fun preSoakBlock(ready: Boolean, livePump: Boolean, sensorHours: Double, podHours: Double?): String? {

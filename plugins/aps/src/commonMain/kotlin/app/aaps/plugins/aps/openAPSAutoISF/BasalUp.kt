@@ -25,10 +25,11 @@ internal fun basalUpShouldFire(
     onLowFamily: Boolean,
     mj3: Boolean,
     noMjRemains: Boolean,
+    steps180: Int = 0,
 ): Boolean {
     if (!ready || !onLowFamily || profilePercent != 100) return false
     if (bg < 81.1 || delta < 3.6) return false
-    if (basalUpStepBrake(steps5, steps15, steps30, steps60)) return false
+    if (basalUpStepBrake(steps5, steps15, steps30, steps60, steps180)) return false
     if (!minuteInWindow(minuteOfDay, 7 * 60, 0)) return false
     return basalUpMjGateOpen(minuteOfDay, podHours, mj3, noMjRemains)
 }
@@ -58,18 +59,20 @@ internal fun basalUpHeldByMjGate(
     onLowFamily: Boolean,
     mj3: Boolean,
     noMjRemains: Boolean,
+    steps180: Int = 0,
 ): Boolean {
     if (!ready || !onLowFamily || profilePercent != 100) return false
     if (bg < 81.1 || delta < 3.6) return false
-    if (basalUpStepBrake(steps5, steps15, steps30, steps60)) return false
+    if (basalUpStepBrake(steps5, steps15, steps30, steps60, steps180)) return false
     if (!minuteInWindow(minuteOfDay, 7 * 60, 0)) return false
     return !basalUpMjGateOpen(minuteOfDay, podHours, mj3, noMjRemains)
 }
 
-/** True when the step count should keep BasalUp closed. A quiet recent window ignores the 60 minute count. */
-internal fun basalUpStepBrake(steps5: Int, steps15: Int, steps30: Int, steps60: Int): Boolean {
+/** True when the step count should keep BasalUp closed. A quiet recent window ignores the 60 (and 180) minute count. */
+internal fun basalUpStepBrake(steps5: Int, steps15: Int, steps30: Int, steps60: Int, steps180: Int = 0): Boolean {
     if (steps30 > 600) return true
     val recentDropped = steps5 <= 0 && steps15 <= 30 && steps30 <= 200
     if (recentDropped) return false
-    return steps60 > 1000
+    // 2026-11-22, per explicit request: [steps180] of 1000 or more counts as high steps too (default 0 for the tests)
+    return steps60 > 1000 || steps180 >= 1000
 }

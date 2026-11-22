@@ -2584,7 +2584,7 @@ open class OpenAPSAutoISFPlugin(
         if (!basalUpShouldFire(
                 ready = ready, bg = bg, delta = delta, profilePercent = profilePercent, minuteOfDay = minuteOfDay,
                 steps5 = steps5, steps15 = steps15, steps60 = steps60, steps30 = steps30, podHours = podHours,
-                onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains,
+                onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains, steps180 = steps180(now),
             )
         ) {
             // 2026-10-08, per explicit request: tell the user when ONLY the MJ and pod condition held BasalUp back, at most once
@@ -2592,7 +2592,7 @@ open class OpenAPSAutoISFPlugin(
             if (basalUpHeldByMjGate(
                     ready = ready, bg = bg, delta = delta, profilePercent = profilePercent, minuteOfDay = minuteOfDay,
                     steps5 = steps5, steps15 = steps15, steps60 = steps60, steps30 = steps30, podHours = podHours,
-                    onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains,
+                    onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains, steps180 = steps180(now),
                 ) && !config.AAPSCLIENT && activePlugin.activePump is VirtualPump && // 2026-10-08, per explicit request: Virtual only
                 runMarks.ready(RunMark.BASAL_UP_HELD_ALERT, 30, now)
             ) {
@@ -5114,6 +5114,7 @@ open class OpenAPSAutoISFPlugin(
                 bg = bg,
                 delta = delta,
                 cob = cob,
+                steps180 = steps180(now),
             )
         ) return
         val store = states()
@@ -5149,7 +5150,8 @@ open class OpenAPSAutoISFPlugin(
     ) {
         val nomj = statesOn && states().inState("MJ", "NOMJremains")
         val hp = rawDelta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
-        val want = todOffsetClearSignals(nomj, hp, shortDelta, steps60)
+        val steps180 = steps180(now)
+        val want = todOffsetClearSignals(nomj, hp, shortDelta, steps60, steps180)
         if (want.clearNegative) {
             if (todOffsetNegClearSince == 0L) todOffsetNegClearSince = now
         } else {
@@ -5185,7 +5187,7 @@ open class OpenAPSAutoISFPlugin(
         val hpText = decimals(hp ?: 0.0, 2)
         val reason = when {
             clearPositive && resettingPositive -> "NOMJremains+StepsLow+HP2=$hpText>6.0+SD=$shortMmol<0.1"
-            steps60 >= 1000 && resettingNegative -> "StepsHigh"
+            (steps60 >= 1000 || steps180 >= 1000) && resettingNegative -> "StepsHigh"
             !nomj -> "NOT_NOMJremains"
             else -> "HP2=$hpText<4.0+SD=$shortMmol<0.1"
         }
@@ -5236,6 +5238,7 @@ open class OpenAPSAutoISFPlugin(
                 bg = bg,
                 delta = delta,
                 steps60 = steps60,
+                steps180 = steps180(now),
             )
         ) {
             runMarks.mark(RunMark.EXERCISE_LIMIT, now)

@@ -17,9 +17,9 @@ internal fun acceUpShouldFire(
     ready && acce <= 0.5 && minuteInWindow(minuteOfDay, 8 * 60, 22 * 60) &&
         bg >= 108.1 && profilePercent == 100 && !ttActive && (noMjRemains || steroidsOn)
 
-// Alert only. A fast rise with at least 1000 steps in the last hour. The caller logs it.
-internal fun exerciseLimitShouldFire(ready: Boolean, bg: Double, delta: Double, steps60: Int): Boolean =
-    ready && bg >= 126.1 && delta >= 7.2 && steps60 >= 1000
+// Alert only. A fast rise with at least 1000 steps in the last hour, or (2026-11-22) in the last 3 hours. The caller logs it.
+internal fun exerciseLimitShouldFire(ready: Boolean, bg: Double, delta: Double, steps60: Int, steps180: Int = 0): Boolean =
+    ready && bg >= 126.1 && delta >= 7.2 && (steps60 >= 1000 || steps180 >= 1000)
 
 // Midnight until 06:00. Lowers the IOB threshold to 22%, or 35% after sustained carbs.
 // The acceleration cap stays 0.35 either way. Steps of 100 or more keep this closed.
