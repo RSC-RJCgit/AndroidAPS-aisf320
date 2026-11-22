@@ -6619,7 +6619,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             DoubleKey.ApsAutoIsfTodOffset2200
         )
         val stepsLow = recentSteps60Minutes <= 200
-        val stepsHigh = recentSteps60Minutes >= 1000
+        val stepsHigh = recentSteps60Minutes >= 1000 || recentSteps180Minutes >= 1000  // or S180 >= 1000 (2026-11-22, per explicit request)
         val clearNegativeTodOffsetsNow = !nomjRemains || (todResetHp != null && todResetHp < 4.0 && todResetSdeltaMmol < 0.1) || stepsHigh
         // A positive TOD offset delays/limits SMB, so remove that protection only when every
         // permissive signal agrees. Missing HP2 deliberately fails closed and preserves the offset.
@@ -8688,7 +8688,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // recentSteps30Minutes<=200 -- see e.g. the movementOk/activeMovement checks above) is
             // true. recentSteps30Minutes<=600 stays as the outer floor either way.
             val stepsOk = recentSteps30Minutes <= 600 &&
-                (recentSteps60Minutes <= 1000 || (recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100))
+                ((recentSteps60Minutes <= 1000 && recentSteps180Minutes < 1000) || (recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100))  // or S180 >= 1000 (2026-11-22, per explicit request)
             if (g >= 81.1 /* 4.5 mmol */
                 && cannulaOrStateOk
                 && stepsOk
@@ -8965,7 +8965,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         if (readyToRun("ExerciseLimitAcce", 30)) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            if (g >= 126.1 /* 7.0 mmol */ && d >= 7.2 /* 0.4 mmol */ && recentSteps60Minutes >= 1000) {
+            if (g >= 126.1 /* 7.0 mmol */ && d >= 7.2 /* 0.4 mmol */ && (recentSteps60Minutes >= 1000 || recentSteps180Minutes >= 1000)) {  // or S180 >= 1000 (2026-11-22, per explicit request)
                 uiInteraction.addNotification(id = 9008, text = "_____ST601k", level = Notification.URGENT)
                 addGraphAnnouncement("_____ST601k")
                 sendSms("Exercise limit Acce")
@@ -10165,7 +10165,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val iob = iobData.iob
-            if (recentSteps60Minutes >= 1000 && iob <= 4.0 && iob >= 2.0
+            if ((recentSteps60Minutes >= 1000 || recentSteps180Minutes >= 1000) && iob <= 4.0 && iob >= 2.0  // or S180 >= 1000 (2026-11-22, per explicit request)
                 && g <= 144.1 /* 8.0 mmol */ && d >= 9.0 /* 0.5 mmol */ && mealData.mealCOB == 0.0) {
                 sendSms("Steps Steroids OFF")
                 setAutomationState("Steroids", "Steroids Off")
