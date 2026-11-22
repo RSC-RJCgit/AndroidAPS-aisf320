@@ -25,6 +25,7 @@ import app.aaps.core.interfaces.configuration.PLUGIN_SETTLE_WAIT
 import app.aaps.core.interfaces.db.VacuumResult
 import app.aaps.core.interfaces.di.MetroMemberInjector
 import app.aaps.core.interfaces.logging.LTag
+import app.aaps.core.objects.wizard.PendingFollowUps
 import app.aaps.core.interfaces.notifications.NotificationAction
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
@@ -525,6 +526,13 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
         )
         postSetupNotifications()
         KeepAliveWorker.schedule(this@MainApp)
+        // 2026-11-22, per explicit request: protein/fat, carb split and delayed bolus checks still waiting survive a restart. Taken
+        // now, before anything can record a bolus; handed back after a minute, when the pump, glucose and loop have started.
+        val pendingFollowUps = PendingFollowUps.restoreAtStart(preferences)
+        if (pendingFollowUps.isNotEmpty()) handler.postDelayed({
+            val resumed = PendingFollowUps.resumeAll(pendingFollowUps) { metroGraphs.bolusWizard }
+            aapsLogger.info(LTag.CORE, "Resumed $resumed pending follow-up checks after the restart")
+        }, 60000)
         if (config.AAPSCLIENT) {
             SmsCommunicatorWorker.cancelLegacyClientInboxRecovery(this@MainApp)
         }

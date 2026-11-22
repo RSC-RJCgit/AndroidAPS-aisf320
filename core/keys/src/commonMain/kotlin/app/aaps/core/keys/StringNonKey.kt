@@ -196,5 +196,7 @@ enum class StringNonKey(
      * on it like the remembered ticks (2026-11-12, per explicit request). An unknown name reads as BREAD.
      */
     WizardCarbsType("wizard_carbs_type", "BREAD"),
+    /** Protein/fat, carb split and delayed bolus checks still waiting, as JSON, so they survive a restart (2026-11-22, see PendingFollowUps). */
+    WizardPendingFollowUps("wizard_pending_follow_ups", "", exportable = false),
 
 }

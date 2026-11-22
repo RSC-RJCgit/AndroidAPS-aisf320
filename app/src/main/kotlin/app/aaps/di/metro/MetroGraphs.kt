@@ -51,6 +51,7 @@ import app.aaps.core.interfaces.widget.WidgetUpdater
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.crypto.CryptoUtil
 import app.aaps.core.objects.di.CoreObjectsGraph
+import app.aaps.core.objects.wizard.BolusWizard
 import app.aaps.core.objects.workflow.MetroWorkerCreator
 import app.aaps.database.AppRepository
 import app.aaps.database.di.DatabaseConfig
@@ -245,6 +246,8 @@ class MetroGraphs(
     val objectives: Objectives get() = root.objectivesPlugin
 
     val profileFunction: ProfileFunction get() = root.profileFunction
+    /** A new calculator each time (unscoped), for the follow-up checks resumed after a restart (2026-11-22, see PendingFollowUps). */
+    val bolusWizard: BolusWizard get() = root.bolusWizard
     val versionCheckerUtils: VersionCheckerUtils get() = root.versionCheckerUtils
     val nsIncomingDataProcessor: NsIncomingDataProcessor get() = root.nsIncomingDataProcessor
     val automation: Automation get() = root.automation

@@ -51,6 +51,16 @@ import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.runningMode.PumpCommandGate
 import app.aaps.core.objects.runningMode.RunningModeGuard
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -580,10 +590,37 @@ class BolusWizard(
         label: String,
         initialDueAt: Long = firstDueAt,
         allowProfile50: Boolean = false,
+        deferralNotedAtStart: Boolean = false,
+    ) {
+        // 2026-11-22, per explicit request: saved while it waits, so it survives an app restart (see PendingFollowUps). A dose that
+        // ends normally is removed; one the app was killed in stays saved and is taken back at the next start.
+        val pendingKey = PendingFollowUps.newKey(token, "fpu")
+        runWarsawDoseChecks(planned, iobBaseline, source, token, firstDueAt, nextDueAt, retryLater, label, initialDueAt, allowProfile50, deferralNotedAtStart, pendingKey)
+        PendingFollowUps.remove(preferences, pendingKey)
+    }
+
+    private suspend fun runWarsawDoseChecks(
+        planned: Double,
+        iobBaseline: Double,
+        source: Sources,
+        token: Long,
+        firstDueAt: Long,
+        nextDueAt: Long?,
+        retryLater: Boolean,
+        label: String,
+        initialDueAt: Long,
+        allowProfile50: Boolean,
+        deferralNotedAtStart: Boolean,
+        pendingKey: String,
     ) {
         var dueAt = initialDueAt
-        var deferralNoted = false
+        var deferralNoted = deferralNotedAtStart
         while (true) {
+            if (trioLater == null) PendingFollowUps.save(preferences, pendingKey, pendingEntry("fpu", token, source) {
+                put("planned", planned); put("iobBaseline", iobBaseline); put("firstDueAt", firstDueAt); nextDueAt?.let { put("nextDueAt", it) }
+                put("retryLater", retryLater); put("label", label); put("dueAt", dueAt); put("allowProfile50", allowProfile50)
+                put("deferralNoted", deferralNoted)
+            })
             // Wait for the due time in steps of at most 2 minutes, so a newer confirm cancels this dose at once.
             while (true) {
                 if (!WarsawScheduleGate.isCurrent(token)) {
@@ -613,13 +650,16 @@ class BolusWizard(
             // 2026-11-20, per explicit request: only super heavy activity cancels; it cancels this part and the meal's parts
             // still waiting. Walking, activity and heavy activity only cut each part as it comes due (tryDeliverWarsawDose).
             if (superHeavyNow()) {
-                SuperHeavyFpuCancel.cancel(token)
+                PendingFollowUps.saveSuperHeavyCancel(preferences, token)
                 val why = "super heavy activity (steps)"
                 aapsLogger.info(LTag.CORE, "Warsaw dose $label: $why, cancelling $planned U and the FPU parts still waiting")
                 warsawNote("C", planned, why, source, fpuWhat(label, planned))
                 recordCancelledDose(label, planned, why, iobBaseline, source, useIobRise = false)
                 return
             }
+            // Unsaved before the dose can reach the pump, so an app killed during the bolus can never give it twice. A deferral
+            // saves it again at the top of the loop.
+            PendingFollowUps.remove(preferences, pendingKey)
             val reason = tryDeliverWarsawDose(planned, iobBaseline, source, allowProfile50) { remaining, nextBaseline ->
                 appScope.launch {
                     val now = dateUtil.now()
@@ -934,22 +974,90 @@ class BolusWizard(
     }
 
     private fun launchDelayedCheck(plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double, dueAt: Long) {
+        // 2026-11-22, per explicit request: saved until this check ends, so it survives an app restart (see PendingFollowUps)
+        val pendingKey = PendingFollowUps.newKey(token, "delayed")
+        val entry = if (trioLater != null) null else pendingEntry("delayed", token, source) {
+            put("heldBy", plan.heldBy.name); put("heldUnits", plan.heldUnits); put("carbs", plan.carbs); put("planIc", plan.ic)
+            put("fromStandardProfile", plan.fromStandardProfile); put("attempt", attempt); put("deliveredSoFar", deliveredSoFar); put("dueAt", dueAt)
+        }
         appScope.launch {
-            // In steps of at most 2 minutes, so a newer delayed bolus stops this one at once
-            while (true) {
-                if (!DelayedScheduleGate.isCurrent(token)) {
-                    delayedNote("Db${DelayedBolus.checkMinutes(attempt)} replaced by a newer delayed bolus", source)
-                    return@launch
-                }
-                val wait = dueAt - dateUtil.now()
-                if (wait <= 0L) break
-                delay(min(wait, 120_000L))
-            }
-            runDelayedCheck(plan, source, token, attempt, deliveredSoFar)
+            entry?.let { PendingFollowUps.save(preferences, pendingKey, it) }
+            waitAndRunDelayedCheck(plan, source, token, attempt, deliveredSoFar, dueAt, pendingKey)
+            PendingFollowUps.remove(preferences, pendingKey)
         }
     }
 
-    private suspend fun runDelayedCheck(plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double) {
+    private suspend fun waitAndRunDelayedCheck(
+        plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double, dueAt: Long, pendingKey: String
+    ) {
+        // In steps of at most 2 minutes, so a newer delayed bolus stops this one at once
+        while (true) {
+            if (!DelayedScheduleGate.isCurrent(token)) {
+                delayedNote("Db${DelayedBolus.checkMinutes(attempt)} replaced by a newer delayed bolus", source)
+                return
+            }
+            val wait = dueAt - dateUtil.now()
+            if (wait <= 0L) break
+            delay(min(wait, 120_000L))
+        }
+        runDelayedCheck(plan, source, token, attempt, deliveredSoFar, pendingKey)
+    }
+
+    /** What every saved check carries besides its own arguments: kind, schedule token, source and the bolus time its notes use. */
+    private fun pendingEntry(kind: String, token: Long, source: Sources, fill: JsonObjectBuilder.() -> Unit): JsonObject = buildJsonObject {
+        put("kind", kind); put("token", token); put("source", source.name); put("bolusTime", timeStamp)
+        fill()
+    }
+
+    /**
+     * Takes back one check saved before an app restart (2026-11-22, per explicit request, see PendingFollowUps) and starts it
+     * exactly where it was. All the usual checks run when it is due; one whose window ended while the app was down is cancelled
+     * with its usual note.
+     */
+    fun resumePendingPart(entry: JsonObject) {
+        fun d(k: String) = entry[k]?.jsonPrimitive?.doubleOrNull ?: 0.0
+        fun l(k: String) = entry[k]?.jsonPrimitive?.longOrNull ?: 0L
+        fun i(k: String) = entry[k]?.jsonPrimitive?.intOrNull ?: 0
+        fun b(k: String, default: Boolean) = entry[k]?.jsonPrimitive?.booleanOrNull ?: default
+        fun s(k: String) = entry[k]?.jsonPrimitive?.contentOrNull ?: ""
+        l("bolusTime").takeIf { it > 0L }?.let { timeStamp = it }
+        val source = Sources.entries.firstOrNull { it.name == s("source") } ?: Sources.WizardDialog
+        val token = l("token")
+        when (s("kind")) {
+            "fpu"     -> {
+                aapsLogger.info(LTag.CORE, "Warsaw dose ${s("label")}: resumed after an app restart, ${d("planned")} U")
+                appScope.launch {
+                    runWarsawDose(
+                        d("planned"), d("iobBaseline"), source, token, l("firstDueAt"), entry["nextDueAt"]?.jsonPrimitive?.longOrNull,
+                        b("retryLater", true), s("label"), initialDueAt = l("dueAt"), allowProfile50 = b("allowProfile50", false),
+                        deferralNotedAtStart = b("deferralNoted", false)
+                    )
+                }
+            }
+            "split"   -> {
+                aapsLogger.info(LTag.CORE, "Split leftover resumed after an app restart, ${d("remaining")} U left")
+                launchSplitPart(
+                    d("remaining"), d("previousPart"), d("iobBaseline"), token, source, l("deliverAt"), l("deadline"), i("unsafeCount"),
+                    i("intervalMinutes"), i("unsafeLimit"), b("walkingCutAllowed", true)
+                )
+            }
+            "delayed" -> {
+                val heldBy = DelayedHeldBy.entries.firstOrNull { it.name == s("heldBy") }
+                if (heldBy == null) {
+                    aapsLogger.error(LTag.CORE, "Delayed bolus check not resumed, unknown hold: $entry")
+                    return
+                }
+                aapsLogger.info(LTag.CORE, "Delayed bolus check ${i("attempt")} resumed after an app restart")
+                launchDelayedCheck(
+                    DelayedBolusPlan(heldBy, d("heldUnits"), i("carbs"), d("planIc"), b("fromStandardProfile", true)),
+                    source, token, i("attempt"), d("deliveredSoFar"), l("dueAt")
+                )
+            }
+            else      -> aapsLogger.error(LTag.CORE, "Pending follow-up check of unknown kind dropped: $entry")
+        }
+    }
+
+    private suspend fun runDelayedCheck(plan: DelayedBolusPlan, source: Sources, token: Long, attempt: Int, deliveredSoFar: Double, pendingKey: String) {
         val minutes = DelayedBolus.checkMinutes(attempt)
         val db = "Db$minutes"
         val left = max(0.0, plan.heldUnits - deliveredSoFar)
@@ -1013,6 +1121,8 @@ class BolusWizard(
                 "walking x$walkFactor, insulinReq-limited=$insulinReqLimited)"
         )
         delayedNote("$db ${warsawNoteAmount(capped)} U${if (continues) ", insulinReq-limited, the rest checked again in ${DelayedBolus.POLL_MINUTES} min" else ""}", source)
+        // Unsaved before the dose can reach the pump, so an app killed during the bolus can never give it twice
+        PendingFollowUps.remove(preferences, pendingKey)
         deliverLaterDose(capped, source, rh.gs(InterfacesStrings.wizard_delayed_dose, minutes, plan.heldBy.text), "Delayed bolus") {
             preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
             if (continues) launchDelayedCheck(plan, source, token, attempt + 1, deliveredSoFar + capped, dateUtil.now() + DelayedBolus.POLL_MINUTES * 60_000L)
@@ -1117,23 +1227,51 @@ class BolusWizard(
     ) {
         val step = ch.bolusStep(previousPart)
         if (remaining < step / 2.0) return
+        // 2026-11-22, per explicit request: saved until this check ends, so it survives an app restart (see PendingFollowUps)
+        val pendingKey = PendingFollowUps.newKey(token, "split")
+        val entry = if (trioLater != null) null else pendingEntry("split", token, source) {
+            put("remaining", remaining); put("previousPart", previousPart); put("iobBaseline", iobBaseline); put("deliverAt", deliverAt)
+            put("deadline", deadline); put("unsafeCount", unsafeCount); put("intervalMinutes", intervalMinutes); put("unsafeLimit", unsafeLimit)
+            put("walkingCutAllowed", walkingCutAllowed)
+        }
         appScope.launch {
+            entry?.let { PendingFollowUps.save(preferences, pendingKey, it) }
+            runSplitCheck(remaining, previousPart, iobBaseline, token, source, deliverAt, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed, step, pendingKey)
+            PendingFollowUps.remove(preferences, pendingKey)
+        }
+    }
+
+    private suspend fun runSplitCheck(
+        remaining: Double,
+        previousPart: Double,
+        iobBaseline: Double,
+        token: Long,
+        source: Sources,
+        deliverAt: Long,
+        deadline: Long,
+        unsafeCount: Int,
+        intervalMinutes: Int,
+        unsafeLimit: Int,
+        walkingCutAllowed: Boolean,
+        step: Double,
+        pendingKey: String,
+    ) {
             val wait = (deliverAt - dateUtil.now()).coerceAtLeast(1_000L)
             delay(min(wait, 120_000L))
             if (!SplitScheduleGate.isCurrent(token)) {
                 // Only the note, for the same reason as the Warsaw doses above.
                 warsawNote("C", remaining, "superseded by newer entry", source, splitCancelWhat(remaining))
-                return@launch
+                return
             }
             val now = dateUtil.now()
             if (now < deliverAt) {
                 launchSplitPart(remaining, previousPart, iobBaseline, token, source, deliverAt, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed)
-                return@launch
+                return
             }
             if (now > deadline) {
                 aapsLogger.info(LTag.CORE, "Split leftover cancelled: time limit passed with ${remaining} U left")
                 cancelSplitPart(remaining, "time limit passed", iobBaseline, source)
-                return@launch
+                return
             }
             suspend fun holdThisCheck(reason: String) {
                 aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${remaining} U left")
@@ -1146,12 +1284,12 @@ class BolusWizard(
             val profile = profileFunction.getProfile()
             if (profile == null || profileSwitchPercent(profile) < 100) {
                 holdThisCheck("profile missing or under 100%")
-                return@launch
+                return
             }
             // No pump on this phone when the doses go to Trio: only the superbolus check applies
             if (loop.runningMode() == RM.Mode.SUPER_BOLUS || (trioLater == null && runningModeGuard.rejectionMessage(PumpCommandGate.CommandKind.BOLUS) != null)) {
                 holdThisCheck("pump will not take a bolus")
-                return@launch
+                return
             }
             val hpAt = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)
             val hpValue = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
@@ -1161,12 +1299,12 @@ class BolusWizard(
             when (hpCheck) {
                 SplitHpCheck.Hold -> {
                     holdThisCheck("HP1 below 4.0 mmol/L")
-                    return@launch
+                    return
                 }
                 SplitHpCheck.Wait -> {
                     aapsLogger.info(LTag.CORE, "Split leftover waiting: HP1 missing or stale, ${remaining} U left")
                     launchSplitPart(remaining, previousPart, iobBaseline, token, source, now + 120_000L, deadline, unsafeCount, intervalMinutes, unsafeLimit, walkingCutAllowed)
-                    return@launch
+                    return
                 }
                 SplitHpCheck.Allow -> Unit
             }
@@ -1204,7 +1342,7 @@ class BolusWizard(
                     val walkingCut = Round.roundTo(max(0.0, budget.dose - partDose), 0.001)
                     val cappedDose = cappedFollowUpDose(partDose, step)
                     val dose = cappedDose ?: 0.0
-                    if (reducedRemaining < step / 2.0) return@launch
+                    if (reducedRemaining < step / 2.0) return
                     if (dose <= 0.0) {
                         val reason = if (cappedDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                         aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${reducedRemaining} U left")
@@ -1217,11 +1355,13 @@ class BolusWizard(
                             now + (if (budget.dose > 0.0) 120_000L else intervalMinutes * 60_000L), deadline, 0, intervalMinutes, unsafeLimit,
                             walkingCutAllowed,
                         )
-                        return@launch
+                        return
                     }
                     if (walkFactor < 1.0)
                         aapsLogger.info(LTag.CORE, "Split leftover part: ${delayedDoseWalkingLevel(walkFactor)} (steps), part x$walkFactor, $walkingCut U dropped")
                     val leftAfterPart = Round.roundTo(max(0.0, reducedRemaining - dose - walkingCut), 0.001)
+                    // Unsaved before the dose can reach the pump, so an app killed during the bolus can never give it twice
+                    PendingFollowUps.remove(preferences, pendingKey)
                     deliverLaterDose(dose, source, rh.gs(InterfacesStrings.wizard_split_leftover, leftAfterPart, intervalMinutes), "Split leftover part") {
                         preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
                         val left = leftAfterPart
@@ -1244,7 +1384,6 @@ class BolusWizard(
                     }
                 }
             }
-        }
     }
 
     /**

@@ -89,7 +89,13 @@ internal object DelayedScheduleGate {
 
     private val generation = AtomicLong(0)
 
-    fun next(): Long = generation.addAndFetch(1)
+    /** Told every new token, so it can be saved over a restart (2026-11-22, see PendingFollowUps). */
+    @kotlin.concurrent.Volatile var onNext: ((Long) -> Unit)? = null
+
+    fun next(): Long = generation.addAndFetch(1).also { onNext?.invoke(it) }
 
     fun isCurrent(token: Long): Boolean = generation.load() == token
+
+    /** At app start: carry on from the token saved before the restart. Does nothing once a token was handed out since. */
+    fun restore(saved: Long): Boolean = saved > 0 && generation.compareAndSet(0, saved)
 }

@@ -148,5 +148,11 @@ enum class LongNonKey(
 
     // A delayed bolus (DelayedBolus) is waiting until this time; 0 when none. ActivityOff reads it. Local only.
     WizardDelayedBolusPendingUntil("wizard_delayed_bolus_pending_until", 0L, exportable = false),
+    // The newest schedule token of the protein/fat, carb split and delayed bolus series, and the one super heavy activity
+    // cancelled, kept over a restart (2026-11-22, see PendingFollowUps). Local only.
+    WizardWarsawScheduleToken("wizard_warsaw_schedule_token", 0L, exportable = false),
+    WizardSplitScheduleToken("wizard_split_schedule_token", 0L, exportable = false),
+    WizardDelayedScheduleToken("wizard_delayed_schedule_token", 0L, exportable = false),
+    WizardSuperHeavyCancelledToken("wizard_super_heavy_cancelled_token", 0L, exportable = false),
 }
 
