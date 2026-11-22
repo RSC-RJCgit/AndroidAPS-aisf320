@@ -17,7 +17,8 @@ import kotlin.time.Duration.Companion.days
  *
  * They are only queued for the Nightscout upload, but they were kept six months like everything else.
  * Together with the APS results that made a database of 1.6 GB, and its VACUUM failed with "out of
- * memory" on every start. The APS results must keep the normal limit: they will be used later.
+ * memory" on every start. The APS results keep more than device statuses: since 2026-11-22 their own
+ * [AppRepository.APS_RESULT_KEEP_DAYS].
  */
 class DeviceStatusCleanupTest {
 
@@ -47,6 +48,20 @@ class DeviceStatusCleanupTest {
         assertThat(database.deviceStatusDao.findById(oldStatus)).isNull()
         // An APS result of the same age stays: it falls under the six months of everything else.
         assertThat(database.apsResultDao.findById(oldResult)).isNotNull()
+    }
+
+    @Test
+    fun `APS results keep only their own limit of days`() = runTest {
+        val now = Clock.System.now().toEpochMilliseconds()
+        val keep = AppRepository.APS_RESULT_KEEP_DAYS.days.inWholeMilliseconds
+        val oneDay = 1.days.inWholeMilliseconds
+        val recentResult = database.apsResultDao.insert(apsResult(now - keep + oneDay))
+        val oldResult = database.apsResultDao.insert(apsResult(now - keep - oneDay))
+
+        repository.cleanupDatabase(than = now - (6 * 31).days.inWholeMilliseconds, deleteTrackedChanges = false)
+
+        assertThat(database.apsResultDao.findById(recentResult)).isNotNull()
+        assertThat(database.apsResultDao.findById(oldResult)).isNull()
     }
 
     private fun deviceStatus(timestamp: Long) = DeviceStatus(timestamp = timestamp, uploaderBattery = 50, isCharging = false)

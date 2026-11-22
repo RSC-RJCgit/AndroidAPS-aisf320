@@ -203,7 +203,11 @@ class AppRepository internal constructor(
     suspend fun cleanupDatabase(than: Long, deleteTrackedChanges: Boolean): String {
         database.useWriterConnection { connection -> connection.usePrepared("PRAGMA optimize") { it.step() } }
         val removed = mutableListOf<Pair<String, Int>>()
-        removed.add(Pair("APSResult", database.apsResultDao.deleteOlderThan(than)))
+        // 2026-11-22, per explicit request: APS results (one per loop, with large JSON) only [APS_RESULT_KEEP_DAYS] days.
+        // Live's v3 database reached 11.77 GB with 186 days of them and device statuses, and every query got ~10x slower.
+        // Nothing reads them further back than about 30 hours. Real clock, as for device statuses below.
+        val apsResultThan = maxOf(than, Clock.System.now().toEpochMilliseconds() - APS_RESULT_KEEP_DAYS.days.inWholeMilliseconds)
+        removed.add(Pair("APSResult", database.apsResultDao.deleteOlderThan(apsResultThan)))
         removed.add(Pair("GlucoseValue", database.glucoseValueDao.deleteOlderThan(than)))
         removed.add(Pair("TherapyEvent", database.therapyEventDao.deleteOlderThan(than)))
         removed.add(Pair("TemporaryBasal", database.temporaryBasalDao.deleteOlderThan(than)))
@@ -219,7 +223,7 @@ class AppRepository internal constructor(
         // keep at least one permanent PS
         if (database.profileSwitchDao.getProfileSwitchDataFromTime(than + 1).any { it.duration == 0L })
             removed.add(Pair("ProfileSwitch", database.profileSwitchDao.deleteOlderThan(than)))
-        removed.add(Pair("ApsResult", database.apsResultDao.deleteOlderThan(than)))
+        removed.add(Pair("ApsResult", database.apsResultDao.deleteOlderThan(apsResultThan)))
         // keep version history database.versionChangeDao.deleteOlderThan(than)
         removed.add(Pair("UserEntry", database.userEntryDao.deleteOlderThan(than)))
         removed.add(Pair("PreferenceChange", database.preferenceChangeDao.deleteOlderThan(than)))
@@ -1042,6 +1046,9 @@ class AppRepository internal constructor(
 
         /** How many days of device statuses [cleanupDatabase] keeps, whatever cutoff it is given. */
         const val DEVICE_STATUS_KEEP_DAYS = 2L
+
+        /** How many days of APS results [cleanupDatabase] keeps, whatever cutoff it is given (2026-11-22). */
+        const val APS_RESULT_KEEP_DAYS = 30L
 
         /** How many days of APS results [vacuumDatabase] keeps when it has to make room. */
         const val VACUUM_TRIM_KEEP_DAYS = 2L

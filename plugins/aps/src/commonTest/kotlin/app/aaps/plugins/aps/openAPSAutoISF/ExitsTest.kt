@@ -39,6 +39,16 @@ class ExitsTest {
     }
 
     @Test
+    fun tt57Off3NeedsBg5() {
+        fun off3At(bg: Double) = tt57FullExit(
+            ready = true, ttMgdl = 5.7 * 18.0182, bg = bg, delta = 2.0, shortDelta = 0.0,
+            longDelta = 0.0, iob = 0.5, cob = 0.0, ukfDelta5 = 2.0, steps15 = 0, steps30 = 0, steps60 = 0,
+        )
+        assertNull(off3At(4.8 * 18.0182))
+        assertEquals("off3", off3At(5.1 * 18.0182))
+    }
+
+    @Test
     fun tt57LightExitWhenTheFullOnesMiss() {
         assertNull(tt57FullExit(
             ready = true, ttMgdl = 5.7 * 18.0182, bg = 150.0, delta = -20.0, shortDelta = -20.0,

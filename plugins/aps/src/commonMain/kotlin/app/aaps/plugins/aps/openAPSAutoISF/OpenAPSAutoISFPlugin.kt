@@ -2973,7 +2973,7 @@ open class OpenAPSAutoISFPlugin(
             running == currentStandard && running != currentLow -> targetStandard
             else -> ""
         }
-        if (switchedTo.isNotBlank() && !switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C")) return
+        if (switchedTo.isNotBlank() && !switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C", reassertSame = true)) return
         val previousLow = role?.let { lowRungs.getOrNull(it.index) }?.takeIf { profiles.getSpecificProfile(it) != null } ?: currentLow
         val previousStandard = role?.let { standardRungs.getOrNull(it.index) }?.takeIf { profiles.getSpecificProfile(it) != null } ?: currentStandard
         preferences.put(StringNonKey.ApsAutoIsfStuckHighPrevLow, previousLow)
@@ -3008,7 +3008,7 @@ open class OpenAPSAutoISFPlugin(
             running == escalatedStandard && restoredStandard.isNotBlank() -> restoredStandard
             else -> ""
         }
-        if (switchedTo.isNotBlank() && !switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C off")) return
+        if (switchedTo.isNotBlank() && !switchToStandardFor(switchedTo, 0, now, "AutoISF: stuck high tier C off", reassertSame = true)) return
         val newLow = restoredLow.ifBlank { escalatedLow }
         val newStandard = restoredStandard.ifBlank { escalatedStandard }
         val index = sharedRoleLadderIndex(newStandard, newLow, standardLadderNames(), lowLadderNames())
@@ -3244,11 +3244,11 @@ open class OpenAPSAutoISFPlugin(
         val wrote = stepSharedRung(now, step.index, step.switchRunning)
         if (step.thenStandard && wrote) {
             val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
-            if (standardName.isNotBlank()) switchToStandardFor(standardName, 0, now, "AutoISF: profile batch up")
+            if (standardName.isNotBlank()) switchToStandardFor(standardName, 0, now, "AutoISF: profile batch up", reassertSame = true)
         }
         if (step.thenLow) {
             val lowName = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
-            if (lowName.isNotBlank()) switchToStandardFor(lowName, 0, now, "AutoISF: profile batch down")
+            if (lowName.isNotBlank()) switchToStandardFor(lowName, 0, now, "AutoISF: profile batch down", reassertSame = true)
         }
         if (!wrote) return false
         runMarks.mark(RunMark.PROFILE_BATCH_STEP, now)
@@ -3483,7 +3483,10 @@ open class OpenAPSAutoISFPlugin(
             sendAutoSms("CarbsStopTT [b$stop57]: g=${decimals(bg / 18.016, 1)} tt=${decimals((active?.lowTarget ?: 0.0) / 18.016, 1)}", noteTag = true)
             carePortalNote("Coff2-$stop57", smsText = lastSmsText)
         }
-        val th = carbsThOffBlock(
+        // 2026-11-22, per explicit request: not while Set50%/Extra50% has just acted (LowBG 50recent). On Live v3 22 Nov 02:16:26 it
+        // fired 51 s after Set50% (whose 50% was not effective yet), put Standard at 100% and cleared LowBG - the overnight
+        // Set50 <-> reset flip-flop, 4 profile switches in 2.5 min.
+        val th = if (statesOn && store.inState("LowBG", "50recent")) null else carbsThOffBlock(
             ready = runMarks.ready(RunMark.CARBS_TH_OFF, 5, now),
             profilePercent = profilePercent,
             ttActive = persistenceLayer.getTemporaryTargetActiveAt(now) != null,
@@ -3497,7 +3500,10 @@ open class OpenAPSAutoISFPlugin(
         )
         if (th != null) {
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
-            switchToStandardAtSharedTier(now, 30)
+            // Not 22:00-06:00 (2026-11-22, per explicit request): the night stays on the Low profile, which the night rules otherwise
+            // switched straight back to. The rest still applies.
+            val minuteOfDay = Instant.fromEpochMilliseconds(now).toLocalDateTime(AppTimeZone.current()).let { it.hour * 60 + it.minute }
+            if (!minuteInWindow(minuteOfDay, 22 * 60, 6 * 60)) switchToStandardAtSharedTier(now, 30)
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
             restoreSmbBaselineUnlessBoosted()
@@ -4333,7 +4339,7 @@ open class OpenAPSAutoISFPlugin(
         val now = dateUtil.now()
         if (turnOn == true) setNamedState("Steroids", "SteroidsON")
         if (turnOn == false) setNamedState("Steroids", "Steroids Off")
-        writeNamedPercent(now, preferences.get(nameKey), 100, 0, note)
+        writeNamedPercent(now, preferences.get(nameKey), 100, 0, note, reassertSame = true)
         preferences.put(IntKey.ApsAutoIsfIobThPercent, iobTh)
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, weight)
         sendAutoSms(sms, noteTag = true)
@@ -4431,7 +4437,7 @@ open class OpenAPSAutoISFPlugin(
         if (active.percentage == 100 && roleIndex in 1..7) {
             val roleKey = setRoleKeyForIndex(roleIndex)
             if (roleKey != null && applySetRole(roleKey, active.profileName)) {
-                writeNamedPercent(now, active.profileName, 100, 0, "SetRole")
+                writeNamedPercent(now, active.profileName, 100, 0, "SetRole", reassertSame = true)
                 sendAutoSms("SetRole(dur): ${roleKey.key} -> ${active.profileName}", noteTag = true)
                 carePortalNote("RoleSet", smsText = lastSmsText)
             }
@@ -5611,7 +5617,7 @@ open class OpenAPSAutoISFPlugin(
         }
         if (switchRunning && target.isNotBlank()) {
             // The effective-profile event updates Current roles and their delivery band after activation.
-            return switchToStandardFor(target, 0, now, "AutoISF: morning role")
+            return switchToStandardFor(target, 0, now, "AutoISF: morning role", reassertSame = true)
         }
         // An explicit role-only action can still repick the roles while another profile is running.
         writeSharedRoleNames(index, newLow, newStandard)
@@ -6049,8 +6055,9 @@ open class OpenAPSAutoISFPlugin(
         return name.takeIf { it.isNotBlank() && profileRepository.profile.value?.getSpecificProfile(it) != null } ?: running
     }
 
-    private suspend fun writeNamedPercent(now: Long, name: String, percent: Int, minutes: Int, note: String): Boolean {
+    private suspend fun writeNamedPercent(now: Long, name: String, percent: Int, minutes: Int, note: String, reassertSame: Boolean = false): Boolean {
         val trimmed = name.trim()
+        if (percent == 100 && minutes == 0 && !reassertSame && runsPermanentlyAt100(trimmed)) return true
         val values = listOf(ValueWithUnit.Percent(percent), ValueWithUnit.Minute(minutes))
         if (trimmed.isBlank()) {
             return profileFunction.createProfileSwitch(
@@ -6082,7 +6089,8 @@ open class OpenAPSAutoISFPlugin(
     }
 
     private suspend fun writeProfilePercent(percent: Int, minutes: Int, note: String): Boolean =
-        profileFunction.createProfileSwitch(
+        if (percent == 100 && minutes == 0 && runsPermanentlyAt100("")) true
+        else profileFunction.createProfileSwitch(
             durationInMinutes = minutes,
             percentage = percent,
             timeShiftInHours = 0,
@@ -6265,8 +6273,9 @@ open class OpenAPSAutoISFPlugin(
         val store = profileRepository.profile.value ?: return false
         if (store.getSpecificProfile(newLow) == null || store.getSpecificProfile(newStandard) == null) return false
         val target = if (toLow) newLow else newStandard
-        // The same base name may still be at 50/120% or have a pending expiry. Always write the requested 100% switch.
-        return switchToStandardFor(target, minutes, now, note)
+        // The same base name may still be at 50/120% or have a pending expiry; those still switch. When it already runs permanently at
+        // 100% it switches only if the role names change, since the effective-profile event writes them (2026-11-22).
+        return switchToStandardFor(target, minutes, now, note, reassertSame = newLow != lowCurrent || newStandard != standardCurrent)
     }
 
     // Standard and Low role writes stay on Steroids Off. This does not turn steroids on.
@@ -6379,11 +6388,15 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // Switches to [profileName] at 100% for [minutes]. A zero duration has no end time. Returns false when the name is missing.
-    private suspend fun switchToStandardFor(profileName: String, minutes: Int, now: Long, note: String = "AutoISF: high night"): Boolean {
+    // [reassertSame] true: switch even when it already runs permanently at 100% (the roles follow the effective-profile event).
+    private suspend fun switchToStandardFor(
+        profileName: String, minutes: Int, now: Long, note: String = "AutoISF: high night", reassertSame: Boolean = false
+    ): Boolean {
         if (profileName.isBlank()) return false
         val iCfg = profileFunction.getRunningOrRequestedICfg() ?: return false
         val store = profileRepository.profile.value ?: return false
         if (store.getSpecificProfile(profileName) == null) return false
+        if (minutes == 0 && !reassertSame && runsPermanentlyAt100(profileName)) return true
         val units = mutableListOf<ValueWithUnit>(
             ValueWithUnit.SimpleString(profileName),
             ValueWithUnit.Percent(100),
@@ -6402,6 +6415,23 @@ open class OpenAPSAutoISFPlugin(
             listValues = units,
             iCfg = iCfg,
         ) != null
+    }
+
+    /**
+     * True when [name] (blank: the running profile) already runs permanently at 100% with no change pending. 2026-11-22, per explicit
+     * request (fixes B and C2 from v3): a permanent 100% switch to it changed nothing, yet wrote a switch, sent the basal program to
+     * the pod and started autosens reruns (Live v3 22 Nov: Profile70 at 01:38:51 and again at 01:39:14; Extra50% at 02:17:58).
+     * The 100% helpers then return true without a new switch. A timed switch or another percentage still goes through.
+     */
+    private suspend fun runsPermanentlyAt100(name: String): Boolean {
+        val running = (profileFunction.getProfile() as? ProfileSealed.EPS)?.value ?: return false
+        if (profileFunction.isProfileChangePending()) return false
+        val runningName = profileFunction.getOriginalProfileName()
+        val target = name.trim().ifBlank { runningName }
+        val same = runningName == target && running.originalPercentage == 100 &&
+            running.originalTimeshift == 0L && running.originalDuration == 0L
+        if (same) aapsLogger.debug(LTag.APS, "$target already runs at 100% - no new switch")
+        return same
     }
 
     // A falling glucose on a 100% profile. The night FastRise skip stays closed until glucose recovers.

@@ -36,7 +36,9 @@ internal fun tt57FullExit(
 ): String? {
     if (!ready || ttMgdl == null || !ttNear(ttMgdl, 5.7, 0.1)) return null
     val off2 = bg >= 108.1 && delta >= -4.50 && shortDelta >= -4.50
-    val off3 = cob <= 4.0 && bg >= 81.1 && iob <= 0.8 && ukfDelta5 >= 1.8 && delta >= 1.8
+    // 2026-11-22, per explicit request: floor 5.0 mmol (90.1, was 4.5). Live's 183 off3 resets since Aug: 136 at BG 4.5-5.0, after which
+    // BG fell below 4.5 within an hour 12.5% of the time and Set50 fired again within 30 min 27 times (the overnight 50% <-> 100% flip-flop).
+    val off3 = cob <= 4.0 && bg >= 90.1 && iob <= 0.8 && ukfDelta5 >= 1.8 && delta >= 1.8
     val off4 = bg >= 108.1 && delta >= 5.40 && shortDelta >= 3.60 && steps30 <= 300
     val off5 = bg > 108.1 && delta in 1.80..14.41 && shortDelta >= 1.80
     val off1 = bg <= 99.1 && delta in 9.01..14.41 && shortDelta in 0.90..14.41 && longDelta in 0.90..9.01 &&
