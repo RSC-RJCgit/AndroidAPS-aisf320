@@ -815,6 +815,24 @@ fun GraphsSection(
                     }
                 if (anyZoomMoved) lastZoomChangeMs[0] = tickMs
                 val zoomSettling = tickMs - lastZoomChangeMs[0] < ZOOM_SETTLE_MS
+                // 2026-11-22, per explicit request: a pinch keeps the left edge in place, so zooming in pushed the current time off
+                // the right edge and left the graphs on past hours (iPhone 22 Nov 09:05, 09:42). When the current time was on
+                // screen before the pinch, put it back on the right edge at the new zoom and keep following it. Returns false when
+                // the current time was not on screen; the pinch then stays where the fingers left it, as before.
+                suspend fun keepNowAfterPinch(scrollBefore: Float, zoomBefore: Float): Boolean {
+                    val geometry = bgGeometry.value ?: return false
+                    if (range == null || fitWholeWindow || !scrollBefore.isFinite() || !zoomBefore.isFinite() || zoomBefore <= 0f) return false
+                    val shownBefore = geometry.minutesShown(zoomBefore) ?: return false
+                    val leftBefore = geometry.xAt(scrollBefore, zoomBefore)
+                    val nowX = timestampToX(now, range.first)
+                    if (!nowX.isFinite() || nowX < leftBefore || nowX > leftBefore + shownBefore + 1.0) return false
+                    graphViewModel.graphSyncLog("pinchKeepsNow", "now at $nowX min was on screen ($leftBefore..${leftBefore + shownBefore}) - back on the right edge")
+                    skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                    bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
+                    lastMainScroll = bgScrollState.value
+                    followNow = true
+                    return true
+                }
                 // The main graph moved. Its own effect already copies that place to the other graphs.
                 // A lower graph that is still on the old place is not a finger, so it must not pull the main graph back.
                 if (abs(bgScroll - lastMainScroll) > 1f) {
@@ -831,7 +849,7 @@ fun GraphsSection(
                         )
                         // 2026-10-21, per explicit request: a pinch on the main graph is the user's too. It kept "follow now" on, so the next
                         // reading moved the window back to the current time. A zoom made by code (the -/+ buttons) is not.
-                        if (recentTouch() && dateUtil.now() > skipInteractionUntilMs[0]) {
+                        if (recentTouch() && dateUtil.now() > skipInteractionUntilMs[0] && !keepNowAfterPinch(scrollBefore, lastMainZoom)) {
                             followNow = false
                             graphViewModel.onGraphInteraction()
                         }
@@ -942,7 +960,7 @@ fun GraphsSection(
                             "zoom $lastMainZoom -> $bgZoom scroll $lastMainScroll -> $bgScroll max=$bgMax followNow=$followNow " +
                                 "touch=${recentTouch()} ${bgGeometry.value?.describe(bgZoom) ?: "layout unknown"}"
                         )
-                        if (recentTouch() && dateUtil.now() > skipInteractionUntilMs[0]) {
+                        if (recentTouch() && dateUtil.now() > skipInteractionUntilMs[0] && !keepNowAfterPinch(lastMainScroll, lastMainZoom)) {
                             followNow = false
                             graphViewModel.onGraphInteraction()
                         }

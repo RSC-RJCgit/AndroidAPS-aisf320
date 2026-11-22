@@ -235,7 +235,9 @@ fun MainScreen(
                 showExit = mainViewModel.showExit
             )
         },
-        gesturesEnabled = true,
+        // 2026-11-22, per explicit request: a swipe only closes the drawer. Opening it by swipe caught graph scrolls (iPhone);
+        // the menu button opens it.
+        gesturesEnabled = drawerState.isOpen,
         modifier = modifier
     ) {
         // Protect both the overview and its overlaid controls from side navigation bars/cutouts.

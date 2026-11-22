@@ -46,6 +46,9 @@ class TriggerFactory(
         TriggerIobTH::class.simpleName              -> TriggerIobTH(deps)
         TriggerBg::class.simpleName                 -> TriggerBg(deps)
         TriggerBolusAgo::class.simpleName           -> TriggerBolusAgo(deps)
+        // From the v3 AutoISF fork (2026-11-22, per explicit request), so v3 rules keep working after the in-place update
+        TriggerCarbsAgo::class.simpleName           -> TriggerCarbsAgo(deps)
+        TriggerAutomationState::class.simpleName    -> TriggerAutomationState(deps)
         TriggerBTDevice::class.simpleName           -> triggerBTDevice()
         TriggerSensorAge::class.simpleName          -> TriggerSensorAge(deps)
         TriggerCannulaAge::class.simpleName         -> TriggerCannulaAge(deps)

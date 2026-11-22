@@ -37,7 +37,9 @@ import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerBTDevice
 import app.aaps.plugins.automation.triggers.TriggerBg
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
+import app.aaps.plugins.automation.triggers.TriggerCarbsAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
 import app.aaps.plugins.automation.triggers.TriggerConnector
@@ -88,6 +90,8 @@ fun TriggerEditor(
             is TriggerBgAcceWeight       -> TriggerBgAcceWeightEditor(trigger, onChange, tick)
             is TriggerIobTH              -> TriggerIobTHEditor(trigger, onChange, tick)
             is TriggerBolusAgo           -> TriggerBolusAgoEditor(trigger, onChange, tick)
+            is TriggerCarbsAgo           -> TriggerCarbsAgoEditor(trigger, onChange, tick)
+            is TriggerAutomationState    -> TriggerAutomationStateEditor(trigger, onChange, tick)
             is TriggerCannulaAge         -> TriggerCannulaAgeEditor(trigger, onChange, tick)
             is TriggerInsulinAge         -> TriggerInsulinAgeEditor(trigger, onChange, tick)
             is TriggerReservoirLevel     -> TriggerReservoirLevelEditor(trigger, onChange, tick)
@@ -312,6 +316,46 @@ fun TriggerBolusAgoEditor(t: TriggerBolusAgo, onChange: () -> Unit, tick: Int = 
             compact = true
         )
     }
+}
+
+@Composable
+fun TriggerCarbsAgoEditor(t: TriggerCarbsAgo, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    CompareRow(
+        comparator = t.comparator.value,
+        onComparatorChange = { t.comparator.value = it; onChange() },
+        label = ""
+    ) {
+        NumberInputRow(
+            labelRef = null,
+            value = t.minutesAgo.value.toDouble(),
+            onValueChange = { t.minutesAgo.value = it.toInt(); onChange() },
+            valueRange = 5.0..(24 * 60.0),
+            step = 10.0,
+            unitLabel = CoreUiStrings.units_min,
+            compact = true
+        )
+    }
+}
+
+/** State name, then one of that state's values (2026-11-22, per explicit request). Both lists come from the saved states. */
+@Composable
+fun TriggerAutomationStateEditor(t: TriggerAutomationState, onChange: () -> Unit, tick: Int = 0) {
+    @Suppress("UNUSED_EXPRESSION") tick
+    AutomationDropdown(
+        value = t.stateName.value,
+        options = t.stateNames(),
+        onValueChange = {
+            if (it != t.stateName.value) t.stateValue.value = ""
+            t.stateName.value = it
+            onChange()
+        }
+    )
+    AutomationDropdown(
+        value = t.stateValue.value,
+        options = t.stateValues(t.stateName.value),
+        onValueChange = { t.stateValue.value = it; onChange() }
+    )
 }
 
 @Composable

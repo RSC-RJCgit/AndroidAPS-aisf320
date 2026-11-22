@@ -57,7 +57,9 @@ import app.aaps.plugins.automation.triggers.TriggerAutosensValue
 import app.aaps.plugins.automation.triggers.TriggerBgAcceWeight
 import app.aaps.plugins.automation.triggers.TriggerIobTH
 import app.aaps.plugins.automation.triggers.TriggerBg
+import app.aaps.plugins.automation.triggers.TriggerAutomationState
 import app.aaps.plugins.automation.triggers.TriggerBolusAgo
+import app.aaps.plugins.automation.triggers.TriggerCarbsAgo
 import app.aaps.plugins.automation.triggers.TriggerCOB
 import app.aaps.plugins.automation.triggers.TriggerCannulaAge
 import app.aaps.plugins.automation.triggers.TriggerConnector
@@ -861,6 +863,8 @@ class AutomationRuntime(
             TriggerLocation(triggerDeps),
             TriggerAutosensValue(triggerDeps),
             TriggerBolusAgo(triggerDeps),
+            TriggerCarbsAgo(triggerDeps),
+            TriggerAutomationState(triggerDeps),
             TriggerPumpLastConnection(triggerDeps),
             triggerFactory.triggerBTDevice(),
             TriggerHeartRate(triggerDeps),
