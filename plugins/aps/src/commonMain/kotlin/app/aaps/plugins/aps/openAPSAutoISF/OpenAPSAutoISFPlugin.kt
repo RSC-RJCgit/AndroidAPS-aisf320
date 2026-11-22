@@ -2581,10 +2581,12 @@ open class OpenAPSAutoISFPlugin(
         )
         val mj3 = statesOn && store.inState("MJ", "MJ3")
         val noMjRemains = statesOn && store.inState("MJ", "NOMJremains")
+        // Read before the call, not inside its arguments (2026-11-22): a suspend call there made ART reject this class (VerifyError).
+        val steps180Now = steps180(now)
         if (!basalUpShouldFire(
                 ready = ready, bg = bg, delta = delta, profilePercent = profilePercent, minuteOfDay = minuteOfDay,
                 steps5 = steps5, steps15 = steps15, steps60 = steps60, steps30 = steps30, podHours = podHours,
-                onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains, steps180 = steps180(now),
+                onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains, steps180 = steps180Now,
             )
         ) {
             // 2026-10-08, per explicit request: tell the user when ONLY the MJ and pod condition held BasalUp back, at most once
@@ -2592,7 +2594,7 @@ open class OpenAPSAutoISFPlugin(
             if (basalUpHeldByMjGate(
                     ready = ready, bg = bg, delta = delta, profilePercent = profilePercent, minuteOfDay = minuteOfDay,
                     steps5 = steps5, steps15 = steps15, steps60 = steps60, steps30 = steps30, podHours = podHours,
-                    onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains, steps180 = steps180(now),
+                    onLowFamily = onLowFamily, mj3 = mj3, noMjRemains = noMjRemains, steps180 = steps180Now,
                 ) && !config.AAPSCLIENT && activePlugin.activePump is VirtualPump && // 2026-10-08, per explicit request: Virtual only
                 runMarks.ready(RunMark.BASAL_UP_HELD_ALERT, 30, now)
             ) {
@@ -5107,6 +5109,8 @@ open class OpenAPSAutoISFPlugin(
         steps60: Int,
         statesOn: Boolean,
     ) {
+        // Read before the call, not inside its arguments (2026-11-22): a suspend call there made ART reject this class (VerifyError).
+        val steps180Now = steps180(now)
         if (!stepsSteroidsOffShouldFire(
                 ready = runMarks.ready(RunMark.STEPS_STEROIDS_OFF, 5, now),
                 steps60 = steps60,
@@ -5114,7 +5118,7 @@ open class OpenAPSAutoISFPlugin(
                 bg = bg,
                 delta = delta,
                 cob = cob,
-                steps180 = steps180(now),
+                steps180 = steps180Now,
             )
         ) return
         val store = states()
@@ -5233,12 +5237,14 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote("Acce", smsText = lastSmsText)
             aapsLogger.debug(LTag.APS, "AcceUp to high weight")
         }
+        // Read before the call, not inside its arguments (2026-11-22): a suspend call there made ART reject this class (VerifyError).
+        val steps180Now = steps180(now)
         if (exerciseLimitShouldFire(
                 ready = runMarks.ready(RunMark.EXERCISE_LIMIT, 30, now),
                 bg = bg,
                 delta = delta,
                 steps60 = steps60,
-                steps180 = steps180(now),
+                steps180 = steps180Now,
             )
         ) {
             runMarks.mark(RunMark.EXERCISE_LIMIT, now)
