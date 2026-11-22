@@ -86,8 +86,8 @@ class AfterFastRiseSmbTest {
             cob = 0.0,
             smbSum30 = 0.0,
         )
-        assertEquals(0.5, result.microBolus, 0.001)
-        assertEquals("Late FastRise high IOB x0.5 SMB 0.5. ", result.reason)
+        assertEquals(0.7, result.microBolus, 0.001)
+        assertEquals("Late FastRise high IOB x0.7 SMB 0.7. ", result.reason)
     }
 
     @Test

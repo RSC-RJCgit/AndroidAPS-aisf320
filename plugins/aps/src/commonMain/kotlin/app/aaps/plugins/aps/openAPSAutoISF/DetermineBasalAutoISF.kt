@@ -724,7 +724,7 @@ internal fun lateFastRiseTaper(
     val laterRise = !riseHold && (uamBoostRecent || iobHighNoCob)
     if ((!fastRiseNow && !uamBoostRecent) || microBolus <= 0.0) return SmbStepResult(microBolus, "")
     val factor = when {
-        laterRise -> 0.50
+        laterRise -> 0.70
         smbSum30 >= 1.9 -> 0.50
         smbSum30 >= 1.5 -> 0.75
         else -> 1.0
