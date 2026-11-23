@@ -53,6 +53,7 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.workflow.CalculationWorkflow
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.DoubleKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
@@ -1058,6 +1059,7 @@ class PrepareGraphDataRunner(
         )
 
     private suspend fun insulinByMinute(calculator: IobCobCalculator, windowStart: Long, windowEnd: Long): List<GraphDataPoint> {
+        if (config.APS && !config.AAPSCLIENT && preferences.get(BooleanNonKey.ApsAutoIsfSimpleGraphs)) return emptyList()
         if (!preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)) return emptyList()
         val minuteMs = T.mins(1).msecs()
         val count = ((windowEnd - windowStart) / minuteMs).toInt()

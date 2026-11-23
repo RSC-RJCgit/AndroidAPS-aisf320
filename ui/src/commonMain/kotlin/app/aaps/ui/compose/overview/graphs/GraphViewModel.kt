@@ -275,7 +275,7 @@ class GraphViewModel(
             .onEach { off -> _graphDisplay.update { it.copy(basalOffIobGraph = off) } }
             .launchIn(viewModelScope)
         preferences.observe(BooleanKey.OverviewInsulinTotalColumns)
-            .onEach { on -> _graphDisplay.update { it.copy(insulinTotalColumns = on) } }
+            .onEach { on -> _graphDisplay.update { it.copy(insulinTotalColumns = on && config.AAPSCLIENT) } }
             .launchIn(viewModelScope)
     }
 

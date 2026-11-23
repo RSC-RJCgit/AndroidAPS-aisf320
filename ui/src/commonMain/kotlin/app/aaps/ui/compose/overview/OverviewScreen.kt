@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -38,6 +39,10 @@ import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.notifications.AapsNotification
 import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.interfaces.pump.BolusProgressState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.core.ui.compose.TABLET_MIN_SW_DP
@@ -151,6 +156,26 @@ fun OverviewScreen(
     onStopBolus: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val config = LocalConfig.current
+    val preferences = LocalPreferences.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    if (config.APS && !config.AAPSCLIENT) {
+        DisposableEffect(lifecycleOwner, preferences) {
+            fun selectSimpleMode() {
+                if (!preferences.get(BooleanNonKey.ApsAutoIsfSimpleGraphs))
+                    preferences.put(BooleanNonKey.ApsAutoIsfSimpleGraphs, true)
+            }
+            val observer = LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_PAUSE) selectSimpleMode()
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+                selectSimpleMode()
+            }
+        }
+    }
+
     var showNotificationSheet by remember { mutableStateOf(false) }
     var showPumpActivityDialog by remember { mutableStateOf(false) }
     val showPumpFab = isPumpCommunicating || (bolusState != null && bolusState.isSMB)
