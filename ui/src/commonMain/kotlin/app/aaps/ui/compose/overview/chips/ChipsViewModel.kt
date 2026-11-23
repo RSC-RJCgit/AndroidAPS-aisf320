@@ -44,6 +44,7 @@ import app.aaps.core.interfaces.rx.events.EventAutoIsfDirectTtCode
 import app.aaps.core.interfaces.rx.events.EventCalibrationChanged
 import app.aaps.core.interfaces.rx.events.EventShowDialog
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
@@ -52,6 +53,7 @@ import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.data.time.AppTimeZone
 import app.aaps.core.objects.autoisf.AUTO_ISF_HISTORY_WINDOW_MS
 import app.aaps.core.objects.autoisf.AutoIsfHistoryRow
 import app.aaps.core.objects.autoisf.AutoIsfListSettings
@@ -92,6 +94,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 
 /** List 3 rows carried out on this phone's own display on a Client, instead of being relayed to the loop phone as a coded TT. */
 const val LOCAL_CLEAN_GRAPH = -42.0
@@ -194,7 +197,11 @@ class ChipsViewModel(
         initialValue = CobUiState()
     )
 
-    val availableCodedActions: StateFlow<List<QuickLaunchAction.CodedAction>> = iobCobTicker.combine(cache.iobGraphFlow) { _, _ ->
+    val availableCodedActions: StateFlow<List<QuickLaunchAction.CodedAction>> = combine(
+        iobCobTicker.combine(cache.iobGraphFlow) { _, _ -> Unit },
+        preferences.observe(StringNonKey.AutomationCurrentStates),
+        preferences.observe(BooleanKey.AutomationStatesEnabled),
+    ) { _, _, _ ->
         buildCodedActions()
     }.stateIn(
         scope = viewModelScope,
@@ -561,55 +568,42 @@ class ChipsViewModel(
         if (config.AAPSCLIENT) return emptyList()
         if (activePlugin.activeAPS?.algorithm != APSResult.Algorithm.AUTO_ISF) return emptyList()
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return emptyList()
-        val states = preferences.get(StringNonKey.AutomationCurrentStates)
-        val mj = stateValue(states, "MJ")
-        val steroids = stateValue(states, "Steroids")
+        val states = runCatching {
+            Json.decodeFromString<Map<String, String>>(preferences.get(StringNonKey.AutomationCurrentStates))
+        }.getOrElse { emptyMap() }
+        val mj = states["MJ"].orEmpty()
+        val steroids = states["Steroids"].orEmpty()
         val actions = mutableListOf<QuickLaunchAction.CodedAction>()
-        if (preferences.get(BooleanKey.ApsAutoIsfMjKotlinButtonsEnabled)) {
-            when (mj) {
-                "NOMJremains" -> actions += QuickLaunchAction.MjStart
-                "" -> Unit
-                else -> actions += QuickLaunchAction.MjRestore
-            }
+        when (mj) {
+            "NOMJremains" -> actions += QuickLaunchAction.MjStart
+            "" -> Unit
+            else -> actions += QuickLaunchAction.MjRestore
         }
-        if (preferences.get(BooleanKey.ApsAutoIsfSteroidKotlinButtonEnabled)) {
-            val hour = dateUtil.hourString().toIntOrNull() ?: 0
-            val profile = profileFunction.getProfile()
-            val originalPercent = (profile as? ProfileSealed.EPS)?.value?.originalPercentage ?: profile?.percentage
-            val profileName = profileFunction.getOriginalProfileName()
-            val atHundred = originalPercent == 100
-            if (hour >= 6 && mj == "NOMJremains" && steroids == "Steroids Off") {
-                actions += QuickLaunchAction.SteroidOn
+        if (steroids == "Steroids Off" && mj == "NOMJremains" &&
+            MidnightTime.secondsFromMidnight(dateUtil.now(), AppTimeZone.current()) >= 6 * 3600
+        ) actions += QuickLaunchAction.SteroidOn
+        if (steroids != "SteroidsON") return actions
+
+        val profile = profileFunction.getProfile()
+        val originalPercent = (profile as? ProfileSealed.EPS)?.value?.originalPercentage ?: profile?.percentage
+        if (originalPercent != 100) return actions
+        val profileName = profileFunction.getOriginalProfileName()
+        if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName)) {
+            actions += QuickLaunchAction.Steroid130
+        }
+        if (mj == "NOMJremains") {
+            if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName)) {
+                actions += QuickLaunchAction.Steroid150
             }
-            if (atHundred && steroids == "SteroidsON" && profileName == preferences.get(StringKey.ApsAutoIsfSteroid110ProfileName)) {
-                actions += QuickLaunchAction.Steroid130
+            if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName)) {
+                actions += QuickLaunchAction.Steroid190
             }
-            if (atHundred && steroids == "SteroidsON" && mj == "NOMJremains") {
-                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid130ProfileName)) {
-                    actions += QuickLaunchAction.Steroid150
-                }
-                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid150ProfileName)) {
-                    actions += QuickLaunchAction.Steroid190
-                }
-                if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName)) {
-                    actions += QuickLaunchAction.Steroid250
-                }
-                actions += QuickLaunchAction.SteroidOff
+            if (profileName == preferences.get(StringKey.ApsAutoIsfSteroid190ProfileName)) {
+                actions += QuickLaunchAction.Steroid250
             }
+            actions += QuickLaunchAction.SteroidOff
         }
         return actions
-    }
-
-    private fun stateValue(json: String, name: String): String {
-        val key = "\"$name\""
-        val at = json.indexOf(key)
-        if (at < 0) return ""
-        val colon = json.indexOf(':', at + key.length)
-        if (colon < 0) return ""
-        val open = json.indexOf('"', colon + 1)
-        val close = if (open < 0) -1 else json.indexOf('"', open + 1)
-        if (open < 0 || close < 0) return ""
-        return json.substring(open + 1, close)
     }
 
     private val listSettings = AutoIsfListSettings(preferences, decimalFormatter)

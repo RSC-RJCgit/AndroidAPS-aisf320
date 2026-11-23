@@ -11,6 +11,8 @@ import app.aaps.core.interfaces.overview.graph.OverviewDataCache
 import app.aaps.core.interfaces.constraints.ConstraintsChecker
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.plugin.ActivePlugin
@@ -70,6 +72,8 @@ internal class ChipsViewModelTest {
         whenever(cache.iobGraphFlow).thenReturn(MutableStateFlow(IobGraphData(emptyList(), emptyList())))
         whenever(cache.cobGraphFlow).thenReturn(MutableStateFlow(CobGraphData(emptyList(), emptyList())))
         whenever(cache.predictionsFlow).thenReturn(MutableStateFlow(emptyList()))
+        whenever(preferences.observe(StringNonKey.AutomationCurrentStates)).thenReturn(MutableStateFlow("{}"))
+        whenever(preferences.observe(BooleanKey.AutomationStatesEnabled)).thenReturn(MutableStateFlow(true))
         sut = ChipsViewModel(
             cache, iobCobCalculator, loop, config, persistenceLayer, constraintChecker, profileFunction,
             profileRepository, processedDeviceStatusData, profileUtil, activePlugin, rh, decimalFormatter,

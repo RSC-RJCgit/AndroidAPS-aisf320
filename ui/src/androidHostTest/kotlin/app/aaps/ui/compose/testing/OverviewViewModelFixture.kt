@@ -43,6 +43,7 @@ import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.ClientRole
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.keys.interfaces.VisibilityContext
@@ -159,6 +160,8 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
         whenever(screen.preferences.observe(BooleanKey.OverviewBasalOnBgGraph)).thenReturn(MutableStateFlow(false))
         whenever(screen.preferences.observe(BooleanKey.OverviewBasalOffIobGraph)).thenReturn(MutableStateFlow(false))
         whenever(screen.preferences.observe(BooleanKey.OverviewInsulinTotalColumns)).thenReturn(MutableStateFlow(false))
+        whenever(screen.preferences.observe(StringNonKey.AutomationCurrentStates)).thenReturn(MutableStateFlow("{}"))
+        whenever(screen.preferences.observe(BooleanKey.AutomationStatesEnabled)).thenReturn(MutableStateFlow(true))
         whenever(graphConfigRepository.graphConfigFlow).thenReturn(MutableStateFlow(GraphConfig()))
 
         // ----- ChipsViewModel: the three chip flows evaluate as soon as a composable collects them,
