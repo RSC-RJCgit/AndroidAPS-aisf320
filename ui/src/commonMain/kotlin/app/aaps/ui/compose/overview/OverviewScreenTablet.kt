@@ -142,9 +142,8 @@ fun OverviewScreenTablet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        BgInfoSection(
-                            bgInfo = bgInfoState.bgInfo,
-                            timeAgoText = bgInfoState.timeAgoText,
+                        OverviewGlucoseCircle(
+                            graphViewModel = graphViewModel,
                             showTimeAgo = false,
                             onClick = onBgClick
                         )

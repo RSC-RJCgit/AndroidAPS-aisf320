@@ -713,6 +713,13 @@ enum class BooleanKey(
     ),
     // Fork (2026-11-19, per explicit request): the columns at the bottom of the BG graph show the insulin delivered in each of
     // the 12 slices of the shown span (as the totals row) instead of basal. Only with basal on the BG graph. This phone only.
+    HideG2G3InSimpleGraphs(
+        "hide_g2_g3_in_simple_graphs",
+        false,
+        TextRef.Named("keys", "hide_g2_g3_in_simple_graphs_title"),
+        TextRef.Named("keys", "hide_g2_g3_in_simple_graphs_summary"),
+        exportable = false
+    ),
     OverviewInsulinTotalColumns(
         "overview_insulin_total_columns",
         false,

@@ -134,9 +134,8 @@ fun OverviewScreenSplit(
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        BgInfoSection(
-                            bgInfo = bgInfoState.bgInfo,
-                            timeAgoText = bgInfoState.timeAgoText,
+                        OverviewGlucoseCircle(
+                            graphViewModel = graphViewModel,
                             onClick = onBgClick
                         )
                     }

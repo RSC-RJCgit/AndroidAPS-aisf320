@@ -641,4 +641,7 @@
     <string name="sensor_signal_note">Stored unfiltered channel, hourly means. Missing and identical BG copies are omitted. Older records may not identify the original device signal.</string>
     <!-- Bolus calculator simple screen (2026-11-05) -->
     <string name="wizard_detailed_settings">Detailed settings (untick for simple input)</string>
+    <string name="glucose_chip_basal">Basal rate %1$s units per hour</string>
+    <string name="glucose_chip_long_delta">Long glucose change %1$s</string>
+    <string name="glucose_chip_acceleration">Glucose acceleration %1$s</string>
 </resources>

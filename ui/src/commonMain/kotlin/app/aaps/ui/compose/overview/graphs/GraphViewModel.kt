@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.InterfacesStrings
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
 import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
@@ -104,6 +105,7 @@ class GraphViewModel(
     private val config: Config,
     private val activePlugin: ActivePlugin,
     private val profileUtil: ProfileUtil,
+    private val processedDeviceStatusData: ProcessedDeviceStatusData? = null,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -117,6 +119,12 @@ class GraphViewModel(
          *   remaining hours empty.
          */
         fun create(cache: OverviewDataCache, fullWindow: Boolean): GraphViewModel
+    }
+
+    fun hasNonAutoIsfGraphSource(): Boolean {
+        val algorithm = if (config.AAPSCLIENT) processedDeviceStatusData?.getAPSResult()?.algorithm
+        else activePlugin.activeAPS?.algorithm
+        return algorithm != null && algorithm.name != "AUTO_ISF"
     }
 
     private val _graphDisplay = MutableStateFlow(GraphDisplay())

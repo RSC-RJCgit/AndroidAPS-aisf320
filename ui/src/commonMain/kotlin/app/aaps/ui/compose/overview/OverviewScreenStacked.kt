@@ -98,7 +98,6 @@ fun OverviewScreenStacked(
     modifier: Modifier = Modifier
 ) {
     val config = LocalConfig.current
-    val bgInfoState by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
     val sensitivityUiState by chipsViewModel.sensitivityUiState.collectAsStateWithLifecycle()
     val iobUiState by chipsViewModel.iobUiState.collectAsStateWithLifecycle()
     val cobUiState by chipsViewModel.cobUiState.collectAsStateWithLifecycle()
@@ -151,9 +150,8 @@ fun OverviewScreenStacked(
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                BgInfoSection(
-                    bgInfo = bgInfoState.bgInfo,
-                    timeAgoText = bgInfoState.timeAgoText,
+                OverviewGlucoseCircle(
+                    graphViewModel = graphViewModel,
                     onClick = onBgClick
                 )
             }

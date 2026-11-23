@@ -1,6 +1,7 @@
 package app.aaps.ui.compose.overview
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
@@ -30,7 +31,10 @@ import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.overview.graph.TbrState
 import app.aaps.core.ui.CoreUiStrings
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.AapsSpacing
+import app.aaps.core.ui.compose.LocalDecimalFormatter
+import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.navigation.NavigationRequest
@@ -121,7 +125,6 @@ fun OverviewChipsColumn(
                 onIobChipDoubleClick = onIobChipDoubleClick,
                 modifier = Modifier.weight(1f)
             )
-            GraphScaleLookbackChip()
         }
         // Simple / Detailed graphs (2026-11-21, per explicit request): a small S or D at the end of the sensitivity row (it was
         // next to AIV on the client card, where it made that row wrap). A tap switches; this device only.
@@ -137,7 +140,45 @@ fun OverviewChipsColumn(
 }
 
 @Composable
-private fun GraphScaleLookbackChip() {
+internal fun OverviewGlucoseCircle(
+    graphViewModel: GraphViewModel,
+    showTimeAgo: Boolean = true,
+    onClick: (() -> Unit)? = null,
+) {
+    val info by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
+    val autoIsf by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
+    val basal by graphViewModel.basalGraphFlow.collectAsStateWithLifecycle()
+    val now by graphViewModel.nowTimestamp.collectAsStateWithLifecycle()
+    val basalRate = basal.actualBasal.lastOrNull { it.timestamp <= now }?.value
+    val basalText = basalRate?.let { LocalDecimalFormatter.current.to2Decimal(it) }
+    val longDelta = autoIsf.statusLongDelta ?: info.bgInfo?.longAvgDeltaText
+
+    Box {
+        BgInfoSection(bgInfo = info.bgInfo, timeAgoText = info.timeAgoText, showTimeAgo = showTimeAgo, onClick = onClick)
+        Box(Modifier.matchParentSize()) {
+            GlucoseMetricChip(basalText, "glucose_chip_basal", Modifier.align(Alignment.TopStart))
+            GlucoseMetricChip(longDelta, "glucose_chip_long_delta", Modifier.align(Alignment.TopEnd))
+            GlucoseMetricChip(autoIsf.statusAcceleration, "glucose_chip_acceleration", Modifier.align(Alignment.BottomStart))
+            GraphScaleLookbackChip(Modifier.align(Alignment.BottomEnd))
+        }
+    }
+}
+
+@Composable
+private fun GlucoseMetricChip(value: String?, descriptionKey: String, modifier: Modifier) {
+    if (value.isNullOrBlank()) return
+    val description = stringResource(TextRef.Named("ui", descriptionKey), value)
+    Surface(
+        shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = modifier.semantics { contentDescription = description }
+    ) {
+        Text(value, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+    }
+}
+
+@Composable
+private fun GraphScaleLookbackChip(modifier: Modifier) {
     if (LocalInspectionMode.current) return
     val preferences = LocalPreferences.current
     val hours by preferences.observe(IntNonKey.GraphScaleLookbackHours).collectAsStateWithLifecycle()
@@ -145,7 +186,7 @@ private fun GraphScaleLookbackChip() {
     Surface(
         shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier
+        modifier = modifier
             .clickable(role = Role.Button) {
                 val next = when (preferences.get(IntNonKey.GraphScaleLookbackHours)) {
                     9 -> 6
@@ -159,8 +200,8 @@ private fun GraphScaleLookbackChip() {
     ) {
         Text(
             text = hours.toString(),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = AapsSpacing.small, vertical = AapsSpacing.extraSmall)
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
         )
     }
 }

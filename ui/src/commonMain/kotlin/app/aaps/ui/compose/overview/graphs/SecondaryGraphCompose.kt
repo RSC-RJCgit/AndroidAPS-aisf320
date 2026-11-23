@@ -621,7 +621,7 @@ fun SecondaryGraphCompose(
     val nowMinute = nowTimestamp / 60_000L
     val primaryYValues = remember(
         processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, axisMinX, axisMaxX,
-        primaryType, minTimestamp, nowMinute, scaleLookbackHours
+        primaryType, minTimestamp, nowMinute, scaleLookbackHours, visibleMinX, visibleMaxX
     ) {
         fun windowed(fromX: Double?, toX: Double?) =
             windowedPrimaryY(fromX, toX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
@@ -634,7 +634,12 @@ fun SecondaryGraphCompose(
         when {
             values.isEmpty()                    -> values
             primaryType == SeriesType.IOB       -> values.map { it.coerceAtMost(IOB_AXIS_MAX_TOP) }
-            primaryType == SeriesType.STEPS     -> values + STEPS_AXIS_MIN_TOP
+            primaryType == SeriesType.STEPS     -> {
+                val visiblePeak = if (visibleMinX != null && visibleMaxX != null)
+                    windowed(visibleMinX, visibleMaxX).maxOrNull()
+                else dayValues.maxOrNull()
+                values + maxOf(STEPS_AXIS_MIN_TOP, visiblePeak ?: 0.0)
+            }
             else                                -> values
         }
     }

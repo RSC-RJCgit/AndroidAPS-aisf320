@@ -352,6 +352,8 @@ fun GraphsSection(
     // SIMPLE_IOB_HEIGHT_DP, G2 onwards curves only at SIMPLE_SECONDARY_HEIGHT_DP, without their heading and time rows. The last
     // graph (the BG copy) is unchanged. Display only: the saved heights stay for Detailed.
     val simpleGraphs by LocalPreferences.current.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
+    val hideG2G3InSimple by LocalPreferences.current.observe(BooleanKey.HideG2G3InSimpleGraphs).collectAsStateWithLifecycle()
+    val hideG2G3 = graphViewModel.hasNonAutoIsfGraphSource() || (simpleGraphs && hideG2G3InSimple)
     // iOS and Windows have their own Simple heights (2026-11-21, per explicit request), see simpleSecondaryHeightDp
     val simpleIosOrDesktop = LocalConfig.current.platform != AppPlatform.Android
 
@@ -471,7 +473,7 @@ fun GraphsSection(
         add(-1) // Main BG
         add(-2) // Fixed IOB
         for (i in 0 until activeCount) {
-            if (graphConfig.secondaryGraphs[i].series.isNotEmpty()) add(i)
+            if ((!hideG2G3 || i >= 2) && graphConfig.secondaryGraphs[i].series.isNotEmpty()) add(i)
         }
         if (showGraph5) add(-3)
     }
@@ -1205,31 +1207,6 @@ fun GraphsSection(
             // Draw the pending models off screen while keeping the last ready frame visible.
             .holdGraphFrame(graphsReady)
     ) {
-        // HP= at the left of the − + row (2026-10-31, per explicit request). Only with a current AutoISF row (statusIsf
-        // is set only then), like the HP= of the steps line, so an old prediction does not linger.
-        val autoIsfStatus by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
-        val bgInfoState by graphViewModel.bgInfoState.collectAsStateWithLifecycle()
-        // BR Δ40 AC HP (2026-11-17, per explicit request): the current basal rate (the temp basal when one runs, as the
-        // basal columns draw it) replaces SD; Δ40 is the same long delta that was labelled LD.
-        val currentBasal = basalSnapshot?.actualBasal?.lastOrNull { it.timestamp <= nowTimestamp }?.value
-        val deltaText = stringResource(
-            UiStrings.overview_glucose_changes,
-            currentBasal?.let { LocalDecimalFormatter.current.to2Decimal(it) } ?: "—",
-            autoIsfStatus.statusLongDelta ?: bgInfoState.bgInfo?.longAvgDeltaText ?: "—",
-            autoIsfStatus.statusAcceleration ?: "—"
-        )
-        val hpText = autoIsfStatus.hypoPrediction?.takeIf { autoIsfStatus.statusIsf != null }?.let { "HP=${oneDecimalText(it)}" }
-        if (showZoomButtons || hpText != null || bgInfoState.bgInfo != null || autoIsfStatus.statusAcceleration != null) {
-            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = listOfNotNull(deltaText, hpText).joinToString("  "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                if (showZoomButtons) GraphZoomButtons(zoomStep)
-            }
-        }
         // BG Graph - primary interactive graph
         var editingBgOverlays by remember { mutableStateOf(false) }
 
@@ -1350,14 +1327,23 @@ fun GraphsSection(
                         else Modifier
                     )
             )
-            if (!isSimpleMode) {
-                GraphEditButton(
-                    onClick = { editingBgOverlays = true },
-                    graphName = stringResource(CoreUiStrings.glucose),
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(end = 4.dp, top = 2.dp)
-                )
+            val mainAutoIsf by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
+            val hpText = mainAutoIsf.hypoPrediction?.takeIf { mainAutoIsf.statusIsf != null }
+                ?.let { "HP=${oneDecimalText(it)}" }
+            if (hpText != null || showZoomButtons || !isSimpleMode) {
+                Row(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    hpText?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.padding(end = 4.dp))
+                    }
+                    if (showZoomButtons) GraphZoomButtons(zoomStep)
+                    if (!isSimpleMode) GraphEditButton(
+                        onClick = { editingBgOverlays = true },
+                        graphName = stringResource(CoreUiStrings.glucose)
+                    )
+                }
             }
             // Own composable, so a finger move does not recompose this section. On the main screen it is drawn over the
             // top bar (TopBarPillHost, 2026-10-27, per explicit request); elsewhere, as before, over the top of BG.
@@ -1470,19 +1456,6 @@ fun GraphsSection(
                     .height((if (simpleGraphs) (if (simpleIosOrDesktop) SIMPLE_SECONDARY_HEIGHT_DP else SIMPLE_IOB_HEIGHT_DP) else graphConfig.iobHeight).dp * graphHeightScale)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
-            // The hypoprediction line at the left of this − + row (2026-11-20, per explicit request; was its own line under the
-            // main graph), as on the main graph's own − + row
-            val g1AutoIsf by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
-            val g1Display by graphViewModel.graphDisplay.collectAsStateWithLifecycle()
-            hypoLineText(g1AutoIsf.hypoPrediction, g1Display.bgGraphInsulinColumns)?.let { line ->
-                Text(
-                    text = line,
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 6.dp)
-                )
-            }
             if (!isSimpleMode) {
                 GraphEditButton(
                     onClick = { editingIobOverlays = true },
@@ -1514,6 +1487,7 @@ fun GraphsSection(
         // Secondary graphs — config-driven (labels start at "Graph 2")
         var editingGraphIndex by remember { mutableIntStateOf(-1) }
         for (i in 0 until activeCount) {
+            if (hideG2G3 && i < 2) continue
             val secondary = graphConfig.secondaryGraphs[i]
             Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
                 SecondaryGraphCompose(

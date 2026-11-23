@@ -2011,8 +2011,7 @@ private fun BgGraphBottomStrip(
         if (!showInsulinTotals || insulinColumns || range == null) emptyList()
         else insulinIntervalTotals(range.first, range.second, nowTimestamp, rawBasalData.actualBasal, treatments.boluses, treatments.extendedBoluses)
     }
-    // The IOB graph below is pulled 8dp up under this strip, hence the extra bottom padding. The hypoprediction line moved to
-    // G1's − + row (2026-11-20, per explicit request), see hypoLineText.
+    // The extra bottom padding offsets the IOB graph pulled up under this strip.
     if (!topBandLines && insulinTotals.isNotEmpty()) {
         Column(modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 10.dp)) {
             if (insulinTotals.isNotEmpty()) {
@@ -2031,16 +2030,6 @@ private fun BgGraphBottomStrip(
             }
         }
     }
-}
-
-/**
- * The hypoprediction line, at the left of G1's − + row (2026-11-20, per explicit request; was its own line under the main
- * graph). While the insulin-total columns are on, it also says so ("hypopred=6.0 insulin tot cols"). Null when there is nothing to show.
- */
-internal fun hypoLineText(hypoPrediction: Double?, insulinColumns: Boolean): String? = when {
-    insulinColumns          -> "hypopred=${hypoPrediction?.let { oneDecimalText(it) } ?: "--"} insulin tot cols"
-    hypoPrediction != null  -> "hypoprediction= ${oneDecimalText(hypoPrediction)}"
-    else                    -> null
 }
 
 internal fun oneDecimalText(value: Double): String {
