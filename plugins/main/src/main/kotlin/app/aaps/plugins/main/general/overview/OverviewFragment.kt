@@ -3778,7 +3778,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addRawBg(false)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG_SMOOTHED.ordinal))
             graphData.addRawBgSmoothed(false)
-        val insulinColumnsShown = (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
+        val insulinColumnsShown = (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) &&
+            menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal] && overviewData.insulinColumnSeries.isNotEmpty()
         // Simple graphs keep the columns; the renderer leaves their values out (Shape.HOUR_PEAK)
         if (insulinColumnsShown)
             // 2026-11-19, per explicit request: the main graph's columns are insulin totals; Graph 5 keeps basal (addBasals there)

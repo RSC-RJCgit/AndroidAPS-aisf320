@@ -465,7 +465,8 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addCombinedCarbs(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal) && !simpleGraphs)
             graphData.addBgParabola(false, 1.0)
-        val insulinColumnsShown = pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
+        val insulinColumnsShown = pump.pumpDescription.isTempBasalCapable &&
+            menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal] && historyBrowserData.overviewData.insulinColumnSeries.isNotEmpty()
         // Simple graphs keep the columns; the renderer leaves their values out (Shape.HOUR_PEAK)
         if (insulinColumnsShown)
             // 2026-11-19, per explicit request: the main graph's columns are insulin totals; Graph 5 keeps basal (addBasals there)

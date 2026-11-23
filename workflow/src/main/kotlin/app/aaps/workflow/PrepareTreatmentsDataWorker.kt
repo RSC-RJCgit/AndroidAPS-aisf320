@@ -102,6 +102,9 @@ class PrepareTreatmentsDataWorker(
 
     companion object {
 
+        // Temporarily skip the full-day pass while measuring refresh speed and battery use.
+        private const val BUILD_INSULIN_TOTAL_COLUMNS = false
+
         /** The largest shown insulin-total column reaches this share of full height (2026-11-20). */
         private const val INSULIN_COLUMN_TOP_SHARE = 0.95
 
@@ -495,7 +498,8 @@ class PrepareTreatmentsDataWorker(
             }
         }
         data.overviewData.insulinIntervalTotalSeries = PointsWithLabelGraphSeries(insulinIntervalLabels.toTypedArray())
-        data.overviewData.insulinColumnSeries = insulinTotalColumns(data, windowStart, windowEnd, aivList)
+        data.overviewData.insulinColumnSeries =
+            if (BUILD_INSULIN_TOTAL_COLUMNS) insulinTotalColumns(data, windowStart, windowEnd, aivList) else emptyList()
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())
