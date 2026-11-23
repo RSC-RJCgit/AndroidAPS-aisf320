@@ -223,6 +223,7 @@ fun SecondaryGraphCompose(
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
     scaleLookbackHours: Int,
+    scaleTimeRange: Pair<Long, Long>? = null,
     activityOverlay: Boolean = false,
     cobOverlay: Boolean = false,
     showSmbDoseLabels: Boolean = false,
@@ -566,8 +567,10 @@ fun SecondaryGraphCompose(
     LaunchedEffect(visibleRangeHolder) {
         visibleRangeHolder.value.debounce(280).collect { settledVisibleRange = it }
     }
-    val settledMinX = settledVisibleRange?.first
-    val settledMaxX = settledVisibleRange?.second
+    // G2 scales from the shared time window. Its own model redraw can change its plot width and
+    // reported viewport, which would otherwise feed back into the next scale calculation.
+    val settledMinX = scaleTimeRange?.let { timestampToX(it.first, minTimestamp) } ?: settledVisibleRange?.first
+    val settledMaxX = scaleTimeRange?.let { timestampToX(it.second, minTimestamp) } ?: settledVisibleRange?.second
     // IOB graph (2026-11-12, per explicit request): its axis is fitted with one screen of look-ahead on each side, so a
     // scroll no longer pushes the IOB curve past the scale (into the basal band) before the refit. Other graphs keep
     // the visible window.

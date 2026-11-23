@@ -189,7 +189,7 @@ fun QuickLauchConfigScreen(
             // ── Available: Manage ── (hidden when empty)
             // Same header string as the Manage sheet, so the two lists name this group the same way.
             val manageItems = state.availableStaticItems.filter {
-                it.action.elementType?.category == ElementCategory.MANAGEMENT
+                it.action is QuickLaunchAction.CodedAction || it.action.elementType?.category == ElementCategory.MANAGEMENT
             }
             if (manageItems.isNotEmpty()) {
                 item(key = "divider_manage") {

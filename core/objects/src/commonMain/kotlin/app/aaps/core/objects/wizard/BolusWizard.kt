@@ -61,6 +61,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -1346,15 +1347,19 @@ class BolusWizard(
                     if (dose <= 0.0) {
                         val reason = if (cappedDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                         aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${reducedRemaining} U left")
-                        // A check that gave nothing gets a note (2026-11-18) - not the 2 min retries, which would dot every 2 min
-                        if (budget.dose <= 0.0) {
-                            warsawNote("D", reducedRemaining, "$reason; check again in $intervalMinutes min", source, splitCancelWhat(reducedRemaining))
-                        }
+                        val retryMinutes = if (budget.dose > 0.0) 2 else intervalMinutes
                         launchSplitPart(
                             reducedRemaining, previousPart, max(iobBaseline, liveIob), token, source,
-                            now + (if (budget.dose > 0.0) 120_000L else intervalMinutes * 60_000L), deadline, 0, intervalMinutes, unsafeLimit,
+                            now + retryMinutes * 60_000L, deadline, 0, intervalMinutes, unsafeLimit,
                             walkingCutAllowed,
                         )
+                        try {
+                            warsawNote("D", reducedRemaining, "$reason; check again in $retryMinutes min", source, splitCancelWhat(reducedRemaining))
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            aapsLogger.error(LTag.CORE, "Split leftover: could not record check", error)
+                        }
                         return
                     }
                     if (walkFactor < 1.0)

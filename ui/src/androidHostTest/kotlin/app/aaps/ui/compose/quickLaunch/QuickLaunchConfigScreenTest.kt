@@ -102,6 +102,21 @@ class QuickLaunchConfigScreenTest {
     // ---------------------------------------------------------------------------------------------
 
     @Test
+    fun codedActionsCanBeAddedFromThePicker() {
+        setScreen()
+
+        val picker = compose.onNode(hasScrollToNodeAction())
+        val actions = listOf(QuickLaunchAction.MjStart, QuickLaunchAction.SteroidOn)
+        actions.forEach { action ->
+            picker.performScrollToNode(hasText(action.typeId))
+            compose.onNodeWithText(action.typeId).assertIsDisplayed()
+        }
+        picker.performScrollToNode(hasText(QuickLaunchAction.MjStart.typeId))
+        compose.onNodeWithContentDescription(addLabelFor(QuickLaunchAction.MjStart.typeId)).performClick()
+        assertThat(storedActions()).contains(QuickLaunchAction.MjStart)
+    }
+
+    @Test
     fun anEmptySelectionSaysSoUnderItsOwnHeader() {
         setScreen()
 

@@ -172,7 +172,7 @@ private val DELAYED_CHECK_NOTE = Regex("""^Db[1-9][0-9]*\b""")
 // ...that gave a dose: "Db15 0.80 U", or a v3 master's "Db15 delayed bolus (held back by ...): 0.8U delivered"
 private val DELAYED_CHECK_GAVE = Regex("""^Db[0-9]+\s+[0-9]+(?:\.[0-9]+)?\s?U\b|[0-9]+(?:\.[0-9]+)?\s?U delivered""")
 // A carb split part that waited: "D1.30 Carb split of ...: ... still to come, waiting: ..." (this app and v3)
-private val SPLIT_WAIT_NOTE = Regex("""^D[0-9]+\.[0-9]{2} Carb split\b""")
+private val SPLIT_WAIT_NOTE = Regex("""^D[0-9]+[.,][0-9]{2} Carb split\b""")
 
 /**
  * A carb split or delayed bolus check that gave nothing (2026-11-18, per explicit request), marked by a dot at the top of the BG

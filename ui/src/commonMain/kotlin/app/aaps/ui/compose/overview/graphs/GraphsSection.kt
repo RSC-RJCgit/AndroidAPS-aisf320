@@ -819,16 +819,19 @@ fun GraphsSection(
                 val zoomSettling = tickMs - lastZoomChangeMs[0] < ZOOM_SETTLE_MS
                 // 2026-11-22, per explicit request: a pinch keeps the left edge in place, so zooming in pushed the current time off
                 // the right edge and left the graphs on past hours (iPhone 22 Nov 09:05, 09:42). When the current time was on
-                // screen before the pinch, put it back on the right edge at the new zoom and keep following it. Returns false when
-                // the current time was not on screen; the pinch then stays where the fingers left it, as before.
+                // screen before the pinch, or the pinch moves into future time, put now back on the right edge.
+                // A pinch wholly in earlier data keeps its position.
                 suspend fun keepNowAfterPinch(scrollBefore: Float, zoomBefore: Float): Boolean {
                     val geometry = bgGeometry.value ?: return false
                     if (range == null || fitWholeWindow || !scrollBefore.isFinite() || !zoomBefore.isFinite() || zoomBefore <= 0f) return false
-                    val shownBefore = geometry.minutesShown(zoomBefore) ?: return false
-                    val leftBefore = geometry.xAt(scrollBefore, zoomBefore)
                     val nowX = timestampToX(now, range.first)
-                    if (!nowX.isFinite() || nowX < leftBefore || nowX > leftBefore + shownBefore + 1.0) return false
-                    graphViewModel.graphSyncLog("pinchKeepsNow", "now at $nowX min was on screen ($leftBefore..${leftBefore + shownBefore}) - back on the right edge")
+                    if (!nowX.isFinite()) return false
+                    val rightBefore = geometry.rightEdgeX(scrollBefore, zoomBefore)
+                    val rightAfter = geometry.rightEdgeX(bgScrollState.value, bgZoomState.value)
+                    if (!followNow && (rightBefore == null || rightBefore < nowX - 1.0) &&
+                        (rightAfter == null || rightAfter <= nowX)
+                    ) return false
+                    graphViewModel.graphSyncLog("pinchKeepsNow", "anchoring the right edge at now ($nowX min)")
                     skipInteractionUntilMs[0] = dateUtil.now() + 1000L
                     bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, now))
                     lastMainScroll = bgScrollState.value
@@ -875,10 +878,10 @@ fun GraphsSection(
                     return if (secondaryIndex < count) secScrollStates[secondaryIndex] else g5ScrollState
                 }
                 suspend fun shareScroll(place: Float, driver: VicoScrollState?) {
-                    if (!recentTouch()) {
+                    if (!recentTouch() || (followNow && dateUtil.now() <= skipInteractionUntilMs[0])) {
                         // No finger on the graphs: a lower graph moved by itself (startup position, rebuild). It must not
                         // pull the main graph away from the current time. Put the lower graphs back on the main graph's place.
-                        graphViewModel.graphSyncLog("shareScroll ignored (no touch)", "place=$place bgScroll=$bgScroll bgMax=$bgMax")
+                        graphViewModel.graphSyncLog("shareScroll ignored", "place=$place bgScroll=$bgScroll bgMax=$bgMax")
                         beltScrollState.copyPixelsIfDifferent(scrollForGraph(bgScroll, beltScrollState), null)
                         iobScrollState.copyPixelsIfDifferent(scrollForGraph(bgScroll, iobScrollState), null)
                         if (showGraph5Now.value) g5ScrollState.copyPixelsIfDifferent(scrollForGraph(bgScroll, g5ScrollState), null)
@@ -1074,9 +1077,24 @@ fun GraphsSection(
             wheelZoomMutex.withLock {
                 val current = bgZoomState.value
                 if (current.isFinite() && current > 0f && ratio.isFinite() && ratio > 0f) {
-                    val atNow = bgScrollState.value >= bgScrollState.maxValue - 2f
-                    bgZoomState.animateZoom(Zoom.fixed(current * ratio), animationSpec = tween(0), bias = if (atNow) 1f else bias)
-                    if (atNow) bgScrollState.scroll(Scroll.Absolute.End)
+                    val rangeStart = derivedTimeRange?.first?.takeUnless { fitWholeWindow }
+                    val geometry = bgGeometry.value
+                    val now = nowTimestamp
+                    val nowX = rangeStart?.let { timestampToX(now, it) }
+                    val rightBefore = geometry?.rightEdgeX(bgScrollState.value, current)
+                    val atNow = nowX != null && nowX.isFinite() &&
+                        (followNow || (rightBefore != null && rightBefore >= nowX - 1.0))
+                    val atHistoryEnd = fitWholeWindow && bgScrollState.value >= bgScrollState.maxValue - 2f
+                    bgZoomState.animateZoom(Zoom.fixed(current * ratio), animationSpec = tween(0), bias = if (atNow || atHistoryEnd) 1f else bias)
+                    if (atHistoryEnd) bgScrollState.scroll(Scroll.Absolute.End)
+                    val rightAfter = geometry?.rightEdgeX(bgScrollState.value, bgZoomState.value)
+                    if (rangeStart != null && nowX != null && nowX.isFinite() &&
+                        (atNow || (rightAfter != null && rightAfter > nowX))
+                    ) {
+                        skipInteractionUntilMs[0] = dateUtil.now() + 1000L
+                        followNow = true
+                        bgScrollState.scroll(scrollSoNowIsAtEnd(rangeStart, now))
+                    }
                 }
             }
         }
@@ -1519,6 +1537,7 @@ fun GraphsSection(
                     derivedTimeRange = derivedTimeRange,
                     nowTimestamp = nowTimestamp,
                     scaleLookbackHours = scaleLookbackHours,
+                    scaleTimeRange = if (i == 0) bgVisibleTimeRange else null,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height((if (simpleGraphs) simpleSecondaryHeightDp(i, simpleIosOrDesktop) else secondary.height).dp * graphHeightScale)
@@ -1954,6 +1973,12 @@ private fun rememberSafeZoomState(
 private fun Zoom.ifNotUsable(fallback: Float): Zoom = Zoom { context, layerDimensions, bounds ->
     val zoom = getValue(context, layerDimensions, bounds)
     if (zoom.isFinite() && zoom > 0f) zoom else fallback
+}
+
+private fun ChartGeometry.rightEdgeX(scroll: Float, zoom: Float): Double? {
+    if (!scroll.isFinite() || !zoom.isFinite()) return null
+    val minutes = minutesShown(zoom) ?: return null
+    return (xAt(scroll, zoom) + minutes).takeIf { it.isFinite() }
 }
 
 /** Scroll that puts the current time on the right edge of the chart. */
