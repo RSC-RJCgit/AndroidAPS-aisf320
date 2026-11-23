@@ -1633,6 +1633,11 @@ class BolusWizard @Inject constructor(
     private fun splitCancelWhat(amount: Double): String =
         "Carb split of ${ofBolus()}: all ${decimalFormatter.to2Decimal(amount)} U still to come"
 
+    private fun recordSplitCheck(amount: Double, reason: String, retryMinutes: Int) {
+        runCatching { deferDoseNote(splitCancelWhat(amount), amount, reason, retryMinutes) }
+            .onFailure { aapsLogger.error(LTag.CORE, "ReducedSplitBolus: could not record check", it) }
+    }
+
     private fun fpuWhat(label: String, dose: Double): String =
         "Protein/fat $label of ${ofBolus()}: ${decimalFormatter.to2Decimal(dose)} U"
 
@@ -1891,11 +1896,11 @@ class BolusWizard @Inject constructor(
             }
             fun holdThisCheck(reason: String) {
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: $reason — waiting ${intervalMins}min, remaining ${remainingResidual}U")
-                deferDoseNote(splitCancelWhat(remainingResidual), remainingResidual, reason, intervalMins)
                 scheduleReducedPartsSplitBolus(
                     remainingResidual, previousPartDose, iobBaselineForNextGap, intervalMins, schedulingPct, myScheduleToken,
                     dateUtil.now() + T.mins(intervalMins.toLong()).msecs(), retryDeadline, lastSkippedZero
                 )
+                recordSplitCheck(remainingResidual, reason, intervalMins)
             }
             val pct = activeProfileSwitchPct()
             if (pct < 100) {
@@ -1953,21 +1958,7 @@ class BolusWizard @Inject constructor(
             val bgUnsafe = gs.glucose < 108.1 /* 6.0 mmol */ ||
                 (gs.glucose < 144.1 /* 8.0 mmol */ && (gs.delta <= -0.90 /* -0.05 mmol */ || gs.shortAvgDelta <= -0.90 /* -0.05 mmol */))
             if (bgUnsafe) {
-                aapsLogger.info(
-                    LTag.CORE,
-                    "ReducedSplitBolus: BG unsafe (${gateGlucoseText(gs.glucose, gs.delta, gs.shortAvgDelta, profileFunction.getUnits())}) — retrying in ${intervalMins}min, remaining ${remainingResidual}U"
-                )
-                scheduleReducedPartsSplitBolus(
-                    remainingResidual,
-                    previousPartDose,
-                    iobBaselineForNextGap,
-                    intervalMins,
-                    schedulingPct,
-                    myScheduleToken,
-                    dateUtil.now() + T.mins(intervalMins.toLong()).msecs(),
-                    retryDeadline,
-                    lastSkippedZero
-                )
+                holdThisCheck("BG unsafe (${gateGlucoseText(gs.glucose, gs.delta, gs.shortAvgDelta, profileFunction.getUnits())})")
                 return@postDelayed
             }
             val liveIob = currentTotalIob()
@@ -1993,8 +1984,7 @@ class BolusWizard @Inject constructor(
                 val reason = if (cappedDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                 val retryMins = if (budget.dose > 0.0) 2 else intervalMins
                 aapsLogger.info(LTag.CORE, "ReducedSplitBolus: $reason — retrying in ${retryMins}min, remaining ${reducedResidual}U")
-                // Deferred (2026-09-20): nothing is written for a skip now; the latest one is remembered and written once,
-                // only if the split ends without delivering (see writeLastSkippedZero / terminal paths above).
+                // Keep the final zero-dose calculation deferred. The CarePortal note marks this check on the graph.
                 val skippedCalc = followUpCalculation(
                     dateUtil.now(), "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, 0.0,
                     "No insulin delivered: $reason. Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; retry in ${retryMins}min."
@@ -2004,6 +1994,7 @@ class BolusWizard @Inject constructor(
                     dateUtil.now() + T.mins(retryMins.toLong()).msecs(), retryDeadline,
                     lastSkippedZero = SkippedZero(iobIncrease, skippedCalc)
                 )
+                recordSplitCheck(reducedResidual, reason, retryMins)
                 return@postDelayed
             }
             DetailedBolusInfo().apply {
