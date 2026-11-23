@@ -3702,6 +3702,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // none with a time row, G2 onwards without their label. Graph 5 is unchanged. The skin heights stay for Detailed.
         // Keep in sync with HistoryBrowseActivity.kt.
         val simpleGraphs = preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs)
+        val graphAlgorithm = if (config.AAPSCLIENT) processedDeviceStatusData.getAPSResult()?.algorithm?.name
+        else runCatching { activePlugin.activeAPS.algorithm.name }.getOrNull()
+        val hideG2G3 = (graphAlgorithm != null && graphAlgorithm != "AUTO_ISF") ||
+            (simpleGraphs && preferences.get(BooleanKey.HideG2G3InSimpleGraphs))
         PointsWithLabelGraphSeries.simpleGraphs = simpleGraphs
         updateSimpleGraphsToggle()
         setGraphHeight(binding.graphsLayout.bgGraph, if (simpleGraphs) SIMPLE_BG_GRAPH_HEIGHT_DP else skinProvider.activeSkin().mainGraphHeight)
@@ -3918,6 +3922,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val labelBgColor = lastBgData.lastBgColor(context)
         val labelBgIsActual = lastBgData.isActualBg()
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
+            if (hideG2G3 && (g == 1 || g == 2)) continue
             val secondGraphData = graphDataProvider.get().with(secondaryGraphs[g], overviewData, displayTimeZone)
             var useABSForScale = false
             var useIobForScale = false
@@ -4084,6 +4089,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             secondaryGraphsData.add(secondGraphData)
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
+            if (hideG2G3 && (g == 1 || g == 2)) {
+                secondaryGraphs[g].visibility = View.GONE
+                secondaryGraphsLabel[g].visibility = View.GONE
+                continue
+            }
             // 2026-10-24, per explicit request: "G2 ACCE PP SMB" - the graph number, the curves, then what the graph draws
             // besides them (the same graphs as addInsulinIntervalTotals, addSmbLabels, addSmbStackTotalLabels and the notes above)
             val extras = when (g) {

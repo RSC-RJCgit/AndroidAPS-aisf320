@@ -298,6 +298,7 @@ class OverviewPlugin @Inject constructor(
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfGraph5BandTap, title = R.string.overview_graph5_band_tap))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfStepCutFromOldReasons, title = R.string.overview_step_cut_old_reasons))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.ApsAutoIsfShowInsulinTotals, title = R.string.overview_show_insulin_totals_title))
+            addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.HideG2G3InSimpleGraphs, title = R.string.hide_g2_g3_in_simple_graphs))
             addPreference(AdaptiveSwitchPreference(ctx = context, booleanKey = BooleanKey.OverviewQuickWizardCarbTimeFromRise, title = R.string.overview_quickwizard_carb_time_from_rise_title))
             addPreference(preferenceManager.createPreferenceScreen(context).apply {
                 val pump = activePlugin.activePump

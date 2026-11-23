@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="hide_g2_g3_in_simple_graphs">Hide G2 and G3 in Simple graph mode</string>
     <string name="overview_bg_acceleration_label" comment="BG acceleration per 5 minutes squared, shown beside the basal rate. This is not the AutoISF acce factor.">acce</string>
     <string name="graph_mode_simple" comment="Above the acce label, shown while the graphs are detailed: a tap switches them to simple">Simple</string>
     <string name="graph_mode_detailed" comment="Above the acce label, shown while the graphs are simple: a tap switches them to detailed">Detailed</string>

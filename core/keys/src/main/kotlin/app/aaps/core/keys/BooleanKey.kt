@@ -257,6 +257,7 @@ enum class BooleanKey(
     // Simple graphs (2026-11-21, per explicit request): the "Simple/Detailed" word above the acce label switches the overview
     // and History Browse graphs between Simple and Detailed. Display only, this phone only; the skin heights are not changed.
     ApsAutoIsfSimpleGraphs("autoisf_simple_graphs", false, defaultedBySM = true, exportable = false),
+    HideG2G3InSimpleGraphs("hide_g2_g3_in_simple_graphs", false, exportable = false),
 
     // Internal, not user-facing. Set by OpenAPSAutoISFPlugin's BolusGivenMild block when it fires while
     // BG < 5.9mmol: forces DetermineBasalAutoISF's varOffset (the "no COB + BG under target+offset ->
