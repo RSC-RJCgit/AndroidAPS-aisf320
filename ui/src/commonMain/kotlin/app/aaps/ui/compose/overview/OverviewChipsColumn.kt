@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.ui.compose.LocalPreferences
 import app.aaps.ui.UiStrings
 import app.aaps.core.data.model.RM
@@ -105,13 +108,21 @@ fun OverviewChipsColumn(
             onTbrChipDoubleClick = onTbrChipDoubleClick,
             commandsAllowed = commandsAllowed
         )
-        IobCobChipsRow(
-            iobUiState = iobUiState,
-            cobUiState = cobUiState,
-            onIobChipClick = onIobChipClick,
-            onIobChipLongClick = onIobChipLongClick,
-            onIobChipDoubleClick = onIobChipDoubleClick
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IobCobChipsRow(
+                iobUiState = iobUiState,
+                cobUiState = cobUiState,
+                onIobChipClick = onIobChipClick,
+                onIobChipLongClick = onIobChipLongClick,
+                onIobChipDoubleClick = onIobChipDoubleClick,
+                modifier = Modifier.weight(1f)
+            )
+            GraphScaleLookbackChip()
+        }
         // Simple / Detailed graphs (2026-11-21, per explicit request): a small S or D at the end of the sensitivity row (it was
         // next to AIV on the client card, where it made that row wrap). A tap switches; this device only.
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -122,6 +133,35 @@ fun OverviewChipsColumn(
             )
             SimpleGraphsSwitch()
         }
+    }
+}
+
+@Composable
+private fun GraphScaleLookbackChip() {
+    if (LocalInspectionMode.current) return
+    val preferences = LocalPreferences.current
+    val hours by preferences.observe(IntNonKey.GraphScaleLookbackHours).collectAsStateWithLifecycle()
+    val description = stringResource(UiStrings.graph_scale_lookback_description)
+    Surface(
+        shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .clickable(role = Role.Button) {
+                val next = when (preferences.get(IntNonKey.GraphScaleLookbackHours)) {
+                    9 -> 6
+                    6 -> 3
+                    3 -> 1
+                    else -> 9
+                }
+                preferences.put(IntNonKey.GraphScaleLookbackHours, next)
+            }
+            .semantics { contentDescription = description }
+    ) {
+        Text(
+            text = hours.toString(),
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = AapsSpacing.small, vertical = AapsSpacing.extraSmall)
+        )
     }
 }
 

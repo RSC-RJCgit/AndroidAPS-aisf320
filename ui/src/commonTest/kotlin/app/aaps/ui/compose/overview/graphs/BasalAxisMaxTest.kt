@@ -122,12 +122,12 @@ class BasalAxisMaxTest {
         val now = 24 * hour
         // 2.4 U 20 hours ago, 1.2 U 10 hours ago, at most 0.9 U in the last 6 hours: the day's top is over 1.5, so the last 6 hours decide
         val totals = listOf((4 * hour) to 2.4, (14 * hour) to 1.2, (19 * hour) to 0.9, (20 * hour) to 0.5)
-        assertEquals(0.9, insulinColumnTopLookBack(totals, maxBolus = 5.0, now = now), 1e-9)
+        assertEquals(0.9, insulinColumnTopLookBack(totals, maxBolus = 5.0, now = now, lookbackHours = 6), 1e-9)
         // A day top of 1.5 or less stays
         val small = listOf((4 * hour) to 1.4, (20 * hour) to 0.5)
-        assertEquals(1.4, insulinColumnTopLookBack(small, maxBolus = 5.0, now = now), 1e-9)
+        assertEquals(1.4, insulinColumnTopLookBack(small, maxBolus = 5.0, now = now, lookbackHours = 6), 1e-9)
         // Nothing in the last 6 hours: the day's top
-        assertEquals(2.4, insulinColumnTopLookBack(listOf((4 * hour) to 2.4, (14 * hour) to 1.2), maxBolus = 5.0, now = now), 1e-9)
+        assertEquals(2.4, insulinColumnTopLookBack(listOf((4 * hour) to 2.4, (14 * hour) to 1.2), maxBolus = 5.0, now = now, lookbackHours = 6), 1e-9)
     }
 
     @Test

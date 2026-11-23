@@ -10,6 +10,7 @@ enum class IntNonKey(
 
     ObjectivesManualEnacts("ObjectivesmanualEnacts", 0),
     TddCycleOffset("tdd_cycle_offset", 0),
+    GraphScaleLookbackHours("graph_scale_lookback_hours", 6),
     // Statistics, Sensor tab: how many of the newest sensors to skip
     SensorCycleOffset("sensor_cycle_offset", 0),
     // Statistics, Pod tab: how many of the newest pods to skip

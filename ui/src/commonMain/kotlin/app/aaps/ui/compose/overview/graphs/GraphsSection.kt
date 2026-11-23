@@ -79,6 +79,7 @@ import app.aaps.core.interfaces.overview.graph.SecondaryGraph
 import app.aaps.core.interfaces.overview.graph.SeriesType
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.keys.interfaces.AppPlatform
@@ -231,6 +232,7 @@ fun GraphsSection(
     val dateUtil = LocalDateUtil.current
     val masterZone = rememberMasterGraphTimeZone()
     val savedGraphConfig by graphViewModel.graphConfigFlow.collectAsStateWithLifecycle()
+    val scaleLookbackHours by LocalPreferences.current.observe(IntNonKey.GraphScaleLookbackHours).collectAsStateWithLifecycle()
     // In simple mode: fixed layout (BG, IOB+BAS, COB — no overlays, no editing)
     val graphConfig = if (isSimpleMode) SIMPLE_MODE_CONFIG else savedGraphConfig
 
@@ -1306,6 +1308,7 @@ fun GraphsSection(
                 geometryHolder = bgGeometry,
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
+                scaleLookbackHours = scaleLookbackHours,
                 visibleTimeRange = bgVisibleTimeRange,
                 inspect = inspect,
                 modifier = Modifier
@@ -1427,6 +1430,7 @@ fun GraphsSection(
                 geometryHolder = iobGeometry,
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
+                scaleLookbackHours = scaleLookbackHours,
                 activityOverlay = SeriesType.ACTIVITY in graphConfig.iobOverlays,
                 onVisibleRangeChanged = { iobVisibleRange = it },
                 basalSnapshot = basalSnapshot,
@@ -1514,6 +1518,7 @@ fun GraphsSection(
                     geometryHolder = secGeometry[i],
                     derivedTimeRange = derivedTimeRange,
                     nowTimestamp = nowTimestamp,
+                    scaleLookbackHours = scaleLookbackHours,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height((if (simpleGraphs) simpleSecondaryHeightDp(i, simpleIosOrDesktop) else secondary.height).dp * graphHeightScale)
@@ -1565,6 +1570,7 @@ fun GraphsSection(
                     geometryHolder = g5Geometry,
                     derivedTimeRange = derivedTimeRange,
                     nowTimestamp = nowTimestamp,
+                    scaleLookbackHours = scaleLookbackHours,
                     visibleTimeRange = bgVisibleTimeRange,
                     inspect = inspect,
                     topBandLines = true,

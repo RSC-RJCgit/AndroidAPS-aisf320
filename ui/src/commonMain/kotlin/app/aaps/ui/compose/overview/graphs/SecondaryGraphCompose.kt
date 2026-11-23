@@ -222,6 +222,7 @@ fun SecondaryGraphCompose(
     zoomState: VicoZoomState,
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
+    scaleLookbackHours: Int,
     activityOverlay: Boolean = false,
     cobOverlay: Boolean = false,
     showSmbDoseLabels: Boolean = false,
@@ -613,19 +614,18 @@ fun SecondaryGraphCompose(
     val nearlyFixedAxis = primaryType == SeriesType.IOB || primaryType == SeriesType.STEPS
     val axisMinX = if (nearlyFixedAxis) null else scaleMinX
     val axisMaxX = if (nearlyFixedAxis) null else scaleMaxX
-    // 2026-11-21, per explicit request: as the insulin-total columns, the IOB axis looks back only the last 6 hours up to now when
-    // the 24-hour top is over 1.5 U, and the steps axis always looks back only 6 hours (see nearlyFixedAxisValues).
+    // IOB uses the selected recent window when the full-day top exceeds 1.5 U. Steps always use the recent window.
     val nowMinute = nowTimestamp / 60_000L
     val primaryYValues = remember(
         processedIob, processedCob, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines, axisMinX, axisMaxX,
-        primaryType, minTimestamp, nowMinute
+        primaryType, minTimestamp, nowMinute, scaleLookbackHours
     ) {
         fun windowed(fromX: Double?, toX: Double?) =
             windowedPrimaryY(fromX, toX, processedIob, processedCob.first, processedCarbs, processedSimpleSeries, processedDevSlopeMin, processedDeviationLines)
         val dayValues = windowed(axisMinX, axisMaxX)
         val values = if (!nearlyFixedAxis) dayValues else {
             val nowX = timestampToX(nowTimestamp, minTimestamp)
-            val recentValues = windowed(nowX - INSULIN_COLUMN_SHORT_LOOKBACK_MS / 60_000.0, nowX)
+            val recentValues = windowed(nowX - scaleLookbackHours * 60.0, nowX)
             nearlyFixedAxisValues(dayValues, recentValues, if (primaryType == SeriesType.IOB) INSULIN_COLUMN_SHORT_LOOKBACK_ABOVE_U else null)
         }
         when {

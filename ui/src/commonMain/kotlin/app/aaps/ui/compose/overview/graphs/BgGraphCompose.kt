@@ -346,6 +346,7 @@ fun BgGraphCompose(
     zoomState: VicoZoomState,
     derivedTimeRange: Pair<Long, Long>?,
     nowTimestamp: Long,
+    scaleLookbackHours: Int,
     visibleTimeRange: Pair<Long, Long>? = null,
     /** Graph 5 only: draw SMB delivery, acce weight, pp weight and profile basal in the top band of the BG axis. */
     topBandLines: Boolean = false,
@@ -485,7 +486,7 @@ fun BgGraphCompose(
     // Full height is the day's largest slice, at most the max bolus setting + 0.3 U (insulinColumnTop).
     val insulinColumnData = remember(
         insulinColumns, visibleTimeRange, basalData, treatments, bgReadings, minTimestamp, maxTimestamp, maxBolusSetting,
-        nowTimestamp / 60_000L
+        nowTimestamp / 60_000L, scaleLookbackHours
     ) {
         if (!insulinColumns) emptyList<InsulinColumn>() to 1.0
         else {
@@ -495,9 +496,8 @@ fun BgGraphCompose(
                 minTimestamp, maxTimestamp, sliceMs, nowTimestamp, basalData.actualBasal, treatments.boluses, treatments.extendedBoluses
             )
             // The ISF colours stay in the clean graph too (2026-11-20, per explicit request), as on the IOB graph's basal
-            // Full height: the day's largest slice (at most max bolus + 0.3 U), or only the last 6 hours' when that is over 1.5 U
-            // (2026-11-20, per explicit request; 6 hours since 2026-11-21, was 12)
-            insulinColumnsOf(totals, sliceMs, bgReadings, coloured = true) to insulinColumnTopLookBack(totals, maxBolusSetting, nowTimestamp)
+            // Use the recent window when the day's largest slice exceeds 1.5 U.
+            insulinColumnsOf(totals, sliceMs, bgReadings, coloured = true) to insulinColumnTopLookBack(totals, maxBolusSetting, nowTimestamp, scaleLookbackHours)
         }
     }
 
