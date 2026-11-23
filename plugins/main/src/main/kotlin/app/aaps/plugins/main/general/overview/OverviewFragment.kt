@@ -3704,7 +3704,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val simpleGraphs = preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs)
         val graphAlgorithm = if (config.AAPSCLIENT) processedDeviceStatusData.getAPSResult()?.algorithm?.name
         else runCatching { activePlugin.activeAPS.algorithm.name }.getOrNull()
-        val hideG2G3 = (graphAlgorithm != null && graphAlgorithm != "AUTO_ISF") ||
+        val hideG2ThroughG4 = (graphAlgorithm != null && graphAlgorithm != "AUTO_ISF") ||
             (simpleGraphs && preferences.get(BooleanKey.HideG2G3InSimpleGraphs))
         PointsWithLabelGraphSeries.simpleGraphs = simpleGraphs
         updateSimpleGraphsToggle()
@@ -3922,7 +3922,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         val labelBgColor = lastBgData.lastBgColor(context)
         val labelBgIsActual = lastBgData.isActualBg()
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
-            if (hideG2G3 && (g == 1 || g == 2)) continue
+            if (hideG2ThroughG4 && g in 1..3) continue
             val secondGraphData = graphDataProvider.get().with(secondaryGraphs[g], overviewData, displayTimeZone)
             var useABSForScale = false
             var useIobForScale = false
@@ -4089,7 +4089,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             secondaryGraphsData.add(secondGraphData)
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
-            if (hideG2G3 && (g == 1 || g == 2)) {
+            if (hideG2ThroughG4 && g in 1..3) {
                 secondaryGraphs[g].visibility = View.GONE
                 secondaryGraphsLabel[g].visibility = View.GONE
                 continue
