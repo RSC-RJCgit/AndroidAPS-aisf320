@@ -465,12 +465,10 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
             graphData.addCombinedCarbs(0.8)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.BG_PARAB.ordinal) && !simpleGraphs)
             graphData.addBgParabola(false, 1.0)
-        val insulinColumnsShown = pump.pumpDescription.isTempBasalCapable &&
-            menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal] && historyBrowserData.overviewData.insulinColumnSeries.isNotEmpty()
-        // Simple graphs keep the columns; the renderer leaves their values out (Shape.HOUR_PEAK)
-        if (insulinColumnsShown)
-            // 2026-11-19, per explicit request: the main graph's columns are insulin totals; Graph 5 keeps basal (addBasals there)
-            graphData.addInsulinTotalColumns()
+        val showBasal = pump.pumpDescription.isTempBasalCapable && menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
+        val insulinColumnsShown = showBasal && historyBrowserData.overviewData.insulinColumnSeries.isNotEmpty()
+        if (insulinColumnsShown) graphData.addInsulinTotalColumns()
+        else if (showBasal) graphData.addBasals()
         // Raw and smoothed raw (UKF) BG stay in Simple graphs too, as their switches say (2026-11-21, per explicit request)
         if (overviewMenus.isActiveCharTypeData(0, OverviewMenus.CharType.RAW_BG.ordinal))
             graphData.addRawBg(false)
