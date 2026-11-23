@@ -110,6 +110,7 @@ interface OverviewData {
     var treatmentsSeries: SeriesData
     var smbLabelSeries: SeriesData
     var smbStackTotalSeries: SeriesData
+    var overviewResumed: Boolean
     var insulinIntervalTotalSeries: SeriesData
     // Main graph's insulin-total columns (2026-11-19), in place of its basal columns; heights are fractions of the band.
     // One column series per ISF colour plus the value labels on top (2026-11-20).

@@ -364,6 +364,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             preferences.put(BooleanKey.ApsAutoIsfSimpleGraphs, !preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs))
             updateSimpleGraphsToggle()
             updateGraph()
+            refreshMasterInsulinTotals()
         }
 
         // Mod exercise mode toggle icon
@@ -451,7 +452,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         )
     }
 
+    private fun refreshMasterInsulinTotals() {
+        if (config.APS && !preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs) &&
+            preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
+        ) calculationWorkflow.runOnEventTherapyEventChange(iobCobCalculator, overviewData)
+    }
+
     override fun onPause() {
+        overviewData.overviewResumed = false
+        if (config.APS && !preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs))
+            preferences.put(BooleanKey.ApsAutoIsfSimpleGraphs, true)
         super.onPause()
         disposable.clear()
         handler.removeCallbacksAndMessages(null)
@@ -459,6 +469,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     override fun onResume() {
         super.onResume()
+        overviewData.overviewResumed = true
+        refreshMasterInsulinTotals()
         checkOnUpdatePopups()
         disposable += activePlugin.activeOverview.overviewBus
             .toObservable(EventUpdateOverviewCalcProgress::class.java)
@@ -3780,7 +3792,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphData.addRawBgSmoothed(false)
         val showBasal = (pump.pumpDescription.isTempBasalCapable || config.AAPSCLIENT) &&
             menuChartSettings[0][OverviewMenus.CharType.BAS.ordinal]
-        val insulinColumnsShown = showBasal && overviewData.insulinColumnSeries.isNotEmpty()
+        val insulinColumnsShown = (!config.APS || !simpleGraphs) && showBasal && overviewData.insulinColumnSeries.isNotEmpty()
         if (insulinColumnsShown) graphData.addInsulinTotalColumns()
         else if (showBasal) graphData.addBasals()
         graphData.addTargetLine()

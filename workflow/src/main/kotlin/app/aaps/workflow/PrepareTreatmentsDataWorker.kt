@@ -1,6 +1,7 @@
 package app.aaps.workflow
 
 import android.content.Context
+import android.os.PowerManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.model.AIV
@@ -93,6 +94,7 @@ class PrepareTreatmentsDataWorker(
     @Inject lateinit var decimalFormatter: DecimalFormatter
     @Inject lateinit var preferences: Preferences
     @Inject lateinit var config: Config
+    @Inject lateinit var liveOverviewData: OverviewData
     @Inject lateinit var stepCountSource: StepCountSource
 
     class PrepareTreatmentsData(
@@ -443,7 +445,11 @@ class PrepareTreatmentsDataWorker(
         val windowEnd = data.overviewData.toTime
         val span = windowEnd - windowStart
         // Settings switch (Overview), default off: when off no labels are built, so the row is not drawn.
-        if (span > 0L && preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)) {
+        val showMasterTotals = !config.APS || data.overviewData !== liveOverviewData || (
+            !preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs) && liveOverviewData.overviewResumed &&
+                applicationContext.getSystemService(PowerManager::class.java)?.isInteractive == true
+            )
+        if (span > 0L && showMasterTotals && preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)) {
             val insulinTotals = DoubleArray(12)
             var t = windowStart
             while (t < windowEnd) {
@@ -499,7 +505,7 @@ class PrepareTreatmentsDataWorker(
         }
         data.overviewData.insulinIntervalTotalSeries = PointsWithLabelGraphSeries(insulinIntervalLabels.toTypedArray())
         data.overviewData.insulinColumnSeries =
-            if (BUILD_INSULIN_TOTAL_COLUMNS) insulinTotalColumns(data, windowStart, windowEnd, aivList) else emptyList()
+            if (BUILD_INSULIN_TOTAL_COLUMNS && showMasterTotals) insulinTotalColumns(data, windowStart, windowEnd, aivList) else emptyList()
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())

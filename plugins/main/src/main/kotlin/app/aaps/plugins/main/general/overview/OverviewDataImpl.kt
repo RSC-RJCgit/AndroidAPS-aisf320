@@ -329,6 +329,7 @@ class OverviewDataImpl @Inject constructor(
     override var treatmentsSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var smbLabelSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override var smbStackTotalSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
+    @Volatile override var overviewResumed = false
     override var insulinIntervalTotalSeries: SeriesData = PointsWithLabelGraphSeries<DataPointWithLabelInterface>()
     override val insulinColumnScale = Scale()
     override var insulinColumnSeries: List<SeriesData> = emptyList()
