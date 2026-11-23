@@ -352,8 +352,8 @@ fun GraphsSection(
     // SIMPLE_IOB_HEIGHT_DP, G2 onwards curves only at SIMPLE_SECONDARY_HEIGHT_DP, without their heading and time rows. The last
     // graph (the BG copy) is unchanged. Display only: the saved heights stay for Detailed.
     val simpleGraphs by LocalPreferences.current.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
-    val hideG2G3InSimple by LocalPreferences.current.observe(BooleanKey.HideG2G3InSimpleGraphs).collectAsStateWithLifecycle()
-    val hideG2G3 = graphViewModel.hasNonAutoIsfGraphSource() || (simpleGraphs && hideG2G3InSimple)
+    val hideG2ThroughG4InSimple by LocalPreferences.current.observe(BooleanKey.HideG2G3InSimpleGraphs).collectAsStateWithLifecycle()
+    val hideG2ThroughG4 = graphViewModel.hasNonAutoIsfGraphSource() || (simpleGraphs && hideG2ThroughG4InSimple)
     // iOS and Windows have their own Simple heights (2026-11-21, per explicit request), see simpleSecondaryHeightDp
     val simpleIosOrDesktop = LocalConfig.current.platform != AppPlatform.Android
 
@@ -473,7 +473,7 @@ fun GraphsSection(
         add(-1) // Main BG
         add(-2) // Fixed IOB
         for (i in 0 until activeCount) {
-            if ((!hideG2G3 || i >= 2) && graphConfig.secondaryGraphs[i].series.isNotEmpty()) add(i)
+            if ((!hideG2ThroughG4 || i >= 3) && graphConfig.secondaryGraphs[i].series.isNotEmpty()) add(i)
         }
         if (showGraph5) add(-3)
     }
@@ -1487,7 +1487,7 @@ fun GraphsSection(
         // Secondary graphs — config-driven (labels start at "Graph 2")
         var editingGraphIndex by remember { mutableIntStateOf(-1) }
         for (i in 0 until activeCount) {
-            if (hideG2G3 && i < 2) continue
+            if (hideG2ThroughG4 && i < 3) continue
             val secondary = graphConfig.secondaryGraphs[i]
             Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
                 SecondaryGraphCompose(

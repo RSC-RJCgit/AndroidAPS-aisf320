@@ -666,6 +666,6 @@
 
     <string name="pref_title_virtual_step_text">Show step text and popup values on Virtual pump</string>
     <string name="pref_summary_virtual_step_text">Local display only. Step graphs, AIV columns, collection and automation stay enabled. Applies only to full AAPS using the Virtual pump.</string>
-    <string name="hide_g2_g3_in_simple_graphs_title">Hide G2 and G3 in Simple graph mode</string>
-    <string name="hide_g2_g3_in_simple_graphs_summary">Hide these two graphs while Simple graph mode is selected.</string>
+    <string name="hide_g2_g3_in_simple_graphs_title">Hide G2–G4 in Simple graph mode</string>
+    <string name="hide_g2_g3_in_simple_graphs_summary">Hide graphs G2 through G4 while Simple graph mode is selected.</string>
 </resources>
