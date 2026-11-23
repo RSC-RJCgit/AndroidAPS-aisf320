@@ -8,7 +8,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TooltipAnchorPosition
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +44,7 @@ import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.navigation.NavigationRequest
+import app.aaps.core.ui.compose.navigation.color
 import app.aaps.core.ui.compose.stringResource
 import app.aaps.ui.compose.main.TempTargetChipState
 import app.aaps.ui.compose.overview.chips.CobUiState
@@ -168,12 +175,14 @@ internal fun OverviewGlucoseCircle(
 private fun GlucoseMetricChip(value: String?, descriptionKey: String, modifier: Modifier) {
     if (value.isNullOrBlank()) return
     val description = stringResource(TextRef.Named("ui", descriptionKey), value)
-    Surface(
-        shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier.semantics { contentDescription = description }
-    ) {
-        Text(value, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+    GlucoseChipTooltip(description, modifier) {
+        Surface(
+            shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
+            color = ElementType.SENSITIVITY.color().copy(alpha = 0.2f),
+            modifier = Modifier.semantics { contentDescription = description }
+        ) {
+            Text(value, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
+        }
     }
 }
 
@@ -183,27 +192,41 @@ private fun GraphScaleLookbackChip(modifier: Modifier) {
     val preferences = LocalPreferences.current
     val hours by preferences.observe(IntNonKey.GraphScaleLookbackHours).collectAsStateWithLifecycle()
     val description = stringResource(UiStrings.graph_scale_lookback_description)
-    Surface(
-        shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = modifier
-            .clickable(role = Role.Button) {
-                val next = when (preferences.get(IntNonKey.GraphScaleLookbackHours)) {
-                    9 -> 6
-                    6 -> 3
-                    3 -> 1
-                    else -> 9
+    GlucoseChipTooltip(description, modifier) {
+        Surface(
+            shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
+            color = ElementType.SENSITIVITY.color().copy(alpha = 0.2f),
+            modifier = Modifier
+                .clickable(role = Role.Button) {
+                    val next = when (preferences.get(IntNonKey.GraphScaleLookbackHours)) {
+                        9 -> 6
+                        6 -> 3
+                        3 -> 1
+                        else -> 9
+                    }
+                    preferences.put(IntNonKey.GraphScaleLookbackHours, next)
                 }
-                preferences.put(IntNonKey.GraphScaleLookbackHours, next)
-            }
-            .semantics { contentDescription = description }
-    ) {
-        Text(
-            text = hours.toString(),
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
-        )
+                .semantics { contentDescription = description }
+        ) {
+            Text(
+                text = hours.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+        }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GlucoseChipTooltip(description: String, modifier: Modifier, content: @Composable () -> Unit) {
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
+        tooltip = { PlainTooltip { Text(description) } },
+        state = rememberTooltipState(),
+        modifier = modifier,
+        content = content
+    )
 }
 
 /**

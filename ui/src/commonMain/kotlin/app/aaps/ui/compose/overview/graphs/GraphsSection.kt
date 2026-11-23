@@ -1125,7 +1125,7 @@ fun GraphsSection(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
             .then(if (isLandscape()) Modifier.blockSystemEdgeGesture() else Modifier)
             // Diagnostics (2026-11-19, per explicit request): one log line per two-finger gesture, whether or not it zoomed.
             // Watches only (nothing consumed), so Vico's own pinch and drag are unchanged. Final pass (was Initial), so it
@@ -1330,11 +1330,21 @@ fun GraphsSection(
             val mainAutoIsf by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
             val hpText = mainAutoIsf.hypoPrediction?.takeIf { mainAutoIsf.statusIsf != null }
                 ?.let { "HP=${oneDecimalText(it)}" }
-            if (hpText != null || showZoomButtons || !isSimpleMode) {
+            val shownSpanText = shownGraphSpanText(bgVisibleTimeRange)
+            if (shownSpanText != null || hpText != null || showZoomButtons || !isSimpleMode) {
                 Row(
                     modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    shownSpanText?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
+                    }
                     hpText?.let {
                         Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.padding(end = 4.dp))
                     }
