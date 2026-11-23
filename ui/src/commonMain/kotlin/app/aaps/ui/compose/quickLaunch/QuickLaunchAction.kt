@@ -28,7 +28,12 @@ sealed class QuickLaunchAction {
         override val typeId: String = elementType.name.lowercase()
     }
 
-    data class CodedAction internal constructor(override val typeId: String, val label: TextRef, val mmol: Double) : QuickLaunchAction()
+    data class CodedAction internal constructor(
+        override val typeId: String,
+        val label: TextRef,
+        val mmol: Double,
+        val toolbarLabel: String,
+    ) : QuickLaunchAction()
 
     // ── Dynamic actions (carry runtime identifier) ──
 
@@ -108,14 +113,14 @@ sealed class QuickLaunchAction {
         val SiteRotation = StaticAction(ElementType.SITE_ROTATION)
         val QuickLaunchConfig = StaticAction(ElementType.QUICK_LAUNCH_CONFIG)
 
-        val MjStart = CodedAction("mj_start", UiStrings.overview_mj_start, 5.158)
-        val MjRestore = CodedAction("mj_restore", UiStrings.overview_mj_restore, 5.160)
-        val SteroidOn = CodedAction("steroid_on", UiStrings.overview_steroid_on, 5.162)
-        val Steroid130 = CodedAction("steroid_130", UiStrings.overview_steroid_130, 5.168)
-        val Steroid150 = CodedAction("steroid_150", UiStrings.overview_steroid_150, 5.170)
-        val Steroid190 = CodedAction("steroid_190", UiStrings.overview_steroid_190, 5.172)
-        val Steroid250 = CodedAction("steroid_250", UiStrings.overview_steroid_250, 5.174)
-        val SteroidOff = CodedAction("steroid_off", UiStrings.overview_steroid_off, 5.176)
+        val MjStart = CodedAction("mj_start", UiStrings.overview_mj_start, 5.158, "MJ+")
+        val MjRestore = CodedAction("mj_restore", UiStrings.overview_mj_restore, 5.160, "MJ−")
+        val SteroidOn = CodedAction("steroid_on", UiStrings.overview_steroid_on, 5.162, "110")
+        val Steroid130 = CodedAction("steroid_130", UiStrings.overview_steroid_130, 5.168, "130")
+        val Steroid150 = CodedAction("steroid_150", UiStrings.overview_steroid_150, 5.170, "150")
+        val Steroid190 = CodedAction("steroid_190", UiStrings.overview_steroid_190, 5.172, "190")
+        val Steroid250 = CodedAction("steroid_250", UiStrings.overview_steroid_250, 5.174, "250")
+        val SteroidOff = CodedAction("steroid_off", UiStrings.overview_steroid_off, 5.176, "100")
 
         /**
          * All static actions available for the configuration screen (excluding QuickLaunchConfig).

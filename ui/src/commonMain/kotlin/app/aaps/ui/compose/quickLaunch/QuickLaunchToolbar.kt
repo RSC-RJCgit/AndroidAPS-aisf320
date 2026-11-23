@@ -36,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.ui.CoreUiStrings
@@ -180,12 +182,23 @@ private fun ToolbarIconButton(
             modifier = Modifier
                 .size(QuickLaunchButtonSize)
         ) {
-            Icon(
-                imageVector = item.icon,
-                contentDescription = item.label,
-                tint = resolveItemColor(item),
-                modifier = Modifier.size(ToolbarIconSize)
-            )
+            val action = item.action
+            if (action is QuickLaunchAction.CodedAction) {
+                Text(
+                    text = action.toolbarLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = resolveItemColor(item),
+                    maxLines = 1,
+                    modifier = Modifier.clearAndSetSemantics { contentDescription = item.label }
+                )
+            } else {
+                Icon(
+                    imageVector = item.icon,
+                    contentDescription = item.label,
+                    tint = resolveItemColor(item),
+                    modifier = Modifier.size(ToolbarIconSize)
+                )
+            }
         }
     }
 }
@@ -228,12 +241,22 @@ private fun OverflowMenuButton(
                         }
                     },
                     leadingIcon = {
-                        Icon(
-                            imageVector = item.icon,
-                            contentDescription = null,
-                            tint = resolveItemColor(item),
-                            modifier = Modifier.size(24.dp)
-                        )
+                        val action = item.action
+                        if (action is QuickLaunchAction.CodedAction) {
+                            Text(
+                                text = action.toolbarLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = resolveItemColor(item),
+                                modifier = Modifier.clearAndSetSemantics {}
+                            )
+                        } else {
+                            Icon(
+                                imageVector = item.icon,
+                                contentDescription = null,
+                                tint = resolveItemColor(item),
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
                     },
                     enabled = item.enabled,
                     onClick = {

@@ -194,10 +194,9 @@ fun MainScreen(
     var showTreatmentSheet by remember { mutableStateOf(false) }
     var showAutomationSheet by remember { mutableStateOf(false) }
     val availableCodedActions by chipsViewModel.availableCodedActions.collectAsStateWithLifecycle()
-    val visibleQuickLaunchItems = quickLaunchItems.map { item ->
+    val visibleQuickLaunchItems = quickLaunchItems.filter { item ->
         val action = item.action
-        if (action is QuickLaunchAction.CodedAction && action !in availableCodedActions) item.copy(enabled = false)
-        else item
+        action !is QuickLaunchAction.CodedAction || action in availableCodedActions
     }
     var pendingCodedAction by remember { mutableStateOf<QuickLaunchAction.CodedAction?>(null) }
     val handleQuickLaunch: (QuickLaunchAction) -> Unit = { action ->
