@@ -5298,6 +5298,25 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote(if (carbsHeld) "NtCapR" else "NtCap", smsText = lastSmsText)
             aapsLogger.debug(LTag.APS, "Night IOB ceiling iob=${nightCap.iob} acce=${nightCap.acce}")
         }
+        // Keep the suspend rules in separate methods to limit register pressure in the Android bytecode.
+        applyEveningTargets(now, minuteOfDay, bg, delta, shortDelta, longDelta, cob, iob, statesOn, steps60, steps180, store)
+        applyEveningSensitivity(now, minuteOfDay, bg, delta, shortDelta, longDelta, profilePercent, cob, iob, statesOn, steps60, steps180, store)
+    }
+
+    private suspend fun applyEveningTargets(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        steps60: Int,
+        steps180: Int,
+        store: AutomationStateStore,
+    ) {
         if (stuckRisingShouldRequest(
                 ready = runMarks.ready(RunMark.STUCK_RISING, 5, now),
                 minuteOfDay = minuteOfDay,
@@ -5345,6 +5364,23 @@ open class OpenAPSAutoISFPlugin(
             carePortalNote("EDSR", smsText = lastSmsText)
             aapsLogger.debug(LTag.APS, "Early dawn 4.4 mmol for 5 min")
         }
+    }
+
+    private suspend fun applyEveningSensitivity(
+        now: Long,
+        minuteOfDay: Int,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        longDelta: Double,
+        profilePercent: Int,
+        cob: Double,
+        iob: Double,
+        statesOn: Boolean,
+        steps60: Int,
+        steps180: Int,
+        store: AutomationStateStore,
+    ) {
         val running = profileFunction.getOriginalProfileName()
         val onRole = running == preferences.get(StringKey.ApsAutoIsfLowProfileName).trim() ||
             running == preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
