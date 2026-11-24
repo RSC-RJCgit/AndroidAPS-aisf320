@@ -19,6 +19,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -173,11 +175,14 @@ internal fun OverviewGlucoseCircle(
 private fun GlucoseMetricChip(value: String?, descriptionKey: String, modifier: Modifier) {
     if (value.isNullOrBlank()) return
     val description = stringResource(TextRef.Named("ui", descriptionKey), value)
-    GlucoseChipTooltip(description, modifier) {
+    GlucoseChipTooltip(description, modifier) { showTooltip ->
+        // 2026-11-25, per explicit request: a tap shows the description too (it took a press and hold before)
         Surface(
             shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
             color = ElementType.SENSITIVITY.color().copy(alpha = 0.2f),
-            modifier = Modifier.semantics { contentDescription = description }
+            modifier = Modifier
+                .clickable(role = Role.Button, onClick = showTooltip)
+                .semantics { contentDescription = description }
         ) {
             Text(value, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp))
         }
@@ -190,7 +195,7 @@ private fun GraphScaleLookbackChip(modifier: Modifier) {
     val preferences = LocalPreferences.current
     val hours by preferences.observe(IntNonKey.GraphScaleLookbackHours).collectAsStateWithLifecycle()
     val description = stringResource(UiStrings.graph_scale_lookback_description)
-    GlucoseChipTooltip(description, modifier) {
+    GlucoseChipTooltip(description, modifier) { _ ->
         Surface(
             shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
             color = ElementType.SENSITIVITY.color().copy(alpha = 0.2f),
@@ -217,13 +222,15 @@ private fun GraphScaleLookbackChip(modifier: Modifier) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GlucoseChipTooltip(description: String, modifier: Modifier, content: @Composable () -> Unit) {
+private fun GlucoseChipTooltip(description: String, modifier: Modifier, content: @Composable (showTooltip: () -> Unit) -> Unit) {
+    val tooltipState = rememberTooltipState()
+    val scope = rememberCoroutineScope()
     Box(modifier) {
         TooltipBox(
             positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
             tooltip = { PlainTooltip { Text(description) } },
-            state = rememberTooltipState(),
-            content = content
+            state = tooltipState,
+            content = { content { scope.launch { tooltipState.show() } } }
         )
     }
 }
