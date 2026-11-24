@@ -28,6 +28,15 @@ plugins {
  * The navigation dependency is already the JetBrains republish, so nothing is waiting on that.
  * `:plugins:sync` is multiplatform now too - an older note here said otherwise.
  */
+/**
+ * Plugins reached from Android only (2026-11-25, as in OpenApsAIMIios). `:plugins:dexcom_oneplus` has
+ * no jvm target, so listing it in commonMain failed dependency resolution for this module's jvm
+ * target; only `:plugins:source/androidMain` uses it.
+ */
+val ANDROID_ONLY_PLUGINS = listOf(
+    ":plugins:dexcom_oneplus",
+)
+
 kotlin {
     android {
         namespace = "app.aaps.appshell"
@@ -52,7 +61,7 @@ kotlin {
                 // with the navigation graph that routes to them; `api` so `:app` still builds its
                 // graph against them. Adding or removing a plugin stays an edit in settings.gradle.
                 rootProject.subprojects
-                    .filter { it.path.startsWith(":plugins:") && it.buildFile.exists() }
+                    .filter { it.path.startsWith(":plugins:") && it.buildFile.exists() && it.path !in ANDROID_ONLY_PLUGINS }
                     .forEach { api(project(it.path)) }
 
                 api(libs.jetbrains.compose.runtime)
@@ -71,6 +80,8 @@ kotlin {
             dependencies {
                 api(project.dependencies.platform(libs.androidx.compose.bom))
                 implementation(libs.androidx.activity.compose)
+                // Kept out of commonMain, see ANDROID_ONLY_PLUGINS; `:app` still reaches them through here.
+                ANDROID_ONLY_PLUGINS.forEach { api(project(it)) }
             }
         }
         getByName("androidHostTest") {

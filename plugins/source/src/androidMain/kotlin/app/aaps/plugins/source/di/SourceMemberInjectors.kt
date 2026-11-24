@@ -6,10 +6,6 @@ import app.aaps.plugins.source.activities.CgmDriverLogActivity
 import app.aaps.plugins.source.activities.DexcomOnePlusStartActivity
 import app.aaps.plugins.source.activities.DexcomOnePlusStatusActivity
 import app.aaps.plugins.source.activities.DexcomOnePlusWarmupActivity
-import app.aaps.plugins.source.activities.EversenseCalibrationActivity
-import app.aaps.plugins.source.activities.Libre3StartActivity
-import app.aaps.plugins.source.activities.Libre3StatusActivity
-import app.aaps.plugins.source.activities.Libre3WarmupActivity
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.BindingContainer
 import dev.zacsweers.metro.ClassKey
@@ -19,8 +15,9 @@ import dev.zacsweers.metro.MembersInjector
 import dev.zacsweers.metro.Provides
 
 /**
- * Member injectors for the Dexcom ONE+ / G7, Libre 3 and Eversense calibration screens, and the
- * ONE+ / G7 session service.
+ * Member injectors for the Dexcom ONE+ / G7 screens, the driver log screen, and the ONE+ / G7
+ * session service. The Libre 3 and Eversense bindings are left out (2026-11-25): this trial has
+ * neither driver.
  *
  * Android constructs an activity or a service, so it cannot take its dependencies in a constructor.
  * [app.aaps.core.ui.compose.MetroAppCompatActivity] and
@@ -52,38 +49,6 @@ object SourceMemberInjectors {
     @ClassKey(DexcomOnePlusWarmupActivity::class)
     fun bindDexcomOnePlusWarmupActivity(
         injector: MembersInjector<DexcomOnePlusWarmupActivity>
-    ): MembersInjector<*> = injector
-
-    @Provides
-    @FeatureMemberInjectors
-    @IntoMap
-    @ClassKey(Libre3StartActivity::class)
-    fun bindLibre3StartActivity(
-        injector: MembersInjector<Libre3StartActivity>
-    ): MembersInjector<*> = injector
-
-    @Provides
-    @FeatureMemberInjectors
-    @IntoMap
-    @ClassKey(Libre3StatusActivity::class)
-    fun bindLibre3StatusActivity(
-        injector: MembersInjector<Libre3StatusActivity>
-    ): MembersInjector<*> = injector
-
-    @Provides
-    @FeatureMemberInjectors
-    @IntoMap
-    @ClassKey(Libre3WarmupActivity::class)
-    fun bindLibre3WarmupActivity(
-        injector: MembersInjector<Libre3WarmupActivity>
-    ): MembersInjector<*> = injector
-
-    @Provides
-    @FeatureMemberInjectors
-    @IntoMap
-    @ClassKey(EversenseCalibrationActivity::class)
-    fun bindEversenseCalibrationActivity(
-        injector: MembersInjector<EversenseCalibrationActivity>
     ): MembersInjector<*> = injector
 
     @Provides

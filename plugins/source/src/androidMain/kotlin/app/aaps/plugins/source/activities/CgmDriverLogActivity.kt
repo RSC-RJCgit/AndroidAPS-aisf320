@@ -201,11 +201,6 @@ internal fun CgmDriverLogScreen(
                     label = { Text(stringResource(R.string.cgm_driver_log_filter_all)) },
                 )
                 FilterChip(
-                    selected = filter == DriverLogFilter.LIBRE3,
-                    onClick = { filter = DriverLogFilter.LIBRE3 },
-                    label = { Text(stringResource(R.string.cgm_driver_log_filter_libre3)) },
-                )
-                FilterChip(
                     selected = filter == DriverLogFilter.DEXCOM_ONE_PLUS,
                     onClick = { filter = DriverLogFilter.DEXCOM_ONE_PLUS },
                     label = { Text(stringResource(R.string.cgm_driver_log_filter_oneplus)) },
