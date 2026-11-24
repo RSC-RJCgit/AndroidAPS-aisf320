@@ -942,6 +942,7 @@ class PrepareGraphDataRunner(
                 ppWeight = autoIsfRows.map { GraphDataPoint(it.timestamp, it.ppIsfWeight) },
                 loopIob = autoIsfRows.map { GraphDataPoint(it.timestamp, it.iob) },
                 hypoPrediction = hypoPrediction,
+                hypoPredictionAt = latestAutoIsf?.timestamp,
                 statusTarget = currentAutoIsf?.let { statusTargetLine(it) },
                 statusIsf = currentAutoIsf?.let { statusIsfLine(it) },
                 statusShortDelta = currentAutoIsf?.let { profileUtil.fromMgdlToSignedStringInUnits(it.shortAvgDelta) },

@@ -220,6 +220,8 @@ data class AutoIsfGraphData(
     val loopIob: List<GraphDataPoint> = emptyList(),
     /** Latest hypo prediction in mmol, or null when the UKF 5 minute change is missing. */
     val hypoPrediction: Double? = null,
+    /** Time of the loop row [hypoPrediction] came from (2026-11-24), so a late one can be shown with its age. */
+    val hypoPredictionAt: Long? = null,
     /** Target, boost, and IOB threshold line for the main graph. Null before the first loop row. */
     val statusTarget: String? = null,
     /** ISF factor line for the main graph. Null before the first loop row. */
@@ -413,7 +415,9 @@ data class TreatmentGraphData(
     val therapyEvents: List<TherapyEventGraphPoint>,
     val calibrations: List<CalibrationGraphPoint>,
     /** Times of carb split and delayed bolus checks that gave nothing, each a small dot at the top of the BG graph (2026-11-18) */
-    val doseCheckTimes: List<Long> = emptyList()
+    val doseCheckTimes: List<Long> = emptyList(),
+    /** Loops whose SMB step counts cut to 0 ("StepCutOnly=", 2026-11-24): time and insulin cut, a red steps arrow alone */
+    val stepCutOnly: List<Pair<Long, Double>> = emptyList()
 )
 
 // ============================================================================

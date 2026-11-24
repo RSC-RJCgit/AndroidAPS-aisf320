@@ -56,9 +56,10 @@ internal fun boostedDeliveryRatio(mildBase: Double, strong: Boolean, caution: Bo
  * scale, the UAM Tier3 pseudo-wizard FPU and BMild's ratio boost. 17 Oct Live: about 3 U went in between 17:00 and 17:15
  * while walking, and BG fell from 9.9 to 3.6.
  */
-internal fun activityFactor(iob: Double, maxIob: Double, steps5: Int, steps30: Int, steps60: Int): Double = when {
+// 2026-11-24: [walkingScale] is the walking value (0.5, or 0.75 / 1.0 on a confirmed rise, see walkingRiseScale()).
+internal fun activityFactor(iob: Double, maxIob: Double, steps5: Int, steps30: Int, steps60: Int, walkingScale: Double = 0.5): Double = when {
     iob >= 0.40 * maxIob -> 0.0
-    isWalking(steps5, steps30, steps60) -> 0.5
+    isWalking(steps5, steps30, steps60) -> walkingScale
     else -> 1.0
 }
 

@@ -187,6 +187,17 @@ internal fun isEmptyDoseCheck(note: String?): Boolean {
 /** How far before an SMB its own loop result can be: the loop runs, then the pump delivers. */
 private const val STEP_CUT_MATCH_MS = 3 * 60_000L
 private val STEP_CUT_REGEX = Regex("""\bStepCut=([0-9]+(?:\.[0-9]+)?)""")
+private val STEP_CUT_ONLY_REGEX = Regex("""\bStepCutOnly=([0-9]+(?:\.[0-9]+)?)""")
+
+/**
+ * Loops whose SMB step counts cut to 0 (2026-11-24, per explicit request): one per 5 minutes, the largest cut, so a run of
+ * 1-minute loops does not draw a solid red block. A client has the master's results, so it shows the same.
+ */
+internal fun stepCutOnlyPoints(reasons: List<Pair<Long, String>>): List<Pair<Long, Double>> =
+    reasons.mapNotNull { (t, r) -> STEP_CUT_ONLY_REGEX.find(r)?.groupValues?.get(1)?.toDoubleOrNull()?.takeIf { it >= 0.01 }?.let { t to it } }
+        .groupBy { it.first / (5 * 60_000L) }
+        .values
+        .mapNotNull { slot -> slot.maxByOrNull { it.second } }
 
 /**
  * The insulin the loop wrote as taken off its SMB by step counts ("StepCut=0.12", see DetermineBasalAutoISF.stepCutUnits), or 0.
@@ -1205,7 +1216,8 @@ class OverviewDataCacheImpl(
             extendedBoluses = nonFinite.drop("extended boluses", extendedBolusPoints, { it.timestamp }, { it.amount }),
             therapyEvents = nonFinite.drop("therapy event glucose", therapyEventPoints, { it.timestamp }, { it.glucoseUserUnits }),
             calibrations = nonFinite.drop("calibrations", calibrationPoints, { it.timestamp }, { it.fingerstickUserUnits }),
-            doseCheckTimes = doseCheckTimes
+            doseCheckTimes = doseCheckTimes,
+            stepCutOnly = stepCutOnlyPoints(persistenceLayer.getLoopReasons(fromTime, toTime).map { it.timestamp to it.reason })
         )
     }
 

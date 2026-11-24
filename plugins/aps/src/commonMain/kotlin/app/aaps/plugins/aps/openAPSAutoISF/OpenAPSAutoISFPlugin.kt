@@ -261,6 +261,14 @@ open class OpenAPSAutoISFPlugin(
     // In memory only: after a restart the cap needs 15 flat minutes again before it acts, which is the safe direction.
     private var duraFlatSince: Long = 0L
     private var duraCapWasActive: Boolean = false
+    // Walking cut on a confirmed rise (2026-11-24): set each cycle once HP2 is known, see walkingRiseScale()
+    private var walkingRiseScaleNow = 0.5
+
+    // PoorAbs (2026-11-24, see applyPoorAbs): start of the current BG >= 10.0 stretch, whether the boost is on, and when it last was.
+    // In memory only: after an app restart the 60 min high stretch is timed again from scratch.
+    private var poorAbsHighSinceTs = 0L
+    private var poorAbsActive = false
+    private var poorAbsLastActiveTs = 0L
 
     // Steps arrow (2026-10-29, per explicit request): set by autoISF() each loop, handed to determine_basal in updateSmbGuards.
     // How much more insulin the loop would have asked for without the step activity ratio and the dura walking half.
@@ -473,6 +481,7 @@ open class OpenAPSAutoISFPlugin(
         if (autoIsfMode) {
             consoleError = mutableListOf()
             consoleLog = mutableListOf()
+            walkingRiseScaleNow = walkingRiseScale(glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, liveHp2)
             variableSensitivity = autoISF(profile, autoIsfFactors, iobData.iob, liveHp2)
         }
         val oapsProfile = OapsProfileAutoIsf(
@@ -648,6 +657,16 @@ open class OpenAPSAutoISFPlugin(
             delta = glucoseStatus.delta,
             maxIob = oapsProfile.max_iob,
             tempTargetSet = isTempTarget,
+        )
+        if (codedOn) applyPoorAbs(
+            now = now,
+            bg = glucoseStatus.glucose,
+            delta = glucoseStatus.delta,
+            shortDelta = glucoseStatus.shortAvgDelta,
+            iob = iobData.iob,
+            cob = mealData.mealCOB,
+            targetBg = targetBg,
+            profileIsfMgdl = profile.getIsfMgdlTimeFromMidnight(MidnightTime.secondsFromMidnight(now, AppTimeZone.current())),
         )
         if (applyRemoteToggles(now)) isTempTarget = false
         maybeAutoInstallApk(now, isTempTarget)
@@ -2206,7 +2225,7 @@ open class OpenAPSAutoISFPlugin(
             steps30 > 200
         val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
         // 2026-10-18: the activity factor for BMild and its failsafe. 0 (IOB high) skips the ratio raise, 0.5 (walking) halves it.
-        val activity = activityFactor(iob, constraintsChecker.getMaxIOBAllowed().value(), steps5, steps30, steps60(now))
+        val activity = activityFactor(iob, constraintsChecker.getMaxIOBAllowed().value(), steps5, steps30, steps60(now), walkingRiseScaleNow)
         if (bg3 && !blocked) {
             runMarks.mark(RunMark.BOLUS_GIVEN, now)
             runMarks.mark(RunMark.BOLUS_GIVEN_BG3, now)
@@ -4956,11 +4975,17 @@ open class OpenAPSAutoISFPlugin(
             // itself, so it does not shrink the cap (Live 19 Nov 10:02-10:08: 186% gave a 1.13 U cap and every SMB was cut to 0).
             val tierCRescue = preferences.get(BooleanNonKey.ApsAutoIsfStuckHighTierCActive)
             val strength = profileStrengthNow()
-            val walkingForCap = mcapWalking(steps5(now), steps30(now))
-            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(if (tierCRescue) 100.0 else strength, walkingForCap)
+            // 2026-11-24: on a confirmed rise walking cuts the cap less (x0.75) or not at all, see walkingRiseScale()
+            // PoorAbs (2026-11-24): while it is on, the cap is neither shrunk for profile strength nor cut for walking
+            val walkScale = if (poorAbsActive) 1.0 else if (autoIsfMode) walkingRiseScaleNow else 0.5
+            val stepsWalking = mcapWalking(steps5(now), steps30(now))
+            val walkingForCap = stepsWalking && walkScale < 1.0
+            determineBasalAutoISF.smbCap30ForCap = mcapSmbCap30Min(if (tierCRescue || poorAbsActive) 100.0 else strength, walkingForCap, walkScale)
             determineBasalAutoISF.smbCap30Note = ", profile ${strength.roundToInt()}%" + (if (tierCRescue) " Tier C, not cut" else "") +
-                if (walkingForCap) ", walking" else ""
+                (if (walkingForCap) ", walking" + (if (walkScale > 0.5) " x$walkScale rise" else "") else "") +
+                (if (stepsWalking && !walkingForCap) ", walking not cut (rise)" else "")
             determineBasalAutoISF.smbCap30Walking = walkingForCap
+            determineBasalAutoISF.smbCap30WalkingScale = walkScale
         } else {
             determineBasalAutoISF.smbCap30ForCap = 2.1
             determineBasalAutoISF.smbCap30Note = ""
@@ -4984,7 +5009,7 @@ open class OpenAPSAutoISFPlugin(
     }
 
     private suspend fun tier3ActivityFactor(now: Long, iob: Double, maxIob: Double): Double {
-        val factor = activityFactor(iob, maxIob, steps5(now), steps30(now), steps60(now))
+        val factor = activityFactor(iob, maxIob, steps5(now), steps30(now), steps60(now), walkingRiseScaleNow)
         // Steps arrow: 0.5 comes only from walking (0 is high IOB, not steps)
         determineBasalAutoISF.tier3WalkingFactor = if (factor > 0.0 && factor < 1.0) factor else 1.0
         // 2026-11-20, per explicit request: a Tier 3 dose over 1 U is cut by the delayed-dose walking levels, from the loop's own
@@ -5096,6 +5121,81 @@ open class OpenAPSAutoISFPlugin(
             if (standard110.isNotBlank() && profileFunction.getOriginalProfileName() != standard110 &&
                 !runMarks.recent(RunMark.LOW_BG_TIER_A, 35, now)
             ) switchToStandardFor(standard110, 0, now, "AutoISF: old pod boost")
+        }
+    }
+
+    /**
+     * PoorAbs (2026-11-24, per explicit request): a dead pod / poor absorption check at any pod age over 6 h (the old-pod
+     * boost needs over 60 h). 24 Nov Live, cannula 43 h: BG 10.7 -> 13.1 in 40 min with IOB 3.5 -> 6.1 and no carbs, after BG
+     * had sat at 10-12 most of the day; nothing stronger fired (StuckHighRescue blocked by its 3.0 U IOB cap).
+     *
+     * Detection, every cycle: cannula over 6 h; BG >= 10.0 mmol for 60 min (own timer); not falling (BG now >= BG 30 min ago
+     * - 0.3 mmol); no rapid post-meal rise (Delta < 0.5 mmol); IOB >= 80% of (BG - target) / profile ISF, i.e. enough insulin on
+     * board to reach target already; and HP2 > 6.0 mmol.
+     * While detected: SMB delivery ratio mild-boost base + 0.15 (no activity factor; after the delivery restore, so it holds),
+     * the Mcap 30 min cap neither shrunk nor walking-cut (next cycle, see updateSmbGuards), and a "PoorAbs" note + SMS every
+     * 20 min. Off as soon as any condition fails: ratio back to baseline once.
+     * Stacking guard: within 3 h of PoorAbs having been on, HP2 < 4.5 mmol stops the boost at once and sends a "PoorAbsStack"
+     * note + SMS every 20 min while it lasts. Same rule as v3's PoorAbs block.
+     */
+    private suspend fun applyPoorAbs(
+        now: Long,
+        bg: Double,
+        delta: Double,
+        shortDelta: Double,
+        iob: Double,
+        cob: Double,
+        targetBg: Double,
+        profileIsfMgdl: Double,
+    ) {
+        val hp = ukfRawNow(now).delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
+        if (bg >= 180.2 /* 10.0 mmol */) {
+            if (poorAbsHighSinceTs == 0L) poorAbsHighSinceTs = now
+        } else poorAbsHighSinceTs = 0L
+        val highFor60 = poorAbsHighSinceTs != 0L && now - poorAbsHighSinceTs >= T.mins(60).msecs()
+        val podH = hoursSincePod(now)
+        val bg30Ago = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(35).msecs(), now - T.mins(25).msecs(), ascending = false)
+            .minByOrNull { kotlin.math.abs(it.timestamp - (now - T.mins(30).msecs())) }?.value
+        val notFalling = bg30Ago != null && bg >= bg30Ago - 5.4 /* 0.3 mmol */
+        val noRapidRise = delta < 9.0 /* 0.5 mmol */
+        val iobNeeded = if (profileIsfMgdl > 0.0) (bg - targetBg).coerceAtLeast(0.0) / profileIsfMgdl else Double.MAX_VALUE
+        val iobEnough = iob >= 0.8 * iobNeeded
+        val detected = podH != null && podH > 6.0 && highFor60 && notFalling && noRapidRise && iobEnough && hp != null && hp > 6.0
+        val baseline = preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline)
+        if (detected) {
+            val ratio = (preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio) + 0.15).coerceAtMost(smb_delivery_ratio_max)
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, ratio)
+            poorAbsActive = true
+            poorAbsLastActiveTs = now
+            if (runMarks.ready(RunMark.POOR_ABS, 20, now)) {
+                sendAutoSms(
+                    "Possible dead pod / poor absorption - check site: BG ${decimals(bg / 18.0182, 1)} IOB ${decimals(iob, 2)} " +
+                        "(needs ${decimals(iobNeeded, 2)}) HP2 ${decimals(hp ?: 0.0, 1)} cannula ${(podH ?: 0.0).toInt()}h, SMBdel -> ${decimals(ratio, 2)}",
+                    noteTag = true
+                )
+                carePortalNote("PoorAbs", smsText = lastSmsText)
+                runMarks.mark(RunMark.POOR_ABS, now)
+            }
+        } else if (poorAbsActive) {
+            poorAbsActive = false
+            preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, baseline)
+            sendAutoSms("PoorAbs off: BG ${decimals(bg / 18.0182, 1)} IOB ${decimals(iob, 2)} HP2 ${if (hp == null) "-" else decimals(hp, 1)}", noteTag = true)
+            carePortalNote("PoorAbsOff", smsText = lastSmsText)
+        }
+        val recentPoorAbs = poorAbsLastActiveTs != 0L && now - poorAbsLastActiveTs <= T.hours(3).msecs()
+        if (recentPoorAbs && hp != null && hp < 4.5) {
+            if (poorAbsActive) {
+                poorAbsActive = false
+                preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, baseline)
+            }
+            if (runMarks.ready(RunMark.POOR_ABS_STACK, 20, now)) {
+                sendAutoSms(
+                    "Possible insulin stacking after poor absorption: HP2 ${decimals(hp, 1)} BG ${decimals(bg / 18.0182, 1)} IOB ${decimals(iob, 2)} - boost stopped",
+                    noteTag = true
+                )
+                carePortalNote("PoorAbsStack", smsText = lastSmsText)
+                runMarks.mark(RunMark.POOR_ABS_STACK, now)
+            }
         }
     }
 

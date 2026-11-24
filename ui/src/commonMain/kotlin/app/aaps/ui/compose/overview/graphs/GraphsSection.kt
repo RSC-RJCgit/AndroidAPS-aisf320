@@ -1328,8 +1328,16 @@ fun GraphsSection(
                     )
             )
             val mainAutoIsf by graphViewModel.autoIsfGraphFlow.collectAsStateWithLifecycle()
-            val hpText = mainAutoIsf.hypoPrediction?.takeIf { mainAutoIsf.statusIsf != null }
-                ?.let { "HP=${oneDecimalText(it)}" }
+            // 2026-11-24, per explicit request: on a master and a client, Detailed and Simple. A current loop row shows "HP=6.2";
+            // a late one (a client waiting on a slow master upload) still shows, with its age, up to 2 h: "HP=6.2 (23m)".
+            val hpText = mainAutoIsf.hypoPrediction?.let { hp ->
+                val ageMin = mainAutoIsf.hypoPredictionAt?.let { ((nowTimestamp - it) / 60_000L).coerceAtLeast(0L) }
+                when {
+                    mainAutoIsf.statusIsf != null      -> "HP=${oneDecimalText(hp)}"
+                    ageMin != null && ageMin <= 120L   -> "HP=${oneDecimalText(hp)} (${ageMin}m)"
+                    else                               -> null
+                }
+            }
             val shownSpanText = shownGraphSpanText(bgVisibleTimeRange)
             if (shownSpanText != null || hpText != null || showZoomButtons || !isSimpleMode) {
                 Row(
@@ -1461,18 +1469,31 @@ fun GraphsSection(
                 // 2026-10-24, per explicit request: a label again, like the other graphs ("G1 IOB COB Basal Max rates"),
                 // at the bottom left because the hourly basal peak numbers use the top line of this graph. Drawn by the chart
                 // at its plot's bottom (2026-10-30): a fixed gap above the graph's edge still covered the time labels.
-                // Without "Basal  Max rates" when Settings > AutoISF "No basal on the IOB graph" leaves basal out (2026-11-19)
+                // 2026-11-24, per explicit request: "Basal  Max rates" moved up beside the -/+ buttons (below), out of this label.
                 cornerLabel = (
                     listOf(stringResource(UiStrings.graph_short_number, 1), stringResource(CoreUiStrings.iob)) +
-                        graphConfig.iobOverlays.map { stringResource(seriesShortNameId(it)) } +
-                        (if (hideG1Basal) emptyList()
-                        else listOf(stringResource(UiStrings.graph_label_basal), stringResource(UiStrings.graph_label_max_rates)))
+                        graphConfig.iobOverlays.map { stringResource(seriesShortNameId(it)) }
                     ).joinToString("  "),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(iobPanelHeight)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
+            // 2026-11-24, per explicit request: "Basal  Max rates" at the top, just left of the -/+ buttons (28 dp each in
+            // portrait, full touch targets in landscape, see GraphZoomButtons). Not when basal is left off the IOB graph.
+            if (!hideG1Basal) {
+                val zoomButtonsWidth = if (!showZoomButtons) 0.dp
+                else if (isLandscape()) 96.dp + AapsTheme.spacing.small else 56.dp
+                Text(
+                    text = stringResource(UiStrings.graph_label_basal) + "  " + stringResource(UiStrings.graph_label_max_rates),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = zoomEndPadding + zoomButtonsWidth + 4.dp, top = 6.dp)
+                )
+            }
             if (!isSimpleMode) {
                 GraphEditButton(
                     onClick = { editingIobOverlays = true },

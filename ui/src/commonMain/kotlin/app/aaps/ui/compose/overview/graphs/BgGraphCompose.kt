@@ -1623,6 +1623,17 @@ private fun rememberBgGraphDecorations(
                 stemUnits = 1 + (((smb.stepCut - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0)),
                 mirrored = true,
             )
+        } + treatments.stepCutOnly.map { (time, cut) ->
+            // 2026-11-24, per explicit request: the same red arrow alone where step counts cut the loop's SMB to 0
+            SmbStackItem(
+                x = timestampToX(time, minTimestamp),
+                label = "",
+                stackIndex = 0,
+                anchorY = lowMark,
+                color = STEP_CUT_ARROW_COLOR,
+                stemUnits = 1 + (((cut - 0.05 + 0.001) / 0.05).toInt().coerceAtLeast(0)),
+                mirrored = true,
+            )
         }
     }
     val carbDrop = if (lowMark > 30.0) 15.0 else 0.8
