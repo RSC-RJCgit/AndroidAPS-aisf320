@@ -37,11 +37,16 @@ val migratedModules = listOf(
     ":plugins:calibration",
     ":plugins:configuration",
     ":plugins:constraints",
+    // Trial (2026-11-24, from AIMI kmp-aimi-migration-study): Dexcom ONE+ / G7 native driver and its keks library
+    ":plugins:dexcom_oneplus",
+    ":plugins:libkeks",
     ":plugins:main",
     ":plugins:sensitivity",
     ":plugins:smoothing",
     ":plugins:source",
     ":plugins:sync",
+    // Trial (2026-11-24, from AIMI): the multiplatform Omnipod Dash driver (IosOmnipodDashPlugin on iOS)
+    ":pump:omnipod:dashctl",
     ":pump:virtual",
     ":shared:clientbindings",
     ":shared:impl",

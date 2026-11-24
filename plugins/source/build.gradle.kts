@@ -5,6 +5,13 @@ plugins {
     alias(libs.plugins.metro)
 }
 
+// Trial (2026-11-24): Dexcom ONE+ / G7 from AIMI's kmp-aimi-migration-study. Its sources still use javax @Inject.
+metro {
+    interop {
+        includeDagger()
+    }
+}
+
 registerKeyStrings("source")
 
 kotlin {
@@ -19,7 +26,31 @@ kotlin {
         }
     }
 
+    // The iOS and jvm targets come from the kmp-android-library convention. Explicit: the manual dependsOn below would
+    // otherwise switch the automatic hierarchy off and silently unwire iosMain.
+    applyDefaultHierarchyTemplate()
+
     sourceSets {
+        // Trial (2026-11-24, from AIMI): Dexcom ONE+ / G7 is shared by Android and iOS only; the desktop has no Bluetooth CGM
+        // and :plugins:dexcom_oneplus has no jvm target.
+        val androidAppleMain = create("androidAppleMain") {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(project(":plugins:dexcom_oneplus"))
+            }
+        }
+        androidMain.get().dependsOn(androidAppleMain)
+        iosMain.get().dependsOn(androidAppleMain)
+
+        val androidAppleTest = create("androidAppleTest") {
+            dependsOn(commonTest.get())
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
+        getByName("androidHostTest").dependsOn(androidAppleTest)
+        iosTest.get().dependsOn(androidAppleTest)
+
         commonMain {
             dependencies {
                 implementation(project(":core:data"))
@@ -47,6 +78,12 @@ kotlin {
                 implementation(libs.androidx.compose.runtime)
                 implementation(libs.androidx.lifecycle.runtime.compose)
                 implementation(libs.androidx.work.runtime)
+                // Trial (from AIMI): the camera that reads the Dexcom ONE+ / G7 applicator barcode on the start screen.
+                implementation(libs.androidx.camera.camera2)
+                implementation(libs.androidx.camera.core)
+                implementation(libs.androidx.camera.lifecycle)
+                implementation(libs.androidx.camera.view)
+                implementation(libs.com.google.zxing.core)
             }
         }
 

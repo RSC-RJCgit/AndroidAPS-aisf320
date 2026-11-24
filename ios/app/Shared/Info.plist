@@ -85,6 +85,6 @@
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>A RileyLink or OrangeLink wakes AAPS about once a minute in the background, so it can load from Nightscout and check the alarms.</string>
+	<string>AAPS talks to your Omnipod DASH pod and Dexcom G7 / ONE+ sensor over Bluetooth, and a RileyLink or OrangeLink can wake it about once a minute in the background to load from Nightscout and check the alarms.</string>
 </dict>
 </plist>

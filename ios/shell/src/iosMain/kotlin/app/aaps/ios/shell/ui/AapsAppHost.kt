@@ -304,7 +304,9 @@ private fun startApp(nsSocketFactory: NsSocketFactory, liveActivity: LiveActivit
     // Before the composition, not beside it: the first view model built reads the active pump, and
     // an empty plugin list there throws from a coroutine and takes the process with it.
     // The "AAPS" master target also gets the loop-only plugins (Objectives), as Android does under config.APS (2026-10-30)
-    val plugins = if (graph.config.APS) graph.contributedPlugins + graph.contributedApsPlugins else graph.contributedPlugins
+    val plugins = (if (graph.config.APS) graph.contributedPlugins + graph.contributedApsPlugins else graph.contributedPlugins) +
+        // Trial (2026-11-24, from AIMI): the pump drivers (Omnipod Dash), only on the master target (config.PUMPDRIVERS)
+        (if (graph.config.PUMPDRIVERS) graph.contributedPumpDriverPlugins else emptyMap())
     IosAppStartup(
         logger, PluginStoreRegistry(graph.pluginStore, graph.configBuilder), plugins,
         rxBus = graph.rxBus,

@@ -50,7 +50,9 @@ class IosClientConfig(
     // Virtual pump. iOS has no real pump drivers, so PUMPDRIVERS stays false and the Virtual pump is the only pump.
     // The two client targets stay followers: no loop, and no pump.
     override val PUMPCONTROL: Boolean = false
-    override val PUMPDRIVERS: Boolean = false
+    // Trial (2026-11-24, from AIMI): the "AAPS" master target offers the Omnipod Dash driver (FLAVOR is set below, so a
+    // getter rather than a stored value). The two client targets stay without pump drivers.
+    override val PUMPDRIVERS: Boolean get() = FLAVOR == "full"
 
     /**
      * Which client this build is, worked out from the bundle it was built into.

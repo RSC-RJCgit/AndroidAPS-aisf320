@@ -41,6 +41,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
 import app.aaps.core.interfaces.di.APS
+import app.aaps.core.interfaces.di.PumpDriver
 import app.aaps.core.objects.di.CoreObjectsGraph
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
 import app.aaps.database.AppRepository
@@ -167,6 +168,13 @@ interface IosAppGraph : MetroViewModelMultibindings {
     /** Plugins that only belong in a build that runs the loop (Objectives on iOS). Merged only under `config.APS`. */
     @APS
     val contributedApsPlugins: Map<Int, PluginBase>
+
+    /**
+     * Trial (2026-11-24, from AIMI kmp-aimi-migration-study): the pump drivers, so far only the Omnipod Dash driver
+     * (`IosOmnipodDashPlugin`, from `:pump:omnipod:dashctl`). Merged only when `config.PUMPDRIVERS` (the "AAPS" master).
+     */
+    @PumpDriver
+    val contributedPumpDriverPlugins: Map<Int, PluginBase>
     val automationRuntime: AutomationRuntime
     // The periodic housekeeping shared with Android, and the scope the shell drives it on.
     val periodicMaintenance: PeriodicMaintenance
