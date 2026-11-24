@@ -3,12 +3,16 @@ package app.aaps.plugins.aps.openAPSAutoISF
 import app.aaps.core.keys.time.AppTimeZone
 import android.content.Context
 import android.content.Intent
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.content.pm.PackageManager
 import android.icu.util.Calendar
 import android.util.Base64
+import android.view.Display
 import androidx.collection.LongSparseArray
 import androidx.collection.forEach
 import androidx.core.net.toUri
@@ -2082,6 +2086,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             return
         }
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val displayWasOn = anyDeskDisplayOn()
+        val requestedAt = System.currentTimeMillis()
         // 2026-10-08: on Android 12+ a background startActivity can do nothing, silently and without an exception, unless AAPS has
         // "Display over other apps" (the A36 host logged AcTTR + AdOn at 11:21 and 11:25 with AnyDesk not restarting). AdOn only
         // means startActivity did not throw, so record whether the permission is there: "AdNoOv" = not granted. The launch is still tried.
@@ -2102,7 +2108,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         anyDeskLaunchHandler.postDelayed({
             try {
                 context.startActivity(launchIntent)
-                aapsLogger.info(LTag.APS, "AnyDesk brought to front by AAPS after HOME-exit ($pkg)")
+                aapsLogger.info(LTag.APS, "AnyDesk launch call returned after HOME-exit ($pkg)")
                 addCarePortalNote("AdOn")
             } catch (e: Exception) {
                 aapsLogger.warn(LTag.APS, "AnyDesk startActivity failed for $pkg: ${e.message}")
@@ -2125,7 +2131,36 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 }
             }
         }, 400)
+        anyDeskLaunchHandler.postDelayed({
+            val displayIsOn = anyDeskDisplayOn()
+            Schedulers.io().scheduleDirect {
+                val screenResult = when {
+                    displayWasOn == null || displayIsOn == null -> "screen unverified"
+                    !displayWasOn && displayIsOn -> "screen off → on"
+                    displayWasOn && displayIsOn -> "screen already on"
+                    else -> "screen off at check"
+                }
+                val foregroundResult = if (anyDeskResumedSince(pkg, requestedAt))
+                    "AnyDesk foreground observed"
+                else "AnyDesk foreground unverified"
+                addCarePortalNote("AnyDesk launch: $screenResult, $foregroundResult")
+            }
+        }, 4_000)
     }
+
+    private fun anyDeskDisplayOn(): Boolean? =
+        context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)?.let { it.state == Display.STATE_ON }
+
+    private fun anyDeskResumedSince(pkg: String, start: Long): Boolean = runCatching {
+        val events = context.getSystemService(UsageStatsManager::class.java)
+            ?.queryEvents(start, System.currentTimeMillis()) ?: return@runCatching false
+        val event = UsageEvents.Event()
+        while (events.getNextEvent(event)) {
+            if (event.packageName == pkg && event.eventType == UsageEvents.Event.ACTIVITY_RESUMED)
+                return@runCatching true
+        }
+        false
+    }.getOrDefault(false)
 
     // Exact Tasker task name on Virtual (and expected on Live): no spaces. Case-sensitive.
     // That task only stages (shell copy to AAPS333/AAPS3 newest/) — it does not pm-install.

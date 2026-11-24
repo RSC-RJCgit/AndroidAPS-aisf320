@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
@@ -7,6 +8,8 @@
     <!-- Send heartbeat to an iPhone (IphoneHeartbeatSender, 2026-10-24) -->
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Optional Usage access for confirming an AnyDesk launch in CarePortal. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <!-- So AAPS appears under Settings → Special access → All files access (sideload fork).
          Needed for Java File scan of /sdcard/AAPS3|AAPS333/ApkDownload; Tasker staging works without it. -->

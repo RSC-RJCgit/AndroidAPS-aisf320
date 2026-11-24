@@ -3914,7 +3914,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         // 2nd graphs
         prepareGraphsIfNeeded(menuChartSettings.size)
-        val secondaryGraphsData: ArrayList<GraphData> = ArrayList()
+        val secondaryGraphsData = mutableMapOf<Int, GraphData>()
 
         val now = System.currentTimeMillis()
         val labelBg = lastBgData.lastBg()?.takeIf { historicalStartTime == null }
@@ -4086,7 +4086,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             secondGraphData.formatAxis(graphFromTime, graphEndTime)
             enableGraphWheelZoom(secondaryGraphs[g])
             secondGraphData.addNowLine(now)
-            secondaryGraphsData.add(secondGraphData)
+            secondaryGraphsData[g] = secondGraphData
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size - 1)) {
             if (hideG2ThroughG4 && g in 1..3) {
@@ -4161,8 +4161,10 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                     //menuChartSettings[g + 1][OverviewMenus.CharType.PP_ISF.ordinal] && masterAutoIsf ||
                     //menuChartSettings[g + 1][OverviewMenus.CharType.DUR_ISF.ordinal] && masterAutoIsf
                 ).toVisibility()
-            secondaryGraphsData[g].applyFontScale(skinProvider.activeSkin().graphFontScale)
-            secondaryGraphsData[g].performUpdate()
+            secondaryGraphsData.getValue(g).apply {
+                applyFontScale(skinProvider.activeSkin().graphFontScale)
+                performUpdate()
+            }
         }
         // Restore the main-graph normalization after all shared scale mutations above. Rendering reads
         // Scale dynamically, so this final value is what keeps IA and ComboCarbs aligned on graph 0.
