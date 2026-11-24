@@ -286,8 +286,14 @@ class GraphViewModel(
         preferences.observe(BooleanKey.OverviewBasalOffIobGraph)
             .onEach { off -> _graphDisplay.update { it.copy(basalOffIobGraph = off) } }
             .launchIn(viewModelScope)
-        preferences.observe(BooleanKey.OverviewInsulinTotalColumns)
-            .onEach { on -> _graphDisplay.update { it.copy(insulinTotalColumns = on && config.AAPSCLIENT) } }
+        val insulinTotalColumns = preferences.observe(BooleanKey.OverviewInsulinTotalColumns)
+        val visibleInsulinTotalColumns = if (config.APS && !config.AAPSCLIENT) {
+            combine(insulinTotalColumns, preferences.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs)) { enabled, simple ->
+                enabled && !simple
+            }
+        } else insulinTotalColumns
+        visibleInsulinTotalColumns
+            .onEach { visible -> _graphDisplay.update { it.copy(insulinTotalColumns = visible) } }
             .launchIn(viewModelScope)
     }
 

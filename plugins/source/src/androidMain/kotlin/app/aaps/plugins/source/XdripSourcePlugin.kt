@@ -20,6 +20,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
+import app.aaps.core.interfaces.plugin.EnforcedState
 import app.aaps.core.interfaces.plugin.PluginDescription
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.receivers.Intents
@@ -73,6 +74,7 @@ class XdripSourcePlugin(
 ) : AbstractBgSourceWithSensorInsertLogPlugin(
     pluginDescription = PluginDescription()
         .mainType(PluginType.BGSOURCE)
+        .enforce(EnforcedState.Disabled) { config.AAPSCLIENT }
         .composeContent { plugin ->
             BgSourceComposeContent(
                 title = rh.gs(R.string.source_xdrip)
