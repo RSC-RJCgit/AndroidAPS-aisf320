@@ -68,6 +68,7 @@ internal object RunMark {
     const val POOR_ABS = "PoorAbs"
     const val POOR_ABS_STACK = "PoorAbsStack"
     const val FALL_RESCUE = "FallRescue"
+    const val ACT_TT_HIGH_PAUSE = "ActTtHighPause"
     const val ACTIVITY_FACTOR_TIER3_NOTE = "ActivityFactorTier3Note"
     const val STUCK_RISING = "StuckRisingSlowly"
     const val POOR_RESPONSE_1 = "PoorResponseRescueStage1"
