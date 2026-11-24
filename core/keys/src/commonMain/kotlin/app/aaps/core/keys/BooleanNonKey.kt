@@ -104,4 +104,13 @@ enum class BooleanNonKey(
     // with a key on each connection, which is also how a phone paired from a QR code says hello at all. Belongs to the
     // pairing.
     NsClientControlSecretReplaced("nsclient_control_secret_replaced", false, exportable = false),
+
+    /**
+     * The user stopped AAPS on this phone (Maintenance → Stop AAPS), for example to hand the pump and
+     * the sensor to another phone. While set, no pump command is sent, the loop does not run and the
+     * sensor drivers are stopped. Kept across restarts until the user resumes. Device state, so never
+     * exported: a stopped phone must not stop the phone that imports its settings.
+     * 2026-11-25: added for the Dexcom ONE+ plugin (as in OpenApsAIMIios). Nothing in this tree sets it yet, so it stays false.
+     */
+    AapsStoppedByUser("aaps_stopped_by_user", false, exportable = false),
 }
