@@ -1195,9 +1195,36 @@ fun BgGraphCompose(
         graphDisplay = graphDisplay, autoIsfGraph = autoIsfGraph, masterZone = masterZone,
     )
     }
+    // The hypoprediction line again (2026-11-24, per explicit request): its own line under the main graph on a master and a
+    // client, Detailed, Simple and super clean. See HypoPredictionLine.
+    HypoPredictionLine(autoIsfGraph, nowTimestamp, stripStyle)
     // Hypoprediction line and insulin totals row (2026-11-19): in their own function, see BgGraphBottomStrip
     if (!superClean) BgGraphBottomStrip(topBandLines, graphDisplay.bgGraphInsulinColumns, visibleTimeRange, nowTimestamp, rawBasalData, treatments, stripStyle)
     }
+}
+
+/**
+ * The hypoprediction line under the main graph (2026-11-24, per explicit request; it was moved into G1's − + row on 20 Nov and
+ * then into the main graph's top row on 24 Nov, where it showed only with a loop row under 15 min old). Always shown:
+ * "hypoprediction= 6.2", with the row's age when it is older than 15 min (a client waiting on a slow master upload), red under
+ * 4.5 mmol, and "--" when there is no value at all (no AutoISF row in the graph range), so a missing value is visible too.
+ */
+@Composable
+private fun HypoPredictionLine(autoIsfGraph: AutoIsfGraphData, nowTimestamp: Long, style: TextStyle) {
+    val hp = autoIsfGraph.hypoPrediction
+    val ageMin = autoIsfGraph.hypoPredictionAt?.let { ((nowTimestamp - it) / 60_000L).coerceAtLeast(0L) }
+    val text = when {
+        hp == null                     -> "hypoprediction= --"
+        ageMin != null && ageMin > 15L -> "hypoprediction= ${oneDecimalText(hp)} (${ageMin}m old)"
+        else                           -> "hypoprediction= ${oneDecimalText(hp)}"
+    }
+    Text(
+        text = text,
+        style = style,
+        color = if (hp != null && hp < 4.5) Color(0xFFFF4040) else MaterialTheme.colorScheme.onSurface,
+        maxLines = 1,
+        modifier = Modifier.fillMaxWidth().padding(start = 36.dp, top = 2.dp)
+    )
 }
 
 /** The line styles of the BG graph layers, built by [rememberBgGraphLines]. */

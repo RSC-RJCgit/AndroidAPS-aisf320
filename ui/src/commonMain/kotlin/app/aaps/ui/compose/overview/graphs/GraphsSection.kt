@@ -1115,6 +1115,11 @@ fun GraphsSection(
     val showZoomButtons = !LocalInspectionMode.current
     // Scale only the displayed height; keep the saved portrait heights for the graph editor.
     val graphHeightScale = if (isLandscape()) 2f / 3f else 1f
+    // 2026-11-24, per explicit request: Windows (master and client, Detailed and Simple, portrait and landscape) draws every
+    // graph at 80% except the last one (the BG copy); iOS in Detailed only draws the main graph and the IOB graph at 80%.
+    val platformNow = LocalConfig.current.platform
+    val desktopGraphScale = if (platformNow == AppPlatform.Desktop) 0.8f else 1f
+    val iosDetailedMainScale = if (platformNow == AppPlatform.Ios && !simpleGraphs) 0.8f else 1f
     val zoomEndPadding = 32.dp + if (isLandscape()) AapsTheme.spacing.extraLarge else 0.dp
     // Set by the BG graph, read by every graph
     val inspect = remember { GraphInspectState() }
@@ -1308,7 +1313,7 @@ fun GraphsSection(
                 inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height((if (simpleGraphs) SIMPLE_BG_HEIGHT_DP else graphConfig.bgHeight).dp * graphHeightScale)
+                    .height((if (simpleGraphs) SIMPLE_BG_HEIGHT_DP else graphConfig.bgHeight).dp * graphHeightScale * desktopGraphScale * iosDetailedMainScale)
                     .onScrollOrZoomGesture {
                         graphViewModel.onGraphInteraction()
                         followNow = false
@@ -1444,7 +1449,7 @@ fun GraphsSection(
             if (simpleIosOrDesktop) SIMPLE_SECONDARY_HEIGHT_DP else SIMPLE_IOB_HEIGHT_DP
         } else graphConfig.iobHeight
         val hideG1Basal = graphViewModel.hideG1Basal(iobDisplay, simpleGraphs)
-        val iobPanelHeight = iobHeight.dp * graphHeightScale * (if (hideG1Basal) 0.67f else 1f)
+        val iobPanelHeight = iobHeight.dp * graphHeightScale * desktopGraphScale * iosDetailedMainScale * (if (hideG1Basal) 0.67f else 1f)
         // Fork (restored after the 2026-10-16 merge): the graphs below BG keep their time labels and full height,
         // each drawn 8 dp higher as before. Upstream's pull-up covered the BG graph's own time labels.
         Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
@@ -1552,7 +1557,7 @@ fun GraphsSection(
                     scaleTimeRange = if (i == 0) bgVisibleTimeRange else null,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height((if (simpleGraphs) simpleSecondaryHeightDp(i, simpleIosOrDesktop) else secondary.height).dp * graphHeightScale)
+                        .height((if (simpleGraphs) simpleSecondaryHeightDp(i, simpleIosOrDesktop) else secondary.height).dp * graphHeightScale * desktopGraphScale)
                 )
                 // Name at the top left and the pencil at the top right, as before the merge: the bottom is the time labels.
                 // 2026-10-24, per explicit request: numbered (G2 is the first of these), full strength instead of 60%, and
