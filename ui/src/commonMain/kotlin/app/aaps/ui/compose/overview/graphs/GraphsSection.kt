@@ -1435,7 +1435,7 @@ fun GraphsSection(
         val iobHeight = if (simpleGraphs) {
             if (simpleIosOrDesktop) SIMPLE_SECONDARY_HEIGHT_DP else SIMPLE_IOB_HEIGHT_DP
         } else graphConfig.iobHeight
-        val hideG1Basal = graphViewModel.hideG1Basal(iobDisplay)
+        val hideG1Basal = graphViewModel.hideG1Basal(iobDisplay, simpleGraphs)
         val iobPanelHeight = iobHeight.dp * graphHeightScale * (if (hideG1Basal) 0.67f else 1f)
         // Fork (restored after the 2026-10-16 merge): the graphs below BG keep their time labels and full height,
         // each drawn 8 dp higher as before. Upstream's pull-up covered the BG graph's own time labels.

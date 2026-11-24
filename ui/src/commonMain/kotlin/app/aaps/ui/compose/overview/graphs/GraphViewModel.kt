@@ -121,9 +121,9 @@ class GraphViewModel(
         fun create(cache: OverviewDataCache, fullWindow: Boolean): GraphViewModel
     }
 
-    fun hideG1Basal(display: GraphDisplay): Boolean =
+    fun hideG1Basal(display: GraphDisplay, simpleGraphs: Boolean): Boolean =
         display.iobGraphWithoutBasal ||
-            (config.APS && !config.AAPSCLIENT && display.basalOnBgGraph && !display.bgGraphInsulinColumns)
+            (!simpleGraphs && config.APS && !config.AAPSCLIENT && display.basalOnBgGraph && !display.bgGraphInsulinColumns)
 
     fun hasNonAutoIsfGraphSource(): Boolean {
         val algorithm = if (config.AAPSCLIENT) processedDeviceStatusData?.getAPSResult()?.algorithm
@@ -286,13 +286,7 @@ class GraphViewModel(
         preferences.observe(BooleanKey.OverviewBasalOffIobGraph)
             .onEach { off -> _graphDisplay.update { it.copy(basalOffIobGraph = off) } }
             .launchIn(viewModelScope)
-        val insulinTotalColumns = preferences.observe(BooleanKey.OverviewInsulinTotalColumns)
-        val visibleInsulinTotalColumns = if (config.APS && !config.AAPSCLIENT) {
-            combine(insulinTotalColumns, preferences.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs)) { enabled, simple ->
-                enabled && !simple
-            }
-        } else insulinTotalColumns
-        visibleInsulinTotalColumns
+        preferences.observe(BooleanKey.OverviewInsulinTotalColumns)
             .onEach { visible -> _graphDisplay.update { it.copy(insulinTotalColumns = visible) } }
             .launchIn(viewModelScope)
     }
