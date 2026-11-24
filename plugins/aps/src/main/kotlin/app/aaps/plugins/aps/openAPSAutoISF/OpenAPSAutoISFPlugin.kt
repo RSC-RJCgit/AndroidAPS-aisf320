@@ -5672,7 +5672,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 // matches bg3's own self-throttle.
                 && readyToRun("BolusGivenBg3", 5)
                 // Movement guard: same reasoning as bg3's mirror check above.
-                && recentSteps5Minutes <= 20 && recentSteps30Minutes <= 100
+                // 2026-11-24, per explicit request: at 10.0 mmol and above, S30 may be up to 500 once walking has
+                // stopped (S5 <= 20). 24 Nov 14:07-14:19 Client2: BG 10.5-11.6 rising (Delta ~0.44, meal-leftover
+                // path open) with S5 0 but S30 435-474 from an earlier walk, so BMild stayed closed.
+                && recentSteps5Minutes <= 20 && recentSteps30Minutes <= (if (g >= 180.2 /* 10.0 mmol */) 500 else 100)
                 // Sub-7.5mmol delivery-rate ceiling, added 2026-08-14 after two real hypos (4.4mmol and
                 // a sustained 4.5mmol) both traced to this exact mechanism: BG still under 7.5mmol (not
                 // genuinely high), a strong rise confirmed, mild fires and keeps re-arming every couple
@@ -8124,7 +8127,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && rawDelta5 >= 5.4 * stackK && (mealLeftoverRise || rawDelta5 < 14.4 * stackK)
                 && rawDelta1FloorOkMild && (mealLeftoverRise || rawDelta1 < 14.4 * stackK)
                 && profileName != preferences.get(StringKey.ApsAutoIsfLowProfileName) && !mjActive()
-                && readyToRun("BolusGivenBg3", 5) && movementOk
+                && readyToRun("BolusGivenBg3", 5)
+                && recentSteps5Minutes <= 20 && recentSteps30Minutes <= (if (g >= 180.2) 500 else 100) // mirrors BMild's guard (2026-11-24)
                 && !(g < 135.1 && iobChange5 > 0.8) // mirrors mild's own new sub-7.5mmol rate ceiling above
             val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
             val mildDeliveryRatioWould = mildBase + 0.15   // flat, matches BolusGivenMild/Failsafe (2026-08-31)

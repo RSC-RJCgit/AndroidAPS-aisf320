@@ -410,7 +410,10 @@ class BolusWizard @Inject constructor(
         profileBaseScale = baseScale
 
         // Insulin from BG
-        sens = profileUtil.fromMgdlToUnits(profile.getIsfMgdlForCarbs(dateUtil.now(), "BolusWizard", config, processedDeviceStatusData)) * baseScale
+        // 2026-11-24, per explicit request: last 3 h of loop ISF, only values not above the profile ISF,
+        // else the profile ISF (was getIsfMgdlForCarbs, a 24 h average that also counted lows: 7.9 vs a
+        // working 2.3 mmol/U during a high on 24 Nov). COB still uses the ISF for carbs.
+        sens = profileUtil.fromMgdlToUnits(wizardIsfMgdl(profile, dateUtil.now())) * baseScale
         targetBGLow = profileUtil.fromMgdlToUnits(profile.getTargetLowMgdl())
         targetBGHigh = profileUtil.fromMgdlToUnits(profile.getTargetHighMgdl())
         if (useTT && tempTarget != null) {
@@ -576,6 +579,31 @@ class BolusWizard @Inject constructor(
 
         aapsLogger.debug(this.toString())
         return this
+    }
+
+    // Bolus wizard ISF (2026-11-24, per explicit request): the average loop variable sensitivity of the
+    // last 3 hours, one value per 5-minute slot (the last in it), counting only slots whose value is not
+    // above the profile ISF at that slot's time. Values weaker than the profile (around lows, or with an
+    // activity factor) are left out. No qualifying slot -> the profile ISF. Reads the stored APS results,
+    // which on a client are the master's results mirrored in by NSDeviceStatusHandler. Same rule as v4's
+    // IsfForCarbs.wizardIsfMgdl.
+    private fun wizardIsfMgdl(profile: Profile, now: Long): Double {
+        val profileIsfNow = profile.getIsfMgdlTimeFromMidnight(MidnightUtils.secondsFromMidnight(now))
+        val results = try {
+            persistenceLayer.getApsResults(now - T.hours(3).msecs(), now)
+        } catch (e: Exception) {
+            aapsLogger.error(LTag.APS, "BolusWizard ISF: APS results unavailable", e)
+            return profileIsfNow
+        }
+        val lastPerSlot = results.filter { it.date <= now }
+            .sortedBy { it.date }
+            .associateBy { it.date / T.mins(5).msecs() }
+            .values
+        val kept = lastPerSlot.mapNotNull { r ->
+            val v = r.variableSens?.takeIf { it.isFinite() && it > 0.0 } ?: return@mapNotNull null
+            v.takeIf { it <= profile.getIsfMgdlTimeFromMidnight(MidnightUtils.secondsFromMidnight(r.date)) }
+        }
+        return if (kept.isNotEmpty()) kept.average() else profileIsfNow
     }
 
     // Manual carb-split's/protein's/fat's projected future-split info (see WizardDialog's own live
