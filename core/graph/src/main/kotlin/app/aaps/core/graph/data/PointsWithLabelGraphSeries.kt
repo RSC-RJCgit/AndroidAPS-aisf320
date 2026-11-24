@@ -85,7 +85,8 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
         internal fun hiddenInSimpleGraphs(value: DataPointWithLabelInterface): Boolean = when {
             value.shape == Shape.HOUR_PEAK || value.shape == Shape.IOB_PEAK || value.shape == Shape.IOB_PEAK_MAIN_BOTTOM ||
                 value.shape == Shape.ACTIVITY_PEAK || value.shape == Shape.DOSE_CHECK_DOT ||
-                value.shape == Shape.INSULIN_COLUMNS_TITLE || value.shape == Shape.EXTENDEDBOLUS -> true
+                value.shape == Shape.INSULIN_COLUMNS_TITLE || value.shape == Shape.EXTENDEDBOLUS ||
+                value.shape == Shape.STEP_CUT_ONLY -> true
             value.shape == Shape.BOLUS                  -> value.isFpuDose || (value as? BolusDataPoint)?.data?.amount == 0.0
             value is TherapyEventDataPoint              -> !(value.shape == Shape.ANNOUNCEMENT && value.label.trim() == UAM_BOOST_GRAPH_ANNOUNCEMENT)
             else                                        -> false
@@ -491,6 +492,25 @@ open class PointsWithLabelGraphSeries<E : DataPointWithLabelInterface> : BaseSer
                         mPaint.style = Paint.Style.FILL
                         drawLabelCentered(endX, labelY, value, canvas, scaledTextSize * 0.5f)
                         mPaint.color = savedColor
+                    }
+                } else if (value.shape == Shape.STEP_CUT_ONLY) {
+                    // 2026-11-24: steps stopped this loop's SMB entirely. The same red arrow as under an SMB (see Shape.SMB),
+                    // tip on the baseline, with nothing else. Simple graphs: none, like the SMB steps arrow.
+                    val stepCutUnits = value.stepCutShaftMultiplier
+                    if (stepCutUnits > 0 && !simpleGraphs) {
+                        mPaint.color = STEP_CUT_ARROW_COLOR
+                        mPaint.strokeWidth = 0f
+                        mPaint.style = Paint.Style.FILL_AND_STROKE
+                        val stepTip = endY - scaledPxSize
+                        val stepBase = stepTip - scaledPxSize * 1.67f
+                        drawArrows(arrayOf(
+                            Point(endX.toInt(), stepTip.toInt()),
+                            Point((endX + scaledPxSize).toInt(), stepBase.toInt()),
+                            Point((endX - scaledPxSize).toInt(), stepBase.toInt())
+                        ), canvas, mPaint)
+                        mPaint.strokeWidth = if (stepCutUnits >= 4) 4f else 2f
+                        mPaint.style = Paint.Style.STROKE
+                        canvas.drawLine(endX, stepBase, endX, stepBase - scaledTextSize * 0.25f * stepCutUnits, mPaint)
                     }
                 } else if (value.shape == Shape.EXTENDEDBOLUS) {
                     mPaint.strokeWidth = 0f

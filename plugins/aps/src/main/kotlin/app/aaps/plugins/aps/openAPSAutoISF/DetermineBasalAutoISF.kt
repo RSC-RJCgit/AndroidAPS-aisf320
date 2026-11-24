@@ -114,6 +114,8 @@ class DetermineBasalAutoISF @Inject constructor(
     var showerMinutesAgo: Int? = null
     // True when smbCap30ForCap is the halved walking cap (for the steps arrow)
     var smbCap30Walking: Boolean = false
+    // What walking multiplied that cap by (0.5, or 0.75 on a confirmed rise, 2026-11-24), for the steps arrow
+    var smbCap30WalkingScale: Double = 0.5
 
     // Steps arrow (2026-10-29, per explicit request): how much more insulin the loop would have asked for without steps, from
     // the step activity ratio and the dura boost halved while walking (1.0 = no step effect), and 0.5 when steps halved the
@@ -2655,7 +2657,7 @@ class DetermineBasalAutoISF @Inject constructor(
                     microBolus = smbAllowance30Min
                     if (smbCap30Walking) {
                         // Steps arrow: what the walking half of the cap held back
-                        val unhalvedAllowance = (smbCap30Min * 2.0 - smbSum30Min - bolusSum30ForCap).coerceAtLeast(0.0)
+                        val unhalvedAllowance = (smbCap30Min / smbCap30WalkingScale.coerceIn(0.1, 1.0) - smbSum30Min - bolusSum30ForCap).coerceAtLeast(0.0)
                         stepCutDirect += (min(before30MinCap, unhalvedAllowance) - microBolus).coerceAtLeast(0.0)
                     }
                     val bolusText = if (bolusSum30ForCap > 0.0) " + ${round(bolusSum30ForCap, 2)}U bolus" else ""
@@ -2803,6 +2805,10 @@ class DetermineBasalAutoISF @Inject constructor(
                             uamBoostFiredThisCycle = true
                             rT.reason.append("Tier 3 UAM Boost survived final safety modifiers and reached delivery output. ")
                         }
+                    } else if (stepCutDirect >= 0.01) {
+                        // 2026-11-24, per explicit request: step counts cut this SMB to 0, so there is no SMB to hang the red
+                        // arrow on. Its own token; the main graph draws the red arrow alone at this loop (Shape.STEP_CUT_ONLY).
+                        rT.reason.append("StepCutOnly=${round(stepCutDirect, 2)} ")
                     }
                 } else {
                     val nextBolusMins = (SMBInterval - lastBolusAge) / 60.0

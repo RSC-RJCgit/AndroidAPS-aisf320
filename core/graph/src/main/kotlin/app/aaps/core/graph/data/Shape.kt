@@ -57,5 +57,8 @@ enum class Shape {
     DOSE_CHECK_DOT,
     // 2026-11-20, per explicit request: "total insulin columns, basal in graph 5" on the main graph, one line above the
     // hypoprediction row (Shape.HP_ROW_BOTTOM). Part of the insulin-total column series, so it shows only with the columns.
-    INSULIN_COLUMNS_TITLE
+    INSULIN_COLUMNS_TITLE,
+    // 2026-11-24, per explicit request: the red steps arrow alone, at a loop result whose SMB step counts cut to 0 (its reason
+    // has "StepCutOnly=0.12"). Same place and scale as the steps arrow under an SMB (Shape.SMB), with no SMB triangle or label.
+    STEP_CUT_ONLY
 }

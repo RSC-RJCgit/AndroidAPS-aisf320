@@ -236,6 +236,15 @@ class PrepareTreatmentsDataWorker(
             ) dp.tier3 = true
             filteredTreatments.add(dp)
         }
+        // 2026-11-24, per explicit request: the red steps arrow alone where step counts cut a loop's SMB to 0 ("StepCutOnly=").
+        // One per 5 minutes (the largest), so a run of 1-minute loops does not draw a solid red block.
+        val stepCutOnlyRegex = Regex("""\bStepCutOnly=([0-9]+(?:\.[0-9]+)?)""")
+        apsResultsList
+            .mapNotNull { r -> stepCutOnlyRegex.find(r.reason)?.groupValues?.get(1)?.toDoubleOrNull()?.let { r.date to it } }
+            .groupBy { (date, _) -> date / T.mins(5).msecs() }
+            .values
+            .mapNotNull { slot -> slot.maxByOrNull { it.second } }
+            .forEach { (date, cut) -> filteredTreatments.add(app.aaps.core.graph.data.StepCutOnlyDataPoint(date, cut, preferences)) }
         // 2026-11-18, per explicit request: a delayed bolus dose and the bolus before it are no longer marked yellow. Yellow is now
         // only for protein/fat doses, which BolusDataPoint.isFpuDose reads from each bolus's own note.
         val carbsExpanded = persistenceLayer.getCarbsFromTimeToTimeExpanded(fromTime, endTime, true)
