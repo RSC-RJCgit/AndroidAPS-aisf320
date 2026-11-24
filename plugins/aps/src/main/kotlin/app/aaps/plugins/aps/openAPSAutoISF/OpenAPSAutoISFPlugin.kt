@@ -2998,6 +2998,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var poorAbsActive = false
     private var poorAbsLastActiveTs = 0L
 
+    // ActTtHighPause (2026-11-25, see its block): the paused Activity TT's target and original end, 0 when nothing is paused.
+    // In memory only: after an app restart during a pause the TT stays off.
+    private var actTtPausedTargetMgdl = 0.0
+    private var actTtPausedEndTs = 0L
+
     // The walking test of activityFactor, also used to halve the dura boost (2026-10-24).
     private fun walkingNow(): Boolean = recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300
 
@@ -7197,6 +7202,63 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addCarePortalNote("FalRs")
                 // Not markRun(): that would also use up a pending direct TT command.
                 lastRunTimestamps["FallRescue"] = dateUtil.now()
+            }
+        }
+
+        // --- ActTtHighPause: added 2026-11-25, per explicit request. An Activity TT (the preset, e.g. 6.8 mmol 150 min)
+        // keeps its set duration, but is taken off while BG is over 10.0 mmol so normal dosing can bring BG down. It comes
+        // back, at the same target and Activity reason, for whatever is left of its original time once BG is 9.5 mmol or
+        // under AND S15 is over 200 again (walking again). 9.5 rather than 10.0 so it cannot flip every minute around 10.0.
+        // Gives up quietly when the original end passes or another TT is started during the pause (that TT wins).
+        run {
+            // A direct command cycle must not cancel or start a real TT (same guard as cancelCurrentTempTarget()).
+            if (directTtCodeMatchActive) return@run
+            val now = dateUtil.now()
+            val g = glucoseStatus.glucose
+            val tt = persistenceLayer.getTemporaryTargetActiveAt(now)
+            if (actTtPausedEndTs == 0L) {
+                if (tt == null || tt.reason != TT.Reason.ACTIVITY || isCodedControlTt(tt)) return@run
+                if (g <= mmolToMgdl(10.0) || !readyToRun("ActTtHighPause", 5)) return@run
+                actTtPausedTargetMgdl = tt.lowTarget
+                actTtPausedEndTs = tt.timestamp + tt.duration
+                val leftMin = ((actTtPausedEndTs - now) / 60_000L).coerceAtLeast(0L)
+                cancelCurrentTempTarget()
+                sendSms("ActTtHighPause: BG ${round(g / 18.0182, 1)} > 10.0 -> Activity TT ${round(actTtPausedTargetMgdl / 18.0182, 1)} off, ${leftMin}min left", noteTag = true)
+                addCarePortalNote("ActPs", smsText = lastSmsText)
+                lastRunTimestamps["ActTtHighPause"] = now
+                return@run
+            }
+            // Paused: drop the pause once its time is up, or when someone else has started a TT meanwhile.
+            val leftMin = ((actTtPausedEndTs - now) / 60_000L).toInt()
+            if (leftMin < 1 || (tt != null && tt.timestamp > (lastRunTimestamps["ActTtHighPause"] ?: 0L))) {
+                actTtPausedEndTs = 0L
+                actTtPausedTargetMgdl = 0.0
+                return@run
+            }
+            if (tt == null && g <= mmolToMgdl(9.5) && recentSteps15Minutes > 200) {
+                val target = actTtPausedTargetMgdl
+                disposable += persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+                    temporaryTarget = TT(
+                        timestamp = now,
+                        duration = TimeUnit.MINUTES.toMillis(leftMin.toLong()),
+                        reason = TT.Reason.ACTIVITY,
+                        lowTarget = target,
+                        highTarget = target
+                    ),
+                    action = Action.TT,
+                    source = Sources.Automation,
+                    note = "AutoISF: Activity TT resumed",
+                    listValues = listOf(
+                        ValueWithUnit.TETTReason(TT.Reason.ACTIVITY),
+                        ValueWithUnit.Mgdl(target),
+                        ValueWithUnit.Minute(leftMin)
+                    )
+                ).subscribe()
+                actTtPausedEndTs = 0L
+                actTtPausedTargetMgdl = 0.0
+                sendSms("ActTtHighPause: BG ${round(g / 18.0182, 1)} S15 $recentSteps15Minutes -> Activity TT ${round(target / 18.0182, 1)} back for ${leftMin}min", noteTag = true)
+                addCarePortalNote("ActRs", smsText = lastSmsText)
+                lastRunTimestamps["ActTtHighPause"] = now
             }
         }
 
