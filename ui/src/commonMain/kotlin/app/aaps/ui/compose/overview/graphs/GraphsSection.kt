@@ -1431,6 +1431,12 @@ fun GraphsSection(
         }
         // Fixed IOB graph (Graph 1) with optional Activity overlay
         var editingIobOverlays by remember { mutableStateOf(false) }
+        val iobDisplay by graphViewModel.graphDisplay.collectAsStateWithLifecycle()
+        val iobHeight = if (simpleGraphs) {
+            if (simpleIosOrDesktop) SIMPLE_SECONDARY_HEIGHT_DP else SIMPLE_IOB_HEIGHT_DP
+        } else graphConfig.iobHeight
+        val hideG1Basal = graphViewModel.hideG1Basal(iobDisplay)
+        val iobPanelHeight = iobHeight.dp * graphHeightScale * (if (hideG1Basal) 0.67f else 1f)
         // Fork (restored after the 2026-10-16 merge): the graphs below BG keep their time labels and full height,
         // each drawn 8 dp higher as before. Upstream's pull-up covered the BG graph's own time labels.
         Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
@@ -1442,6 +1448,7 @@ fun GraphsSection(
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
                 geometryHolder = iobGeometry,
+                hideBasal = hideG1Basal,
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 scaleLookbackHours = scaleLookbackHours,
@@ -1458,12 +1465,12 @@ fun GraphsSection(
                 cornerLabel = (
                     listOf(stringResource(UiStrings.graph_short_number, 1), stringResource(CoreUiStrings.iob)) +
                         graphConfig.iobOverlays.map { stringResource(seriesShortNameId(it)) } +
-                        (if (graphViewModel.graphDisplay.collectAsStateWithLifecycle().value.iobGraphWithoutBasal) emptyList()
+                        (if (hideG1Basal) emptyList()
                         else listOf(stringResource(UiStrings.graph_label_basal), stringResource(UiStrings.graph_label_max_rates)))
                     ).joinToString("  "),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height((if (simpleGraphs) (if (simpleIosOrDesktop) SIMPLE_SECONDARY_HEIGHT_DP else SIMPLE_IOB_HEIGHT_DP) else graphConfig.iobHeight).dp * graphHeightScale)
+                    .height(iobPanelHeight)
             )
             if (showZoomButtons) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
             if (!isSimpleMode) {

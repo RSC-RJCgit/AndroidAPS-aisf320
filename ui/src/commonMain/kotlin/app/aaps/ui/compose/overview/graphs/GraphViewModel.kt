@@ -121,6 +121,10 @@ class GraphViewModel(
         fun create(cache: OverviewDataCache, fullWindow: Boolean): GraphViewModel
     }
 
+    fun hideG1Basal(display: GraphDisplay): Boolean =
+        display.iobGraphWithoutBasal ||
+            (config.APS && !config.AAPSCLIENT && display.basalOnBgGraph && !display.bgGraphInsulinColumns)
+
     fun hasNonAutoIsfGraphSource(): Boolean {
         val algorithm = if (config.AAPSCLIENT) processedDeviceStatusData?.getAPSResult()?.algorithm
         else activePlugin.activeAPS?.algorithm

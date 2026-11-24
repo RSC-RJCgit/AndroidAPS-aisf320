@@ -162,12 +162,10 @@ internal fun OverviewGlucoseCircle(
 
     Box {
         BgInfoSection(bgInfo = info.bgInfo, timeAgoText = info.timeAgoText, showTimeAgo = showTimeAgo, onClick = onClick)
-        Box(Modifier.matchParentSize()) {
-            GlucoseMetricChip(basalText, "glucose_chip_basal", Modifier.align(Alignment.TopStart))
-            GlucoseMetricChip(longDelta, "glucose_chip_long_delta", Modifier.align(Alignment.TopEnd))
-            GlucoseMetricChip(autoIsf.statusAcceleration, "glucose_chip_acceleration", Modifier.align(Alignment.BottomStart))
-            GraphScaleLookbackChip(Modifier.align(Alignment.BottomEnd))
-        }
+        GlucoseMetricChip(basalText, "glucose_chip_basal", Modifier.align(Alignment.TopStart))
+        GlucoseMetricChip(longDelta, "glucose_chip_long_delta", Modifier.align(Alignment.TopEnd))
+        GlucoseMetricChip(autoIsf.statusAcceleration, "glucose_chip_acceleration", Modifier.align(Alignment.BottomStart))
+        GraphScaleLookbackChip(Modifier.align(Alignment.BottomEnd))
     }
 }
 
@@ -220,13 +218,14 @@ private fun GraphScaleLookbackChip(modifier: Modifier) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GlucoseChipTooltip(description: String, modifier: Modifier, content: @Composable () -> Unit) {
-    TooltipBox(
-        positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
-        tooltip = { PlainTooltip { Text(description) } },
-        state = rememberTooltipState(),
-        modifier = modifier,
-        content = content
-    )
+    Box(modifier) {
+        TooltipBox(
+            positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Below),
+            tooltip = { PlainTooltip { Text(description) } },
+            state = rememberTooltipState(),
+            content = content
+        )
+    }
 }
 
 /**
