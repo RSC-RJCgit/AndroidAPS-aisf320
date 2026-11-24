@@ -28,7 +28,15 @@ kotlin {
     applyDefaultHierarchyTemplate()
 
     sourceSets {
-        val jvmSharedMain = create("jvmSharedMain") { dependsOn(commonMain.get()) }
+        val jvmSharedMain = create("jvmSharedMain") {
+            dependsOn(commonMain.get())
+            dependencies {
+                // X25519, ECDH and ECDSA for JvmLinkCrypto (2026-11-25, as in OpenApsAIMIios). AES-CCM and
+                // AES-CMAC do not use this library: they are the common constructions over JCE AES/ECB.
+                implementation(libs.cryptography.core)
+                implementation(libs.cryptography.provider.optimal)
+            }
+        }
         androidMain.get().dependsOn(jvmSharedMain)
         jvmMain.get().dependsOn(jvmSharedMain)
 
