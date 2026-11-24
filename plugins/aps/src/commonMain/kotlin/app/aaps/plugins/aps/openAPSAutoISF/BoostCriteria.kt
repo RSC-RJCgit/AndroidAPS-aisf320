@@ -75,7 +75,9 @@ internal fun mildBoostShouldFire(
         !mjActive &&
         readyBg3 &&
         steps5 <= 20 &&
-        steps30 <= 100 &&
+        // 2026-11-24, per explicit request: at 10.0 mmol and above, S30 may be up to 500 once walking has stopped
+        // (S5 <= 20). 24 Nov 14:07-14:19: BG 10.5-11.6 rising with S5 0 but S30 435-474 from an earlier walk.
+        steps30 <= (if (bg >= 180.2) 500 else 100) &&
         !(bg < 135.1 && iobChange5 > 0.8) &&
         (riseHold || iob < 2.5)
 }

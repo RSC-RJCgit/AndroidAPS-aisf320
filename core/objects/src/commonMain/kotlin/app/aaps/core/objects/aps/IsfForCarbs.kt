@@ -70,6 +70,43 @@ class IsfForCarbs(rows: List<PersistenceLayer.LoopSensitivity>) {
     fun isfMgdl(profile: Profile, timestamp: Long, resultsUntil: Long = timestamp): Double =
         averageMgdl(resultsUntil) ?: profile.getIsfMgdlTimeFromMidnight(MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()))
 
+    /**
+     * Bolus wizard ISF (2026-11-24, per explicit request): the average variable sensitivity of the last
+     * [hours] hours, counting only the 5-minute slots whose value is not above the profile ISF at that
+     * slot's time. Values weaker than the profile (high mg/dL per U, typically around lows or with an
+     * activity factor) are left out, so a low earlier in the day cannot dilute a correction for a high
+     * now. Null when no slot in the window qualifies; the caller then uses the profile ISF.
+     * 24 Nov 2026 14:46 check: 24 h average 7.9 mmol/U, this rule over 3 h 2.3 mmol/U (profile 3.5).
+     */
+    fun recentAtOrBelowProfileMgdl(profile: Profile, timestamp: Long, hours: Int = 3): Double? {
+        val windowStart = timestamp - T.hours(hours.toLong()).msecs()
+        var sum = 0.0
+        var count = 0
+        var newerSlot = Long.MIN_VALUE
+        var i = lastIndexAtOrBefore(timestamp)
+        while (i >= 0 && times[i] > windowStart) {
+            val slot = times[i].floorDiv(SLOT_MS)
+            if (slot != newerSlot) {
+                val value = values[i]
+                if (!value.isNaN()) {
+                    val profileIsf = profile.getIsfMgdlTimeFromMidnight(MidnightTime.secondsFromMidnight(times[i], AppTimeZone.current()))
+                    if (value <= profileIsf) {
+                        sum += value
+                        count++
+                    }
+                }
+                newerSlot = slot
+            }
+            i--
+        }
+        return if (count > 0) sum / count else null
+    }
+
+    /** The bolus wizard's ISF in mg/dL: [recentAtOrBelowProfileMgdl], else the profile ISF at [timestamp]. */
+    fun wizardIsfMgdl(profile: Profile, timestamp: Long): Double =
+        recentAtOrBelowProfileMgdl(profile, timestamp)
+            ?: profile.getIsfMgdlTimeFromMidnight(MidnightTime.secondsFromMidnight(timestamp, AppTimeZone.current()))
+
     private fun lastIndexAtOrBefore(timestamp: Long): Int {
         var low = 0
         var high = times.size - 1

@@ -294,7 +294,10 @@ class BolusWizard(
         val activePct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
         val baseScale = wizardProfileBaseScale(activePct)
         val now = dateUtil.now()
-        sens = profileUtil.fromMgdlToUnits(IsfForCarbs.load(persistenceLayer, now, now).isfMgdl(profile, now)) * baseScale
+        // 2026-11-24, per explicit request: last 3 h of loop ISF, only values not above the profile ISF,
+        // else the profile ISF. The 24 h ISF for carbs (still used for COB) averaged in lows and gave 7.9
+        // against a working ISF of about 2.3 mmol/U during a high. See IsfForCarbs.recentAtOrBelowProfileMgdl.
+        sens = profileUtil.fromMgdlToUnits(IsfForCarbs.load(persistenceLayer, now, now).wizardIsfMgdl(profile, now)) * baseScale
         targetBGLow = profileUtil.fromMgdlToUnits(profile.getTargetLowMgdl())
         targetBGHigh = profileUtil.fromMgdlToUnits(profile.getTargetHighMgdl())
         if (useTT && tempTarget != null) {
