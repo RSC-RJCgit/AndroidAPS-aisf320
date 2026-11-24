@@ -100,6 +100,9 @@ data class GlucoseValue(
         RANDOM,
         UNKNOWN,
 
+        // This fork's native Dexcom ONE+ / G7 plugin (2026-11-25). Stored by name: never remove it once rows carry it.
+        DEXCOM_ONEPLUS_NATIVE,
+
         IOB_PREDICTION,
         A_COB_PREDICTION,
         COB_PREDICTION,

@@ -16,6 +16,10 @@ enum class SourceSensor(val text: String, val aliases: Set<String> = emptySet())
     DEXCOM_UNKNOWN("Dexcom", setOf("AAPS-Dexcom", "Share Follow")),
     DEXCOM_G6("Dexcom G6", setOf("AAPS-DexcomG6", "G6 Native")),
     DEXCOM_G7("Dexcom G7", setOf("AAPS-DexcomG7", "G7 Native", "G7")),
+
+    /** Native BLE plugin in AAPS (not BYODA / not xDrip). Dexcom ONE+ and G7 Direct family (2026-11-25, as in OpenApsAIMIios). */
+    DEXCOM_ONEPLUS_NATIVE("AAPS-DexcomOnePlus"),
+
     LIBRE_1(
         "Libre1",
         setOf("Other App", "Network libre", "BlueReader", "Transmiter PL", "Blucon", "Tomato", "Rfduino", "LimiTTer", "Bubble", "Atom", "Glimp")

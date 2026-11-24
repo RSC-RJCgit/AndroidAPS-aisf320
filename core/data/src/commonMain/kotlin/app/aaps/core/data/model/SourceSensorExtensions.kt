@@ -20,6 +20,8 @@ private val ADVANCED_FILTERING_SENSORS = setOf(
     SourceSensor.DEXCOM_UNKNOWN,
     SourceSensor.DEXCOM_G6,
     SourceSensor.DEXCOM_G7,
+    // The same hardware read by the native ONE+ / G7 plugin. It filters internally just the same.
+    SourceSensor.DEXCOM_ONEPLUS_NATIVE,
     SourceSensor.LIBRE_2,
     SourceSensor.LIBRE_3,
     SourceSensor.SYAI_TAG,

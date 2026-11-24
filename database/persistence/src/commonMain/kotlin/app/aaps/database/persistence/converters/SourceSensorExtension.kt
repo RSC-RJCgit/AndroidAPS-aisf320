@@ -35,6 +35,7 @@ fun GlucoseValue.SourceSensor.fromDb(): SourceSensor =
         GlucoseValue.SourceSensor.INSTARA           -> SourceSensor.INSTARA
         GlucoseValue.SourceSensor.RANDOM            -> SourceSensor.RANDOM
         GlucoseValue.SourceSensor.UNKNOWN           -> SourceSensor.UNKNOWN
+        GlucoseValue.SourceSensor.DEXCOM_ONEPLUS_NATIVE -> SourceSensor.DEXCOM_ONEPLUS_NATIVE
 
         GlucoseValue.SourceSensor.IOB_PREDICTION    -> SourceSensor.IOB_PREDICTION
         GlucoseValue.SourceSensor.A_COB_PREDICTION  -> SourceSensor.A_COB_PREDICTION
@@ -75,6 +76,7 @@ fun SourceSensor.toDb(): GlucoseValue.SourceSensor =
         SourceSensor.INSTARA           -> GlucoseValue.SourceSensor.INSTARA
         SourceSensor.RANDOM            -> GlucoseValue.SourceSensor.RANDOM
         SourceSensor.UNKNOWN           -> GlucoseValue.SourceSensor.UNKNOWN
+        SourceSensor.DEXCOM_ONEPLUS_NATIVE -> GlucoseValue.SourceSensor.DEXCOM_ONEPLUS_NATIVE
 
         SourceSensor.IOB_PREDICTION    -> GlucoseValue.SourceSensor.IOB_PREDICTION
         SourceSensor.A_COB_PREDICTION  -> GlucoseValue.SourceSensor.A_COB_PREDICTION
