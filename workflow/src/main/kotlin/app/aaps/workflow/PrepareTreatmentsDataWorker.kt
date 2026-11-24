@@ -104,9 +104,6 @@ class PrepareTreatmentsDataWorker(
 
     companion object {
 
-        // Temporarily skip the full-day pass while measuring refresh speed and battery use.
-        private const val BUILD_INSULIN_TOTAL_COLUMNS = false
-
         /** The largest shown insulin-total column reaches this share of full height (2026-11-20). */
         private const val INSULIN_COLUMN_TOP_SHARE = 0.95
 
@@ -449,7 +446,8 @@ class PrepareTreatmentsDataWorker(
             !preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs) && liveOverviewData.overviewResumed &&
                 applicationContext.getSystemService(PowerManager::class.java)?.isInteractive == true
             )
-        if (span > 0L && showMasterTotals && preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)) {
+        val showInsulinTotals = span > 0L && showMasterTotals && preferences.get(BooleanKey.ApsAutoIsfShowInsulinTotals)
+        if (showInsulinTotals) {
             val insulinTotals = DoubleArray(12)
             var t = windowStart
             while (t < windowEnd) {
@@ -505,7 +503,9 @@ class PrepareTreatmentsDataWorker(
         }
         data.overviewData.insulinIntervalTotalSeries = PointsWithLabelGraphSeries(insulinIntervalLabels.toTypedArray())
         data.overviewData.insulinColumnSeries =
-            if (BUILD_INSULIN_TOTAL_COLUMNS && showMasterTotals) insulinTotalColumns(data, windowStart, windowEnd, aivList) else emptyList()
+            if (config.APS && showInsulinTotals && !preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs))
+                insulinTotalColumns(data, windowStart, windowEnd, aivList)
+            else emptyList()
 
         data.overviewData.therapyEventSeries = PointsWithLabelGraphSeries(filteredTherapyEvents.toTypedArray())
         data.overviewData.noteEventSeries = PointsWithLabelGraphSeries(filteredNotes.toTypedArray())
