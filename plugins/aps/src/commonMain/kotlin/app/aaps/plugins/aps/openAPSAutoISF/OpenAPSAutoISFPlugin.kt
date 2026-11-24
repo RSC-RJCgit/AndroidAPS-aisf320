@@ -270,6 +270,75 @@ open class OpenAPSAutoISFPlugin(
     private var poorAbsActive = false
     private var poorAbsLastActiveTs = 0L
 
+    // ActTtHighPause (2026-11-25, see applyActTtHighPause): the paused Activity TT's target and original end, 0 when nothing
+    // is paused. In memory only: after an app restart during a pause the TT stays off.
+    private var actTtPausedTargetMgdl = 0.0
+    private var actTtPausedEndTs = 0L
+    private var actTtLastActionTs = 0L
+
+    /**
+     * ActTtHighPause (2026-11-25, per explicit request, same as 3426): an Activity TT (the preset, e.g. 6.8 mmol 150 min)
+     * keeps its set duration, but is taken off while BG is over 10.0 mmol so normal dosing can bring BG down. It comes back,
+     * at the same target and Activity reason, for whatever is left of its original time once BG is 9.5 mmol or under AND
+     * S15 is over 200 again. 9.5 rather than 10.0 so it cannot flip every minute around 10.0. Gives up quietly when the
+     * original end passes or another TT is started during the pause (that TT wins).
+     */
+    private suspend fun applyActTtHighPause(now: Long, bg: Double, tt: TT?) {
+        if (actTtPausedEndTs == 0L) {
+            if (tt == null || tt.reason != TT.Reason.ACTIVITY || isCodedControlTt(tt)) return
+            if (bg <= 180.2 /* 10.0 mmol */ || !runMarks.ready(RunMark.ACT_TT_HIGH_PAUSE, 5, now)) return
+            actTtPausedTargetMgdl = tt.lowTarget
+            actTtPausedEndTs = tt.timestamp + tt.duration
+            val leftMin = ((actTtPausedEndTs - now) / 60_000L).coerceAtLeast(0L)
+            persistenceLayer.cancelCurrentTemporaryTargetIfAny(
+                timestamp = now,
+                action = Action.CANCEL_TT,
+                source = Sources.Automation,
+                note = "AutoISF: Activity TT paused, BG over 10.0",
+                listValues = emptyList(),
+            )
+            actTtLastActionTs = now
+            runMarks.mark(RunMark.ACT_TT_HIGH_PAUSE, now)
+            sendAutoSms("ActTtHighPause: BG ${decimals(bg / 18.0182, 1)} > 10.0 -> Activity TT ${decimals(actTtPausedTargetMgdl / 18.0182, 1)} off, ${leftMin}min left", noteTag = true)
+            carePortalNote("ActPs", smsText = lastSmsText)
+            return
+        }
+        // Paused: drop the pause once its time is up, or when someone else has started a TT meanwhile.
+        val leftMin = ((actTtPausedEndTs - now) / 60_000L).toInt()
+        if (leftMin < 1 || (tt != null && tt.timestamp > actTtLastActionTs)) {
+            actTtPausedEndTs = 0L
+            actTtPausedTargetMgdl = 0.0
+            return
+        }
+        if (tt != null || bg > 171.2 /* 9.5 mmol */) return
+        val steps15 = steps15(now)
+        if (steps15 <= 200) return
+        val target = actTtPausedTargetMgdl
+        persistenceLayer.insertAndCancelCurrentTemporaryTarget(
+            temporaryTarget = TT(
+                timestamp = now,
+                duration = leftMin * 60_000L,
+                reason = TT.Reason.ACTIVITY,
+                lowTarget = target,
+                highTarget = target
+            ),
+            action = Action.TT,
+            source = Sources.Automation,
+            note = "AutoISF: Activity TT resumed",
+            listValues = listOf(
+                ValueWithUnit.TETTReason(TT.Reason.ACTIVITY),
+                ValueWithUnit.Mgdl(target),
+                ValueWithUnit.Minute(leftMin)
+            )
+        )
+        actTtPausedEndTs = 0L
+        actTtPausedTargetMgdl = 0.0
+        actTtLastActionTs = now
+        runMarks.mark(RunMark.ACT_TT_HIGH_PAUSE, now)
+        sendAutoSms("ActTtHighPause: BG ${decimals(bg / 18.0182, 1)} S15 $steps15 -> Activity TT ${decimals(target / 18.0182, 1)} back for ${leftMin}min", noteTag = true)
+        carePortalNote("ActRs", smsText = lastSmsText)
+    }
+
     // Steps arrow (2026-10-29, per explicit request): set by autoISF() each loop, handed to determine_basal in updateSmbGuards.
     // How much more insulin the loop would have asked for without the step activity ratio and the dura walking half.
     private var stepInsulinMultiplier: Double = 1.0
@@ -2860,6 +2929,7 @@ open class OpenAPSAutoISFPlugin(
             sendAutoSms(text)
             phoneAlert(text)
         }
+        applyActTtHighPause(now, bg, activeTt)
         if (branch == StuckHighBranch.RATIO) {
             val boosted = stuckHighRatio(smb_delivery_ratio, smb_delivery_ratio_max)
             if (!deliveryNear(smb_delivery_ratio, boosted)) {
