@@ -17,6 +17,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.overview.graph.BgDataPoint
 import app.aaps.core.interfaces.nsclient.ProcessedDeviceStatusData
+import app.aaps.core.interfaces.nsclient.UploaderBatteryEstimate
 import app.aaps.core.interfaces.overview.graph.GraphConfig
 import app.aaps.core.interfaces.overview.graph.GraphConfigRepository
 import app.aaps.core.interfaces.overview.graph.OverviewDataCache
@@ -124,6 +125,18 @@ class GraphViewModel(
     fun hideG1Basal(display: GraphDisplay, simpleGraphs: Boolean): Boolean =
         display.iobGraphWithoutBasal ||
             (!simpleGraphs && config.APS && !config.AAPSCLIENT && display.basalOnBgGraph && !display.bgGraphInsulinColumns)
+
+    fun uploaderBatteryLabel(now: Long): String? {
+        val status = processedDeviceStatusData
+        if (config.AAPSCLIENT) {
+            return status?.device?.device?.let { status.activeUploaders[it]?.batteryEstimate?.label(now, dateUtil) }
+        }
+        if (activePlugin.activePump.selectedActivePump() is VirtualPump) {
+            val uploader = status?.activeUploaders?.values?.maxByOrNull { it.clock }
+            return uploader?.batteryEstimate?.label(now, dateUtil)
+        }
+        return UploaderBatteryEstimate.local.label(now, dateUtil)
+    }
 
     fun hasNonAutoIsfGraphSource(): Boolean {
         val algorithm = if (config.AAPSCLIENT) processedDeviceStatusData?.getAPSResult()?.algorithm

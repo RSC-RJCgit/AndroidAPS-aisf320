@@ -13,6 +13,7 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
 import app.aaps.core.interfaces.InterfacesStrings
+import app.aaps.core.interfaces.nsclient.UploaderBatteryEstimate
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.Loop.LastRun
@@ -1130,16 +1131,20 @@ class LoopPlugin(
         // NOTE: the previous `?: { … }` elvis branch was a lambda that was never invoked
         // (a long-standing no-op bug). Leaving the null-case as a no-op preserves prior
         // behavior — fixing it is a separate change.
+        val statusTime = dateUtil.now()
+        val batteryLevel = receiverStatusStore.batteryLevel
+        val isCharging = receiverStatusStore.isCharging
+        UploaderBatteryEstimate.local.record(statusTime, batteryLevel, isCharging)
         persistenceLayer.insertDeviceStatus(
             DS(
-                timestamp = dateUtil.now(),
+                timestamp = statusTime,
                 suggested = apsResult?.toString(),
                 iob = iob?.toString(),
                 enacted = enacted?.toString(),
                 device = "openaps://" + config.deviceModelForUpload,
                 pump = pumpStatusProvider.generatePumpJsonStatus().toString(),
-                uploaderBattery = receiverStatusStore.batteryLevel,
-                isCharging = receiverStatusStore.isCharging,
+                uploaderBattery = batteryLevel,
+                isCharging = isCharging,
             )
         )
     }
