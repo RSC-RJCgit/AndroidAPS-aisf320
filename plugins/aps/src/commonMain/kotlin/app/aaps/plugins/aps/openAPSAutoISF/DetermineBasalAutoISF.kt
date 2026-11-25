@@ -508,6 +508,8 @@ internal fun earlyMorningThenTwilight(input: EarlyMorningTwilightInput): SmbStep
 }
 
 // A lot of walking cuts the SMB to 70% when it is already above the FastRise threshold.
+// 2026-11-25, per explicit request (same as 3426): S180 > 1500 on its own (S30 <= 1500 and S60 <= 800, so the walk is
+// over) only cuts to 90%. 24 Nov 13:12-13:43 Live: S5/S15/S30 0, S60 under 800, S180 5065 kept the 70% cut on.
 internal fun highStepsSmbCut(
     microBolus: Double,
     threshold: Double,
@@ -515,9 +517,14 @@ internal fun highStepsSmbCut(
     steps60: Int,
     steps180: Int,
 ): SmbStepResult {
-    if (microBolus > threshold && (steps30 > 1500 || steps60 > 800 || steps180 > 1500)) {
+    if (microBolus <= threshold) return SmbStepResult(microBolus, "")
+    if (steps30 > 1500 || steps60 > 800) {
         val cut = microBolus * 0.70
         return SmbStepResult(cut, "High steps x0.7 SMB ${twoDecimals(cut)}. ", stepCut = microBolus - cut)
+    }
+    if (steps180 > 1500) {
+        val cut = microBolus * 0.90
+        return SmbStepResult(cut, "High steps (S180 only) x0.9 SMB ${twoDecimals(cut)}. ", stepCut = microBolus - cut)
     }
     return SmbStepResult(microBolus, "")
 }
@@ -812,6 +819,8 @@ internal data class AfterFastRiseInput(
     val steps30: Int,
     val steps60: Int,
     val steps180: Int,
+    /** StepBrakesOff (2026-11-25): HP over 7.0 and BG over 8.0 mmol, so [highStepsSmbCut] does not cut. */
+    val stepBrakesOff: Boolean = false,
     val loRebActive: Boolean,
     val loRebGuardEnabled: Boolean,
     val fastRiseNow: Boolean,
@@ -859,7 +868,8 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
         reason.append(early.reason)
         stepCut += early.stepCut
     }
-    val steps = highStepsSmbCut(smb, input.threshold, input.steps30, input.steps60, input.steps180)
+    val steps = if (input.stepBrakesOff) SmbStepResult(smb, "")
+    else highStepsSmbCut(smb, input.threshold, input.steps30, input.steps60, input.steps180)
     smb = steps.microBolus
     reason.append(steps.reason)
     stepCut += steps.stepCut
@@ -1013,6 +1023,10 @@ class DetermineBasalAutoISF(
     // 2026-11-20, per explicit request: a Tier 3 UAM boost dose over TIER3_STEP_CUT_ABOVE_U is cut by the same walking levels as
     // delayed FPU and carb split parts (delayedDoseWalkingFactor), never below the ordinary SMB. Set by the plugin each loop.
     var tier3StepDoseFactor: Double = 1.0
+    // StepBrakesOff (2026-11-25, set by OpenAPSAutoISFPlugin each cycle): HP over 7.0 and BG over 8.0 mmol, so the HIGH STEPS
+    // SMB cut stands aside. The note goes into the reason text so the AIV and logs show when it held.
+    var stepBrakesOff: Boolean = false
+    var stepBrakesOffNote: String = ""
 
     private fun Double.toFixed2(): String = NumberFormat.DECIMAL_2_UP_TO_3.format(round(this, 2))
 
@@ -1531,6 +1545,7 @@ class DetermineBasalAutoISF(
             variable_sens = profile.variable_sens
         )
         if (predSensCapped) rT.reason.append("predSens: ${convert_bg(predSens)} (AutoISF ISF ${convert_bg(sens)} capped) ;")
+        if (stepBrakesOffNote.isNotBlank()) rT.reason.append(stepBrakesOffNote)
 
         // generate predicted future BGs based on IOB, COB, and current absorption rate
 
@@ -2414,6 +2429,7 @@ class DetermineBasalAutoISF(
                         aapsDelta1Mgdl >= 0.25 * 18.0
                     val after = afterFastRiseSmb(
                         AfterFastRiseInput(
+                            stepBrakesOff = stepBrakesOff,
                             tier = adjusted.tier,
                             libreActive = libreActive,
                             tempTargetSet = profile.temptargetSet,

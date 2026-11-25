@@ -264,6 +264,12 @@ open class OpenAPSAutoISFPlugin(
     // Walking cut on a confirmed rise (2026-11-24): set each cycle once HP2 is known, see walkingRiseScale()
     private var walkingRiseScaleNow = 0.5
 
+    // StepBrakesOff (2026-11-25, per explicit request, same as 3426): set each cycle in invoke(). While HP (HP1) is over 7.0 and
+    // BG over 8.0 mmol, no step count brakes insulin: the walking activity ratio, the dura walking cut, the activity factor
+    // (walking part), the walking SMB cap, the Tier 3 walking cut, BMild's steps caution and the HIGH STEPS SMB cut. Step rules
+    // that protect against a low (FallRescue, Set50, LowBgTierAReset) are not touched. HP missing keeps the brakes on.
+    private var stepBrakesOffNow = false
+
     // PoorAbs (2026-11-24, see applyPoorAbs): start of the current BG >= 10.0 stretch, whether the boost is on, and when it last was.
     // In memory only: after an app restart the 60 min high stretch is timed again from scratch.
     private var poorAbsHighSinceTs = 0L
@@ -540,6 +546,10 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000.0).toLong())
             preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
         }
+        stepBrakesOffNow = hp1Now != null && hp1Now.isFinite() && hp1Now > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
+        determineBasalAutoISF.stepBrakesOff = stepBrakesOffNow
+        determineBasalAutoISF.stepBrakesOffNote = if (stepBrakesOffNow)
+            "StepBrakesOff (HP ${decimals(hp1Now ?: 0.0, 1)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). " else ""
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
         val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
 
@@ -550,7 +560,8 @@ open class OpenAPSAutoISFPlugin(
         if (autoIsfMode) {
             consoleError = mutableListOf()
             consoleLog = mutableListOf()
-            walkingRiseScaleNow = walkingRiseScale(glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, liveHp2)
+            walkingRiseScaleNow = if (stepBrakesOffNow) 1.0
+            else walkingRiseScale(glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, liveHp2)
             variableSensitivity = autoISF(profile, autoIsfFactors, iobData.iob, liveHp2)
         }
         val oapsProfile = OapsProfileAutoIsf(
@@ -1339,7 +1350,7 @@ open class OpenAPSAutoISFPlugin(
         // Activity uses fresh imported steps only; missing data stays neutral.
         val stepSample = freshLiveSteps(nowMs)
         val startedAt = if (processStartedAtMs == 0L) nowMs else processStartedAtMs
-        val activityRatio = if (glucose_status == null) 1.0 else activitySensitivityRatio(
+        val activityRatioRaw = if (glucose_status == null) 1.0 else activitySensitivityRatio(
             enabled = preferences.get(BooleanKey.ApsActivityDetection),
             tempTargetSet = isTempTarget,
             stepsKnown = stepSample != null,
@@ -1363,6 +1374,8 @@ open class OpenAPSAutoISFPlugin(
             activityScale = preferences.get(DoubleKey.ApsActivityScaleFactor),
             inactivityScale = preferences.get(DoubleKey.ApsInactivityScaleFactor),
         )
+        // StepBrakesOff (2026-11-25): a walking ratio (below 1) is a brake; an inactivity ratio (above 1) is not, so it stays.
+        val activityRatio = if (stepBrakesOffNow && activityRatioRaw < 1.0) 1.0 else activityRatioRaw
         val autosensOn = constraintsChecker.isAutosensModeEnabled().value()
         var autosensRatio = 1.0
         if (autosensOn) {
@@ -1561,7 +1574,7 @@ open class OpenAPSAutoISFPlugin(
                     duraBoost *= taper
                 }
                 val stepsNow = dateUtil.now()
-                val walking = duraWalkingFactor(steps5(stepsNow), steps30(stepsNow), steps60(stepsNow))
+                val walking = if (stepBrakesOffNow) 1.0 else duraWalkingFactor(steps5(stepsNow), steps30(stepsNow), steps60(stepsNow))
                 if (walking < 1.0) {
                     consoleError.add("dura_ISF walking: boost ${round(duraBoost, 2)} -> ${round(duraBoost * walking, 2)}")
                     duraWalkCut = duraBoost * (1.0 - walking)
@@ -2291,7 +2304,7 @@ open class OpenAPSAutoISFPlugin(
         val standard110 = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
         val caution = (statesOn && !states().inState("MJ", "NOMJremains")) ||
             (standard110.isNotEmpty() && profileName == standard110) ||
-            steps30 > 200
+            (!stepBrakesOffNow && steps30 > 200)
         val mildBase = preferences.get(DoubleKey.ApsAutoIsfMildBoostRatio)
         // 2026-10-18: the activity factor for BMild and its failsafe. 0 (IOB high) skips the ratio raise, 0.5 (walking) halves it.
         val activity = activityFactor(iob, constraintsChecker.getMaxIOBAllowed().value(), steps5, steps30, steps60(now), walkingRiseScaleNow)
@@ -5029,7 +5042,7 @@ open class OpenAPSAutoISFPlugin(
     ) {
         val flatNow = autoIsfMode && delta <= 1.8 && shortDelta <= 1.8
         duraFlatSince = if (!flatNow) 0L else if (duraFlatSince == 0L) now else duraFlatSince
-        val walking = isWalking(steps5(now), steps30(now), steps60(now))
+        val walking = !stepBrakesOffNow && isWalking(steps5(now), steps30(now), steps60(now))
         val duraCapActive = autoIsfMode && duraFlatCapRule(factors, bgMgdl, iob, cob, duraFlatSince, now, walking)
         determineBasalAutoISF.duraFlatCapActive = duraCapActive
         // Steps arrow: only a cut counts, so an inactivity ratio above 1 (more insulin) gives 1
@@ -5084,7 +5097,8 @@ open class OpenAPSAutoISFPlugin(
         determineBasalAutoISF.tier3WalkingFactor = if (factor > 0.0 && factor < 1.0) factor else 1.0
         // 2026-11-20, per explicit request: a Tier 3 dose over 1 U is cut by the delayed-dose walking levels, from the loop's own
         // steps (S10 and S15 as 5-minute bins, as delayedDoseWalkingFactor wants)
-        determineBasalAutoISF.tier3StepDoseFactor = delayedDoseWalkingFactor(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now))
+        determineBasalAutoISF.tier3StepDoseFactor = if (stepBrakesOffNow) 1.0
+        else delayedDoseWalkingFactor(steps5(now), steps10(now), steps15(now), steps30(now), steps60(now))
         if (preferences.get(BooleanKey.ApsAutoIsfUamBoostEnabled) && runMarks.ready(RunMark.ACTIVITY_FACTOR_TIER3_NOTE, 15, now)) {
             activityFactorNote(factor)?.let {
                 carePortalNote(it)
