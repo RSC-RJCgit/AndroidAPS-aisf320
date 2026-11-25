@@ -424,20 +424,26 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
     // logged no "hold started". The graph library's own long press is lost when the chart is rebuilt during its wait,
     // when the page or the graph takes a slightly drifting finger as a scroll, and when the press only stopped a page
     // fling. This node is not rebuilt with the chart and sees the press first, so after the long-press time with the
-    // finger still within the touch slop it starts the hold itself. A mouse keeps the library's path (Windows works).
+    // finger still within the touch slop it starts the hold itself.
+    // 2026-11-26, per explicit request: a held left mouse button too. On Windows the main graph's own long press never started
+    // (no "hold started" logged) while the subgraphs' did. The button state is read from the event, as desktop can keep a mouse
+    // pointer "pressed" after release. Other mouse buttons are left alone.
     // One line per press in the log says which path started the hold, or why none did.
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-        if (down.type == PointerType.Mouse) return@awaitEachGesture
+        val mouse = down.type == PointerType.Mouse
+        if (mouse && !currentEvent.buttons.isPrimaryPressed) return@awaitEachGesture
         val slop = viewConfiguration.touchSlop
         val stopped: String? = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis + BACKUP_HOLD_EXTRA_MS) {
             var reason: String? = null
             while (reason == null) {
-                val changes = awaitPointerEvent(PointerEventPass.Initial).changes
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val changes = event.changes
                 val change = changes.firstOrNull { it.id == down.id }
+                val held = change != null && (if (mouse) event.buttons.isPrimaryPressed else change.pressed)
                 reason = when {
-                    changes.count { it.pressed } > 1                       -> "second finger"
-                    change == null || !change.pressed                      -> "lifted"
+                    !mouse && changes.count { it.pressed } > 1             -> "second finger"
+                    change == null || !held                                -> if (mouse) "released" else "lifted"
                     (change.position - down.position).getDistance() > slop -> "moved"
                     else                                                    -> null
                 }
@@ -450,7 +456,7 @@ fun Modifier.graphInspectTouch(state: GraphInspectState): Modifier = pointerInpu
             state.startHoldAt(down.position.x) -> "hold by the backup"
             else                             -> "no hold (${state.pressState()})"
         }
-        state.log("Graph inspect: finger press, $outcome")
+        state.log("Graph inspect: ${if (mouse) "mouse" else "finger"} press, $outcome")
     }
 }
 
