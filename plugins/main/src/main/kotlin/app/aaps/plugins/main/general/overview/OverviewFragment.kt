@@ -3891,9 +3891,16 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // SMB delivered / acce weight / pp weight / profile basal: always on graph5 (even in BGL-only mode), top band.
             // After every scale-setting series above so maxY is final. Keep in sync with HistoryBrowseActivity.kt.
             graph5Data.addTopBandLines()
-            val uploader = processedDeviceStatusData.device?.device?.let { processedDeviceStatusData.uploaderMap["openaps://$it"] }
-            val estimate = if (config.AAPSCLIENT) uploader?.batteryEstimate else UploaderBatteryEstimate.local
-            val batteryLabel = estimate?.label(dateUtil.now(), dateUtil)
+            val now = dateUtil.now()
+            val batteryLabel = if (config.AAPSCLIENT || pump is VirtualPump) {
+                val uploaders = processedDeviceStatusData.uploaderMap
+                val reported = processedDeviceStatusData.device?.device?.let { uploaders["openaps://$it"] }
+                val uploader = reported ?: uploaders.values.maxByOrNull { it.clock }
+                uploader?.batteryEstimate?.label(now, dateUtil)
+            } else {
+                UploaderBatteryEstimate.local.record(now, receiverStatusStore.batteryLevel, receiverStatusStore.isCharging)
+                UploaderBatteryEstimate.local.label(now, dateUtil)
+            }
             binding.graphsLayout.graph5Legend.text = graph5Data.topBandLegend(batteryLabel)
             // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column
             // area, one line below the pp/acc/du row.

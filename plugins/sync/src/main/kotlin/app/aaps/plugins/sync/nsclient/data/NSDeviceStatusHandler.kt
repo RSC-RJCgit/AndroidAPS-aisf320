@@ -148,6 +148,9 @@ class NSDeviceStatusHandler @Inject constructor(
                 nsDeviceStatus.device?.startsWith("openaps://") == true
             ) {
                 if (receiveMasterGraphTime(nsDeviceStatus, fromSecondary, now)) graphZoneChanged = true
+                if (!config.AAPSCLIENT && nsDeviceStatus.device != "openaps://${Build.MANUFACTURER} ${Build.MODEL}") {
+                    updateUploaderData(nsDeviceStatus)
+                }
             }
             if (config.AAPSCLIENT) {
                 if (nsDeviceStatus.device?.startsWith("openaps://") == true) {
@@ -371,7 +374,7 @@ class NSDeviceStatusHandler @Inject constructor(
     }
 
     private fun updateUploaderData(nsDeviceStatus: NSDeviceStatus) {
-        val clock = nsDeviceStatus.createdAt?.let { dateUtil.fromISODateString(it) } ?: return
+        val clock = nsDeviceStatus.date ?: nsDeviceStatus.createdAt?.let { dateUtil.fromISODateString(it) } ?: return
         val device = nsDeviceStatus.device ?: return
         val battery = nsDeviceStatus.uploaderBattery ?: nsDeviceStatus.uploader?.battery ?: return
         val isCharging = nsDeviceStatus.isCharging
