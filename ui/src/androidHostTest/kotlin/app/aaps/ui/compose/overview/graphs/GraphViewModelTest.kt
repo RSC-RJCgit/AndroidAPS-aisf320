@@ -86,7 +86,7 @@ internal class GraphViewModelTest {
         whenever(preferences.observe(BooleanNonKey.ApsAutoIsfGraphResetRequested)).thenReturn(MutableStateFlow(false))
         // fullWindow = false: the overview behaviour, where the axis hugs the data.
         whenever(preferences.observe(BooleanKey.VirtualShowStepText)).thenReturn(MutableStateFlow(true))
-        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin, profileUtil)
+        sut = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin, profileUtil, mock())
     }
 
     @AfterEach
@@ -177,7 +177,7 @@ internal class GraphViewModelTest {
         whenever(cache.predictionsFlow).thenReturn(MutableStateFlow(predictions))
         whenever(cache.timeRangeFlow).thenReturn(MutableStateFlow(TimeRange(fromTime = windowStart, toTime = now, endTime = now + 2 * 3600_000L)))
         whenever(graphConfigRepository.graphConfigFlow).thenReturn(MutableStateFlow(GraphConfig()))
-        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin, profileUtil)
+        val vm = GraphViewModel(cache, false, graphConfigRepository, aapsLogger, preferences, dateUtil, rh, persistenceLayer, config, activePlugin, profileUtil, mock())
 
         val range = vm.derivedTimeRange.filterNotNull().first()
 

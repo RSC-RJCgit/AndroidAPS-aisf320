@@ -106,7 +106,9 @@ class GraphViewModel(
     private val config: Config,
     private val activePlugin: ActivePlugin,
     private val profileUtil: ProfileUtil,
-    private val processedDeviceStatusData: ProcessedDeviceStatusData? = null,
+    // 2026-11-26, per explicit request: not nullable. Metro has no binding for the nullable type, so `ProcessedDeviceStatusData? = null`
+    // always stayed null and a client never showed the loop phone's battery ("Bat%=NN to HHMM").
+    private val processedDeviceStatusData: ProcessedDeviceStatusData,
 ) : ViewModel() {
 
     @AssistedFactory
@@ -130,7 +132,7 @@ class GraphViewModel(
         if (!config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() !is VirtualPump) {
             return UploaderBatteryEstimate.local.label(now, dateUtil)
         }
-        val status = processedDeviceStatusData ?: return null
+        val status = processedDeviceStatusData
         val uploaders = status.activeUploaders
         val reported = if (config.AAPSCLIENT) status.device?.device?.let { uploaders["openaps://$it"] ?: uploaders[it] } else null
         val uploader = reported ?: uploaders.filterKeys { it.startsWith("openaps://") }.values.maxByOrNull { it.clock }
@@ -138,7 +140,7 @@ class GraphViewModel(
     }
 
     fun hasNonAutoIsfGraphSource(): Boolean {
-        val algorithm = if (config.AAPSCLIENT) processedDeviceStatusData?.getAPSResult()?.algorithm
+        val algorithm = if (config.AAPSCLIENT) processedDeviceStatusData.getAPSResult()?.algorithm
         else activePlugin.activeAPS?.algorithm
         return algorithm != null && algorithm.name != "AUTO_ISF"
     }
