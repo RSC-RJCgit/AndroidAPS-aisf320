@@ -77,6 +77,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -150,6 +151,8 @@ class LoopPlugin @Inject constructor(
     override fun onStart() {
         createNotificationChannel()
         super.onStart()
+        // Battery forecast (2026-11-25): the saved start of the current discharge, before the first loop records a reading
+        UploaderBatteryEstimate.local.restoreUnplugged(preferences.get(StringNonKey.UploaderBatteryUnplugged))
         handler = Handler(HandlerThread(this::class.simpleName + "Handler").also { it.start() }.looper)
         disposable += rxBus
             .toObservable(EventTempTargetChange::class.java)
@@ -1068,6 +1071,9 @@ class LoopPlugin @Inject constructor(
         val batteryLevel = receiverStatusStore.batteryLevel
         val isCharging = receiverStatusStore.isCharging
         UploaderBatteryEstimate.local.record(statusTime, batteryLevel, isCharging)
+        UploaderBatteryEstimate.local.unpluggedSnapshot().let {
+            if (it != preferences.get(StringNonKey.UploaderBatteryUnplugged)) preferences.put(StringNonKey.UploaderBatteryUnplugged, it)
+        }
         persistenceLayer.insertDeviceStatus(
             DS(
                 timestamp = statusTime,
