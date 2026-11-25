@@ -63,4 +63,18 @@ object AapsSpacing {
     // Short top bar so landscape still has room for the graphs.
     val compactTopBarHeight = 48.dp
     val compactSearchHeight = 36.dp
+
+    // 2026-11-25: the Dexcom ONE+ screens' sizes, as in OpenApsAIMIios.
+
+    /** Widest column a form or status screen should occupy on a tablet. */
+    val readableContentMaxWidth = 560.dp
+
+    /** Shortest height of a tappable list row (sensor scan result, etc.). */
+    val listRowMinHeight = 56.dp
+
+    /** Smallest usable CGM warm-up ring. */
+    val warmupRingMin = 120.dp
+
+    /** Largest CGM warm-up ring, so it does not swallow a tablet pane. */
+    val warmupRingMax = 240.dp
 }
