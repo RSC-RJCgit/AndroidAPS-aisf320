@@ -401,10 +401,15 @@ class DelayedBolusWorker(
             gs.shortAvgDelta > DELAYED_SD_MGDL &&
             gs.longAvgDelta > DELAYED_LD_MGDL
         val bglStr = gs?.let { String.format("%.1f", it.glucose / 18.0182) } ?: "n/a"
+        // 2026-11-26, per explicit request: wait while HP1 is below 4.0 mmol/L, or missing or stale, as the carb split does
+        // (25 Nov: Db45 and Db50 gave 2.7 U while HP1 was 3.4-3.5 and the carb split waited on it; BG then fell to 3.9). Only ever holds a check; it never adds insulin.
+        val hpAt = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
+        val hpValue = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
+        val hpCheck = if (hpAt == preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)) splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
 
         val dbLabel = "Db${attempt * POLL_MINUTES}"
 
-        if (criteriaOk && bglFresh) {
+        if (criteriaOk && bglFresh && hpCheck == SplitHpCheck.Allow) {
             // Remainder is the wizard top-up, then COB scale. IOB growth since the original bolus
             // is not subtracted (14 Sep Db30: that term collapsed the delayed dose to 0.1U).
             val currentCob = iobCobCalculator.getCobInfo("DelayedBolusWorker").displayCob ?: 0.0
@@ -550,11 +555,13 @@ class DelayedBolusWorker(
                 gs == null   -> "no BGL data"
                 !bglFresh    -> "BGL stale (${(now - gs.date) / 60000} min old)"
                 !criteriaOk  -> "glucose criteria not met (BGL=$bglStr)"
+                hpCheck == SplitHpCheck.Hold -> "HP1 below 4.0 mmol/L"
+                hpCheck == SplitHpCheck.Wait -> "HP1 missing or stale"
                 else         -> "unknown"
             }
             if (attempt < MAX_ATTEMPTS) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: $reason — scheduling attempt ${attempt + 1} in $POLL_MINUTES min")
-                addCheckNote("$dbLabel wait")
+                addCheckNote(if (criteriaOk && bglFresh) "$dbLabel wait HP1" else "$dbLabel wait")
                 enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar, heldBackBy, overMaxBolus)
             } else {
                 aapsLogger.info(LTag.CORE, "Delayed bolus: $reason at attempt $attempt — no delayed dose delivered")
