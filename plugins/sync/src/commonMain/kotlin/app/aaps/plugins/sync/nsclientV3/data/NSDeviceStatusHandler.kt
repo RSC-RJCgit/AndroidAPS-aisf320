@@ -155,7 +155,7 @@ class NSDeviceStatusHandler(
                 }
                 if (config.APS) {
                     nsDeviceStatus.pump?.let { preferences.put(BooleanNonKey.ObjectivesPumpStatusIsAvailableInNS, true) }  // Objective 0
-                    receiveLiveLoop(nsDeviceStatus)
+                    receiveLiveLoop(nsDeviceStatus, parsed.createdAt)
                 }
                 accepted += parsed
             } catch (cancelled: CancellationException) {
@@ -454,12 +454,13 @@ class NSDeviceStatusHandler(
      * A full phone on the virtual pump keeps the live phone's loop row and step counts.
      * It does not copy the live phone's pump state, and it ignores its own Nightscout echo.
      */
-    private fun receiveLiveLoop(deviceStatus: NSDeviceStatus) {
+    private fun receiveLiveLoop(deviceStatus: NSDeviceStatus, createdAt: Long?) {
         if (config.AAPSCLIENT) return
         if (activePlugin.activePump.selectedActivePump() !is VirtualPump) return
         val device = deviceStatus.device ?: return
         val own = "openaps://${config.deviceModelForUpload}"
         if (device != "Trio" && (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true))) return
+        if (device.startsWith("openaps://")) updateUploaderData(deviceStatus, createdAt)
         val suggested = deviceStatus.openaps?.suggested ?: return
         val timestamp = suggested.safeGetString("timestamp") ?: return
         val clock = runCatching { dateUtil.fromISODateString(timestamp) }.getOrNull() ?: return
@@ -602,6 +603,7 @@ class NSDeviceStatusHandler(
             uploader.battery = battery
             uploader.clock = clock
             uploader.isCharging = isCharging
+            uploader.batteryEstimate.record(clock, battery, isCharging)
             processedDeviceStatusData.uploaderMap[device] = uploader
         }
     }

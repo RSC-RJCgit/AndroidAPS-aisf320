@@ -1343,8 +1343,9 @@ fun GraphsSection(
                     else                               -> null
                 }
             }
+            val batteryText = if (fitWholeWindow) null else graphViewModel.uploaderBatteryLabel(nowTimestamp)
             val shownSpanText = shownGraphSpanText(bgVisibleTimeRange)
-            if (shownSpanText != null || hpText != null || showZoomButtons || !isSimpleMode) {
+            if (shownSpanText != null || hpText != null || batteryText != null || showZoomButtons || !isSimpleMode) {
                 Row(
                     modifier = Modifier.align(Alignment.TopEnd).padding(end = 4.dp, top = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -1359,6 +1360,9 @@ fun GraphsSection(
                         )
                     }
                     hpText?.let {
+                        Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.padding(end = 4.dp))
+                    }
+                    batteryText?.let {
                         Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, modifier = Modifier.padding(end = 4.dp))
                     }
                     if (showZoomButtons) GraphZoomButtons(zoomStep)

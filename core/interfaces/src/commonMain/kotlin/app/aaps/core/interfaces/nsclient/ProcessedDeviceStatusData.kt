@@ -39,6 +39,8 @@ interface ProcessedDeviceStatusData {
 
     class Uploader {
 
+        val batteryEstimate = UploaderBatteryEstimate()
+
         var clock = 0L
         var battery = 0
         var isCharging: Boolean? = null
