@@ -11756,10 +11756,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             isTempTarget = true
             target_bg = hardLimits.verifyHardLimits(tempTarget.target(), app.aaps.core.ui.R.string.temp_target_value, HardLimits.LIMIT_TEMP_TARGET_BG[0], HardLimits.LIMIT_TEMP_TARGET_BG[1])
         }
-        val activityRatio = if (mirrored && glucose_status != null) {
+        val activityRatio = (if (mirrored && glucose_status != null) {
             activityMonitor(isTempTarget, glucose_status.glucose, target_bg, nowHour, glucose_status.shortAvgDelta, stepsSample, persist = false)
-        }.let { if (mirrored && stepBrakesOffNow && it < 1.0) 1.0 else it } // StepBrakesOff, as in invoke() (2026-11-25)
-        else preferences.get(DoubleKey.ActivityMonitorRatio)
+        } else preferences.get(DoubleKey.ActivityMonitorRatio))
+            .let { if (mirrored && stepBrakesOffNow && it < 1.0) 1.0 else it } // StepBrakesOff, as in invoke() (2026-11-25)
         val stepActivityDetected = if (mirrored) activityRatio < 1.0 else preferences.get(BooleanKey.ActivityMonitorStepsActive)
         val stepInactivityDetected = if (mirrored) activityRatio > 1.0 else preferences.get(BooleanKey.ActivityMonitorStepsInactive)
         var sensitivityRatio = 1.0
