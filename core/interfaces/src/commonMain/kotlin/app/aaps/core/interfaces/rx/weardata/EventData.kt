@@ -672,4 +672,67 @@ sealed class EventData : Event() {
         val durations: List<Int>,
         val title: String = ""
     ) : EventData()
+
+    // 2026-11-25: the Dexcom ONE+ / G7 direct-to-watch messages, as in OpenApsAIMIios. Only the phone side exists in this
+    // tree (the watch-side WatchDirect is not ported), so a watch ignores them for now.
+
+    /**
+     * Mobile -> Wear: direct-to-watch for the Dexcom ONE+ / G7 the phone reads. With [active] the watch
+     * connects to the sensor itself, in the sensor's watch slot, next to the phone. It makes its own key
+     * from [pairingCode]; the phone's key never leaves the phone. Without [active] the watch lets the
+     * sensor go and forgets it.
+     *
+     * The watch's readings go to its faces only. They are never sent back to the phone and never reach
+     * the loop.
+     */
+    @Serializable
+    data class CgmWatchDirect(
+        val active: Boolean,
+        val pairingCode: String? = null,
+        val address: String? = null,
+        val serial: String? = null,
+        val sensorName: String? = null
+    ) : EventData() {
+
+        // Never print the pairing code in a log line.
+        override fun toString(): String =
+            "CgmWatchDirect(active=$active, address=$address, serial=$serial, sensorName=$sensorName, pairingCode=${if (pairingCode == null) "null" else "***"})"
+    }
+
+    /** Wear -> Mobile: how the watch's own connection to the sensor is doing (direct-to-watch). */
+    @Serializable
+    data class CgmWatchStatus(
+        val state: CgmWatchState,
+        /** The sensor the watch is set up for, so the phone can see when the watch holds an old one. */
+        val address: String? = null,
+        val latestReadingAt: Long? = null,
+        /** The last problem, in plain words, for the phone's status line. */
+        val detail: String? = null,
+        /** True when the watch may put the app to sleep in the background and miss readings. */
+        val batteryRestricted: Boolean = false
+    ) : EventData()
+
+    @Serializable
+    enum class CgmWatchState {
+
+        /** Direct-to-watch is off. */
+        OFF,
+
+        /** The watch runs Android 11 or older; the sensor code needs Android 12. */
+        NOT_SUPPORTED,
+
+        /** The wearer has to allow Bluetooth on the watch. */
+        NEEDS_PERMISSION,
+        BLUETOOTH_OFF,
+
+        /** No key yet: the next connection runs the key exchange and the pairing prompt. */
+        PAIRING,
+
+        /** Paired, waiting for the sensor's next reading. The normal state between readings. */
+        WAITING,
+        CONNECTED,
+
+        /** The sensor refused the watch. [CgmWatchStatus.detail] says why. */
+        REFUSED
+    }
 }

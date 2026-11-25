@@ -47,4 +47,11 @@ interface Calibration {
      * re-evaluates everything. This is a UX hint, not a contract.
      */
     suspend fun checkPreconditions(): AddEntryResult
+
+    /**
+     * Leave every calibration entry older than [timestamp] out of the fit (2026-11-25, as in OpenApsAIMIios; called by the
+     * Dexcom ONE+ plugin when a pre-soak sensor is promoted). The default does nothing: a plugin that does not fit a line has
+     * nothing to cut off, and no calibration plugin in this tree overrides it yet.
+     */
+    suspend fun ignoreEntriesBefore(timestamp: Long) {}
 }
