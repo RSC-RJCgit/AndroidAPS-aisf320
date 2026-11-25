@@ -220,6 +220,13 @@ class NSDeviceStatusHandler(
         if (site.isBlank() || site != MasterGraphTimeZone.selectedSite(preferences)) return
         takeMasterFreeStorage(statuses)
         val latestAllowed = dateUtil.now() + 5 * 60_000L
+        val own = "openaps://${config.deviceModelForUpload}"
+        statuses.mapNotNull { status ->
+            val device = status.device ?: return@mapNotNull null
+            if (!device.startsWith("openaps://") || device.equals(own, ignoreCase = true)) return@mapNotNull null
+            val time = status.date ?: graphReportTime(status.createdAt) ?: return@mapNotNull null
+            if (time in 1L..latestAllowed) time to status else null
+        }.sortedBy { it.first }.forEach { (time, status) -> updateUploaderData(status, time) }
         val latest = statuses.asSequence().mapNotNull { status ->
             if (status.device?.startsWith("openaps://") != true) return@mapNotNull null
             val suggested = status.openaps?.suggested ?: return@mapNotNull null

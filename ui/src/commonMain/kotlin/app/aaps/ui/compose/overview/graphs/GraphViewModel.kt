@@ -127,19 +127,14 @@ class GraphViewModel(
             (!simpleGraphs && config.APS && !config.AAPSCLIENT && display.basalOnBgGraph && !display.bgGraphInsulinColumns)
 
     fun uploaderBatteryLabel(now: Long): String? {
-        val status = processedDeviceStatusData
-        if (config.AAPSCLIENT) {
-            return status?.device?.device?.let {
-                val uploaders = status.activeUploaders
-                val uploader = uploaders["openaps://$it"] ?: uploaders[it]
-                uploader?.batteryEstimate?.label(now, dateUtil)
-            }
+        if (!config.AAPSCLIENT && activePlugin.activePump.selectedActivePump() !is VirtualPump) {
+            return UploaderBatteryEstimate.local.label(now, dateUtil)
         }
-        if (activePlugin.activePump.selectedActivePump() is VirtualPump) {
-            val uploader = status?.activeUploaders?.values?.maxByOrNull { it.clock }
-            return uploader?.batteryEstimate?.label(now, dateUtil)
-        }
-        return UploaderBatteryEstimate.local.label(now, dateUtil)
+        val status = processedDeviceStatusData ?: return null
+        val uploaders = status.activeUploaders
+        val reported = if (config.AAPSCLIENT) status.device?.device?.let { uploaders["openaps://$it"] ?: uploaders[it] } else null
+        val uploader = reported ?: uploaders.filterKeys { it.startsWith("openaps://") }.values.maxByOrNull { it.clock }
+        return uploader?.batteryEstimate?.label(now, dateUtil)
     }
 
     fun hasNonAutoIsfGraphSource(): Boolean {
