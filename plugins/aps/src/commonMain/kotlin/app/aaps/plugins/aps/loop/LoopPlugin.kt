@@ -60,6 +60,7 @@ import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.IntNonKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.aps.IsfForCarbs
 import app.aaps.core.objects.constraints.ConstraintObject
@@ -211,6 +212,8 @@ class LoopPlugin(
     @OptIn(FlowPreview::class)
     override suspend fun onStart() {
         super.onStart()
+        // Battery forecast (2026-11-25): the saved start of the current discharge, before the first loop records a reading
+        UploaderBatteryEstimate.local.restoreUnplugged(preferences.get(StringNonKey.UploaderBatteryUnplugged))
         // TempTarget changes
         persistenceLayer.observeChanges(TT::class)
             // Skip db change of ending previous TT
@@ -1135,6 +1138,9 @@ class LoopPlugin(
         val batteryLevel = receiverStatusStore.batteryLevel
         val isCharging = receiverStatusStore.isCharging
         UploaderBatteryEstimate.local.record(statusTime, batteryLevel, isCharging)
+        UploaderBatteryEstimate.local.unpluggedSnapshot().let {
+            if (it != preferences.get(StringNonKey.UploaderBatteryUnplugged)) preferences.put(StringNonKey.UploaderBatteryUnplugged, it)
+        }
         persistenceLayer.insertDeviceStatus(
             DS(
                 timestamp = statusTime,

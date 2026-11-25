@@ -7,7 +7,8 @@ sealed class NavigationRequest {
     data class Element(val type: ElementType) : NavigationRequest()
     data class QuickWizard(val guid: String) : NavigationRequest()
     data class Plugin(val className: String) : NavigationRequest()
-    data class PluginPreferences(val pluginKey: String) : NavigationRequest()
+    /** [composeScreenKey] opens that sub-screen of the plugin's settings at once (2026-11-25, as in OpenApsAIMIios). */
+    data class PluginPreferences(val pluginKey: String, val composeScreenKey: String? = null) : NavigationRequest()
 
     /** Statistics opened on its Glucose tab for [days] (7 or 30), from the overview stats summary (2026-10-29) */
     data class StatsGlucose(val days: Int) : NavigationRequest()

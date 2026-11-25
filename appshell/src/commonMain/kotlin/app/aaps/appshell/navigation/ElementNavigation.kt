@@ -66,7 +66,7 @@ class ElementNavigator(
             }
 
             is NavigationRequest.PluginPreferences -> guarded(ElementType.SETTINGS.protection) {
-                navController.navigate(AppRoute.PluginPreferences.createRoute(request.pluginKey))
+                navController.navigate(AppRoute.PluginPreferences.createRoute(request.pluginKey, request.composeScreenKey))
             }
 
             is NavigationRequest.StatsGlucose      -> guarded(ElementType.STATISTICS.protection) {

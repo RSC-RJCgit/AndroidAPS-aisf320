@@ -204,5 +204,7 @@ enum class StringNonKey(
      */
     ApsAutoIsfActivityPrevStandardRole("autoisf_activity_prev_standard_role", "", exportable = false),
     ApsAutoIsfActivityPrevLowRole("autoisf_activity_prev_low_role", "", exportable = false),
+    /** This phone's battery discharge start as "time:percent" (UploaderBatteryEstimate.unpluggedSnapshot), kept over restarts (2026-11-25). */
+    UploaderBatteryUnplugged("uploader_battery_unplugged", "", exportable = false),
 
 }
