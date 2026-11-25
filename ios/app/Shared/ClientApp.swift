@@ -25,7 +25,7 @@ struct ClientApp: App {
 /// runs - built by the Kotlin graph on the other side of this call.
 struct AapsAppView: UIViewControllerRepresentable {
 
-    func makeUIViewController(context: Context) -> UIViewController {
+    func makeUIViewController(context: UIViewControllerRepresentableContext<AapsAppView>) -> UIViewController {
         // The Nightscout socket is handed to the Kotlin graph from here, because it is written in
         // Swift and cannot carry a Kotlin annotation. Android and desktop contribute their own
         // socket.io client automatically; this is the same project's Swift client, so both platforms
@@ -34,7 +34,7 @@ struct AapsAppView: UIViewControllerRepresentable {
         AapsAppHostKt.aapsAppViewController(nsSocketFactory: SwiftNsSocketFactory(), liveActivity: SwiftLiveActivity())
     }
 
-    func updateUIViewController(_ controller: UIViewController, context: Context) {}
+    func updateUIViewController(_ controller: UIViewController, context: UIViewControllerRepresentableContext<AapsAppView>) {}
 }
 
 /// The whole screen is AAPS.
