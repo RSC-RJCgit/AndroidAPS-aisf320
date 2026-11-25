@@ -18,6 +18,7 @@ import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
@@ -28,6 +29,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.aaps.core.keys.BooleanNonKey
@@ -261,6 +263,12 @@ private fun SimpleGraphsSwitch() {
     )
 }
 
+/**
+ * Room kept free at the right of the profile row (2026-11-26, per explicit request): the landscape layout switch button sits
+ * in the screen's top right corner and covered the tier chip there. 0 where that button is not shown.
+ */
+internal val LocalTopEndButtonInset = compositionLocalOf<Dp> { 0.dp }
+
 @Composable
 private fun NarrowChips(
     runningMode: RM.Mode?,
@@ -289,7 +297,8 @@ private fun NarrowChips(
     commandsAllowed: Boolean
 ) {
     Row(
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(end = LocalTopEndButtonInset.current)
     ) {
         if (runningModeText.isNotEmpty()) {
             RunningModeChip(

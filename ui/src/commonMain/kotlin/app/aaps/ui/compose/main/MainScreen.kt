@@ -38,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import app.aaps.core.keys.BooleanKey
+import app.aaps.core.keys.BooleanNonKey
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -97,6 +98,7 @@ import app.aaps.ui.compose.overview.graphs.LocalTopBarPillHost
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
 import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
 import app.aaps.ui.compose.quickLaunch.QuickLaunchButtonSize
+import app.aaps.ui.compose.quickLaunch.QuickLaunchLargeButtonSize
 import app.aaps.ui.compose.quickLaunch.QuickLaunchToolbar
 import app.aaps.ui.compose.quickLaunch.ResolvedQuickLaunchItem
 import app.aaps.ui.compose.scenesSheet.ScenesBottomSheet
@@ -219,6 +221,10 @@ fun MainScreen(
     var showNavigationSheet by remember { mutableStateOf(false) }
     val showNavigationBarPref by remember { mainViewModel.preferences.observe(BooleanKey.OverviewShowNavigationBar) }
         .collectAsStateWithLifecycle()
+    // 2026-11-26, per explicit request: List 2 "Quick-launch buttons" normal / large, this phone only
+    val quickLaunchLarge by remember { mainViewModel.preferences.observe(BooleanNonKey.QuickLaunchLargeButtons) }
+        .collectAsStateWithLifecycle()
+    val quickLaunchButtonSize = if (quickLaunchLarge) QuickLaunchLargeButtonSize else QuickLaunchButtonSize
     val automationState by scenesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = LocalSnackbarHostState.current
 
@@ -387,7 +393,7 @@ fun MainScreen(
                             )
                         },
                         paddingValues = contentPadding,
-                        fabBottomOffset = if (hasToolbar && showChrome && !landscapeNavigation) QuickLaunchButtonSize + 8.dp else 0.dp,
+                        fabBottomOffset = if (hasToolbar && showChrome && !landscapeNavigation) quickLaunchButtonSize + 8.dp else 0.dp,
                         bolusState = bolusState,
                         pumpStatusText = pumpStatusText,
                         queueStatusText = queueStatusText,
@@ -638,7 +644,8 @@ fun MainScreen(
                                     QuickLaunchToolbar(
                                         items = visibleQuickLaunchItems,
                                         onActionClick = handleQuickLaunch,
-                                        vertical = true
+                                        vertical = true,
+                                        large = quickLaunchLarge
                                     )
                                 }
                             }
@@ -682,6 +689,7 @@ fun MainScreen(
                         QuickLaunchToolbar(
                             items = visibleQuickLaunchItems,
                             onActionClick = handleQuickLaunch,
+                            large = quickLaunchLarge,
                         )
                     }
 

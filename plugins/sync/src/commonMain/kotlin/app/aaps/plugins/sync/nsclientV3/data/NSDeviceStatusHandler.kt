@@ -30,6 +30,7 @@ import app.aaps.core.utils.safeGetStringAllowNull
 import app.aaps.plugins.sync.nsclientV3.NSClientV3Plugin
 import app.aaps.plugins.sync.nsclientV3.workers.stepsFromPrimarySite
 import app.aaps.core.objects.autoisf.legacyAutoIsfListValues
+import app.aaps.core.objects.autoisf.loopPhoneRoleNames
 import app.aaps.core.objects.notes.CareportalNoteStatus
 import app.aaps.core.objects.notes.NoteSmsTexts
 import app.aaps.core.objects.overview.MasterFreeStorage
@@ -428,6 +429,7 @@ class NSDeviceStatusHandler(
                 processedDeviceStatusData.openAPSData.autoIsfListSnapshot.update { previous ->
                     if (previous == null || previous.timestamp < clock) snapshot else previous
                 }
+                if (processedDeviceStatusData.openAPSData.autoIsfListSnapshot.value === snapshot) copyLoopPhoneRoles(snapshot.values, clock)
             }
             // Stored also when older than the newest one, see storeApsResults
             if (clock != null) {
@@ -594,6 +596,22 @@ class NSDeviceStatusHandler(
             val already = persistenceLayer.getAutoIsfValuesFromTimeToTime(clock, clock)
             if (already.any { it.timestamp == clock }) return@launchReceivedStatusWork
             persistenceLayer.insertAutoIsfValue(row)
+        }
+    }
+
+    /**
+     * 2026-11-26, per explicit request: a client keeps the loop phone's coded profile roles as its own, so its roles list, tier
+     * chip, Settings and exports show Live's names (a v3 Live never sends its settings the v4 way, so clients kept their
+     * built-in defaults). Written as received from sync: nothing is sent back. A role picked on the client still goes to Live
+     * as the usual SetRole note, and comes back here once Live has applied it.
+     */
+    private fun copyLoopPhoneRoles(values: Map<String, String>, clock: Long) {
+        if (!config.AAPSCLIENT) return
+        loopPhoneRoleNames(values).forEach { (key, name) ->
+            if (preferences.get(key) != name) {
+                preferences.putRemote(key, name, clock)
+                aapsLogger.info(LTag.NSCLIENT, "Loop phone role ${key.key} = '$name' kept on this client")
+            }
         }
     }
 

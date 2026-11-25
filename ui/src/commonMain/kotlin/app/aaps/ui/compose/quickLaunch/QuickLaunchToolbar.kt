@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.ui.CoreUiStrings
@@ -64,6 +65,10 @@ data class ResolvedQuickLaunchItem(
 internal val QuickLaunchButtonSize = 48.dp
 private val ToolbarIconSize = 24.dp
 
+/** The larger buttons (2026-11-26, per explicit request, List 2 "Quick-launch buttons"). */
+internal val QuickLaunchLargeButtonSize = 64.dp
+private val LargeToolbarIconSize = 32.dp
+
 /**
  * Floating pill-shaped toolbar for quick actions.
  * Displayed as an overlay at the bottom of the overview screen.
@@ -77,9 +82,12 @@ fun QuickLaunchToolbar(
     items: List<ResolvedQuickLaunchItem>,
     onActionClick: (QuickLaunchAction) -> Unit,
     modifier: Modifier = Modifier,
-    vertical: Boolean = false
+    vertical: Boolean = false,
+    large: Boolean = false
 ) {
     if (items.isEmpty()) return
+    val buttonSize = if (large) QuickLaunchLargeButtonSize else QuickLaunchButtonSize
+    val iconSize = if (large) LargeToolbarIconSize else ToolbarIconSize
 
     Surface(
         shape = RoundedCornerShape(percent = 50),
@@ -91,8 +99,8 @@ fun QuickLaunchToolbar(
             vertical = if (vertical) 8.dp else 0.dp
         )
     ) {
-        BoxWithConstraints(if (vertical) Modifier.width(QuickLaunchButtonSize) else Modifier.height(QuickLaunchButtonSize)) {
-            val itemSizePx = with(LocalDensity.current) { QuickLaunchButtonSize.toPx() }
+        BoxWithConstraints(if (vertical) Modifier.width(buttonSize) else Modifier.height(buttonSize)) {
+            val itemSizePx = with(LocalDensity.current) { buttonSize.toPx() }
             val contentPaddingPx = with(LocalDensity.current) { 8.dp.toPx() }
             val availablePx = if (vertical) constraints.maxHeight else constraints.maxWidth
             val maxItems = ((availablePx - contentPaddingPx) / itemSizePx).toInt()
@@ -108,10 +116,10 @@ fun QuickLaunchToolbar(
                     modifier = Modifier.padding(vertical = 4.dp)
                 ) {
                     visibleItems.forEach { item ->
-                        ToolbarIconButton(item, onActionClick, tooltipBeside = true)
+                        ToolbarIconButton(item, onActionClick, buttonSize, iconSize, tooltipBeside = true)
                     }
                     if (needsOverflow) {
-                        OverflowMenuButton(overflowItems, onActionClick)
+                        OverflowMenuButton(overflowItems, onActionClick, buttonSize, iconSize)
                     }
                 }
             } else {
@@ -122,10 +130,10 @@ fun QuickLaunchToolbar(
                         .padding(horizontal = 4.dp)
                 ) {
                     visibleItems.forEach { item ->
-                        ToolbarIconButton(item, onActionClick)
+                        ToolbarIconButton(item, onActionClick, buttonSize, iconSize)
                     }
                     if (needsOverflow) {
-                        OverflowMenuButton(overflowItems, onActionClick)
+                        OverflowMenuButton(overflowItems, onActionClick, buttonSize, iconSize)
                     }
                 }
             }
@@ -160,6 +168,8 @@ internal fun resolveItemColor(item: ResolvedQuickLaunchItem): androidx.compose.u
 private fun ToolbarIconButton(
     item: ResolvedQuickLaunchItem,
     onActionClick: (QuickLaunchAction) -> Unit,
+    buttonSize: Dp,
+    iconSize: Dp,
     tooltipBeside: Boolean = false
 ) {
     TooltipBox(
@@ -184,7 +194,7 @@ private fun ToolbarIconButton(
             onClick = { onActionClick(item.action) },
             enabled = item.enabled,
             modifier = Modifier
-                .size(QuickLaunchButtonSize)
+                .size(buttonSize)
         ) {
             val action = item.action
             if (action is QuickLaunchAction.CodedAction) {
@@ -200,7 +210,7 @@ private fun ToolbarIconButton(
                     imageVector = item.icon,
                     contentDescription = item.label,
                     tint = resolveItemColor(item),
-                    modifier = Modifier.size(ToolbarIconSize)
+                    modifier = Modifier.size(iconSize)
                 )
             }
         }
@@ -210,19 +220,21 @@ private fun ToolbarIconButton(
 @Composable
 private fun OverflowMenuButton(
     overflowItems: List<ResolvedQuickLaunchItem>,
-    onActionClick: (QuickLaunchAction) -> Unit
+    onActionClick: (QuickLaunchAction) -> Unit,
+    buttonSize: Dp,
+    iconSize: Dp
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
     Box {
         IconButton(
             onClick = { showMenu = true },
-            modifier = Modifier.size(QuickLaunchButtonSize)
+            modifier = Modifier.size(buttonSize)
         ) {
             Icon(
                 imageVector = Icons.Default.MoreVert,
                 contentDescription = stringResource(CoreUiStrings.more_options),
-                modifier = Modifier.size(ToolbarIconSize)
+                modifier = Modifier.size(iconSize)
             )
         }
         DropdownMenu(
