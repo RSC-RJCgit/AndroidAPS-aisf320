@@ -129,7 +129,11 @@ class GraphViewModel(
     fun uploaderBatteryLabel(now: Long): String? {
         val status = processedDeviceStatusData
         if (config.AAPSCLIENT) {
-            return status?.device?.device?.let { status.activeUploaders[it]?.batteryEstimate?.label(now, dateUtil) }
+            return status?.device?.device?.let {
+                val uploaders = status.activeUploaders
+                val uploader = uploaders["openaps://$it"] ?: uploaders[it]
+                uploader?.batteryEstimate?.label(now, dateUtil)
+            }
         }
         if (activePlugin.activePump.selectedActivePump() is VirtualPump) {
             val uploader = status?.activeUploaders?.values?.maxByOrNull { it.clock }
