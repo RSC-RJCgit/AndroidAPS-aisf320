@@ -15,17 +15,19 @@ internal fun isActivityTempTarget(lowTargetMgdl: Double): Boolean {
 }
 
 /**
- * Activity profile cut. Glucose and delta are mg/dL. 153.1 is 8.5 mmol/L. 1.8 is 0.1 mmol/L.
- * The caller sets the current profile to 50% for 180 minutes. It does not change the acceleration weight.
+ * Activity drop to Tier A Low (2026-11-25, per explicit request, same as 3426): any temp target with the Activity reason
+ * ([activityTt], any target), glucose at or under 8.5 mmol/L (153.1 mg/dL), the profile at 100%, no bolus mark, and the
+ * drop not already active. No delta check any more. 8.5 stays below ActivityOff's 9.5 so the two cannot flip-flop.
+ * The caller saves the roles, switches to Tier A Low at 100% with no end time, and ActivityOff puts the roles back.
  */
 internal fun activityProf50ShouldFire(
     ready: Boolean,
     profilePercent: Int,
     profileIsBolus: Boolean,
-    lowTargetMgdl: Double?,
+    dropActive: Boolean,
+    activityTt: Boolean,
     bg: Double,
-    delta: Double,
 ): Boolean {
-    if (!ready || profilePercent != 100 || profileIsBolus || lowTargetMgdl == null) return false
-    return isActivityTempTarget(lowTargetMgdl) && bg <= 153.1 && delta <= 1.8
+    if (!ready || profilePercent != 100 || profileIsBolus || dropActive || !activityTt) return false
+    return bg <= 153.1
 }

@@ -29,6 +29,7 @@ enum class Sources {
     BG,                 //From BG plugin => Add One Source per BG Source for Calibration or Sensor Change
     Aidex,
     Dexcom,
+    DexcomOnePlus,      // Native Dexcom ONE+ / G7 plugin (2026-11-25, as in OpenApsAIMIios)
     Eversense,
     Glimp,
     MM640g,

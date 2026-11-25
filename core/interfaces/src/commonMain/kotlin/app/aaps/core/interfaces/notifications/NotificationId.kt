@@ -285,7 +285,22 @@ enum class NotificationId(
     // pump and the queue fails them (#5440). It removes itself once the permission is back. IMPORTANT, not URGENT:
     // a bolus that fails because of it raises its own alarm. Appended at the END for the same reason as above.
     BLUETOOTH_PERMISSION_MISSING(IMPORTANT, PUMP),
-    LOW_STORAGE(URGENT, SYSTEM);
+    LOW_STORAGE(URGENT, SYSTEM),
+
+    // 2026-11-25: the native Dexcom ONE+ / G7 plugin's three (as in OpenApsAIMIios). Appended at the END for the same reason as above.
+    /**
+     * A pre-soak sensor (ONE+ / G7) was switched to production by itself, without the user pressing the promote button.
+     */
+    CGM_STAGING_AUTO_PROMOTED(NORMAL, CGM),
+
+    /**
+     * The ONE+ / G7 sensor on iPhone: pairing, warm-up and the time left. Android shows the same
+     * through its own warm-up notification.
+     */
+    DEXCOM_ONEPLUS_WARMUP(NORMAL, CGM),
+
+    /** A ONE+ / G7 problem the person must see on iPhone: silent sensor, wrong sensor, failure. */
+    DEXCOM_ONEPLUS_ALERT(IMPORTANT, CGM);
 
     companion object {
 
