@@ -140,6 +140,10 @@ enum class StringKey(
     // flight. Not shown in any preference screen.
     ApsAutoIsfStuckHighTierCPrevStandardRole("autoisf_stuckhigh_tierc_prev_standard_role", "", defaultedBySM = true, exportable = false),
     ApsAutoIsfStuckHighTierCPrevLowRole("autoisf_stuckhigh_tierc_prev_low_role", "", defaultedBySM = true, exportable = false),
+    // 2026-11-25: the Standard/Low roles in force when ActivityProf50 moved to Tier A Low, put back by ActivityOff.
+    // Non-blank Standard = the Activity drop is active. Saved, so an app restart does not leave the roles on Tier A.
+    ApsAutoIsfActivityPrevStandardRole("autoisf_activity_prev_standard_role", "", defaultedBySM = true, exportable = false),
+    ApsAutoIsfActivityPrevLowRole("autoisf_activity_prev_low_role", "", defaultedBySM = true, exportable = false),
     // Added 2026-09-11: holds the StringKey.key of whichever Standard/Low role (base or tier) matched
     // the profile a temporary percentage reduction (startProfilePercentFor) was just started against --
     // blank if none matched. Consumed (read then cleared) by applyCurrentProfileAt100() when the

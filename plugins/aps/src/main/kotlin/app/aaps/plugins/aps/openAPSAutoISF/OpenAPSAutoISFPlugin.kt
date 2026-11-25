@@ -7846,16 +7846,28 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 50% profile drop. Note/SMS text corrected to match the screenshot exactly ("Ac50" /
         // "ActivityProf50% Acce", not the old dynamic g=-value SMS text).
         // 5-min floor throttle added on top of the precondition (see readyToRun() usage note).
-        if (readyToRun("ActivityProf50", 5) && profile_percentage == 100 && !checkAutomationState("Profile", "Bolus")) {
-            val tt = activeTtMgdl()
-            if (tt != null && fuzzyEquals(tt, mmolToMgdl(6.8))
-                && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */ && glucoseStatus.delta <= 1.8 /* 0.1 mmol */) {
-                sendSms("ActivityProf50% Acce", noteTag = true)
-                setBgAccelIsfWeight(0.02)
-                applyCurrentProfileAt100()
-                startProfilePercentFor(50, 180)
-                addCarePortalNote("Ac50", smsText = lastSmsText)
-                markRun("ActivityProf50")
+        // 2026-11-25, per explicit request: any TT with the Activity reason (any target, not only 6.8), BG <= 8.5 only (the
+        // delta check is gone), and the action is Tier A Low at 100% with no time limit instead of the running profile at
+        // 50% for 180 min. The roles in force before are saved (ApsAutoIsfActivityPrev*Role) and ActivityOff puts them
+        // back. Once per activity session: the saved Standard role doubles as the "drop active" latch. BG <= 8.5 is kept on
+        // purpose: ActivityOff ends the drop at >= 9.5, and the gap stops a start/stop flip-flop around one value.
+        if (readyToRun("ActivityProf50", 5) && profile_percentage == 100 && !checkAutomationState("Profile", "Bolus") &&
+            preferences.get(StringKey.ApsAutoIsfActivityPrevStandardRole).isBlank()
+        ) {
+            val tt = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
+            if (tt != null && tt.reason == TT.Reason.ACTIVITY && !isCodedControlTt(tt) && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */) {
+                val prevStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+                val prevLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+                val lowA = resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName).trim()
+                // The effective-profile event moves both roles to Tier A (alignEffectiveProfileRoles), as for any role switch.
+                if (prevStandard.isNotBlank() && lowA.isNotBlank() && switchProfileIfNeeded(lowA, reassertSame = true)) {
+                    preferences.put(StringKey.ApsAutoIsfActivityPrevStandardRole, prevStandard)
+                    preferences.put(StringKey.ApsAutoIsfActivityPrevLowRole, prevLow)
+                    setBgAccelIsfWeight(0.02)
+                    sendSms("ActivityLowA: Activity TT ${round(tt.lowTarget / 18.0182, 1)}, BG ${round(glucoseStatus.glucose / 18.0182, 1)} -> $lowA (Tier A Low) Acce", noteTag = true)
+                    addCarePortalNote("AcLoA", smsText = lastSmsText)
+                    markRun("ActivityProf50")
+                }
             }
         }
 
@@ -7864,14 +7876,20 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // ended with BGL stabilising/rising and cannula not brand-new; or a bolus was just given).
         // Restores ProfileReal, acce to 0.35, iobTH to 70%. Original action list had no CarePortal
         // note, kept minimal to match exactly.
-        if (readyToRun("ActivityOff", 5) && profile_percentage == 50) {
+        // 2026-11-25, per explicit request: ends ActivityProf50's Tier A Low drop (the saved-role latch), not any 50% profile;
+        // waits while a 50% (e.g. Set50 hypo protection) runs so it cannot cut that short; branch 1 is any Activity-reason TT;
+        // and it no longer cancels the Activity TT (ActTtHighPause handles BG over 10.0). It puts back the saved roles and
+        // switches to the saved Standard profile.
+        val activityPrevStandard = preferences.get(StringKey.ApsAutoIsfActivityPrevStandardRole).trim()
+        if (readyToRun("ActivityOff", 5) && activityPrevStandard.isNotBlank() && profile_percentage == 100) {
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
-            val tt = activeTtMgdl()
+            val ttEntry = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
+            val tt = ttEntry?.lowTarget
             val cannulaH = hoursSinceLastCannulaChange() ?: 0.0
             val lastBolusMin = minutesSinceLastMealEvent() ?: Int.MAX_VALUE
             val delayedBolusPending = preferences.get(LongKey.DelayedBolusBlockSmbUntil) > dateUtil.now()
-            val aoB1 = tt != null && fuzzyEquals(tt, mmolToMgdl(6.8)) && g >= 171.2 /* 9.5 mmol */
+            val aoB1 = ttEntry != null && ttEntry.reason == TT.Reason.ACTIVITY && g >= 171.2 /* 9.5 mmol */
             val aoB2 = tt == null && g <= 153.1 /* 8.5 mmol */ && d >= 1.8 /* 0.1 mmol */
                 && g >= 108.1 /* 6.0 mmol */ && cannulaH >= 3.0
             // Suppressed while a delayed-bolus window is pending: a bolus alone (the original, or a
@@ -7881,8 +7899,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // bolus during the window reverts the profile and the delayed-bolus wait becomes pointless.
             val aoB3 = lastBolusMin <= 10 && !delayedBolusPending
             if (aoB1 || aoB2 || aoB3) {
-                cancelCurrentTempTarget()
-                switchToStandardAtSharedTier()
+                val prevLow = preferences.get(StringKey.ApsAutoIsfActivityPrevLowRole).trim()
+                val store = activePlugin.activeProfileSource.profile
+                if (prevLow.isNotBlank() && store?.getSpecificProfile(prevLow) != null) preferences.put(StringKey.ApsAutoIsfLowProfileName, prevLow)
+                if (store?.getSpecificProfile(activityPrevStandard) != null) {
+                    preferences.put(StringKey.ApsAutoIsfStandardProfileName, activityPrevStandard)
+                    switchProfileIfNeeded(activityPrevStandard, reassertSame = true)
+                } else switchToStandardAtSharedTier()
+                preferences.put(StringKey.ApsAutoIsfActivityPrevStandardRole, "")
+                preferences.put(StringKey.ApsAutoIsfActivityPrevLowRole, "")
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 sendSms("Activity 70_0.70 0.35 Acce", noteTag = true)
