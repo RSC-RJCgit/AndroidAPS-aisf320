@@ -167,6 +167,8 @@ fun OverviewScreenStacked(
                 isProfileModified = isProfileModified,
                 profileProgress = profileProgress,
                 profileSceneManaged = profileSceneManaged,
+                tierLabel = chipsViewModel.tierChipText,
+                onTierChipClick = chipsViewModel::openCodedRoles,
                 tempTargetText = tempTargetText,
                 tempTargetState = tempTargetState,
                 tempTargetProgress = tempTargetProgress,

@@ -333,6 +333,25 @@ class ChipsViewModel(
         list1Open = false
     }
 
+    // Fork (2026-11-25): the tier chip beside the profile chip (TierChip.kt), and the coded roles list its tap opens.
+    var tierChipText by mutableStateOf("")
+        private set
+    var codedRolesOpen by mutableStateOf(false)
+        private set
+
+    fun refreshTierChip() {
+        viewModelScope.launch { tierChipText = tierChipLabel(profileFunction.getOriginalProfileName()) { preferences.get(it) } }
+    }
+
+    fun openCodedRoles() {
+        codedRolesOpen = true
+    }
+
+    fun closeCodedRoles() {
+        codedRolesOpen = false
+        refreshTierChip()
+    }
+
     var list2Open by mutableStateOf(false)
         private set
     var list2Generation by mutableIntStateOf(0)

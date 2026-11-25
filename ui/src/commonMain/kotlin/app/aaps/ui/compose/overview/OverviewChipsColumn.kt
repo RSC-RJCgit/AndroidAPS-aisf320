@@ -57,6 +57,7 @@ import app.aaps.ui.compose.overview.chips.RunningModeChip
 import app.aaps.ui.compose.overview.chips.SensitivityUiState
 import app.aaps.ui.compose.overview.chips.TbrChip
 import app.aaps.ui.compose.overview.chips.TempTargetChip
+import app.aaps.ui.compose.overview.chips.TierChip
 
 @Composable
 fun OverviewChipsColumn(
@@ -70,6 +71,8 @@ fun OverviewChipsColumn(
     isProfileModified: Boolean,
     profileProgress: Float,
     profileSceneManaged: Boolean = false,
+    tierLabel: String = "",
+    onTierChipClick: () -> Unit = {},
     tempTargetText: String,
     tempTargetState: TempTargetChipState,
     tempTargetProgress: Float,
@@ -108,6 +111,8 @@ fun OverviewChipsColumn(
             isProfileModified = isProfileModified,
             profileProgress = profileProgress,
             profileSceneManaged = profileSceneManaged,
+            tierLabel = tierLabel,
+            onTierChipClick = onTierChipClick,
             tempTargetText = tempTargetText,
             tempTargetState = tempTargetState,
             tempTargetProgress = tempTargetProgress,
@@ -268,6 +273,8 @@ private fun NarrowChips(
     isProfileModified: Boolean,
     profileProgress: Float,
     profileSceneManaged: Boolean,
+    tierLabel: String,
+    onTierChipClick: () -> Unit,
     tempTargetText: String,
     tempTargetState: TempTargetChipState,
     tempTargetProgress: Float,
@@ -307,6 +314,9 @@ private fun NarrowChips(
             // so this is a view affordance, not a command one (unlike the running-mode / TT chips).
             modifier = Modifier.weight(1f)
         )
+        if (tierLabel.isNotEmpty()) {
+            TierChip(label = tierLabel, onClick = onTierChipClick, modifier = Modifier.padding(start = AapsSpacing.small))
+        }
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,

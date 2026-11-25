@@ -184,6 +184,9 @@ fun OverviewScreen(
     // how long this content needs instead: with a screen reader on it stretches the timeout, and
     // with one off calculateRecommendedTimeoutMillis hands back the original 3 seconds unchanged.
     val accessibilityManager = LocalAccessibilityManager.current
+    // Fork (2026-11-25): the tier chip follows the running profile
+    LaunchedEffect(profileName) { chipsViewModel.refreshTierChip() }
+
     LaunchedEffect(showPumpFab) {
         if (!showPumpFab && showPumpActivityDialog) {
             delay(

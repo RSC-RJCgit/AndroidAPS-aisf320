@@ -59,7 +59,10 @@ fun List1Dialog(viewModel: ChipsViewModel) {
         onApplyHere = viewModel::applyList1OnThisPhone,
     )
     if (pickProfiles) {
-        CodedProfileDialog(viewModel, onDismiss = { pickProfiles = false })
+        CodedProfileDialog(viewModel, onDismiss = { pickProfiles = false; viewModel.refreshTierChip() })
+    }
+    if (viewModel.codedRolesOpen) {
+        CodedProfileDialog(viewModel, onDismiss = viewModel::closeCodedRoles)
     }
     NotAutoIsfNotice(viewModel)
 }
