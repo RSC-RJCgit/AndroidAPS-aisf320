@@ -11,15 +11,15 @@ import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
  */
 internal val migration38to39 = object : Migration(38, 39) {
     override fun migrate(connection: SQLiteConnection) {
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `targetMgdl` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `uamCarbImpact` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `smbDeliveryRatio` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `acceIsfWeight` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `ppIsfWeight` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `fslCalSlope` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `cob` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `basal` REAL NOT NULL DEFAULT 0")
-        connection.execSQL("ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `note` TEXT NOT NULL DEFAULT ''")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "targetMgdl", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "uamCarbImpact", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "smbDeliveryRatio", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "acceIsfWeight", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "ppIsfWeight", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "fslCalSlope", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "cob", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "basal", "REAL NOT NULL DEFAULT 0")
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "note", "TEXT NOT NULL DEFAULT ''")
         // These indexes are added again after the database opens. Room rejects the upgrade if they
         // are still present when it checks the schema.
         connection.execSQL("DROP INDEX IF EXISTS `index_temporaryBasals_end`")

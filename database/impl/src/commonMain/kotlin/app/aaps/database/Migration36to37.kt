@@ -11,9 +11,7 @@ import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
  */
 internal val migration36to37 = object : Migration(36, 37) {
     override fun migrate(connection: SQLiteConnection) {
-        connection.execSQL(
-            "ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `ukfRawBgl` REAL NOT NULL DEFAULT 0"
-        )
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "ukfRawBgl", "REAL NOT NULL DEFAULT 0")
         connection.execSQL("DROP INDEX IF EXISTS `index_temporaryBasals_end`")
         connection.execSQL("DROP INDEX IF EXISTS `index_extendedBoluses_end`")
         connection.execSQL("DROP INDEX IF EXISTS `index_temporaryTargets_end`")

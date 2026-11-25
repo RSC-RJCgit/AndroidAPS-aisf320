@@ -11,9 +11,7 @@ import app.aaps.database.entities.TABLE_AUTO_ISF_VALUES
  */
 internal val migration37to38 = object : Migration(37, 38) {
     override fun migrate(connection: SQLiteConnection) {
-        connection.execSQL(
-            "ALTER TABLE `$TABLE_AUTO_ISF_VALUES` ADD COLUMN `iobThEffective` REAL NOT NULL DEFAULT 0"
-        )
+        connection.addColumnIfMissing(TABLE_AUTO_ISF_VALUES, "iobThEffective", "REAL NOT NULL DEFAULT 0")
         // These indexes are added again after the database opens. Room rejects the upgrade if they
         // are still present when it checks the schema.
         connection.execSQL("DROP INDEX IF EXISTS `index_temporaryBasals_end`")
