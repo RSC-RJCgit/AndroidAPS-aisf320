@@ -27,6 +27,7 @@ import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.nsclient.UploaderBatteryEstimate
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.aps.Loop.LastRun
@@ -1063,16 +1064,20 @@ class LoopPlugin @Inject constructor(
                 iob.put("time", dateUtil.toISOString(dateUtil.now()))
             }
         }
+        val statusTime = dateUtil.now()
+        val batteryLevel = receiverStatusStore.batteryLevel
+        val isCharging = receiverStatusStore.isCharging
+        UploaderBatteryEstimate.local.record(statusTime, batteryLevel, isCharging)
         persistenceLayer.insertDeviceStatus(
             DS(
-                timestamp = dateUtil.now(),
+                timestamp = statusTime,
                 suggested = apsResult?.toString(),
                 iob = iob?.toString(),
                 enacted = enacted?.toString(),
                 device = "openaps://" + Build.MANUFACTURER + " " + Build.MODEL,
                 pump = pumpStatusProvider.generatePumpJsonStatus().toString(),
-                uploaderBattery = receiverStatusStore.batteryLevel,
-                isCharging = receiverStatusStore.isCharging,
+                uploaderBattery = batteryLevel,
+                isCharging = isCharging,
                 configuration = runningConfiguration.configuration().toString()
             )
         )

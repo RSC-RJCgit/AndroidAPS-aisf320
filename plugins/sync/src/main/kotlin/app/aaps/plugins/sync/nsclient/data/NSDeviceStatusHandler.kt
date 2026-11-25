@@ -383,6 +383,7 @@ class NSDeviceStatusHandler @Inject constructor(
             uploader.battery = battery
             uploader.clock = clock
             uploader.isCharging = isCharging
+            uploader.batteryEstimate.record(clock, battery, isCharging)
             processedDeviceStatusData.uploaderMap[device] = uploader
         }
     }

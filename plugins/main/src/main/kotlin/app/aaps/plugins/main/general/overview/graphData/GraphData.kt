@@ -533,18 +533,23 @@ class GraphData @Inject constructor(
 
     // Legend text for those four lines, each name in its own line colour, lowest lane first. Only lines that actually have
     // data are named, so an empty legend also tells which line is missing.
-    fun topBandLegend(): CharSequence {
+    fun topBandLegend(batteryLabel: String? = null): CharSequence {
         val entries = topBandSeries()
         val text = SpannableStringBuilder()
+        var shown = 0
         // Each name is followed by that line's last-24-hour lowest-highest range (lowest on the lane bottom, highest on its top).
         for ((index, entry) in entries.withIndex()) {
             val (name, series, colorAttr) = entry
             if (series.isEmpty) continue
-            if (text.isNotEmpty()) text.append("  ")
+            if (shown > 0) text.append(if (batteryLabel != null && shown == 2) "\n" else "  ")
+            shown++
             val start = text.length
             text.append(name)
             overviewData.topBandRangeLabels.getOrNull(index)?.takeIf { it.isNotEmpty() }?.let { text.append(" ").append(it) }
             text.setSpan(ForegroundColorSpan(rh.gac(graph.context, colorAttr)), start, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        if (batteryLabel != null) {
+            text.append(if (shown > 2) "\n" else "\n\n").append(batteryLabel)
         }
         return text
     }
