@@ -61,6 +61,8 @@ import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_LOOP_PHONE_SMS
 import app.aaps.core.objects.autoisf.LOCAL_ANYDESK_THIS_PHONE
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_OFF
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_BGL_ONLY_ON
+import app.aaps.core.objects.autoisf.LOCAL_QUICK_LAUNCH_LARGE
+import app.aaps.core.objects.autoisf.LOCAL_QUICK_LAUNCH_NORMAL
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_OFF
 import app.aaps.core.objects.autoisf.LOCAL_GRAPH5_ON
 import app.aaps.core.objects.autoisf.LOCAL_UKF_CALIBRATION_OFF
@@ -532,6 +534,12 @@ class ChipsViewModel(
             LOCAL_UKF_CALIBRATION_ON, LOCAL_UKF_CALIBRATION_OFF -> {
                 preferences.put(BooleanKey.Ukf1ApplyLibreCalibration, mmol == LOCAL_UKF_CALIBRATION_ON)
                 rxBus.send(EventCalibrationChanged())
+                list2Generation++
+                return
+            }
+            // 2026-11-26, per explicit request: the quick-launch bar's button size, this phone only
+            LOCAL_QUICK_LAUNCH_NORMAL, LOCAL_QUICK_LAUNCH_LARGE -> {
+                preferences.put(BooleanNonKey.QuickLaunchLargeButtons, mmol == LOCAL_QUICK_LAUNCH_LARGE)
                 list2Generation++
                 return
             }

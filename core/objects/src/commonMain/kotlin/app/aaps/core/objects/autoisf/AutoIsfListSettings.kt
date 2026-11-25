@@ -35,6 +35,13 @@ internal val autoIsfProfileRoleKeys = listOf(
     StringKey.ApsAutoIsfSteroid250ProfileName
 )
 
+/**
+ * 2026-11-26, per explicit request: the loop phone's coded profile roles, read from the list values it reports ("role:<key>"),
+ * for a client to keep as its own. A role the loop phone did not report is left out.
+ */
+fun loopPhoneRoleNames(values: Map<String, String>): List<Pair<StringKey, String>> =
+    autoIsfProfileRoleKeys.mapNotNull { key -> values["role:${key.key}"]?.let { key to it.trim() } }
+
 /** List 1 row that opens the coded profile picker. */
 private val CODED_PROFILES_ROW = List1Row("Re-pick coded profiles (Standard/Low/SteroidTier)", "Standard, Low, Steroid", 0.0, null, pickProfiles = true, loopValueKey = null)
 
@@ -60,6 +67,10 @@ const val LOCAL_UKF_LINE_OFF = -50.0
 /** List 2 row 34 "Graph: Graph5 panel": Graph5 on or off on this phone only (2026-11-16, as v3's Graph5 dialog). */
 const val LOCAL_GRAPH5_ON = -51.0
 const val LOCAL_GRAPH5_OFF = -52.0
+
+/** List 2 "Quick-launch buttons" (2026-11-26, per explicit request): normal or large buttons on this phone's quick-launch bar. No relay. */
+const val LOCAL_QUICK_LAUNCH_NORMAL = -54.0
+const val LOCAL_QUICK_LAUNCH_LARGE = -55.0
 
 data class List1Row(
     val label: String,
@@ -252,6 +263,13 @@ class AutoIsfListSettings(private val preferences: Preferences, private val deci
                     ListTick("BGL only (hide IA/carbs x3)", preferences.get(BooleanKey.ApsAutoIsfGraph5BglOnly), LOCAL_GRAPH5_BGL_ONLY_ON, LOCAL_GRAPH5_BGL_ONLY_OFF),
                     ListTick("Graph on", preferences.get(BooleanKey.ApsAutoIsfShowGraph5), LOCAL_GRAPH5_ON, LOCAL_GRAPH5_OFF),
                 ),
+            ),
+            // 2026-11-26, per explicit request: the quick-launch bar's button size, this phone only (its icons keep their long-press tooltips)
+            List1Row(
+                "Quick-launch buttons: normal / large",
+                if (preferences.get(BooleanNonKey.QuickLaunchLargeButtons)) "large" else "normal",
+                LOCAL_QUICK_LAUNCH_NORMAL, null, loopValueKey = null,
+                choices = listOf("Normal" to LOCAL_QUICK_LAUNCH_NORMAL, "Large" to LOCAL_QUICK_LAUNCH_LARGE),
             ),
         ))
     }

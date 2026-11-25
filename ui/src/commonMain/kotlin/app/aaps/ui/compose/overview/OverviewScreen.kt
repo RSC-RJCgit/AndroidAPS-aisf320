@@ -20,6 +20,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -185,7 +186,9 @@ fun OverviewScreen(
     // with one off calculateRecommendedTimeoutMillis hands back the original 3 seconds unchanged.
     val accessibilityManager = LocalAccessibilityManager.current
     // Fork (2026-11-25): the tier chip follows the running profile
-    LaunchedEffect(profileName) { chipsViewModel.refreshTierChip() }
+    // 2026-11-26: and the loop phone's roles, which a client takes from each new loop result
+    val loopRolesAt = chipsViewModel.loopListSnapshot.collectAsState().value?.timestamp
+    LaunchedEffect(profileName, loopRolesAt) { chipsViewModel.refreshTierChip() }
 
     LaunchedEffect(showPumpFab) {
         if (!showPumpFab && showPumpActivityDialog) {
@@ -231,6 +234,9 @@ fun OverviewScreen(
         val layoutChoice by preferences.observe(StringKey.OverviewLandscapeLayout).collectAsState()
         val layout = overviewLayout(layoutChoice, landscape, tabletScreen, splitFits, wideDesktopWindow)
 
+        // 2026-11-26, per explicit request: keep the profile row's tier chip clear of the layout switch button below
+        val topEndInset = if (landscape && splitFits && layout != OverviewLayout.SPLIT) 48.dp else 0.dp
+        CompositionLocalProvider(LocalTopEndButtonInset provides topEndInset) {
         if (layout == OverviewLayout.TABLET) {
             OverviewScreenTablet(
                 profileName = profileName,
@@ -354,6 +360,7 @@ fun OverviewScreen(
                     eatReminderBanner = eatReminderBanner,
                     overlaidBarsHeight = overlaidBarsHeight
             )
+        }
         }
 
         // 2026-10-24, per explicit request: one tap switches between the wide and the split layout and keeps the choice

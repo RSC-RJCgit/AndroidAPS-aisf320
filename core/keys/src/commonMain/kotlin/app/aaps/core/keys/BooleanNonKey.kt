@@ -17,6 +17,8 @@ enum class BooleanNonKey(
     NsClientProfileClientDefaultsApplied("nsclient_profile_client_defaults_applied", false, exportable = false),
     /** Statistics, Sensor tab (2026-11-04, per explicit request): draw the sensor's raw signal (the default) or BG */
     StatsSensorRaw("stats_sensor_raw", true),
+    /** Quick-launch bar with larger buttons (2026-11-26, per explicit request, List 2 "Quick-launch buttons"). This phone only. */
+    QuickLaunchLargeButtons("quick_launch_large_buttons", false),
     ObjectivesLoopUsed("ObjectivesLoopUsed", false),
     ObjectivesScaleUsed("ObjectivesScaleUsed", false),
     // Objectives screen, master on VirtualPump only: objectives no longer limit anything. Local only.

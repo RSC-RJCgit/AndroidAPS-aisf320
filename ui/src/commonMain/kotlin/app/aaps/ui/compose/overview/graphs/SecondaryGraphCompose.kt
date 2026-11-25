@@ -139,11 +139,6 @@ private data class AxisScale(
  */
 internal const val IOB_GRAPH_TICK_COUNT = 3
 
-/**
- * Highest top of the IOB graph's axis in U (2026-11-19, per explicit request): lower when the loaded 24 h stay lower (only the
- * last 6 hours when the 24-hour top is over 1.5 U, since 2026-11-21).
- */
-internal const val IOB_AXIS_MAX_TOP = 5.0
 
 /**
  * Lowest top of the steps graph's axis in steps (2026-11-20, per explicit request; was the highest top, 2026-11-19): the axis
@@ -612,7 +607,8 @@ fun SecondaryGraphCompose(
     // (see processedActivityOverlay below), so feeding it back in here would be circular.
     // Fork (kept in the 2026-10-16 merge): windowed to the SETTLED range, so the axis is rebuilt once the finger stops.
     // 2026-11-19, per explicit request: the IOB and steps graphs keep a nearly fixed axis instead: the highest value of the
-    // whole loaded 24 hours, IOB at most IOB_AXIS_MAX_TOP U (a higher value is cut off at the top), steps at least STEPS_AXIS_MIN_TOP.
+    // whole loaded 24 hours, steps at least STEPS_AXIS_MIN_TOP. 2026-11-26, per explicit request: IOB is no longer cut off at 5 U
+    // (7.05 U on 25 Nov ran flat along the top); its axis reaches the real peak of the window below.
     // Their axis then does not change when a scroll or pinch stops, so that no longer rebuilds their model (a redraw that cost
     // 1.2-1.4 s on Android, uncompiled).
     val nearlyFixedAxis = primaryType == SeriesType.IOB || primaryType == SeriesType.STEPS
@@ -634,7 +630,6 @@ fun SecondaryGraphCompose(
         }
         when {
             values.isEmpty()                    -> values
-            primaryType == SeriesType.IOB       -> values.map { it.coerceAtMost(IOB_AXIS_MAX_TOP) }
             primaryType == SeriesType.STEPS     -> {
                 val visiblePeak = if (visibleMinX != null && visibleMaxX != null)
                     windowed(visibleMinX, visibleMaxX).maxOrNull()

@@ -1095,6 +1095,16 @@ class BolusWizard(
             checkAgain(reason)
             return
         }
+        // 2026-11-26, per explicit request: wait while HP1 is below 4.0 mmol/L, or missing or stale, as the carb split does
+        // (25 Nov: Db45 and Db50 gave 2.7 U while HP1 was 3.4-3.5 and the carb split waited on it; BG then fell to 3.9). For Trio, its lowest prediction over the next hour stands in, as for the split. Only ever holds a check.
+        val hpAt = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)
+        val hpValue = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
+        val hpCheck = trioLater?.let { trio -> trio.lowestPrediction()?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait }
+            ?: if (hpAt == preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)) splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
+        if (hpCheck != SplitHpCheck.Allow) {
+            checkAgain(if (hpCheck == SplitHpCheck.Hold) "HP1 below 4.0 mmol/L" else "HP1 missing or stale")
+            return
+        }
         val cob = iobCobCalculator.getCobInfo("DelayedBolus").displayCob ?: 0.0
         val cobFraction = DelayedBolus.cobFraction(cob, plan.carbs)
         val raw = DelayedBolus.checkDose(plan.heldUnits, deliveredSoFar, cobFraction)
