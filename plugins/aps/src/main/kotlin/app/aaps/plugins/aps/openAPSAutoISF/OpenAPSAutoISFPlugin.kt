@@ -2992,6 +2992,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // Set each cycle once HP2 is known (see walkingRiseScale() in Mcap.kt); callers earlier in a cycle see the last cycle's.
     private var walkingRiseScaleNow = 0.5
 
+    // StepBrakesOff (2026-11-25, per explicit request): set each cycle in invoke(). While HP (HP1) is over 7.0 and BG over
+    // 8.0 mmol, no step count brakes insulin: the walking activity ratio, the dura walking half, the activity factor, the
+    // walking SMB cap, the Tier 3 walking cuts and the HIGH STEPS SMB cut all stand aside. Step rules that protect against a
+    // low (FallRescue, Set50, LowBgTierAReset) are not touched. HP missing keeps the brakes on.
+    private var stepBrakesOffNow = false
+
     // PoorAbs (2026-11-24, see its block): start of the current BG >= 10.0 stretch, whether the boost is on, and when it last was.
     // In memory only: after an app restart the 60 min high stretch is timed again from scratch.
     private var poorAbsHighSinceTs = 0L
@@ -3004,7 +3010,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     private var actTtPausedEndTs = 0L
 
     // The walking test of activityFactor, also used to halve the dura boost (2026-10-24).
-    private fun walkingNow(): Boolean = recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300
+    // Every caller uses this to brake insulin, so it reads false while StepBrakesOff holds (2026-11-25).
+    private fun walkingNow(): Boolean = !stepBrakesOffNow && (recentSteps5Minutes > 20 || recentSteps30Minutes > 100 || recentSteps60Minutes > 300)
 
     // Careportal note for a factor below 1, at most once in 15 min per caller key.
     private fun noteActivityFactor(factor: Double, key: String) {
@@ -5374,7 +5381,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         consoleLog.clear()
         val calendar = AppTimeZone.calendar()
         val hour = max(1, calendar.get(Calendar.HOUR_OF_DAY))
-        val activityRatio = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour, glucoseStatus.shortAvgDelta)
+        // StepBrakesOff (2026-11-25): HP (HP1) over 7.0 and BG over 8.0 mmol. Set before anything below reads steps.
+        val hp1ForStepBrakes = hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB)
+        stepBrakesOffNow = hp1ForStepBrakes != null && hp1ForStepBrakes > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
+        determineBasalAutoISF.stepBrakesOffNote = if (stepBrakesOffNow)
+            "StepBrakesOff (HP ${round(hp1ForStepBrakes ?: 0.0, 1)}, BG ${round(glucoseStatus.glucose / 18.0182, 1)}) " else ""
+        val activityRatioRaw = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour, glucoseStatus.shortAvgDelta)
+        // A walking ratio (below 1) is a brake; an inactivity ratio (above 1) is not, so it stays.
+        val activityRatio = if (stepBrakesOffNow && activityRatioRaw < 1.0) 1.0 else activityRatioRaw
+        if (activityRatio != activityRatioRaw) preferences.put(DoubleKey.ActivityMonitorRatio, activityRatio)
         val activityOutcomeForDisplay = consoleLog.lastOrNull { it.startsWith("Activity monitor") }
         var steps180ForDisplay = 0
         var steps15ForDisplay = 0
@@ -5401,7 +5416,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 mealData.mealCOB,
                 bgAcce
             )
-            walkingRiseScaleNow = walkingRiseScale(glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, liveHp2)
+            walkingRiseScaleNow = if (stepBrakesOffNow) 1.0
+            else walkingRiseScale(glucoseStatus.glucose, glucoseStatus.delta, glucoseStatus.shortAvgDelta, liveHp2)
             variableSensitivity = autoISF(profile, graphActivity, iobData.activity * 100, iobData.iob, liveHp2, liveStepsForCycle)
             cacheVariableIsf(dateUtil.now(), glucoseStatus.glucose, variableSensitivity)
             val flatNow = glucoseStatus.delta <= 1.8 && glucoseStatus.shortAvgDelta <= 1.8
@@ -5452,7 +5468,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // hook into.
         val tier3CautionNotSteps = !checkAutomationState("MJ", "NOMJremains") ||
             profileFunction.getOriginalProfileName() == preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
-        val tier3CautionFactor = tier3CautionNotSteps || recentSteps30Minutes > 200
+        val tier3CautionFactor = tier3CautionNotSteps || (!stepBrakesOffNow && recentSteps30Minutes > 200)
         // 2026-10-18: the activity factor. The smaller of the two wins, so walking does not halve twice; 0 turns the boost off.
         val tier3Activity = activityFactor(iobData.iob)
         noteActivityFactor(tier3Activity, "ActivityFactorTier3Note")
@@ -5462,9 +5478,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         determineBasalAutoISF.tier3WalkingFactor = if (tier3FactorNotSteps > 0.0 && tier3Factor < tier3FactorNotSteps) tier3Factor / tier3FactorNotSteps else 1.0
         // 2026-11-20, per explicit request: a Tier 3 dose over 1 U is cut by the delayed-dose walking levels, from the loop's own
         // steps (S10 and S15 are 5-minute bins here, as delayedDoseWalkingFactor wants)
-        determineBasalAutoISF.tier3StepDoseFactor = delayedDoseWalkingFactor(
+        determineBasalAutoISF.tier3StepDoseFactor = if (stepBrakesOffNow) 1.0 else delayedDoseWalkingFactor(
             recentSteps5Minutes, recentSteps10Minutes, recentSteps15Minutes, recentSteps30Minutes, recentSteps60Minutes
         )
+        determineBasalAutoISF.stepBrakesOff = stepBrakesOffNow
         val oapsProfile = OapsProfileAutoIsf(
             dia = 0.0, // not used
             min_5m_carbimpact = 0.0, // not used
@@ -11741,7 +11758,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
         val activityRatio = if (mirrored && glucose_status != null) {
             activityMonitor(isTempTarget, glucose_status.glucose, target_bg, nowHour, glucose_status.shortAvgDelta, stepsSample, persist = false)
-        } else preferences.get(DoubleKey.ActivityMonitorRatio)
+        }.let { if (mirrored && stepBrakesOffNow && it < 1.0) 1.0 else it } // StepBrakesOff, as in invoke() (2026-11-25)
+        else preferences.get(DoubleKey.ActivityMonitorRatio)
         val stepActivityDetected = if (mirrored) activityRatio < 1.0 else preferences.get(BooleanKey.ActivityMonitorStepsActive)
         val stepInactivityDetected = if (mirrored) activityRatio > 1.0 else preferences.get(BooleanKey.ActivityMonitorStepsInactive)
         var sensitivityRatio = 1.0

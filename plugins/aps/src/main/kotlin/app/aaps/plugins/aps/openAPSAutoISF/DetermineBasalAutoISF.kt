@@ -116,6 +116,10 @@ class DetermineBasalAutoISF @Inject constructor(
     var smbCap30Walking: Boolean = false
     // What walking multiplied that cap by (0.5, or 0.75 on a confirmed rise, 2026-11-24), for the steps arrow
     var smbCap30WalkingScale: Double = 0.5
+    // StepBrakesOff (2026-11-25, set by OpenAPSAutoISFPlugin each cycle): HP over 7.0 and BG over 8.0 mmol, so the HIGH STEPS
+    // SMB cut stands aside. The note goes into the reason text so the AIV and logs show when it held.
+    var stepBrakesOff: Boolean = false
+    var stepBrakesOffNote: String = ""
 
     // Steps arrow (2026-10-29, per explicit request): how much more insulin the loop would have asked for without steps, from
     // the step activity ratio and the dura boost halved while walking (1.0 = no step effect), and 0.5 when steps halved the
@@ -1236,6 +1240,7 @@ class DetermineBasalAutoISF @Inject constructor(
             rT.reason.append("Steps60M: ${Steps60M} ;")
             rT.reason.append("Steps180M: ${Steps180M} ;")
         }
+        if (stepBrakesOffNote.isNotBlank()) rT.reason.append(stepBrakesOffNote)
         rT.reason.append("TwilightTimeDec: ${TwilightTimeDec} ;")
         rT.reason.append("profile_percentage: ${profile_percentage} ;")
         rT.reason.append("bg_acce: ${round(bg_acce, 2)} ;")
@@ -2460,14 +2465,15 @@ class DetermineBasalAutoISF @Inject constructor(
 // =====================================================
 // HIGH STEPS: SMB SIZE CHANGE
 // =====================================================
-                if (microBolus > ThresholForFastRise &&
-                    ((Steps30M ?: 0) > 1500 ||
-                        (Steps60M ?: 0) > 800 ||
-                        (Steps180M ?: 0) > 1500)
-                ) {
-                    stepCutDirect += microBolus * 0.30
-                    microBolus = microBolus * 0.70
-                    rT.reason.append("microBolus = microBolus * 0.7 extra; microBolus = ${round(microBolus, 2)} ")
+                // 2026-11-25, per explicit request: S180 > 1500 on its own (S30 <= 1500 and S60 <= 800, so the walk is over)
+                // only cuts 10%, not 30%. 24 Nov 13:12-13:43 Live: S5/S15/S30 0, S60 under 800, S180 5065 kept the 30% cut on.
+                val highStepsRecent = (Steps30M ?: 0) > 1500 || (Steps60M ?: 0) > 800
+                val highStepsS180Only = !highStepsRecent && (Steps180M ?: 0) > 1500
+                if (!stepBrakesOff && microBolus > ThresholForFastRise && (highStepsRecent || highStepsS180Only)) {
+                    val keep = if (highStepsRecent) 0.70 else 0.90
+                    stepCutDirect += microBolus * (1.0 - keep)
+                    microBolus = microBolus * keep
+                    rT.reason.append("microBolus = microBolus * $keep extra${if (highStepsRecent) "" else " (S180 only)"}; microBolus = ${round(microBolus, 2)} ")
                 }
 // =====================================================
 // LOW-STEPS-THRESHOLD FAST-RISE EXTRA CUT (daytime, low HP2 only)
