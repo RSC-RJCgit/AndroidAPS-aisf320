@@ -7,44 +7,41 @@ import kotlin.test.assertTrue
 class ActivityOffTest {
 
     @Test
-    fun aClimbOnTheActivityTargetEndsTheCut() {
+    fun aClimbOnTheActivityTargetEndsTheDrop() {
         assertTrue(exit(bg = 171.2))
         assertFalse(exit(bg = 171.1))
+        assertFalse(exit(bg = 171.2, activityTt = false))
     }
 
     @Test
-    fun aTargetThatHasEndedCanRestoreTheProfile() {
-        assertTrue(
-            exit(
-                lowTargetMgdl = null,
-                bg = 140.0,
-                delta = 1.8,
-                cannulaHours = 3.0,
-            )
-        )
-        assertFalse(exit(lowTargetMgdl = null, bg = 140.0, delta = 1.8, cannulaHours = 2.9))
-        assertFalse(exit(lowTargetMgdl = null, bg = 153.2, delta = 1.8, cannulaHours = 3.0))
-        assertFalse(exit(lowTargetMgdl = null, bg = 108.0, delta = 1.8, cannulaHours = 3.0))
-        assertFalse(exit(lowTargetMgdl = null, bg = 140.0, delta = 1.7, cannulaHours = 3.0))
+    fun aTargetThatHasEndedCanRestoreTheRoles() {
+        assertTrue(exit(activityTt = false, ttRunning = false, bg = 140.0, delta = 1.8, cannulaHours = 3.0))
+        assertFalse(exit(activityTt = false, ttRunning = false, bg = 140.0, delta = 1.8, cannulaHours = 2.9))
+        assertFalse(exit(activityTt = false, ttRunning = false, bg = 153.2, delta = 1.8, cannulaHours = 3.0))
+        assertFalse(exit(activityTt = false, ttRunning = false, bg = 108.0, delta = 1.8, cannulaHours = 3.0))
+        assertFalse(exit(activityTt = false, ttRunning = false, bg = 140.0, delta = 1.7, cannulaHours = 3.0))
     }
 
     @Test
-    fun aBolusInTheLastTenMinutesEndsTheCut() {
+    fun aBolusInTheLastTenMinutesEndsTheDrop() {
         assertTrue(exit(lastBolusMinutes = 10))
         assertFalse(exit(lastBolusMinutes = 11))
         assertFalse(exit(lastBolusMinutes = 10, delayedBolusPending = true))
     }
 
     @Test
-    fun aProfileThatIsNotAt50StaysClosed() {
-        assertFalse(exit(profilePercent = 100))
-        assertFalse(exit(ready = false))
+    fun noActiveDropOrAProfileNotAt100StaysClosed() {
+        assertFalse(exit(dropActive = false, bg = 171.2))
+        assertFalse(exit(profilePercent = 50, bg = 171.2))
+        assertFalse(exit(ready = false, bg = 171.2))
     }
 
     private fun exit(
         ready: Boolean = true,
-        profilePercent: Int = 50,
-        lowTargetMgdl: Double? = 6.8 * 18.0,
+        dropActive: Boolean = true,
+        profilePercent: Int = 100,
+        activityTt: Boolean = true,
+        ttRunning: Boolean = true,
         bg: Double = 140.0,
         delta: Double = 0.0,
         cannulaHours: Double = 0.0,
@@ -52,8 +49,10 @@ class ActivityOffTest {
         delayedBolusPending: Boolean = false,
     ) = activityOffShouldFire(
         ready,
+        dropActive,
         profilePercent,
-        lowTargetMgdl,
+        activityTt,
+        ttRunning,
         bg,
         delta,
         cannulaHours,

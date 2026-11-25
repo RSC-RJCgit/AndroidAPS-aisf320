@@ -886,18 +886,18 @@ open class OpenAPSAutoISFPlugin(
                 steps5 = stepSample?.steps5min ?: 0,
                 steps30 = stepSample?.steps30min ?: 0,
             )
+            val activityTtNow = persistenceLayer.getTemporaryTargetActiveAt(now)
             applyActivityProf50(
                 now = now,
                 profilePercent = profile_percentage,
                 profileIsBolus = statesOn && states().inState("Profile", "Bolus"),
-                lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
+                tt = activityTtNow,
                 bg = glucoseStatus.glucose,
-                delta = glucoseStatus.delta,
             )
             applyActivityOff(
                 now = now,
                 profilePercent = profile_percentage,
-                lowTargetMgdl = if (isTempTarget) persistenceLayer.getTemporaryTargetActiveAt(now)?.lowTarget else null,
+                tt = activityTtNow,
                 bg = glucoseStatus.glucose,
                 delta = glucoseStatus.delta,
             )
@@ -6516,69 +6516,62 @@ open class OpenAPSAutoISFPlugin(
         preferences.get(StringKey.ApsAutoIsfStandard110ProfileName).trim(),
     )
 
-    // A 6.8 mmol/L activity temp target, with glucose at or under 8.5 mmol/L and not rising,
-    // sets the current profile to 50% for 180 minutes. The acceleration weight is left alone.
+    // 2026-11-25, per explicit request (same as 3426): any Activity-reason temp target, glucose at or under 8.5 mmol/L,
+    // moves to Tier A Low at 100% with no end time (it used to set the current profile to 50% for 180 minutes). The roles
+    // in force before are saved and ActivityOff puts them back. Once per activity session. The acceleration weight is left alone.
     private suspend fun applyActivityProf50(
         now: Long,
         profilePercent: Int,
         profileIsBolus: Boolean,
-        lowTargetMgdl: Double?,
+        tt: TT?,
         bg: Double,
-        delta: Double,
     ) {
         if (!activityProf50ShouldFire(
                 ready = runMarks.ready(RunMark.ACTIVITY_PROF_50, 5, now),
                 profilePercent = profilePercent,
                 profileIsBolus = profileIsBolus,
-                lowTargetMgdl = lowTargetMgdl,
+                dropActive = preferences.get(StringNonKey.ApsAutoIsfActivityPrevStandardRole).isNotBlank(),
+                activityTt = tt != null && tt.reason == TT.Reason.ACTIVITY && !isCodedControlTt(tt),
                 bg = bg,
-                delta = delta,
             )
         ) return
-        val baseline = preferences.get(IntKey.ApsAutoIsfProfilePercentNormal)
-        if (50 > baseline) {
-            aapsLogger.debug(LTag.APS, "Activity profile 50 left alone, 50 is above the baseline")
+        val prevStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        val prevLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
+        val lowA = preferences.get(StringKey.ApsAutoIsfLow70ProfileName).trim().ifBlank { prevLow }
+        if (prevStandard.isBlank() || lowA.isBlank()) return
+        // The effective-profile event moves both roles to Tier A, as for any role switch.
+        if (!switchToStandardFor(lowA, 0, now, "AutoISF: activity Tier A Low", reassertSame = true)) {
+            aapsLogger.debug(LTag.APS, "Activity Tier A Low did not write a switch")
             return
         }
-        val switched = profileFunction.createProfileSwitch(
-            durationInMinutes = 180,
-            percentage = 50,
-            timeShiftInHours = 0,
-            action = Action.PROFILE_SWITCH,
-            source = Sources.Automation,
-            note = "AutoISF: activity profile 50",
-            listValues = listOf(
-                ValueWithUnit.Percent(50),
-                ValueWithUnit.Minute(180)
-            )
-        ) != null
-        if (!switched) {
-            aapsLogger.debug(LTag.APS, "Activity profile 50 did not write a switch")
-            return
-        }
+        preferences.put(StringNonKey.ApsAutoIsfActivityPrevStandardRole, prevStandard)
+        preferences.put(StringNonKey.ApsAutoIsfActivityPrevLowRole, prevLow)
         runMarks.mark(RunMark.ACTIVITY_PROF_50, now)
-        sendAutoSms("ActivityProf50% Acce", noteTag = true)
-        carePortalNote("Ac50", smsText = lastSmsText)
-        aapsLogger.debug(LTag.APS, "Activity profile 50 for 180 min")
+        sendAutoSms("ActivityLowA: Activity TT ${decimals((tt?.lowTarget ?: 0.0) / 18.0182, 1)}, BG ${decimals(bg / 18.0182, 1)} -> $lowA (Tier A Low) Acce", noteTag = true)
+        carePortalNote("AcLoA", smsText = lastSmsText)
+        aapsLogger.debug(LTag.APS, "Activity -> Tier A Low $lowA, saved Standard=$prevStandard Low=$prevLow")
     }
 
-    // Ends the 180 minute activity profile at 50%. Switches to the standard profile at 100% with no end time,
-    // so the short 50% switch does not keep running. Cancels the temp target. Puts the IOB threshold back to 70
-    // only when 70 is not above the saved baseline. The acceleration weight is left alone.
+    // Ends ActivityProf50's Tier A Low drop (2026-11-25, same as 3426): puts back the saved roles and switches to the saved
+    // Standard at 100% with no end time. Waits while a 50% profile runs. No longer cancels the Activity temp target
+    // (ActTtHighPause handles BG over 10.0). Puts the IOB threshold back to 70 only when 70 is not above the saved baseline.
     private suspend fun applyActivityOff(
         now: Long,
         profilePercent: Int,
-        lowTargetMgdl: Double?,
+        tt: TT?,
         bg: Double,
         delta: Double,
     ) {
-        if (!runMarks.ready(RunMark.ACTIVITY_OFF, 5, now) || profilePercent != 50) return
+        val prevStandard = preferences.get(StringNonKey.ApsAutoIsfActivityPrevStandardRole).trim()
+        if (!runMarks.ready(RunMark.ACTIVITY_OFF, 5, now) || prevStandard.isBlank() || profilePercent != 100) return
         val cannula = persistenceLayer.getLastTherapyRecordUpToNow(TE.Type.CANNULA_CHANGE)
         val cannulaHours = if (cannula == null) 0.0 else (now - cannula.timestamp) / 3_600_000.0
         if (!activityOffShouldFire(
                 ready = true,
+                dropActive = true,
                 profilePercent = profilePercent,
-                lowTargetMgdl = lowTargetMgdl,
+                activityTt = tt != null && tt.reason == TT.Reason.ACTIVITY,
+                ttRunning = tt != null,
                 bg = bg,
                 delta = delta,
                 cannulaHours = cannulaHours,
@@ -6587,14 +6580,16 @@ open class OpenAPSAutoISFPlugin(
                 delayedBolusPending = preferences.get(LongNonKey.WizardDelayedBolusPendingUntil) > now,
             )
         ) return
-        if (!switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: activity off")) return
-        persistenceLayer.cancelCurrentTemporaryTargetIfAny(
-            timestamp = now,
-            action = Action.CANCEL_TT,
-            source = Sources.Automation,
-            note = "AutoISF: activity off",
-            listValues = emptyList(),
-        )
+        val prevLow = preferences.get(StringNonKey.ApsAutoIsfActivityPrevLowRole).trim()
+        val store = profileRepository.profile.value
+        val restored = if (store?.getSpecificProfile(prevStandard) != null) {
+            if (prevLow.isNotBlank() && store.getSpecificProfile(prevLow) != null) preferences.put(StringKey.ApsAutoIsfLowProfileName, prevLow)
+            preferences.put(StringKey.ApsAutoIsfStandardProfileName, prevStandard)
+            switchToStandardFor(prevStandard, 0, now, "AutoISF: activity off", reassertSame = true)
+        } else switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: activity off")
+        if (!restored) return
+        preferences.put(StringNonKey.ApsAutoIsfActivityPrevStandardRole, "")
+        preferences.put(StringNonKey.ApsAutoIsfActivityPrevLowRole, "")
         val iobBaseline = preferences.get(IntKey.ApsAutoIsfIobThPercentNormal)
         if (70 <= iobBaseline) preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
         else aapsLogger.debug(LTag.APS, "Activity off left the IOB threshold alone, 70 is above the baseline")

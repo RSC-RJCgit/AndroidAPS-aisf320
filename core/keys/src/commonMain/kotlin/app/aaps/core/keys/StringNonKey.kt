@@ -198,5 +198,11 @@ enum class StringNonKey(
     WizardCarbsType("wizard_carbs_type", "BREAD"),
     /** Protein/fat, carb split and delayed bolus checks still waiting, as JSON, so they survive a restart (2026-11-22, see PendingFollowUps). */
     WizardPendingFollowUps("wizard_pending_follow_ups", "", exportable = false),
+    /**
+     * The Standard/Low roles in force when ActivityProf50 moved to Tier A Low (2026-11-25, per explicit request, same as 3426),
+     * put back by ActivityOff. A non-blank Standard means the Activity drop is active. Saved, so a restart does not leave Tier A.
+     */
+    ApsAutoIsfActivityPrevStandardRole("autoisf_activity_prev_standard_role", "", exportable = false),
+    ApsAutoIsfActivityPrevLowRole("autoisf_activity_prev_low_role", "", exportable = false),
 
 }
