@@ -57,6 +57,30 @@
                         tools:ignore="HardcodedText" />
                 </androidx.cardview.widget.CardView>
 
+                <!-- Fork (2026-11-25): coded tier of the running profile (tAS, tAL, ...), hidden when it has no role -->
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/tier_chip_card"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_weight="0"
+                    android:layout_marginEnd="4dp"
+                    android:visibility="gone"
+                    app:cardCornerRadius="4dp"
+                    app:cardElevation="0dp">
+
+                    <TextView
+                        android:id="@+id/tier_chip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:gravity="center"
+                        android:paddingStart="6dp"
+                        android:paddingEnd="6dp"
+                        android:text="tAS"
+                        android:textAppearance="?android:attr/textAppearanceSmall"
+                        android:foreground="?attr/selectableItemBackgroundBorderless"
+                        tools:ignore="HardcodedText" />
+                </androidx.cardview.widget.CardView>
+
                 <androidx.cardview.widget.CardView
                     android:layout_width="48dp"
                     android:layout_height="match_parent"

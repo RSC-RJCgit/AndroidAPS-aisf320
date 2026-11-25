@@ -345,6 +345,8 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
         binding.activeProfile.setOnClickListener(this)
         binding.activeProfile.setOnLongClickListener(this)
+        // Fork (2026-11-25): the tier chip opens the coded profile roles list
+        binding.tierChip.setOnClickListener { activity?.let { act -> showProfileNamesPopup(act) { updateProfile() } } }
         binding.tempTarget.setOnClickListener(this)
         binding.tempTarget.setOnLongClickListener(this)
         binding.pumpStatusLayout.setOnClickListener(this)
@@ -2456,6 +2458,7 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
 
     private fun updateProfile() {
         val profile = profileFunction.getProfile()
+        val tierLabel = if (profile == null) "" else tierChipLabel(profileFunction.getOriginalProfileName())
         runOnUiThread {
             _binding ?: return@runOnUiThread
             val profileBackgroundColor = profile?.let {
@@ -2474,7 +2477,39 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
                 } else app.aaps.core.ui.R.attr.ribbonTextDefaultColor
             } ?: app.aaps.core.ui.R.attr.ribbonTextDefaultColor
             setRibbon(binding.activeProfile, profileTextColor, profileBackgroundColor, profileFunction.getProfileNameWithRemainingTime())
+            binding.tierChipCard.visibility = if (tierLabel.isEmpty()) View.GONE else View.VISIBLE
+            if (tierLabel.isNotEmpty())
+                setRibbon(binding.tierChip, app.aaps.core.ui.R.attr.ribbonTextDefaultColor, app.aaps.core.ui.R.attr.ribbonDefaultColor, tierLabel)
         }
+    }
+
+    // Fork (2026-11-25, per explicit request): the coded tier of the running profile, right of the profile ribbon.
+    // tAS / tBS / tCS = Standard tier A / B / C, tAL / tBL / tCL = Low tier A / B / C; a profile in two tier roles shows
+    // both (tAS·tCL). With no tier match: St100..St250 for a steroid role, S or L for the current Standard or Low role,
+    // and no chip otherwise. Same rules as the v4 TierChip.
+    private fun tierChipLabel(runningName: String): String {
+        if (runningName.isBlank()) return ""
+        fun matches(key: StringKey) = preferences.get(key).let { it.isNotBlank() && it == runningName }
+        val tiers = listOf(
+            "tAS" to StringKey.ApsAutoIsfStandard100ProfileName,
+            "tBS" to StringKey.ApsAutoIsfStandard105ProfileName,
+            "tCS" to StringKey.ApsAutoIsfStandard110ProfileName,
+            "tAL" to StringKey.ApsAutoIsfLow70ProfileName,
+            "tBL" to StringKey.ApsAutoIsfLow80ProfileName,
+            "tCL" to StringKey.ApsAutoIsfLow90ProfileName,
+        ).filter { matches(it.second) }.map { it.first }
+        if (tiers.isNotEmpty()) return tiers.joinToString("·")
+        listOf(
+            "St100" to StringKey.ApsAutoIsfSteroid100ProfileName,
+            "St110" to StringKey.ApsAutoIsfSteroid110ProfileName,
+            "St130" to StringKey.ApsAutoIsfSteroid130ProfileName,
+            "St150" to StringKey.ApsAutoIsfSteroid150ProfileName,
+            "St190" to StringKey.ApsAutoIsfSteroid190ProfileName,
+            "St250" to StringKey.ApsAutoIsfSteroid250ProfileName,
+        ).firstOrNull { matches(it.second) }?.let { return it.first }
+        if (matches(StringKey.ApsAutoIsfStandardProfileName)) return "S"
+        if (matches(StringKey.ApsAutoIsfLowProfileName)) return "L"
+        return ""
     }
 
     private fun updateTemporaryBasal() {
