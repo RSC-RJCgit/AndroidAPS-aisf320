@@ -56,6 +56,15 @@ class AfterFastRiseSmbTest {
     }
 
     @Test
+    fun highStepsFromS180AloneOnlyCutsTenPercent() {
+        val result = highStepsSmbCut(microBolus = 1.0, threshold = 0.3, steps30 = 0, steps60 = 786, steps180 = 5065)
+        assertEquals(0.9, result.microBolus, 0.001)
+        assertEquals("High steps (S180 only) x0.9 SMB 0.9. ", result.reason)
+        val recent = highStepsSmbCut(microBolus = 1.0, threshold = 0.3, steps30 = 1501, steps60 = 0, steps180 = 5065)
+        assertEquals(0.7, recent.microBolus, 0.001)
+    }
+
+    @Test
     fun highStepsCutWhenTheSmbIsAboveTheThreshold() {
         val result = highStepsSmbCut(microBolus = 1.0, threshold = 0.3, steps30 = 0, steps60 = 801, steps180 = 0)
         assertEquals(0.7, result.microBolus, 0.001)
