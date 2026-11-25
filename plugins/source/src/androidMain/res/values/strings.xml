@@ -301,6 +301,8 @@
     <string name="dexcom_oneplus_start_presoak">Start a pre-soak sensor</string>
     <string name="dexcom_oneplus_staging_none_short">A pre-soak sensor collects readings alongside the one in use. It never feeds the loop until you switch to it here.</string>
     <string name="cgm_driver_log_title">Sensor driver log</string>
+    <!-- The driver log's back arrow (2026-11-25, from OpenApsAIMIios's Libre 3 strings, the only one this screen needs) -->
+    <string name="libre3_nav_back">Back</string>
     <string name="cgm_driver_log_refresh">Refresh</string>
     <string name="cgm_driver_log_share">Share the log</string>
     <string name="cgm_driver_log_filter_all">All</string>
