@@ -201,7 +201,7 @@ internal class OverviewViewModelFixture(private val screen: AapsScreenFixture) {
     }
 
     val graphViewModel: GraphViewModel by lazy {
-        GraphViewModel(cache, false, graphConfigRepository, aapsLogger, screen.preferences, screen.dateUtil, rh, persistenceLayer, screen.config, activePlugin, screen.profileUtil)
+        GraphViewModel(cache, false, graphConfigRepository, aapsLogger, screen.preferences, screen.dateUtil, rh, persistenceLayer, screen.config, activePlugin, screen.profileUtil, processedDeviceStatusData)
     }
 
     val chipsViewModel: ChipsViewModel by lazy {
