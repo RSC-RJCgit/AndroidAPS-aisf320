@@ -3,6 +3,7 @@ package app.aaps.core.interfaces.nsclient
 import app.aaps.core.interfaces.utils.DateUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlin.concurrent.Volatile
 
 /**
  * Estimates the uploader's battery life from its current unplugged interval.
@@ -37,6 +38,23 @@ class UploaderBatteryEstimate {
             Interval(reading, unplugged)
         }
         restored.value = null
+        learnRate()
+    }
+
+    /**
+     * The fall rate of the last discharge long enough to trust (at least 30 minutes and 3%), in ms per percent. Kept
+     * through charging, so a plugged-in phone can show when it would reach 1% if unplugged now (2026-11-26, per explicit
+     * request). Learnt again from each discharge; lost on a restart until the next one (clients rebuild it from NS).
+     */
+    @Volatile
+    private var msPerPercent: Long? = null
+
+    private fun learnRate() {
+        val current = interval.value ?: return
+        val unplugged = current.unplugged ?: return
+        val duration = current.latest.time - unplugged.time
+        val drop = unplugged.percent - current.latest.percent
+        if (duration >= MIN_DURATION_MS && drop >= MIN_DROP) msPerPercent = duration / drop
     }
 
     /** The start of the current discharge as "time:percent", or "" when none is known. For the loop phone to save. */
@@ -63,17 +81,20 @@ class UploaderBatteryEstimate {
     fun label(now: Long, dateUtil: DateUtil): String? {
         val (latest, unplugged) = interval.value ?: return null
         val percent = "Bat%=${latest.percent}"
+        // A reading up to 2 minutes ahead of this phone's clock counts as current (the loop phone's clock may run ahead)
+        val fresh = now - latest.time in -CLOCK_AHEAD_MS..STALE_MS
         if (unplugged == null) {
             lastForecast = null
             lastForecastStart = null
-            return percent
+            val rate = msPerPercent
+            if (latest.charging != true || !fresh || rate == null) return percent
+            // On charge: when 1% would be reached if unplugged now, at the last discharge's rate
+            return "$percent chg, off now to ${hhmm(latest.time + (latest.percent - 1L) * rate, dateUtil)}"
         }
         if (lastForecastStart != unplugged.time) lastForecast = null
-        // A reading up to 2 minutes ahead of this phone's clock counts as current (the loop phone's clock may run ahead)
-        val fresh = now - latest.time in -CLOCK_AHEAD_MS..STALE_MS
         val duration = latest.time - unplugged.time
         val drop = unplugged.percent - latest.percent
-        if (fresh && duration >= 1_800_000L && drop >= 3) {
+        if (fresh && duration >= MIN_DURATION_MS && drop >= MIN_DROP) {
             lastForecast = latest.time + ((latest.percent - 1.0) * duration / drop).toLong()
             lastForecastStart = unplugged.time
         }
@@ -82,13 +103,17 @@ class UploaderBatteryEstimate {
             lastForecast = null
             return percent
         }
-        val localTime = dateUtil.toISONoZone(forecast).substringAfter('T').take(5).replace(":", "")
-        return "$percent to $localTime"
+        return "$percent to ${hhmm(forecast, dateUtil)}"
     }
+
+    private fun hhmm(time: Long, dateUtil: DateUtil): String =
+        dateUtil.toISONoZone(time).substringAfter('T').take(5).replace(":", "")
 
     companion object {
         private const val CLOCK_AHEAD_MS = 120_000L
         private const val STALE_MS = 900_000L
+        private const val MIN_DURATION_MS = 1_800_000L
+        private const val MIN_DROP = 3
         val local = UploaderBatteryEstimate()
     }
 }
