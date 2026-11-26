@@ -69,6 +69,8 @@ class IosAlarmSoundPlayer(
     private var player: AVAudioPlayer? = null
     private var currentOwner: String? = null
     private var currentSound: AlarmSound? = null
+    // dev41 urgent alarms (urgent low): kept with the alarm so a restart after a hold or an interruption stays urgent
+    private var currentBreakThroughDnd = false
     private var rampJob: Job? = null
 
     /**
@@ -82,7 +84,7 @@ class IosAlarmSoundPlayer(
     init {
         backgroundKeepAlive.alarmAudio = object : IosBackgroundKeepAlive.AlarmAudioHooks {
             override fun onAppBackground() {
-                if (currentOwner == null || player == null || overrideSilentSwitch()) return
+                if (currentOwner == null || player == null || overrideSilentSwitch() || currentBreakThroughDnd) return
                 holdInBackground()
             }
 
@@ -92,13 +94,13 @@ class IosAlarmSoundPlayer(
                 val sound = currentSound ?: return
                 val owner = currentOwner ?: return
                 aapsLogger.debug(LTag.NOTIFICATION, "Alarm $sound for $owner sounds again, the app is open")
-                doPlay(sound, owner)
+                doPlay(sound, owner, currentBreakThroughDnd)
             }
 
             override fun onInterruptionEnded() {
                 val current = player ?: return
                 if (current.playing) return
-                activateSession()
+                activateSession(currentBreakThroughDnd)
                 if (current.play()) aapsLogger.debug(LTag.NOTIFICATION, "Alarm sound restarted after an audio interruption")
                 else aapsLogger.error(LTag.NOTIFICATION, "Alarm sound did not restart after an audio interruption")
             }
@@ -135,9 +137,11 @@ class IosAlarmSoundPlayer(
     private fun doPlay(sound: AlarmSound, ownerTag: String, breakThroughDnd: Boolean) {
         doStop()
         // In the background a SoloAmbient alarm would be silent and would take the audio from the keep-alive.
-        if (backgroundKeepAlive.inBackground && !overrideSilentSwitch()) {
+        // An urgent alarm (breakThroughDnd) is not held: it plays now, as with the override setting on.
+        if (backgroundKeepAlive.inBackground && !overrideSilentSwitch() && !breakThroughDnd) {
             currentOwner = ownerTag
             currentSound = sound
+            currentBreakThroughDnd = false
             heldInBackground = true
             aapsLogger.debug(LTag.NOTIFICATION, "Alarm ${sound.name} for $ownerTag held until the app is open (silent switch respected)")
             return
@@ -179,7 +183,8 @@ class IosAlarmSoundPlayer(
         player = created
         currentOwner = ownerTag
         currentSound = sound
-        aapsLogger.debug(LTag.NOTIFICATION, "Alarm ${sound.name} playing for $ownerTag, ramping=$ramping")
+        currentBreakThroughDnd = breakThroughDnd
+        aapsLogger.debug(LTag.NOTIFICATION, "Alarm ${sound.name} playing for $ownerTag, ramping=$ramping, breakThroughDnd=$breakThroughDnd")
         if (ramping) rampJob = scope.launch { runRamp(created) }
     }
 
@@ -190,6 +195,7 @@ class IosAlarmSoundPlayer(
         player = null
         currentOwner = null
         currentSound = null
+        currentBreakThroughDnd = false
         heldInBackground = false
         // The session is left active on purpose: deactivating it on every alarm would interrupt
         // whatever else the phone is playing twice per alarm instead of once.
