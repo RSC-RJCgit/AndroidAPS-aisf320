@@ -2998,6 +2998,16 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // low (FallRescue, Set50, LowBgTierAReset) are not touched. HP missing keeps the brakes on.
     private var stepBrakesOffNow = false
 
+    // HighFastRise (2026-11-26, per explicit request): BG over 8.5 mmol with Delta >= +0.2 and SDelta >= +0.15 mmol per 5 min, set
+    // each cycle with stepBrakesOffNow. It also takes the step brakes off whatever HP1 is, and ActivityOff puts back the saved
+    // higher tier on it. 26 Nov Live: BG 8.1 -> 9.2 rising 0.25-0.48 per 5 min at 10:41-10:59 with the brakes on (HP1 5.9-6.8
+    // after a bolus), and Profile110 came back only at 11:03 (BG 9.6).
+    private var highFastRiseNow = false
+
+    // The Activity TT (its timestamp) that ActivityOff ended on a HighFastRise; AcLoA does not drop the tier again under that same
+    // TT, so the tier cannot flip back and forth around 8.5 mmol. In memory only.
+    private var acLoaHeldForTtTs = 0L
+
     // PoorAbs (2026-11-24, see its block): start of the current BG >= 10.0 stretch, whether the boost is on, and when it last was.
     // In memory only: after an app restart the 60 min high stretch is timed again from scratch.
     private var poorAbsHighSinceTs = 0L
@@ -5383,9 +5393,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val hour = max(1, calendar.get(Calendar.HOUR_OF_DAY))
         // StepBrakesOff (2026-11-25): HP (HP1) over 7.0 and BG over 8.0 mmol. Set before anything below reads steps.
         val hp1ForStepBrakes = hypoPrediction1Mmol(glucoseStatus.glucose, iobData.iob, glucoseStatus.shortAvgDelta, mealData.mealCOB)
-        stepBrakesOffNow = hp1ForStepBrakes != null && hp1ForStepBrakes > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
-        determineBasalAutoISF.stepBrakesOffNote = if (stepBrakesOffNow)
-            "StepBrakesOff (HP ${round(hp1ForStepBrakes ?: 0.0, 1)}, BG ${round(glucoseStatus.glucose / 18.0182, 1)}) " else ""
+        highFastRiseNow = glucoseStatus.glucose > 153.1 /* 8.5 mmol */ && glucoseStatus.delta >= 3.6 /* 0.2 mmol */ &&
+            glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
+        val hp1Release = hp1ForStepBrakes != null && hp1ForStepBrakes > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
+        stepBrakesOffNow = hp1Release || highFastRiseNow
+        determineBasalAutoISF.stepBrakesOffNote = when {
+            hp1Release      -> "StepBrakesOff (HP ${round(hp1ForStepBrakes ?: 0.0, 1)}, BG ${round(glucoseStatus.glucose / 18.0182, 1)}) "
+            highFastRiseNow -> "StepBrakesOff (fast rise ${round(glucoseStatus.delta / 18.0182, 2)}, BG ${round(glucoseStatus.glucose / 18.0182, 1)}) "
+            else            -> ""
+        }
         val activityRatioRaw = activityMonitor(isTempTarget, glucoseStatus.glucose, targetBg, hour, glucoseStatus.shortAvgDelta)
         // A walking ratio (below 1) is a brake; an inactivity ratio (above 1) is not, so it stays.
         val activityRatio = if (stepBrakesOffNow && activityRatioRaw < 1.0) 1.0 else activityRatioRaw
@@ -7872,7 +7888,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             preferences.get(StringKey.ApsAutoIsfActivityPrevStandardRole).isBlank()
         ) {
             val tt = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
-            if (tt != null && tt.reason == TT.Reason.ACTIVITY && !isCodedControlTt(tt) && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */) {
+            if (tt != null && tt.reason == TT.Reason.ACTIVITY && !isCodedControlTt(tt) && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */ &&
+                tt.timestamp != acLoaHeldForTtTs
+            ) {
                 val prevStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
                 val prevLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
                 val lowA = resolveTieredProfileName(StringKey.ApsAutoIsfLow70ProfileName, StringKey.ApsAutoIsfLowProfileName).trim()
@@ -7915,7 +7933,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             // the "a bolus was just given" heuristic is disabled for these 85 min, otherwise almost any
             // bolus during the window reverts the profile and the delayed-bolus wait becomes pointless.
             val aoB3 = lastBolusMin <= 10 && !delayedBolusPending
-            if (aoB1 || aoB2 || aoB3) {
+            // 2026-11-26, per explicit request: a high fast rise (see highFastRiseNow) puts the higher tier back at once, with or
+            // without the Activity TT; AcLoA then stays off for the rest of that TT.
+            val aoB4 = highFastRiseNow
+            if (aoB1 || aoB2 || aoB3 || aoB4) {
+                if (aoB4 && ttEntry != null && ttEntry.reason == TT.Reason.ACTIVITY) acLoaHeldForTtTs = ttEntry.timestamp
                 val prevLow = preferences.get(StringKey.ApsAutoIsfActivityPrevLowRole).trim()
                 val store = activePlugin.activeProfileSource.profile
                 if (prevLow.isNotBlank() && store?.getSpecificProfile(prevLow) != null) preferences.put(StringKey.ApsAutoIsfLowProfileName, prevLow)
@@ -7927,7 +7949,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 preferences.put(StringKey.ApsAutoIsfActivityPrevLowRole, "")
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-                sendSms("Activity 70_0.70 0.35 Acce", noteTag = true)
+                sendSms("Activity 70_0.70 0.35 Acce${if (aoB4 && !(aoB1 || aoB2 || aoB3)) " (fast rise BG ${round(g / 18.0182, 1)})" else ""}", noteTag = true)
                 addCarePortalNote("ActOff", smsText = lastSmsText)   // careportal note (SMS-only before, so no careportal trail): logs the Activity 50% exit (TT cancel, profile 100, acce 0.35, iobTH 70)
                 markRun("ActivityOff")
             }
