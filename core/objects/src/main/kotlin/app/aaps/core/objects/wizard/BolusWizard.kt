@@ -1856,6 +1856,14 @@ class BolusWizard @Inject constructor(
         return followUpInsulinCap(candidate, requirement, at, dateUtil.now(), step, halfReduction)
     }
 
+    /** See [insReqCapWaived]: BG 7.5 mmol or more and a fresh HP1 of 6.0 or more give a follow-up part without the insulinReq cap. */
+    private fun followUpCapWaived(): Boolean {
+        val at = preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)
+        val hp = preferences.get(LongKey.ApsAutoIsfLastCycleHp1MilliMmol)
+        if (at != preferences.get(LongKey.ApsAutoIsfLastCycleHp1At)) return false
+        return insReqCapWaived(glucoseStatusProvider.glucoseStatusData?.glucose, hp, at, dateUtil.now())
+    }
+
     /** Total IOB now and 15 minutes ago, from the same calculation; null without a profile. */
     private fun iobNowAnd15MinAgo(): Pair<Double, Double>? {
         val profile = profileFunction.getProfile() ?: return null
@@ -2000,7 +2008,8 @@ class BolusWizard @Inject constructor(
             // Dropped, not given later (2026-10-18, per explicit request).
             val walkingCut = Round.roundTo(max(0.0, budget.dose - partDose), 0.001)
             val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): part x$walkFactor, ${decimalFormatter.to2Decimal(walkingCut)}U dropped." else ""
-            val cappedDose = cappedFollowUpDose(partDose, pumpStepForResidual)
+            val capWaived = followUpCapWaived()
+            val cappedDose = if (capWaived) partDose else cappedFollowUpDose(partDose, pumpStepForResidual)
             val thisDose = cappedDose ?: 0.0
             setSplitPendingRemaining(reducedResidual)
             if (reducedResidual < pumpStepForResidual / 2.0) {
@@ -2031,7 +2040,7 @@ class BolusWizard @Inject constructor(
                 notes = "Reduced split bolus part"
                 val calculation = followUpCalculation(
                     timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
-                    "Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; dose after insulinReq cap ${decimalFormatter.to2Decimal(thisDose)}U.$walkingNote"
+                    "Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; dose ${if (capWaived) "without insulinReq cap (BG >= 7.5, HP1 >= 6.0)" else "after insulinReq cap"} ${decimalFormatter.to2Decimal(thisDose)}U.$walkingNote"
                 )
                 uel.log(
                     action = Action.BOLUS,
@@ -2209,7 +2218,8 @@ class BolusWizard @Inject constructor(
             val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): dose x$walkFactor, ${decimalFormatter.to2Decimal(max(0.0, dose - iobAdjustedDose))}U dropped." else ""
             // 2026-11-20, per explicit request: protein/fat parts take the full insulinReq cap, not half the gap; what the cap
             // leaves is checked again in 10 minutes as before (capRemaining below)
-            val thisDose = cappedFollowUpDose(iobAdjustedDose, pumpStep, halfReduction = false)
+            val capWaived = followUpCapWaived()
+            val thisDose = if (capWaived) iobAdjustedDose else cappedFollowUpDose(iobAdjustedDose, pumpStep, halfReduction = false)
             if (thisDose == null || thisDose <= 0.0) {
                 val reason = if (thisDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                 deferOrCancel(reason, reason, forceRetry = true)
@@ -2221,7 +2231,7 @@ class BolusWizard @Inject constructor(
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Delayed $label dose"
-                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "Dose after insulinReq cap; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote", useIobRise = false)
+                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "${if (capWaived) "Dose without insulinReq cap (BG >= 7.5, HP1 >= 6.0)" else "Dose after insulinReq cap"}; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote", useIobRise = false)
                 uel.log(
                     action = Action.BOLUS,
                     source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
