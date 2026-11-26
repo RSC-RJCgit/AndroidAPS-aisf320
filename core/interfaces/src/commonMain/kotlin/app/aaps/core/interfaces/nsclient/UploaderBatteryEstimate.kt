@@ -44,7 +44,8 @@ class UploaderBatteryEstimate {
     /**
      * The fall rate of the last discharge long enough to trust (at least 30 minutes and 3%), in ms per percent. Kept
      * through charging, so a plugged-in phone can show when it would reach 1% if unplugged now (2026-11-26, per explicit
-     * request). Learnt again from each discharge; lost on a restart until the next one (clients rebuild it from NS).
+     * request). Learnt again from each discharge. Since 2026-11-26 (per explicit request) the loop phone saves it with the
+     * discharge start ([unpluggedSnapshot]), so it survives a restart; clients rebuild it from NS.
      */
     @Volatile
     private var msPerPercent: Long? = null
@@ -57,13 +58,22 @@ class UploaderBatteryEstimate {
         if (duration >= MIN_DURATION_MS && drop >= MIN_DROP) msPerPercent = duration / drop
     }
 
-    /** The start of the current discharge as "time:percent", or "" when none is known. For the loop phone to save. */
-    fun unpluggedSnapshot(): String = interval.value?.unplugged?.let { "${it.time}:${it.percent}" } ?: ""
+    /**
+     * The start of the current discharge and the learnt rate as "time:percent:msPerPercent", or "" when neither is known.
+     * For the loop phone to save. With no current discharge (charging) the start is "0:0", so the rate is still kept.
+     */
+    fun unpluggedSnapshot(): String {
+        val start = interval.value?.unplugged
+        val rate = msPerPercent
+        if (start == null && rate == null) return ""
+        return "${start?.time ?: 0}:${start?.percent ?: 0}" + (rate?.let { ":$it" } ?: "")
+    }
 
-    /** Gives back a start saved by [unpluggedSnapshot]. Only used if no reading has been recorded yet. */
+    /** Gives back a start and rate saved by [unpluggedSnapshot] (an older "time:percent" still works). The start is only used if no reading has been recorded yet. */
     fun restoreUnplugged(snapshot: String) {
-        if (interval.value != null) return
         val parts = snapshot.split(':')
+        if (msPerPercent == null) parts.getOrNull(2)?.toLongOrNull()?.takeIf { it > 0 }?.let { msPerPercent = it }
+        if (interval.value != null) return
         val time = parts.getOrNull(0)?.toLongOrNull() ?: return
         val percent = parts.getOrNull(1)?.toIntOrNull() ?: return
         if (time <= 0 || percent !in 1..100) return
@@ -73,37 +83,49 @@ class UploaderBatteryEstimate {
     /**
      * The last end time worked out, and the discharge start it belongs to (2026-11-26, per explicit request). Shown while the
      * newest reading is too old or stamped ahead of this phone's clock, until a newer reading gives a new one. Cleared when
-     * the phone charges, a new discharge starts, or that end time has passed.
+     * the phone charges or a new discharge starts. Since 2026-11-26 (per explicit request) an end time that has passed
+     * stays, marked "!", so the line always has a time once a rate is known.
      */
     private var lastForecast: Long? = null
     private var lastForecastStart: Long? = null
+
+    /** Set while the current forecast comes from the discharge itself, not from the last learnt rate. */
+    private var lastForecastMeasured = false
 
     fun label(now: Long, dateUtil: DateUtil): String? {
         val (latest, unplugged) = interval.value ?: return null
         val percent = "Bat%=${latest.percent}"
         // A reading up to 2 minutes ahead of this phone's clock counts as current (the loop phone's clock may run ahead)
         val fresh = now - latest.time in -CLOCK_AHEAD_MS..STALE_MS
+        val rate = msPerPercent
         if (unplugged == null) {
             lastForecast = null
             lastForecastStart = null
-            val rate = msPerPercent
-            if (latest.charging != true || !fresh || rate == null) return percent
-            // On charge: when 1% would be reached if unplugged now, at the last discharge's rate
-            return "$percent chg, off now to ${hhmm(latest.time + (latest.percent - 1L) * rate, dateUtil)}"
+            lastForecastMeasured = false
+            if (latest.charging != true || rate == null) return percent
+            // On charge: when 1% would be reached if unplugged now, at the last discharge's rate. With an old reading
+            // (2026-11-26, per explicit request) it is counted from now with the last known level instead of left out.
+            val from = if (fresh) latest.time else now
+            return "$percent chg, off now to ${hhmm(from + (latest.percent - 1L) * rate, dateUtil)}"
         }
-        if (lastForecastStart != unplugged.time) lastForecast = null
+        if (lastForecastStart != unplugged.time) {
+            lastForecast = null
+            lastForecastMeasured = false
+        }
         val duration = latest.time - unplugged.time
         val drop = unplugged.percent - latest.percent
         if (fresh && duration >= MIN_DURATION_MS && drop >= MIN_DROP) {
             lastForecast = latest.time + ((latest.percent - 1.0) * duration / drop).toLong()
             lastForecastStart = unplugged.time
+            lastForecastMeasured = true
+        } else if (rate != null && !lastForecastMeasured && (fresh || lastForecast == null)) {
+            // 2026-11-26, per explicit request: early in a discharge (under 30 minutes or 3%), or readings old before the
+            // first forecast, the last learnt rate gives the end time from the newest reading instead of no time at all
+            lastForecast = latest.time + (latest.percent - 1L) * rate
+            lastForecastStart = unplugged.time
         }
-        val forecast = lastForecast
-        if (forecast == null || forecast < now) {
-            lastForecast = null
-            return percent
-        }
-        return "$percent to ${hhmm(forecast, dateUtil)}"
+        val forecast = lastForecast ?: return percent
+        return "$percent to ${hhmm(forecast, dateUtil)}" + if (forecast < now) "!" else ""
     }
 
     private fun hhmm(time: Long, dateUtil: DateUtil): String =
