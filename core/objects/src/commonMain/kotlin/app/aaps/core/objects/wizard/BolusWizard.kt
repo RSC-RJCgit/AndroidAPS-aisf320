@@ -744,7 +744,9 @@ class BolusWizard(
         val walkFactor = walkingFactorNow()
         val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(planned * walkFactor, step) else planned
         // 2026-11-20, per explicit request: the full insulinReq cap, not half the gap; the rest is checked again (onCappedRemainder)
-        val dose = cappedFollowUpDose(walkingPlanned, step, halfReduction = false) ?: return "insulinReq missing or stale"
+        // 2026-11-26, per explicit request (same as 3426): no insulinReq cap at BG 7.5 or more with HP1 6.0 or more
+        val dose = (if (followUpCapWaived()) walkingPlanned else cappedFollowUpDose(walkingPlanned, step, halfReduction = false))
+            ?: return "insulinReq missing or stale"
         if (dose <= 0.0) return "insulinReq cap is below one pump step"
         val capRemaining = Round.roundTo(max(0.0, walkingPlanned - dose), 0.001)
         if (walkFactor < 1.0)
@@ -784,6 +786,23 @@ class BolusWizard(
             aapsLogger.info(LTag.CORE, "$what not sent to Trio: $failed")
             warsawNote("C", dose, "not sent to Trio: $failed", source, "$what of ${ofBolus()}: ${warsawNoteAmount(dose)} U")
         }
+    }
+
+    /**
+     * See [insReqCapWaived]: BG 7.5 mmol or more and a fresh HP1 of 6.0 or more give a carb-split or protein/fat part without
+     * the insulinReq cap. For Trio its lowest prediction over the next hour stands in for HP1, as for the HP1 hold.
+     */
+    private fun followUpCapWaived(): Boolean {
+        val now = dateUtil.now()
+        val glucose = glucoseStatusProvider.glucoseStatusData?.glucose
+        trioLater?.let { trio ->
+            val (at, value) = trio.lowestPrediction() ?: return false
+            return insReqCapWaived(glucose, value, at, now)
+        }
+        val at = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)
+        val hp = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
+        if (at != preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)) return false
+        return insReqCapWaived(glucose, hp, at, now)
     }
 
     private fun cappedFollowUpDose(candidate: Double, step: Double, halfReduction: Boolean = true): Double? {
@@ -1354,7 +1373,8 @@ class BolusWizard(
                     val walkFactor = if (walkingCutAllowed) walkingFactorNow() else 1.0
                     val partDose = if (walkFactor < 1.0) Round.roundTo(budget.dose * walkFactor, step) else budget.dose
                     val walkingCut = Round.roundTo(max(0.0, budget.dose - partDose), 0.001)
-                    val cappedDose = cappedFollowUpDose(partDose, step)
+                    // 2026-11-26, per explicit request (same as 3426): no insulinReq cap at BG 7.5 or more with HP1 6.0 or more
+                    val cappedDose = if (followUpCapWaived()) partDose else cappedFollowUpDose(partDose, step)
                     val dose = cappedDose ?: 0.0
                     if (reducedRemaining < step / 2.0) return
                     if (dose <= 0.0) {

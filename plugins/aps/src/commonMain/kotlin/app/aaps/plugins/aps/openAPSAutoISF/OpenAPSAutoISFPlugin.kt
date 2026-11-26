@@ -270,9 +270,17 @@ open class OpenAPSAutoISFPlugin(
     // that protect against a low (FallRescue, Set50, LowBgTierAReset) are not touched. HP missing keeps the brakes on.
     private var stepBrakesOffNow = false
 
+    // HighFastRise (2026-11-26, per explicit request, same as 3426): BG over 8.5 mmol with Delta >= +0.2 and SDelta >= +0.15
+    // mmol per 5 min. It also takes the step brakes off whatever HP1 is, and ActivityOff puts back the saved higher tier on it.
+    // 26 Nov Live: BG 8.1 -> 9.2 rising 0.25-0.48 per 5 min with the brakes on (HP1 5.9-6.8 after a bolus).
+    private var highFastRiseNow = false
+
+    // The Activity TT (its timestamp) that ActivityOff ended on a HighFastRise; ActivityProf50 does not drop the tier again
+    // under that same TT, so the tier cannot flip back and forth around 8.5 mmol. In memory only.
+    private var acLoaHeldForTtTs = 0L
+
     // PoorAbs (2026-11-24, see applyPoorAbs): start of the current BG >= 10.0 stretch, whether the boost is on, and when it last was.
     // In memory only: after an app restart the 60 min high stretch is timed again from scratch.
-    private var poorAbsHighSinceTs = 0L
     private var poorAbsActive = false
     private var poorAbsLastActiveTs = 0L
 
@@ -546,10 +554,16 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000.0).toLong())
             preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
         }
-        stepBrakesOffNow = hp1Now != null && hp1Now.isFinite() && hp1Now > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
+        highFastRiseNow = glucoseStatus.glucose > 153.1 /* 8.5 mmol */ && glucoseStatus.delta >= 3.6 /* 0.2 mmol */ &&
+            glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
+        val hp1Release = hp1Now != null && hp1Now.isFinite() && hp1Now > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
+        stepBrakesOffNow = hp1Release || highFastRiseNow
         determineBasalAutoISF.stepBrakesOff = stepBrakesOffNow
-        determineBasalAutoISF.stepBrakesOffNote = if (stepBrakesOffNow)
-            "StepBrakesOff (HP ${decimals(hp1Now ?: 0.0, 1)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). " else ""
+        determineBasalAutoISF.stepBrakesOffNote = when {
+            hp1Release      -> "StepBrakesOff (HP ${decimals(hp1Now ?: 0.0, 1)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). "
+            highFastRiseNow -> "StepBrakesOff (fast rise ${decimals(glucoseStatus.delta / 18.0182, 2)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). "
+            else            -> ""
+        }
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
         val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
 
@@ -5233,14 +5247,17 @@ open class OpenAPSAutoISFPlugin(
         profileIsfMgdl: Double,
     ) {
         val hp = ukfRawNow(now).delta5?.let { hypoPrediction2Mmol(bg, shortDelta, it, iob, cob) }
-        if (bg >= 180.2 /* 10.0 mmol */) {
-            if (poorAbsHighSinceTs == 0L) poorAbsHighSinceTs = now
-        } else poorAbsHighSinceTs = 0L
-        val highFor60 = poorAbsHighSinceTs != 0L && now - poorAbsHighSinceTs >= T.mins(60).msecs()
+        // 2026-11-26, per explicit request (same as 3426): the 60 min comes from the stored BG readings (every reading in the
+        // last 60 min at 10.0 or more, the oldest at least 55 min back), not an in-memory timer a restart or loop gap started again
+        val last60 = if (bg >= 180.2 /* 10.0 mmol */)
+            persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = true) else emptyList()
+        val highFor60 = last60.isNotEmpty() && last60.first().timestamp <= now - T.mins(55).msecs() &&
+            last60.all { it.value >= 180.2 /* 10.0 mmol */ }
         val podH = hoursSincePod(now)
         val bg30Ago = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(35).msecs(), now - T.mins(25).msecs(), ascending = false)
             .minByOrNull { kotlin.math.abs(it.timestamp - (now - T.mins(30).msecs())) }?.value
-        val notFalling = bg30Ago != null && bg >= bg30Ago - 5.4 /* 0.3 mmol */
+        // 2026-11-26, per explicit request: a fall of up to 0.6 mmol in 30 min still counts as not falling (was 0.3)
+        val notFalling = bg30Ago != null && bg >= bg30Ago - 10.8 /* 0.6 mmol */
         val noRapidRise = delta < 9.0 /* 0.5 mmol */
         val iobNeeded = if (profileIsfMgdl > 0.0) (bg - targetBg).coerceAtLeast(0.0) / profileIsfMgdl else Double.MAX_VALUE
         val iobEnough = iob >= 0.8 * iobNeeded
@@ -6545,7 +6562,7 @@ open class OpenAPSAutoISFPlugin(
                 profilePercent = profilePercent,
                 profileIsBolus = profileIsBolus,
                 dropActive = preferences.get(StringNonKey.ApsAutoIsfActivityPrevStandardRole).isNotBlank(),
-                activityTt = tt != null && tt.reason == TT.Reason.ACTIVITY && !isCodedControlTt(tt),
+                activityTt = tt != null && tt.reason == TT.Reason.ACTIVITY && !isCodedControlTt(tt) && tt.timestamp != acLoaHeldForTtTs,
                 bg = bg,
             )
         ) return
@@ -6592,8 +6609,11 @@ open class OpenAPSAutoISFPlugin(
                 lastBolusMinutes = minutesSinceLastMealEvent(now),
                 // A delayed bolus waiting (DelayedBolus, since 2026-11-14): its bolus is not a sign of recovery
                 delayedBolusPending = preferences.get(LongNonKey.WizardDelayedBolusPendingUntil) > now,
+                highFastRise = highFastRiseNow,
             )
         ) return
+        // A high fast rise ended it: no new drop under this same Activity TT
+        if (highFastRiseNow && tt != null && tt.reason == TT.Reason.ACTIVITY) acLoaHeldForTtTs = tt.timestamp
         val prevLow = preferences.get(StringNonKey.ApsAutoIsfActivityPrevLowRole).trim()
         val store = profileRepository.profile.value
         val restored = if (store?.getSpecificProfile(prevStandard) != null) {
@@ -6608,7 +6628,7 @@ open class OpenAPSAutoISFPlugin(
         if (70 <= iobBaseline) preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
         else aapsLogger.debug(LTag.APS, "Activity off left the IOB threshold alone, 70 is above the baseline")
         runMarks.mark(RunMark.ACTIVITY_OFF, now)
-        sendAutoSms("Activity 70_0.70 0.35 Acce", noteTag = true)
+        sendAutoSms("Activity 70_0.70 0.35 Acce${if (highFastRiseNow) " (fast rise BG ${decimals(bg / 18.0182, 1)})" else ""}", noteTag = true)
         carePortalNote("ActOff", smsText = lastSmsText)
         aapsLogger.debug(LTag.APS, "Activity off -> Standard at 100%")
     }

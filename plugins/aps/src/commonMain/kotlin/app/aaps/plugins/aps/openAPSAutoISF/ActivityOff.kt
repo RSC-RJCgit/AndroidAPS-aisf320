@@ -22,6 +22,8 @@ internal fun activityOffShouldFire(
     cannulaHours: Double,
     lastBolusMinutes: Int,
     delayedBolusPending: Boolean,
+    // 2026-11-26, per explicit request (same as 3426): BG over 8.5 rising fast (see highFastRiseNow) ends the drop at once
+    highFastRise: Boolean = false,
 ): Boolean {
     if (!ready || !dropActive || profilePercent != 100) return false
     val climbedOnActivity = activityTt && bg >= 171.2
@@ -31,5 +33,5 @@ internal fun activityOffShouldFire(
         delta >= 1.8 &&
         cannulaHours >= 3.0
     val bolusJustGiven = lastBolusMinutes <= 10 && !delayedBolusPending
-    return climbedOnActivity || targetEnded || bolusJustGiven
+    return climbedOnActivity || targetEnded || bolusJustGiven || highFastRise
 }
