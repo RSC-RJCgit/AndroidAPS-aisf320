@@ -3887,6 +3887,22 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
         // quick single-tap toggle (5.142) for convenience -- same underlying key, no divergence risk.
         // No treatments/therapy-events/notes/delta-annotations/hypo-prediction row -- those are
         // label/marker-bearing (bolus doses, carb grams, note text); this panel is plain data lines only.
+        // Fork (2026-11-26, per explicit request): worked out here, not only with Graph5 on, so the main graph shows it too,
+        // right of the hours drop-down (graph_battery), on the current window only. Graph5's legend keeps it as well.
+        val batteryLabel = dateUtil.now().let { now ->
+            if (config.AAPSCLIENT || pump is VirtualPump) {
+                val uploaders = processedDeviceStatusData.uploaderMap
+                val reported = processedDeviceStatusData.device?.device?.let { uploaders["openaps://$it"] }
+                val uploader = reported ?: uploaders.values.maxByOrNull { it.clock }
+                uploader?.batteryEstimate?.label(now, dateUtil)
+            } else {
+                UploaderBatteryEstimate.local.record(now, receiverStatusStore.batteryLevel, receiverStatusStore.isCharging)
+                UploaderBatteryEstimate.local.label(now, dateUtil)
+            }
+        }
+        binding.graphsLayout.graphBattery.text = batteryLabel.orEmpty()
+        binding.graphsLayout.graphBattery.visibility =
+            if (historicalStartTime == null && !batteryLabel.isNullOrEmpty()) View.VISIBLE else View.GONE
         if (preferences.get(BooleanKey.ApsAutoIsfShowGraph5)) {
             binding.graphsLayout.graph5Container.visibility = View.VISIBLE
             val graph5Data = graphDataProvider.get().with(binding.graphsLayout.graph5, overviewData, displayTimeZone)
@@ -3926,16 +3942,6 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             // SMB delivered / acce weight / pp weight / profile basal: always on graph5 (even in BGL-only mode), top band.
             // After every scale-setting series above so maxY is final. Keep in sync with HistoryBrowseActivity.kt.
             graph5Data.addTopBandLines()
-            val now = dateUtil.now()
-            val batteryLabel = if (config.AAPSCLIENT || pump is VirtualPump) {
-                val uploaders = processedDeviceStatusData.uploaderMap
-                val reported = processedDeviceStatusData.device?.device?.let { uploaders["openaps://$it"] }
-                val uploader = reported ?: uploaders.values.maxByOrNull { it.clock }
-                uploader?.batteryEstimate?.label(now, dateUtil)
-            } else {
-                UploaderBatteryEstimate.local.record(now, receiverStatusStore.batteryLevel, receiverStatusStore.isCharging)
-                UploaderBatteryEstimate.local.label(now, dateUtil)
-            }
             binding.graphsLayout.graph5Legend.text = graph5Data.topBandLegend(batteryLabel)
             // Live target offset / last dura-taper time, fixed at the top of graph5's basal-column
             // area, one line below the pp/acc/du row.

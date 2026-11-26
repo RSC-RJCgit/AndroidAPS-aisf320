@@ -88,6 +88,21 @@
             android:text="›"
             android:textSize="24sp" />
 
+        <!-- Fork (2026-11-26, per explicit request): the loop phone's battery ("Bat%=NN to HHMM") right of the hours
+             drop-down, as v4's BG graph top line. Filled by OverviewFragment.updateGraph; hidden when there is none. -->
+        <TextView
+            android:id="@+id/graph_battery"
+            android:layout_width="wrap_content"
+            android:layout_height="35dp"
+            android:layout_alignParentTop="true"
+            android:layout_toEndOf="@id/history_next"
+            android:layout_marginStart="6dp"
+            android:gravity="center_vertical"
+            android:importantForAccessibility="no"
+            android:singleLine="true"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
         <ImageButton
             android:id="@+id/chart_menu_button"
             android:layout_width="35dp"
