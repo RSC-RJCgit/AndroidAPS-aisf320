@@ -33,6 +33,8 @@ interface NSAndroidClient {
 
     suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse
     suspend fun getDeviceStatusModifiedSince(from: Long): List<NSDeviceStatus>
+    /** Fork (2026-11-26, per explicit request): date, device, uploaderBattery and isCharging only, since [from], newest first. */
+    suspend fun getDeviceStatusBatterySince(from: Long, limit: Int): List<NSDeviceStatus> = emptyList()
 
     suspend fun createProfileStore(remoteProfileStore: JSONObject): CreateUpdateResponse
     suspend fun getProfileModifiedSince(from: Long): ReadResponse<List<JSONObject>>

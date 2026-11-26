@@ -77,6 +77,12 @@ internal interface NightscoutRemoteService {
     @GET("v3/devicestatus/history/{from}")
     suspend fun getDeviceStatusModifiedSince(@Path("from") from: Long): Response<NSResponse<List<RemoteDeviceStatus>>>
 
+    // Fork (2026-11-26, per explicit request): the uploaders' battery fields only, newest first, for a client's battery forecast after a start
+    @GET("v3/devicestatus?sort\$desc=date&fields=date,created_at,device,uploaderBattery,isCharging")
+    suspend fun getDeviceStatusBatterySince(
+        @Query(value = "date\$gte", encoded = true) from: Long, @Query("limit") limit: Int
+    ): Response<NSResponse<List<RemoteDeviceStatus>>>
+
     @GET("v3/food")
     suspend fun getFoods(@Query("limit") limit: Int): Response<NSResponse<List<RemoteFood>>>
 

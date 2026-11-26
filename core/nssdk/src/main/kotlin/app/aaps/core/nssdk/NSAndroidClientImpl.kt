@@ -269,6 +269,17 @@ class NSAndroidClientImpl(
             throw UnsuccessfulNightscoutException("Unsuccessful")
     }
 
+    override suspend fun getDeviceStatusBatterySince(from: Long, limit: Int): List<NSDeviceStatus> = callWrapper(dispatcher) {
+
+        val response = api.getDeviceStatusBatterySince(from, limit)
+        if (response.isSuccessful) {
+            return@callWrapper response.body()?.result?.map(RemoteDeviceStatus::toNSDeviceStatus).toNotNull()
+        } else if (response.code() in 400..499)
+            throw InvalidParameterNightscoutException(response.errorBody()?.string() ?: response.message())
+        else
+            throw UnsuccessfulNightscoutException("Unsuccessful")
+    }
+
     override suspend fun createDeviceStatus(nsDeviceStatus: NSDeviceStatus): CreateUpdateResponse = callWrapper(dispatcher) {
 
         nsDeviceStatus.app = "AAPS"

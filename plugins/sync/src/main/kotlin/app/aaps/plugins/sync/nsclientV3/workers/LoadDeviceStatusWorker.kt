@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventNSClientNewLog
 import app.aaps.core.interfaces.utils.DateUtil
@@ -25,6 +26,7 @@ class LoadDeviceStatusWorker(
     @Inject lateinit var nsClientV3Plugin: NSClientV3Plugin
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var nsDeviceStatusHandler: NSDeviceStatusHandler
+    @Inject lateinit var config: Config
 
     override suspend fun doWorkAndLog(): Result {
         val nsAndroidClient = nsClientV3Plugin.nsAndroidClient ?: return Result.failure(workDataOf("Error" to "AndroidClient is null"))
@@ -33,6 +35,18 @@ class LoadDeviceStatusWorker(
             // Notify plugin we loaded al missed data
             nsClientV3Plugin.initialLoadFinished = true
 
+            // Fork (2026-11-26, per explicit request): once per start, a client reads the last day's battery fields (a small download; 1000 is the server's usual most per request, about 16 h of minute uploads), so the
+            // battery forecast starts at the loop phone's real unplug time. A failure only leaves the forecast as before.
+            if (config.AAPSCLIENT && !nsDeviceStatusHandler.batteryHistorySeeded) {
+                nsDeviceStatusHandler.batteryHistorySeeded = true
+                try {
+                    val day = nsAndroidClient.getDeviceStatusBatterySince(dateUtil.now() - T.hours(24).msecs(), 1000)
+                    nsDeviceStatusHandler.seedUploaderBattery(day)
+                    rxBus.send(EventNSClientNewLog("◄ RCV", "${day.size} battery readings of the last 24 h"))
+                } catch (error: Exception) {
+                    aapsLogger.error("Battery history: ", error)
+                }
+            }
             val from = dateUtil.now() - T.mins(7).msecs()
             val deviceStatuses = nsAndroidClient.getDeviceStatusModifiedSince(from)
             aapsLogger.debug("DEVICESTATUSES: $deviceStatuses")

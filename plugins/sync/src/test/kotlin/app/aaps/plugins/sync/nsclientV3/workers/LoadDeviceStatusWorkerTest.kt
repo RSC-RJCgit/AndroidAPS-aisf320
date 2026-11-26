@@ -66,6 +66,7 @@ internal class LoadDeviceStatusWorkerTest : TestBaseWithProfile() {
                 it.nsClientV3Plugin = nsClientV3Plugin
                 it.dataWorkerStorage = dataWorkerStorage
                 it.nsDeviceStatusHandler = nsDeviceStatusHandler
+                it.config = config
             }
         }
     }
