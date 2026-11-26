@@ -546,24 +546,7 @@ open class OpenAPSAutoISFPlugin(
         val iobArray = iobCobCalculator.calculateIobArrayForSMB(autosensResult, SMBDefaults.exercise_mode, preferences.get(IntKey.ApsAutoIsfHalfBasalExerciseTarget), isTempTarget)
         val mealData = iobCobCalculator.getMealDataWithWaitingForCalculationFinish()
         val iobData = iobArray[0]
-        val hp1Now = rawDelta5MinMgdl(now)?.let {
-            hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, it, iobData.iob, mealData.mealCOB)
-        }
-        preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, 0L)
-        if (hp1Now != null && hp1Now.isFinite()) {
-            preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000.0).toLong())
-            preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
-        }
-        highFastRiseNow = glucoseStatus.glucose > 153.1 /* 8.5 mmol */ && glucoseStatus.delta >= 3.6 /* 0.2 mmol */ &&
-            glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
-        val hp1Release = hp1Now != null && hp1Now.isFinite() && hp1Now > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
-        stepBrakesOffNow = hp1Release || highFastRiseNow
-        determineBasalAutoISF.stepBrakesOff = stepBrakesOffNow
-        determineBasalAutoISF.stepBrakesOffNote = when {
-            hp1Release      -> "StepBrakesOff (HP ${decimals(hp1Now ?: 0.0, 1)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). "
-            highFastRiseNow -> "StepBrakesOff (fast rise ${decimals(glucoseStatus.delta / 18.0182, 2)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). "
-            else            -> ""
-        }
+        val hp1Now = updateHp1AndStepBrakes(now, glucoseStatus, iobData.iob, mealData.mealCOB)
         val profile_percentage = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else 100
         val microBolusAllowed = constraintsChecker.isSMBModeEnabled(ConstraintObject(tempBasalFallback.not(), aapsLogger)).also { inputConstraints.copyReasons(it) }.value()
 
@@ -7170,6 +7153,32 @@ open class OpenAPSAutoISFPlugin(
     // mg/dL over about five minutes, from the Libre raw value stored in GV.noise.
     // FastRise sizing and the night FastRise skip use the smoothed UKF change instead.
     // This unsmoothed value is the early-morning reversal check. Null when the raw value is missing.
+    /**
+     * HP1 for this cycle, saved for the later-dose HP1 checks, and the StepBrakesOff / HighFastRise flags with their note.
+     * Moved out of invoke() on 2026-11-26: invoke() had reached the JVM 64 KB method limit ("Method too large" on Android).
+     */
+    private suspend fun updateHp1AndStepBrakes(now: Long, glucoseStatus: GlucoseStatus, iob: Double, cob: Double): Double? {
+        val hp1Now = rawDelta5MinMgdl(now)?.let {
+            hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, it, iob, cob)
+        }
+        preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, 0L)
+        if (hp1Now != null && hp1Now.isFinite()) {
+            preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol, (hp1Now * 1000.0).toLong())
+            preferences.put(LongNonKey.ApsAutoIsfLastCycleHp1At, glucoseStatus.date)
+        }
+        highFastRiseNow = glucoseStatus.glucose > 153.1 /* 8.5 mmol */ && glucoseStatus.delta >= 3.6 /* 0.2 mmol */ &&
+            glucoseStatus.shortAvgDelta >= 2.7 /* 0.15 mmol */
+        val hp1Release = hp1Now != null && hp1Now.isFinite() && hp1Now > 7.0 && glucoseStatus.glucose > 144.1 /* 8.0 mmol */
+        stepBrakesOffNow = hp1Release || highFastRiseNow
+        determineBasalAutoISF.stepBrakesOff = stepBrakesOffNow
+        determineBasalAutoISF.stepBrakesOffNote = when {
+            hp1Release      -> "StepBrakesOff (HP ${decimals(hp1Now ?: 0.0, 1)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). "
+            highFastRiseNow -> "StepBrakesOff (fast rise ${decimals(glucoseStatus.delta / 18.0182, 2)}, BG ${decimals(glucoseStatus.glucose / 18.0182, 1)}). "
+            else            -> ""
+        }
+        return hp1Now
+    }
+
     private suspend fun rawDelta5MinMgdl(now: Long): Double? {
         val readings = persistenceLayer.getBgReadingsDataFromTimeToTime(now - 7 * 60 * 1000L, now, ascending = false)
         if (readings.size < 2) return null
