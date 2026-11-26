@@ -615,6 +615,35 @@ class NSDeviceStatusHandler(
         }
     }
 
+    /**
+     * 2026-11-26, per explicit request: the loop phone's battery history, oldest first, so the battery forecast ("Bat%=NN to
+     * HHMM") starts at the real unplug time after this client starts, not at its first reading. Live sends isCharging with every
+     * status, so the change from charging to unplugged is in this history. Each phone's readings are replayed into a fresh
+     * forecast, and the reading this client held already goes on top when it is newer. Only "openaps://" phones.
+     */
+    fun seedUploaderBattery(statuses: List<NSDeviceStatus>) {
+        data class Reading(val clock: Long, val battery: Int, val charging: Boolean?)
+        statuses.mapNotNull { status ->
+            val device = status.device?.takeIf { it.startsWith("openaps://") } ?: return@mapNotNull null
+            val clock = status.date ?: graphReportTime(status.createdAt) ?: return@mapNotNull null
+            val battery = status.uploaderBattery ?: status.uploader?.battery ?: return@mapNotNull null
+            device to Reading(clock, battery, status.isCharging)
+        }.groupBy({ it.first }, { it.second }).forEach { (device, readings) ->
+            val held = processedDeviceStatusData.uploaderMap[device]?.let { Reading(it.clock, it.battery, it.isCharging) }
+            val uploader = ProcessedDeviceStatusData.Uploader()
+            (readings.sortedBy { it.clock } + listOfNotNull(held)).forEach { reading ->
+                if (reading.clock > uploader.clock) {
+                    uploader.battery = reading.battery
+                    uploader.clock = reading.clock
+                    uploader.isCharging = reading.charging
+                    uploader.batteryEstimate.record(reading.clock, reading.battery, reading.charging)
+                }
+            }
+            if (uploader.clock > 0L) processedDeviceStatusData.uploaderMap[device] = uploader
+            aapsLogger.debug(LTag.NSCLIENT, "Battery history of $device: ${readings.size} readings, unplugged ${uploader.batteryEstimate.unpluggedSnapshot().ifEmpty { "not known" }}")
+        }
+    }
+
     private fun updateUploaderData(nsDeviceStatus: NSDeviceStatus, clock: Long?) {
         clock ?: return
         val device = nsDeviceStatus.device ?: return

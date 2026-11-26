@@ -6,6 +6,7 @@ import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.nssdk.interfaces.NSAndroidClient
+import app.aaps.core.nssdk.localmodel.devicestatus.NSDeviceStatus
 
 import app.aaps.core.objects.workflow.WorkOutcome
 
@@ -77,7 +78,19 @@ class LoadDeviceStatusRunner(
      * while this phone was offline. A day holds about 300, so they come in pages.
      */
     private suspend fun loadAllSinceLastLoad(nsAndroidClient: NSAndroidClient) {
-        var from = max(nsClientV3Plugin.lastLoadedDeviceStatusSrvModified, dateUtil.now() - T.hours(48).msecs())
+        val from = max(nsClientV3Plugin.lastLoadedDeviceStatusSrvModified, dateUtil.now() - T.hours(48).msecs())
+        // 2026-11-26, per explicit request: the first load after a start gives the loop phone's battery history to the
+        // battery forecast as well, oldest first, once all its pages are in (see NSDeviceStatusHandler.seedUploaderBattery)
+        val history = if (nsClientV3Plugin.lastLoadedDeviceStatusSrvModified == 0L) mutableListOf<NSDeviceStatus>() else null
+        try {
+            loadPages(nsAndroidClient, from, history)
+        } finally {
+            if (!history.isNullOrEmpty()) nsDeviceStatusHandler.seedUploaderBattery(history)
+        }
+    }
+
+    private suspend fun loadPages(nsAndroidClient: NSAndroidClient, start: Long, history: MutableList<NSDeviceStatus>?) {
+        var from = start
         while (true) {
             val deviceStatuses = nsAndroidClient.getDeviceStatusModifiedSince(from, NSClientV3Plugin.RECORDS_TO_LOAD)
             if (deviceStatuses.isEmpty() && nsClientV3Plugin.hasTrioSourceProfile()) {
@@ -96,6 +109,7 @@ class LoadDeviceStatusRunner(
             }
             nsClientRepository.addLog("◄ RCV", "${deviceStatuses.size} DSs from ${dateUtil.dateAndTimeAndSecondsString(from)}")
             nsDeviceStatusHandler.handleNewData(deviceStatuses.toTypedArray())
+            history?.addAll(deviceStatuses)
             nsClientRepository.addLog("● DONE PROCESSING DS", "")
             // The next page starts after the newest change of this one. Without a newer one the server cannot
             // be asked for more, so the load ends, and the next load starts from the same point.
