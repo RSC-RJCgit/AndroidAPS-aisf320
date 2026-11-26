@@ -54,20 +54,43 @@ class UploaderBatteryEstimate {
         restored.set(Reading(time, percent, false))
     }
 
+    /**
+     * The last end time worked out, and the discharge start it belongs to (2026-11-26, per explicit request). Shown while the
+     * newest reading is too old or stamped ahead of this phone's clock, until a newer reading gives a new one. Cleared when
+     * the phone charges, a new discharge starts, or that end time has passed.
+     */
+    private var lastForecast: Long? = null
+    private var lastForecastStart: Long? = null
+
     fun label(now: Long, dateUtil: DateUtil): String? {
         val (latest, unplugged) = interval.get() ?: return null
         val percent = "Bat%=${latest.percent}"
-        if (unplugged == null || now - latest.time !in 0L..900_000L) return percent
+        if (unplugged == null) {
+            lastForecast = null
+            lastForecastStart = null
+            return percent
+        }
+        if (lastForecastStart != unplugged.time) lastForecast = null
+        // A reading up to 2 minutes ahead of this phone's clock counts as current (the loop phone's clock may run ahead)
+        val fresh = now - latest.time in -CLOCK_AHEAD_MS..STALE_MS
         val duration = latest.time - unplugged.time
         val drop = unplugged.percent - latest.percent
-        if (duration < 1_800_000L || drop < 3) return percent
-        val forecast = latest.time + ((latest.percent - 1.0) * duration / drop).toLong()
-        if (forecast < now) return percent
+        if (fresh && duration >= 1_800_000L && drop >= 3) {
+            lastForecast = latest.time + ((latest.percent - 1.0) * duration / drop).toLong()
+            lastForecastStart = unplugged.time
+        }
+        val forecast = lastForecast
+        if (forecast == null || forecast < now) {
+            lastForecast = null
+            return percent
+        }
         val localTime = dateUtil.toISONoZone(forecast).substringAfter('T').take(5).replace(":", "")
         return "$percent to $localTime"
     }
 
     companion object {
+        private const val CLOCK_AHEAD_MS = 120_000L
+        private const val STALE_MS = 900_000L
         val local = UploaderBatteryEstimate()
     }
 }
