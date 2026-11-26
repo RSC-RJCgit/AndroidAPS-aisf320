@@ -23,6 +23,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import kotlin.reflect.KClass
+import androidx.work.WorkManager
 
 /** When the end of a temporary running mode is scheduled. `WorkManagerRunningModeExpiryTimerTest` covers how. */
 class RunningModeExpirySchedulerTest : TestBase() {

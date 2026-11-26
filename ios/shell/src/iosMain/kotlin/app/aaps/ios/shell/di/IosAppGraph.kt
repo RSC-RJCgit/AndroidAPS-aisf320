@@ -79,6 +79,7 @@ import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metrox.viewmodel.MetroViewModelMultibindings
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
+import app.aaps.core.interfaces.alerts.EatReminder
 
 /**
  * The real app's object graph on iOS - the counterpart of `AppRootGraph` in `:app`.

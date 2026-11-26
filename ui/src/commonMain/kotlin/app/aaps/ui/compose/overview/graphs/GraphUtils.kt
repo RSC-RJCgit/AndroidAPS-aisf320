@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
+import app.aaps.core.data.ui.MarkerTier
 import app.aaps.core.data.time.AppTimeZone
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.runtime.Composable
@@ -33,24 +34,16 @@ import app.aaps.core.interfaces.overview.graph.ExtendedBolusGraphPoint
 import app.aaps.core.interfaces.overview.graph.GraphDataPoint
 import app.aaps.core.interfaces.overview.graph.BasalGraphData
 import app.aaps.core.interfaces.overview.graph.SeriesType
-import androidx.compose.ui.unit.sp
-import app.aaps.core.data.time.SystemTimeZone
-import app.aaps.core.data.ui.MarkerTier
-import app.aaps.core.ui.compose.AapsTheme
 import com.patrykandpatrick.vico.compose.cartesian.CartesianDrawingContext
 import com.patrykandpatrick.vico.compose.cartesian.axis.Axis
 import com.patrykandpatrick.vico.compose.cartesian.axis.HorizontalAxis
 import com.patrykandpatrick.vico.compose.cartesian.data.CartesianValueFormatter
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
 import com.patrykandpatrick.vico.compose.cartesian.decoration.Decoration
 import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
-import com.patrykandpatrick.vico.compose.common.DashedShape
 import com.patrykandpatrick.vico.compose.common.Fill
-import com.patrykandpatrick.vico.compose.common.component.LineComponent
 import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
 import com.patrykandpatrick.vico.compose.common.data.ExtraStore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,6 +57,10 @@ import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.time.ExperimentalTime
 import kotlin.time.Instant
+import com.patrykandpatrick.vico.compose.common.component.LineComponent
+import com.patrykandpatrick.vico.compose.common.DashedShape
+import app.aaps.core.ui.compose.AapsTheme
+import androidx.compose.foundation.shape.CircleShape
 
 /**
  * Shared utilities for Vico graphs in AAPS.
@@ -594,9 +591,16 @@ val TriangleShape: Shape = GenericShape { size, _ ->
 }
 
 /**
- * Inverted triangle shape pointing downward (flat base at top, apex at bottom), for a manual bolus
- * on the BG graph. The apex sits [tipInset] of the box above the box centre, so the tip stops short
- * of the data point; with no inset it is at the data point's y-coordinate. The base is narrowed by the same share: in a box grown by twice
+ * Inverted triangle shape pointing downward (flat base at top, apex at bottom).
+ *
+ * Used for a manual bolus on the BG and IOB graphs, and for carbs on the COB graph. The apex sits at the data point's
+ * y-coordinate with the base above it, so it points at the value.
+ */
+val InvertedTriangleShape: Shape = invertedTriangleShape()
+
+/**
+ * [InvertedTriangleShape] with its apex [tipInset] of the box above the box centre, so the tip
+ * stops short of the data point. The base is narrowed by the same share: in a box grown by twice
  * the inset the triangle keeps the proportions of the plain shape and only moves away from the
  * point. The BG graph uses it to keep a marker's tip outside the reading dot.
  */
@@ -614,9 +618,9 @@ fun invertedTriangleShape(tipInset: Float = 0f): Shape = GenericShape { size, _ 
  * y-coordinate, flat base below it.
  *
  * Vico centers a point component on its data point, and both [TriangleShape] and
- * [invertedTriangleShape] draw in the upper half of the box, so neither can sit below a point.
+ * [InvertedTriangleShape] draw in the upper half of the box, so neither can sit below a point.
  * This one does, which is what the carbs half of a treatment marker on the BG graph needs: the
- * bolus points down at the reading from above ([invertedTriangleShape]) and the carbs point up at
+ * bolus points down at the reading from above ([InvertedTriangleShape]) and the carbs point up at
  * it from below, so both tips meet at the moment on the curve.
  * Same proportions as the other two.
  */
@@ -644,26 +648,34 @@ internal val MarkerTier.markerSize: Dp
         MarkerTier.LARGE  -> 19.dp
     }
 
-/** Size of an SMB marker on the bottom edge of the BG graph, per [MarkerTier]. */
-internal val MarkerTier.smbSize: Dp
-    get() = when (this) {
-        MarkerTier.SMALL  -> 10.dp
-        MarkerTier.MEDIUM -> 16.dp
-        MarkerTier.LARGE  -> 22.dp
+/**
+ * Draws every point of a treatment series in the size of its amount: [tierOf] against the largest
+ * amount of its kind in the loaded range, which the chart model carries under [maxAmountKey]. The
+ * y of a point is its amount.
+ *
+ * One series with a size per point, not one series per size: Vico shortens a label only against
+ * its neighbours in the same series, so with three series the labels of two close boluses of
+ * different size would be drawn over each other.
+ */
+internal data class TieredPointProvider(
+    private val shape: Shape,
+    private val color: Color,
+    private val maxAmountKey: ExtraStore.Key<Double>
+) : LineCartesianLayer.PointProvider {
+
+    private val points = MarkerTier.entries.associateWith { tier ->
+        LineCartesianLayer.Point(component = ShapeComponent(fill = Fill(color), shape = shape), size = tier.markerSize)
     }
 
-/**
- * The prediction dots at a little more than half the strength of their colour. BG, boluses and carbs
- * are the strongest marks on the graph; a forecast is a weaker layer, like the basal and the SMBs.
- */
-private const val PREDICTION_ALPHA = 0.6f
+    override fun getPoint(entry: LineCartesianLayerModel.Entry, extraStore: ExtraStore): LineCartesianLayer.Point =
+        points.getValue(tierOf(entry.y, extraStore.getOrNull(maxAmountKey)))
 
-/** The prediction dots a little smaller than the BG dots, so the forecast trails off the curve. */
-private val PREDICTION_DOT_SIZE = 3.dp
+    override fun getLargestPoint(extraStore: ExtraStore): LineCartesianLayer.Point = points.getValue(MarkerTier.LARGE)
+}
 
 /**
  * Creates a line for BG prediction series.
- * Transparent connecting line with small filled circle points in the given color, see [PREDICTION_ALPHA].
+ * Transparent connecting line with small filled circle points in the given color.
  * Each prediction type (IOB, COB, UAM, ZT, aCOB) uses a different color.
  */
 fun createPredictionLine(color: Color): LineCartesianLayer.Line =
@@ -676,7 +688,7 @@ fun createPredictionLine(color: Color): LineCartesianLayer.Line =
                     fill = Fill(color),
                     shape = SafeCircleShape
                 ),
-                size = PREDICTION_DOT_SIZE
+                size = 4.dp
             )
         )
     )
@@ -1283,47 +1295,6 @@ fun rememberNowLine(minTimestamp: Long, nowTimestamp: Long, color: Color): NowLi
 }
 
 /**
- * The second tier of the overview graphs, at a little more than half the strength of its colour: what
- * the loop calculates or guesses. On BG the basal, the SMBs and the profile switch, on the belt the COB
- * failover bar, and every series line on the graphs below BG (IOB, COB and the others). BG, boluses,
- * carbs and meter values are the first tier, at full colour. A line that runs the whole width at full
- * colour has more ink than all the BG dots together, and drew the eye away from BG.
- */
-internal const val SECOND_TIER_ALPHA = 0.6f
-
-/** Size of a dot of the grid, see [rememberGridLine]. */
-private val GRID_DOT_SIZE = 1.dp
-
-/** Space between two dots of the grid, see [rememberGridLine]. */
-private val GRID_DOT_GAP = 6.dp
-
-/**
- * The grid dots are this many times as strong as the theme's grid colour, which is made for solid lines
- * (the baselines and the ticks keep it). A dot covers far less than a line, so it can be crisp, and the
- * gaps keep the grid light.
- */
-private const val GRID_DOT_STRENGTH = 1.5f
-
-/**
- * The grid of the overview graphs, the lines at the axis labels and the hour lines: round dots in the
- * grid colour with space between them. Much less ink than a solid line, while each dot stays crisp, so
- * the grid is there when you look for it and does not pull the eye. Round dots and not dashes, so it is
- * not mistaken for the dashed "now" line or the profile basal. The baselines (BG 0, the zero line) stay
- * solid: they are the floor the areas stand on, not grid.
- */
-@Composable
-internal fun rememberGridLine(): LineComponent {
-    val color = AapsTheme.generalColors.graphGrid
-    return remember(color) {
-        LineComponent(
-            fill = Fill(color.copy(alpha = (color.alpha * GRID_DOT_STRENGTH).coerceAtMost(1f))),
-            thickness = GRID_DOT_SIZE,
-            shape = DashedShape(shape = CircleShape, dashLength = GRID_DOT_SIZE, gapLength = GRID_DOT_GAP)
-        )
-    }
-}
-
-/**
  * Holder for the latest visible x-range, written from [VisibleRangeReporter.drawOverLayers] on
  * every draw pass.
  *
@@ -1757,6 +1728,36 @@ fun activityOverlayScale(
     return ActivityOverlayScale(zeroLevel, if (scale == Double.MAX_VALUE) 0.0 else maxOf(scale, 0.0))
 }
 
+// Upstream helpers taken in the 2026-11-26 dev41 merge, for its belt graph and its new tests
+
+/**
+ * The second tier of the overview graphs, at a little more than half the strength of its colour: what
+ * the loop calculates or guesses. On BG the basal, the SMBs and the profile switch, on the belt the COB
+ * failover bar, and every series line on the graphs below BG (IOB, COB and the others). BG, boluses,
+ * carbs and meter values are the first tier, at full colour. A line that runs the whole width at full
+ * colour has more ink than all the BG dots together, and drew the eye away from BG.
+ */
+internal const val SECOND_TIER_ALPHA = 0.6f
+
+/**
+ * The grid of the overview graphs, the lines at the axis labels and the hour lines: round dots in the
+ * grid colour with space between them. Much less ink than a solid line, while each dot stays crisp, so
+ * the grid is there when you look for it and does not pull the eye. Round dots and not dashes, so it is
+ * not mistaken for the dashed "now" line or the profile basal. The baselines (BG 0, the zero line) stay
+ * solid: they are the floor the areas stand on, not grid.
+ */
+@Composable
+internal fun rememberGridLine(): LineComponent {
+    val color = AapsTheme.generalColors.graphGrid
+    return remember(color) {
+        LineComponent(
+            fill = Fill(color.copy(alpha = (color.alpha * GRID_DOT_STRENGTH).coerceAtMost(1f))),
+            thickness = GRID_DOT_SIZE,
+            shape = DashedShape(shape = CircleShape, dashLength = GRID_DOT_SIZE, gapLength = GRID_DOT_GAP)
+        )
+    }
+}
+
 /** Steps the time labels can use, in minutes: whole hours, half hours and quarter hours. */
 internal val TIME_LABEL_STEPS = listOf(60, 30, 15)
 
@@ -1789,16 +1790,6 @@ internal fun timeLabelValues(visibleStart: Double, visibleEnd: Double, minX: Dou
 }
 
 /**
- * Value in effect at [x] for a sparse change-point-only step series — [points] only stores a new
- * entry when the value changes (see `rebuildBasalGraph`), so a narrow zoom window can contain zero
- * literal points even though the series has a well-defined value throughout it. The value actually
- * in effect at any [x] is whatever the most recent point at-or-before [x] holds (falls back to the
- * first point if [x] precedes all of them).
- */
-internal fun stepValueAt(points: List<Pair<Double, Double>>, x: Double): Double? =
-    points.lastOrNull { it.first <= x }?.second ?: points.firstOrNull()?.second
-
-/**
  * The highest basal rate in the visible window, in U/h, or 0.0 when there is no basal. The BG graph
  * scales basal to it, so the highest basal in view has the same height whatever was given earlier
  * in the day.
@@ -1829,3 +1820,17 @@ internal fun basalWindowMax(
     )
     return (inside + atStart).maxOfOrNull { abs(it) }?.takeIf { it > 0.0 } ?: maxBasal
 }
+
+/** Size of a dot of the grid, see [rememberGridLine]. */
+internal val GRID_DOT_SIZE = 1.dp
+
+/** Space between two dots of the grid, see [rememberGridLine]. */
+internal val GRID_DOT_GAP = 6.dp
+
+
+/**
+ * The grid dots are this many times as strong as the theme's grid colour, which is made for solid lines
+ * (the baselines and the ticks keep it). A dot covers far less than a line, so it can be crisp, and the
+ * gaps keep the grid light.
+ */
+internal const val GRID_DOT_STRENGTH = 1.5f

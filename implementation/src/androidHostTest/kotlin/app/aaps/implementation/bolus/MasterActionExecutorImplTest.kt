@@ -75,6 +75,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import org.mockito.kotlin.isNull
 
 /**
  * Tests for [MasterActionExecutorImpl]: prepare and confirm of every entry (wizard, quick-wizard, batch), the

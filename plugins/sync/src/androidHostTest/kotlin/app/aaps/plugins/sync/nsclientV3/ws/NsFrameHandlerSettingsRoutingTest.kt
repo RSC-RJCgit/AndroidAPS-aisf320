@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclientV3.ws
 
+import org.mockito.kotlin.mock
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.nssdk.interfaces.RunningConfiguration
 import app.aaps.core.nssdk.localmodel.configuration.NSRunningConfiguration
@@ -59,6 +60,7 @@ class NsFrameHandlerSettingsRoutingTest : TestBaseWithProfile() {
         whenever(masterDocVerifier.open(any(), any())).thenReturn(MasterDocVerifier.Opened(NSRunningConfiguration(version = "1.0"), null))
         sut = NsFrameHandler(
             aapsLogger = aapsLogger,
+            preferences = mock(),
             config = config,
             nsClientV3Plugin = { nsClientV3Plugin },
             nsIncomingDataProcessor = { nsIncomingDataProcessor },

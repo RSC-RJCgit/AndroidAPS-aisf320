@@ -139,7 +139,7 @@ fun buildStamp(): String = gitHead() + "-" + stampDate()
  * has the same stamp. Today's date only when git cannot say.
  */
 fun stampDate(): String =
-    git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d")?.ifEmpty { null }
+    providers.git("log", "-1", "--format=%cd", "--date=format:%Y.%m.%d")?.ifEmpty { null }
         ?: SimpleDateFormat("yyyy.MM.dd").format(Date())
 
 /**

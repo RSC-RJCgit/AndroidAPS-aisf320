@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclientV3.workers
 
+import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.LiveSteps
 import app.aaps.core.data.model.TE
@@ -64,6 +65,7 @@ class LoadSecondaryTreatmentsRunner(
     private val activePlugin: ActivePlugin,
     private val persistenceLayer: PersistenceLayer,
     private val secondaryRawStore: SecondaryRawStore,
+    private val rh: TextResolver,
 ) {
 
     suspend fun run(): WorkOutcome {
@@ -504,7 +506,7 @@ class LoadSecondaryTreatmentsRunner(
     }
 
     private fun fallbackInsulin(): ICfg =
-        profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.iCfg
+        profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.getICfg(rh)
 
     private companion object {
 

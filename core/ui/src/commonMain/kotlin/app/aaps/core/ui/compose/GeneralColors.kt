@@ -85,6 +85,8 @@ data class GeneralColors(
     val ztPrediction: Color,
     val bgParabola: Color,
     val graphGrid: Color,
+    // Fork: the target range area on the BG graph (kept in the 2026-11-26 dev41 merge, upstream removed it)
+    val bgTargetRangeArea: Color,
     val graphBgInRange: Color,
     val graphBgHigh: Color,
     val graphBgLow: Color,
@@ -155,6 +157,7 @@ val LightGeneralColors = GeneralColors(
     uamPrediction = Color(0xFFC9BD60),       // yellow-ish for UAM predictions (matches uamColor attr)
     ztPrediction = Color(0xFF00D2D2),        // cyan for zero-temp predictions (matches ztColor attr)
     bgParabola = Color(0xFFFF00FF),          // pink, the bgParabolaColor of AutoISF 3.2.1
+    bgTargetRangeArea = Color(0x2800FF00),   // green with ~16% alpha for target range area (matches @color/inRangeBackground)
     graphGrid = Color(0x6679747E),           // Material outline at 40%, as in dark: outlineVariant at 50% left the grid dots almost invisible on white
     graphBgInRange = Color(0xFF2E9E3E),      // darker soft green: pure green is hard to see on white
     graphBgHigh = Color(0xFFE08A1E),         // soft orange

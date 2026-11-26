@@ -78,6 +78,7 @@ class NSClientV3ServiceHandlersTest : TestBaseWithProfile() {
             // against the one implementation that replaced it.
             it.nsFrameHandler = NsFrameHandler(
                 aapsLogger = aapsLogger,
+                preferences = preferences,
                 config = config,
                 nsClientV3Plugin = { nsClientV3Plugin },
                 nsIncomingDataProcessor = { nsIncomingDataProcessor },

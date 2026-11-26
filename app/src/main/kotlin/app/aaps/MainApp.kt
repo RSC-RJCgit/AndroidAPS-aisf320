@@ -235,18 +235,18 @@ class MainApp : Application(), MetroMemberInjector, MetroViewModelFactoryOwner, 
 
         override fun startKeepAlive() {
             KeepAliveWorker.schedule(this@MainApp)
+            if (config.AAPSCLIENT) SmsCommunicatorWorker.cancelLegacyClientInboxRecovery(this@MainApp)
+        }
+
+        override suspend fun beforeReady() {
             // Fork (2026-11-22, per explicit request): protein/fat, carb split and delayed bolus checks still waiting survive a
-            // restart. Taken now, before anything can record a bolus; handed back after a minute, when the pump, glucose and
+            // restart. Taken here (a suspend call), right after the keep-alive is scheduled, before anything can record a bolus; handed back after a minute, when the pump, glucose and
             // loop have started.
             val pendingFollowUps = PendingFollowUps.restoreAtStart(preferences)
             if (pendingFollowUps.isNotEmpty()) handler.postDelayed({
                 val resumed = PendingFollowUps.resumeAll(pendingFollowUps) { metroGraphs.bolusWizard }
                 aapsLogger.info(LTag.CORE, "Resumed $resumed pending follow-up checks after the restart")
             }, 60000)
-            if (config.AAPSCLIENT) SmsCommunicatorWorker.cancelLegacyClientInboxRecovery(this@MainApp)
-        }
-
-        override suspend fun beforeReady() {
             postFolderNotifications()
 
             //  schedule widget update

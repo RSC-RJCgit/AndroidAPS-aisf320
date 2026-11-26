@@ -1,5 +1,6 @@
 package app.aaps.plugins.sync.nsclientV3.ws
 
+import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
@@ -26,6 +27,7 @@ import dev.zacsweers.metro.SingleIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import app.aaps.core.keys.BooleanKey
 
 /**
  * What to do with a frame the Nightscout websocket delivered. One implementation, every platform.
@@ -56,6 +58,8 @@ import kotlinx.serialization.json.JsonObject
 @Inject
 class NsFrameHandler(
     private val aapsLogger: AAPSLogger,
+    // Fork: the secondary-site glucose switches (kept in the 2026-11-26 dev41 merge, upstream no longer reads preferences here)
+    private val preferences: Preferences,
     private val config: Config,
     // Deferred: the plugin owns the connection that owns this, the processor reaches the plugin as
     // its `NsClient`, and the client-control pair reach the plugin too. Nothing is looked up while

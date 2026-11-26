@@ -21,22 +21,22 @@ import app.aaps.core.ui.compose.LocalDateUtil
 import kotlinx.coroutines.delay
 
 /**
- * The time with the age of the BG reading after it, "21:33(-5)", for the tablet layout, whose BG circle
- * shows no age of its own. Only there: a tablet at night is a clock and BG display. The lower layouts
- * have no large clock; it took height they do not have.
+ * @param showBgAge adds the age of the BG reading after the time, "21:33(-5)". Off where the BG
+ *   circle next to the clock already shows the age.
  */
 @Composable
 fun LargeClock(
     bgTimestamp: Long?,
     modifier: Modifier = Modifier,
-    maxFontSize: TextUnit = 56.sp
+    maxFontSize: TextUnit = 56.sp,
+    showBgAge: Boolean = true
 ) {
     val dateUtil = LocalDateUtil.current
-    val bgAge = { dateUtil.minAgoShort(bgTimestamp) }
+    val bgAge = { if (showBgAge) dateUtil.minAgoShort(bgTimestamp) else "" }
     var timeText by remember { mutableStateOf(dateUtil.timeString()) }
-    var agoText by remember(bgTimestamp) { mutableStateOf(bgAge()) }
+    var agoText by remember(bgTimestamp, showBgAge) { mutableStateOf(bgAge()) }
 
-    LaunchedEffect(bgTimestamp) {
+    LaunchedEffect(bgTimestamp, showBgAge) {
         while (true) {
             val now = dateUtil.now()
             val msToNextMinute = 60_000L - (now % 60_000L)

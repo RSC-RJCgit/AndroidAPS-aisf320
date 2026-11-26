@@ -54,6 +54,7 @@ class NsFrameHandlerTest : TestBaseWithProfile() {
         whenever(nsClientV3Plugin.lastLoadedSrvModified).thenReturn(lastModified)
         sut = NsFrameHandler(
             aapsLogger = aapsLogger,
+            preferences = mock(),
             config = config,
             nsClientV3Plugin = { nsClientV3Plugin },
             nsIncomingDataProcessor = { nsIncomingDataProcessor },

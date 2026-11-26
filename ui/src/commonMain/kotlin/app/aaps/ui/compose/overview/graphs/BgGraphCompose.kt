@@ -1,5 +1,6 @@
 package app.aaps.ui.compose.overview.graphs
 
+import app.aaps.core.data.ui.MarkerTier
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -797,7 +798,7 @@ fun BgGraphCompose(
                 for (tier in MarkerTier.entries) markerSeries(currentMarkers.carbs.filter { it.tier == tier })
                 val measured = currentMarkers.calibrations
                 if (measured.isEmpty()) series(x = listOf(0.0, 1.0), y = MARKER_EMPTY_Y)
-                else series(x = measured.map { it.first }, y = measured.map { it.second })
+                else series(x = measured.map { it.x }, y = measured.map { it.y })
             }
 
             // Forces Vico to reprocess this transaction even when the series data above is
