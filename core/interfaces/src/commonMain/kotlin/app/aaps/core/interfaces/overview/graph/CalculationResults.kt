@@ -502,6 +502,8 @@ data class TbrDisplayData(
     val state: TbrState,
     val timestamp: Long,                 // When TBR started (0 if none)
     val duration: Long,                  // TBR duration in ms (0 if none)
+    /** The running rate as a share of the profile basal, in %, or null with no TBR or a profile basal of 0 */
+    val percent: Int? = null,
     // Fork: the rate being delivered now, U/h (the temp rate while one runs, else the profile basal). Null = unknown.
     val rate: Double? = null,
     // Fork: when [rate] was worked out, so the chip can follow the profile basal into its next block.

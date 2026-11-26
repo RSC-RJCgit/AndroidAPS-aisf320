@@ -52,11 +52,21 @@ interface SystemNotificationPlatform {
      * a second urgent alarm arrive without interrupting the first, and what lets dismissing the
      * audible one promote the next instead of going quiet.
      */
-    fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?)
+    fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?) = setAudibleAlarm(instanceKey, sound, breakThroughDnd = false)
+
+    /** As [setAudibleAlarm]; [breakThroughDnd] plays it in Do Not Disturb whatever the setting says (urgent low). */
+    fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?, breakThroughDnd: Boolean, ringtoneUri: String? = null)
 
     /**
      * Register interest in dismissals the user made outside the app, by swiping the system
      * notification away. Called once during start up.
      */
     fun onDismissed(callback: (instanceKey: Int) -> Unit)
+
+    /**
+     * Take out of the system tray the card notifications of a previous run of the app, leaving every key for which
+     * [isCurrent] is true: those are this run's own. Only cards: not a chime, a booked alert or the notification of a
+     * running service. Called once at start; see `NotificationManager.clearLeftovers`.
+     */
+    fun clearLeftovers(isCurrent: (instanceKey: Int) -> Boolean)
 }

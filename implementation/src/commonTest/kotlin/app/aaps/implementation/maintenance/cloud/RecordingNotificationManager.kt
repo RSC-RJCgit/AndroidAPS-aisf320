@@ -48,7 +48,13 @@ class RecordingNotificationManager : NotificationManager {
         validTo: Long,
         sound: AlarmSound?,
         actions: List<NotificationAction>,
-        validityCheck: (() -> Boolean)?
+        validityCheck: (() -> Boolean)?,
+        alarmTitle: String?,
+        canMute: Boolean,
+        tellWatch: Boolean,
+        breakThroughDnd: Boolean,
+        ringtoneUri: String?,
+        systemText: String?
     ): NotificationHandle {
         posted += id to null
         return NotificationHandle(posted.size)
@@ -74,4 +80,5 @@ class RecordingNotificationManager : NotificationManager {
     }
     override fun dismiss(handle: NotificationHandle) = Unit
     override fun muteAllAlarms() = Unit
+    override fun clearLeftovers() = Unit
 }

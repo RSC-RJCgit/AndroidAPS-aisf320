@@ -21,6 +21,10 @@ interface NotificationManager {
         validityCheck: (() -> Boolean)? = null
     ): NotificationHandle
 
+    /**
+     * The overload the alarm path uses. [alarmTitle], [canMute] and [systemText] are what an alarm tells the system
+     * notification and the watch beyond its text; see [AapsNotification]. Nothing but an alarm needs to pass them.
+     */
     fun post(
         id: NotificationId,
         text: String,
@@ -29,7 +33,13 @@ interface NotificationManager {
         validTo: Long = 0L,
         sound: AlarmSound? = null,
         actions: List<NotificationAction> = emptyList(),
-        validityCheck: (() -> Boolean)? = null
+        validityCheck: (() -> Boolean)? = null,
+        alarmTitle: String? = null,
+        canMute: Boolean = false,
+        tellWatch: Boolean = true,
+        breakThroughDnd: Boolean = false,
+        ringtoneUri: String? = null,
+        systemText: String? = null
     ): NotificationHandle
 
     /**
@@ -61,11 +71,19 @@ interface NotificationManager {
      * Silence and dismiss every currently audible alarm. Used by the global "mute all" entry
      * points (Wear snooze/mute gesture, full-screen acknowledge, app onTerminate). Stops both the
      * internal-notification (`AlarmSoundPlayer.OWNER_INTERNAL`) and full-screen
-     * (`AlarmSoundPlayer.OWNER_FULLSCREEN`) audio, cancels their system notifications, and removes
+     * audio, cancels their system notifications, and removes
      * the audible alarms from the registry so the in-app cards clear. Non-audible notifications are
      * left untouched.
      */
     fun muteAllAlarms()
+
+    /**
+     * Takes out of the system tray the cards a previous run of the app left there. Called once, at the start of the
+     * app's start. The cards live in memory, so after a restart (a crash, an update, iOS ending the app) nothing
+     * removes the old ones, and an alert raised again puts a second card next to its old one. What is still active
+     * is raised again and gets a new card.
+     */
+    fun clearLeftovers()
 
     companion object {
 

@@ -21,18 +21,7 @@ plugins {
  */
 
 /** The same build stamp `:app` puts in BuildConfig.BUILDVERSION: short commit and date. */
-fun buildStamp(): String {
-    val commit = try {
-        val out = File.createTempFile("git-build", "")
-        // `--exclude=ios-testflight-*` for the same reason as in `:app` - the tag names one past iOS
-        // submission, and `git describe` would otherwise report it however far away it is.
-        ProcessBuilder("git", "describe", "--always", "--abbrev=7", "--exclude=ios-testflight-*").redirectOutput(out).start().waitFor()
-        out.readText().trim()
-    } catch (_: Exception) {
-        "NoGitSystemAvailable"
-    }
-    return "$commit-" + SimpleDateFormat("yyyy.MM.dd").format(Date())
-}
+fun buildStamp(): String = providers.gitDescribe() + "-" + SimpleDateFormat("yyyy.MM.dd").format(Date())
 
 /**
  * The exact source commit, as `:ios:shell` reads it (2026-10-19). The overview's top-left corner shows its first four
@@ -172,9 +161,10 @@ val generateBuildInfo = tasks.register<GenerateBuildInfoTask>("generateDesktopBu
  * The list is `StringOwnerModules.ALL`, shared with `:app` and `:ios:shell`, so a module added to
  * the build cannot be missing from one platform and present on another. That is not theoretical:
  * this shell had five of sixteen and rendered plugin names as string names until it was run.
+ * Only the pump drivers (`pumpDriver = true`) are left out: this shell does not link them.
  */
 val generateStringOwners = tasks.register<GenerateStringOwnerRegistryTask>("generateDesktopStringOwners") {
-    owners.set(StringOwnerModules.ALL)
+    owners.set(StringOwnerModules.ALL.filterNot { it.pumpDriver })
     packageName.set("app.aaps.desktop.shell.di")
     objectName.set("GeneratedStringOwners")
     // Text, not resource ids: a desktop JVM has no AAPT table to resolve an id against.

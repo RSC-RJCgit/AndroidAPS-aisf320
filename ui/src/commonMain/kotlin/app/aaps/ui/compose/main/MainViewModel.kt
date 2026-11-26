@@ -282,6 +282,8 @@ class MainViewModel(
             runningModeRecordId = chip.runningModeRecordId,
             tbrState = chip.tbrState,
             tbrRate = chip.tbrRate,
+            tbrText = chip.tbrText,
+            tbrProgress = chip.tbrProgress,
             smbEnabled = ev.smbEnabled
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MainUiState())
@@ -329,6 +331,11 @@ class MainViewModel(
         // Fork: the chip shows the rate, and the profile basal moves on with the clock, not with a DB change.
         val tbrRateStale = tbrData != null && now - tbrData.computedAt >= TBR_RATE_REFRESH_MS
         if (tbrExpired || tbrRateStale) overviewDataCache.refreshTbr()
+        val tbrRunning = tbrData != null && tbrData.state != TbrState.NONE && !tbrExpired
+        val tbrProgress = if (tbrRunning && tbrData.duration > 0) {
+            ((now - tbrData.timestamp).toFloat() / tbrData.duration.toFloat()).coerceIn(0f, 1f)
+        } else 0f
+        val tbrText = if (tbrRunning) tbrData.percent?.let { rh.gs(CoreUiStrings.formatPercent, it.toDouble()) } ?: "" else ""
 
         // TT progress and display text
         val ttProgress = if (ttIsFinite && !ttExpired) {
@@ -398,7 +405,9 @@ class MainViewModel(
             runningModeProgress = rmProgress,
             runningModeRecordId = if (rmExpired) 0 else rmData?.recordId ?: 0,
             tbrState = if (tbrExpired) TbrState.NONE else tbrData?.state ?: TbrState.NONE,
-            tbrRate = if (tbrExpired) null else tbrData?.rate
+            tbrRate = if (tbrExpired) null else tbrData?.rate,
+            tbrText = tbrText,
+            tbrProgress = tbrProgress
         )
     }
 
@@ -1100,7 +1109,9 @@ private data class ChipState(
     val runningModeProgress: Float = 0f,
     val runningModeRecordId: Long = 0,
     val tbrState: TbrState = TbrState.NONE,
-    val tbrRate: Double? = null
+    val tbrRate: Double? = null,
+    val tbrText: String = "",
+    val tbrProgress: Float = 0f
 )
 
 /** Fork: how often the basal-rate chip re-reads the rate when nothing in the DB changed. */

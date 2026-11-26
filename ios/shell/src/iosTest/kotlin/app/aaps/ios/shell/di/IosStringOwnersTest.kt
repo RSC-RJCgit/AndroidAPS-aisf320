@@ -14,8 +14,10 @@ import app.aaps.plugins.constraints.ConstraintsStrings
 import app.aaps.plugins.main.MainStrings
 import app.aaps.plugins.sensitivity.SensitivityStrings
 import app.aaps.plugins.smoothing.SmoothingStrings
+import app.aaps.plugins.eversense.EversenseStrings
 import app.aaps.plugins.source.SourceStrings
 import app.aaps.plugins.sync.SyncStrings
+import app.aaps.pump.carelevo.CarelevoStrings
 import app.aaps.pump.virtual.VirtualStrings
 import app.aaps.ui.UiStrings
 import kotlin.test.AfterTest
@@ -91,8 +93,10 @@ class IosStringOwnersTest {
             SensitivityStrings.sensitivity_oref1,
             SmoothingStrings.no_smoothing_name,
             SourceStrings.ns_client_bg,
+            EversenseStrings.source_eversense,
             SyncStrings.a11y_otp_qr_code,
-            VirtualStrings.virtual_pump_type
+            VirtualStrings.virtual_pump_type,
+            CarelevoStrings.carelevo_description
         ).forEach { ref ->
             val named = ref as TextRef.Named
             assertNotNull(TextRefValueRegistry.textOf(named), "owner '${named.owner}' has no text, so it is not registered")

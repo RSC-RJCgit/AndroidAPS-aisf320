@@ -2,14 +2,14 @@ package app.aaps.di.metro
 
 import android.content.Context
 import androidx.work.WorkManager
-import app.aaps.core.interfaces.alerts.EatReminder
+import app.aaps.appshell.start.AppStartSequence
+import app.aaps.core.interfaces.alerts.Alerts
 import app.aaps.core.interfaces.alerts.LocalAlertUtils
 import app.aaps.core.interfaces.aps.APSResult
 import app.aaps.core.interfaces.aps.AutosensData
 import app.aaps.core.interfaces.aps.Loop
 import app.aaps.core.interfaces.automation.Automation
 import app.aaps.core.interfaces.autotune.Autotune
-import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.bolus.BatchExecutor
 import app.aaps.core.interfaces.bolus.MasterActionExecutor
 import app.aaps.core.interfaces.bolus.WizardExecutor
@@ -94,8 +94,8 @@ import app.aaps.core.interfaces.storage.Storage
 import app.aaps.core.interfaces.sync.DataSyncSelectorXdrip
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.sync.XDripBroadcast
-import app.aaps.core.interfaces.ui.CarbSuggestionActions
 import app.aaps.core.interfaces.ui.IconsProvider
+import app.aaps.core.interfaces.ui.AndroidActivities
 import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.ui.UiRestart
 import app.aaps.core.interfaces.userEntry.UserEntryPresentationHelper
@@ -124,9 +124,7 @@ import app.aaps.database.di.DatabaseConfig
 import app.aaps.di.ExternalOptionsOverride
 import app.aaps.implementation.lifecycle.ProcessLifecycleListener
 import app.aaps.implementation.maintenance.cloud.CloudStorageManager
-import app.aaps.implementation.notifications.SnackbarNotificationFallback
 import app.aaps.implementation.plugin.PluginStore
-import app.aaps.implementation.profile.ProfileSwitchScheduler
 import app.aaps.implementation.profile.ProfileSwitchSilentGate
 import app.aaps.implementation.queue.CommandExecutor
 import app.aaps.implementation.resources.ResourceHelperImpl
@@ -173,7 +171,6 @@ import app.aaps.ui.search.BuiltInSearchables
 import app.aaps.workflow.WorkflowChainData
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.DependencyGraph
-import dev.zacsweers.metro.Includes
 import dev.zacsweers.metro.MembersInjector
 import dev.zacsweers.metro.Multibinds
 import dev.zacsweers.metro.Provides
@@ -206,8 +203,12 @@ import kotlin.reflect.KClass
  * `:pump:dana:common` for what that costs - a test resolves them with a cast rather than at compile
  * time, and their accessors become roots that every `AppScope` graph on the same classpath has to
  * satisfy.
+ *
+ * [CoreObjectsGraph] is a plain binding container rather than a contributed one, so it is named here.
+ * As an `object` it goes in `bindingContainers`, not in the factory: Metro calls an object's
+ * `@Provides` directly, and a factory parameter for it was an input the graph never read.
  */
-@DependencyGraph(AppScope::class)
+@DependencyGraph(AppScope::class, bindingContainers = [CoreObjectsGraph::class])
 interface AppRootGraph : MetroViewModelMultibindings {
 
     // Both of the graphs below are extensions rather than roots of their own. A second
@@ -306,7 +307,7 @@ interface AppRootGraph : MetroViewModelMultibindings {
     val resourceHelper: ResourceHelper
     val fabricPrivacy: FabricPrivacy
     val uiInteraction: UiInteraction
-    val carbSuggestionActions: CarbSuggestionActions
+    val androidActivities: AndroidActivities
     val temporaryBasalStorage: TemporaryBasalStorage
     val detailedBolusInfoStorage: DetailedBolusInfoStorage
     val blePreCheck: BlePreCheck
@@ -353,12 +354,10 @@ interface AppRootGraph : MetroViewModelMultibindings {
     /** The one application scope. */
     @ApplicationScope val appScope: CoroutineScope
     val notificationManager: NotificationManager
+    val alerts: Alerts
     val apsResult: APSResult
     val pumpEnactResult: PumpEnactResult
     val profileSwitchSilentGate: ProfileSwitchSilentGate
-    val profileSwitchScheduler: ProfileSwitchScheduler
-    val snackbarNotificationFallback: SnackbarNotificationFallback
-    val eatReminder: EatReminder
     val uiRestart: UiRestart
     val runningConfiguration: RunningConfiguration
     val runningConfigurationKeys: RunningConfigurationKeys
@@ -394,6 +393,9 @@ interface AppRootGraph : MetroViewModelMultibindings {
     val resourceHelperImpl: ResourceHelperImpl
     val fabricPrivacyImpl: FabricPrivacyImpl
     val processLifecycleListener: ProcessLifecycleListener
+
+    /** The start sequence every platform runs, from `:appshell`. */
+    val appStartSequence: AppStartSequence
     val dataSyncSelectorXdrip: DataSyncSelectorXdrip
     val activeSceneSync: ActiveSceneSync
 
@@ -475,7 +477,7 @@ interface AppRootGraph : MetroViewModelMultibindings {
     /** Autotune, for the automation actions. */
     val autotune: Autotune
 
-    /** Running-mode helpers, from commonMain. `MainApp` reads the reconciler. */
+    /** Running-mode helpers, from commonMain. The instrumented tests read the reconciler. */
     val runningModeReconciler: RunningModeReconciler
     val runningModeExpiryJob: RunningModeExpiryJob
 
@@ -504,17 +506,6 @@ interface AppRootGraph : MetroViewModelMultibindings {
     val dexcomPlugin: DexcomPlugin
 
     val sourceGraph: SourceMetroGraph
-    /**
-     * Interfaces backed by a plugin this graph already builds. A `@Provides` rather than a delegate,
-     * because the instance is the plugin.
- *
- * This used to claim that binding it any other way "would make a second one". That is not true of
- * Metro: `@ContributesBinding` on a `@SingleIn` class resolves to the same scoped instance, which is
- * why `DexcomPlugin` and `XdripSourcePlugin` carry their second binding on the class now. Only
- * `BgQualityCheckPlugin` still needs stating here - see below.
-     */
-    /** Metro already builds the plugin; the openAPS plugins ask for the interface. */
-    @Provides fun bgQualityCheck(plugin: BgQualityCheckPlugin): BgQualityCheck = plugin
 
     @DependencyGraph.Factory
     fun interface Factory {
@@ -555,9 +546,7 @@ interface AppRootGraph : MetroViewModelMultibindings {
              * The emulated pumps. Production passes a new one. A test that restarts the app passes the one of the
              * graph before, so the emulated pump runs on, as a real one would.
              */
-            @Provides pumpEmulators: PumpEmulators,
-
-            @Includes coreObjects: CoreObjectsGraph
+            @Provides pumpEmulators: PumpEmulators
         ): AppRootGraph
     }
 }

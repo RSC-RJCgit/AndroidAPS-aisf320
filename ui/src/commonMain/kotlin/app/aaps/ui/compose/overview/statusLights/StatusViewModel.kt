@@ -16,10 +16,12 @@ import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventConfigBuilderChange
 import app.aaps.core.interfaces.rx.events.EventInitializationChanged
 import app.aaps.core.interfaces.rx.events.EventNsClientStatusUpdated
+import app.aaps.core.interfaces.source.SensorLifetime
 import app.aaps.core.interfaces.stats.TddCalculator
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.IntNonKey
 import app.aaps.core.keys.interfaces.IntPreferenceKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.ui.CoreUiStrings
@@ -184,11 +186,17 @@ class StatusViewModel(
         val level = if (hasBattery) rh.gs(CoreUiStrings.units_format_percent, bgSource.sensorBatteryLevel) else null
         val levelPercent = if (hasBattery) bgSource.sensorBatteryLevel / 100f else -1f
 
+        // A CGM source that knows its sensor's lifetime sets the limits; the value is the master's, so a client shows
+        // the same. Otherwise the user's own limits.
+        val lifetimeHours = preferences.get(IntNonKey.SensorLifetimeHours)
+        val warningHours = if (lifetimeHours > 0) SensorLifetime.warningHours(lifetimeHours) else preferences.get(IntKey.OverviewSageWarning)
+        val criticalHours = if (lifetimeHours > 0) SensorLifetime.criticalHours(lifetimeHours) else preferences.get(IntKey.OverviewSageCritical)
+
         return StatusItem(
             label = rh.gs(CoreUiStrings.sensor_label),
             age = event?.let { formatAge(it.timestamp) } ?: "-",
-            ageStatus = event?.let { getAgeStatus(it.timestamp, IntKey.OverviewSageWarning, IntKey.OverviewSageCritical) } ?: StatusLevel.UNSPECIFIED,
-            agePercent = event?.let { getAgePercent(it.timestamp, IntKey.OverviewSageCritical) } ?: 0f,
+            ageStatus = event?.let { getAgeStatus(it.timestamp, warningHours, criticalHours) } ?: StatusLevel.UNSPECIFIED,
+            agePercent = event?.let { getAgePercent(it.timestamp, criticalHours) } ?: 0f,
             level = level,
             levelStatus = if (levelPercent >= 0) getLevelStatus((levelPercent * 100).toDouble(), IntKey.OverviewSbatWarning, IntKey.OverviewSbatCritical) else StatusLevel.UNSPECIFIED,
             levelPercent = if (levelPercent >= 0) 1f - levelPercent else -1f,
@@ -212,9 +220,17 @@ class StatusViewModel(
             // The same when the pump has not told it yet.
             profileFunction.getProfile()?.let { activePlugin.activePump.reservoirLevel.value?.iU(it.insulinConcentration()) } ?: 0.0
         }
+        // A patch pump measures its reservoir only up to maxReading, so above it the value is shown as "50+".
+        // AAPSClient cannot know the master's pump: there the master sends its limit as the reservoir, with a
+        // display override that marks it (PumpStatusProviderImpl).
+        val aboveMeasuringRange: Double? = when {
+            config.AAPSCLIENT                           -> reservoirLevel.takeIf { processedDeviceStatusData.pumpData?.reservoirDisplayOverride?.isNotEmpty() == true }
+            isPatchPump && reservoirLevel >= maxReading -> maxReading
+            else                                        -> null
+        }
         val level: String? = if (reservoirLevel > 0) {
-            if (!config.AAPSCLIENT && isPatchPump && reservoirLevel >= maxReading) {
-                rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to0Decimal(maxReading) + "+", rh.gs(CoreUiStrings.insulin_unit_shortname))
+            if (aboveMeasuringRange != null) {
+                rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to0Decimal(aboveMeasuringRange) + "+", rh.gs(CoreUiStrings.insulin_unit_shortname))
             } else {
                 rh.gs(CoreUiStrings.value_with_unit, decimalFormatter.to0Decimal(reservoirLevel), rh.gs(CoreUiStrings.insulin_unit_shortname))
             }
@@ -261,10 +277,8 @@ class StatusViewModel(
         val pump = activePlugin.activePump
         val hasAge = pump.pumpDescription.isBatteryReplaceable || pump.isBatteryChangeLoggingEnabled()
 
-        // Eros doesn't report battery itself, but RileyLink alternatives may
-        val erosBatteryLinkAvailable = pump.model() == PumpType.OMNIPOD_EROS && pump.isUseRileyLinkBatteryLevel()
         val batteryLevelValue = pump.batteryLevel.value?.toDouble()
-        val hasLevel = batteryLevelValue != null && (pump.model().supportBatteryLevel || erosBatteryLinkAvailable)
+        val hasLevel = batteryLevelValue != null && pump.reportsBatteryLevel()
 
         // If neither age nor level can be shown, skip entirely
         if (!hasAge && !hasLevel) return null
@@ -305,9 +319,10 @@ class StatusViewModel(
         else rh.gs(UiStrings.status_age_short, diff.days, diff.hours)
     }
 
-    private fun getAgeStatus(timestamp: Long, warnKey: IntPreferenceKey, urgentKey: IntPreferenceKey): StatusLevel {
-        val warnHours = preferences.get(warnKey)
-        val urgentHours = preferences.get(urgentKey)
+    private fun getAgeStatus(timestamp: Long, warnKey: IntPreferenceKey, urgentKey: IntPreferenceKey): StatusLevel =
+        getAgeStatus(timestamp, preferences.get(warnKey), preferences.get(urgentKey))
+
+    private fun getAgeStatus(timestamp: Long, warnHours: Int, urgentHours: Int): StatusLevel {
         val ageHours = (dateUtil.now() - timestamp) / (1000 * 60 * 60)
         return when {
             ageHours >= urgentHours -> StatusLevel.CRITICAL
@@ -316,8 +331,9 @@ class StatusViewModel(
         }
     }
 
-    private fun getAgePercent(timestamp: Long, urgentKey: IntPreferenceKey): Float {
-        val urgentHours = preferences.get(urgentKey)
+    private fun getAgePercent(timestamp: Long, urgentKey: IntPreferenceKey): Float = getAgePercent(timestamp, preferences.get(urgentKey))
+
+    private fun getAgePercent(timestamp: Long, urgentHours: Int): Float {
         if (urgentHours <= 0) return 0f
         val ageHours = (dateUtil.now() - timestamp) / (1000.0 * 60 * 60)
         return (ageHours / urgentHours).coerceIn(0.0, 1.0).toFloat()

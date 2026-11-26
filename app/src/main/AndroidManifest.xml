@@ -28,6 +28,10 @@
 
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
 
+    <!-- "Display over other apps", optional, granted by the user in Android settings. With it the alarm screen can
+         start while another app is on the screen; Android blocks a screen from an app in the background (#5338). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <!-- ComposeMainActivity hides the overlays of other apps, so they cannot trick a tap (tapjacking). -->
     <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
 
@@ -102,14 +106,19 @@
             android:name="app.aaps.implementation.androidNotification.AlarmScreenWakeReceiver"
             android:exported="false" />
 
-        <!-- "Mute" action on the background alarm notification → silences the looping alarm. -->
+        <!-- The silence of an alert has ended, or a booked alert is due: its exact alarm (AndroidAlertPlatform). -->
         <receiver
-            android:name="app.aaps.implementation.androidNotification.AlarmMuteReceiver"
+            android:name="app.aaps.implementation.alerts.AlertWakeReceiver"
             android:exported="false" />
 
-        <!-- "Time to eat" timer: its alarm (setAlarmClock) and the Stop / +5 min notification buttons. -->
+        <!-- "Time to eat" timer: the Stop / +5 min buttons of its countdown. Its alarm is a booked alert. -->
         <receiver
             android:name="app.aaps.implementation.alerts.EatReminderReceiver"
+            android:exported="false" />
+
+        <!-- The silence buttons (5, 15, 30 min) on the notification of a warning that lasts -->
+        <receiver
+            android:name="app.aaps.implementation.alerts.AlertSilenceReceiver"
             android:exported="false" />
 
         <!-- Receive new BG readings from other local apps -->
@@ -161,11 +170,6 @@
                 <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
         </receiver>
-
-        <!-- Receive ignore 5m, 15m, 30m requests for carb notifications -->
-        <receiver
-            android:name="app.aaps.receivers.CarbSuggestionReceiver"
-            android:exported="false" />
 
         <!-- Auto start -->
         <receiver

@@ -133,6 +133,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.max
 
 /**
@@ -924,6 +925,9 @@ class OverviewDataCacheImpl(
             state = state,
             timestamp = activeTb?.timestamp ?: 0L,
             duration = activeTb?.duration ?: 0L,
+            // From the actual rate and the profile basal, so it is the same for pumps that set a TBR
+            // in % and in U/h
+            percent = if (state != TbrState.NONE && basalData.basal > 0.0) (basalData.tempBasalAbsolute / basalData.basal * 100).roundToInt() else null,
             rate = if (basalData.isTempBasalRunning) basalData.tempBasalAbsolute else basalData.basal,
             computedAt = now
         )
@@ -1244,7 +1248,7 @@ class OverviewDataCacheImpl(
             }
     }
 
-    private suspend fun rebuildRunningModeGraph() = runningModeRebuildMutex.withLock {
+    private suspend fun rebuildRunningModeGraph(): Unit = runningModeRebuildMutex.withLock {
         val (fromTime, toTime) = graphTimeRange() ?: return
         val endTime = graphEndTime(toTime)
 
@@ -1275,7 +1279,7 @@ class OverviewDataCacheImpl(
         _runningModeGraphFlow.value = RunningModeGraphData(segments = mergeRunningModeSegments(samples, endTime))
     }
 
-    private suspend fun rebuildTargetLine() = targetLineRebuildMutex.withLock {
+    private suspend fun rebuildTargetLine(): Unit = targetLineRebuildMutex.withLock {
         val (fromTime, toTime) = graphTimeRange() ?: return
         val profile = profileFunction.getProfile() ?: return
         val endTime = graphEndTime(toTime)
@@ -1310,7 +1314,7 @@ class OverviewDataCacheImpl(
      * the freshest range always wins. Reading the range before taking the lock would leave the bug
      * in place.
      */
-    private suspend fun rebuildBasalGraph() = basalRebuildMutex.withLock {
+    private suspend fun rebuildBasalGraph(): Unit = basalRebuildMutex.withLock {
         val (fromTime, toTime) = graphTimeRange() ?: return
         val endTime = graphEndTime(toTime)
         val profileBasal = mutableListOf<GraphDataPoint>()

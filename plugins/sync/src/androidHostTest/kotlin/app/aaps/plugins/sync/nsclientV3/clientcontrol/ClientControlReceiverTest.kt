@@ -1,5 +1,9 @@
 package app.aaps.plugins.sync.nsclientV3.clientcontrol
 
+import app.aaps.core.interfaces.alerts.Alerts
+import app.aaps.core.interfaces.alerts.BgAlert
+import app.aaps.core.interfaces.alerts.CoreAlert
+import app.aaps.core.interfaces.alerts.SharedSilence
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.ui.ConfirmationLine
 import app.aaps.core.data.ui.ConfirmationRole
@@ -13,8 +17,6 @@ import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
-import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.protection.SecureEncrypt
 import app.aaps.core.interfaces.pump.BolusProgressData
@@ -23,6 +25,7 @@ import app.aaps.core.interfaces.pump.PumpInsulin
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.scenes.SceneAutomationApi
 import app.aaps.core.interfaces.scenes.SceneAutomationResult
+import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
@@ -97,7 +100,7 @@ internal class ClientControlReceiverTest {
     @Mock private lateinit var runningConfigurationPublisher: RunningConfigurationPublisher
     @Mock private lateinit var persistenceLayer: PersistenceLayer
     @Mock private lateinit var masterActionExecutor: MasterActionExecutor
-    @Mock private lateinit var notificationManager: NotificationManager
+    @Mock private lateinit var alerts: Alerts
     @Mock private lateinit var config: Config
     @Mock private lateinit var bolusProgressData: BolusProgressData
     @Mock private lateinit var commandQueue: CommandQueue
@@ -152,6 +155,7 @@ internal class ClientControlReceiverTest {
         // Client control ON by default — the receiver gates on hardened mode (on the master it is the switch) and
         // rejects commands when it is off; see the controlOff tests.
         whenever(preferences.hardenedMode).thenReturn(true)
+        whenever(preferences.get(StringNonKey.AlertSharedSilences)).thenAnswer { storage[StringNonKey.AlertSharedSilences.key] ?: "[]" }
         whenever(preferences.get(StringNonKey.SceneDefinitions)).thenAnswer {
             storage[StringNonKey.SceneDefinitions.key] ?: "[]"
         }
@@ -160,7 +164,8 @@ internal class ClientControlReceiverTest {
             val value = invocation.arguments[1] as String
             when (key) {
                 StringNonKey.SceneDefinitions,
-                StringNonKey.InsulinConfiguration -> storage[key.key] = value
+                StringNonKey.InsulinConfiguration,
+                StringNonKey.AlertSharedSilences  -> storage[key.key] = value
 
                 else                              -> stored = value
             }
@@ -183,7 +188,7 @@ internal class ClientControlReceiverTest {
             runningConfigurationPublisher,
             persistenceLayer,
             masterActionExecutor,
-            notificationManager,
+            { alerts },
             config,
             bolusProgressData,
             commandQueue,
@@ -720,8 +725,50 @@ internal class ClientControlReceiverTest {
         // Fire-and-forget (wantsAck = false): the client cleared the relayed alarm → master clears its own copy, no ack.
         sut.onSettingsDocChanged(identifier, wrap(envelope(clientId, secret, message = ClientControlMessage.DismissAlarm, counter = 5L)))
 
-        verify(notificationManager).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+        verify(alerts).resolve(UiInteraction.SOURCE, CoreAlert.BOLUS_FAILED.key)
         assertThat(acks).isEmpty()
+    }
+
+    // -- alert_silence: "Silence everywhere" of a BG alarm on a client (ALARMS.md, step 2f) -----------------
+
+    private fun silence(until: Long = now + 30 * 60_000L, sentAt: Long = now, source: String = BgAlert.SOURCE) =
+        ClientControlMessage.AlertSilence(source = source, key = "low", raisedAt = now - 10 * 60_000L, until = until, sentAt = sentAt)
+
+    private fun sharedSilences() = SharedSilence.parse(storage[StringNonKey.AlertSharedSilences.key] ?: "[]")
+
+    @Test
+    fun alertSilenceIsKeptForEveryPhoneAndWritesNoAck() = runTest {
+        val (clientId, secret) = pair(role = ClientRole.MealAssistant)
+        authorizedRepository.markActive(clientId, counterReceived = 1L, now = now - 5_000L)
+        val acks = captureAcks(clientId)
+
+        sut.onSettingsDocChanged("${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}alert_silence_$clientId", wrap(envelope(clientId, secret, message = silence(), counter = 5L)))
+
+        assertThat(sharedSilences().single().until).isEqualTo(now + 30 * 60_000L)
+        assertThat(acks).isEmpty()
+    }
+
+    /** It quiets the master's phone too: a client that may only look cannot. */
+    @Test
+    fun alertSilenceFromReadOnlyClientIsRefused() = runTest {
+        val (clientId, secret) = pair(role = ClientRole.ReadOnly)
+        authorizedRepository.markActive(clientId, counterReceived = 1L, now = now - 5_000L)
+
+        sut.onSettingsDocChanged("${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}alert_silence_$clientId", wrap(envelope(clientId, secret, message = silence(), counter = 5L)))
+
+        assertThat(sharedSilences()).isEmpty()
+    }
+
+    @Test
+    fun alertSilenceFromClockFarAheadOrNotOfBgIsRefused() = runTest {
+        val (clientId, secret) = pair()
+        authorizedRepository.markActive(clientId, counterReceived = 1L, now = now - 5_000L)
+        val identifier = "${ClientControlPublisher.IDENTIFIER_CMD_PREFIX}alert_silence_$clientId"
+
+        sut.onSettingsDocChanged(identifier, wrap(envelope(clientId, secret, message = silence(sentAt = now + 10 * 60_000L), counter = 5L)))
+        sut.onSettingsDocChanged(identifier, wrap(envelope(clientId, secret, message = silence(source = "pump"), counter = 6L)))
+
+        assertThat(sharedSilences()).isEmpty()
     }
 
     @Test
@@ -1250,7 +1297,7 @@ internal class ClientControlReceiverTest {
         sendWith(clientId, secret, ClientControlMessage.DismissAlarm, subject = "mujtelefon", counter = 3L)
 
         assertThat(acks.last().reason).isEqualTo(FailureReason.OtherToken.name)
-        verify(notificationManager, never()).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+        verify(alerts, never()).resolve(UiInteraction.SOURCE, CoreAlert.BOLUS_FAILED.key)
     }
 
     @Test
@@ -1261,7 +1308,7 @@ internal class ClientControlReceiverTest {
 
         sendWith(clientId, secret, ClientControlMessage.DismissAlarm, subject = "aaps-phone", counter = 3L)
 
-        verify(notificationManager).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+        verify(alerts).resolve(UiInteraction.SOURCE, CoreAlert.BOLUS_FAILED.key)
     }
 
     /** The ping still passes with another token: the phone stays online and can show why its commands are refused. */
@@ -1287,7 +1334,7 @@ internal class ClientControlReceiverTest {
 
         sendWith(clientId, secret, ClientControlMessage.DismissAlarm, subject = "mujtelefon", counter = 2L)
 
-        verify(notificationManager).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+        verify(alerts).resolve(UiInteraction.SOURCE, CoreAlert.BOLUS_FAILED.key)
         assertThat(authorizedRepository.current(now).single().ownToken).isNull()
     }
 
@@ -1345,7 +1392,7 @@ internal class ClientControlReceiverTest {
         )
 
         verify(commandQueue, never()).cancelAllBoluses(anyOrNull())
-        verify(notificationManager, never()).dismiss(NotificationId.BOLUS_DELIVERY_FAILED)
+        verify(alerts, never()).resolve(UiInteraction.SOURCE, CoreAlert.BOLUS_FAILED.key)
     }
 
     @Test

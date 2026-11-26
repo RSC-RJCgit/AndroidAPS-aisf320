@@ -265,7 +265,7 @@ class AppRepository internal constructor(
             .forEach { ret.appendLine(it.first + " " + it.second) }
         // VACUUM is intentionally NOT run here. It is memory heavy and crashed (SQLITE_NOMEM) when
         // it overlapped live DB activity; defragmenting VACUUM now runs only at startup while the
-        // DB is quiescent (see vacuumDatabase / MainApp.vacuumDatabaseIfDue).
+        // DB is quiescent (see vacuumDatabase / AppStartSequence.vacuumDatabaseIfDue).
         database.useWriterConnection { connection -> connection.usePrepared("PRAGMA wal_checkpoint(TRUNCATE)") { it.step() } }
         return ret.toString()
     }
@@ -506,6 +506,9 @@ class AppRepository internal constructor(
     suspend fun bulkMigrateProfileSwitchInsulinConfig(label: String, end: Long, peak: Long, conc: Double): Int =
         database.profileSwitchDao.bulkMigrateInsulinConfig(label, end, peak, conc)
 
+    suspend fun fillMissingProfileSwitchInsulinPeak(label: String, peak: Long): Int =
+        database.profileSwitchDao.fillMissingInsulinPeak(label, peak)
+
     suspend fun getProfileSwitchesFromTime(timestamp: Long, ascending: Boolean): List<ProfileSwitch> =
         database.profileSwitchDao.getProfileSwitchDataFromTime(timestamp).reversedIf(!ascending)
 
@@ -606,6 +609,9 @@ class AppRepository internal constructor(
 
     suspend fun bulkMigrateEffectiveProfileSwitchInsulinConfig(label: String, end: Long, peak: Long, conc: Double): Int =
         database.effectiveProfileSwitchDao.bulkMigrateInsulinConfig(label, end, peak, conc)
+
+    suspend fun fillMissingEffectiveProfileSwitchInsulinPeak(label: String, peak: Long): Int =
+        database.effectiveProfileSwitchDao.fillMissingInsulinPeak(label, peak)
 
     // THERAPY EVENT
     /*

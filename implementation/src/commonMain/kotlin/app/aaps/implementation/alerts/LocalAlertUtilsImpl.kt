@@ -1,18 +1,13 @@
 package app.aaps.implementation.alerts
 
-import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
-import app.aaps.core.data.ue.Action
-import app.aaps.core.data.ue.Sources
-import app.aaps.core.data.ue.ValueWithUnit
+import app.aaps.core.interfaces.alerts.AlertSeverity
+import app.aaps.core.interfaces.alerts.Alerts
+import app.aaps.core.interfaces.alerts.CoreAlert
 import app.aaps.core.interfaces.alerts.LocalAlertUtils
 import app.aaps.core.interfaces.configuration.Config
-import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.notifications.AlarmSound
-import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.plugin.ActivePlugin
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.resources.TextResolver
@@ -21,15 +16,12 @@ import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.interfaces.Preferences
-import app.aaps.core.objects.extensions.asAnnouncement
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.implementation.alerts.keys.LocalAlertLongKey
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 import kotlin.math.min
 
 /**
@@ -46,18 +38,13 @@ class LocalAlertUtilsImpl(
     private val profileFunction: ProfileFunction,
     private val smsCommunicator: SmsCommunicator,
     private val config: Config,
-    private val persistenceLayer: PersistenceLayer,
     private val dateUtil: DateUtil,
-    private val notificationManager: NotificationManager,
-    private val appScope: CoroutineScope
+    // A provider: the alert core reaches the active pump
+    private val alerts: () -> Alerts
 ) : LocalAlertUtils {
 
     init {
         preferences.registerPreferences(LocalAlertLongKey.entries)
-    }
-
-    private fun missedReadingsThreshold(): Long {
-        return T.mins(preferences.get(IntKey.AlertsStaleDataThreshold).toLong()).msecs()
     }
 
     private fun pumpUnreachableThreshold(): Long {
@@ -71,23 +58,15 @@ class LocalAlertUtilsImpl(
             if (preferences.get(BooleanKey.AlertPumpUnreachable)) {
                 aapsLogger.debug(LTag.CORE, "Generating pump unreachable alarm. lastConnection: " + dateUtil.dateAndTimeString(lastConnection) + " isStatusOutdated: true")
                 preferences.put(LocalAlertLongKey.NextPumpDisconnectedAlarm, dateUtil.now() + pumpUnreachableThreshold())
-                notificationManager.post(NotificationId.PUMP_UNREACHABLE, CoreUiStrings.pump_unreachable, sound = AlarmSound.ALARM)
-                if (preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS)
-                    appScope.launch {
-                        persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
-                            therapyEvent = TE.asAnnouncement(rh.gs(CoreUiStrings.pump_unreachable)),
-                            timestamp = dateUtil.now(),
-                            action = Action.CAREPORTAL,
-                            source = Sources.Aaps,
-                            note = rh.gs(CoreUiStrings.pump_unreachable),
-                            listValues = listOf(ValueWithUnit.TEType(TE.Type.ANNOUNCEMENT))
-                        )
-                    }
+                // Rings until it is answered, and again after its silence, while the pump stays unreachable. Raised
+                // again at the next threshold, it keeps its time and does not ring again. The alert core writes its
+                // announcement, on the master.
+                CoreAlert.PUMP_UNREACHABLE.raiseCondition(alerts(), AlertSeverity.CRITICAL, text = null, now = dateUtil.now())
             }
             if (preferences.get(BooleanKey.SmsReportPumpUnreachable))
                 smsCommunicator.sendNotificationToAllNumbers(rh.gs(CoreUiStrings.pump_unreachable))
         }
-        if (!isStatusOutdated && !alarmTimeoutExpired) notificationManager.dismiss(NotificationId.PUMP_UNREACHABLE)
+        if (!isStatusOutdated && !alarmTimeoutExpired) CoreAlert.PUMP_UNREACHABLE.resolve(alerts())
     }
 
     private fun isAlarmTimeoutExpired(lastConnection: Long, unreachableThreshold: Long): Boolean {
@@ -102,18 +81,13 @@ class LocalAlertUtilsImpl(
      * Call only at startup!
      */
     override fun preSnoozeAlarms() {
-        if (preferences.get(LocalAlertLongKey.NextMissedReadingsAlarm) < dateUtil.now()) {
-            preferences.put(LocalAlertLongKey.NextMissedReadingsAlarm, dateUtil.now() + 5 * 60 * 1000)
-        }
+        // The missed readings alarm has its own grace after a start now (BgAlarms, step 2b)
         if (preferences.get(LocalAlertLongKey.NextPumpDisconnectedAlarm) < dateUtil.now()) {
             preferences.put(LocalAlertLongKey.NextPumpDisconnectedAlarm, dateUtil.now() + 5 * 60 * 1000)
         }
     }
 
     override fun shortenSnoozeInterval() { //shortens alarm times in case of setting changes or future data
-        var nextMissedReadingsAlarm = preferences.get(LocalAlertLongKey.NextMissedReadingsAlarm)
-        nextMissedReadingsAlarm = min(dateUtil.now() + missedReadingsThreshold(), nextMissedReadingsAlarm)
-        preferences.put(LocalAlertLongKey.NextMissedReadingsAlarm, nextMissedReadingsAlarm)
         var nextPumpDisconnectedAlarm = preferences.get(LocalAlertLongKey.NextPumpDisconnectedAlarm)
         nextPumpDisconnectedAlarm = min(dateUtil.now() + pumpUnreachableThreshold(), nextPumpDisconnectedAlarm)
         preferences.put(LocalAlertLongKey.NextPumpDisconnectedAlarm, nextPumpDisconnectedAlarm)
@@ -131,28 +105,4 @@ class LocalAlertUtilsImpl(
         }
     }
 
-    override suspend fun checkStaleBGAlert() {
-        val bgReading = persistenceLayer.getLastGlucoseValue() ?: return
-        if (preferences.get(BooleanKey.AlertMissedBgReading)
-            && bgReading.timestamp + missedReadingsThreshold() < dateUtil.now()
-            && preferences.get(LocalAlertLongKey.NextMissedReadingsAlarm) < dateUtil.now()
-        ) {
-            preferences.put(LocalAlertLongKey.NextMissedReadingsAlarm, dateUtil.now() + missedReadingsThreshold())
-            notificationManager.post(NotificationId.BG_READINGS_MISSED, CoreUiStrings.missed_bg_readings, sound = AlarmSound.ALARM)
-            if (preferences.get(BooleanKey.NsClientCreateAnnouncementsFromErrors) && config.APS) {
-                appScope.launch {
-                    persistenceLayer.insertPumpTherapyEventIfNewByTimestamp(
-                        therapyEvent = TE.asAnnouncement(rh.gs(CoreUiStrings.missed_bg_readings)),
-                        timestamp = dateUtil.now(),
-                        action = Action.CAREPORTAL,
-                        source = Sources.Aaps,
-                        note = rh.gs(CoreUiStrings.missed_bg_readings),
-                        listValues = listOf(ValueWithUnit.TEType(TE.Type.ANNOUNCEMENT))
-                    )
-                }
-            }
-        } else if (dateUtil.isOlderThan(bgReading.timestamp, 5).not()) {
-            notificationManager.dismiss(NotificationId.BG_READINGS_MISSED)
-        }
-    }
 }

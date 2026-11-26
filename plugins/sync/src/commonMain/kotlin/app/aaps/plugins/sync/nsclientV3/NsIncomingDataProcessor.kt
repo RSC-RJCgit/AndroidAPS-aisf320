@@ -7,19 +7,19 @@ import app.aaps.core.data.model.GlucoseUnit
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.alerts.NightscoutAnnouncements
+import app.aaps.core.interfaces.notifications.NotificationManager
+import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.configuration.Config
 import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.notifications.AlarmSound
-import app.aaps.core.interfaces.notifications.NotificationAction
-import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.profile.ProfileFunction
 import app.aaps.core.interfaces.profile.ProfileRepository
 import app.aaps.core.interfaces.profile.ProfileStore
+import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.source.NSClientSource
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.utils.DateUtil
@@ -92,9 +92,12 @@ class NsIncomingDataProcessor(
     private val config: Config,
     private val profileStoreProvider: () -> ProfileStore,
     private val notificationManager: NotificationManager,
+    // A provider: the alert core reaches the Nightscout client through the shared silence link
+    private val nightscoutAnnouncements: () -> NightscoutAnnouncements,
     private val nsClientRepository: NSClientRepository,
     private val displayRawSmoothing: DisplayRawSmoothing,
     private val secondaryRawStore: SecondaryRawStore,
+    private val rh: TextResolver
 ) {
 
     /**
@@ -105,19 +108,50 @@ class NsIncomingDataProcessor(
      * The running profile's insulin is the best available answer, but it is still only a guess: for a record
      * from months ago the correct value is whatever was in force *then*, which would need a suspending,
      * per-record `getProfile(timestamp)` — and on the full sync of a fresh install that history has not been
-     * imported yet anyway. [OREF_RAPID_ACTING] backstops exactly that case (nothing in force, because the very
-     * profile switches that would establish it are arriving in this same batch); it matches what a fresh
-     * install seeds. Read per record, not hoisted, so records later in a batch pick up a profile switch that
-     * landed earlier in it.
+     * imported yet anyway. [InsulinType.OREF_RAPID_ACTING] backstops exactly that case (nothing in force,
+     * because the very profile switches that would establish it are arriving in this same batch); it matches
+     * what a fresh install seeds, with the same translated name. Read per record, not hoisted, so records later
+     * in a batch pick up a profile switch that landed earlier in it.
+     *
+     * [recordDia] is the DIA a profile switch from AAPS 3.x carries itself, and it wins: it is the DIA that
+     * record was dosed with. Then the running insulin's name cannot go with it, because a name carries its
+     * curve ("… 75m 6h U100"), so the insulin is named after its peak. The concentration is 1.0: a record
+     * from 3.x is older than concentration, and 1.0 leaves its doses as they were.
      */
-    // Fork: on a read-only client the insulin chosen in Insulin settings comes first. Its master (v3) sends no insulin
-    // at all, so the running profile's insulin here is itself only an earlier guess.
-    private fun fallbackICfg(): ICfg = readOnlyClientICfg() ?: profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.iCfg
+    private fun fallbackICfg(recordDia: Double? = null): ICfg {
+        // Fork: on a read-only client the insulin chosen in Insulin settings comes first. Its master (v3) sends no insulin
+        // at all, so the running profile's insulin here is itself only an earlier guess.
+        val running = readOnlyClientICfg() ?: profileFunction.runningICfg.value ?: InsulinType.OREF_RAPID_ACTING.getICfg(rh)
+        if (recordDia == null) return running
+        return ICfg(
+            insulinLabel = rh.gs(InsulinType.fromPeak(running.insulinPeakTime).label),
+            insulinEndTime = (recordDia * 3600 * 1000).toLong(),
+            insulinPeakTime = running.insulinPeakTime,
+            concentration = 1.0
+        )
+    }
 
     private fun readOnlyClientICfg(): ICfg? =
         if (config.AAPSCLIENT && preferences.get(BooleanKey.NsClientReadOnlyClient))
             ICfg.fromStoredJson(preferences.get(StringNonKey.ReadOnlyClientInsulin))
         else null
+
+    /** The time of the newest announcement raised, so one that arrives again (a reload, a reconnect) does not ring again. */
+    private var lastAnnouncementAt = 0L
+
+    /**
+     * A careportal announcement as a WARNING alert: one chime and a card, ended by the user's answer
+     * (`_docs/ALARMS.md`, step 3). Only one from the last hour: an older one is history, not news.
+     */
+    private fun announce(therapyEvent: TE) {
+        if (!preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements)) return
+        val now = dateUtil.now()
+        if (therapyEvent.timestamp + T.mins(ANNOUNCEMENT_VALID_MINUTES).msecs() <= now) return
+        if (therapyEvent.timestamp <= lastAnnouncementAt) return
+        lastAnnouncementAt = therapyEvent.timestamp
+        nightscoutAnnouncements().announce(therapyEvent.timestamp, therapyEvent.note ?: "")
+
+    }
 
     /**
      * Whether BG from Nightscout is taken: when Nightscout is the BG source, when the user accepts CGM data
@@ -191,11 +225,6 @@ class NsIncomingDataProcessor(
                 for (i in glucoseValues.indices) filled[glucoseValues[i].timestamp]?.let { glucoseValues[i] = it }
             }
             if (advanceInitialLoadCursor) nsClient.updateLatestBgReceivedIfNewer(latestDateInReceivedData)
-            // Was that sgv more less 5 mins ago ?
-            if (T.msecs(dateUtil.now() - latestDateInReceivedData).mins() < 5L) {
-                notificationManager.dismiss(NotificationId.NS_ALARM)
-                notificationManager.dismiss(NotificationId.NS_URGENT_ALARM)
-            }
             storeDataForDb.addToGlucoseValues(glucoseValues)
         }
         return glucoseValues.isNotEmpty()
@@ -304,14 +333,14 @@ class NsIncomingDataProcessor(
 
                     is NSEffectiveProfileSwitch ->
                         if (preferences.get(BooleanKey.NsClientAcceptProfileSwitch) || config.AAPSCLIENT || doFullSync) {
-                            treatment.toEffectiveProfileSwitch(dateUtil, fallbackICfg())?.let { effectiveProfileSwitch ->
+                            treatment.toEffectiveProfileSwitch(dateUtil, ::fallbackICfg)?.let { effectiveProfileSwitch ->
                                 storeDataForDb.addToEffectiveProfileSwitches(effectiveProfileSwitch)
                             }
                         }
 
                     is NSProfileSwitch          ->
                         if (preferences.get(BooleanKey.NsClientAcceptProfileSwitch) || config.AAPSCLIENT || doFullSync) {
-                            treatment.toProfileSwitch(profileRepository, dateUtil, fallbackICfg())?.let { profileSwitch ->
+                            treatment.toProfileSwitch(profileRepository, dateUtil, ::fallbackICfg)?.let { profileSwitch ->
                                 storeDataForDb.addToProfileSwitches(profileSwitch)
                             }
                         }
@@ -323,22 +352,13 @@ class NsIncomingDataProcessor(
                                 storeDataForDb.addToBolusCalculatorResults(bolusCalculatorResult)
                             }
 
-                    is NSTherapyEvent           ->
+                    is NSTherapyEvent           -> {
+                        val therapyEvent = treatment.toTherapyEvent()
                         if (preferences.get(BooleanKey.NsClientAcceptTherapyEvent) || config.AAPSCLIENT || doFullSync)
-                            treatment.toTherapyEvent().let { therapyEvent ->
-                                storeDataForDb.addToTherapyEvents(therapyEvent)
-                                if (therapyEvent.type == TE.Type.ANNOUNCEMENT &&
-                                    preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements) &&
-                                    therapyEvent.timestamp + T.mins(60).msecs() > dateUtil.now()
-                                )
-                                    notificationManager.post(
-                                        id = NotificationId.NS_ANNOUNCEMENT,
-                                        text = therapyEvent.note ?: "",
-                                        validTo = dateUtil.now() + T.mins(60).msecs(),
-                                        sound = AlarmSound.ALARM,
-                                        actions = listOf(NotificationAction(CoreUiStrings.snooze) { })
-                                    )
-                            }
+                            storeDataForDb.addToTherapyEvents(therapyEvent)
+                        // Shown also when therapy events are not stored: this is the only way an announcement arrives
+                        if (therapyEvent.type == TE.Type.ANNOUNCEMENT) announce(therapyEvent)
+                    }
 
                     is NSOfflineEvent           ->
                         if (preferences.get(BooleanKey.NsClientAcceptRunningMode) || config.AAPSCLIENT || doFullSync)
@@ -469,4 +489,10 @@ class NsIncomingDataProcessor(
     private fun batchSpan(count: Int, dates: List<Long>): String =
         if (dates.isEmpty()) "$count"
         else "$count from ${dateUtil.dateAndTimeAndSecondsString(dates.min())} to ${dateUtil.dateAndTimeAndSecondsString(dates.max())}"
+
+    private companion object {
+
+        /** How long after it was written an announcement still rings. */
+        const val ANNOUNCEMENT_VALID_MINUTES = 60L
+    }
 }

@@ -42,7 +42,6 @@ internal fun IobChip(
     showIcon: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val hasValue = state.iobTotal != 0.0
     val haptic = LocalHapticFeedback.current
     // Disable the clickable Surface's 48dp minimum interactive size so the chip keeps its
     // compact height and stays vertically aligned with the (non-clickable) CobChip.
@@ -60,7 +59,8 @@ internal fun IobChip(
         val chipDescription = stringResource(CoreUiStrings.iob)
         Surface(
             shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
-            color = if (hasValue) ElementType.INSULIN.color().copy(alpha = 0.2f) else Color.Transparent,
+            // A value, not a state: no fill, the icon carries the colour. See chipShade
+            color = Color.Transparent,
             modifier = modifier
                 .heightIn(min = AapsSpacing.chipHeight)
                 .combinedClickable(

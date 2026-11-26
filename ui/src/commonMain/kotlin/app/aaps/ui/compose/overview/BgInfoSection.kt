@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.overview.graph.BgInfoData
 import app.aaps.core.interfaces.overview.graph.BgRange
@@ -59,6 +60,10 @@ import kotlin.math.sqrt
  * @param showTimeAgo Whether to render the small "time ago" line below the BG value.
  * @param onClick Tap on the circle (2026-11-12, per explicit request: opens the navigation buttons that the
  *   bottom bar holds, so that bar can be hidden). Null keeps the circle display only.
+ * @param updateProgress How far the calculation after this reading has got, 0 to 1, or 0 when nothing
+ *   is being calculated. While it runs, a thin neutral ring inside the BG ring grows clockwise from the
+ *   top: it tells when IOB, COB and the predictions catch up with this reading. Inside, not outside,
+ *   where the trend triangles are; neutral, not in the BG colour, so it is not read as range or trend.
  *
  * @see BgInfoSectionInRangePreview
  * @see BgInfoSectionHighPreview
@@ -72,7 +77,8 @@ fun BgInfoSection(
     modifier: Modifier = Modifier,
     size: Dp = AapsSpacing.bgCircleSize * LocalAapsScale.current,
     showTimeAgo: Boolean = true,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    updateProgress: Float = 0f
 ) {
     val onClickLabel = stringResource(UiStrings.a11y_bg_open_navigation)
     val tapModifier = if (onClick != null)
@@ -96,6 +102,9 @@ fun BgInfoSection(
     val bgColor = bgInfo.bgRange.toColor()
     val ringColor = bgColor.copy(alpha = 0.3f)
     val ringStrokeWidth = AapsSpacing.bgRingStrokeWidth * LocalAapsScale.current
+    val progressStrokeWidth = UPDATE_RING_WIDTH * LocalAapsScale.current
+    val progressGap = UPDATE_RING_GAP * LocalAapsScale.current
+    val progressColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     // High/low is the colour and an old reading is struck through, so the description says both.
     val a11yDescription = bgSpokenDescription(
@@ -186,12 +195,27 @@ fun BgInfoSection(
                     }
                 }
             }
+
+            // Update progress: a thin ring inside the BG ring, growing clockwise from the top
+            if (updateProgress > 0f) {
+                val inset = strokeWidth + progressGap.toPx() + progressStrokeWidth.toPx() / 2
+                val diameter = size.toPx() - 2 * inset
+                drawArc(
+                    color = progressColor,
+                    startAngle = -90f,
+                    sweepAngle = 360f * updateProgress.coerceAtMost(1f),
+                    useCenter = false,
+                    topLeft = Offset(inset, inset),
+                    size = Size(diameter, diameter),
+                    style = Stroke(width = progressStrokeWidth.toPx(), cap = StrokeCap.Round)
+                )
+            }
         }
 
         // Center content: delta on top, BG value, time ago below
         LinesInsideRing(
             circleSize = size,
-            ringStrokeWidth = ringStrokeWidth,
+            ringStrokeWidth = ringStrokeWidth + progressGap + progressStrokeWidth,
             delta = {
                 bgInfo.deltaText?.let { delta ->
                     Text(
@@ -356,3 +380,9 @@ internal fun TrendArrow.toArcIndicator(): ArcIndicator? {
         TrendArrow.TRIPLE_DOWN     -> ArcIndicator(centerAngle = 90f, sweepAngle = sweepAngle, triangleCount = 3)
     }
 }
+
+/** Width of the update progress ring inside the BG ring. */
+private val UPDATE_RING_WIDTH = 2.dp
+
+/** Space between the BG ring and the update progress ring, so the two read as separate things. */
+private val UPDATE_RING_GAP = 2.dp

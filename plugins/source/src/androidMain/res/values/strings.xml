@@ -335,4 +335,6 @@
     <string name="dexcom_oneplus_pairing_code_hint">Type the 4-digit code, or scan the code on the applicator.</string>
     <string name="dexcom_oneplus_session_bluetooth_off">Bluetooth is off</string>
     <string name="dexcom_oneplus_bluetooth_off">Bluetooth is off on the phone. Turn it on to read the sensor.</string>
+    <string name="xdrip_calibration_not_sent">Calibration not sent: xDrip+ is not installed.</string>
+    <string name="xdrip_calibration_accept_note">xDrip+ uses a calibration only when \'Accept Calibrations\' is on in its Inter-App settings.</string>
 </resources>

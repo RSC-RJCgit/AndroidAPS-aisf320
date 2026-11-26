@@ -2,20 +2,15 @@ package app.aaps.desktop.shell.platform
 
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
-import app.aaps.core.interfaces.notifications.AlarmSound
-import app.aaps.core.interfaces.notifications.NotificationId
-import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
-import app.aaps.core.interfaces.ui.UiInteraction
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.interfaces.widget.WidgetUpdater
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.ContributesBinding
 import dev.zacsweers.metro.Inject
 import dev.zacsweers.metro.SingleIn
-import kotlin.reflect.KClass
 
 /**
  * Phone features a desktop does not have.
@@ -109,38 +104,5 @@ class DesktopWidgetUpdater(
 
     override fun update(from: String) {
         aapsLogger.debug(LTag.CORE, "No desktop widget to update (from $from)")
-    }
-}
-
-/**
- * The parts of `UiInteraction` a desktop can do, and honest failure for the parts it cannot.
- *
- * The alarms are real: they go to the same notification registry every other alarm uses, so an
- * urgent condition still reaches the user through the system tray.
- *
- * The two activity classes are not. They exist so Android code can build an `Intent`, which has no
- * meaning here; nothing on this platform reads them, and they return this class so the type is
- * satisfied. If one of these ever turns up in a stack trace, the caller is Android-only code that
- * should not have been reached.
- */
-@ContributesBinding(AppScope::class)
-@SingleIn(AppScope::class)
-@Inject
-class DesktopUiInteraction(
-    private val aapsLogger: AAPSLogger,
-    private val notificationManager: NotificationManager
-) : UiInteraction {
-
-    override val mainActivity: KClass<*> = DesktopUiInteraction::class
-    override val errorHelperActivity: KClass<*> = DesktopUiInteraction::class
-
-    override fun runAlarm(status: String, title: String, sound: AlarmSound?) {
-        aapsLogger.debug(LTag.CORE, "Alarm: $title - $status")
-        notificationManager.post(NotificationId.TOAST_ALARM, status, sound = sound)
-    }
-
-    override fun stopAlarm(reason: String) {
-        aapsLogger.debug(LTag.CORE, "Alarm stopped: $reason")
-        notificationManager.dismiss(NotificationId.TOAST_ALARM)
     }
 }

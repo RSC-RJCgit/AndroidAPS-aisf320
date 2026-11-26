@@ -47,8 +47,7 @@ class PluginLifetimeWorkScanTest {
         "GlunovoPlugin#onStart" to "same handler, torn down in onStop",
         "IntelligoPlugin#contentUri" to "the refreshLoop it posts is removed in onStop",
         "IntelligoPlugin#onStart" to "same handler, torn down in onStop",
-        "RandomBgPlugin#interval" to "the refreshLoop it posts is removed in onStop",
-        "RandomBgPlugin#onStart" to "same handler, torn down in onStop",
+        "RandomBgPlugin#onStart" to "the refresh loop is one job on appScope; onStop cancels it and releases the wake lock (stopLoop), and a second onStart stops the first loop before it starts another",
         "SignatureVerifierPlugin#onStart" to "onStop removes the callbacks, quits the looper and nulls the handler",
         "OmnipodDashPumpPlugin#scope" to "onStop cancels the scope and tears the handler down",
         "OmnipodDashPumpPlugin#onStart" to "onStop cancels the scope and tears the handler down",
@@ -105,7 +104,7 @@ class PluginLifetimeWorkScanTest {
     private val declaration = Regex("""\b(?:appScope|pluginScope)\s*:\s*CoroutineScope""")
 
     private fun repoRoot(): File {
-        var dir: File? = File(System.getProperty("user.dir"))
+        var dir: File? = File(System.getProperty("user.dir")!!)
         while (dir != null && !File(dir, "settings.gradle").exists() && !File(dir, "settings.gradle.kts").exists()) dir = dir.parentFile
         return checkNotNull(dir) { "Could not find the repository root above ${System.getProperty("user.dir")}" }
     }

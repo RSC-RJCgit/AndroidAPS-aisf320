@@ -19,7 +19,6 @@ import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationManager
-import app.aaps.core.interfaces.nsclient.NSAlarm
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
 import app.aaps.core.interfaces.plugin.PluginBase
@@ -404,8 +403,6 @@ class NSClientV3Plugin(
         // client-control commands sent during the reconnect.
         preferences.observeEffective(BooleanKey.NsClient3UseWs).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
         preferences.observe(NsclientBooleanKey.NsPaused).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
-        preferences.observe(BooleanKey.NsClientNotificationsFromAlarms).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
-        preferences.observe(BooleanKey.NsClientNotificationsFromAnnouncements).drop(1).collectResilient(scope, aapsLogger, LTag.NSCLIENT, block = restartOnChange)
         preferences.observe(LongNonKey.LocalProfileLastChange).drop(1)
             .collectResilient(scope, aapsLogger, LTag.NSCLIENT) { executeUpload("PROFILE_CHANGE") }
         persistenceLayer.observeAnyChange()
@@ -833,18 +830,6 @@ class NSClientV3Plugin(
         preferences.put(LongNonKey.NsClientSecondaryLastModified, 0L)
     }
 
-    override fun handleClearAlarm(originalAlarm: NSAlarm, silenceTimeInMilliseconds: Long) {
-        if (!isEnabled()) return
-        if (!preferences.get(BooleanKey.NsClientUploadData)) {
-            aapsLogger.debug(LTag.NSCLIENT, "Upload disabled. Message dropped")
-            return
-        }
-        if (dataSyncSelectorV3.mainSiteUploadBlocked) {
-            aapsLogger.debug(LTag.NSCLIENT, "Upload to the main site stopped. Message dropped")
-            return
-        }
-        nsConnection.acknowledgeAlarm(originalAlarm, silenceTimeInMilliseconds)
-    }
 
     // --- Bounded retry for transient NS UPDATE failures ---
     // A 404 on an UPDATE previously fell through to `return true`, advancing the per-collection sync
@@ -1514,7 +1499,6 @@ class NSClientV3Plugin(
                 key = "ns_client_alarm_options",
                 title = SyncStrings.ns_alarm_options,
                 items = listOf(
-                    BooleanKey.NsClientNotificationsFromAlarms,
                     BooleanKey.NsClientNotificationsFromAnnouncements,
                     IntKey.NsClientAlarmStaleData,
                     IntKey.NsClientUrgentAlarmStaleData

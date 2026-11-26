@@ -97,6 +97,7 @@ fun ManageBottomSheet(
     // Pump
     isPatchPump: Boolean,
     pumpPlugin: PluginBase,
+    cgmPlugin: PluginBase?,
     customActions: List<CustomAction>,
     // Callbacks
     onNavigate: (NavigationRequest) -> Unit,
@@ -129,6 +130,7 @@ fun ManageBottomSheet(
             cancelExtendedBolusText = cancelExtendedBolusText,
             isPatchPump = isPatchPump,
             pumpPlugin = pumpPlugin,
+            cgmPlugin = cgmPlugin,
             customActions = customActions,
             onDismiss = onDismiss,
             onNavigate = onNavigate,
@@ -161,6 +163,7 @@ internal fun ManageBottomSheetContent(
     cancelExtendedBolusText: String,
     isPatchPump: Boolean = false,
     pumpPlugin: PluginBase? = null,
+    cgmPlugin: PluginBase? = null,
     customActions: List<CustomAction>,
     onDismiss: () -> Unit = {},
     onNavigate: (NavigationRequest) -> Unit = {},
@@ -285,6 +288,20 @@ internal fun ManageBottomSheetContent(
                         elementType = ElementType.TRIO_REMOTE,
                         onDismiss = onDismiss,
                         onNavigate = onNavigate,
+                        modifier = modifier
+                    )
+                }
+            }
+            // The CGM driver's screen, next to the pump's. The view model sets it only for a CgmDriver on this phone.
+            if (cgmPlugin != null) {
+                add(ElementType.CGM) { modifier ->
+                    ManageGridItem(
+                        text = stringResource(CoreUiStrings.cgm),
+                        icon = cgmPlugin.pluginDescription.icon ?: ElementType.CGM.icon(),
+                        color = ElementType.CGM.color(),
+                        onDismiss = onDismiss,
+                        onClick = { onNavigate(NavigationRequest.Element(ElementType.CGM)) },
+                        description = cgmPlugin.name,
                         modifier = modifier
                     )
                 }

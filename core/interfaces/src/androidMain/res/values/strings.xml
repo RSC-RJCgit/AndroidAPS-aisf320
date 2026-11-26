@@ -191,4 +191,44 @@
     <string name="carbs_with_time_later" comment="Carbs eaten later. %1$s=carbs with unit, %2$s=minutes from now, with unit. Example: 20 g (+15 min)">%1$s (+%2$s)</string>
     <string name="plugin_start_failed" comment="%1$s=plugin name, for example &quot;Dana-i/RS&quot;. Shown when a plugin threw while starting. It stays switched on, but it may not work.">Plugin %1$s failed to start and may not work. Please restart AAPS.</string>
     <string name="plugin_work_failed" comment="%1$s=plugin name, for example &quot;Dana-i/RS&quot;. Shown when background work the plugin started ended with an error. The plugin is still switched on, but part of it has stopped.">Plugin %1$s hit an error and part of it has stopped. Please restart AAPS.</string>
+
+    <!-- Kinds of alert, as named in the alert settings, where the user chooses Ring, Silent or Off for each -->
+    <string name="alert_kinds_group_app" comment="Heading of the group of the app's own alarms in the alert settings; the other groups are named after a pump or CGM driver">AAPS</string>
+    <string name="alert_kind_command_failed" comment="Name of a kind of alarm in the alert settings: a command the user started (for example a bolus) did not work">Command failed</string>
+    <string name="alert_kind_insulin_change_failed" comment="Name of a kind of alarm in the alert settings: a new insulin is in the pump, but its basal program could not be written">Insulin change not written to the pump</string>
+    <string name="alert_kind_eat_reminder" comment="Name of a kind of alarm in the alert settings: the timer that says it is time to eat">Time to eat</string>
+    <string name="alert_kind_automation_alarm" comment="Name of a kind of alarm in the alert settings: the Alarm action of an automation rule">Automation alarm</string>
+    <string name="alert_kind_pump_driver_alarm" comment="Name of a kind of alarm in the alert settings: an alarm of a pump driver that has no alert kinds of its own yet">Pump driver alarm</string>
+    <string name="alert_kind_profile_update_failed" comment="Name of a kind of alarm in the alert settings, and the title of its alarm: the profile could not be written to the pump">Profile not set in the pump</string>
+    <string name="alert_kind_basal_far_from_profile" comment="Name of a kind of alarm in the alert settings, and the title of its alarm: after a profile was set, the pump reports a basal rate far from that profile">Pump basal far from the profile</string>
+    <string name="alert_kind_bolus_failed" comment="Name of a kind of alarm in the alert settings, and the title of its alarm: insulin the user asked for was not given">Bolus failed</string>
+    <string name="alert_kind_bolus_cancelled" comment="Name of a kind of alert in the alert settings, and the title of its card: a bolus was stopped before all of it was given">Bolus stopped</string>
+    <string name="alert_kind_carbs_not_saved" comment="Name of a kind of alert in the alert settings, and the title of its card: the bolus was given, but the carbs entered with it were not saved">Carbs not saved</string>
+    <string name="alert_kind_pump_unreachable" comment="Name of a kind of alarm in the alert settings, and the title of its alarm: the app has not reached the pump for a long time">Pump unreachable</string>
+    <string name="alert_kind_pump_driver_not_responding" comment="Name of a kind of alarm in the alert settings, and the title of its alarm: a command to the pump has not ended for a long time, so no other command can run">Pump driver not responding</string>
+    <string name="alert_kind_zero_delivery_not_set" comment="Name of a kind of alarm in the alert settings, and the title of its alarm: the loop is suspended or disconnected, but the zero temporary basal is not on the pump">Zero basal not set</string>
+    <string name="alert_kind_hard_limit" comment="Name of a kind of alert in the alert settings, and the title of its card: a value was outside a safety limit and was changed to the limit">Hard limit</string>
+    <string name="alert_kind_carbs_required" comment="Name of a kind of alert in the alert settings, and the title of its card: the loop says the user has to eat carbs to avoid a low">Carbs required</string>
+    <string name="alert_kinds_group_bg" comment="Heading of the group of the glucose alarms in the alert settings">BG alarms</string>
+    <string name="alert_kind_bg_urgent_low" comment="Name of a kind of glucose alarm, and the title of its alarm: glucose below the urgent low threshold">Urgent low</string>
+    <string name="alert_kind_bg_low" comment="Name of a kind of glucose alarm, and the title of its alarm: glucose below a low threshold the user set">Low</string>
+    <string name="alert_kind_bg_high" comment="Name of a kind of glucose alarm, and the title of its alarm: glucose above a high threshold the user set">High</string>
+    <string name="alert_kind_bg_stale" comment="Name of a kind of glucose alarm, and the title of its alarm: no new glucose reading for too long">Missed BG readings</string>
+    <string name="bg_alarm_stale_text" comment="Text of the missed readings alarm. %1$s=the time of the last reading, for example: 14:35">No BG reading since %1$s</string>
+    <string name="bg_alarm_text" comment="Text of a glucose alarm. %1$s=the glucose with its unit, for example: 2.9 mmol/l">BG %1$s</string>
+    <!-- The names of the alarm sounds AAPS ships (AlarmSound.title): the alarm channels and the sound choice of an alert kind -->
+    <string name="alarm_channel_standard">Standard alarm</string>
+    <string name="alarm_channel_bolus_error">Bolus error</string>
+    <string name="alarm_channel_error">General error</string>
+    <string name="alarm_channel_urgent">Urgent alarm</string>
+    <string name="alarm_channel_eat_reminder">Time to eat</string>
+    <string name="alert_kind_bg_persistent_high" comment="Name of a kind of glucose alarm, and the title of its alarm: glucose high for a long time and not coming down">Persistent high</string>
+    <string name="alert_kind_bg_falling_fast" comment="Name of a kind of glucose alarm, and the title of its alarm: glucose going down quickly">Falling fast</string>
+    <string name="alert_kind_bg_rising_fast" comment="Name of a kind of glucose alarm, and the title of its alarm: glucose going up quickly">Rising fast</string>
+    <string name="alert_kinds_group_nightscout" comment="Heading of the group of the alerts that come from Nightscout in the alert settings">Nightscout</string>
+    <string name="alert_kind_ns_announcement" comment="Name of a kind of alert in the alert settings, and the title of its card: an announcement someone wrote in the careportal of Nightscout">Nightscout announcement</string>
+    <string name="alert_kind_bg_predicted_low" comment="Name of a kind of glucose alarm, and the title of its alarm: the loop predicts a low glucose soon">Predicted low</string>
+    <string name="bg_alarm_rate_text" comment="Text of a falling or rising fast alarm. %1$s=the glucose with its unit, %2$s=how much it changes in one minute, %3$s=the unit. Example: BG 6.2 mmol/l, 0.17 mmol/l per minute">BG %1$s, %2$s %3$s per minute</string>
+    <string name="bg_alarm_predicted_text" comment="Text of a predicted low alarm. %1$s=the time the low is predicted, as HH:MM, %2$s=the predicted glucose with its unit. Example: Low predicted at 14:35: 3.6 mmol/l">Low predicted at %1$s: %2$s</string>
+    <string name="bg_alarms_intro">AAPS has its own BG alarms now. Urgent low rings below 54 mg/dl (3.0 mmol/l), also in Do Not Disturb. Set them in Settings > Local alerts. If another app already rings for this, you may get two alarms.</string>
 </resources>

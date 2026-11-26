@@ -16,6 +16,7 @@ import app.aaps.core.interfaces.notifications.AapsNotification
 import app.aaps.core.interfaces.notifications.AlarmSound
 import app.aaps.core.interfaces.notifications.AlarmSoundPlayer
 import app.aaps.core.interfaces.notifications.NotificationHolder
+import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.notifications.SystemNotificationPlatform
@@ -78,7 +79,8 @@ class AndroidSystemNotificationPlatform(
      *    alert the user twice for one alarm.
      * 2. anything else is shown only when the user asked for it with
      *    [BooleanKey.AlertUrgentAsAndroidNotification] **and** it carries no actions - a notification
-     *    with actions is answered in the app, not from the tray.
+     *    with actions is answered in the app, not from the tray. The card of an alert
+     *    (`NotificationId.ALERT`) is shown with no sound, because the alert core owns its sound.
      * 3. otherwise nothing is shown at all, which is a legitimate outcome here.
      */
     override fun show(notification: AapsNotification, title: String) {
@@ -87,8 +89,11 @@ class AndroidSystemNotificationPlatform(
             alarmNotificationManager().postSilentAlarmNotification(
                 notificationKey = notification.instanceKey,
                 title = title,
-                body = notification.text,
-                urgent = true
+                body = notification.systemBody,
+                urgent = true,
+                // Mute and a swipe both mean "answered", and both reach the registry as a dismissal of this one
+                // card, so they act on this alarm alone rather than silencing everything.
+                dismissIntent = deleteIntent(notification.instanceKey)
             )
         } else if (preferences.get(BooleanKey.AlertUrgentAsAndroidNotification) && notification.actions.isEmpty()) {
             raiseSystemNotification(notification, title)
@@ -111,7 +116,7 @@ class AndroidSystemNotificationPlatform(
         alarmNotificationManager().cancelAlarm()
     }
 
-    override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?) {
+    override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?, breakThroughDnd: Boolean, ringtoneUri: String?) {
         if (instanceKey == null || sound == null) {
             if (soundingKey != null) {
                 soundingKey = null
@@ -122,7 +127,28 @@ class AndroidSystemNotificationPlatform(
         // Called again with the same key means "keep playing" - restarting would reset the ramp.
         if (instanceKey != soundingKey) {
             soundingKey = instanceKey
-            alarmSoundPlayer().play(sound, AlarmSoundPlayer.OWNER_INTERNAL)
+            alarmSoundPlayer().play(sound, AlarmSoundPlayer.OWNER_INTERNAL, breakThroughDnd, ringtoneUri)
+        }
+    }
+
+    /**
+     * The cards a previous run left: a plain card on the general channel (its id is its key), and a sounding card on
+     * the silent alarm channels (`SOUND_ID_OFFSET` + its key). A chime (`CHIME_ID_OFFSET` and up) is left: the same
+     * alert posts it again under the same id. Android removes an app's notifications when it is updated or force
+     * stopped, but not after a crash or when the system ends the process.
+     */
+    override fun clearLeftovers(isCurrent: (instanceKey: Int) -> Boolean) {
+        val active = try {
+            notificationManager.activeNotifications
+        } catch (e: RuntimeException) {
+            aapsLogger.error(LTag.NOTIFICATION, "Cannot read the notifications left from before", e)
+            return
+        }
+        active.forEach { sbn ->
+            val key = leftoverCardKey(sbn.notification.channelId, sbn.id) ?: return@forEach
+            if (isCurrent(key)) return@forEach
+            notificationManager.cancel(sbn.id)
+            aapsLogger.debug(LTag.NOTIFICATION, "Card left from before removed: ${sbn.id}")
         }
     }
 
@@ -163,11 +189,14 @@ class AndroidSystemNotificationPlatform(
             .setSmallIcon(iconsProvider.getNotificationIcon())
             .setLargeIcon(largeIcon)
             .setContentTitle(title)
-            .setContentText(n.text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(n.text))
+            .setContentText(n.systemBody)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(n.systemBody))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setDeleteIntent(deleteIntent(n.instanceKey))
             .setContentIntent(notificationHolder().openAppIntent())
+            // The card of an alert is a copy: the alert core already decided what is heard (the alarm screen, one
+            // chime or nothing). The channel's own sound on top made a WARNING sound twice and a Silent kind ding.
+            .setSilent(n.id == NotificationId.ALERT)
         // No setVibrate or setSound here: since Android 8 the channel decides both, and these were
         // ignored (#5217). Audible alarms go through AlarmNotificationManager.
         // Keyed by instanceKey, which the registry also cancels by. For everything that cannot appear
@@ -195,4 +224,17 @@ class AndroidSystemNotificationPlatform(
          */
         const val EXTRA_INSTANCE_KEY = "instanceKey"
     }
+}
+
+/**
+ * The key of a card's system notification, from its channel and id, or null when it is not a card: the running
+ * service has a channel of its own, and a chime is above the sounding cards' ids.
+ */
+internal fun leftoverCardKey(channelId: String?, id: Int): Int? = when {
+    channelId == NotificationManager.CHANNEL_ID && id in 0 until AlarmNotificationManager.SOUND_ID_OFFSET -> id
+
+    (channelId == AlarmNotificationManager.CHANNEL_SILENT || channelId == AlarmNotificationManager.CHANNEL_SILENT_URGENT) &&
+        id in AlarmNotificationManager.SOUND_ID_OFFSET until AlarmNotificationManager.CHIME_ID_OFFSET -> id - AlarmNotificationManager.SOUND_ID_OFFSET
+
+    else                                                                                                  -> null
 }

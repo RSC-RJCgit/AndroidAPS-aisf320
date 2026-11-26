@@ -2,6 +2,7 @@ package app.aaps.ui.compose.overview.chips
 
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -48,10 +50,15 @@ fun TbrChip(
     rate: Double? = null,
     onLongClick: () -> Unit = {},
     onDoubleClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** The TBR as a share of the profile basal, e.g. "140%". Empty with no TBR: then only the icon. */
+    text: String = "",
+    /** Share of the TBR's time that has passed, 0 with no end, see chipShade */
+    progress: Float = 0f
 ) {
     val iconColor = AapsTheme.elementColors.tempBasal
-    val containerColor = iconColor.copy(alpha = 0.2f)
+    // A shade for the time passed while a temp basal runs, see chipShade. The percent makes
+    // the chip wide enough for the shade to show the time left
     val haptic = LocalHapticFeedback.current
 
     // Disable the clickable Surface's 48dp minimum interactive size so this content-width chip
@@ -64,7 +71,7 @@ fun TbrChip(
         val tbrState = stringResource(state.toDescription())
         Surface(
             shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
-            color = containerColor,
+            color = Color.Transparent,
             modifier = modifier
                 .height(AapsSpacing.chipHeight * LocalAapsScale.current)
                 .combinedClickable(
@@ -74,9 +81,11 @@ fun TbrChip(
                 )
                 .semantics { stateDescription = tbrState }
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.padding(horizontal = AapsSpacing.medium)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .chipShade(progress)
+                    .padding(horizontal = AapsSpacing.medium)
             ) {
                 if (rate != null) Text(
                     text = formatBasalRate(rate),
@@ -89,6 +98,15 @@ fun TbrChip(
                     tint = iconColor,
                     modifier = Modifier.size(AapsSpacing.chipIconSize)
                 )
+                if (text.isNotEmpty()) {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = AapsSpacing.small)
+                    )
+                }
             }
         }
     }

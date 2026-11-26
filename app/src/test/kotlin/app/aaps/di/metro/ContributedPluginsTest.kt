@@ -37,7 +37,8 @@ class ContributedPluginsTest {
             // sensitivity
             100, 110, 120,
             200, 210, 220, 230, 240,
-            400, 410, 420, 430, 440, 450, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550,
+            // BG sources; 415 is Eversense, from its own module :plugins:source:eversense
+            400, 410, 415, 420, 430, 440, 450, 460, 470, 480, 490, 500, 510, 520, 530, 540, 550,
             // sync - the every-build part of the 300 block. SmsCommunicator 300 and Tidepool 320 are
             // @NotNSClient; 340 (OpenHumans) comes from its own graph extension.
             310, 330, 350, 360, 370,
@@ -77,6 +78,12 @@ class ContributedPluginsTest {
     fun `the DST plugin and the DstHelper binding are the same object`() {
         val root = testRoot()
         assertThat(root.dstHelper).isSameInstanceAs(root.contributedPlugins[850])
+    }
+
+    @Test
+    fun `the BG quality plugin in the list is the one the graph builds`() {
+        val root = testRoot()
+        assertThat(root.contributedPlugins[860]).isSameInstanceAs(root.bgQualityCheckPlugin)
     }
 
     @Test

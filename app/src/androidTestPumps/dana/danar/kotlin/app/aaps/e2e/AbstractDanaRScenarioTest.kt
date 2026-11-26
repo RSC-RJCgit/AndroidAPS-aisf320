@@ -2,6 +2,7 @@ package app.aaps.e2e
 
 import android.os.SystemClock
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.alerts.CoreAlert
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.emulator.EmulatedCommand
@@ -18,6 +19,7 @@ import app.aaps.pump.danar.emulator.EmulatorRfcommTransport
 import com.google.common.truth.Truth.assertWithMessage
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
+import org.junit.Ignore
 import org.junit.Test
 import kotlin.math.abs
 
@@ -40,6 +42,11 @@ abstract class AbstractDanaRScenarioTest : AbstractPumpScenarioTest() {
 
     /** A pump clock off by more than 1.5 hours raises an alarm. Only the DanaR v2 does that, the others set the clock. */
     protected open val alarmsOnAFarClock: Boolean = false
+
+    @Ignore("Acceptance A1: DanaR alarms are not pump alerts yet; they move with acceptance v2 (and the emulator sends none)")
+    @Test
+    override fun anOcclusionIsARingingAlert() {
+    }
 
     /** The driver writes the user options to the pump. The Korean DanaR driver does not. */
     protected open val writesUserOptions: Boolean = true
@@ -66,7 +73,7 @@ abstract class AbstractDanaRScenarioTest : AbstractPumpScenarioTest() {
         scenario.awaitTrue("the driver switched to $driverAfterTheSwitch and is ready", SWITCH_TIMEOUT) {
             activePump.javaClass.simpleName == driverAfterTheSwitch && activePump.isInitialized()
         }
-        scenario.checkAlarm(NotificationId.WRONG_DRIVER)
+        scenario.checkCard(NotificationId.WRONG_DRIVER)
         scenario.awaitQueueIdle(PumpScenario.QUEUE_END_TIMEOUT)
         assertWithMessage("bolus with the right driver").that(scenario.bolus(BOLUS).success).isTrue()
         scenario.checkBolusRecords()
@@ -213,7 +220,7 @@ abstract class AbstractDanaRScenarioTest : AbstractPumpScenarioTest() {
         scenario.pair()
         emulator.state.dailyTotalUnits = emulator.state.maxDailyTotalUnits * NEAR_THE_LIMIT
         scenario.readStatusOnNewLink()
-        scenario.checkAlarm(NotificationId.APPROACHING_DAILY_LIMIT)
+        scenario.checkCard(NotificationId.APPROACHING_DAILY_LIMIT)
     }
 
     /** The user options the user changes in AAPS reach the pump, and the others stay as they were. */
@@ -252,7 +259,7 @@ abstract class AbstractDanaRScenarioTest : AbstractPumpScenarioTest() {
         assertWithMessage("fault").that(scenario.control.loseCommand(EmulatedCommand.BASAL_PROFILE)).isTrue()
         assertWithMessage("AAPS takes the write as done, the pump gives ${scenario.control.state().basal}")
             .that(scenario.profileWrittenOnce(PROFILE_PERCENT)).isFalse()
-        scenario.checkAlarm(NotificationId.FAILED_UPDATE_PROFILE)
+        scenario.checkAlarm(CoreAlert.PROFILE_UPDATE_FAILED)
         scenario.switchProfile(PROFILE_PERCENT)
         scenario.checkStatusShown()
     }
@@ -268,7 +275,7 @@ abstract class AbstractDanaRScenarioTest : AbstractPumpScenarioTest() {
         assertWithMessage("fault").that(scenario.control.loseAnswer(EmulatedCommand.BASAL_PROFILE)).isTrue()
         assertWithMessage("AAPS takes the write as done, the pump gives ${scenario.control.state().basal}")
             .that(scenario.profileWrittenOnce(PROFILE_PERCENT)).isTrue()
-        scenario.checkNoAlarm(NotificationId.FAILED_UPDATE_PROFILE)
+        scenario.checkNoAlarm(CoreAlert.PROFILE_UPDATE_FAILED)
         scenario.checkStatusShown()
     }
 

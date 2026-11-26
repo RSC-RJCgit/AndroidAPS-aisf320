@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -85,7 +84,7 @@ fun TempTargetChip(
         onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() },
         enabled = enabled,
         shape = RoundedCornerShape(AapsSpacing.chipCornerRadius),
-        color = containerColor,
+        color = Color.Transparent,
         modifier = modifier
             .fillMaxWidth()
             .height(AapsSpacing.chipHeight * LocalAapsScale.current)
@@ -94,7 +93,7 @@ fun TempTargetChip(
                 else Modifier
             )
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().chipShade(progress)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -123,17 +122,6 @@ fun TempTargetChip(
                 if (sceneManaged) {
                     SceneBadge(modifier = Modifier.padding(start = AapsSpacing.small))
                 }
-            }
-            if (progress > 0f) {
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(AapsSpacing.chipProgressHeight),
-                    color = iconColor,
-                    trackColor = iconColor.copy(alpha = 0.3f)
-                )
             }
         }
     }

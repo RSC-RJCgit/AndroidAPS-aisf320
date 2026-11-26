@@ -49,6 +49,7 @@ import app.aaps.appshell.navigation.appNavGraph
 import app.aaps.appshell.navigation.handleNotificationAction
 import app.aaps.appshell.navigation.handleQuickLaunchAction
 import app.aaps.appshell.navigation.handleSearchResultClick
+import app.aaps.appshell.navigation.openAlertKinds
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.configuration.Config
@@ -76,7 +77,6 @@ import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.ResourceHelper
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.rx.events.EventShowDialog
-import app.aaps.core.interfaces.source.DexcomBoyda
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.ui.IconsProvider
 import app.aaps.core.interfaces.ui.SnackbarHostPresence
@@ -97,7 +97,7 @@ import app.aaps.core.ui.compose.MetroViewModelFactoryOwner
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
 import app.aaps.core.utils.isRunningRealPumpTest
-import app.aaps.implementation.androidNotification.AlarmNotificationManager
+import app.aaps.implementation.alerts.AndroidAlertPlatform
 import app.aaps.implementation.plugin.PluginPermissionsImpl
 import app.aaps.implementation.protection.BiometricCheck
 import app.aaps.plugins.automation.AutomationRuntime
@@ -170,11 +170,10 @@ class ComposeMainActivity : MetroAppCompatActivity() {
     @Inject lateinit var config: Config
     @Inject lateinit var profileUtil: ProfileUtil
     @Inject lateinit var visibilityContext: VisibilityContext
-    @Inject lateinit var dexcomBoyda: DexcomBoyda
     @Inject lateinit var persistenceLayer: PersistenceLayer
     @Inject lateinit var prefFileList: FileListProvider
     @Inject lateinit var notificationManager: NotificationManager
-    @Inject lateinit var alarmNotificationManager: AlarmNotificationManager
+    @Inject lateinit var alertPlatform: AndroidAlertPlatform
     @Inject lateinit var dateUtil: DateUtil
     @Inject lateinit var builtInSearchables: BuiltInSearchables
     @Inject lateinit var bolusProgressData: BolusProgressData
@@ -532,7 +531,7 @@ class ComposeMainActivity : MetroAppCompatActivity() {
                 visibilityContext = visibilityContext,
                 onNavigationRequest = { request, nc -> handleNavigationRequest(request, nc) },
                 onShowDeliveryError = { comment, title ->
-                    uiInteraction.runAlarm(comment, rh.gs(title), AlarmSound.BOLUS_ERROR)
+                    uiInteraction.runAlarm(UiInteraction.KEY_COMMAND_FAILED, comment, rh.gs(title), AlarmSound.BOLUS_ERROR)
                 },
                 withProtection = { protection, action -> navigator(navController).guarded(protection, action) },
                 requestEditModeAuthorization = { onGranted ->
@@ -611,7 +610,8 @@ class ComposeMainActivity : MetroAppCompatActivity() {
                         },
                         onRecreateActivity = { recreate() },
                         autoShowNotificationSheet = _autoShowNotifications.value && appLock.value == AppLockState.OPEN,
-                        onAutoShowConsumed = { _autoShowNotifications.value = false }
+                        onAutoShowConsumed = { _autoShowNotifications.value = false },
+                        onOpenAlertKinds = { navigator(navController).openAlertKinds() }
                     )
                 },
             )
@@ -647,7 +647,7 @@ class ComposeMainActivity : MetroAppCompatActivity() {
         // its alarm screen again (#5338). In onStart and not in onResume: the alarm screen is
         // translucent, so leaving it with Back resumes this activity without starting it, and the
         // alarm screen does not come straight back.
-        alarmNotificationManager.unansweredAlarmIntent()?.let { startActivity(it) }
+        alertPlatform.unansweredAlarmIntent()?.let { startActivity(it) }
     }
 
     override fun onResume() {
@@ -723,8 +723,7 @@ class ComposeMainActivity : MetroAppCompatActivity() {
         activePlugin = activePlugin,
         protectionCheck = protectionCheck,
         configBuilder = configBuilder,
-        dexcomBoyda = dexcomBoyda,
-        onOpenCgmApp = { packageName -> openCgmApp(packageName) },
+        onOpenCgmApp = { packages -> openCgmApp(packages) },
         onExit = { finish() },
         onRequestDirectoryAccess = {
             try {
@@ -757,13 +756,18 @@ class ComposeMainActivity : MetroAppCompatActivity() {
         navigator(navController).handleSearchResultClick(entry)
     }
 
-    private fun openCgmApp(packageName: String) {
+    /** Opens the first of [packages] that is installed: one app, also when the user has two of them. */
+    private fun openCgmApp(packages: List<String>) {
+        val intent = packages.firstNotNullOfOrNull { packageManager.getLaunchIntentForPackage(it) }
+        if (intent == null) {
+            aapsLogger.debug("No CGM app installed of $packages")
+            return
+        }
         try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName) ?: throw ActivityNotFoundException()
             intent.addCategory(Intent.CATEGORY_LAUNCHER)
             startActivity(intent)
         } catch (_: ActivityNotFoundException) {
-            aapsLogger.debug("Error opening CGM app: $packageName")
+            aapsLogger.debug("Error opening CGM app: ${intent.`package`}")
         }
     }
 

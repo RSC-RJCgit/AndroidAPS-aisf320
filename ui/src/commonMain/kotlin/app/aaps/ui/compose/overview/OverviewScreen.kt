@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -114,6 +115,8 @@ fun OverviewScreen(
     runningModeRecordId: Long = 0,
     tbrState: TbrState,
     tbrRate: Double? = null,
+    tbrText: String = "",
+    tbrProgress: Float = 0f,
     smbEnabled: Boolean,
     isSimpleMode: Boolean,
     calcProgress: Int,
@@ -133,6 +136,8 @@ fun OverviewScreen(
     autoShowNotificationSheet: Boolean,
     onAutoShowConsumed: () -> Unit,
     activeSceneState: ActiveSceneState? = null,
+    silentAlertKinds: Int = 0,
+    onOpenAlertKinds: (() -> Unit)? = null,
     sceneExpired: Boolean = false,
     activeSceneChainTargetName: String? = null,
     onEndScene: () -> Unit = {},
@@ -155,6 +160,16 @@ fun OverviewScreen(
     queueStatusText: AnnotatedString? = null,
     isPumpCommunicating: Boolean = false,
     onStopBolus: () -> Unit = {},
+    /**
+     * Called with true while the one-column layout is shown. It has its own line for the version and the
+     * calculation progress in the BG circle, and the main screen can hide the top bar over it.
+     */
+    onStackedLayout: (Boolean) -> Unit = {},
+    /**
+     * Opens the menu while the top bar is hidden: over the one-column layout, and in preview mode (a phone
+     * in landscape) over the two-column layout too. Null while it shows.
+     */
+    onCompactMenuClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val config = LocalConfig.current
@@ -255,6 +270,8 @@ fun OverviewScreen(
                 runningModeSceneManaged = runningModeSceneManaged,
                 tbrState = tbrState,
                 tbrRate = tbrRate,
+                tbrText = tbrText,
+                tbrProgress = tbrProgress,
                 smbEnabled = smbEnabled,
                 isSimpleMode = isSimpleMode,
                 graphViewModel = graphViewModel,
@@ -296,6 +313,8 @@ fun OverviewScreen(
                 runningModeSceneManaged = runningModeSceneManaged,
                 tbrState = tbrState,
                 tbrRate = tbrRate,
+                tbrText = tbrText,
+                tbrProgress = tbrProgress,
                 smbEnabled = smbEnabled,
                 isSimpleMode = isSimpleMode,
                 graphViewModel = graphViewModel,
@@ -337,6 +356,8 @@ fun OverviewScreen(
                     runningModeSceneManaged = runningModeSceneManaged,
                     tbrState = tbrState,
                     tbrRate = tbrRate,
+                    tbrText = tbrText,
+                    tbrProgress = tbrProgress,
                     smbEnabled = smbEnabled,
                     isSimpleMode = isSimpleMode,
                     graphViewModel = graphViewModel,
@@ -447,7 +468,9 @@ fun OverviewScreen(
             notifications = notifications,
             onDismissSheet = { showNotificationSheet = false },
             onDismissNotification = onDismissNotification,
-            onNotificationActionClick = onNotificationActionClick
+            onNotificationActionClick = onNotificationActionClick,
+            silentAlertKinds = silentAlertKinds,
+            onOpenAlertKinds = onOpenAlertKinds
         )
     }
 }

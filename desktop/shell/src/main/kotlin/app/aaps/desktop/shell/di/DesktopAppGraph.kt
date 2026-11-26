@@ -1,7 +1,7 @@
 package app.aaps.desktop.shell.di
 
-import app.aaps.core.interfaces.alerts.EatReminder
-import app.aaps.core.interfaces.alerts.LocalAlertUtils
+import app.aaps.appshell.start.AppStartSequence
+import app.aaps.core.interfaces.alerts.Alerts
 import app.aaps.core.interfaces.bgQualityCheck.BgQualityCheck
 import app.aaps.core.interfaces.clientcontrol.ClientControlActionDispatcher
 import app.aaps.core.interfaces.configuration.Config
@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.constraints.Objectives
 import app.aaps.core.interfaces.db.PersistenceLayer
 import app.aaps.core.interfaces.iob.IobCobCalculator
 import app.aaps.core.interfaces.logging.AAPSLogger
+import app.aaps.core.interfaces.logging.UserEntryLogger
 import app.aaps.core.interfaces.maintenance.PrefsFileInfo
 import app.aaps.core.interfaces.notifications.NotificationManager
 import app.aaps.core.interfaces.overview.OverviewData
@@ -27,7 +28,6 @@ import app.aaps.core.interfaces.pump.BolusProgressData
 import app.aaps.core.interfaces.queue.CommandQueue
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
-import app.aaps.core.interfaces.source.DexcomBoyda
 import app.aaps.core.interfaces.sync.NsClient
 import app.aaps.core.interfaces.ui.SnackbarHostPresence
 import app.aaps.core.interfaces.ui.UiInteraction
@@ -42,11 +42,10 @@ import app.aaps.core.objects.di.CoreObjectsGraph
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
 import app.aaps.database.AppRepository
 import app.aaps.database.di.JvmAppDatabaseBuilder
+import app.aaps.desktop.shell.platform.DesktopAlertPlatform
 import app.aaps.implementation.maintenance.DesktopFolders
 import app.aaps.implementation.maintenance.PeriodicMaintenance
 import app.aaps.implementation.maintenance.cloud.AuthBrowser
-import app.aaps.implementation.notifications.SnackbarNotificationFallback
-import app.aaps.implementation.plugin.PluginStore
 import app.aaps.plugins.automation.AutomationRuntime
 import app.aaps.plugins.configuration.setupwizard.SWDefinition
 import app.aaps.shared.clientbindings.ClientGraphBindings
@@ -57,7 +56,6 @@ import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.search.BuiltInSearchables
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.DependencyGraph
-import dev.zacsweers.metro.Includes
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metrox.viewmodel.MetroViewModelMultibindings
@@ -95,8 +93,15 @@ import java.io.File
  *
  * The pattern to follow for the first group is `app.aaps.ios.shell.missing`: nothing returns a
  * plausible value, and nothing is silent.
+ *
+ * [CoreObjectsGraph] is a plain binding container rather than a contributed one, so every graph has
+ * to name it. It holds the QuickWizard / QuickWizardEntry / BolusWizard cycle, broken with deferred
+ * providers - the same shape `AppRootGraph` and `IosAppGraph` use. [ClientGraphBindings] is the same
+ * idea: the bindings iOS and desktop both need, in one place rather than copied into each shell. Not
+ * contributed, because Android provides the same ones. Both are objects, so they go in
+ * `bindingContainers`: Metro calls their `@Provides` directly and needs no instance.
  */
-@DependencyGraph(AppScope::class)
+@DependencyGraph(AppScope::class, bindingContainers = [CoreObjectsGraph::class, ClientGraphBindings::class])
 interface DesktopAppGraph : MetroViewModelMultibindings {
 
     // Everything AapsAppRoot takes.
@@ -123,15 +128,8 @@ interface DesktopAppGraph : MetroViewModelMultibindings {
     // The periodic housekeeping shared with Android, and the scope the shell drives it on.
     val periodicMaintenance: PeriodicMaintenance
 
-    /**
-     * The local alarms, for one call Android makes and this shell has to make too:
-     * `preSnoozeAlarms` holds the stale-data alarm back for five minutes so the first Nightscout
-     * round can land before the database is judged out of date.
-     */
-    val localAlertUtils: LocalAlertUtils
-    // Turns a snackbar into a notification when no screen is up to show it. Shared with Android.
-    val snackbarNotificationFallback: SnackbarNotificationFallback
-    val eatReminder: EatReminder
+    /** The start every platform runs, from `:appshell`. */
+    val appStartSequence: AppStartSequence
     val appScope: CoroutineScope
 
     /** Collected by the composition root, which rebuilds when it moves. */
@@ -139,7 +137,6 @@ interface DesktopAppGraph : MetroViewModelMultibindings {
     val prefsFileInfo: PrefsFileInfo
     val persistenceLayer: PersistenceLayer
     val logger: AAPSLogger
-    val pluginStore: PluginStore
     val contributedPlugins: Map<Int, PluginBase>
 
     /** Plugins that only belong in a build that runs the loop (Objectives). Merged only under `config.APS`, the Virtual master (2026-10-30). */
@@ -161,7 +158,14 @@ interface DesktopAppGraph : MetroViewModelMultibindings {
 
     /** Where a Google sign in is shown. Not [urlOpener] - see `AuthBrowser` for why they differ. */
     val authBrowser: AuthBrowser
-    val dexcomBoyda: DexcomBoyda
+
+    /**
+     * The alarm screen, which the window draws: [DesktopAlertPlatform.alarmScreen] says which alert wants it, and the
+     * shared `AlertScreen` shows it with [alerts] and, for its buttons, [uel].
+     */
+    val alerts: Alerts
+    val alertPlatform: DesktopAlertPlatform
+    val uel: UserEntryLogger
 
     /**
      * Assisted rather than contributed: both are built with the overview data cache instead of
@@ -198,23 +202,4 @@ interface DesktopAppGraph : MetroViewModelMultibindings {
     @Provides
     @SingleIn(AppScope::class)
     fun repository(): AppRepository = JvmAppDatabaseBuilder().provideAppRepository(File(DesktopFolders.data, "aaps-desktop.db").absolutePath)
-
-    /**
-     * [CoreObjectsGraph] is a plain binding container rather than a contributed one, so every graph
-     * has to include it by name. It holds the QuickWizard / QuickWizardEntry / BolusWizard cycle,
-     * broken with deferred providers - the same shape `AppRootGraph` and `IosAppGraph` use.
-     *
-     * [ClientGraphBindings] is the same idea: the bindings iOS and desktop both need, in one place
-     * rather than copied into each shell. Not contributed, because Android provides the same ones.
-     */
-
-
-    @DependencyGraph.Factory
-    fun interface Factory {
-
-        fun create(
-            @Includes coreObjects: CoreObjectsGraph,
-            @Includes clientBindings: ClientGraphBindings
-        ): DesktopAppGraph
-    }
 }

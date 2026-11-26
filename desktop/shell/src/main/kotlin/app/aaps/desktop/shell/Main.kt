@@ -23,6 +23,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.compose.NavHost
 import app.aaps.appshell.AapsAppRoot
 import app.aaps.appshell.StartupFailedScreen
+import app.aaps.appshell.start.AppStartPlatform
 import app.aaps.appshell.navigation.AppRoute
 import app.aaps.appshell.navigation.ElementNavigator
 import app.aaps.appshell.navigation.appNavGraph
@@ -30,7 +31,6 @@ import app.aaps.appshell.navigation.handleNotificationAction
 import app.aaps.appshell.navigation.handleQuickLaunchAction
 import app.aaps.appshell.navigation.handleSearchResultClick
 import app.aaps.core.interfaces.configuration.ExternalOptions
-import app.aaps.core.interfaces.configuration.initializeAndAnnounceReady
 import app.aaps.core.interfaces.logging.AAPSLogger
 import app.aaps.core.interfaces.logging.LTag
 import app.aaps.core.interfaces.notifications.NotificationId
@@ -38,7 +38,6 @@ import app.aaps.core.interfaces.protection.ProtectionCheck
 import app.aaps.core.interfaces.resources.LanguageTag
 import app.aaps.core.interfaces.resources.TextRefValueRegistry
 import app.aaps.core.keys.StringKey
-import app.aaps.core.keys.StringNonKey
 import app.aaps.core.objects.di.CoreObjectsGraph
 import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.LocalMetroViewModelFactory
@@ -53,12 +52,10 @@ import app.aaps.desktop.shell.secure.KeyVaultUnavailableException
 import app.aaps.implementation.logging.AAPSLoggerDesktop
 import app.aaps.desktop.shell.platform.chooseFolder
 import app.aaps.implementation.maintenance.DesktopFolders
-import app.aaps.implementation.preference.BuildDefaultsReset
-import app.aaps.implementation.preference.FreshInstallDefaults
-import app.aaps.implementation.preference.TempTargetPresetSeed
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import app.aaps.shared.clientbindings.ClientViewModelFactory
 import app.aaps.shared.impl.sharedPreferences.StoreUnreadableException
+import app.aaps.ui.activities.AlertScreen
 import app.aaps.ui.compose.configuration.ConfigurationViewModel
 import app.aaps.ui.compose.insulinManagement.InsulinManagementViewModel
 import app.aaps.ui.compose.loopSheet.LoopActionViewModel
@@ -83,10 +80,11 @@ import app.aaps.ui.compose.tempTarget.TempTargetManagementViewModel
 import app.aaps.ui.compose.treatments.viewmodels.TreatmentsViewModel
 import app.aaps.ui.compose.treatmentsSheet.TreatmentViewModel
 import app.aaps.ui.search.SearchViewModel
-import dev.zacsweers.metro.createGraphFactory
+import dev.zacsweers.metro.createGraph
 import javax.swing.JOptionPane
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.channels.FileChannel
@@ -219,14 +217,7 @@ private class DesktopStartup {
  * screen.
  */
 private fun startApp(storage: DesktopStorage.Opened): DesktopAppGraph {
-    val graph = createGraphFactory<DesktopAppGraph.Factory>().create(CoreObjectsGraph, ClientGraphBindings)
-    // A new install starts with the fork's settings, as on Android and iOS (2026-11-01, per explicit request). Before the
-    // plugins start, so they read them.
-    FreshInstallDefaults.apply(graph.preferences, graph.config)
-    // The three factory TT presets when this device has none; a client keeps its own (2026-11-16, per explicit request).
-    TempTargetPresetSeed.apply(graph.preferences, graph.config)
-    // The agreed switches too, as on Android and iOS. Once only, on a fresh install.
-    BuildDefaultsReset.apply(graph.preferences, graph.config, graph.preferences.get(StringNonKey.ActivePluginPump))
+    val graph = createGraph<DesktopAppGraph>()
     startPlugins(graph)
     // Said in the app, not only in the log: the user is the one who can fix it, by installing a keyring.
     if (storage.fallbackReason != null)
@@ -283,15 +274,15 @@ private fun claimSingleInstance() {
 }
 
 /**
- * Registers the plugins and picks the active one in each category, before anything draws.
+ * Runs the start every platform runs, before anything draws.
  *
- * Order matters and both steps are needed. Registering the list is not enough on its own: until the
- * selections are verified, `activePump` has nothing to return and throws "No pump selected" from the
- * first view model that asks. Android does exactly this in `MainApp`, and because `ConfigBuilderImpl`
- * is shared now, the desktop calls the same `initialize()` rather than a copy of what it does.
+ * `AppStartSequence` is the same code `MainApp` runs: the migrations, the database vacuum, the plugins and
+ * every start after them, in one order. It runs here on the start thread, which the window already waits
+ * for, so the first screen is built only after the plugins have started. Until then `activePump` has
+ * nothing to return and throws "No pump selected" from the first view model that asks.
  *
  * String owners come first: a screen that renders before them shows string names rather than words,
- * and the plugin descriptions built below carry names.
+ * and the plugin descriptions built by the start carry names.
  */
 private fun startPlugins(graph: DesktopAppGraph) {
     GeneratedStringOwners.registerAll()
@@ -324,35 +315,26 @@ private fun startPlugins(graph: DesktopAppGraph) {
     // The Virtual master (client 0) also gets the loop-only plugins (Objectives), as Android does under config.APS (2026-10-30)
     val contributed = if (graph.config.APS) graph.contributedPlugins + graph.contributedApsPlugins else graph.contributedPlugins
     val plugins = contributed.entries.sortedBy { it.key }.map { it.value }
-    graph.pluginStore.plugins = plugins
-    // Starts the plugins and says the app is ready once they have started. `IobCobCalculatorPlugin`
-    // runs the first IOB/COB calculation on that event, and subscribes to it in its own `onStart`,
-    // so it has to be announced after the start jobs finish. Only `MainApp` sent it, so desktop and
-    // iOS both showed an empty graph until the next glucose reading (nightscout/AndroidAPS#5485).
-    graph.configBuilder.initializeAndAnnounceReady(graph.appScope, graph.rxBus, graph.logger)
-    // The periodic housekeeping Android gets from KeepAliveWorker. The work is shared; only the
-    // trigger is not, because there is no WorkManager here.
-    //
-    // The pre-snooze first, which only `MainApp` did. `start` runs its first pass straight away and
-    // that pass asks whether the newest stored glucose value is stale. After a cold start it always
-    // is, by however long this client was not running, so without the five minute hold the app
-    // raises "BG readings missed" before the first Nightscout round can land
-    // (nightscout/AndroidAPS#5495, reported on iOS and true here for the same reason).
-    graph.localAlertUtils.preSnoozeAlarms()
-    graph.periodicMaintenance.start(graph.appScope)
-    // Loads the automation rules and keeps them in step with the master. This is what fills the
-    // Automation screen - nothing else reads the stored rules - so without it the list was always
-    // empty here, a rule pushed by the master was never picked up, and a rule edited here was never
-    // written back. Execution stays on the master: `start()` returns before the processing loop when
-    // `config.APS` is false, which it always is on this client, and `runEvent` refuses on the same
-    // flag. After the plugins, like Android: an action's description can name the active pump.
-    graph.automationRuntime.start()
-    // A snackbar sent while no window is showing one becomes a system notification instead of being
-    // lost. The same shared class Android and iOS start.
-    graph.snackbarNotificationFallback.start()
-    // The "time to eat" alarm lives in this process; set it again when a timer was running. Master only.
-    graph.eatReminder.restore()
-    graph.logger.debug(LTag.CORE, "Registered ${plugins.size} plugins and verified selections")
+    runBlocking { graph.appStartSequence.run(plugins, DesktopStartPlatform(graph)) }
+}
+
+/** What only the desktop does during the start. `AppStartSequence` decides when. */
+private class DesktopStartPlatform(private val graph: DesktopAppGraph) : AppStartPlatform {
+
+    // The desktop build has no build number. The version name and the commit tell the builds apart.
+    override val versionCode: Int = 0
+
+    override val deviceName: String = "${System.getProperty("os.name")} ${System.getProperty("os.version")}"
+
+    override fun startServices() = Unit
+
+    // The periodic housekeeping Android gets from KeepAliveWorker. The work is shared; only the trigger
+    // is not, because there is no WorkManager here. Its first pass runs at once.
+    override fun startKeepAlive() {
+        graph.periodicMaintenance.start(graph.appScope)
+    }
+
+    override suspend fun beforeReady() = Unit
 }
 
 /** The language tag for the stored language setting, or the machine's language when it follows the device. */
@@ -439,6 +421,19 @@ private fun AapsDesktopApp(graph: DesktopAppGraph, appIcon: Painter, appName: St
             onNavControllerReady = {},
             onClose = { logger.error(LTag.CORE, "Initialization failed and the window was asked to close") }
         ) { navController ->
+            // The alarm screen of a ringing alert, in place of the app, as on iOS: the same shared screen and buttons
+            val alarmScreen by graph.alertPlatform.alarmScreen.collectAsState()
+            alarmScreen?.let { alert ->
+                AlertScreen(
+                    alerts = graph.alerts,
+                    source = alert.source,
+                    key = alert.key,
+                    uel = graph.uel,
+                    onClose = { graph.alertPlatform.alarmScreenClosed(alert.source, alert.key) }
+                )
+                return@AapsAppRoot
+            }
+
             // Resolved here rather than inside the NavHost: appNavGraph is a builder, not a
             // composable, so a view model cannot be asked for from within it.
             // The overview and the drawer must share one instance, or a menu action would talk to a
@@ -453,8 +448,7 @@ private fun AapsDesktopApp(graph: DesktopAppGraph, appIcon: Painter, appName: St
                 activePlugin = graph.activePlugin,
                 protectionCheck = graph.protectionCheck,
                 configBuilder = graph.configBuilder,
-                dexcomBoyda = graph.dexcomBoyda,
-                onOpenCgmApp = { pkg -> logger.error(LTag.CORE, "No CGM app to open on desktop: $pkg") },
+                onOpenCgmApp = { packages -> logger.error(LTag.CORE, "No CGM app to open on desktop: $packages") },
                 onExit = { logger.debug(LTag.CORE, "Exit requested from the menu") },
                 onRequestDirectoryAccess = { logger.debug(LTag.CORE, "Desktop reads its own folder; nothing to grant") },
                 onOpenUrl = { url -> graph.urlOpener.open(url) }

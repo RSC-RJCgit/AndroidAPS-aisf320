@@ -65,7 +65,7 @@ class CommonNotificationManagerTest {
             calls.add("cancelAll")
         }
 
-        override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?) {
+        override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?, breakThroughDnd: Boolean, ringtoneUri: String?) {
             audibleKey = instanceKey
             audibleSound = sound
             audibleCallCount++
@@ -73,6 +73,12 @@ class CommonNotificationManagerTest {
         }
 
         override fun onDismissed(callback: (Int) -> Unit) {}
+
+        /** What [clearLeftovers] was told counts as this run's own. */
+        var isCurrent: ((Int) -> Boolean)? = null
+        override fun clearLeftovers(isCurrent: (Int) -> Boolean) {
+            this.isCurrent = isCurrent
+        }
     }
 
     /** Returns the literal for a [TextRef.Literal] and a fixed marker for anything else. */
@@ -142,6 +148,21 @@ class CommonNotificationManagerTest {
         assertContains(platform.calls, "show:${handle.instanceKey}:over the limit:urgent=true")
     }
 
+    /**
+     * A card this run has posted is its own and stays; any other key the platform finds is left from before. Asked
+     * when the platform looks, so a card posted between the start of the clearing and the look also stays.
+     */
+    @Test
+    fun `clearing the leftovers keeps the cards of this run`() = runTest {
+        val sut = createSut()
+        sut.clearLeftovers()
+        val handle = sut.post(NotificationId.TOAST_ALARM, "over the limit")
+
+        val isCurrent = platform.isCurrent!!
+        assertEquals(true, isCurrent(handle.instanceKey))
+        assertEquals(false, isCurrent(handle.instanceKey + 1))
+    }
+
     /** allowMultiple = false, so a second post of the same id replaces the first rather than adding. */
     @Test
     fun `reposting the same id replaces instead of stacking`() = runTest {
@@ -169,7 +190,7 @@ class CommonNotificationManagerTest {
     fun `the list is ordered by level - most severe first`() = runTest {
         val sut = createSut()
 
-        sut.post(NotificationId.SCENE_ENDED, "info", level = NotificationLevel.INFO)
+        sut.post(NotificationId.SCENE_CHAINED, "info", level = NotificationLevel.INFO)
         sut.post(NotificationId.TOAST_ALARM, "urgent", level = NotificationLevel.URGENT)
 
         assertEquals(listOf("urgent", "info"), texts(sut))
@@ -218,7 +239,7 @@ class CommonNotificationManagerTest {
     @Test
     fun `a notification past its validTo is gone by the next write`() = runTest {
         val sut = createSut()
-        sut.post(NotificationId.SCENE_ENDED, "stale", date = 1_000L, validTo = 2_000L)
+        sut.post(NotificationId.SCENE_CHAINED, "stale", date = 1_000L, validTo = 2_000L)
 
         // Any later write runs the expiry sweep.
         sut.post(NotificationId.TOAST_ALARM, "fresh")
@@ -229,7 +250,7 @@ class CommonNotificationManagerTest {
     @Test
     fun `validTo of zero means it never expires`() = runTest {
         val sut = createSut()
-        sut.post(NotificationId.SCENE_ENDED, "forever", date = 1_000L, validTo = 0L)
+        sut.post(NotificationId.SCENE_CHAINED, "forever", date = 1_000L, validTo = 0L)
 
         sut.cleanUp()
 
@@ -240,7 +261,7 @@ class CommonNotificationManagerTest {
     fun `a validityCheck that turns false drops the notification`() = runTest {
         var stillValid = true
         val sut = createSut()
-        sut.post(NotificationId.SCENE_ENDED, "conditional", validityCheck = { stillValid })
+        sut.post(NotificationId.SCENE_CHAINED, "conditional", validityCheck = { stillValid })
         assertEquals(1, sut.notifications.value.size)
 
         stillValid = false
@@ -268,7 +289,7 @@ class CommonNotificationManagerTest {
     fun `a sound below urgent never rings`() = runTest {
         val sut = createSut()
 
-        sut.post(NotificationId.SCENE_ENDED, "quiet", level = NotificationLevel.INFO, sound = AlarmSound.ERROR)
+        sut.post(NotificationId.SCENE_CHAINED, "quiet", level = NotificationLevel.INFO, sound = AlarmSound.ERROR)
 
         assertNull(platform.audibleKey)
     }
@@ -306,7 +327,7 @@ class CommonNotificationManagerTest {
         sut.post(NotificationId.TOAST_ALARM, "alarm", sound = AlarmSound.ERROR)
         val callsAfterFirst = platform.audibleCallCount
 
-        sut.post(NotificationId.SCENE_ENDED, "unrelated", level = NotificationLevel.INFO)
+        sut.post(NotificationId.SCENE_CHAINED, "unrelated", level = NotificationLevel.INFO)
 
         assertEquals(callsAfterFirst, platform.audibleCallCount)
     }
@@ -326,7 +347,7 @@ class CommonNotificationManagerTest {
     fun `mute all clears audible alarms but leaves quiet notifications`() = runTest {
         val sut = createSut()
         sut.post(NotificationId.TOAST_ALARM, "loud", sound = AlarmSound.ERROR)
-        sut.post(NotificationId.SCENE_ENDED, "quiet", level = NotificationLevel.INFO)
+        sut.post(NotificationId.SCENE_CHAINED, "quiet", level = NotificationLevel.INFO)
 
         sut.muteAllAlarms()
 
@@ -344,10 +365,10 @@ class CommonNotificationManagerTest {
     fun `the watch is told of the alarm that sounds`() = runTest {
         val sut = createSut()
 
-        sut.post(NotificationId.PUMP_UNREACHABLE, "Pump unreachable", sound = AlarmSound.ALARM)
+        sut.post(NotificationId.PUMP_ERROR, "Pump error", sound = AlarmSound.ALARM)
 
         val ringing = toWear().single() as EventData.AlarmRinging
-        assertEquals("Pump unreachable", ringing.status)
+        assertEquals("Pump error", ringing.status)
         assertEquals("title", ringing.title)
         assertEquals(false, ringing.canMute)
     }
@@ -380,8 +401,8 @@ class CommonNotificationManagerTest {
     fun `a quiet notification is not sent to the watch`() = runTest {
         val sut = createSut()
 
-        sut.post(NotificationId.SCENE_ENDED, "quiet", level = NotificationLevel.INFO)
-        sut.dismiss(NotificationId.SCENE_ENDED)
+        sut.post(NotificationId.SCENE_CHAINED, "quiet", level = NotificationLevel.INFO)
+        sut.dismiss(NotificationId.SCENE_CHAINED)
 
         assertTrue(toWear().isEmpty())
     }
@@ -415,7 +436,7 @@ class CommonNotificationManagerTest {
     fun `a TextRef is resolved when it is posted`() = runTest {
         val sut = createSut()
 
-        sut.post(NotificationId.SCENE_ENDED, TextRef.Literal("resolved text"))
+        sut.post(NotificationId.SCENE_CHAINED, TextRef.Literal("resolved text"))
 
         assertEquals(listOf("resolved text"), texts(sut))
     }

@@ -483,7 +483,7 @@ class DashPluginRules(
 
     /** Android `showErrorDialog`: `uiInteraction.runAlarm` with the "Error" title. */
     private fun showErrorDialog(text: TextRef, sound: AlarmSound?) {
-        uiInteraction().runAlarm(rh.gs(text), rh.gs(DashStrings.omnipod_dash_ios_error), sound)
+        uiInteraction().runAlarm("omnipod-dash-ios-alert", rh.gs(text), rh.gs(DashStrings.omnipod_dash_ios_error), sound)
     }
 
     /** Android `hasBolusErrorBeepEnabled`. */

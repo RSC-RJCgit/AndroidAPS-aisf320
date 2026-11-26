@@ -62,7 +62,7 @@ class NsConnectHandler(
             val response = NsWsPayload.parse(raw)
             val ok = response?.let { NsWsPayload.boolean(it, "success") } == true
             if (ok) {
-                nsClientRepository.addLog("◄ WS", "Subscribed for: ${response?.let { NsWsPayload.text(it, "collections") }}")
+                nsClientRepository.addLog("◄ WS", "Subscribed for: ${NsWsPayload.text(response, "collections")}")
                 // Nothing arrives while disconnected, so the next round has to be a catch-up one.
                 nsClientV3Plugin().initialLoadFinished = false
                 nsClientV3Plugin().executeLoop("WS_CONNECT")
@@ -71,20 +71,6 @@ class NsConnectHandler(
             }
             onSubscribed(ok)
             nsClientRepository.updateStatus(nsClientV3Plugin().status)
-        }
-    }
-
-    /** Subscribes the alarm socket. Nothing depends on the outcome beyond the log. */
-    fun onConnectAlarms(socket: NsSocket?) {
-        nsClientRepository.addLog("◄ WS", "connected alarms ID: ${socket?.id ?: "NULL"}")
-        if (socket == null) return
-        val auth = buildJsonObject { put("accessToken", preferences.get(StringKey.NsClientAccessToken)) }
-        nsClientRepository.addLog("► WS", "requesting auth for alarms")
-        socket.emitWithAck("subscribe", auth.toString()) { raw ->
-            val response = NsWsPayload.parse(raw)
-            if (response?.let { NsWsPayload.boolean(it, "success") } == true)
-                nsClientRepository.addLog("◄ WS", response.let { NsWsPayload.text(it, "message") } ?: "")
-            else nsClientRepository.addLog("◄ WS", "Auth failed")
         }
     }
 
@@ -101,18 +87,6 @@ class NsConnectHandler(
         onDisconnected()
         nsClientV3Plugin().initialLoadFinished = false
         nsClientRepository.updateStatus(nsClientV3Plugin().status)
-    }
-
-    /**
-     * The alarm socket dropped.
-     *
-     * Only logged, which is the whole handler - but it existed on Android alone, so an alarm socket
-     * that dropped on iOS or the desktop said nothing at all. Someone reading the log to work out
-     * why alarms went quiet had nothing to read.
-     */
-    fun onDisconnectAlarm(reason: String) {
-        aapsLogger.debug(LTag.NSCLIENT, "disconnect alarm reason: $reason")
-        nsClientRepository.addLog("◄ WS", "disconnect alarm event")
     }
 
     companion object {

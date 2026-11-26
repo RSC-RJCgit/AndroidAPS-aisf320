@@ -25,7 +25,7 @@ enum class SourceSensor(val text: String, val aliases: Set<String> = emptySet())
         setOf("Other App", "Network libre", "BlueReader", "Transmiter PL", "Blucon", "Tomato", "Rfduino", "LimiTTer", "Bubble", "Atom", "Glimp")
     ),
     LIBRE_2("Libre2", setOf("Libre2 Native")),
-    LIBRE_3("Libre3"),
+    LIBRE_3("Libre3", setOf("Li3")),
     MEDTRUM_A6("Medtrum A6"),
     MEDTRUM_UNKNOWN("Medtrum", setOf("Medtrum Native")),
     MM_600_SERIES("MM600Series"),
@@ -54,6 +54,8 @@ enum class SourceSensor(val text: String, val aliases: Set<String> = emptySet())
     GLUTEC("Glutec", setOf("MQ")),
     GLUPRO("GluPro"),
     EVERSENSE("Eversense"),
+    EVERSENSE_E3("Eversense E3"),
+    EVERSENSE_365("Eversense 365"),
     // One sensor sold under two brands. AAPS already treats them as one: the broadcasts from both
     // apps go to the same worker, which has always stored this entry, and the plugin calls itself
     // "Syai/Ottai App". `Ottai` is only ever read, and is what Juggluco sends.

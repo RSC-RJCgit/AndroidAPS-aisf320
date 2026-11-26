@@ -1,12 +1,10 @@
 package app.aaps.di.metro
 
+import app.aaps.implementation.alerts.AlertSilenceReceiver
 import app.aaps.implementation.alerts.EatReminderReceiver
-import app.aaps.implementation.androidNotification.AlarmMuteReceiver
 import app.aaps.persistentNotification.DummyService
-import app.aaps.plugins.automation.TimerReminderReceiver
 import app.aaps.plugins.automation.services.LocationService
 import app.aaps.receivers.AutoStartReceiver
-import app.aaps.receivers.CarbSuggestionReceiver
 import app.aaps.receivers.DataReceiver
 import app.aaps.receivers.SmsReceiver
 import com.google.common.truth.Truth.assertThat
@@ -36,18 +34,6 @@ class ReceiverInjectorsTest {
         )
     }
 
-    /**
-     * Android builds this one from a notification action button, so it needs an entry like the rest.
-     * It was converted to `MetroBroadcastReceiver` without one, and tapping Mute or Dismiss on the
-     * background alarm notification crashed with "No Metro binding for AlarmMuteReceiver" - issue
-     * #5124. Nothing failed at build time, and no test covered it, because this file names the
-     * classes it checks by hand.
-     */
-    @Test
-    fun `the alarm notification receiver has an injector`() {
-        assertThat(injectors.keys).contains(AlarmMuteReceiver::class)
-    }
-
     /** The "time to eat" alarm and its Stop / +5 min buttons; a missing entry is a crash when the timer ends. */
     @Test
     fun `the eat reminder receiver has an injector`() {
@@ -59,19 +45,25 @@ class ReceiverInjectorsTest {
         // DummyService is a Service, not a receiver. It reaches the same class-keyed map through
         // `MetroService`, and a missing entry would only show as a crash when the foreground
         // notification starts.
-        assertThat(injectors.keys).containsAtLeast(DummyService::class, CarbSuggestionReceiver::class)
+        assertThat(injectors.keys).contains(DummyService::class)
+    }
+
+    /** The silence buttons on a warning's notification; a missing entry is a crash when one is tapped. */
+    @Test
+    fun `the alert silence receiver has an injector`() {
+        assertThat(injectors.keys).contains(AlertSilenceReceiver::class)
     }
 
     /**
      * The automation module reaches the same map from its own module.
      *
-     * It used to own a graph extension with a map of its own; these two now contribute into the
-     * root map like every pump driver does. A missing entry here is a crash when a reminder fires
-     * or a location trigger starts its service, which is a long way from this file.
+     * It used to own a graph extension with a map of its own; it now contributes into the root map
+     * like every pump driver does. A missing entry here is a crash when a location trigger starts its
+     * service, which is a long way from this file.
      */
     @Test
-    fun `the automation receiver and service reach the same map`() {
-        assertThat(injectors.keys).containsAtLeast(TimerReminderReceiver::class, LocationService::class)
+    fun `the automation service reaches the same map`() {
+        assertThat(injectors.keys).contains(LocationService::class)
     }
 
     @Test

@@ -19,10 +19,11 @@ import app.aaps.plugins.smoothing.AvgSmoothingPlugin
 import app.aaps.plugins.smoothing.ExponentialSmoothingPlugin
 import app.aaps.plugins.smoothing.NoSmoothingPlugin
 import app.aaps.plugins.smoothing.UnscentedKalmanFilterPlugin
+import app.aaps.plugins.sync.nsclientV3.ws.NsSocket
+import app.aaps.plugins.sync.nsclientV3.ws.NsSocketFactory
 import app.aaps.shared.clientbindings.ClientGraphBindings
 import dev.zacsweers.metro.AppScope
 import dev.zacsweers.metro.DependencyGraph
-import dev.zacsweers.metro.Includes
 import dev.zacsweers.metro.Provides
 import dev.zacsweers.metro.SingleIn
 
@@ -52,8 +53,12 @@ import dev.zacsweers.metro.SingleIn
  *
  * To find what is still missing, add an accessor for it and read the `[Metro/MissingBinding]` error.
  * `_docs/ios_blockers.md` holds the current list and the procedure.
+ *
+ * [CoreObjectsGraph] is named in `bindingContainers` because it is a plain binding container, the same
+ * way `AppRootGraph` takes it on Android. Without it, four shared classes it builds (the bolus wizard,
+ * the quick wizard and its entry, and the running mode guard) look like missing bindings.
  */
-@DependencyGraph(AppScope::class)
+@DependencyGraph(AppScope::class, bindingContainers = [CoreObjectsGraph::class, ClientGraphBindings::class])
 interface IosProbeGraph {
 
     val noSmoothing: NoSmoothingPlugin
@@ -97,18 +102,20 @@ interface IosProbeGraph {
     @SingleIn(AppScope::class)
     fun repository(): AppRepository = IosAppDatabaseBuilder().provideAppRepository("aaps-ios-graph.db")
 
+    /**
+     * No sockets: a probe connects to nothing. Needed since the alert core is reachable here (`HardLimits` raises
+     * through it), and the core reaches the Nightscout client for the silences shared between phones. The app graph
+     * gets the real factory from Swift.
+     */
+    @Provides
+    fun nsSocketFactory(): NsSocketFactory = object : NsSocketFactory {
+        override fun create(url: String): NsSocket? = null
+    }
+
     @DependencyGraph.Factory
     fun interface Factory {
 
-        /**
-         * [CoreObjectsGraph] is a `@BindingContainer`, so its `@Provides` are only visible to a graph
-         * that includes it - the same way `AppRootGraph` takes it on Android. Without this, four
-         * shared classes it already builds (the bolus wizard, the quick wizard and its entry, and the
-         * running mode guard) look like missing bindings rather than ones Metro cannot see.
-         */
         fun create(
-            @Includes coreObjects: CoreObjectsGraph,
-            @Includes clientBindings: ClientGraphBindings,
             /**
              * Needed only because this graph exposes [fabricPrivacy], which now reports through it.
              * The probes pass [NoCrashReporter]: nothing a startup check does belongs in a crash

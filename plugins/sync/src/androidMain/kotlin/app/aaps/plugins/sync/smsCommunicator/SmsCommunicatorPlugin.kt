@@ -47,7 +47,6 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.smsCommunicator.Sms
 import app.aaps.core.interfaces.smsCommunicator.SmsCommunicator
 import app.aaps.core.interfaces.smsCommunicator.smsFromMessage
-import app.aaps.core.interfaces.sync.XDripBroadcast
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
 import app.aaps.core.interfaces.utils.SafeParse
@@ -133,7 +132,6 @@ class SmsCommunicatorPlugin(
     private val commandQueue: CommandQueue,
     private val loop: Loop,
     private val iobCobCalculator: IobCobCalculator,
-    private val xDripBroadcast: XDripBroadcast,
     private var otp: OneTimePassword,
     private val config: Config,
     private val dateUtil: DateUtil,
@@ -476,7 +474,8 @@ class SmsCommunicatorPlugin(
         } else if (lastBG != null) {
             val agoMilliseconds = dateUtil.now() - lastBG.timestamp
             val agoMin = (agoMilliseconds / 60.0 / 1000.0).toInt()
-            parts += labelled(SyncStrings.sms_last_bg, rh.gs(CoreUiStrings.value_with_unit, profileUtil.valueInCurrentUnitsDetect(lastBG.recalculated), rh.gs(SyncStrings.sms_min_ago, agoMin)))
+            // Formatted as the actual BG above. The bare number came out as "121.8" or "6.7605555555555555"
+            parts += labelled(SyncStrings.sms_last_bg, rh.gs(CoreUiStrings.value_with_unit, profileUtil.fromMgdlToStringInUnits(lastBG.recalculated), rh.gs(SyncStrings.sms_min_ago, agoMin)))
         }
         val glucoseStatus = glucoseStatusProvider.glucoseStatusData
         if (glucoseStatus != null) parts += labelled(SyncStrings.sms_delta, rh.gs(CoreUiStrings.value_with_unit, profileUtil.fromMgdlToSignedStringInUnits(glucoseStatus.delta), units))
@@ -1042,6 +1041,7 @@ class SmsCommunicatorPlugin(
         } else sendSMS(Sms(receivedSms.phoneNumber, rh.gs(SyncStrings.wrong_format)))
     }
 
+    /** CAL <value>, in the user's units. It takes the master's calibration path, so the BG source decides where it goes. */
     private fun processCAL(divided: Array<String>, receivedSms: Sms) {
         val cal = SafeParse.stringToDouble(divided[1])
         if (cal > 0.0) {
@@ -1051,11 +1051,11 @@ class SmsCommunicatorPlugin(
             messageToConfirm = authRequest(
                 receivedSms, reply, passCode,
                 CalibrationAction(
-                    value = cal,
+                    bgMgdl = profileUtil.convertToMgdl(cal, profileUtil.units),
                     receivedSms = receivedSms,
-                    xDripBroadcast = xDripBroadcast,
+                    masterActionExecutor = masterActionExecutorProvider(),
                     rh = rh,
-                    uel = uel,
+                    smsCommunicator = this,
                     sendSMSToAllNumbers = ::sendSMSToAllNumbers
                 )
             )

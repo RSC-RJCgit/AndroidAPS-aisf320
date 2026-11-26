@@ -1,5 +1,6 @@
 plugins {
     id("kmp-android-library")
+    id("kotlinx-serialization")
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose.multiplatform)
     alias(libs.plugins.metro)
@@ -73,9 +74,9 @@ kotlin {
 
         androidMain {
             dependencies {
-                implementation(project.dependencies.platform(libs.androidx.compose.bom))
-                implementation(libs.androidx.compose.material3)
-                implementation(libs.androidx.compose.runtime)
+                implementation(libs.androidx.appcompat)
+                implementation(libs.jetbrains.compose.material3)
+                implementation(libs.jetbrains.compose.runtime)
                 implementation(libs.androidx.lifecycle.runtime.compose)
                 implementation(libs.androidx.work.runtime)
                 // Trial (from AIMI): the camera that reads the Dexcom ONE+ / G7 applicator barcode on the start screen.
@@ -109,8 +110,7 @@ kotlin {
                 // The real org.json: isReturnDefaultValues makes the platform stub answer null rather than
                 // throwing, which NPEs the shared profile fixtures in TestBaseWithProfile.
                 implementation(libs.org.json.android)
-                implementation(project.dependencies.platform(libs.androidx.compose.bom))
-                implementation(libs.androidx.compose.ui.test.junit4)
+                implementation(libs.jetbrains.compose.ui.test.junit4)
                 implementation(libs.androidx.compose.ui.test.manifest)
                 runtimeOnly(libs.org.junit.vintage.engine)
                 runtimeOnly(libs.org.junit.platform.launcher)

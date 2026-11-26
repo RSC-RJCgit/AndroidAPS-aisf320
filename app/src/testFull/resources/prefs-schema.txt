@@ -78,8 +78,15 @@ active_pump_type|StringNonKey|false
 active_scene|StringNonKey|false
 actual_basal_profile|MedtrumStringNonKey|true
 age|StringKey|true
+alarm_over_other_apps|UiIntentKey|false
 alarm_setting|MedtrumStringKey|true
+alert_bookings|StringNonKey|false
+alert_choices|StringNonKey|true
+alert_kinds|UiIntentKey|false
 alert_override_dnd|BooleanKey|true
+alert_pauses|StringNonKey|false
+alert_shared_silences|StringNonKey|false
+alert_sounds|StringNonKey|true
 allow_hardware_pump|BooleanNonKey|true
 always_use_shortavg|BooleanKey|true
 app_expiration_%s|LongComposedKey|true
@@ -103,6 +110,10 @@ autotune_default_tune_days|IntKey|true
 autotune_tune_insulin_curve|BooleanKey|true
 bgAccel_ISF_weight|DoubleKey|true
 bgBrake_ISF_weight|DoubleKey|true
+bg_alarm_rules_screen|UiIntentKey|false
+bg_alarm_rules|StringNonKey|true
+bg_alarm_urgent_low|UnitDoubleKey|true
+bg_alarms_intro_shown|BooleanNonKey|false
 bolus_amount_to_be_delivered|MedtrumDoubleNonKey|true
 bolus_password|StringKey|true
 bolus_pin|StringKey|true
@@ -126,6 +137,7 @@ carelevo_patch_info|CarelevoStringNonKey|false
 carelevo_temp_basal_infusion_info|CarelevoStringNonKey|false
 carelevo_user_setting_info|CarelevoStringNonKey|false
 categorize_uam_as_basal|BooleanKey|true
+cgm_app_catalog|StringNonKey|false
 combov2-bt-address-key|ComboStringNonKey|true
 combov2-cp-cipher-key|ComboStringNonKey|true
 combov2-key-response-address-key|ComboIntNonKey|true
@@ -181,7 +193,6 @@ enableSMB_always|BooleanKey|true
 enableSMB_with_COB|BooleanKey|true
 enableSMB_with_high_temptarget|BooleanKey|true
 enableSMB_with_temptarget|BooleanKey|true
-enable_carbs_required_alert_local|BooleanKey|true
 enable_fabric2|BooleanKey|true
 enable_missed_bg_readings|BooleanKey|true
 enable_pump_unreachable_alert|BooleanKey|true
@@ -195,6 +206,10 @@ eopatch_patch_buzzer_reminders|EopatchBooleanKey|true
 eopatch_patch_config|EopatchStringNonKey|true
 eopatch_patch_state|EopatchStringNonKey|true
 eopatch_temp_basal|EopatchStringNonKey|true
+eversense_cloud_queue_json|EversenseRuntimeKey|false
+eversense_cloud_upload_enabled|EversenseBooleanKey|true
+eversense_device_state_json|EversenseRuntimeKey|false
+eversense_last_calibration_submitted_at|LongNonKey|false
 export_all_cloud_enabled|BooleanNonKey|true
 export_csv_cloud_enabled|BooleanNonKey|true
 export_csv_local_enabled|BooleanNonKey|true
@@ -297,13 +312,10 @@ medtronic_std_boluses_delivered|MedtronicLongNonKey|true
 medtronic_tbrs_set|MedtronicLongNonKey|true
 medtrum_session_token|MedtrumLongNonKey|true
 missed_bg_readings_threshold|IntKey|true
-nextMissedReadingsAlarm|LocalAlertLongKey|false
 nextPumpDisconnectedAlarm|LocalAlertLongKey|false
 notification_reader_dedup_state|StringNonKey|true
-notification_reader_packages|StringNonKey|true
 ns_alarm_stale_data_value|IntKey|true
 ns_alarm_urgent_stale_data_value|IntKey|true
-ns_alarms|BooleanKey|true
 ns_allow_client_control|BooleanKey|true
 ns_allow_roaming|BooleanKey|true
 ns_announcements|BooleanKey|true
@@ -412,6 +424,7 @@ pref_rileylink_mac_address|RileyLinkStringKey|true
 pref_rileylink_name|RileyLinkStringKey|true
 profile_switch_last_synced_id|XdripLongKey|false
 protection_timeout|IntKey|true
+pump_alert_silences|StringNonKey|false
 pump_expiry_warning_hour|MedtrumIntKey|true
 pump_serial_no|DiaconnIntNonKey|true
 pump_state|MedtrumIntNonKey|true
@@ -433,6 +446,7 @@ scan_on_connection_error|MedtrumBooleanKey|true
 scene_definitions|StringNonKey|true
 search_history|StringNonKey|false
 sensitivity_raises_target|BooleanKey|true
+sensor_lifetime_hours|IntNonKey|false
 set_neutral_temps|MedtronicBooleanPreferenceKey|true
 settings_password|StringKey|true
 settings_pin|StringKey|true
@@ -460,7 +474,6 @@ smscommunicator_report_pump_unreachable|BooleanKey|true
 sn_input|MedtrumStringNonKey|true
 snooze_dst_in24h|DstHelperLongKey|true
 snooze_loop_disabled|DstHelperLongKey|true
-snoozedTo%s|LongComposedKey|true
 startupwizard_processed|BooleanNonKey|true
 stats_tab|StringNonKey|false
 statuslights_bage_critical|IntKey|true

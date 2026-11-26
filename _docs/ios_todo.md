@@ -18,11 +18,20 @@ that need a decision.
 
 ## 1. A user would notice these
 
-### Full-screen alarms only log
-`IosUiInteraction.runAlarm` calls the logger and returns. **Not the same thing as
-`setAudibleAlarm`**, which does play sound through `IosAlarmSoundPlayer` on `AVAudioPlayer` - the two
-were conflated before and the old file claimed iOS alarms were silent for ten days after they worked.
-What is missing is the full-screen alarm surface Android raises, not the sound.
+### FIXED: the alarm surface Android raises exists on iOS now
+This entry used to say `IosUiInteraction.runAlarm` only logs, and that the full-screen alarm surface
+was still missing. Both are wrong now, and reading them as current would mean redoing finished work.
+
+`IosUiInteraction` is deleted. `runAlarm` raises a `Alert` with `AlertLifetime.EVENT` through
+the one shared `UiInteractionImpl` in commonMain, so the app's own alarms are cards in the
+notification list exactly like a pump's alert. The screen is `AlertScreen` in `ui/commonMain`,
+hosted on iOS as an overlay in `AapsAppHost` ahead of the protection gate - the same way
+`ErrorActivity` ignores application protection on Android. Step 6 of `_docs/PUMP_DESIGN.md`,
+2026-11-19.
+
+Sound was always a separate question, and `_docs/ios_blockers.md` answers it: the ramping player
+covers the foreground, a `UNNotificationSound` covers the background, and only breaking through
+silent and Focus still needs the Critical Alerts entitlement.
 
 ### A subscribe that never gets its ack leaves the client silently stalled
 Measured on 2026-10-05 against Nightscout 15.0.7, on the simulator and on an iPhone 15 Pro Max. The
@@ -69,9 +78,65 @@ things help and neither is a product decision: cover the window on `willResignAc
 app-switcher snapshot does not hold the PIN, and show the warning the screen can already render
 (`screenshotsBlocked` in `AuthorizedClientsScreen`) when the value is false.
 
+### Time Sensitive alarms need the capability on each App ID
+Phone builds sign with `Device.entitlements` (`AAPS_DEVICE_ENTITLEMENTS` in `Signing.xcconfig`), which
+asks for Time Sensitive notifications so alarms come through Focus and Sleep. Without it iOS quietly
+posts them as normal notifications. A wildcard development profile cannot carry the capability, so each
+bundle id needs an explicit App ID with it. Automatic signing does that by itself - from Xcode with the
+account signed in, or from `xcodebuild` with `-authenticationKeyPath/-ID/-IssuerID` and the App Store
+Connect key - once the account holder has accepted the current Program License Agreement (on
+2026-11-20 Apple refused with "PLA Update available"). Until then a local
+`AAPS_DEVICE_ENTITLEMENTS =` in `Signing.local.xcconfig` builds without it. A command-line override
+of that setting is not enough: the signing check does not see it.
+
 ---
 
 ## 2. Features not built yet
+
+**The full app exists, and is not finished.** The `AAPS` target (2026-11-19) is the full app: it
+runs the loop and drives a pump. `IosClientConfig` reads which build it is from the bundle
+identifier, mirroring Android's `ConfigImpl`, and `AapsAppHost` merges the `@APS` and `@PumpDriver`
+plugin buckets only there. The two client targets are unchanged. What the full app still lacks:
+
+- **`KeepAliveRunner` runs, but only while the app runs.** `IosStartPlatform.startKeepAlive` calls
+  `runOnce` every five minutes of real time (2026-11-21). On a locked phone the app runs only when
+  something wakes it, and the wake is the CGM: Eversense on iOS keeps a connect open with no time limit.
+  Seen on an iPhone on 2026-11-21 with an Eversense 365 and a CareLevo patch: the 365 sends a keep-alive
+  every minute and a reading every five, each one wakes the app, and the loop ran and gave SMBs to the
+  patch with the phone locked.
+- **iOS freezes the app about 10 seconds after each wake, whatever it is doing.** Seen the same day: a
+  patch connect froze half way and timed out on the next wake, and a loop run waited 52 s for its
+  decision. The calculation and the command queue now ask for background time (`IosBackgroundTime`, up
+  to about 30 s). Anything that waits by sleeping counts only the awake time; the CareLevo bolus
+  progress did, and took 3 minutes for a 38 s bolus, so it follows the clock now. Look for the same
+  pattern in other drivers before they run on iOS.
+- `RoleBranch.prepare`/`commit` call the local lambda on the full app instead of sending to a master.
+  That path has never run on iOS.
+- `SignatureVerifierPlugin` is Android-only, so the full app's `@APS` bucket has two plugins of three.
+  Probably right - there is no APK to verify - but nobody has decided it.
+- **TEMPORARY: Nightscout is the full app's default glucose source.** iOS has no other source, and on
+  Android the full app defaults to `DexcomPlugin`, which is Android-only - so without this the full app
+  has no default source and its start stops. `NSClientSourcePlugin` claims the default on iOS through
+  `config.platform == AppPlatform.Ios`. Remove that half of its `setDefault` once iOS has a glucose
+  source of its own; `NSClientSourcePluginTest` pins it, so the removal is a decision, not an accident.
+
+A Debug build of the full app may close the loop only in engineering mode, the same as Android. Put an
+`engineering_mode` file in **On My iPhone → AAPS → extra**; add `emulate_carelevo` there to drive the
+emulated patch instead of a real one. With no Nightscout there is no glucose, so pick **Random BG** as
+the source - it is shared code now, on every platform. It is offered only on the virtual pump in
+engineering mode, or with an `unfinished_mode` file, so with the emulated patch add that file too.
+
+Seen on the simulator on 2026-11-19, with Random BG and the emulated patch: the wizard runs to the end,
+objective 1 starts against `time.google.com`, and after switching to open loop OpenAPS SMB runs on each
+reading. Accepting its suggestion sent a zero temp basal through the command queue to the patch, and the
+patch reported it enacted. Not yet seen: closed loop (objective 6 and engineering mode), SMB, a bolus.
+Two things to know when setting it up again:
+
+- A fresh install starts with the loop **disabled** (`RM.DEFAULT_MODE`), as on Android. Choose open
+  loop from the loop icon on the overview after objective 1 is started.
+- A first run used to open the setup wizard **twice** on iOS: `AapsAppHost` had its own trigger from
+  before `AapsAppRoot` opened the wizard on every platform. That trigger was removed on 2026-11-20, so
+  `AapsAppRoot` is the only one now, as on Android and the desktop.
 
 | What | Where | Note |
 |---|---|---|
@@ -98,19 +163,19 @@ the cellular-sync option on iOS. Both are product calls.
 the Enclave, which holds EC keys rather than the AES key wanted here. Wrapping the AES key with an
 Enclave EC key would close the gap and is a larger change.
 
+**Bundle identifiers - decided, the way Trio does it.** The full app is always
+`app.aaps.<teamid>.full`. A client somebody builds themselves is `app.aaps.<teamid>.client` or
+`.client2`. `app.aaps.client` and `app.aaps.client2` stay as they are: they are the project's own
+published apps, and their builds set `AAPS_CLIENT_ID_PREFIX = app.aaps` in `Signing.local.xcconfig`,
+as `.github/workflows/ios-testflight.yml` does. Because the team id is part of the identifier, every
+build needs a team now, the simulator too; `ios/app/Signing.xcconfig` says how to set one.
+
 ---
 
 ## 4. Deliberate - do not "fix" these
 
 They look like gaps in the code and are not. Each has been proposed as a bug at least once.
 
-- **`IosSceneExpiryScheduler.schedule` only logs an error.** It cannot be reached. `config.AAPSCLIENT`
-  is hardcoded `true` in `IosClientConfig`, and `RoleBranch.prepare`/`commit` send the command to the
-  master on a client instead of calling the local lambda, while `SceneActions.stop` goes through
-  `ClientControlActionDispatcher`. So `SceneExecutor.activate` - the only caller of `schedule` - runs
-  on the master, which schedules expiry with its own working scheduler. The client runs
-  `validateActivation` locally and nothing else, and that is a pure query. This was written up twice
-  as "a timed scene never ends on iOS", which would be true only if iOS ever shipped as a master.
 - **`IosLocationPermissions` returns an empty list.** `PermissionGroup.permissions` holds Android
   permission strings; iOS asks at the point of use through `CLLocationManager`. `AutomationRuntime`
   reporting nothing missing on iOS is correct. `IosLocationServiceController` still requests it.
@@ -123,11 +188,19 @@ They look like gaps in the code and are not. Each has been proposed as a bug at 
 - **`IosReceiverStatusStore.ssid` is always empty.** Reading it needs the Access WiFi Information
   entitlement plus location permission. A Wi-Fi SSID automation trigger can be configured and will
   never match - the same shape as the Bluetooth trigger.
-- **`IosAppStartup.run()` does not wait for plugin start jobs**, where Android does. `run()` is on the
-  iOS main thread, so waiting would be a `runBlocking` gated on the slowest driver's `onStart`.
-  Whoever wires the iOS splash should move it off the main thread first, then wait.
 
 ---
+
+## Corrected on 2026-11-19
+
+Two entries left section 4, because neither was true any more. Both were also repeated as "real bugs
+the day `AAPSCLIENT` is false", which was wrong:
+
+- **`IosSceneExpiryScheduler`** is a real implementation now, not a stub that only logs. A timer ends
+  the scene on time while the app is alive, a sweep ends an overdue one when the app comes to the
+  front, and the loop's own `endIfOverdue` is the backstop that does not depend on this process.
+- **`IosAppStartup` does not exist any more.** The shared `AppStartSequence` runs on iOS from the app
+  scope, off the main thread, and waits for every plugin's start job under a timeout.
 
 ## Corrected on 2026-10-05
 

@@ -4,6 +4,7 @@ import app.aaps.core.data.model.BCR
 import app.aaps.core.data.model.ICfg
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.data.time.T
+import app.aaps.core.interfaces.alerts.NightscoutAnnouncements
 import app.aaps.core.interfaces.insulin.InsulinType
 import app.aaps.core.interfaces.nsclient.NSClientRepository
 import app.aaps.core.interfaces.nsclient.StoreDataForDb
@@ -29,8 +30,10 @@ import app.aaps.core.nssdk.localmodel.treatment.NSOfflineEvent
 import app.aaps.core.nssdk.localmodel.treatment.NSProfileSwitch
 import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryBasal
 import app.aaps.core.nssdk.localmodel.treatment.NSTemporaryTarget
+import app.aaps.core.nssdk.localmodel.treatment.NSTherapyEvent
 import app.aaps.core.nssdk.localmodel.treatment.NSTreatment
 import app.aaps.core.objects.extensions.toJsonObject
+import app.aaps.core.nssdk.mapper.toNSTreatment
 import app.aaps.plugins.sync.nsclientV3.extensions.toNSBolusWizard
 import app.aaps.shared.tests.TestBaseWithProfile
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +41,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -65,6 +69,7 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
     @Mock lateinit var nsClient: NsClient
     @Mock lateinit var displayRawSmoothing: DisplayRawSmoothing
     @Mock lateinit var dataSyncSelector: DataSyncSelector
+    @Mock lateinit var nightscoutAnnouncements: NightscoutAnnouncements
     private val nsiCfg = NSICfg(insulinLabel = "Fake", insulinEndTime = 9 * 3600 * 1000, insulinPeakTime = 60 * 60 * 1000, concentration = 1.0)
 
     @BeforeEach
@@ -89,9 +94,11 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
             config = config,
             profileStoreProvider = { profileStoreProvider() },
             notificationManager = notificationManager,
+            nightscoutAnnouncements = { nightscoutAnnouncements },
             nsClientRepository = nsClientRepository,
             displayRawSmoothing = displayRawSmoothing,
             secondaryRawStore = app.aaps.plugins.sync.nsclientV3.workers.SecondaryRawStore(),
+            rh = baseText
         )
     }
 
@@ -372,7 +379,8 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
     }
 
     // The fresh-install full sync: nothing is in force yet because the very profile switches that would
-    // establish it are arriving in this same batch. Falls back to the seeded default rather than dropping.
+    // establish it are arriving in this same batch. Falls back to the seeded default rather than dropping,
+    // with its translated name: the enum name used to land on the record, and users saw "OREF_RAPID_ACTING".
     @Test
     fun `bolus arriving without an iCfg falls back to the seeded default when nothing is in force`() {
         whenever(profileFunction.runningICfg).thenReturn(MutableStateFlow(null))
@@ -380,7 +388,40 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
 
         processor.processTreatments(treatments, doFullSync = false)
 
-        verify(storeDataForDb).addToBoluses(argThat { iCfg == InsulinType.OREF_RAPID_ACTING.iCfg })
+        verify(storeDataForDb).addToBoluses(argThat {
+            iCfg == InsulinType.OREF_RAPID_ACTING.getICfg(baseText) && iCfg.insulinLabel != InsulinType.OREF_RAPID_ACTING.name
+        })
+    }
+
+    /**
+     * A profile switch from AAPS 3.x has no insulin, but its profile JSON carries the DIA it was dosed with. That
+     * DIA wins over the running insulin's. The name follows the peak, because the running insulin's name
+     * carries its own curve, and the concentration is 1.0, because 3.x is older than concentration (#5625).
+     */
+    @Test
+    fun `an effective profile switch from 3x keeps its own DIA`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileSwitch)).thenReturn(true)
+        whenever(profileFunction.runningICfg).thenReturn(MutableStateFlow(someICfg.deepClone().also { it.concentration = 2.0 }))
+
+        processor.processTreatments(listOf<NSTreatment>(effectiveProfileSwitchFrom3x(dia = 5.0)), doFullSync = false)
+
+        verify(storeDataForDb).addToEffectiveProfileSwitches(argThat {
+            iCfg.insulinEndTime == 5L * 3600 * 1000 && iCfg.insulinPeakTime == someICfg.insulinPeakTime && iCfg.concentration == 1.0 &&
+                iCfg.insulinLabel == baseText.gs(InsulinType.fromPeak(someICfg.insulinPeakTime).label)
+        })
+    }
+
+    /** The case of #5625: nothing is in force yet. Rapid-Acting with its translated name, and still the record's own DIA. */
+    @Test
+    fun `a profile switch from 3x keeps its own DIA when nothing is in force`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileSwitch)).thenReturn(true)
+        whenever(profileFunction.runningICfg).thenReturn(MutableStateFlow(null))
+
+        processor.processTreatments(listOf<NSTreatment>(profileSwitchFrom3x(dia = 5.0)), doFullSync = false)
+
+        verify(storeDataForDb).addToProfileSwitches(argThat {
+            iCfg == ICfg(baseText.gs(InsulinType.OREF_RAPID_ACTING.label), 5L * 3600 * 1000, InsulinType.OREF_RAPID_ACTING.insulinPeakTime, 1.0)
+        })
     }
 
     // Fork: a read-only client of a v3 master gets no insulin on any record. The insulin chosen in Insulin settings
@@ -434,6 +475,61 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
 
         verify(storeDataForDb).addToBoluses(argThat { iCfg == someICfg })
     }
+
+    /**
+     * A document exactly as AAPS 3.x left it in Nightscout, the shape of the 3.x samples in the SDK's `examples.json`:
+     * no `iCfg`, and the profile JSON as a string with Java's escaped slashes and `"dia":5`. Read with the SDK's own
+     * parser, as a page from Nightscout is, so the DIA has to come through the real format. Nothing is in force,
+     * which is the start of an upgraded client (#5625).
+     */
+    @Test
+    fun `an effective profile switch document from 3x keeps its own DIA`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileSwitch)).thenReturn(true)
+        whenever(profileFunction.runningICfg).thenReturn(MutableStateFlow(null))
+        val date = now - T.hours(1).msecs()
+        val profileJson = """{\"units\":\"mg\\/dl\",\"dia\":5,\"timezone\":\"Europe\\/Prague\",""" +
+            """\"sens\":[{\"time\":\"00:00\",\"timeAsSeconds\":0,\"value\":50}],\"carbratio\":[{\"time\":\"00:00\",\"timeAsSeconds\":0,\"value\":10}],""" +
+            """\"basal\":[{\"time\":\"00:00\",\"timeAsSeconds\":0,\"value\":1}],\"target_low\":[{\"time\":\"00:00\",\"timeAsSeconds\":0,\"value\":100}],""" +
+            """\"target_high\":[{\"time\":\"00:00\",\"timeAsSeconds\":0,\"value\":100}]}"""
+        val document = """{"identifier":"eps-from-3x","eventType":"Note","date":$date,"utcOffset":60,"isValid":true,"app":"AAPS",""" +
+            """"originalProfileName":"Adult","originalCustomizedName":"Adult","originalTimeshift":0,"originalPercentage":100,""" +
+            """"originalDuration":0,"originalEnd":$date,"notes":"Adult","profileJson":"$profileJson"}"""
+
+        val treatment = requireNotNull(document.toNSTreatment())
+        assertTrue(treatment is NSEffectiveProfileSwitch)
+        processor.processTreatments(listOf(treatment), doFullSync = false)
+
+        verify(storeDataForDb).addToEffectiveProfileSwitches(argThat {
+            iCfg == ICfg(baseText.gs(InsulinType.OREF_RAPID_ACTING.label), 5L * 3600 * 1000, InsulinType.OREF_RAPID_ACTING.insulinPeakTime, 1.0)
+        })
+    }
+
+    /** A profile switch without an insulin and without a DIA in its JSON takes the running insulin as it is. */
+    @Test
+    fun `a profile switch without its own DIA takes the running insulin`() {
+        whenever(preferences.get(BooleanKey.NsClientAcceptProfileSwitch)).thenReturn(true)
+
+        processor.processTreatments(listOf<NSTreatment>(profileSwitchFrom3x(dia = null)), doFullSync = false)
+
+        verify(storeDataForDb).addToProfileSwitches(argThat { iCfg == someICfg })
+    }
+
+    /** The profile JSON as AAPS 3.x uploaded it: the DIA belonged to the profile then. */
+    private fun profileJsonFrom3x(dia: Double?): String =
+        JsonObject(effectiveProfile.toPureNsJson(dateUtil) + listOfNotNull(dia?.let { "dia" to JsonPrimitive(it) })).toString()
+
+    private fun effectiveProfileSwitchFrom3x(dia: Double?) = NSEffectiveProfileSwitch(
+        identifier = "eps_from_3x", date = now - T.hours(1).msecs(), isValid = true, eventType = EventType.NOTE,
+        originalProfileName = "Adult", originalCustomizedName = "Adult", originalDuration = 0, originalTimeshift = 0,
+        originalEnd = 0, originalPercentage = 100, utcOffset = null, notes = null, pumpId = null, endId = null,
+        pumpType = null, pumpSerial = null, profileJson = profileJsonFrom3x(dia), iCfg = null
+    )
+
+    private fun profileSwitchFrom3x(dia: Double?) = NSProfileSwitch(
+        identifier = "ps_from_3x", date = now - T.hours(1).msecs(), isValid = true, eventType = EventType.PROFILE_SWITCH,
+        utcOffset = null, pumpId = null, endId = null, pumpType = null, pumpSerial = null, profileJson = profileJsonFrom3x(dia),
+        profile = "Adult", originalProfileName = "Adult", timeShift = 0, percentage = 100, duration = 0, originalDuration = 0, iCfg = null
+    )
 
     private fun bolusWithoutICfg() = NSBolus(
         identifier = "legacy_bolus", date = now - T.mins(20).msecs(), insulin = 2.5, utcOffset = null, isValid = true,
@@ -1124,5 +1220,73 @@ class NsIncomingDataProcessorTest : TestBaseWithProfile() {
         processor.processFood(emptyArray)
 
         verify(storeDataForDb, times(2)).addToFoods(argThat { isEmpty() })
+    }
+
+    // ---- announcements (_docs/ALARMS.md, step 3) ----------------------------------------------
+
+    private fun announcement(at: Long, note: String = "Hello") = NSTherapyEvent(
+        date = at, identifier = "ann_$at", units = null, utcOffset = null, isValid = true, eventType = EventType.ANNOUNCEMENT,
+        notes = note, pumpId = null, endId = null, pumpType = null, pumpSerial = null, duration = 0L
+    )
+
+    @Test
+    fun `an announcement is raised with its time and text`() {
+        whenever(preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements)).thenReturn(true)
+        val at = now - T.mins(2).msecs()
+
+        processor.processTreatments(listOf(announcement(at, "Dinner ready")), doFullSync = false)
+
+        verify(nightscoutAnnouncements).announce(at, "Dinner ready")
+    }
+
+    @Test
+    fun `an announcement that arrives again does not ring again`() {
+        whenever(preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements)).thenReturn(true)
+        val at = now - T.mins(2).msecs()
+
+        processor.processTreatments(listOf(announcement(at)), doFullSync = false)
+        processor.processTreatments(listOf(announcement(at)), doFullSync = false)
+
+        verify(nightscoutAnnouncements, times(1)).announce(any(), any())
+    }
+
+    @Test
+    fun `two announcements are two alerts`() {
+        whenever(preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements)).thenReturn(true)
+
+        processor.processTreatments(listOf(announcement(now - T.mins(5).msecs()), announcement(now - T.mins(1).msecs())), doFullSync = false)
+
+        verify(nightscoutAnnouncements, times(2)).announce(any(), any())
+
+    }
+
+    @Test
+    fun `an announcement older than an hour is history and does not ring`() {
+        whenever(preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements)).thenReturn(true)
+
+        processor.processTreatments(listOf(announcement(now - T.mins(61).msecs())), doFullSync = false)
+
+        verify(nightscoutAnnouncements, never()).announce(any(), any())
+    }
+
+    @Test
+    fun `no announcement rings when the user does not take them`() {
+        whenever(preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements)).thenReturn(false)
+
+        processor.processTreatments(listOf(announcement(now - T.mins(1).msecs())), doFullSync = false)
+
+        verify(nightscoutAnnouncements, never()).announce(any(), any())
+    }
+
+    /** The alarm socket is gone, so a treatment is the only way an announcement arrives. */
+    @Test
+    fun `an announcement rings also when therapy events are not stored`() {
+        whenever(preferences.get(BooleanKey.NsClientNotificationsFromAnnouncements)).thenReturn(true)
+        whenever(preferences.get(BooleanKey.NsClientAcceptTherapyEvent)).thenReturn(false)
+
+        processor.processTreatments(listOf(announcement(now - T.mins(1).msecs())), doFullSync = false)
+
+        verify(nightscoutAnnouncements).announce(any(), any())
+        verify(storeDataForDb, never()).addToTherapyEvents(any())
     }
 }

@@ -9,7 +9,7 @@ import app.aaps.core.interfaces.notifications.NotificationAction
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
 import app.aaps.core.keys.interfaces.TextRef
-import app.aaps.implementation.alerts.IosReminderScheduler
+import app.aaps.implementation.alerts.IosAlertPlatform
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -55,7 +55,7 @@ class IosSystemNotificationPlatformTest {
 
         val calls = mutableListOf<String>()
 
-        override fun play(sound: AlarmSound, ownerTag: String, postedAtElapsedRealtime: Long) {
+        override fun play(sound: AlarmSound, ownerTag: String, breakThroughDnd: Boolean, ringtoneUri: String?) {
             calls.add("play:${sound.name}")
         }
 
@@ -100,7 +100,7 @@ class IosSystemNotificationPlatformTest {
     // ---------------------------------------------------------------------------------------------
 
     private fun notification(instanceKey: Int, withActions: Boolean) = AapsNotification(
-        id = NotificationId.NS_ALARM,
+        id = NotificationId.PUMP_ERROR,
         instanceKey = instanceKey,
         text = "test",
         level = NotificationLevel.URGENT,
@@ -197,17 +197,16 @@ class IosSystemNotificationPlatformTest {
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * The reminder prefix is read from the scheduler itself rather than written out here, so renaming
+     * The booking prefix is read from the alert platform itself rather than written out here, so renaming
      * it cannot quietly re-open the hole this test exists for.
      */
     @Test
-    fun `mute all leaves a scheduled automation reminder alone`() {
-        val reminder = "${IosReminderScheduler.IDENTIFIER_PREFIX}3"
+    fun `mute all leaves a booked automation reminder alone`() {
+        val reminder = "${IosAlertPlatform.BOOKING_PREFIX}aaps/automation-timer"
 
-        // The trap: the reminder id starts with this class's own "aaps-" prefix, so anything cruder
-        // than the key parse - a prefix match, or the removeAll* pair this used to call - deletes a
-        // reminder the user is still waiting on, and it never rings.
-        assertEquals(listOf("aaps-42"), platform.ownIdentifiers(listOf("aaps-42", reminder)))
+        // The trap: a reminder still to come that "mute all" deletes never rings. The old reminder id
+        // started with this class's own "aaps-" prefix; anything cruder than the key parse would hit it.
+        assertEquals(listOf("aaps-42"), platform.ownIdentifiers(listOf("aaps-42", reminder, "aaps-reminder-3")))
     }
 
     /** `IosLoopNotifier.NOTIFICATION_ID`, spelled out because it lives in another module. */
@@ -226,6 +225,16 @@ class IosSystemNotificationPlatformTest {
     @Test
     fun `mute all leaves another app's notification alone`() {
         assertEquals(emptyList<String>(), platform.ownIdentifiers(listOf("other-app-42", "42")))
+    }
+
+    /** After a restart a card left from before goes; this run's own cards, a chime and a booking stay. */
+    @Test
+    fun `only the cards left from before are cleared at start`() {
+        val delivered = listOf(platform.identifier(10_000), platform.identifier(10_001), "pump-alert-chime-bg/low", "alert-booking-bg/low", "aaps-loop")
+
+        val cleared = platform.leftoverIdentifiers(delivered) { key -> key == 10_001 }
+
+        assertEquals(listOf(platform.identifier(10_000)), cleared)
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -268,5 +277,105 @@ class IosSystemNotificationPlatformTest {
         platform.setAudibleAlarm(null, null)
 
         assertEquals(listOf("play:ERROR", "stop"), alarmPlayer.calls)
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // An alarm that arrives while the app is away
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * The gap these tests exist for.
+     *
+     * Every notification used to be posted silently, with the audio left to [AlarmSoundPlayer]. That
+     * player needs the process to be running - `AVAudioSession` cannot start from a suspended app,
+     * and AAPS has no `audio` background mode - so a CRITICAL alarm reaching a phone in a pocket
+     * made no sound at all, which is the one case an alarm is for.
+     */
+    @Test
+    fun `an alarm posted while the app is away carries its own sound`() {
+        platform.onAppForeground(false)
+
+        assertTrue(platform.audibleInBackground(notification(7, withActions = false)))
+    }
+
+    /** In front, the ramping player owns it, and two sounds for one alarm would be worse than one. */
+    @Test
+    fun `an alarm posted with a screen in front stays silent`() {
+        platform.onAppForeground(true)
+
+        assertFalse(platform.audibleInBackground(notification(7, withActions = false)))
+    }
+
+    /** Only an alarm. An ordinary notification is not promoted into one by the app being away. */
+    @Test
+    fun `an ordinary notification stays silent in the background`() {
+        platform.onAppForeground(false)
+        val plain = AapsNotification(
+            id = NotificationId.PUMP_ERROR,
+            instanceKey = 7,
+            text = "test",
+            level = NotificationLevel.NORMAL,
+            sound = null
+        )
+
+        assertFalse(platform.audibleInBackground(plain))
+    }
+
+    /**
+     * The other half of the same gap.
+     *
+     * `CommonNotificationManager.refreshAlarmSound` calls [IosSystemNotificationPlatform.setAudibleAlarm]
+     * only when the top alarm changes, so an alarm whose audio was refused in the background was never
+     * offered again. The user opened AAPS to a ringing alarm on screen and silence from the phone.
+     */
+    @Test
+    fun `an alarm still ringing starts its audio when the app comes to the front`() {
+        platform.onAppForeground(false)
+        platform.setAudibleAlarm(7, AlarmSound.ALARM)
+        alarmPlayer.calls.clear()
+
+        platform.onAppForeground(true)
+
+        assertEquals(listOf("play:ALARM"), alarmPlayer.calls)
+    }
+
+    /** Coming to the front with nothing ringing must not start a sound out of nowhere. */
+    @Test
+    fun `coming to the front with no alarm starts nothing`() {
+        platform.onAppForeground(false)
+
+        platform.onAppForeground(true)
+
+        assertEquals(emptyList<String>(), alarmPlayer.calls)
+    }
+
+    /** An alarm that was silenced is not resurrected by the user opening the app. */
+    @Test
+    fun `an alarm that was silenced does not come back on the way in`() {
+        platform.onAppForeground(false)
+        platform.setAudibleAlarm(7, AlarmSound.ALARM)
+        platform.setAudibleAlarm(null, null)
+        alarmPlayer.calls.clear()
+
+        platform.onAppForeground(true)
+
+        assertEquals(emptyList<String>(), alarmPlayer.calls)
+    }
+
+    /**
+     * `didBecomeActive` fires for far more than a real return - a system sheet closing, the control
+     * centre - so only the transition starts the audio. Otherwise the ramp would restart from nothing
+     * every time the user pulled the shade down, making a long alarm quieter the more they touched
+     * the phone.
+     */
+    @Test
+    fun `being told again that the app is in front does not restart the sound`() {
+        platform.onAppForeground(true)
+        platform.setAudibleAlarm(7, AlarmSound.ALARM)
+        alarmPlayer.calls.clear()
+
+        platform.onAppForeground(true)
+
+        assertEquals(emptyList<String>(), alarmPlayer.calls)
     }
 }

@@ -105,12 +105,20 @@ class CommonNotificationManager(
         validTo: Long,
         sound: AlarmSound?,
         actions: List<NotificationAction>,
-        validityCheck: (() -> Boolean)?
+        validityCheck: (() -> Boolean)?,
+        alarmTitle: String?,
+        canMute: Boolean,
+        tellWatch: Boolean,
+        breakThroughDnd: Boolean,
+        ringtoneUri: String?,
+        systemText: String?
     ): NotificationHandle =
         postInternal(
             id = id, text = text, level = level,
             date = date, validTo = validTo,
-            sound = sound, actions = actions, validityCheck = validityCheck
+            sound = sound, actions = actions, validityCheck = validityCheck,
+            alarmTitle = alarmTitle, canMute = canMute, tellWatch = tellWatch, breakThroughDnd = breakThroughDnd,
+            ringtoneUri = ringtoneUri, systemText = systemText
         )
 
     override fun post(
@@ -139,7 +147,13 @@ class CommonNotificationManager(
         validTo: Long,
         sound: AlarmSound?,
         actions: List<NotificationAction>,
-        validityCheck: (() -> Boolean)?
+        validityCheck: (() -> Boolean)?,
+        alarmTitle: String? = null,
+        canMute: Boolean = false,
+        tellWatch: Boolean = true,
+        breakThroughDnd: Boolean = false,
+        ringtoneUri: String? = null,
+        systemText: String? = null
     ): NotificationHandle = lock.withLock {
         // Clean up expired notifications piggyback on writes.
         removeExpired()
@@ -164,7 +178,13 @@ class CommonNotificationManager(
             validTo = validTo,
             sound = sound,
             actions = actions,
-            validityCheck = validityCheck
+            validityCheck = validityCheck,
+            alarmTitle = alarmTitle,
+            canMute = canMute,
+            tellWatch = tellWatch,
+            breakThroughDnd = breakThroughDnd,
+            ringtoneUri = ringtoneUri,
+            systemText = systemText
         )
         current.add(notification)
         current.sortBy { it.level.priority }
@@ -173,7 +193,10 @@ class CommonNotificationManager(
         // The platform gets the whole notification and decides what, if anything, to show.
         platform.show(
             notification = notification,
-            title = rh.gs(if (level == NotificationLevel.URGENT) CoreUiStrings.urgent_alarm else CoreUiStrings.info)
+            // An alarm that brought its own title is announced with it; everything else is named by its level, as
+            // before. Without this a bolus error reached the tray titled only "Urgent alarm".
+            title = notification.alarmTitle
+                ?: rh.gs(if (level == NotificationLevel.URGENT) CoreUiStrings.urgent_alarm else CoreUiStrings.info)
         )
         refreshAlarmSound()
 
@@ -206,6 +229,9 @@ class CommonNotificationManager(
         platform.cancelAll()
         aapsLogger.debug(LTag.NOTIFICATION, "Muted all alarms")
     }
+
+    // A key in the list now is this run's own, also one posted while the platform still looks: it stays.
+    override fun clearLeftovers() = platform.clearLeftovers { key -> _notifications.value.any { it.instanceKey == key } }
 
     /** Caller must hold [lock]. */
     private fun removeMatching(logLine: String, predicate: (AapsNotification) -> Boolean) {
@@ -263,10 +289,19 @@ class CommonNotificationManager(
 
             top.instanceKey != soundingKey -> {
                 soundingKey = top.instanceKey
-                platform.setAudibleAlarm(top.instanceKey, top.sound)
-                rxBus.send(
+                platform.setAudibleAlarm(top.instanceKey, top.sound, top.breakThroughDnd, top.ringtoneUri)
+                // Not for an alarm the watch rings by itself: the "time to eat" timer would otherwise show twice.
+                if (top.tellWatch) rxBus.send(
                     EventMobileToWear(
-                        EventData.AlarmRinging(now(), title = rh.gs(CoreUiStrings.urgent_alarm), status = top.text, canMute = false)
+                        // The alarm's own title and its own answer to Mute. Both used to be fixed here - every alarm
+                        // reached the watch as "Urgent alarm" with no Mute - which was right while the only cards
+                        // were raised by the app itself and `UiInteraction.runAlarm` told the watch separately.
+                        EventData.AlarmRinging(
+                            now(),
+                            title = top.alarmTitle ?: rh.gs(CoreUiStrings.urgent_alarm),
+                            status = top.systemBody,
+                            canMute = top.canMute
+                        )
                     )
                 )
             }

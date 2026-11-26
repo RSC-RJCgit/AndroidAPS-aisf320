@@ -94,7 +94,7 @@ class PumpWithConcentrationImpl(
     override fun isUnreachableAlertTimeoutExceeded(unreachableTimeoutMilliseconds: Long): Boolean = activePumpInternal.isUnreachableAlertTimeoutExceeded(unreachableTimeoutMilliseconds)
     override fun setNeutralTempAtFullHour(): Boolean = activePumpInternal.setNeutralTempAtFullHour()
     override fun isBatteryChangeLoggingEnabled(): Boolean = activePumpInternal.isBatteryChangeLoggingEnabled()
-    override fun isUseRileyLinkBatteryLevel(): Boolean = activePumpInternal.isUseRileyLinkBatteryLevel()
+    override fun reportsBatteryLevel(): Boolean = activePumpInternal.reportsBatteryLevel()
     override fun finishHandshaking() {
         activePumpInternal.finishHandshaking()
     }

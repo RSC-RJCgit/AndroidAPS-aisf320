@@ -376,7 +376,7 @@ class InsulinManagementViewModel(
         _uiState.update {
             it.copy(
                 editorTemplate = preset,
-                editorPeakMinutes = preset.iCfg.peak,
+                editorPeakMinutes = preset.peakMinutes,
                 editorNickname = rh.gs(preset.label),
                 autoNameEnabled = true
             )
@@ -459,7 +459,7 @@ class InsulinManagementViewModel(
     fun addNewInsulin() {
         val state = uiState.value
         val source = state.insulins.getOrNull(state.currentCardIndex)
-        val newICfg = source?.deepClone() ?: InsulinType.OREF_RAPID_ACTING.iCfg
+        val newICfg = source?.deepClone() ?: InsulinType.OREF_RAPID_ACTING.getICfg(rh)
         newICfg.insulinLabel = ""
         insulinManager.addNewInsulin(newICfg)
 

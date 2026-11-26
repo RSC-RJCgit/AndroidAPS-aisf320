@@ -51,13 +51,11 @@ data class SecondaryGraph(
 /**
  * Configuration for the overview graphs.
  *
- * Fixed graphs (not removable):
- * - BG graph: blood glucose with optional activity overlay (toggled via [bgOverlays]).
- * - IOB graph: IOB line with bolus markers + flipped basal overlay, with optional activity
- *   overlay (toggled via [iobOverlays]).
+ * The BG graph is the only fixed graph. It shows basal, boluses, SMBs, carbs and meter values
+ * itself, with optional overlays toggled via [bgOverlays]; the treatment belt above it shows the COB
+ * failover. Every graph below it is chosen by the user, IOB and COB included, so by default there is none.
  *
- * @param bgOverlays       Overlay toggles for the BG graph (currently only [SeriesType.ACTIVITY]).
- * @param iobOverlays      Overlay toggles for the fixed IOB graph (currently only [SeriesType.ACTIVITY]).
+ * @param bgOverlays       Overlay toggles for the BG graph ([SeriesType.ACTIVITY], [SeriesType.PREDICTIONS]).
  * @param secondaryGraphs  Ordered list of user-configurable secondary graph configurations.
  *   IOB cannot appear here (it has a dedicated fixed slot). Each graph is a List (not Set) to
  *   preserve selection order:
@@ -89,6 +87,11 @@ data class GraphConfig(
         /** Default graph height in dp (minimum value — user-adjustable up to [MAX_GRAPH_HEIGHT_DP]) */
         const val DEFAULT_GRAPH_HEIGHT_DP = 100
 
+        /**
+         * Default height of the BG graph in dp. Higher than the others: its axis starts at 0 and
+         * basal sits under the low mark, so the curve needs the room.
+         */
+        const val DEFAULT_BG_GRAPH_HEIGHT_DP = 200
         /** Maximum height of the other graphs in dp: the same as the main graph (2026-10-21, per explicit request; was 250). */
         const val MAX_GRAPH_HEIGHT_DP = 600
 

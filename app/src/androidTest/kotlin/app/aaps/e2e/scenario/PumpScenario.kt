@@ -18,9 +18,10 @@ import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
 import app.aaps.core.data.plugin.PluginType
 import app.aaps.core.data.pump.defs.PumpDescription
+import app.aaps.core.interfaces.alerts.AlertKind
+import app.aaps.core.interfaces.alerts.CoreAlert
 import app.aaps.core.interfaces.notifications.NotificationId
 import app.aaps.core.interfaces.notifications.NotificationLevel
-import app.aaps.implementation.androidNotification.AlarmNotificationManager
 import app.aaps.core.interfaces.plugin.PluginBase
 import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.pump.PumpEnactResult
@@ -292,7 +293,7 @@ class PumpScenario(private val pump: PumpUnderTest) {
         awaitTrue("the write of the profile at $percentage % ends", PROFILE_TIMEOUT) {
             val running = runBlocking { testGraphs.persistenceLayer.getEffectiveProfileSwitchActiveAt(testGraphs.dateUtil.now()) }
             done = running?.originalPercentage == percentage
-            done || NotificationId.FAILED_UPDATE_PROFILE in shownNotifications()
+            done || CoreAlert.PROFILE_UPDATE_FAILED in activeAlerts()
         }
         awaitQueueIdle()
         return done
@@ -343,7 +344,7 @@ class PumpScenario(private val pump: PumpUnderTest) {
 
     /**
      * A bolus as the user gives it from the insulin dialog, to its end: through `MasterActionExecutor`, the one place
-     * that raises the BOLUS_DELIVERY_FAILED alarm when the pump does not give a bolus. True when it went through, also
+     * that raises the "bolus failed" alarm when the pump does not give a bolus. True when it went through, also
      * when the user stopped it.
      */
     fun userBolus(units: Double): Boolean = await(startUserBolus(units))
@@ -513,42 +514,69 @@ class PumpScenario(private val pump: PumpUnderTest) {
         return stored.size == given.size && stored.zip(given).all { (record, gave) -> record >= gave && record - gave <= over }
     }
 
-    /** AAPS does not show [id]. Only a [userBolus] can raise BOLUS_DELIVERY_FAILED, a bolus of [bolus] never does. */
-    fun checkNoAlarm(id: NotificationId = NotificationId.BOLUS_DELIVERY_FAILED) {
-        assertWithMessage("alarm $id").that(shownNotifications()).doesNotContain(id)
+    /** AAPS does not show the card [id]. */
+    fun checkNoCard(id: NotificationId) {
+        assertWithMessage("card $id").that(shownNotifications()).doesNotContain(id)
     }
 
-    /** AAPS shows [id]. The executor posts it once the queue has answered, so it may come a moment after that answer. */
-    fun checkAlarm(id: NotificationId = NotificationId.BOLUS_DELIVERY_FAILED) {
+    /** AAPS shows the card [id]. It may come a moment after the queue has answered. */
+    fun checkCard(id: NotificationId) {
         awaitValue(RECORD_TIMEOUT) { (id in shownNotifications()).takeIf { it } }
-        assertWithMessage("alarm $id").that(shownNotifications()).contains(id)
+        assertWithMessage("card $id").that(shownNotifications()).contains(id)
+    }
+
+    /** No alert of [kind] is active. Only a [userBolus] can raise "bolus failed", a bolus of [bolus] never does. */
+    fun checkNoAlarm(kind: AlertKind = CoreAlert.BOLUS_FAILED) {
+        assertWithMessage("alarm ${kind.id}").that(activeAlerts()).doesNotContain(kind)
+    }
+
+    /** An alert of [kind] is active. The executor raises it once the queue has answered, so it may come a moment after that answer. */
+    fun checkAlarm(kind: AlertKind = CoreAlert.BOLUS_FAILED) {
+        awaitValue(RECORD_TIMEOUT) { (kind in activeAlerts()).takeIf { it } }
+        assertWithMessage("alarm ${kind.id}").that(activeAlerts()).contains(kind)
     }
 
     private fun shownNotifications(): List<NotificationId> = testGraphs.notificationManager.notifications.value.map { it.id }
 
+    private fun activeAlerts(): List<AlertKind> = testGraphs.alerts.active.value.map { it.kind }
+
     /**
-     * AAPS raised an alarm the user hears at [since] or later: a notification at [NotificationLevel.URGENT], or the
-     * full-screen alarm of `UiInteraction.runAlarm`, which a driver can use for the sound while its own card stays lower
-     * (Carelevo). Without a screen in the test, runAlarm posts that alarm as a system notification.
+     * AAPS raised an alarm the user hears at [since] or later: a notification at [NotificationLevel.URGENT] that
+     * carries a sound (an URGENT card without one is silent), or the alarm screen over whatever is on top.
+     *
+     * There used to be a third way, the full-screen alarm of `UiInteraction.runAlarm` with its own notification id.
+     * Every alarm is a card now - the app's own as well as a pump's - so the first check covers what that one did.
      */
     fun checkUrgentAlarmSince(since: Long) {
-        fun urgent() = testGraphs.notificationManager.notifications.value.any { it.level == NotificationLevel.URGENT && it.date >= since }
-        fun fullScreen() = instrumentation.targetContext.getSystemService(NotificationManager::class.java)
-            .activeNotifications.any { it.id == AlarmNotificationManager.NOTIFICATION_ID_FULL_SCREEN && it.postTime >= since }
-        // From the main thread with the app in front, runAlarm opens its alarm screen at once instead.
+        fun urgent() = testGraphs.notificationManager.notifications.value.any { it.level == NotificationLevel.URGENT && it.sound != null && it.date >= since }
+        // With the app in front the alert platform opens its alarm screen at once instead of waking the screen.
         fun alarmScreen(): Boolean {
             var shown = false
             onMain {
                 shown = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
-                    .any { testGraphs.uiInteraction.errorHelperActivity.isInstance(it) }
+                    .any { testGraphs.androidActivities.alarm.isInstance(it) }
             }
             return shown
         }
-        fun alarmed() = urgent() || fullScreen() || alarmScreen()
+        fun alarmed() = urgent() || alarmScreen()
         awaitValue(RECORD_TIMEOUT) { alarmed().takeIf { it } }
-        assertWithMessage("an alarm since the pump raised it, AAPS shows ${testGraphs.notificationManager.notifications.value.map { "${it.id} ${it.level}" }}")
+        assertWithMessage("an alarm since the pump raised it, AAPS shows ${shownForAlarm()}")
             .that(alarmed()).isTrue()
     }
+
+    /**
+     * The alarm is a pump alert of the core (acceptance A1): a `Alerts` card at [NotificationLevel.URGENT] that rings,
+     * at [since] or later - not an alarm the driver raises in its own way.
+     */
+    fun checkAlertSince(since: Long) {
+        fun ringing() = testGraphs.notificationManager.notifications.value.any {
+            it.id == NotificationId.ALERT && it.level == NotificationLevel.URGENT && it.sound != null && it.date >= since
+        }
+        awaitValue(RECORD_TIMEOUT) { ringing().takeIf { it } }
+        assertWithMessage("a ringing pump alert since the pump raised it, AAPS shows ${shownForAlarm()}").that(ringing()).isTrue()
+    }
+
+    private fun shownForAlarm() = testGraphs.notificationManager.notifications.value.map { "${it.id} ${it.level} sound=${it.sound}" }
 
     /** The temp basal AAPS has is the one the pump runs, or neither has one. */
     /**

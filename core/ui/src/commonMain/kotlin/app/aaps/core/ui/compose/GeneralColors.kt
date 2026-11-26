@@ -51,6 +51,9 @@ import androidx.compose.ui.graphics.Color
  * @property ztPrediction Color for zero-temp predictions (cyan)
  * @property bgParabola AutoISF fork: color of the BG parabola on the BG graph (pink, as in AutoISF 3.2.1)
  * @property graphGrid Color for the grid lines on the overview graphs, translucent so a band drawn under them shows through
+ * @property graphBgInRange In-range readings on the BG graph: a softer green than [bgInRange], which stays for the big BG number
+ * @property graphBgHigh High readings and the HIGH band on the BG graph: as soft as [graphBgInRange], [bgHigh] stays for the big BG number
+ * @property graphBgLow Low readings and the LOW band on the BG graph: as soft as [graphBgInRange], [bgLow] stays for the big BG number
  */
 data class GeneralColors(
     val activeInsulinText: Color,
@@ -74,7 +77,6 @@ data class GeneralColors(
     val bgLow: Color,
     val bgVeryLow: Color,
     val bgVeryHigh: Color,
-    val bgTargetRangeArea: Color,
     val originalBgValue: Color,
     val iobPrediction: Color,
     val cobPrediction: Color,
@@ -83,6 +85,9 @@ data class GeneralColors(
     val ztPrediction: Color,
     val bgParabola: Color,
     val graphGrid: Color,
+    val graphBgInRange: Color,
+    val graphBgHigh: Color,
+    val graphBgLow: Color,
     // Loop mode colors
     val loopClosed: Color,
     val loopOpened: Color,
@@ -143,7 +148,6 @@ val LightGeneralColors = GeneralColors(
     bgLow = Color(0xFFFF0000),               // pure red for low BG (matches @color/low)
     bgVeryLow = Color(0xFF8B0000),           // dark red for very low BG (Dexcom TIR 5-range)
     bgVeryHigh = Color(0xFFD84315),          // deep orange-red for very high BG (Dexcom TIR 5-range)
-    bgTargetRangeArea = Color(0x2800FF00),   // green with ~16% alpha for target range area (matches @color/inRangeBackground)
     originalBgValue = Color(0xFFFFFFFF),     // white for regular CGM readings (matches originalBgValueColor attr)
     iobPrediction = Color(0xFF1E88E5),       // blue for IOB predictions (matches iobColor attr)
     cobPrediction = Color(0xFFFB8C00),       // orange for COB predictions (matches cobColor attr)
@@ -151,7 +155,10 @@ val LightGeneralColors = GeneralColors(
     uamPrediction = Color(0xFFC9BD60),       // yellow-ish for UAM predictions (matches uamColor attr)
     ztPrediction = Color(0xFF00D2D2),        // cyan for zero-temp predictions (matches ztColor attr)
     bgParabola = Color(0xFFFF00FF),          // pink, the bgParabolaColor of AutoISF 3.2.1
-    graphGrid = Color(0x80CAC4D0),           // Material outlineVariant at 50%
+    graphGrid = Color(0x6679747E),           // Material outline at 40%, as in dark: outlineVariant at 50% left the grid dots almost invisible on white
+    graphBgInRange = Color(0xFF2E9E3E),      // darker soft green: pure green is hard to see on white
+    graphBgHigh = Color(0xFFE08A1E),         // soft orange
+    graphBgLow = Color(0xFFD84848),          // soft red
     // Loop mode colors
     loopClosed = Color(0xFF00C03E),          // green for closed loop
     loopOpened = Color(0xFF4983D7),          // blue for open loop
@@ -215,7 +222,10 @@ val DarkGeneralColors = GeneralColors(
     uamPrediction = Color(0xFFE6D39A),       // lighter yellow for UAM predictions (dark mode)
     ztPrediction = Color(0xFF4DD4D4),        // lighter cyan for zero-temp predictions (dark mode)
     bgParabola = Color(0xFFFF00FF),          // pink, the bgParabolaColor of AutoISF 3.2.1
-    graphGrid = Color(0x40938F99),           // Material outline at 25%: outlineVariant at 50% was barely visible on the dark surface
+    graphGrid = Color(0x66938F99),           // Material outline at 40%, about as strong as a Material divider on the dark surface: at 25% the grid almost disappeared
+    graphBgInRange = Color(0xFF5CD66A),      // soft green: pure green looks neon on the dark surface
+    graphBgHigh = Color(0xFFE3D45A),         // soft yellow
+    graphBgLow = Color(0xFFEF6060),          // soft red
     // Loop mode colors (same in both modes)
     loopClosed = Color(0xFF00C03E),          // green for closed loop
     loopOpened = Color(0xFF4983D7),          // blue for open loop

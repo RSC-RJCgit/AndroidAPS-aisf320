@@ -2,54 +2,116 @@
 <resources>
     <!-- Source -->
     <string name="ns_client_bg">NSClient BG</string>
-    <string name="description_source_ns_client">Download BG waardes van Nightscout</string>
+    <string name="description_source_ns_client">Download BG-waarden van Nightscout</string>
     <string name="source_xdrip">xDrip+ BG</string>
-    <string name="description_source_xdrip">Ontvang BG waarden van xDrip+ en compatibele apps (Juggluco etc.).</string>
+    <string name="description_source_xdrip">Ontvang BG-waarden van xDrip+ en compatibele apps (Juggluco etc.).</string>
     <string name="dexcom_app_patched">BYODA</string>
-    <string name="description_source_dexcom">Ontvang BG waarden van de \'Build Your Own Dexcom App\' (BYODA).</string>
+    <string name="description_source_dexcom">Ontvang BG-waarden van de \'Build Your Own Dexcom App\' (BYODA).</string>
     <string name="glimp">Glimp</string>
-    <string name="description_source_glimp">Ontvang BG waardes van Glimp.</string>
+    <string name="description_source_glimp">Ontvang BG-waarden van Glimp.</string>
     <string name="mm640g">MM640g</string>
-    <string name="description_source_mm640g">Ontvang BG waardes van 600SeriesAndroidUploader.</string>
+    <string name="description_source_mm640g">Ontvang BG-waarden van de 600SeriesAndroidUploader.</string>
     <string name="poctech">Poctech</string>
-    <string name="description_source_poctech">Ontvang BG waardes van Poctech app</string>
+    <string name="description_source_poctech">Ontvang BG-waarden van de Poctech-app</string>
     <string name="glunovo">Glunovo</string>
-    <string name="description_source_glunovo">Ontvang waardes van Glunovo app</string>
+    <string name="description_source_glunovo">Ontvang waarden van de Glunovo-app</string>
     <string name="intelligo">Intelligo</string>
-    <string name="description_source_intelligo">Ontvang waarden van de Intelligo app</string>
+    <string name="description_source_intelligo">Ontvang waarden van de Intelligo-app</string>
     <string name="tomato">Tomato (MiaoMiao)</string>
-    <string name="description_source_tomato">Ontvang BG waardes van Tomato app (MiaoMiao apparaatje)</string>
+    <string name="description_source_tomato">Ontvang BG-waarden van de Tomato-app (MiaoMiao-apparaat)</string>
     <string name="random_bg">Willekeurige BG</string>
-    <string name="description_source_random_bg">Willekeurige BG data genereren (alleen Demo modus)</string>
+    <string name="description_source_random_bg">Willekeurige BG-gegevens genereren (alleen demomodus)</string>
     <!-- Patched Syai Tag App -->
     <string name="syai_tag_app">Syai/Ottai</string>
-    <string name="description_source_patched_syai_tag_app">Ontvang glucose-gegevens van de Syai/Ottai App.</string>
+    <string name="description_source_patched_syai_tag_app">Ontvang glucosegegevens van de Syai/Ottai-app.</string>
     <!-- Patched SI App -->
     <string name="patched_si_app">SI App</string>
-    <string name="description_source_patched_si_app">Ontvang glucose gegevens van Patched Sibionic SI App of van Sibionics App.</string>
+    <string name="description_source_patched_si_app">Ontvang glucosegegevens van de aangepaste Sibionic SI-app of van de Sibionics-app.</string>
     <!-- Patched Sino App -->
     <string name="patched_sino_app">Sino App</string>
-    <string name="description_source_patched_sino_app">Ontvang glucose gegevens van Patched Sino App.</string>
+    <string name="description_source_patched_sino_app">Ontvang glucosegegevens van de aangepaste Sino-app.</string>
     <!-- Instara App -->
     <string name="instara_app">Instara</string>
-    <string name="description_source_instara_app">Ontvang BG waarden van de Instara app.</string>
+    <string name="description_source_instara_app">Ontvang BG-waarden van de Instara-app.</string>
     <!-- Instara preferences -->
     <string name="pref_title_instara_history_request">Instara historische gegevens opvragen</string>
     <string name="pref_summary_instara_history_request">Mogelijk ontbrekende historische gegevens op de achtergrond opvragen</string>
     <!-- Notification Reader -->
     <string name="notification_reader">Notificatielezer</string>
-    <string name="description_source_notification_reader">Lees glucosewaarden uit notificaties van officiële CGM apps (Dexcom, Medtronic, Eversense, enz.).</string>
+    <string name="description_source_notification_reader">Lees glucosewaarden uit notificaties van officiële CGM-apps (Dexcom, Medtronic, Eversense, enz.).</string>
     <!-- Permission rationales -->
     <string name="permission_dexcom_title">Dexcom CGM</string>
     <string name="permission_dexcom_description">De app heeft toestemming nodig om CGM-gegevens van de Dexcom-app te ontvangen</string>
     <string name="permission_notification_listener_title">Toegang tot notificaties</string>
     <string name="permission_notification_listener_description">Vereist om glucosewaarden uit meldingen van de CGM-app te lezen</string>
-    <string name="aidex">Micro Tech CGM App</string>
-    <string name="description_source_aidex">Ontvang Glucose waarden van LinX, LinX vista, Equil G. Smart 2, Diaexpert 2 enzovoort</string>
-    <string name="aidex_sensor_expired">De Sensor is verlopen, vervang sensor</string>
-    <string name="aidex_sensor_error">Sensor fout, controleer de sensor status</string>
+    <string name="aidex">MicroTech CGM App</string>
+    <string name="description_source_aidex">Ontvang CGM-waarden van LinX, LinX vista, Equil G. Smart 2, Diaexpert 2 enzovoort</string>
+    <string name="aidex_sensor_expired">De sensor is verlopen, vervang deze door een nieuwe sensor</string>
+    <string name="aidex_sensor_error">Sensorfout, controleer de sensorstatus</string>
     <string name="aidex_sensor_stabilizing">De sensor is aan het stabiliseren, nog even geduld…</string>
-    <string name="aidex_sensor_replace">De Sensor moet vervangen worden, plaats zo spoedig mogelijk een nieuwe sensor</string>
-    <string name="aidex_signal_lost">Sensor signaal verloren, controleer de verbinding</string>
+    <string name="aidex_sensor_replace">De sensor moet worden vervangen, plaats zo spoedig mogelijk een nieuwe sensor</string>
+    <string name="aidex_signal_lost">Sensorsignaal verloren, controleer de verbinding</string>
     <string name="a11y_bg_duplicate" comment="Screen-reader state of a glucose reading in the BG source list that has the same time as another one; on screen it is only a coloured background.">dubbele waarde</string>
+    <!-- Automatically translated Eversense UI drafts; linguistic review pending. -->
+    <string name="eversense_status_title">Status en verbinding</string>
+    <string name="eversense_cloud_upload_enabled">Uploaden naar de cloud inschakelen</string>
+    <string name="eversense_credentials_title">Eversense DMS-inloggegevens</string>
+    <string name="eversense_credentials_username">Gebruikersnaam</string>
+    <string name="eversense_credentials_password">Wachtwoord</string>
+    <string name="eversense_credentials_not_set">Niet ingesteld</string>
+    <string name="eversense_european_region">Europese zender (365)</string>
+    <string name="eversense_european_region_summary">Gebruikt Europese in plaats van Amerikaanse servers voor aanmelden en cloudsynchronisatie. Laat uitgeschakeld voor een Amerikaanse zender.</string>
+    <string name="eversense_sign_out">Afmelden</string>
+    <string name="eversense_documentation">Documentatie en installatie</string>
+    <string name="eversense_calibration_action">Zender kalibreren</string>
+    <string name="eversense_placement_title">Plaatsing van de zender</string>
+    <string name="eversense_diagnostic_logging">Diagnoselogboek</string>
+    <string name="eversense_diagnostic_logging_summary">Registreert gedetailleerde Bluetooth- en sensorgegevens. Schakel uit na het oplossen van problemen.</string>
+    <string name="eversense_cloud_upload_toast">Resultaat van cloudupload tonen</string>
+    <string name="eversense_calibration_bg_hint">Bloedglucosewaarde invoeren</string>
+    <string name="eversense_calibration_bg_value">Bloedglucosewaarde</string>
+    <string name="eversense_calibration_submit">Kalibratie verzenden</string>
+    <string name="eversense_calibration_sending">Kalibratie wordt verzonden…</string>
+    <string name="eversense_calibration_success">Kalibratie verzonden</string>
+    <string name="eversense_calibration_failed">Kalibratie verzenden mislukt. Controleer of de zender verbonden en gereed is.</string>
+    <string name="eversense_calibration_invalid_value">Voer een geldige bloedglucosewaarde in</string>
+    <string name="eversense_change_transmitter">Zender wijzigen</string>
+    <string name="eversense_change_transmitter_confirm">Deze zender vergeten en een nieuwe zoeken? Selecteer daarna de nieuwe zender in de zoekresultaten.</string>
+    <string name="eversense_disconnect_confirm">Verbinding met de zender verbreken?</string>
+    <string name="eversense_default_sync_days_label">Standaard synchronisatieperiode (dagen)</string>
+    <string name="eversense_information_connected">Verbonden</string>
+    <string name="eversense_information_last_sync">SYNCHRONISEREN</string>
+    <string name="eversense_not_connected">Niet verbonden</string>
+    <string name="eversense_no_transmitters_found">Geen zenders gevonden. Zorg dat de zender in de buurt is en probeer opnieuw.</string>
+    <string name="eversense_scan_title">Zender selecteren</string>
+    <string name="eversense_scan_cancel">Annuleren</string>
+    <string name="eversense_scan_in_progress">Zenders zoeken (10 seconden)…</string>
+    <string name="eversense_reconnecting">Opnieuw verbinden…</string>
+    <string name="eversense_placement_guide_heading">Handleiding voor zenderplaatsing</string>
+    <string name="eversense_placement_guide_subtitle">Pas de positie van de zender aan\nom het signaal te verbeteren</string>
+    <string name="eversense_placement_instruction_excellent">Uitstekende plaatsing! Houd de zender op deze positie.</string>
+    <string name="eversense_placement_instruction_good">Goede plaatsing. Het signaal is sterk.</string>
+    <string name="eversense_placement_instruction_fair">Het signaal is voldoende. Verplaats de zender een beetje voor een betere ontvangst.</string>
+    <string name="eversense_placement_instruction_weak">Zwak signaal. Plaats de zender dichter bij de sensor.</string>
+    <string name="eversense_placement_instruction_poor">Slechte ontvangst. Zorg dat de zender direct boven de sensorplaats zit.</string>
+    <string name="eversense_placement_instruction_not_connected">Verbind met de zender om de signaalsterkte te bekijken.</string>
+    <string name="eversense_placement_last_update">Laatst bijgewerkt: %1$s</string>
+    <string name="eversense_placement_reading">Signaal lezen…</string>
+    <string name="eversense_signal_excellent">Uitstekend</string>
+    <string name="eversense_signal_good">Goed</string>
+    <string name="eversense_signal_fair">Voldoende</string>
+    <string name="eversense_signal_weak">Zwak</string>
+    <string name="eversense_signal_poor">Slecht</string>
+    <string name="eversense_status_connected_label">Verbonden: %1$s</string>
+    <string name="eversense_status_battery_label">Batterij: %1$d%%</string>
+    <string name="eversense_status_insertion_label">Plaatsingsdatum: %1$s</string>
+    <string name="eversense_status_last_sync_label">Laatste synchronisatie: %1$s</string>
+    <string name="eversense_status_signal_label">Plaatsingssignaal: %1$s</string>
+    <string name="eversense_status_phase_label">Kalibratiefase: %1$s</string>
+    <string name="eversense_status_last_cal_label">Laatste kalibratie: %1$s</string>
+    <string name="eversense_status_next_cal_label">Volgende kalibratie: %1$s</string>
+    <string name="eversense_status_never">Nooit</string>
+    <string name="eversense_status_connect">Verbinden</string>
+    <string name="eversense_status_disconnect">Verbinding verbreken</string>
+    <string name="eversense_sign_out_confirmation">Bij het afmelden worden de opgeslagen DMS-gebruikersnaam en het wachtwoord verwijderd. Wil je doorgaan?</string>
 </resources>

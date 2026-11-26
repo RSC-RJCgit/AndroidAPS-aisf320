@@ -1,5 +1,6 @@
 package app.aaps.implementation.notifications
 
+import android.app.Notification
 import android.app.NotificationManager as AndroidNotificationManager
 import android.content.Context
 import android.content.Intent
@@ -22,8 +23,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.notNull
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -70,9 +73,10 @@ class AndroidSystemNotificationPlatformTest {
     private fun notification(
         level: NotificationLevel,
         sound: AlarmSound? = null,
-        actions: List<NotificationAction> = emptyList()
+        actions: List<NotificationAction> = emptyList(),
+        id: NotificationId = NotificationId.NEW_VERSION_DETECTED
     ) = AapsNotification(
-        id = NotificationId.NEW_VERSION_DETECTED,
+        id = id,
         instanceKey = 42,
         text = "text",
         level = level,
@@ -87,9 +91,24 @@ class AndroidSystemNotificationPlatformTest {
         sut.show(notification(NotificationLevel.URGENT, sound = AlarmSound.URGENT_ALARM), "Urgent")
 
         verify(alarmNotificationManager).postSilentAlarmNotification(
-            notificationKey = eq(42), title = eq("Urgent"), body = eq("text"), urgent = eq(true)
+            notificationKey = eq(42), title = eq("Urgent"), body = eq("text"), urgent = eq(true),
+            // Mute and the swipe: the card carries them so an alarm can be answered without opening the app.
+            dismissIntent = notNull()
         )
         verify(preferences, never()).get(any<BooleanKey>())
+    }
+
+    /** After a restart only cards go: never the running service, never a chime the alert posts again under its id. */
+    @Test
+    fun `a card left from before is told from everything else by channel and id`() {
+        assertThat(leftoverCardKey(NotificationManager.CHANNEL_ID, 10_003)).isEqualTo(10_003)
+        assertThat(leftoverCardKey(AlarmNotificationManager.CHANNEL_SILENT_URGENT, AlarmNotificationManager.SOUND_ID_OFFSET + 10_003)).isEqualTo(10_003)
+        assertThat(leftoverCardKey(AlarmNotificationManager.CHANNEL_SILENT, AlarmNotificationManager.SOUND_ID_OFFSET + 5)).isEqualTo(5)
+        // A chime, on the same silent channel
+        assertThat(leftoverCardKey(AlarmNotificationManager.CHANNEL_SILENT, AlarmNotificationManager.CHIME_ID_OFFSET + 7)).isNull()
+        // The running service and anything on another channel
+        assertThat(leftoverCardKey("AndroidAPS-Ongoing", 4711)).isNull()
+        assertThat(leftoverCardKey("AAPS-OpenLoop-v2", 10_003)).isNull()
     }
 
     @Test
@@ -98,7 +117,7 @@ class AndroidSystemNotificationPlatformTest {
 
         sut.show(notification(NotificationLevel.NORMAL), "Info")
 
-        verify(alarmNotificationManager, never()).postSilentAlarmNotification(any(), any(), any(), any())
+        verify(alarmNotificationManager, never()).postSilentAlarmNotification(any(), any(), any(), any(), anyOrNull())
     }
 
     @Test
@@ -108,7 +127,7 @@ class AndroidSystemNotificationPlatformTest {
 
         sut.show(notification(NotificationLevel.NORMAL, actions = listOf(mock())), "Info")
 
-        verify(alarmNotificationManager, never()).postSilentAlarmNotification(any(), any(), any(), any())
+        verify(alarmNotificationManager, never()).postSilentAlarmNotification(any(), any(), any(), any(), anyOrNull())
     }
 
     @Test
@@ -119,24 +138,32 @@ class AndroidSystemNotificationPlatformTest {
 
         sut.show(notification(NotificationLevel.URGENT), "Urgent")
 
-        verify(alarmNotificationManager, never()).postSilentAlarmNotification(any(), any(), any(), any())
+        verify(alarmNotificationManager, never()).postSilentAlarmNotification(any(), any(), any(), any(), anyOrNull())
     }
 
     @Test
     fun `the audible alarm starts, holds and stops`() {
         sut.setAudibleAlarm(1, AlarmSound.ALARM)
-        verify(alarmSoundPlayer).play(AlarmSound.ALARM, AlarmSoundPlayer.OWNER_INTERNAL)
+        verify(alarmSoundPlayer).play(AlarmSound.ALARM, AlarmSoundPlayer.OWNER_INTERNAL, false)
 
         // Called again with the same key means "keep playing" - a second play() would restart the ramp.
         sut.setAudibleAlarm(1, AlarmSound.ALARM)
-        verify(alarmSoundPlayer).play(AlarmSound.ALARM, AlarmSoundPlayer.OWNER_INTERNAL)
+        verify(alarmSoundPlayer).play(AlarmSound.ALARM, AlarmSoundPlayer.OWNER_INTERNAL, false)
 
         // A different alarm takes over.
         sut.setAudibleAlarm(2, AlarmSound.URGENT_ALARM)
-        verify(alarmSoundPlayer).play(AlarmSound.URGENT_ALARM, AlarmSoundPlayer.OWNER_INTERNAL)
+        verify(alarmSoundPlayer).play(AlarmSound.URGENT_ALARM, AlarmSoundPlayer.OWNER_INTERNAL, false)
 
         sut.setAudibleAlarm(null, null)
         verify(alarmSoundPlayer).stop(AlarmSoundPlayer.OWNER_INTERNAL)
+    }
+
+    /** Urgent low rings in Do Not Disturb whatever the setting says; the player is told so. */
+    @Test
+    fun `an alarm that breaks through Do Not Disturb tells the player`() {
+        sut.setAudibleAlarm(1, AlarmSound.ALARM, breakThroughDnd = true)
+
+        verify(alarmSoundPlayer).play(AlarmSound.ALARM, AlarmSoundPlayer.OWNER_INTERNAL, true)
     }
 
     @Test
@@ -199,5 +226,22 @@ class AndroidSystemNotificationPlatformTest {
         context.sendBroadcast(deleteIntent)
         ShadowLooper.idleMainLooper()
         assertThat(dismissed).isEqualTo(42)
+    }
+
+    /**
+     * The alert core owns the sound of an alert: the alarm screen, one chime or none. Its card in the tray is a copy,
+     * and the channel's sound on top made a WARNING sound twice and a card of a Silent kind ding. Other cards keep it.
+     */
+    @Test
+    fun `the card of an alert is shown in the tray without sound, other cards with it`() {
+        whenever(preferences.get(BooleanKey.AlertUrgentAsAndroidNotification)).thenReturn(true)
+        val tray = shadowOf(context.getSystemService(AndroidNotificationManager::class.java))
+
+        sut.show(notification(NotificationLevel.IMPORTANT, id = NotificationId.ALERT), "Warning")
+        assertThat(tray.allNotifications.single().groupAlertBehavior).isEqualTo(Notification.GROUP_ALERT_SUMMARY)
+
+        // The same instance key, so it replaces the first in the tray
+        sut.show(notification(NotificationLevel.IMPORTANT), "Warning")
+        assertThat(tray.allNotifications.single().groupAlertBehavior).isEqualTo(Notification.GROUP_ALERT_ALL)
     }
 }

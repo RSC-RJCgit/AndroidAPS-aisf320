@@ -53,6 +53,9 @@ class RawPreferenceStoreScanTest {
         "implementation/src/commonMain/kotlin/app/aaps/implementation/sharedPreferences/PreferencesImpl.kt" to "Preferences itself, which is what everything else is supposed to use",
         "shared/tests/src/androidMain/kotlin/app/aaps/shared/tests/SharedPreferencesMock.kt" to "the test double for the store; it lives in a main source set so tests in other modules can use it",
 
+        "plugins/source/eversense/src/androidMain/kotlin/app/aaps/plugins/eversense/di/EversenseAndroidRegistration.kt" to
+            "reads the whole legacy Eversense device store, which EversenseStateStore imports once; new state is a registered, non-exported preference",
+
         // --- Moves the whole store, not a setting ---
         // These are the import, the export and the cloud copies of them. They are SUPPOSED to see every
         // key, including ones they have never heard of, so going through `Preferences` would defeat
@@ -82,6 +85,11 @@ class RawPreferenceStoreScanTest {
             "reads the v3 insulin and DIA names this build no longer registers, to stamp records that predate ICfg",
         "implementation/src/commonMain/kotlin/app/aaps/implementation/maintenance/migration/FileKeyValueStore.kt" to
             "an in-memory store over an import file, so the migrations above run on it without touching the device",
+        // The app start, which `MainApp` did before every platform shared it. `MainApp` reached the store
+        // too, but through a graph accessor, so it never named the type and this scan never saw it.
+        "appshell/src/commonMain/kotlin/app/aaps/appshell/start/AppStartSequence.kt" to
+            "hands the device's store to the migrations above, removes the old DIA names once they are migrated, " +
+            "and writes the vacuum flag with edit(commit = true) before a VACUUM that can end the process",
         "implementation/src/commonMain/kotlin/app/aaps/implementation/maintenance/cloud/CloudStorageManager.kt" to "moves export files to and from cloud storage",
         "implementation/src/commonMain/kotlin/app/aaps/implementation/maintenance/cloud/GoogleDriveProvider.kt" to "cloud export, shared part",
         "implementation/src/androidMain/kotlin/app/aaps/implementation/maintenance/cloud/AndroidGoogleDriveProvider.kt" to "cloud export, Android part",
@@ -145,6 +153,8 @@ class RawPreferenceStoreScanTest {
         val skip = listOf("/build/", "/src/test", "/src/androidTest", "/src/androidHostTest", "/src/commonTest", "/src/iosTest", "/wear/")
         val root = repoRoot()
         val files = root.walkTopDown()
+            // Apply the same exclusions before entering directories, so build output is not walked.
+            .onEnter { dir -> skip.none { (dir.invariantSeparatorsPath + "/").contains(it) } }
             .filter { it.isFile && it.extension == "kt" }
             .map { it to it.invariantSeparatorsPath }
             .filterNot { (_, path) -> skip.any { path.contains(it) } }
@@ -187,7 +197,7 @@ class RawPreferenceStoreScanTest {
     }
 
     private fun repoRoot(): File {
-        var dir: File? = File(System.getProperty("user.dir"))
+        var dir: File? = File(System.getProperty("user.dir")!!)
         while (dir != null && !File(dir, "settings.gradle").exists() && !File(dir, "settings.gradle.kts").exists()) dir = dir.parentFile
         return checkNotNull(dir) { "Could not find the repository root above ${System.getProperty("user.dir")}" }
     }

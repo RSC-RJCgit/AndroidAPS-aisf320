@@ -51,13 +51,21 @@ class DesktopSystemNotificationPlatform(
             .getOrNull()
     }
 
-    override fun show(notification: AapsNotification, title: String) {
+    override fun show(notification: AapsNotification, title: String) = toast(title, notification.systemBody)
+
+    /** One message in the tray. Also used by `DesktopAlertPlatform` for the one sound of a WARNING alert. */
+    fun toast(title: String, text: String) {
         val icon = trayIcon
         if (icon == null) {
-            aapsLogger.info(LTag.CORE, "Notification (no tray): $title - ${notification.text}")
+            aapsLogger.info(LTag.CORE, "Notification (no tray): $title - $text")
             return
         }
-        icon.displayMessage(title, notification.text, TrayIcon.MessageType.INFO)
+        icon.displayMessage(title, text, TrayIcon.MessageType.INFO)
+    }
+
+    /** The platform beep: the only sound a desktop has. */
+    fun beep() {
+        runCatching { Toolkit.getDefaultToolkit().beep() }
     }
 
     override fun cancel(instanceKey: Int) {
@@ -69,14 +77,18 @@ class DesktopSystemNotificationPlatform(
         aapsLogger.debug(LTag.CORE, "Cannot cancel desktop notifications: tray toasts are transient")
     }
 
-    override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?) {
+    override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?, breakThroughDnd: Boolean, ringtoneUri: String?) {
         // Called again with the same key means "keep playing", and a single beep has already
         // finished, so there is nothing to keep. Only a new alarm that carries a sound beeps.
-        if (instanceKey != null && sound != null) runCatching { Toolkit.getDefaultToolkit().beep() }
+        if (instanceKey != null && sound != null) beep()
     }
 
     override fun onDismissed(callback: (instanceKey: Int) -> Unit) {
         // Kept for the shape of the contract. AWT gives no dismissal callback, so this never fires.
         aapsLogger.debug(LTag.CORE, "Desktop cannot report notification dismissals")
+    }
+
+    override fun clearLeftovers(isCurrent: (instanceKey: Int) -> Boolean) {
+        // Nothing to clear: a tray toast expires on its own and its tray icon goes with the process.
     }
 }

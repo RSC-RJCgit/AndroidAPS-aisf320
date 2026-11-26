@@ -10,6 +10,15 @@ import AapsShared
 @main
 struct ClientApp: App {
 
+    /// AAPS starts here, not when the first screen is built (upstream, kept in the 2026-11-26 dev41 merge). iOS can start
+    /// the app in the background with no window - to hand over a Bluetooth event after it ended the app for memory - and
+    /// then SwiftUI builds no screen at all. See `startAapsApp`.
+    ///
+    /// The fork's apps have no Firebase Crashlytics (2026-11-05): this overload hands in `NoCrashReporter`. The BG Live
+    /// Activity is handed in here as well, as ActivityKit is Swift only.
+    init() {
+        AapsAppHostKt.startAapsApp(nsSocketFactory: SwiftNsSocketFactory(), liveActivity: SwiftLiveActivity())
+    }
     var body: some SwiftUI.Scene {
         WindowGroup {
             ShellView()
@@ -26,6 +35,9 @@ struct ClientApp: App {
 struct AapsAppView: UIViewControllerRepresentable {
 
     func makeUIViewController(context: UIViewControllerRepresentableContext<AapsAppView>) -> UIViewController {
+        // AAPS was started by `ClientApp.init`; this only hands over its screen. The two arguments
+        // are used only if nothing started it before.
+        //
         // The Nightscout socket is handed to the Kotlin graph from here, because it is written in
         // Swift and cannot carry a Kotlin annotation. Android and desktop contribute their own
         // socket.io client automatically; this is the same project's Swift client, so both platforms

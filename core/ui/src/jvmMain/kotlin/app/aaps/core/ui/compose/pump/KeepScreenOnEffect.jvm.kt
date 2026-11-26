@@ -3,8 +3,8 @@ package app.aaps.core.ui.compose.pump
 import androidx.compose.runtime.Composable
 
 /**
- * Desktop: nothing to do. The desktop app has no pump wizard that talks to a patch, and the screen saver
- * of a computer is not the app's to switch off.
+ * Nothing to do on the desktop. It drives no pump over Bluetooth, so no pump wizard runs there, and a
+ * computer does not suspend an app that is open on screen.
  */
 @Composable
 actual fun KeepScreenOnEffect() = Unit
