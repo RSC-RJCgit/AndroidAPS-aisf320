@@ -45,8 +45,6 @@ import app.aaps.core.interfaces.utils.fabric.CrashReporter
 import app.aaps.core.interfaces.utils.fabric.FabricPrivacy
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.VisibilityContext
-import app.aaps.core.interfaces.di.APS
-import app.aaps.core.interfaces.di.PumpDriver
 import app.aaps.core.objects.di.CoreObjectsGraph
 import app.aaps.core.ui.compose.pump.PumpCommunicationStatus
 import app.aaps.database.AppRepository

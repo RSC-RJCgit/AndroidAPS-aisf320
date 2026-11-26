@@ -132,7 +132,6 @@ import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
-import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIViewController
 
 /**

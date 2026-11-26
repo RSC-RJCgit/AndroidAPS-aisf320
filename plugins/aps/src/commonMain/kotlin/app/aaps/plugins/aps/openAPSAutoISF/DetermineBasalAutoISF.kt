@@ -790,12 +790,13 @@ internal fun overnightSmbDeliveryRatio(smbRatio: Double, hour: Int): Double =
 internal fun overnightSmbIntervalSec(intervalSec: Double, minuteOfDay: Int, bgMgdl: Double): Double =
     if ((minuteOfDay >= 1320 || minuteOfDay < 240) && bgMgdl < 144.0 && intervalSec < 180.0) 180.0 else intervalSec
 
-// 00:00-04:00 is 0.6 U under 8.0 mmol/L. 22:00-00:00 is 1.0 U under 8.0. Otherwise 1.5 U.
-internal fun smbCap10Min(microBolus: Double, smbSum10: Double, minuteOfDay: Int, bg: Double): SmbStepResult {
+// 00:00-04:00 is 0.6 U under 8.0 mmol/L. 22:00-00:00 is 1.0 U under 8.0. Otherwise 1.5 U, or 2.5 U on a HighRiseCapRelease.
+internal fun smbCap10Min(microBolus: Double, smbSum10: Double, minuteOfDay: Int, bg: Double, highRiseCapRelease: Boolean = false): SmbStepResult {
     val bgUnder8 = bg < 144.0
     val cap = when {
         minuteOfDay < 240 && bgUnder8 -> 0.6
         minuteOfDay >= 1320 && bgUnder8 -> 1.0
+        highRiseCapRelease -> 2.5
         else -> 1.5
     }
     val allowance = cap - smbSum10
@@ -853,7 +854,18 @@ internal data class AfterFastRiseInput(
     val uamBstMinutesAgo: Int,
     val sub75Cooldown: Boolean,
     val riseHold: Boolean = false,
+    /** See [highRiseCapRelease]: the 30 min cap at least 3.2 U and the 10 min cap 2.5 U. */
+    val highRiseCapRelease: Boolean = false,
 )
+
+/**
+ * HighRiseCapRelease (2026-11-26, per explicit request, same as 3426): BG >= 10.0 mmol rising fast (Delta >= +0.3, SDelta >= +0.2
+ * mmol / 5 min), minPredBG >= 8.0, IOB under 60% of max IOB, 06:00-24:00. 26 Nov Live 11:14-11:22: InsReq 3.6-7.1 U but SMBs
+ * held to 0.05-0.15 U by the 2.1 / 1.5 U caps. Live 18-26 Nov: all 9 cap-cut episodes meeting these conditions stayed at 6.8
+ * or more over the next 3 h (most 8+); the cap cuts at BG 8.5-9.0 that ended at 3.8-4.4 are outside it.
+ */
+internal fun highRiseCapRelease(bg: Double, delta: Double, shortDelta: Double, minPredBg: Double, iob: Double, maxIob: Double, minuteOfDay: Int): Boolean =
+    bg >= 180.2 && delta >= 5.4 && shortDelta >= 3.6 && minPredBg >= 144.1 && iob < 0.6 * maxIob && minuteOfDay >= 360
 
 // Order matches 3.2.1 after the size tiers: early morning, high steps, little walking,
 // boost restore, LoReb trim, late taper, the two caps, then the under-7.5 pause.
@@ -913,8 +925,10 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     )
     smb = taper.microBolus
     reason.append(taper.reason)
-    val cap30 = smbCap30Min(smb, input.smbSum30, input.bolusSum30, input.cap30, input.cap30Note)
-    if (input.cap30Walking) {
+    if (input.highRiseCapRelease) reason.append(" HighRiseCapRelease (BG ${twoDecimals(input.bg / 18.0182)}, IOB ${twoDecimals(input.iob)}) ")
+    val cap30Used = if (input.highRiseCapRelease) max(input.cap30, 3.2) else input.cap30
+    val cap30 = smbCap30Min(smb, input.smbSum30, input.bolusSum30, cap30Used, input.cap30Note)
+    if (input.cap30Walking && !input.highRiseCapRelease) {
         // The same cap without the walking half: the difference is what walking alone held back
         val unhalved = smbCap30Min(smb, input.smbSum30, input.bolusSum30, input.cap30 / input.cap30WalkingScale.coerceIn(0.1, 1.0), input.cap30Note)
         stepCut += (unhalved.microBolus - cap30.microBolus).coerceAtLeast(0.0)
@@ -922,7 +936,7 @@ internal fun afterFastRiseSmb(input: AfterFastRiseInput): SmbStepResult {
     smb = cap30.microBolus
     reason.append(cap30.reason)
     if (cap30.console.isNotEmpty()) console.append(cap30.console).append('\n')
-    val cap10 = smbCap10Min(smb, input.smbSum10, input.minuteOfDay, input.bg)
+    val cap10 = smbCap10Min(smb, input.smbSum10, input.minuteOfDay, input.bg, input.highRiseCapRelease)
     smb = cap10.microBolus
     reason.append(cap10.reason)
     if (cap10.console.isNotEmpty()) console.append(cap10.console).append('\n')
@@ -2478,6 +2492,9 @@ class DetermineBasalAutoISF(
                             uamBoostRecent = uamBoostRecent,
                             uamBstMinutesAgo = uamBstMinutesAgo,
                             sub75Cooldown = sub75Cooldown,
+                            highRiseCapRelease = highRiseCapRelease(
+                                bg, glucose_status.delta, glucose_status.shortAvgDelta, minPredBG, iob_data.iob, profile.max_iob, minuteOfDay
+                            ),
                             riseHold = riseHold,
                         )
                     )
