@@ -3008,9 +3008,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     // TT, so the tier cannot flip back and forth around 8.5 mmol. In memory only.
     private var acLoaHeldForTtTs = 0L
 
-    // PoorAbs (2026-11-24, see its block): start of the current BG >= 10.0 stretch, whether the boost is on, and when it last was.
-    // In memory only: after an app restart the 60 min high stretch is timed again from scratch.
-    private var poorAbsHighSinceTs = 0L
+    // PoorAbs (2026-11-24, see its block): whether the boost is on, and when it last was. In memory only. The 60 min high stretch
+    // is read from the stored BG readings since 2026-11-26, so a restart no longer times it again from scratch.
     private var poorAbsActive = false
     private var poorAbsLastActiveTs = 0L
 
@@ -7391,7 +7390,13 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // carbs, after BG had sat at 10-12 most of the day; nothing stronger fired (StuckHighRescue blocked by its 3.0 U IOB cap).
         //
         // Detection, every cycle: cannula over 6 h; BG >= 10.0 mmol for 60 min (own timer); not falling (BG now >= BG 30 min ago
-        // - 0.3 mmol); no rapid post-meal rise (Delta < 0.5 mmol); IOB >= 80% of (BG - target) / profile ISF, i.e. enough insulin
+        // - 0.3 mmol);
+        // 2026-11-26, per explicit request: the 60 min comes from the stored BG readings (every reading in the last 60 min at
+        // 10.0 or more, the oldest at least 55 min back), not an in-memory timer an app restart or loop gap started again; and
+        // "not falling" allows 0.6 mmol per 30 min (was 0.3), so a slow drift down with little insulin arriving still counts.
+        // It had not fired on Live from 24 Nov evening to 26 Nov; 25 Nov 12:02-13:01 still does not (BG fell 2.4 in 30 min
+        // after a meal bolus).
+        // no rapid post-meal rise (Delta < 0.5 mmol); IOB >= 80% of (BG - target) / profile ISF, i.e. enough insulin
         // on board to reach target already; and HP2 > 6.0 mmol.
         // While detected: SMB delivery ratio mild-boost base + 0.15 (no activity factor; re-asserted every cycle so the DelOff
         // reset does not undo it), the Mcap 30 min cap neither shrunk nor walking-cut (next cycle, see the Mcap block), and a
@@ -7404,14 +7409,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val iob = iobData.iob
             val hp = hypoPrediction2Mmol(g, glucoseStatus.shortAvgDelta, glucoseStatus.longAvgDelta, iob, mealData.mealCOB, bgAcce)
-            if (g >= 180.2 /* 10.0 mmol */) {
-                if (poorAbsHighSinceTs == 0L) poorAbsHighSinceTs = now
-            } else poorAbsHighSinceTs = 0L
-            val highFor60 = poorAbsHighSinceTs != 0L && now - poorAbsHighSinceTs >= T.mins(60).msecs()
+            val last60 = if (g >= 180.2 /* 10.0 mmol */)
+                persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(60).msecs(), now, ascending = true) else emptyList()
+            val highFor60 = last60.isNotEmpty() && last60.first().timestamp <= now - T.mins(55).msecs() &&
+                last60.all { it.value >= 180.2 /* 10.0 mmol */ }
             val podH = hoursSinceCurrentPodChange()
             val bg30Ago = persistenceLayer.getBgReadingsDataFromTimeToTime(now - T.mins(35).msecs(), now - T.mins(25).msecs(), ascending = false)
                 .minByOrNull { kotlin.math.abs(it.timestamp - (now - T.mins(30).msecs())) }?.value
-            val notFalling = bg30Ago != null && g >= bg30Ago - 5.4 /* 0.3 mmol */
+            val notFalling = bg30Ago != null && g >= bg30Ago - 10.8 /* 0.6 mmol */
             val noRapidRise = glucoseStatus.delta < 9.0 /* 0.5 mmol */
             val profileIsf = profile.getIsfMgdlTimeFromMidnight(MidnightUtils.secondsFromMidnight(now))
             val iobNeeded = if (profileIsf > 0.0) (g - targetBg).coerceAtLeast(0.0) / profileIsf else Double.MAX_VALUE
