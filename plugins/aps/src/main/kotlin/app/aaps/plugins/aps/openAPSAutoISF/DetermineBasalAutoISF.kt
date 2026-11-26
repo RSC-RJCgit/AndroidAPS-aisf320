@@ -2656,12 +2656,21 @@ class DetermineBasalAutoISF @Inject constructor(
                 // Do not gate the final allowance on fastRiseNow: at the end of the Aug 8 event the raw
                 // rise flattened for two cycles while SMB continued, precisely when accumulated insulin
                 // still needed protection. Trim to the remaining budget rather than always zeroing.
-                val smbCap30Min = smbCap30ForCap
+                // HighRiseCapRelease (2026-11-26, per explicit request): BG >= 10.0 mmol rising fast (Delta >= +0.3, SDelta >= +0.2
+                // mmol / 5 min), minPredBG >= 8.0, IOB under 60% of max IOB, 06:00-24:00. The 30 min cap is then at least 3.2 U
+                // and the 10 min cap 2.5 U. 26 Nov Live 11:14-11:22: InsReq 3.6-7.1 U but SMBs held to 0.05-0.15 U by the 2.1 / 1.5 U
+                // caps. Live 18-26 Nov: all 9 cap-cut episodes meeting these conditions stayed at 6.8 or more over the next 3 h
+                // (most 8+); the cap cuts at BG 8.5-9.0 that ended at 3.8-4.4 are outside it and keep the caps as before.
+                val highRiseCapRelease = bg >= 180.2 /* 10.0 mmol */ &&
+                    glucose_status.delta >= 5.4 /* 0.3 mmol */ && glucose_status.shortAvgDelta >= 3.6 /* 0.2 mmol */ &&
+                    minPredBG >= 144.1 /* 8.0 mmol */ && IOB < 0.6 * profile.max_iob && nowMinsOfDay >= 360
+                if (highRiseCapRelease) rT.reason.append(" HighRiseCapRelease (BG ${round(bg / 18.0182, 1)}, IOB ${round(IOB, 2)}) ")
+                val smbCap30Min = if (highRiseCapRelease) max(smbCap30ForCap, 3.2) else smbCap30ForCap
                 val smbAllowance30Min = (smbCap30Min - smbSum30Min - bolusSum30ForCap).coerceAtLeast(0.0)
                 if (microBolus > smbAllowance30Min) {
                     val before30MinCap = microBolus
                     microBolus = smbAllowance30Min
-                    if (smbCap30Walking) {
+                    if (smbCap30Walking && !highRiseCapRelease) {
                         // Steps arrow: what the walking half of the cap held back
                         val unhalvedAllowance = (smbCap30Min / smbCap30WalkingScale.coerceIn(0.1, 1.0) - smbSum30Min - bolusSum30ForCap).coerceAtLeast(0.0)
                         stepCutDirect += (min(before30MinCap, unhalvedAllowance) - microBolus).coerceAtLeast(0.0)
@@ -2725,6 +2734,7 @@ class DetermineBasalAutoISF @Inject constructor(
                 val smbCap10Min = when {
                     inDeepNightSmbWindow       && bgBelowNightSmbCeiling -> 0.6
                     inEveningShoulderSmbWindow && bgBelowNightSmbCeiling -> 1.0
+                    highRiseCapRelease                                  -> 2.5
                     else                                                -> 1.5
                 }
                 val smbAllowanceLeft = smbCap10Min - smbSum10Min
