@@ -175,6 +175,12 @@ fun OverviewScreen(
     val config = LocalConfig.current
     val preferences = LocalPreferences.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    // 2026-11-27, per explicit request: every app start opens the graphs in Simple (loop phone, Virtual and clients); D/S/U still
+    // switch until the next start
+    if (!simpleGraphsChosenAtAppStart) {
+        simpleGraphsChosenAtAppStart = true
+        if (!preferences.get(BooleanNonKey.ApsAutoIsfSimpleGraphs)) preferences.put(BooleanNonKey.ApsAutoIsfSimpleGraphs, true)
+    }
     if (config.APS && !config.AAPSCLIENT) {
         DisposableEffect(lifecycleOwner, preferences) {
             fun selectSimpleMode() {
@@ -474,3 +480,6 @@ fun OverviewScreen(
         )
     }
 }
+
+/** Set once the overview has put the graphs on Simple after this app start (2026-11-27, per explicit request). Process-wide. */
+private var simpleGraphsChosenAtAppStart = false
