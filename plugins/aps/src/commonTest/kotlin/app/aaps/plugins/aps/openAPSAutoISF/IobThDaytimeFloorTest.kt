@@ -48,4 +48,18 @@ class IobThDaytimeFloorTest {
     ) = iobThDaytimeFloorShouldFire(
         ready, minuteOfDay, profilePercent, lowBgClear, steroidsOff, tempTargetSet, iobTh, bg, delta
     )
+
+    @Test
+    fun steroidFloorRestoresTheTierLevel() {
+        fun t(level: Int?, iobTh: Int, minute: Int = 12 * 60, bg: Double = 140.0, delta: Double = 1.0, pct: Int = 100, tt: Boolean = false) =
+            steroidIobThFloorTarget(true, minute, pct, lowBgClear = true, tempTargetSet = tt, steroidLevel = level, iobTh = iobTh, bg = bg, delta = delta)
+        kotlin.test.assertEquals(81, t(81, 50))          // Steroid 150 left at 50 after a Set50
+        kotlin.test.assertEquals(null, t(81, 81))        // already there
+        kotlin.test.assertEquals(null, t(null, 50))      // no Steroid profile
+        kotlin.test.assertEquals(null, t(81, 50, minute = 23 * 60))  // night
+        kotlin.test.assertEquals(null, t(81, 50, bg = 110.0))        // under 6.5
+        kotlin.test.assertEquals(null, t(81, 50, delta = -0.5))      // falling
+        kotlin.test.assertEquals(null, t(81, 50, pct = 50))          // hypo 50% running
+        kotlin.test.assertEquals(null, t(81, 50, tt = true))         // TT set
+    }
 }

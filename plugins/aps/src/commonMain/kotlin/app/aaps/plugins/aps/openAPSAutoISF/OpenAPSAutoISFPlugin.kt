@@ -119,6 +119,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
@@ -2401,6 +2402,25 @@ open class OpenAPSAutoISFPlugin(
                 aapsLogger.debug(LTag.APS, "iobTH daytime floor left $iobThNow, 70 is above the baseline")
             }
         }
+        // 2026-11-27, per explicit request (same as 3426): the Steroid-day floor, see steroidIobThFloorTarget
+        steroidIobThFloorTarget(
+            ready = runMarks.ready(RunMark.STEROID_IOB_TH_FLOOR, 30, now),
+            minuteOfDay = minuteOfDay,
+            profilePercent = profilePercent,
+            lowBgClear = statesOn && states().inState("LowBG", "NO50rec"),
+            tempTargetSet = tempTargetSet,
+            steroidLevel = steroidTierIobTh(),
+            iobTh = preferences.get(IntKey.ApsAutoIsfIobThPercent),
+            bg = bg,
+            delta = delta,
+        )?.let { level ->
+            val before = preferences.get(IntKey.ApsAutoIsfIobThPercent)
+            preferences.put(IntKey.ApsAutoIsfIobThPercent, level)
+            runMarks.mark(RunMark.STEROID_IOB_TH_FLOOR, now)
+            sendAutoSms("steroid iobTHfloor: iobTH $before->$level%", noteTag = true)
+            carePortalNote("THstr", smsText = lastSmsText)
+            aapsLogger.debug(LTag.APS, "Steroid iobTH floor $before -> $level")
+        }
         val extraBlock = extra50Block(
             ready = runMarks.ready(RunMark.EXTRA50, 5, now),
             profilePercent = profilePercent,
@@ -4206,13 +4226,13 @@ open class OpenAPSAutoISFPlugin(
             RemoteToggleCode.MJ_ACTIVE -> setMjState("MJ active", "MJstate: MJ active", "MJsAc")
             RemoteToggleCode.MJ2 -> setMjState("MJ2", "MJstate: MJ2", "MJs2")
             RemoteToggleCode.PROFILE_STANDARD -> {
-                switchToStandardAtSharedTier(dateUtil.now())
+                switchToStandardAtSharedTier(dateUtil.now(), evenOnSteroid = true)
                 val name = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
                 sendAutoSms("Profile: Standard ($name)", noteTag = true)
                 carePortalNote("PrSt", smsText = lastSmsText)
             }
             RemoteToggleCode.PROFILE_LOW -> {
-                switchToLowAtSharedTier(dateUtil.now(), "AutoISF: Low")
+                switchToLowAtSharedTier(dateUtil.now(), "AutoISF: Low", evenOnSteroid = true)
                 val name = preferences.get(StringKey.ApsAutoIsfLowProfileName)
                 sendAutoSms("Profile: Low ($name)", noteTag = true)
                 carePortalNote("PrLow", smsText = lastSmsText)
@@ -4432,12 +4452,12 @@ open class OpenAPSAutoISFPlugin(
         if (start) {
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.35)
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-            switchToLowAtSharedTier(now, "AutoISF: MJ")
+            switchToLowAtSharedTier(now, "AutoISF: MJ", evenOnSteroid = true)
             setMjState("MJ active", "Injection MJ 0.35_.70", "MJ active")
         } else {
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
             preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-            switchToStandardAtSharedTier(now)
+            switchToStandardAtSharedTier(now, evenOnSteroid = true)
             setMjState("NOMJremains", "MJ dose 4+ days old", "NOMJremains")
         }
     }
@@ -5310,7 +5330,7 @@ open class OpenAPSAutoISFPlugin(
         ) return
         val store = states()
         if (statesOn && store.hasStateValues("Steroids")) store.setState("Steroids", "Steroids Off")
-        switchToLowAtSharedTier(now, "AutoISF: steps steroids off")
+        switchToLowAtSharedTier(now, "AutoISF: steps steroids off", evenOnSteroid = true)
         preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
         preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
         runMarks.mark(RunMark.STEPS_STEROIDS_OFF, now)
@@ -5928,7 +5948,8 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfSmbDeliveryRatio, preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
             // 2026-10-07: the Low rung of the tier being run (see lowNameForRunning), not just Low current, which can lag.
-            val lowName = lowNameForRunning(
+            // 2026-11-27, per explicit request (same as 3426): on a Steroid profile, that profile itself at 50%
+            val lowName = if (steroidTierProfileRunning()) profileFunction.getOriginalProfileName() else lowNameForRunning(
                 running = profileFunction.getOriginalProfileName(),
                 standardRungs = standardLadderNames(),
                 lowRungs = lowLadderNames(),
@@ -6506,13 +6527,57 @@ open class OpenAPSAutoISFPlugin(
 
     // Align Low Current and Standard Current to the letter already in force, then switch to that Standard name.
     // A band change nudges the SMB baseline by 0.01 and the mild ratio by 0.25. B and C share one band.
-    private suspend fun switchToStandardAtSharedTier(now: Long, minutes: Int = 0) {
+    // 2026-11-27, per explicit request (same as 3426): the automatic Low/Standard switches leave a running Steroid profile (110-250)
+    // alone. [evenOnSteroid] is for the deliberate ones: StepsSteroidsOff (it ends steroids), the MJ buttons and the Standard/Low codes.
+    private suspend fun switchToStandardAtSharedTier(now: Long, minutes: Int = 0, evenOnSteroid: Boolean = false) {
+        if (!evenOnSteroid && steroidTierProfileRunning()) {
+            aapsLogger.debug(LTag.APS, "switchToStandardAtSharedTier: Steroid profile ${profileFunction.getOriginalProfileName()} runs - left as it is")
+            return
+        }
         switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: BasalUp", minutes = minutes)
     }
 
     // Same letter alignment, then switch the running profile to the Low name.
-    private suspend fun switchToLowAtSharedTier(now: Long, note: String, minutes: Int = 0) {
+    private suspend fun switchToLowAtSharedTier(now: Long, note: String, minutes: Int = 0, evenOnSteroid: Boolean = false) {
+        if (!evenOnSteroid && steroidTierProfileRunning()) {
+            aapsLogger.debug(LTag.APS, "switchToLowAtSharedTier ($note): Steroid profile ${profileFunction.getOriginalProfileName()} runs - left as it is")
+            return
+        }
         switchToRoleAtSharedTier(now, toLow = true, note = note, minutes = minutes)
+    }
+
+    /**
+     * 2026-11-27, per explicit request (same as 3426): the running profile is one of the Steroid 110/130/150/190/250 profiles
+     * (Steroid 100 is the "Steroids OFF" profile) and not also a Standard/Low ladder profile.
+     */
+    private suspend fun steroidTierProfileRunning(): Boolean = steroidTierProfileCheck().also { steroidProfileRunningNow = it }
+
+    /** The running Steroid tier's IobTH (110 75, 130 78, 150 81, 190 84, 250 88), null when no Steroid profile runs (2026-11-27). */
+    private suspend fun steroidTierIobTh(): Int? {
+        if (!steroidTierProfileRunning()) return null
+        val running = profileFunction.getOriginalProfileName().trim()
+        return listOf(
+            StringKey.ApsAutoIsfSteroid110ProfileName to 75, StringKey.ApsAutoIsfSteroid130ProfileName to 78,
+            StringKey.ApsAutoIsfSteroid150ProfileName to 81, StringKey.ApsAutoIsfSteroid190ProfileName to 84,
+            StringKey.ApsAutoIsfSteroid250ProfileName to 88
+        ).firstOrNull { preferences.get(it.first).trim() == running }?.second
+    }
+
+    /** The last [steroidTierProfileRunning] answer, for [keepSteroidsOff], which is called where the profile cannot be read. Each loop
+     *  refreshes it ([updateHp1AndStepBrakes]). */
+    @Volatile private var steroidProfileRunningNow = false
+
+    private suspend fun steroidTierProfileCheck(): Boolean {
+        val running = profileFunction.getOriginalProfileName().trim()
+        if (running.isBlank()) return false
+        val steroidNames = listOf(
+            StringKey.ApsAutoIsfSteroid110ProfileName, StringKey.ApsAutoIsfSteroid130ProfileName, StringKey.ApsAutoIsfSteroid150ProfileName,
+            StringKey.ApsAutoIsfSteroid190ProfileName, StringKey.ApsAutoIsfSteroid250ProfileName
+        ).map { preferences.get(it).trim() }.filter { it.isNotBlank() }
+        if (running !in steroidNames) return false
+        return running !in standardLadderNames() && running !in lowLadderNames() &&
+            running != preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim() &&
+            running != preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
     }
 
     private suspend fun switchToRoleAtSharedTier(now: Long, toLow: Boolean, note: String, minutes: Int = 0): Boolean {
@@ -6534,7 +6599,9 @@ open class OpenAPSAutoISFPlugin(
     }
 
     // Standard and Low role writes stay on Steroids Off. This does not turn steroids on.
+    // 2026-11-27, per explicit request (same as 3426): except while a Steroid profile runs - the roles are still written, the state stays ON.
     private fun keepSteroidsOff() {
+        if (steroidProfileRunningNow) return
         if (!preferences.get(BooleanKey.AutomationStatesEnabled)) return
         val store = states()
         if (store.hasStateValues("Steroids") && !store.inState("Steroids", "Steroids Off")) {
@@ -7188,6 +7255,7 @@ open class OpenAPSAutoISFPlugin(
      * Moved out of invoke() on 2026-11-26: invoke() had reached the JVM 64 KB method limit ("Method too large" on Android).
      */
     private suspend fun updateHp1AndStepBrakes(now: Long, glucoseStatus: GlucoseStatus, iob: Double, cob: Double): Double? {
+        steroidTierProfileRunning()   // 2026-11-27: refreshes steroidProfileRunningNow once a loop, outside invoke() (JVM method size)
         val hp1Now = rawDelta5MinMgdl(now)?.let {
             hypoPrediction2Mmol(glucoseStatus.glucose, glucoseStatus.shortAvgDelta, it, iob, cob)
         }
