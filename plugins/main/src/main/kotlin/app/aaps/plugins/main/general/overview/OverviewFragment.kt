@@ -176,6 +176,9 @@ import kotlin.math.max
 import kotlin.math.min
 import org.json.JSONObject
 
+/** Set once the overview has put the graphs on Simple after this app start (2026-11-27, per explicit request). Process-wide. */
+private var simpleGraphsChosenAtAppStart = false
+
 class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickListener {
 
     @Inject lateinit var aapsLogger: AAPSLogger
@@ -257,6 +260,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
     @SuppressLint("SetTextI18n")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        // 2026-11-27, per explicit request: every app start opens the graphs in Simple; D/S still switch until the next start
+        if (!simpleGraphsChosenAtAppStart) {
+            simpleGraphsChosenAtAppStart = true
+            if (!preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs)) preferences.put(BooleanKey.ApsAutoIsfSimpleGraphs, true)
+        }
 
         // pre-process landscape mode
         //check screen width
