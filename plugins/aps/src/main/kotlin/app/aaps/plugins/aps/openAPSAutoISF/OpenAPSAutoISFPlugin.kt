@@ -1681,7 +1681,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     // End a temporary percentage switch at 100%, using a role explicitly identified at onset or by the actual base name.
-    private fun applyCurrentProfileAt100() {
+    // [set50Standard] (2026-11-27): only PP50.Off and Usual2forTH pass true; the hypo-risk callers (Skittles, Extra50 ...) never
+    // go back to Standard here and leave the Set50 mark as it is.
+    private fun applyCurrentProfileAt100(set50Standard: Boolean = false) {
         val profileStore = activePlugin.activeProfileSource.profile ?: return
         val originalName = profileFunction.getOriginalProfileName()
         val savedRole = preferences.get(StringKey.ApsAutoIsfLastReductionRoleKey)
@@ -1692,7 +1694,21 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val currentName = role?.let {
             preferences.get(if (it.low) StringKey.ApsAutoIsfLowProfileName else StringKey.ApsAutoIsfStandardProfileName).trim()
         }?.takeIf { it.isNotBlank() && profileStore.getSpecificProfile(it) != null }
-        val profileName = savedName ?: currentName ?: originalName
+        var profileName = savedName ?: currentName ?: originalName
+        // 2026-11-27, per explicit request: Set50 fired on a Standard-role profile (under 12 h ago) and a Low-role profile runs now.
+        // 06:00-22:00 go back to the current Standard role at 100%; 22:00-06:00 stay on Low (overnight rule) and keep the mark, so
+        // the first daytime restore (PP50.Off, Usual2forTH ...) brings Standard back. 27 Nov Live: Low Tier A 07:18-08:42 at BG 7-9.8.
+        val now = dateUtil.now()
+        val set50At = preferences.get(LongKey.ApsAutoIsfSet50FromStandardAt)
+        val set50Live = set50At > 0L && set50At <= now && now - set50At <= T.hours(12).msecs()
+        var keepSet50Mark = !set50Standard
+        if (set50Standard && set50Live && role?.low == true) {
+            if (isTimeBetween(22, 0, 6, 0)) keepSet50Mark = true
+            else preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+                .takeIf { it.isNotBlank() && profileStore.getSpecificProfile(it) != null }
+                ?.let { profileName = it }
+        }
+        if (set50Standard && set50At != 0L && !keepSet50Mark && (!set50Live || role?.low != true)) preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, 0L)
         // 2026-11-22, per explicit request: no new switch when this profile already runs permanently at 100% (Extra50% at 02:17:58
         // on Live 22 Nov re-issued one) - it wrote a switch, sent the basal program to the pod and set off autosens reruns.
         val running = (profileFunction.getProfile() as? ProfileSealed.EPS)?.value
@@ -1710,6 +1726,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             listValues = listOf(ValueWithUnit.SimpleString(profileName), ValueWithUnit.Percent(100))
         )
         if (requested) preferences.put(StringKey.ApsAutoIsfLastReductionRoleKey, "")
+        if (requested && !keepSet50Mark) preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, 0L)
+    }
+
+    // 2026-11-27, per explicit request: remember whether a Standard-role profile ran when Set50 fired (0 when not), so the daytime
+    // end of the 50% (PP50.Off, Usual2forTH) goes back to Standard. Kept out of invoke() (JVM method size).
+    private fun markSet50FromStandard() {
+        val fromStandard = roleKeyForProfileName(profileFunction.getOriginalProfileName()) == StringKey.ApsAutoIsfStandardProfileName
+        preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, if (fromStandard) dateUtil.now() else 0L)
     }
 
     // Temporary percentage-only profile boost for a fixed duration, at profileName (defaults to
@@ -6228,6 +6252,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline))   // restore delivery baseline: hypo protection must not
                                             // keep BolusGiven's strengthened SMB delivery
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
+                markSet50FromStandard()   // 2026-11-27: before the drop, see applyCurrentProfileAt100
                 startProfilePercentFor(50, 360, lowNameForRunningTier())   // force onto the MJ/night profile, then hold 50% for 360 min as usual
                 setAutomationState("LowBG", "50recent")
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
@@ -6875,7 +6900,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
             val p50block = when { p50b1->"1"; p50b2->"2"; p50b3->"3"; p50b4->"4"; p50b5->"5"; p50b6->"6"; else->null }
             if (p50block != null) {
-                applyCurrentProfileAt100()
+                applyCurrentProfileAt100(set50Standard = true)
                 setBgAccelIsfWeight(0.50)
                 setAutomationState("LowBG", "NO50rec")
                 sendSms("PP50.Off [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
@@ -8759,7 +8784,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 restoreSmbDeliveryBaselineUnlessBoostThisCycle()   // daytime "back to usual" recovery restores delivery baseline
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 setAutomationState("LowBG", "NO50rec")
-                applyCurrentProfileAt100()
+                applyCurrentProfileAt100(set50Standard = true)
                 sendSms("Usual2forTH [b$u2block]: g=${String.format("%.1f", g / 18.016)} iobTH=$iobTH", noteTag = true)
                 addCarePortalNote("UsuIP-$u2block", smsText = lastSmsText)
                 aapsLogger.debug(LTag.APS, "Usual2forTH block $u2block: g=${String.format("%.1f", g / 18.016)}mmol iobTH=$iobTH steps60=$steps60 steps180=$steps180 cob=${cob.toInt()} sd=${String.format("%.2f", sd / 18.016)}")

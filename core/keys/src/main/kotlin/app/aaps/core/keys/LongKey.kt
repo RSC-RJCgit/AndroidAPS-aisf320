@@ -134,6 +134,9 @@ enum class LongKey(
     // coded role and tier profile to Tier A is done at that moment (0 = not yet done).
     ApsAutoIsfOneMinuteTierAResetAt("autoisf_one_minute_tier_a_reset_at", 0, defaultedBySM = true),
     ApsAutoIsfCompressionSuspectAt("autoisf_compression_suspect_at", 0, defaultedBySM = true),
+    // 2026-11-27, per explicit request: when Set50 fired while a Standard-role profile ran (0 = not), so the daytime end of the
+    // 50% returns to Standard instead of Low (see applyCurrentProfileAt100)
+    ApsAutoIsfSet50FromStandardAt("autoisf_set50_from_standard_at", 0, defaultedBySM = true),
     ApsAutoIsfCompressionConfirmedAt("autoisf_compression_confirmed_at", 0, defaultedBySM = true),
     // Compression trigger waiting for its 15-minute sustain check (2026-10-08): when the sudden drop was seen, and the level it ended at
     // in tenths of mg/dL. 0 means nothing is waiting. Internal only.
