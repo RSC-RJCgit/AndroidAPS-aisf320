@@ -522,6 +522,15 @@ fun GraphsSection(
     // The chart under the finger. scroll() on that chart waits until the finger lifts, and that
     // wait blocks the copy to every chart listed after it. Leave this one alone.
     val drivingScroll = remember { arrayOfNulls<VicoScrollState>(1) }
+    // 2026-11-27, per explicit request: the places this code sent to the graphs in the last few seconds (time, main-graph scroll).
+    // A lower graph that lands on one of them late is catching up, not a finger. 27 Nov Client2 05:17-05:18: such late
+    // catch-ups were shared back as drags, so every ~2 s all graphs jumped to the previous place and then on (the flicker).
+    val recentSharedPlaces = remember { ArrayDeque<Pair<Long, Float>>() }
+    fun isSharedEcho(scroll: Float): Boolean {
+        val now = dateUtil.now()
+        while (recentSharedPlaces.isNotEmpty() && now - recentSharedPlaces.first().first > SHARED_ECHO_MS) recentSharedPlaces.removeFirst()
+        return recentSharedPlaces.any { abs(it.second - scroll) <= SHARED_ECHO_PX }
+    }
 
     // Observe BG graph scroll/zoom and sync to belt + active secondary graphs
     // Keys include ALL state objects — identical pattern to the original working sync
@@ -894,6 +903,8 @@ fun GraphsSection(
                     pendingScroll[0] = place
                     appliedScroll[0] = place
                     drivingScroll[0] = driver
+                    recentSharedPlaces.addLast(dateUtil.now() to place)
+                    if (recentSharedPlaces.size > 12) recentSharedPlaces.removeFirst()
                     lastShareMs[0] = dateUtil.now()
                     followNow = false
                     graphViewModel.onGraphInteraction()
@@ -919,6 +930,10 @@ fun GraphsSection(
                         if (!scroll.isFinite() || scroll < 1f || prev.isNaN()) continue
                         val moved = abs(scroll - prev) > 1f
                         val toward = abs(scroll - pendingScroll[0]) < abs(prev - pendingScroll[0])
+                        if (moved && !toward && isSharedEcho(scroll)) {
+                            graphViewModel.graphSyncLog("shareScroll echo ignored", "graph $i at $scroll, a place sent earlier")
+                            continue
+                        }
                         if (moved && !toward) {
                             newer = scroll
                             newerIndex = i
@@ -945,6 +960,10 @@ fun GraphsSection(
                         val moved = !prev.isNaN() && abs(scroll - prev) > 1f
                         val towardApplied = !appliedScroll[0].isNaN() &&
                             abs(scroll - appliedScroll[0]) < abs(prev - appliedScroll[0])
+                        if (moved && !rebuild && !towardApplied && isSharedEcho(scroll)) {
+                            graphViewModel.graphSyncLog("shareScroll echo ignored", "graph $i at $scroll, a place sent earlier")
+                            continue
+                        }
                         if (moved && !rebuild && !towardApplied) {
                             finger = scroll
                             fingerIndex = i

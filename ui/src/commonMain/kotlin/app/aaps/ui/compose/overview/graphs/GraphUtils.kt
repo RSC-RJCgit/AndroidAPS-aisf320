@@ -249,6 +249,12 @@ const val ZOOM_SETTLE_MS = 600L
 /** How long after the last copied move a still-moving graph (a fling) counts as the user's move. */
 const val GRAPH_FLING_CHAIN_MS = 1_000L
 
+/** How long a place sent to the graphs still counts as ours when a lower graph lands on it late (2026-11-27, flicker fix). */
+const val SHARED_ECHO_MS = 3_000L
+
+/** How close (main-graph scroll pixels) a lower graph must land to a sent place to count as catching up (2026-11-27). */
+const val SHARED_ECHO_PX = 2f
+
 /** Fallback wait for empty data, after every graph has drawn its model. */
 const val GRAPHS_READY_TIMEOUT_MS = 3_000L
 

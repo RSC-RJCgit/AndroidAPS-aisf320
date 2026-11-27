@@ -12,6 +12,8 @@ class SensorNotesTest {
     fun stepsSteroidsNeedsARiseAndNoCarbs() {
         assertTrue(stepsSteroidsOffShouldFire(ready = true, steps60 = 1000, iob = 3.0, bg = 140.0, delta = 9.0, cob = 0.0))
         assertFalse(stepsSteroidsOffShouldFire(ready = true, steps60 = 1000, iob = 3.0, bg = 140.0, delta = 9.0, cob = 1.0))
+        // 2026-11-27: S60 only (a long walk that ended, S180 high and S60 low, no longer fires)
+        assertFalse(stepsSteroidsOffShouldFire(ready = true, steps60 = 999, iob = 3.0, bg = 140.0, delta = 9.0, cob = 0.0))
     }
 
     @Test

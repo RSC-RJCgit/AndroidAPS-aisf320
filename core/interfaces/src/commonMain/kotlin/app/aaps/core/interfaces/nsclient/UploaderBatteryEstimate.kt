@@ -106,7 +106,7 @@ class UploaderBatteryEstimate {
             // On charge: when 1% would be reached if unplugged now, at the last discharge's rate. With an old reading
             // (2026-11-26, per explicit request) it is counted from now with the last known level instead of left out.
             val from = if (fresh) latest.time else now
-            return "$percent chg, off now to ${hhmm(from + (latest.percent - 1L) * rate, dateUtil)}"
+            return "$percent chg, off now to ${hhmm(from + (latest.percent - 1L) * rate, now, dateUtil)}"
         }
         if (lastForecastStart != unplugged.time) {
             lastForecast = null
@@ -125,17 +125,31 @@ class UploaderBatteryEstimate {
             lastForecastStart = unplugged.time
         }
         val forecast = lastForecast ?: return percent
-        return "$percent to ${hhmm(forecast, dateUtil)}" + if (forecast < now) "!" else ""
+        return "$percent to ${hhmm(forecast, now, dateUtil)}" + if (forecast < now) "!" else ""
     }
 
-    private fun hhmm(time: Long, dateUtil: DateUtil): String =
-        dateUtil.toISONoZone(time).substringAfter('T').take(5).replace(":", "")
+    /**
+     * 2026-11-27, per explicit request: the time starts with S for the same day (S1316), N for the next day (N1315), and N2, N3 ...
+     * with a space for later days (N2 1315). Days are counted in the same time zone as the time itself.
+     */
+    private fun hhmm(time: Long, now: Long, dateUtil: DateUtil): String {
+        val iso = dateUtil.toISONoZone(time)
+        val clock = iso.substringAfter('T').take(5).replace(":", "")
+        val day = iso.substringBefore('T')
+        if (day == dateUtil.toISONoZone(now).substringBefore('T')) return "S$clock"
+        for (days in 1..30) {
+            if (day == dateUtil.toISONoZone(now + days * DAY_MS).substringBefore('T'))
+                return if (days == 1) "N$clock" else "N$days $clock"
+        }
+        return clock
+    }
 
     companion object {
         private const val CLOCK_AHEAD_MS = 120_000L
         private const val STALE_MS = 900_000L
         private const val MIN_DURATION_MS = 1_800_000L
         private const val MIN_DROP = 3
+        private const val DAY_MS = 86_400_000L
         val local = UploaderBatteryEstimate()
     }
 }

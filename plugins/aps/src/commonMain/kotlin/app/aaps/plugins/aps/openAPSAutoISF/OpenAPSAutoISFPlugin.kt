@@ -5297,8 +5297,6 @@ open class OpenAPSAutoISFPlugin(
         steps60: Int,
         statesOn: Boolean,
     ) {
-        // Read before the call, not inside its arguments (2026-11-22): a suspend call there made ART reject this class (VerifyError).
-        val steps180Now = steps180(now)
         if (!stepsSteroidsOffShouldFire(
                 ready = runMarks.ready(RunMark.STEPS_STEROIDS_OFF, 5, now),
                 steps60 = steps60,
@@ -5306,7 +5304,6 @@ open class OpenAPSAutoISFPlugin(
                 bg = bg,
                 delta = delta,
                 cob = cob,
-                steps180 = steps180Now,
             )
         ) return
         val store = states()
