@@ -7659,7 +7659,10 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val ohb2 = isTimeBetween(5, 0, 5, 30) && g <= 135.1
                 && profile_percentage == 100 && !onCurrentProfile && noTT && steroidOff
             val ohBlock = when { ohb1 -> "1"; ohb2 -> "2"; else -> null }
-            if (ohBlock != null && (isTimeBetween(22, 0, 6, 0) || hypoPredicted)) {
+            // 2026-11-27, per explicit request: not within 30 min of a suspected compression low (CompSusp). 27 Nov 02:29 Live: a
+            // compression drop 8.3 -> 6.0 set OffP-1 at 02:33, and Live then stayed on Profile70 (Low Tier A) for the rest of the night.
+            // (No log line here: invoke() is near the JVM method size limit that broke the v4 build on 26 Nov.)
+            if (ohBlock != null && !compressionSuspectedWithin(dateUtil.now(), 30) && (isTimeBetween(22, 0, 6, 0) || hypoPredicted)) {
                 // !rescueActive gates ONLY the profile switch, same as MJrecentCurrProfAcce/NightAcce
                 // below -- acce/iobTH still apply regardless of an active rescue (previously the whole
                 // block, including these two, was wrongly gated on !rescueActive as well).
@@ -11414,6 +11417,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
     }
 
     private fun deferAlarmHypoState(): Boolean = !config.AAPSCLIENT && activePlugin.activePump is VirtualPump
+
+    /** A CompSusp in the last [minutes] minutes (OffHighProf, 2026-11-27). */
+    private fun compressionSuspectedWithin(now: Long, minutes: Long): Boolean {
+        val raisedAt = preferences.get(LongKey.ApsAutoIsfCompressionSuspectAt)
+        return raisedAt > 0L && now - raisedAt in 0..T.mins(minutes).msecs()
+    }
 
     private fun compressionWarningWithinHour(now: Long): Boolean {
         val raisedAt = preferences.get(LongKey.ApsAutoIsfCompressionSuspectAt)

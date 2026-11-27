@@ -413,7 +413,9 @@ class DelayedBolusWorker(
             // Remainder is the wizard top-up, then COB scale. IOB growth since the original bolus
             // is not subtracted (14 Sep Db30: that term collapsed the delayed dose to 0.1U).
             val currentCob = iobCobCalculator.getCobInfo("DelayedBolusWorker").displayCob ?: 0.0
-            val cobFraction = if (originalCarbs > 0) (currentCob / originalCarbs).coerceIn(0.0, 1.0) else 1.0
+            // 2026-11-27, per explicit request: no carbs-on-board shrink. The amount held back is for carbs already entered with
+            // this bolus, absorbed or not (27 Nov Db50: x0.41 dropped 0.49 U at BG 10.5 and rising). COB is still shown in the note.
+            val cobFraction = 1.0
 
             // remainder is decremented ONLY by what has actually been delivered so far (deliveredSoFar) --
             // never by an InsReq-denied portion. cobFraction is applied fresh each check against this raw
@@ -442,7 +444,11 @@ class DelayedBolusWorker(
             // True when InsReq (not cobFraction/multiplier) is the reason this check's delivery falls short
             // of the raw remainder -- 2026-09-30, per explicit request: this is the ONLY case that should
             // keep the sequence alive for another check rather than ending it.
-            val insReqLimited = liveInsulinReqCap != null && max(0.0, liveInsulinReqCap) < rawDose
+            // 2026-11-27, per explicit request: no insulinReq cap at BG 6.5 or more with HP1 6.0 or more (as the carb split), or at
+            // the first check after the hypo wait with BG 6.0 or more and rising (the whole remainder at once).
+            val capWaived = insReqCapWaived(gs.glucose, hpValue, hpAt, now) ||
+                delayedFullRelease(gs.glucose, gs.delta, gs.shortAvgDelta, hpValue, hpAt, now)
+            val insReqLimited = !capWaived && liveInsulinReqCap != null && max(0.0, liveInsulinReqCap) < rawDose
             // 2026-11-17, per explicit request: half the gap to InsReq, as the carb-split and Warsaw parts already were
             // (followUpInsulinCap), instead of InsReq itself. Rounded down to a pump step, so never above that half-way
             // point; an InsReq under one pump step still gives nothing. 17 Nov Db40 gave 0.05U on an InsReq of 0.03U.
@@ -460,7 +466,8 @@ class DelayedBolusWorker(
                 return Result.success()
             }
             // Seated: full remaining gap (already sized to standing wiz%). S30 still moving: 80%.
-            val multiplier = if (movingNow) DELAYED_MOVING_PERCENT / 100.0 else 1.0
+            // 2026-11-27, per explicit request: no steps cut during a high fast rise (see followUpHighFastRise)
+            val multiplier = if (movingNow && !followUpHighFastRise(gs.glucose, gs.delta, gs.shortAvgDelta)) DELAYED_MOVING_PERCENT / 100.0 else 1.0
             val delayedDose = Round.roundTo(max(0.0, cappedRawDose * multiplier), activePlugin.activePump.pumpDescription.bolusStep)
             if (delayedDose <= 0.0) {
                 // InsReq floored this check to zero (not cobFraction/multiplier) and there's still a real raw
