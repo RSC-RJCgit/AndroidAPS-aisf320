@@ -160,6 +160,9 @@ private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
  *  not fire (2026-10-28, per explicit request). */
 private const val MEAL_BOOST_CAP_MINUTES = 45
 
+/** EarlyDawnSlowRise / StuckRisingSlowly: most TTs per block in any rolling 30 minutes (2026-11-28, per explicit request). */
+private const val REARM_MAX = 3
+
 /** With BG replay on, Live steps missing this long: Virtual loops with 0 steps instead of skipping (2026-11-07, per explicit request) */
 private const val LIVE_STEPS_REPLAY_FALLBACK_MS = 2 * 60_000L
 
@@ -1491,6 +1494,34 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         ).map { preferences.get(it).trim() }.filter { it.isNotBlank() }
         if (running !in steroidNames) return false
         return (standardRoleLadder + lowRoleLadder).none { preferences.get(it).trim() == running }
+    }
+
+    /**
+     * Re-arm limit for the 5-minute TT nudges (2026-11-28, per explicit request): EarlyDawnSlowRise and StuckRisingSlowly re-arm
+     * every ~6 minutes while their slow-rise test holds. Live 28 Oct-28 Nov: no run of 3 or fewer TTs went to 4.5 mmol or below
+     * within 3 h; the runs of 4+ did (EDSR 26 Nov x9 and 28 Nov x4 both 4.0, StuckRisingSlowly 16 Nov 3.7 and 11 Nov 4.4).
+     * So at most [REARM_MAX] TTs per block in any rolling 30 minutes, plus an optional IOB limit ([maxIob], EDSR 0.9 U: the
+     * first-fire 90th percentile was 0.83 U, 28 Nov's 4th re-arm 0.93 U). In memory only: a restart clears it.
+     */
+    private val reArmTimes = HashMap<String, ArrayDeque<Long>>()
+
+    private fun reArmAllowed(key: String, iob: Double? = null, maxIob: Double? = null): Boolean {
+        val now = dateUtil.now()
+        val times = reArmTimes.getOrPut(key) { ArrayDeque() }
+        while (times.isNotEmpty() && now - times.first() >= 30 * 60_000L) times.removeFirst()
+        if (times.size >= REARM_MAX) {
+            aapsLogger.debug(LTag.APS, "$key: held back, ${times.size} TTs in the last 30 min")
+            return false
+        }
+        if (maxIob != null && iob != null && iob >= maxIob) {
+            aapsLogger.debug(LTag.APS, "$key: held back, IOB ${String.format("%.2f", iob)} >= $maxIob U")
+            return false
+        }
+        return true
+    }
+
+    private fun noteReArm(key: String) {
+        reArmTimes.getOrPut(key) { ArrayDeque() }.addLast(dateUtil.now())
     }
 
     /**
@@ -9879,9 +9910,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                     glucoseStatus.longAvgDelta, mealData.mealCOB, totalIobAt(dateUtil.now()),
                     steps60, steps180, mealAge, mealAge,   // same meal-event age for both arguments (2026-10-04)
                     gentleDeltasOnly = !wideBands
-                ) && startTempTargetIfNeeded(4.2 * 18.0, 5)
+                ) && reArmAllowed("StuckRisingSlowly")   // 2026-11-28: at most 3 TTs per 30 min
+                && startTempTargetIfNeeded(4.2 * 18.0, 5)
             ) {
                 markRun("StuckRisingSlowly")
+                noteReArm("StuckRisingSlowly")
                 // 2026-10-03, per explicit request ("too gentle"): from 20:00 this also steps the SMB delivery ratio up
                 // by 0.15 (0.10 -> 0.25) instead of only lowering the target. 3 Oct 22:36-23:16 Live: Req 0.6-1.2U but
                 // ratio 0.10 gave 0.05U SMBs. The 5-min 4.2mmol TT just created holds the boost; the DelOff block
@@ -9935,8 +9968,12 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 val slowSustainedRise = d > 0.0 && d < 2.7 /* < 0.15 mmol */ &&
                     sd > 0.0 && sd < 2.7 &&
                     ld > 0.0 && ld < 2.7
-                if (g > 117.1 /* 6.5 mmol */ && slowSustainedRise) {
+                // 2026-11-28: at most 3 TTs per 30 min and none at IOB 0.9 U or more (see reArmAllowed)
+                if (g > 117.1 /* 6.5 mmol */ && slowSustainedRise &&
+                    reArmAllowed("EarlyDawnSlowRise", totalIobAt(dateUtil.now()), 0.9)
+                ) {
                     startTempTargetIfNeeded(4.4 * 18.0, 5)
+                    noteReArm("EarlyDawnSlowRise")
                     sendSms("EarlyDawnSlowRise: TT 4.4mmol@5min, g=${convert_bg(g)}", noteTag = true)
                     addCarePortalNote("EDSR", smsText = lastSmsText)
                     markRun("EarlyDawnSlowRise")
