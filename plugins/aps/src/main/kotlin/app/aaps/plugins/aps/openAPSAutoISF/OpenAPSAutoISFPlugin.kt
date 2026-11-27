@@ -6724,7 +6724,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 setSmbDeliveryRatio(preferences.get(DoubleKey.ApsAutoIsfSmbDeliveryBaseline) * 1.3)
                 val oldPodProfile = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName)
                 val lowBgResetRecent = !readyToRun("LowBgTierAReset", 35)
-                if (!lowBgResetRecent && oldPodProfile.isNotBlank() && profileFunction.getOriginalProfileName() != oldPodProfile)
+                // 2026-11-28, per explicit request: no switch to Standard110 while a Steroid profile runs (the SMB x1.3 still applies)
+                if (!lowBgResetRecent && oldPodProfile.isNotBlank() && profileFunction.getOriginalProfileName() != oldPodProfile &&
+                    !steroidTierProfileRunning())
                     switchProfileIfNeeded(oldPodProfile)
             }
         }
@@ -7905,9 +7907,11 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (g >= 180.2 /* 10.0 mmol */ && d in 1.8..5.4 /* 0.1–0.3 mmol */
                 && sd >= 1.8 /* 0.1 mmol */ && ld >= 0.0
                 && lastBolusMin >= 90 && oldOrNew) {
-                val targetProfile = preferences.get(StringKey.ApsAutoIsfStandardProfileName)
+                // 2026-11-28, per explicit request: a running Steroid profile gets the 110% itself, with no 30 min on Standard first
+                val steroidRunning = steroidTierProfileRunning()
+                val targetProfile = if (steroidRunning) profileFunction.getOriginalProfileName() else preferences.get(StringKey.ApsAutoIsfStandardProfileName)
                 startTempTargetIfNeeded(90.1 /* 5.0 mmol */, 5)
-                switchProfileIfNeeded(targetProfile, 30)
+                if (!steroidRunning) switchProfileIfNeeded(targetProfile, 30)
                 startProfilePercentFor(110, 5, targetProfile)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightHigh))
@@ -8005,8 +8009,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // 50% for 180 min. The roles in force before are saved (ApsAutoIsfActivityPrev*Role) and ActivityOff puts them
         // back. Once per activity session: the saved Standard role doubles as the "drop active" latch. BG <= 8.5 is kept on
         // purpose: ActivityOff ends the drop at >= 9.5, and the gap stops a start/stop flip-flop around one value.
+        // 2026-11-28, per explicit request: no Tier A Low drop while a Steroid profile runs (ActivityOff would then end on Standard)
         if (readyToRun("ActivityProf50", 5) && profile_percentage == 100 && !checkAutomationState("Profile", "Bolus") &&
-            preferences.get(StringKey.ApsAutoIsfActivityPrevStandardRole).isBlank()
+            preferences.get(StringKey.ApsAutoIsfActivityPrevStandardRole).isBlank() && !steroidTierProfileRunning()
         ) {
             val tt = persistenceLayer.getTemporaryTargetActiveAt(dateUtil.now())
             if (tt != null && tt.reason == TT.Reason.ACTIVITY && !isCodedControlTt(tt) && glucoseStatus.glucose <= 153.1 /* 8.5 mmol */ &&
@@ -8064,7 +8069,8 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 if (prevLow.isNotBlank() && store?.getSpecificProfile(prevLow) != null) preferences.put(StringKey.ApsAutoIsfLowProfileName, prevLow)
                 if (store?.getSpecificProfile(activityPrevStandard) != null) {
                     preferences.put(StringKey.ApsAutoIsfStandardProfileName, activityPrevStandard)
-                    switchProfileIfNeeded(activityPrevStandard, reassertSame = true)
+                    // 2026-11-28, per explicit request: the roles go back, the running Steroid profile stays
+                    if (!steroidTierProfileRunning()) switchProfileIfNeeded(activityPrevStandard, reassertSame = true)
                 } else switchToStandardAtSharedTier()
                 preferences.put(StringKey.ApsAutoIsfActivityPrevStandardRole, "")
                 preferences.put(StringKey.ApsAutoIsfActivityPrevLowRole, "")
@@ -8324,7 +8330,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                                             // recovery/protective autos restore it to baseline (see below)
                 // +10% profile boost skipped under the same bg3 caution factor -- a second, independent
                 // strengthening layer on top of the delivery-ratio bump above.
-                if (!bg3CautionFactor) startProfilePercentFor(110, 2, preferences.get(StringKey.ApsAutoIsfStandardProfileName))//WAS duration = 10,
+                // 2026-11-28, per explicit request: on a running Steroid profile the 110% goes on that profile, not Standard
+                if (!bg3CautionFactor) startProfilePercentFor(110, 2,
+                    if (steroidTierProfileRunning()) profileFunction.getOriginalProfileName() else preferences.get(StringKey.ApsAutoIsfStandardProfileName))//WAS duration = 10,
                 startTempTargetIfNeeded(75.7 /* 4.2 mmol */, 2)//WAS duration = 5,
             }
         }
