@@ -5225,8 +5225,9 @@ open class OpenAPSAutoISFPlugin(
             val standard110 = preferences.get(StringKey.ApsAutoIsfStandard110ProfileName).trim()
             // 2026-11-14, per explicit request (v3 Live 12 Nov: ~170 per-minute switches): switch only when Standard110 is not
             // already running, and not within 35 min of LowBgTierAReset acting (recent-low caution wins over this rescue).
+            // 2026-11-28, per explicit request (same as 3426): no switch to Standard110 while a Steroid profile runs (SMB x1.3 still applies)
             if (standard110.isNotBlank() && profileFunction.getOriginalProfileName() != standard110 &&
-                !runMarks.recent(RunMark.LOW_BG_TIER_A, 35, now)
+                !runMarks.recent(RunMark.LOW_BG_TIER_A, 35, now) && !steroidTierProfileRunning()
             ) switchToStandardFor(standard110, 0, now, "AutoISF: old pod boost")
         }
     }
@@ -6465,7 +6466,9 @@ open class OpenAPSAutoISFPlugin(
             )
         ) return
         startBrakeTarget(now, 90.1, "AutoISF: HighOldPod 5.0", 5)
-        val standardName = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+        // 2026-11-28, per explicit request (same as 3426): a running Steroid profile gets the 110% itself, not Standard
+        val standardName = if (steroidTierProfileRunning()) profileFunction.getOriginalProfileName().trim()
+        else preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
         val switched = if (standardName.isBlank()) {
             profileFunction.createProfileSwitch(
                 durationInMinutes = 5,
@@ -6651,6 +6654,8 @@ open class OpenAPSAutoISFPlugin(
                 bg = bg,
             )
         ) return
+        // 2026-11-28, per explicit request (same as 3426): no Tier A Low drop while a Steroid profile runs (ActivityOff would end on Standard)
+        if (steroidTierProfileRunning()) return
         val prevStandard = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
         val prevLow = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim()
         val lowA = preferences.get(StringKey.ApsAutoIsfLow70ProfileName).trim().ifBlank { prevLow }
@@ -6701,11 +6706,13 @@ open class OpenAPSAutoISFPlugin(
         if (highFastRiseNow && tt != null && tt.reason == TT.Reason.ACTIVITY) acLoaHeldForTtTs = tt.timestamp
         val prevLow = preferences.get(StringNonKey.ApsAutoIsfActivityPrevLowRole).trim()
         val store = profileRepository.profile.value
+        // 2026-11-28, per explicit request (same as 3426): the roles go back, a running Steroid profile stays
+        val steroidRunning = steroidTierProfileRunning()
         val restored = if (store?.getSpecificProfile(prevStandard) != null) {
             if (prevLow.isNotBlank() && store.getSpecificProfile(prevLow) != null) preferences.put(StringKey.ApsAutoIsfLowProfileName, prevLow)
             preferences.put(StringKey.ApsAutoIsfStandardProfileName, prevStandard)
-            switchToStandardFor(prevStandard, 0, now, "AutoISF: activity off", reassertSame = true)
-        } else switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: activity off")
+            steroidRunning || switchToStandardFor(prevStandard, 0, now, "AutoISF: activity off", reassertSame = true)
+        } else steroidRunning || switchToRoleAtSharedTier(now, toLow = false, note = "AutoISF: activity off")
         if (!restored) return
         preferences.put(StringNonKey.ApsAutoIsfActivityPrevStandardRole, "")
         preferences.put(StringNonKey.ApsAutoIsfActivityPrevLowRole, "")

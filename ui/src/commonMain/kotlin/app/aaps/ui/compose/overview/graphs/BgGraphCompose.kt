@@ -721,7 +721,14 @@ fun BgGraphCompose(
                 val floor = 0.0
                 val headroom = (currentMaxBgY - floor).coerceAtLeast(1.0)
                 val activityTop = headroom * 0.8
-                val maxAct = currentActivityData.maxActivity
+                // 2026-11-28, per explicit request (as upstream): the peak is the highest activity in the visible window (history and
+                // prediction), so the curve fills its height when zoomed in; the whole range's peak when the window has none.
+                val windowMaxAct = currentVisibleTimeRange?.let { (from, to) ->
+                    (currentActivityData.activity + currentActivityData.activityPrediction)
+                        .filter { it.timestamp in from..to }
+                        .maxOfOrNull { kotlin.math.abs(it.value) }
+                }?.takeIf { it > 0.0 }
+                val maxAct = windowMaxAct ?: currentActivityData.maxActivity
                 if (!showActivity || maxAct <= 0.0 || currentActivityData.activity.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
