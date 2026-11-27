@@ -10422,7 +10422,9 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             val g = glucoseStatus.glucose
             val d = glucoseStatus.delta
             val iob = iobData.iob
-            if ((recentSteps60Minutes >= 1000 || recentSteps180Minutes >= 1000) && iob <= 4.0 && iob >= 2.0  // or S180 >= 1000 (2026-11-22, per explicit request)
+            // 2026-11-27, per explicit request: S60 only again. S180 >= 1000 on its own (added 2026-11-22) dropped to Low and
+            // IobTH 50% for up to 3 h after a walk had ended, holding back insulin on a later rise.
+            if (recentSteps60Minutes >= 1000 && iob <= 4.0 && iob >= 2.0
                 && g <= 144.1 /* 8.0 mmol */ && d >= 9.0 /* 0.5 mmol */ && mealData.mealCOB == 0.0) {
                 sendSms("Steps Steroids OFF")
                 setAutomationState("Steroids", "Steroids Off")

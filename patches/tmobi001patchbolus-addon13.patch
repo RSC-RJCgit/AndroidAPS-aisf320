@@ -1,0 +1,106 @@
+Tandem dev4 tree: addon13 (2026-11-27), on top of tmobi001patchbolus.patch + addon1..addon12 (or full-012)
+
+  git apply --check tmobi001patchbolus-addon13.patch
+  git apply tmobi001patchbolus-addon13.patch
+(git ignores this leading text.)
+
+- Carb split HP1 on a phone without AutoISF is scaled by the profile: IOB x ISF and COB x ISF / IC (was 1 mmol per U and
+  1 mmol per 12 g), so a bolus that matches its carbs cancels out. Right after a 6.70 U bolus the old formula read HP1 about
+  3.4 under BG and held the split at every 2-minute check ("HP1 below 4.0 mmol/L"). Without a profile, the old formula.
+- A carb split part is not held for "HP1 below 4.0" while BG is 7.0 mmol/L or more and both deltas are rising. The other
+  split checks (glucose, insulinReq, walking) still apply. The falling-trend caution keeps the old HP1 formula.
+
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+index 6d098f4600..c120b2b8e8 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/BolusWizard.kt
+@@ -1154,12 +1154,17 @@ class BolusWizard(
+             val hpValue = preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1MilliMmol)
+             // For Trio: the lowest of Trio's own predictions over the next hour stands in for HP1
+             val hpCheck = trioLater?.let { trio -> trio.lowestPrediction()?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait }
+-                ?: if (hpAt == 0L) localHp1(glucoseStatusProvider, iobCobCalculator)?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait
++                ?: if (hpAt == 0L) localHp1(glucoseStatusProvider, iobCobCalculator, profile)?.let { (at, value) -> splitHpCheck(value, at, now) } ?: SplitHpCheck.Wait
+                 else if (hpAt == preferences.get(LongNonKey.ApsAutoIsfLastCycleHp1At)) splitHpCheck(hpValue, hpAt, now) else SplitHpCheck.Wait
+             when (hpCheck) {
+                 SplitHpCheck.Hold -> {
+-                    holdThisCheck("HP1 below 4.0 mmol/L")
+-                    return@launch
++                    // 2026-11-27, per explicit request: no HP1 hold at BG 7.0 or more with both deltas rising (splitHpRisingFloor)
++                    val hpStatus = glucoseStatusProvider.glucoseStatusData
++                    if (!splitHpRisingFloor(hpStatus?.glucose, hpStatus?.delta, hpStatus?.shortAvgDelta)) {
++                        holdThisCheck("HP1 below 4.0 mmol/L")
++                        return@launch
++                    }
++                    aapsLogger.info(LTag.CORE, "Split leftover: HP1 below 4.0 but BG 7.0 or more and rising, not held")
+                 }
+                 SplitHpCheck.Wait -> {
+                     aapsLogger.info(LTag.CORE, "Split leftover waiting: HP1 missing or stale, ${remaining} U left")
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt
+index 3c670fe729..2c8d123902 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/SplitHpCheck.kt
+@@ -6,3 +6,11 @@ fun splitHpCheck(hpMilliMmol: Long, measuredAt: Long, now: Long): SplitHpCheck {
+     if (measuredAt <= 0L || measuredAt > now || now - measuredAt > 300_000L) return SplitHpCheck.Wait
+     return if (hpMilliMmol < 4_000L) SplitHpCheck.Hold else SplitHpCheck.Allow
+ }
++
++/**
++ * 2026-11-27, per explicit request: a carb split part is not held for "HP1 below 4.0" while BG is 7.0 mmol/L or more and
++ * both deltas are rising. The other split checks (glucose, insulinReq, walking) still apply.
++ */
++fun splitHpRisingFloor(glucoseMgdl: Double?, deltaMgdl: Double?, shortDeltaMgdl: Double?): Boolean =
++    glucoseMgdl != null && deltaMgdl != null && shortDeltaMgdl != null &&
++        glucoseMgdl >= 126.1 /* 7.0 mmol */ && deltaMgdl > 0.0 && shortDeltaMgdl > 0.0
+diff --git a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
+index c2c16e3d64..bc3aca2c8f 100644
+--- a/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
++++ b/core/objects/src/commonMain/kotlin/app/aaps/core/objects/wizard/WizardLiveChecks.kt
+@@ -8,6 +8,7 @@ import app.aaps.core.interfaces.db.PersistenceLayer
+ import app.aaps.core.interfaces.iob.GlucoseStatusProvider
+ import app.aaps.core.interfaces.iob.IobCobCalculator
+ import app.aaps.core.interfaces.plugin.ActivePlugin
++import app.aaps.core.interfaces.profile.Profile
+ import app.aaps.core.interfaces.utils.DateUtil
+ import app.aaps.core.interfaces.utils.MidnightTime
+ import app.aaps.core.keys.LongNonKey
+@@ -26,14 +27,21 @@ private const val BG_RISE_WINDOW_MINUTES = 60L
+  * the 5-min change of the raw Libre value; here the normal 5-min delta. Returns the glucose time and HP1 in milli-mmol/L,
+  * as the fork stores it, or null without glucose data. It replaces the lowest-loop-prediction stand-in, which ignores
+  * carbs and so held nearly every split part after a meal (A15, 14 Nov 12:50).
++ * 2026-11-27, per explicit request: with a [profile], IOB counts as IOB x ISF and COB as COB x ISF / IC, so a bolus that
++ * matches its carbs cancels out (26 Nov Tandem: right after a 6.70 U bolus, 1 mmol per U against 1 mmol per 12 g read HP1
++ * about 3.4 under BG and held the split at every check). Without a profile, the fixed formula above.
+  */
+-suspend fun localHp1(glucoseStatusProvider: GlucoseStatusProvider, iobCobCalculator: IobCobCalculator): Pair<Long, Long>? {
++suspend fun localHp1(glucoseStatusProvider: GlucoseStatusProvider, iobCobCalculator: IobCobCalculator, profile: Profile? = null): Pair<Long, Long>? {
+     val glucose = glucoseStatusProvider.getGlucoseStatusData() ?: return null
+     val iob = iobCobCalculator.calculateIobFromBolus().round().iob +
+         iobCobCalculator.calculateIobFromTempBasalsIncludingConvertedExtended().round().basaliob
+     val cob = iobCobCalculator.getMealDataWithWaitingForCalculationFinish().mealCOB
+     val mmol = 18.0182
+-    val hp1 = (glucose.glucose / mmol - iob) + 0.25 * (glucose.shortAvgDelta / mmol) + 0.25 * (glucose.delta / mmol) + cob / 12.0
++    val isfMmol = profile?.getIsfMgdl("localHp1")?.div(mmol)?.takeIf { it.isFinite() && it > 0.0 }
++    val ic = profile?.getIc()?.takeIf { it.isFinite() && it > 0.0 }
++    val iobDrop = if (isfMmol != null) iob * isfMmol else iob
++    val cobRise = if (isfMmol != null && ic != null) cob * isfMmol / ic else cob / 12.0
++    val hp1 = (glucose.glucose / mmol - iobDrop) + 0.25 * (glucose.shortAvgDelta / mmol) + 0.25 * (glucose.delta / mmol) + cobRise
+     if (!hp1.isFinite()) return null
+     return glucose.date to (hp1 * 1000.0).roundToLong()
+ }
+diff --git a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/SplitSafetyTest.kt b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/SplitSafetyTest.kt
+index 9bde5f1cae..43b9e061fc 100644
+--- a/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/SplitSafetyTest.kt
++++ b/core/objects/src/commonTest/kotlin/app/aaps/core/objects/wizard/SplitSafetyTest.kt
+@@ -21,4 +21,12 @@ class SplitSafetyTest {
+         assertEquals(SplitHpCheck.Wait, splitHpCheck(3800L, 1_000_000L, 1_300_001L))
+         assertEquals(SplitHpCheck.Wait, splitHpCheck(3800L, 1_000_001L, 1_000_000L))
+     }
++
++    @Test fun hpHoldSkippedAtSevenAndRising() {
++        assertEquals(true, splitHpRisingFloor(126.1, 1.0, 0.5))
++        assertEquals(false, splitHpRisingFloor(126.0, 1.0, 0.5))
++        assertEquals(false, splitHpRisingFloor(150.0, 0.0, 0.5))
++        assertEquals(false, splitHpRisingFloor(150.0, 1.0, -0.1))
++        assertEquals(false, splitHpRisingFloor(null, 1.0, 0.5))
++    }
+ }
