@@ -2450,6 +2450,8 @@ open class OpenAPSAutoISFPlugin(
             val usualTh = preferences.get(IntKey.ApsAutoIsfIobThPercent)
             runMarks.mark(RunMark.USUAL2, now)
             applyUsual2(now)
+            // 2026-11-27, per explicit request: after a Set50 from Standard, Usual2 puts Standard back in the daytime (as on 3426)
+            set50StandardName(now, minuteOfDay)?.let { writeNamedPercent(now, it, 100, 0, "AutoISF: Usual2 back to Standard") }
             sendAutoSms("Usual2forTH [b$usualBlock]: g=${decimals(bg / 18.016, 1)} iobTH=$usualTh", noteTag = true)
             carePortalNote("UsuIP-$usualBlock", smsText = lastSmsText)
             aapsLogger.debug(LTag.APS, "Usual2 block $usualBlock")
@@ -5932,6 +5934,9 @@ open class OpenAPSAutoISFPlugin(
                 lowRungs = lowLadderNames(),
                 lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim(),
             )
+            // 2026-11-27, per explicit request: remember whether Standard ran before this drop (see set50Restore)
+            val set50FromStandard = configuredProfileRole(profileFunction.getOriginalProfileName().trim(), standardLadderNames(), lowLadderNames())?.low == false
+            preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, if (set50FromStandard) now else 0L)
             if (!writeNamedPercent(now, lowName, 50, 360, "AutoISF: prepare 50%")) {
                 aapsLogger.debug(LTag.APS, "PrepareSet50 did not write a profile switch")
             }
@@ -5978,7 +5983,7 @@ open class OpenAPSAutoISFPlugin(
         )
         if (pp50 != null) {
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.50)
-            val currentName = restorationProfileName()
+            val currentName = set50StandardName(now, minuteOfDay) ?: restorationProfileName()
             if (!writeNamedPercent(now, currentName, 100, 0, "AutoISF: PP50 off")) {
                 aapsLogger.debug(LTag.APS, "PP50Off did not write a profile switch")
             }
@@ -6278,6 +6283,24 @@ open class OpenAPSAutoISFPlugin(
         sendAutoSms("RecentPod Acce", noteTag = true)
         carePortalNote("RecPod", smsText = lastSmsText)
         aapsLogger.debug(LTag.APS, "RecentPod 130% and 4.2 mmol for 5 min")
+    }
+
+    /**
+     * The current Standard role after a Set50 from Standard (see [set50Restore]), or null to restore as before. The mark is cleared
+     * when Standard is picked or no longer applies; overnight it is kept for the first daytime restore.
+     */
+    private suspend fun set50StandardName(now: Long, minuteOfDay: Int): String? {
+        val markAt = preferences.get(LongNonKey.ApsAutoIsfSet50FromStandardAt)
+        if (markAt == 0L) return null
+        val running = profileFunction.getOriginalProfileName().trim()
+        val lowRole = configuredProfileRole(running, standardLadderNames(), lowLadderNames())?.low == true
+        return when (set50Restore(markAt, now, lowRole, minuteOfDay)) {
+            Set50Restore.KeepLow  -> null
+            Set50Restore.None     -> null.also { preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, 0L) }
+            Set50Restore.Standard -> preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+                .takeIf { it.isNotBlank() && profileRepository.profile.value?.getSpecificProfile(it) != null }
+                .also { preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, 0L) }
+        }
     }
 
     private suspend fun restorationProfileName(): String {

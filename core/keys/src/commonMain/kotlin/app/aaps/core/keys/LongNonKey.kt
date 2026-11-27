@@ -114,6 +114,9 @@ enum class LongNonKey(
     // Standard and Low roles to Tier A is done at that moment (0 = not yet done). Local only.
     ApsAutoIsfOneMinuteTierAResetAt("autoisf_one_minute_tier_a_reset_at", 0L, exportable = false),
     ApsAutoIsfCompressionSuspectAt("autoisf_compression_suspect_at", 0L, exportable = false),
+    // 2026-11-27, per explicit request: when Set50 fired while a Standard-role profile ran (0 = not), so the daytime end of the
+    // 50% returns to Standard instead of Low (see set50Restore). Local only.
+    ApsAutoIsfSet50FromStandardAt("autoisf_set50_from_standard_at", 0L, exportable = false),
     ApsAutoIsfCompressionConfirmedAt("autoisf_compression_confirmed_at", 0L, exportable = false),
     // Compression trigger waiting for its 15-minute sustain check (2026-10-08): when the sudden drop was seen, and the level it ended at
     // in tenths of mg/dL. 0 means nothing is waiting. Internal only.
