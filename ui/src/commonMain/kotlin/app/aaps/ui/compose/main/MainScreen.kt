@@ -850,6 +850,9 @@ fun MainScreen(
                                     else {
                                         mainViewModel.preferences.put(IntNonKey.QuickLaunchX, it.x.roundToInt())
                                         mainViewModel.preferences.put(IntNonKey.QuickLaunchY, it.y.roundToInt())
+                                        // 2026-11-28, per explicit request: let go away from both sides, a vertical bar turns
+                                        // horizontal again (double-tap still turns it either way until the next drag)
+                                        if (quickLaunchVertical) mainViewModel.preferences.put(BooleanNonKey.QuickLaunchVertical, false)
                                     }
                                 }
                             },

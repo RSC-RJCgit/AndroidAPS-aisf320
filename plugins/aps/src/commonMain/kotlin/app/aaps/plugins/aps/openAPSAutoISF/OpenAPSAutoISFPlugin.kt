@@ -5510,6 +5510,15 @@ open class OpenAPSAutoISFPlugin(
         applyEveningSensitivity(now, minuteOfDay, bg, delta, shortDelta, longDelta, profilePercent, cob, iob, statesOn, steps60, steps180, store)
     }
 
+    /** 2026-11-28, per explicit request (same as 3426): the EarlyDawnSlowRise / StuckRisingSlowly re-arm limit, see [ReArmLimit]. */
+    private val reArmLimit = ReArmLimit()
+
+    private fun reArmOk(key: String, now: Long, iob: Double? = null, maxIob: Double? = null): Boolean {
+        val why = reArmLimit.heldBack(key, now, iob, maxIob) ?: return true
+        aapsLogger.debug(LTag.APS, "$key: held back, $why")
+        return false
+    }
+
     private suspend fun applyEveningTargets(
         now: Long,
         minuteOfDay: Int,
@@ -5538,10 +5547,11 @@ open class OpenAPSAutoISFPlugin(
                 steps60 = steps60,
                 steps180 = steps180,
                 mealAgeMinutes = minutesSinceLastMealEvent(now),
-            )
+            ) && reArmOk(RunMark.STUCK_RISING, now)   // 2026-11-28: at most 3 TTs per 30 min
         ) {
             startBrakeTarget(now, 4.2 * 18.0, "AutoISF: stuck rising 4.2", 5)
             runMarks.mark(RunMark.STUCK_RISING, now)
+            reArmLimit.note(RunMark.STUCK_RISING, now)
             // From 20:00 until 06:00 the ratio also steps up by 0.08 (was 0.15 until 2026-10-08), held for 6 minutes so a
             // cancelled 5-minute target cannot drop it early. The reset puts it back once the hold ends.
             if (minuteInWindow(minuteOfDay, 20 * 60, 6 * 60)) {
@@ -5563,10 +5573,11 @@ open class OpenAPSAutoISFPlugin(
                 delta = delta,
                 shortDelta = shortDelta,
                 longDelta = longDelta,
-            )
+            ) && reArmOk(RunMark.EARLY_DAWN, now, iob, 0.9)   // 2026-11-28: at most 3 TTs per 30 min, none at IOB 0.9 U or more
         ) {
             startBrakeTarget(now, 4.4 * 18.0, "AutoISF: early dawn 4.4", 5)
             runMarks.mark(RunMark.EARLY_DAWN, now)
+            reArmLimit.note(RunMark.EARLY_DAWN, now)
             sendAutoSms("EarlyDawnSlowRise: TT 4.4mmol@5min, g=${decimals(bg / 18.016, 1)}", noteTag = true)
             carePortalNote("EDSR", smsText = lastSmsText)
             aapsLogger.debug(LTag.APS, "Early dawn 4.4 mmol for 5 min")

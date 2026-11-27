@@ -1347,6 +1347,8 @@ fun GraphsSection(
                 bgOverlays = graphConfig.bgOverlays,
                 scrollState = bgScrollState,
                 zoomState = bgZoomState,
+                // 2026-11-28, per explicit request: its own layout for the sync (was the Simple graph's old one)
+                geometryHolder = bgGeometry,
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 visibleTimeRange = bgVisibleTimeRange,
@@ -1531,6 +1533,7 @@ fun GraphsSection(
                 seriesTypes = listOf(SeriesType.IOB) + graphConfig.iobOverlays.filter { it == SeriesType.COB || it == SeriesType.ACTIVITY },
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
+                geometryHolder = iobGeometry,   // 2026-11-28, per explicit request: its own layout for the sync
                 derivedTimeRange = derivedTimeRange,
                 nowTimestamp = nowTimestamp,
                 inspect = inspect,

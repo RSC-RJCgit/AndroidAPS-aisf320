@@ -215,6 +215,9 @@ fun BgGraphCompose(
     visibleTimeRange: Pair<Long, Long>? = null,
     /** Press and hold to see the values at a reading. Null turns it off. */
     inspect: GraphInspectState? = null,
+    /** Fork (2026-11-28, per explicit request): filled with this graph's layout on each draw, for the time-based scroll and zoom
+     *  sync (see ChartGeometry). Without it, U mode synced the lower graphs from the Simple graph's old layout. */
+    geometryHolder: ChartGeometryHolder? = null,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -543,8 +546,9 @@ fun BgGraphCompose(
             profileUtil.fromMgdlToStringInUnits(profileUtil.convertToMgdl(value, profileUtil.units))
         }
     }
-    val decorations = remember(nowLine, clockChanges, treatmentLabels, inspectLine) {
-        listOfNotNull(nowLine, clockChanges, treatmentLabels, inspectLine)
+    val geometryReporter = rememberChartGeometryReporter(geometryHolder)
+    val decorations = remember(nowLine, clockChanges, treatmentLabels, inspectLine, geometryReporter) {
+        listOfNotNull(nowLine, clockChanges, treatmentLabels, inspectLine, geometryReporter)
     }
 
     // =========================================================================

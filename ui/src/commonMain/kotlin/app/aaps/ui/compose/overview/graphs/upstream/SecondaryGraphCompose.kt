@@ -110,6 +110,9 @@ fun SecondaryGraphCompose(
     nowTimestamp: Long,
     /** While holding the BG graph, a line at the inspected time. Null turns it off. */
     inspect: GraphInspectState? = null,
+    /** Fork (2026-11-28, per explicit request): filled with this graph's layout on each draw, for the time-based scroll and zoom
+     *  sync (see ChartGeometry). */
+    geometryHolder: ChartGeometryHolder? = null,
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
@@ -364,8 +367,9 @@ fun SecondaryGraphCompose(
     val nowLine = rememberNowLine(minTimestamp, nowTimestamp, nowLineColor)
     val inspectLine = rememberInspectLine(inspect)
     val clockChanges = rememberClockChangeDecoration(minTimestamp, maxTimestamp, bgReadings)
-    val decorations = remember(nowLine, visibleRangeReporter, clockChanges, inspectLine) {
-        listOfNotNull(nowLine, visibleRangeReporter, clockChanges, inspectLine)
+    val geometryReporter = rememberChartGeometryReporter(geometryHolder)
+    val decorations = remember(nowLine, visibleRangeReporter, clockChanges, inspectLine, geometryReporter) {
+        listOfNotNull(nowLine, visibleRangeReporter, clockChanges, inspectLine, geometryReporter)
     }
 
     val leftRangeProvider = remember(maxX, axes.left) {
