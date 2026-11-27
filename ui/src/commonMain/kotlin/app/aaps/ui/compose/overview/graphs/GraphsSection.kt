@@ -359,7 +359,9 @@ fun GraphsSection(
     val upstreamGraphs by LocalPreferences.current.observe(BooleanNonKey.ApsAutoIsfUpstreamGraphs).collectAsStateWithLifecycle()
     val upstreamMode = upstreamGraphs && !simpleGraphs
     val hideG2ThroughG4InSimple by LocalPreferences.current.observe(BooleanKey.HideG2G3InSimpleGraphs).collectAsStateWithLifecycle()
-    val hideG2ThroughG4 = graphViewModel.hasNonAutoIsfGraphSource() || (simpleGraphs && hideG2ThroughG4InSimple)
+    val hideG2ThroughG4InUpstream by LocalPreferences.current.observe(BooleanKey.HideG2G4InUpstreamGraphs).collectAsStateWithLifecycle()
+    val hideG2ThroughG4 = graphViewModel.hasNonAutoIsfGraphSource() || (simpleGraphs && hideG2ThroughG4InSimple) ||
+        (upstreamMode && hideG2ThroughG4InUpstream)
     // iOS and Windows have their own Simple heights (2026-11-21, per explicit request), see simpleSecondaryHeightDp
     val simpleIosOrDesktop = LocalConfig.current.platform != AppPlatform.Android
 
@@ -1333,7 +1335,8 @@ fun GraphsSection(
                 inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(graphConfig.bgHeight.dp * graphHeightScale * desktopGraphScale * iosDetailedMainScale)
+                    // 2026-11-27, per explicit request: the Simple height in U mode too
+                    .height(SIMPLE_BG_HEIGHT_DP.dp * graphHeightScale * desktopGraphScale)
                     .onScrollOrZoomGesture {
                         graphViewModel.onGraphInteraction()
                         followNow = false
@@ -1505,7 +1508,9 @@ fun GraphsSection(
         Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
             if (upstreamMode) UpstreamSecondaryGraphCompose(
                 viewModel = graphViewModel,
-                seriesTypes = listOf(SeriesType.IOB),
+                // 2026-11-27, per explicit request: COB and Activity too when ticked in the IOB graph's options (upstream draws
+                // them on the graph's second axis)
+                seriesTypes = listOf(SeriesType.IOB) + graphConfig.iobOverlays.filter { it == SeriesType.COB || it == SeriesType.ACTIVITY },
                 scrollState = iobScrollState,
                 zoomState = iobZoomState,
                 derivedTimeRange = derivedTimeRange,
@@ -1513,7 +1518,8 @@ fun GraphsSection(
                 inspect = inspect,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(graphConfig.iobHeight.dp * graphHeightScale * desktopGraphScale * iosDetailedMainScale)
+                    // 2026-11-27, per explicit request: the Simple G1 height in U mode too
+                    .height((if (simpleIosOrDesktop) SIMPLE_SECONDARY_HEIGHT_DP else SIMPLE_IOB_HEIGHT_DP).dp * graphHeightScale * desktopGraphScale)
             ) else SecondaryGraphCompose(
                 viewModel = graphViewModel,
                 masterZone = masterZone,

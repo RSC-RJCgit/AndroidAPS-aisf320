@@ -720,6 +720,14 @@ enum class BooleanKey(
         TextRef.Named("keys", "hide_g2_g3_in_simple_graphs_summary"),
         exportable = false
     ),
+    // 2026-11-27, per explicit request: the same as HideG2G3InSimpleGraphs, for the "U" (upstream) graph mode. This phone only.
+    HideG2G4InUpstreamGraphs(
+        "hide_g2_g4_in_upstream_graphs",
+        false,
+        TextRef.Named("keys", "hide_g2_g4_in_upstream_graphs_title"),
+        TextRef.Named("keys", "hide_g2_g4_in_upstream_graphs_summary"),
+        exportable = false
+    ),
     OverviewInsulinTotalColumns(
         "overview_insulin_total_columns",
         false,

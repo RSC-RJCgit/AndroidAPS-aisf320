@@ -120,6 +120,7 @@ class BuiltInSearchables(
             // Also here, not only in the AutoISF settings, so a client or a phone on another APS can switch Graph 5 too.
             BooleanKey.ApsAutoIsfShowGraph5,
             BooleanKey.HideG2G3InSimpleGraphs,
+            BooleanKey.HideG2G4InUpstreamGraphs,
             StringKey.GeneralDarkMode
         ),
         icon = Icons.Outlined.Palette

@@ -669,6 +669,8 @@
     <string name="pref_summary_virtual_step_text">Local display only. Step graphs, AIV columns, collection and automation stay enabled. Applies only to full AAPS using the Virtual pump.</string>
     <string name="hide_g2_g3_in_simple_graphs_title">Hide G2–G4 in Simple graph mode</string>
     <string name="hide_g2_g3_in_simple_graphs_summary">Hide graphs G2 through G4 while Simple graph mode is selected.</string>
+    <string name="hide_g2_g4_in_upstream_graphs_title">Hide G2–G4 in Upstream graph mode</string>
+    <string name="hide_g2_g4_in_upstream_graphs_summary">Hide graphs G2 through G4 while the Upstream (U) graph mode is selected.</string>
     <!-- Fork: the "NS alarms" setting is kept; upstream removed its title in the 2026-11 alerts change -->
     <string name="pref_title_ns_notifications_from_alarms">NS alarms</string>
 </resources>
