@@ -472,6 +472,9 @@ class BolusWizard @Inject constructor(
         // at the Standard role's 100% IC as the delayed bolus sizes its full need (delayedNormalIc). 17 Nov 14:30: IC 12.6 on
         // Profile70 (50%) gave 1.20U for 13 g protein / 11 g fat, against about 2.9U at Profile100's IC 5.1.
         val fpuIc = if (activeProfileSwitchPct() == 50) delayedNormalIc(ic / 2.0) else ic
+        // 2026-11-28, per explicit request: the IC and profile the FPU parts are sized at, for their resize when due (see ProfileIcResize)
+        fpuSizingIc = fpuIc
+        fpuSizingProfile = if (activeProfileSwitchPct() == 50 && delayedIcProfile.isNotBlank()) delayedIcProfile else profileFunction.getOriginalProfileName()
         insulinFromProteinOnly = (protein * 0.4) / fpuIc
         insulinFromFatOnly = (fat * 0.9) / fpuIc
         insulinFromCarbs = insulinFromCarbsOnly
@@ -1237,7 +1240,12 @@ class BolusWizard @Inject constructor(
                                         aapsLogger.info(LTag.CORE, "Delayed bolus: scheduling WorkManager — $triggerLabel dose=${insulinAfterConstraints}U fullRequired=${fullRequired}U (normalIC=$normalIc IOB=${insulinFromBolusIOB}U pct=${percentageCorrection}%), SMBs blocked 85 min")
                                         DelayedBolusWorker.enqueue(
                                             ctx, insulinAfterConstraints, fullRequired, attempt = 1, originalCarbs = carbs, originalIob = originalIob,
-                                            heldBackBy = triggerLabel, overMaxBolus = max(0.0, calculatedTotalInsulin - insulinAfterConstraints)
+                                            heldBackBy = triggerLabel, overMaxBolus = max(0.0, calculatedTotalInsulin - insulinAfterConstraints),
+                                            // 2026-11-28, per explicit request: sized at the Standard IC grows on a stronger profile only
+                                            // (2026-11-14 rule); on the running profile's own IC it follows the profile both ways
+                                            sizingIc = normalIc,
+                                            sizingProfile = delayedIcProfile.ifBlank { profileFunction.getOriginalProfileName() },
+                                            sizingUpOnly = delayedIcProfile.isNotBlank()
                                         )
                                         // Careportal marker: delayed-bolus onset (checks follow as Db5/Db10/.../Db80)
                                         // NoteTimestampAllocator.next() — see its own doc comment: guards against
@@ -1381,6 +1389,9 @@ class BolusWizard @Inject constructor(
             return
         }
         val schedulingPct = activeProfileSwitchPct()
+        // 2026-11-28, per explicit request: the carb split is sized at this calculation's IC (100%: it only runs at 100% or more)
+        splitSizingIc = ic
+        splitSizingProfile = profileFunction.getOriginalProfileName()
         // Superbolus (this wizard's own useSuperBolus above, OR any other still-active one) blocks
         // carb-split/protein/fat scheduling entirely — a superbolus already bakes in its own specific 2h
         // TBR-suspension tradeoff; layering split/delayed doses on top of that window risks over-delivery
@@ -1572,17 +1583,45 @@ class BolusWizard @Inject constructor(
                 ?.takeIf { it > 0.0 }
             if (standardIc != null) {
                 delayedIcSource = "Standard ${name?.trim()}"
+                delayedIcProfile = name?.trim().orEmpty()
                 return standardIc
             }
             aapsLogger.info(LTag.CORE, "Delayed bolus: ${key.key} '$name' not found in the profile store")
         }
         aapsLogger.info(LTag.CORE, "Delayed bolus: no Standard profile found, IC=$fallbackIc kept")
         delayedIcSource = "no Standard profile found, running profile's IC"
+        delayedIcProfile = ""
         return fallbackIc
     }
 
     /** Where the last [delayedNormalIc] came from, for the calculation note. */
     private var delayedIcSource = ""
+
+    /** The Standard profile name the last [delayedNormalIc] came from, "" for the running profile's IC (2026-11-28). */
+    private var delayedIcProfile = ""
+
+    // 2026-11-28, per explicit request: what the carb split and FPU parts were sized at (IC at 100% and its profile), for
+    // their resize when the profile changed by the time they are due (see ProfileIcResize). Saved with each pending part.
+    private var splitSizingIc = 0.0
+    private var splitSizingProfile = ""
+    private var fpuSizingIc = 0.0
+    private var fpuSizingProfile = ""
+
+    /** The running profile's name and its IC at 100% at the bolus's time of day, or null without a profile (2026-11-28). */
+    private fun runningProfileIc100(): Pair<String, Double>? {
+        val profile = profileFunction.getProfile() ?: return null
+        val pct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
+        val ic = profile.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight(timeStamp)) * pct / 100.0
+        return profileFunction.getOriginalProfileName() to ic
+    }
+
+    /** [profileIcResizeFactor] for a part sized at [sizingIc] on [sizingProfile], with its note text. */
+    private fun partIcResize(sizingProfile: String, sizingIc: Double): Pair<Double, String> {
+        val (running, runningIc) = runningProfileIc100() ?: return 1.0 to ""
+        val factor = profileIcResizeFactor(sizingProfile, sizingIc, running, runningIc)
+        if (factor != 1.0) aapsLogger.info(LTag.CORE, "Follow-up resize x$factor: sized at IC $sizingIc on $sizingProfile, running $running IC $runningIc")
+        return factor to profileIcResizeNote(factor, sizingProfile, running)
+    }
 
     /**
      * The delayed bolus's "full need" on the Standard path (2026-11-17, per explicit request, as v4): the whole calculated
@@ -2006,7 +2045,10 @@ class BolusWizard @Inject constructor(
             val iobIncrease = max(0.0, liveIob - iobBaselineForNextGap)
             // 2026-10-18, per explicit request: no IOB credit (see splitBolusBudget). The insulinReq cap already counts all
             // insulin on board, less the same-cycle SMB. The IOB values stay in the notes only.
-            val budget = splitBolusBudget(remainingResidual, previousPartDose, pumpStepForResidual)
+            // 2026-11-28, per explicit request: remainingResidual stays in the units it was sized at; on another profile it is
+            // resized for this part (see ProfileIcResize), and what is left goes back in the sized units below
+            val (icFactor, icNote) = partIcResize(splitSizingProfile, splitSizingIc)
+            val budget = splitBolusBudget(remainingResidual * icFactor, previousPartDose, pumpStepForResidual)
             val reducedResidual = budget.remaining
             val walkFactor = walkingFactorNow()
             val partDose = if (walkFactor < 1.0) Round.roundTo(budget.dose * walkFactor, pumpStepForResidual) else budget.dose
@@ -2032,7 +2074,7 @@ class BolusWizard @Inject constructor(
                     "No insulin delivered: $reason. Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; retry in ${retryMins}min."
                 )
                 scheduleReducedPartsSplitBolus(
-                    reducedResidual, previousPartDose, max(iobBaselineForNextGap, liveIob), intervalMins, schedulingPct, myScheduleToken,
+                    reducedResidual / icFactor, previousPartDose, max(iobBaselineForNextGap, liveIob), intervalMins, schedulingPct, myScheduleToken,
                     dateUtil.now() + T.mins(retryMins.toLong()).msecs(), retryDeadline,
                     lastSkippedZero = SkippedZero(iobIncrease, skippedCalc)
                 )
@@ -2045,7 +2087,7 @@ class BolusWizard @Inject constructor(
                 notes = "Reduced split bolus part"
                 val calculation = followUpCalculation(
                     timestamp, "Carb split", previousPartDose, iobBaselineForNextGap, liveIob, thisDose,
-                    "Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; dose ${if (capWaived) "without insulinReq cap (BG >= 6.5, HP1 >= 6.0)" else "after insulinReq cap"} ${decimalFormatter.to2Decimal(thisDose)}U.$walkingNote"
+                    "Remaining ${decimalFormatter.to2Decimal(reducedResidual)}U; dose ${if (capWaived) "without insulinReq cap (BG >= 6.5, HP1 >= 6.0)" else "after insulinReq cap"} ${decimalFormatter.to2Decimal(thisDose)}U.$walkingNote$icNote"
                 )
                 uel.log(
                     action = Action.BOLUS,
@@ -2067,7 +2109,7 @@ class BolusWizard @Inject constructor(
                             // What the split dealt with, for the delayed bolus (2026-10-23, per explicit request): given, plus the dropped walking cut
                             addSplitHandled(result.bolusDelivered + walkingCut)
                             if (newResidual > 0.0)
-                                scheduleReducedPartsSplitBolus(newResidual, thisDose + walkingCut, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
+                                scheduleReducedPartsSplitBolus(newResidual / icFactor, thisDose + walkingCut, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
                             else
                                 setSplitPendingRemaining(0.0)
                         }
@@ -2218,9 +2260,13 @@ class BolusWizard @Inject constructor(
             // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
             // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice.
             // 2026-10-19, per explicit request: cut while walking; the cut part is dropped (capResidual below uses the cut dose).
+            // 2026-11-28, per explicit request: [dose] stays in the units it was sized at; on another profile it is resized for
+            // this part (see ProfileIcResize). What the cap leaves goes back in the sized units below.
+            val (icFactor, icNote) = partIcResize(fpuSizingProfile, fpuSizingIc)
+            val sizedDose = dose * icFactor
             val walkFactor = walkingFactorNow()
-            val iobAdjustedDose = Round.roundTo(dose * walkFactor, pumpStep)
-            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): dose x$walkFactor, ${decimalFormatter.to2Decimal(max(0.0, dose - iobAdjustedDose))}U dropped." else ""
+            val iobAdjustedDose = Round.roundTo(sizedDose * walkFactor, pumpStep)
+            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): dose x$walkFactor, ${decimalFormatter.to2Decimal(max(0.0, sizedDose - iobAdjustedDose))}U dropped." else ""
             // 2026-11-20, per explicit request: protein/fat parts take the full insulinReq cap, not half the gap; what the cap
             // leaves is checked again in 10 minutes as before (capRemaining below)
             val capWaived = followUpCapWaived()
@@ -2236,31 +2282,33 @@ class BolusWizard @Inject constructor(
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Delayed $label dose"
-                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "${if (capWaived) "Dose without insulinReq cap (BG >= 6.5, HP1 >= 6.0)" else "Dose after insulinReq cap"}; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote", useIobRise = false)
+                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "${if (capWaived) "Dose without insulinReq cap (BG >= 6.5, HP1 >= 6.0)" else "Dose after insulinReq cap"}; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote$icNote", useIobRise = false)
                 uel.log(
                     action = Action.BOLUS,
                     source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
                     note = notes,
                     listValues = listOf(ValueWithUnit.Insulin(thisDose))
                 )
-                decrementWarsawPendingRemaining(dose - capRemaining)
+                // The pending total is in the sized units: the part less what the cap leaves, in those units
+                val capRemainingSized = capRemaining / icFactor
+                decrementWarsawPendingRemaining(dose - capRemainingSized)
                 commandQueue.bolus(this, object : Callback() {
                     override fun run() {
                         calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
                         persistenceLayer.insertOrUpdateBolusCalculatorResult(calculation).blockingGet()
                         if (!result.success) {
-                            decrementWarsawPendingRemaining(capRemaining)
+                            decrementWarsawPendingRemaining(capRemainingSized)
                             uiInteraction.runAlarm(result.comment, rh.gs(app.aaps.core.ui.R.string.treatmentdeliveryerror), app.aaps.core.ui.R.raw.boluserror)
                         }
                         else if (capRemaining >= pumpStep / 2.0) {
                             val retryAt = dateUtil.now() + T.mins(10).msecs()
                             val deadline = nextDueAt?.let { it - T.mins(10).msecs() } ?: (firstDueAt + T.mins(30).msecs())
                             if (retryAt <= deadline) {
-                                scheduleSingleDelayedDose(capRemaining, delayMins, label, schedulingPct, liveIob + thisDose, myScheduleToken,
+                                scheduleSingleDelayedDose(capRemainingSized, delayMins, label, schedulingPct, liveIob + thisDose, myScheduleToken,
                                     retryAt, isLast, nextDueAt, firstDueAt, false, retryLater)
                             } else {
                                 cancelDoseNote(fpuWhat(label, capRemaining), capRemaining, "insulinReq-limited remainder expired", label, liveIob + thisDose, useIobRise = false)
-                                decrementWarsawPendingRemaining(capRemaining)
+                                decrementWarsawPendingRemaining(capRemainingSized)
                             }
                         }
                     }
@@ -2272,6 +2320,8 @@ class BolusWizard @Inject constructor(
     /** What every saved part carries besides its own arguments: its schedule token and the wizard values its notes use. */
     private fun pendingEntry(kind: String, token: Long): JSONObject = JSONObject().apply {
         put("kind", kind); put("token", token); put("bolusTime", timeStamp); put("quickWizard", quickWizard); put("ic", ic)
+        put("splitSizingIc", splitSizingIc); put("splitSizingProfile", splitSizingProfile)
+        put("fpuSizingIc", fpuSizingIc); put("fpuSizingProfile", fpuSizingProfile)
     }
 
     /**
@@ -2284,6 +2334,11 @@ class BolusWizard @Inject constructor(
         timeStamp = entry.optLong("bolusTime", timeStamp)
         quickWizard = entry.optBoolean("quickWizard", quickWizard)
         ic = entry.optDouble("ic", ic)
+        // 2026-11-28: a part saved before the resize has none of these, so it is not resized
+        splitSizingIc = entry.optDouble("splitSizingIc", 0.0)
+        splitSizingProfile = entry.optString("splitSizingProfile", "")
+        fpuSizingIc = entry.optDouble("fpuSizingIc", 0.0)
+        fpuSizingProfile = entry.optString("fpuSizingProfile", "")
         val token = entry.optLong("token")
         when (entry.optString("kind")) {
             "split" -> {

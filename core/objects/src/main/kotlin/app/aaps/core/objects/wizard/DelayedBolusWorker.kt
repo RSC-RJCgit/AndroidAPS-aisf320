@@ -31,7 +31,9 @@ import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.LongKey
 import app.aaps.core.keys.LongNonKey
 import app.aaps.core.keys.interfaces.Preferences
+import app.aaps.core.objects.profile.ProfileSealed
 import app.aaps.core.objects.workflow.LoggingWorker
+import app.aaps.core.utils.MidnightUtils
 import kotlinx.coroutines.Dispatchers
 import java.util.concurrent.TimeUnit
 import app.aaps.core.objects.utils.StepCountSource
@@ -261,6 +263,17 @@ class DelayedBolusWorker(
         ).blockingGet()
     }
 
+    /** [profileIcResizeFactor] against the running profile's IC at 100% at the bolus's time of day, with its note (2026-11-28). */
+    private fun icResize(sizingProfile: String, sizingIc: Double, upOnly: Boolean, bolusTime: Long): Pair<Double, String> {
+        val profile = profileFunction.getProfile() ?: return 1.0 to ""
+        val pct = if (profile is ProfileSealed.EPS) profile.value.originalPercentage else profile.percentage
+        val runningIc = profile.getIcTimeFromMidnight(MidnightUtils.secondsFromMidnight(bolusTime)) * pct / 100.0
+        val running = profileFunction.getOriginalProfileName()
+        val factor = profileIcResizeFactor(sizingProfile, sizingIc, running, runningIc, upOnly)
+        if (factor != 1.0) aapsLogger.info(LTag.CORE, "Delayed bolus resize x$factor: sized at IC $sizingIc on $sizingProfile, running $running IC $runningIc")
+        return factor to profileIcResizeNote(factor, sizingProfile, running)
+    }
+
     companion object {
         const val WORK_NAME = "DelayedBolusWork"
         const val KEY_ORIGINAL_DOSE = "originalDose"
@@ -277,6 +290,11 @@ class DelayedBolusWorker(
         // the meal over MaxBolus, which the carb split gives. Both only change the notes and the split subtraction.
         const val KEY_HELD_BACK_BY = "heldBackBy"
         const val KEY_OVER_MAX_BOLUS = "overMaxBolus"
+        // Added 2026-11-28, per explicit request: the IC (at 100%) and profile the held-back part was sized at, and whether a
+        // weaker profile may shrink it (see ProfileIcResize). A check queued before this has none, so it is not resized.
+        const val KEY_SIZING_IC = "sizingIc"
+        const val KEY_SIZING_PROFILE = "sizingProfile"
+        const val KEY_SIZING_UP_ONLY = "sizingUpOnly"
         const val POLL_MINUTES = 5
 
         /** Plain words for the wizard's trigger label (2026-10-23, per explicit request). */
@@ -345,7 +363,10 @@ class DelayedBolusWorker(
             originalIob: Double = 0.0,
             deliveredSoFar: Double = 0.0,
             heldBackBy: String = "",
-            overMaxBolus: Double = 0.0
+            overMaxBolus: Double = 0.0,
+            sizingIc: Double = 0.0,
+            sizingProfile: String = "",
+            sizingUpOnly: Boolean = false
         ) {
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(
@@ -362,7 +383,10 @@ class DelayedBolusWorker(
                             KEY_ORIGINAL_IOB to originalIob,
                             KEY_DELIVERED_SO_FAR to deliveredSoFar,
                             KEY_HELD_BACK_BY to heldBackBy,
-                            KEY_OVER_MAX_BOLUS to overMaxBolus
+                            KEY_OVER_MAX_BOLUS to overMaxBolus,
+                            KEY_SIZING_IC to sizingIc,
+                            KEY_SIZING_PROFILE to sizingProfile,
+                            KEY_SIZING_UP_ONLY to sizingUpOnly
                         ))
                         .build()
                 )
@@ -379,6 +403,9 @@ class DelayedBolusWorker(
         val deliveredSoFar = inputData.getDouble(KEY_DELIVERED_SO_FAR, 0.0)
         val heldBackBy = inputData.getString(KEY_HELD_BACK_BY) ?: ""
         val overMaxBolus = inputData.getDouble(KEY_OVER_MAX_BOLUS, 0.0)
+        val sizingIc = inputData.getDouble(KEY_SIZING_IC, 0.0)
+        val sizingProfile = inputData.getString(KEY_SIZING_PROFILE) ?: ""
+        val sizingUpOnly = inputData.getBoolean(KEY_SIZING_UP_ONLY, false)
         val heldBack = heldBackText(heldBackBy)
         // 2026-10-23, per explicit request: an end or cancel note says what is not given and why it was held back. The
         // carb split's part (given, dropped or still pending) is not counted, it is the split's own.
@@ -430,9 +457,15 @@ class DelayedBolusWorker(
             // was cancelled leaves both at 0, and then the delayed bolus gives that part, as before.
             val splitHandled = preferences.get(LongKey.ApsAutoIsfSplitHandledMilliU) / 1000.0
             val splitShare = splitHandled + pendingSplit
-            val remainder = (fullRequired - originalDose - deliveredSoFar - splitShare).coerceAtLeast(0.0)
+            // 2026-11-28, per explicit request: the held-back part (fullRequired - originalDose) was sized at sizingIc on
+            // sizingProfile; on another profile it is resized here (see ProfileIcResize). The carb split's share and earlier
+            // delayed doses are real units, taken off after the resize.
+            val (icFactor, icNote) = icResize(sizingProfile, sizingIc, sizingUpOnly, originalTime)
+            val heldBackSized = (fullRequired - originalDose) * icFactor
+            val remainder = (heldBackSized - deliveredSoFar - splitShare).coerceAtLeast(0.0)
             val rawDose = remainder * cobFraction
-            val neededLines = neededText(heldBack, fullRequired, originalDose, overMaxBolus, splitHandled, pendingSplit, deliveredSoFar, remainder)
+            val neededLines = neededText(heldBack, fullRequired, originalDose, overMaxBolus, splitHandled, pendingSplit, deliveredSoFar, remainder) +
+                icNote.takeIf { it.isNotEmpty() }?.let { "\n" + it.trim() }.orEmpty()
 
             // Live InsReq cap (see class doc comment): only trust it while the loop has actually run
             // recently -- a stalled loop's stale cached value must never silently zero-cap a dose.
@@ -476,7 +509,7 @@ class DelayedBolusWorker(
                 if (insReqLimited && attempt < MAX_ATTEMPTS) {
                     aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but InsReq-limited to 0U this check — remainder=${Round.roundTo(remainder, 0.01)}U still pending, scheduling attempt ${attempt + 1} in $POLL_MINUTES min")
                     addCheckNote("$dbLabel InsReq-limited, wait")
-                    enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar, heldBackBy, overMaxBolus)
+                    enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar, heldBackBy, overMaxBolus, sizingIc, sizingProfile, sizingUpOnly)
                     return Result.success()
                 }
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr but already covered — cobFraction=${Round.roundTo(cobFraction, 0.01)} liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U (fullRequired=${fullRequired}U given=${originalDose}U) — no delayed dose needed")
@@ -502,7 +535,7 @@ class DelayedBolusWorker(
             // stay alive rather than end here. SMBs stay blocked (not unblocked yet) while it's true, since
             // the delayed top-up decision is still pending, not resolved.
             val newDeliveredSoFar = deliveredSoFar + delayedDose
-            val residualAfter = (fullRequired - originalDose - splitShare - newDeliveredSoFar).coerceAtLeast(0.0)
+            val residualAfter = (heldBackSized - splitShare - newDeliveredSoFar).coerceAtLeast(0.0)
             val willContinue = insReqLimited && attempt < MAX_ATTEMPTS && residualAfter > 0.0
             aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} capped=${Round.roundTo(cappedRawDose, 0.01)}U pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"}${if (willContinue) " -- InsReq-limited, ${Round.roundTo(residualAfter, 0.01)}U will remain pending" else ""})")
             addCheckNote("$dbLabel ${delayedDose}U")
@@ -552,7 +585,7 @@ class DelayedBolusWorker(
                                 neededText = neededLines
                             )
                             if (willContinue)
-                                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, newDeliveredSoFar, heldBackBy, overMaxBolus)
+                                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, newDeliveredSoFar, heldBackBy, overMaxBolus, sizingIc, sizingProfile, sizingUpOnly)
                         }
                     }
                 })
@@ -569,7 +602,7 @@ class DelayedBolusWorker(
             if (attempt < MAX_ATTEMPTS) {
                 aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt: $reason — scheduling attempt ${attempt + 1} in $POLL_MINUTES min")
                 addCheckNote(if (criteriaOk && bglFresh) "$dbLabel wait HP1" else "$dbLabel wait")
-                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar, heldBackBy, overMaxBolus)
+                enqueue(applicationContext, originalDose, fullRequired, attempt + 1, originalTime, originalCarbs, originalIob, deliveredSoFar, heldBackBy, overMaxBolus, sizingIc, sizingProfile, sizingUpOnly)
             } else {
                 aapsLogger.info(LTag.CORE, "Delayed bolus: $reason at attempt $attempt — no delayed dose delivered")
                 addCheckNote("$dbLabel end: $reason after ${attempt * POLL_MINUTES} min; $notGiven")
