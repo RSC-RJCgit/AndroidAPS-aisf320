@@ -7,6 +7,7 @@ import app.aaps.core.interfaces.alerts.Alert
 import app.aaps.core.interfaces.alerts.AlertChoice
 import app.aaps.core.interfaces.alerts.SharedSilence
 import app.aaps.core.interfaces.alerts.AlertKind
+import app.aaps.core.interfaces.alerts.AlertSetting
 import app.aaps.core.interfaces.alerts.AlertSound
 import app.aaps.core.interfaces.alerts.AlertSeverity
 import app.aaps.core.interfaces.alerts.Alerts
@@ -26,7 +27,6 @@ import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.bus.RxBus
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
-import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.UnitDoubleKey
 import app.aaps.core.keys.interfaces.Preferences
@@ -58,7 +58,8 @@ class BgAlarmsImplTest : TestBase() {
         val raised = mutableListOf<Alert>()
         val resolved = mutableListOf<String>()
 
-        override fun setChoice(kind: AlertKind, choice: AlertChoice) {}
+        override fun setChoice(setting: AlertSetting, choice: AlertChoice) {}
+        override fun clearChoice(kind: AlertKind) {}
         override fun raise(alert: Alert) {
             raised += alert
             _active.value = _active.value.filterNot { it.source == alert.source && it.key == alert.key } + alert
@@ -83,23 +84,20 @@ class BgAlarmsImplTest : TestBase() {
         override fun pause(kinds: Collection<AlertKind>, until: Long) {}
         override fun resume(kinds: Collection<AlertKind>) {}
         override val sounds: StateFlow<Map<String, AlertSound>> = MutableStateFlow(emptyMap())
-        override fun setSound(kind: AlertKind, sound: AlertSound?) {}
-        override fun test(kind: AlertKind, severity: AlertSeverity): Boolean = true
+        override fun setSound(setting: AlertSetting, sound: AlertSound?) {}
+        override fun test(kind: AlertKind, severity: AlertSeverity, vibrate: Boolean): Boolean = true
         override fun silenceEverywhere(source: String, key: String, minutes: Int) {}
         override fun canSilenceEverywhere(alert: Alert): Boolean = false
         override fun applySharedSilence(silence: SharedSilence) {}
         override fun silencedUntil(source: String, key: String): Long = silenced[key] ?: 0L
         override fun act(source: String, key: String) {}
         val booked = mutableListOf<Pair<Alert, Long>>()
-        val unbooked = mutableListOf<String>()
         override fun schedule(alert: Alert, at: Long): Boolean {
             booked += alert to at
             return true
         }
 
-        override fun unschedule(source: String, key: String) {
-            unbooked += key
-        }
+        override fun unschedule(source: String, key: String) {}
     }
 
     private val persistenceLayer: PersistenceLayer = mock()
@@ -156,7 +154,7 @@ class BgAlarmsImplTest : TestBase() {
         assertThat(alert.severity).isEqualTo(AlertSeverity.CRITICAL)
         // Rings also in Do Not Disturb, and is silenced only briefly
         assertThat(alert.breakThroughDnd).isTrue()
-        assertThat(alert.silenceMinutes).isEqualTo(BgAlarmsImpl.URGENT_LOW_SILENCE_MINUTES)
+        assertThat(alert.silenceMinutes).isEqualTo(15)
     }
 
     @Test
@@ -215,14 +213,15 @@ class BgAlarmsImplTest : TestBase() {
 
     // ---- the user's own rules (step 2a-2) ----------------------------------------------------------
 
-    private fun low(threshold: Double, id: String = "low$threshold", duration: Int = 0, severity: AlertSeverity = AlertSeverity.WARNING) =
-        BgAlarmRule(id = id, direction = BgDirection.LOW, thresholdMgdl = threshold, severity = severity, durationMinutes = duration, silenceMinutes = 45)
+    private fun low(threshold: Double, id: String = "low$threshold", severity: AlertSeverity = AlertSeverity.WARNING) =
+        BgAlarmRule(id = id, direction = BgDirection.LOW, thresholdMgdl = threshold, severity = severity)
 
     private fun high(threshold: Double, duration: Int = 0) =
-        BgAlarmRule(id = "high$threshold", direction = BgDirection.HIGH, thresholdMgdl = threshold, durationMinutes = duration, silenceMinutes = 120)
+        BgAlarmRule(id = "high$threshold", direction = BgDirection.HIGH, thresholdMgdl = threshold, durationMinutes = duration)
 
+    /** The silence where the user does not pick one is the kind's (decided 2026-11-26), not a setting of the rule. */
     @Test
-    fun `a low rule rings as the low kind with its own severity and silence`() {
+    fun `a low rule rings as the low kind with its own severity and the kind's silence`() {
         ruleList.value = listOf(low(70.0))
         readings(80.0, 75.0, 68.0)
 
@@ -232,7 +231,7 @@ class BgAlarmsImplTest : TestBase() {
         assertThat(alert.kind).isEqualTo(BgAlert.LOW)
         assertThat(alert.key).isEqualTo(BgAlarmsImpl.KEY_LOW)
         assertThat(alert.severity).isEqualTo(AlertSeverity.WARNING)
-        assertThat(alert.silenceMinutes).isEqualTo(45)
+        assertThat(alert.silenceMinutes).isEqualTo(30)
         assertThat(alert.breakThroughDnd).isFalse()
     }
 
@@ -245,18 +244,25 @@ class BgAlarmsImplTest : TestBase() {
 
         assertThat(alerts.raised.single().kind).isEqualTo(BgAlert.HIGH)
         assertThat(alerts.raised.single().key).isEqualTo(BgAlarmsImpl.KEY_HIGH)
+        // A high can wait longer than a low
+        assertThat(alerts.raised.single().silenceMinutes).isEqualTo(60)
     }
 
+    /**
+     * A level rule rings at the first reading past its threshold, also one that came with a delay from somewhere
+     * (decided 2026-11-27): a false low ends by itself, "only if it stays high" is persistent high.
+     */
     @Test
-    fun `a rule rings only when it lasted long enough`() {
-        ruleList.value = listOf(high(250.0, duration = 15))
-        readings(200.0, 255.0, 260.0)
+    fun `a level rule rings at the first reading past its threshold whatever delay it has`() {
+        ruleList.value = listOf(high(250.0, duration = 15), low(80.0).copy(durationMinutes = 15))
+        readings(200.0, 255.0)
         evaluate()
-        assertThat(alerts.raised).isEmpty()
+        assertThat(alerts.raised.single().raisedAt).isEqualTo(now)
 
-        readings(200.0, 255.0, 260.0, 262.0, 265.0)
+        alerts.raised.clear()
+        readings(100.0, 75.0)
         evaluate()
-        assertThat(alerts.raised.single().raisedAt).isEqualTo(now - 15 * minute)
+        assertThat(alerts.raised.single().kind).isEqualTo(BgAlert.LOW)
     }
 
     @Test
@@ -325,11 +331,11 @@ class BgAlarmsImplTest : TestBase() {
     // ---- stale data (step 2b) -----------------------------------------------------------------------
 
     private fun staleOn(thresholdMinutes: Int = 30) {
-        whenever(preferences.get(BooleanKey.AlertMissedBgReading)).thenReturn(true)
         whenever(preferences.get(IntKey.AlertsStaleDataThreshold)).thenReturn(thresholdMinutes)
         whenever(dateUtil.timeString(any())).thenReturn("14:35")
     }
 
+    /** Booked whatever this phone chose: its kind is Off by default, and then the core shows nothing and books nothing on the phone. */
     @Test
     fun `the stale data alarm is booked at the last reading plus the threshold`() {
         staleOn()
@@ -380,18 +386,6 @@ class BgAlarmsImplTest : TestBase() {
 
         assertThat(alerts.resolved).contains(BgAlarmsImpl.KEY_STALE)
         assertThat(alerts.booked.single().second).isEqualTo(now + 30 * minute)
-    }
-
-    @Test
-    fun `switched off nothing is booked and a booking is taken back`() {
-        staleOn()
-        readings(100.0)
-        evaluate()
-
-        whenever(preferences.get(BooleanKey.AlertMissedBgReading)).thenReturn(false)
-        evaluate()
-
-        assertThat(alerts.unbooked).containsExactly(BgAlarmsImpl.KEY_STALE)
     }
 
     // ---- persistent high, rate and predicted low (step 2c) -------------------------------------------

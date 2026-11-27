@@ -35,7 +35,6 @@ import app.aaps.core.interfaces.rx.events.EventLoopUpdateGui
 import app.aaps.core.interfaces.rx.events.EventNsClientStatusUpdated
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.interfaces.utils.DecimalFormatter
-import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntKey
 import app.aaps.core.keys.StringNonKey
@@ -133,7 +132,6 @@ class BgAlarmsImpl(
         val thresholdMgdl: Double,
         val severity: AlertSeverity,
         val durationMinutes: Int,
-        val silenceMinutes: Int,
         val breakThroughDnd: Boolean
     )
 
@@ -175,7 +173,6 @@ class BgAlarmsImpl(
                 persistenceLayer.observeChanges(GV::class).map { },
                 preferences.observe(UnitDoubleKey.AlertUrgentLow).map { },
                 rules.rules.map { },
-                preferences.observe(BooleanKey.AlertMissedBgReading).map { },
                 preferences.observe(IntKey.AlertsStaleDataThreshold).map { },
                 // A new prediction: the loop ran on the master, a device status came on a client
                 merge(rxBus.toFlow(EventLoopUpdateGui::class).map { }, rxBus.toFlow(EventNsClientStatusUpdated::class).map { })
@@ -232,10 +229,11 @@ class BgAlarmsImpl(
      * The stale data alarm (`_docs/ALARMS.md`, step 2b): a booked alert at the last reading plus the threshold, booked
      * again at every reading, so it rings only when no reading came in time - also when the app does not run then
      * (Android wakes it, iOS rings its notification). A new reading ends it. After a start it waits [STALE_GRACE_MS]
-     * for the first reading. Off ("Alert if no BG data is received" off), or no reading at all: nothing booked.
+     * for the first reading. Booked also while its kind is Off on this phone, which is its default: the core then puts
+     * nothing on the phone and shows nothing, and turning it on needs no new reading. No reading at all: nothing booked.
      */
     private fun evaluateStale(last: GV?, now: Long) {
-        if (!preferences.get(BooleanKey.AlertMissedBgReading) || last == null) {
+        if (last == null) {
             if (staleBookedAt != null) {
                 alerts.unschedule(BgAlert.SOURCE, KEY_STALE)
                 staleBookedAt = null
@@ -264,7 +262,8 @@ class BgAlarmsImpl(
         text = InterfacesStrings.bg_alarm_stale_text.withArgs(dateUtil.timeString(last.timestamp)),
         // The time of the gap: the same gap is the same alert, so a silence of it holds
         raisedAt = at,
-        lifetime = AlertLifetime.CONDITION
+        lifetime = AlertLifetime.CONDITION,
+        silenceMinutes = BgAlert.STALE.silenceMinutes
     )
 
     private fun slotOf(rule: BgAlarmRule): Slot = when (rule.type) {
@@ -281,7 +280,7 @@ class BgAlarmsImpl(
             .map {
                 Level(
                     id = it.id, kind = slot.kind, type = it.type, direction = it.direction, thresholdMgdl = it.thresholdMgdl,
-                    severity = it.severity, durationMinutes = it.durationMinutes, silenceMinutes = it.silenceMinutes, breakThroughDnd = false
+                    severity = it.severity, durationMinutes = it.durationMinutes, breakThroughDnd = false
                 )
             }
         val all = if (slot == Slot.LOW) listOf(urgentLow()) + own else own
@@ -291,7 +290,7 @@ class BgAlarmsImpl(
     private fun urgentLow() = Level(
         id = URGENT_LOW_ID, kind = BgAlert.URGENT_LOW, type = BgRuleType.LEVEL, direction = BgDirection.LOW,
         thresholdMgdl = profileUtil.convertToMgdlDetect(preferences.get(UnitDoubleKey.AlertUrgentLow)),
-        severity = AlertSeverity.CRITICAL, durationMinutes = 0, silenceMinutes = URGENT_LOW_SILENCE_MINUTES, breakThroughDnd = true
+        severity = AlertSeverity.CRITICAL, durationMinutes = 0, breakThroughDnd = true
     )
 
     private fun evaluate(slot: Slot, levels: List<Level>, data: Data) {
@@ -358,12 +357,16 @@ class BgAlarmsImpl(
         else                                -> level.thresholdMgdl
     }
 
-    /** Whether [level] starts ringing now. */
+    /**
+     * Whether [level] starts ringing now. A level rule at the first reading past its threshold, never later: a false
+     * low (lying on the sensor) ends by itself when BG is back, and "only if it stays high" is persistent high
+     * (decided 2026-11-27).
+     */
     private fun raises(level: Level, data: Data): Boolean = when (level.type) {
-        BgRuleType.LEVEL           -> lastedLongEnough(level, data)
+        BgRuleType.LEVEL           -> runStart(data.readings, level, margin = 0.0) != null
         BgRuleType.PERSISTENT_HIGH -> {
             val since = runStart(data.readings, level, margin = 0.0)
-            since != null && lastedLongEnough(level, data) && regular(data.readings, since) &&
+            since != null && data.last.timestamp - since >= level.durationMinutes * 60_000L && regular(data.readings, since) &&
                 (averageRate(data.readings, RATE_WINDOW_MS, RATE_MIN_SPAN_MS) ?: 0.0) > -FALLING_MGDL_PER_MINUTE
         }
 
@@ -389,11 +392,6 @@ class BgAlarmsImpl(
     private fun since(level: Level, data: Data): Long = when (level.type) {
         BgRuleType.LEVEL, BgRuleType.PERSISTENT_HIGH -> runStart(data.readings, level, END_MARGIN_MGDL) ?: data.last.timestamp
         BgRuleType.RATE, BgRuleType.PREDICTED_LOW    -> data.last.timestamp
-    }
-
-    private fun lastedLongEnough(level: Level, data: Data): Boolean {
-        val since = runStart(data.readings, level, margin = 0.0) ?: return false
-        return data.last.timestamp - since >= level.durationMinutes * 60_000L
     }
 
     /** Whether the readings from [from] to the newest came without a gap longer than [REGULAR_GAP_MS]. */
@@ -451,7 +449,7 @@ class BgAlarmsImpl(
             text = text,
             raisedAt = raisedAt,
             lifetime = AlertLifetime.CONDITION,
-            silenceMinutes = level.silenceMinutes,
+            silenceMinutes = level.kind.silenceMinutes,
             breakThroughDnd = level.breakThroughDnd
         )
     }
@@ -514,9 +512,6 @@ class BgAlarmsImpl(
 
         /** An alarm ends this far inside its threshold, so readings around it do not ring again and again. */
         const val END_MARGIN_MGDL = 5.0
-
-        /** Urgent low is silenced only briefly (`_docs/ALARMS.md`: "an urgent low 15 minutes"). */
-        const val URGENT_LOW_SILENCE_MINUTES = 15
 
         /** The rate is the average over this time ... */
         const val RATE_WINDOW_MS = 15 * 60_000L

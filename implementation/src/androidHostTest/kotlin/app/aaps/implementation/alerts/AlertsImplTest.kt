@@ -6,6 +6,7 @@ import app.aaps.core.data.ue.Sources
 import app.aaps.core.interfaces.alerts.Alert
 import app.aaps.core.interfaces.alerts.AlertAction
 import app.aaps.core.interfaces.alerts.AlertChoice
+import app.aaps.core.interfaces.alerts.AlertGroup
 import app.aaps.core.interfaces.alerts.AlertKind
 import app.aaps.core.interfaces.alerts.AlertKindCatalogue
 import app.aaps.core.interfaces.alerts.AlertLifetime
@@ -77,9 +78,11 @@ class AlertsImplTest : TestBase() {
         override fun cancel(instanceKey: Int) {}
         override fun cancelAll() {}
         var breaksThrough = false
-        override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?, breakThroughDnd: Boolean, ringtoneUri: String?) {
+        var vibrates = false
+        override fun setAudibleAlarm(instanceKey: Int?, sound: AlarmSound?, breakThroughDnd: Boolean, ringtoneUri: String?, vibrateOnly: Boolean) {
             soundingKey = instanceKey
             breaksThrough = breakThroughDnd
+            vibrates = vibrateOnly
         }
 
         override fun onDismissed(callback: (Int) -> Unit) {}
@@ -93,16 +96,28 @@ class AlertsImplTest : TestBase() {
         val chimeSounds = mutableListOf<AlarmSound?>()
         val snoozes = mutableListOf<Pair<String, Long>>()
         val withdrawals = mutableListOf<String>()
+
+        /** The screens and withdrawals in the order they came, for a test of the order. */
+        val calls = mutableListOf<String>()
         override fun showAlarmScreen(alert: Alert) {
             screens += alert.key
+            calls += "screen:${alert.key}"
         }
 
         val chimeRingtones = mutableListOf<String?>()
-        override fun chime(alert: Alert, sound: AlarmSound, ringtoneUri: String?) {
+        val chimeVibrations = mutableListOf<Boolean>()
+        val chimeBreaksThrough = mutableListOf<Boolean>()
+        override fun chime(alert: Alert, sound: AlarmSound, ringtoneUri: String?, vibrateOnly: Boolean, breakThroughDnd: Boolean) {
             chimes += alert.key
             chimeSounds += sound
             chimeRingtones += ringtoneUri
+            chimeVibrations += vibrateOnly
+            chimeBreaksThrough += breakThroughDnd
         }
+
+        /** Android can; a test sets it off for a phone that cannot. */
+        var vibrator = true
+        override val canVibrate: Boolean get() = vibrator
 
         override fun snoozed(alert: Alert, until: Long) {
             snoozes += alert.key to until
@@ -110,6 +125,7 @@ class AlertsImplTest : TestBase() {
 
         override fun withdrawn(source: String, key: String) {
             withdrawals += key
+            calls += "withdrawn:$key"
         }
 
         val bookings = mutableMapOf<String, Pair<Long, Boolean>>()
@@ -204,7 +220,8 @@ class AlertsImplTest : TestBase() {
         override val source: String,
         override val origin: AlertOrigin,
         val name: String,
-        override val isProtected: Boolean = false
+        override val isProtected: Boolean = false,
+        override val group: AlertGroup? = null
     ) : AlertKind {
 
         override val id: String get() = "$source.$name"
@@ -430,6 +447,178 @@ class AlertsImplTest : TestBase() {
         assertThat(card().sound).isNull()
     }
 
+    /**
+     * A low that became an urgent low under the same key: the platform's booked re-ring and chime of the low go before
+     * the urgent low shows, or iOS showed the low's old BG next to it later (2026-11-26).
+     */
+    @Test
+    fun `a new occurrence takes back what the platform holds for the old one`() {
+        sut.raise(alert(key = "low", severity = AlertSeverity.WARNING, raisedAt = 500L))
+        sut.snooze("pump", "low", 30)
+        alertPlatform.calls.clear()
+
+        sut.raise(alert(key = "low", severity = AlertSeverity.CRITICAL, raisedAt = 600L))
+
+        assertThat(alertPlatform.calls).containsAtLeast("withdrawn:low", "screen:low").inOrder()
+        // The new occurrence is not silenced by the old one's silence
+        assertThat(card().sound).isEqualTo(AlarmSound.ALARM)
+    }
+
+    // ---- groups and exceptions (decided 2026-11-26) -------------------------------------------------
+
+    private val reminder = TestKind("pump", AlertOrigin.PUMP, "reminder", group = AlertGroup.PUMP_ACTION)
+    private fun reminderAlert() = alert(key = "reminder", kind = reminder)
+
+    @Test
+    fun `a kind follows the choice of its group`() {
+        sut.setChoice(AlertGroup.PUMP_ACTION, AlertChoice.SILENT)
+
+        sut.raise(reminderAlert())
+
+        assertThat(card().sound).isNull()
+        assertThat(alertPlatform.screens).isEmpty()
+    }
+
+    @Test
+    fun `a group changed while its alert is active applies at once`() {
+        sut.raise(reminderAlert())
+
+        sut.setChoice(AlertGroup.PUMP_ACTION, AlertChoice.OFF)
+
+        assertThat(cards()).isEmpty()
+    }
+
+    /** "Pump, needs action: Off", but this one reminder rings: an exception wins, also when it is Ring. */
+    @Test
+    fun `an exception wins over its group, also as Ring`() {
+        sut.setChoice(AlertGroup.PUMP_ACTION, AlertChoice.OFF)
+        sut.setChoice(reminder, AlertChoice.RING)
+
+        sut.raise(reminderAlert())
+
+        assertThat(card().sound).isEqualTo(AlarmSound.ALARM)
+        assertThat(sut.choices.value).containsExactly(AlertGroup.PUMP_ACTION.id, AlertChoice.OFF, reminder.id, AlertChoice.RING)
+    }
+
+    @Test
+    fun `an exception set to Ring is kept for the next start`() {
+        sut.setChoice(AlertGroup.PUMP_ACTION, AlertChoice.SILENT)
+        sut.setChoice(reminder, AlertChoice.RING)
+
+        assertThat(newAlerts().choices.value).containsExactly(AlertGroup.PUMP_ACTION.id, AlertChoice.SILENT, reminder.id, AlertChoice.RING)
+    }
+
+    @Test
+    fun `a removed exception follows its group again at once`() {
+        sut.setChoice(AlertGroup.PUMP_ACTION, AlertChoice.OFF)
+        sut.setChoice(reminder, AlertChoice.RING)
+        sut.raise(reminderAlert())
+
+        sut.clearChoice(reminder)
+
+        assertThat(cards()).isEmpty()
+        assertThat(sut.choices.value).containsExactly(AlertGroup.PUMP_ACTION.id, AlertChoice.OFF)
+    }
+
+    /** A kind with no group set back to Ring is just a kind that rings: nothing is kept for it. */
+    @Test
+    fun `a kind with no group set to Ring keeps no entry`() {
+        sut.setChoice(CoreAlert.CARBS_NOT_SAVED, AlertChoice.SILENT)
+
+        sut.setChoice(CoreAlert.CARBS_NOT_SAVED, AlertChoice.RING)
+
+        assertThat(sut.choices.value).isEmpty()
+    }
+
+    @Test
+    fun `a protected group always rings`() {
+        sut.setChoice(AlertGroup.PUMP_CRITICAL, AlertChoice.OFF)
+
+        sut.raise(alert(kind = TestKind("pump", AlertOrigin.PUMP, "occlusion", isProtected = true, group = AlertGroup.PUMP_CRITICAL)))
+
+        assertThat(sut.choices.value).isEmpty()
+        assertThat(card().sound).isEqualTo(AlarmSound.ALARM)
+    }
+
+    // ---- vibrate only (decided 2026-11-26) ------------------------------------------------------------
+
+    /** As Ring, alarm screen and urgent card included, but the phone and the watch only vibrate, until it is answered. */
+    @Test
+    fun `an alarm of a kind set to vibrate rings without sound`() {
+        sut.setChoice(occlusion, AlertChoice.VIBRATE)
+
+        sut.raise(alert(kind = occlusion))
+
+        assertThat(card().level).isEqualTo(NotificationLevel.URGENT)
+        assertThat(card().vibrateOnly).isTrue()
+        // Still set: it owns the alarm slot, and it is the fallback where the phone cannot vibrate
+        assertThat(card().sound).isEqualTo(AlarmSound.ALARM)
+        assertThat(systemPlatform.vibrates).isTrue()
+        assertThat(alertPlatform.screens).containsExactly("occlusion")
+        assertThat(sut.sounding?.key).isEqualTo("occlusion")
+    }
+
+    @Test
+    fun `a warning of a kind set to vibrate chimes by vibration`() {
+        sut.setChoice(occlusion, AlertChoice.VIBRATE)
+
+        sut.raise(alert(kind = occlusion, severity = AlertSeverity.WARNING))
+
+        assertThat(alertPlatform.chimes).containsExactly("occlusion")
+        assertThat(alertPlatform.chimeVibrations).containsExactly(true)
+    }
+
+    @Test
+    fun `a group set to vibrate makes its kinds vibrate`() {
+        sut.setChoice(AlertGroup.PUMP_ACTION, AlertChoice.VIBRATE)
+
+        sut.raise(reminderAlert())
+
+        assertThat(card().vibrateOnly).isTrue()
+    }
+
+    /** Settings brought from another phone: a phone that cannot vibrate rings rather than stays quiet. */
+    @Test
+    fun `vibrate rings on a phone that cannot vibrate`() {
+        alertPlatform.vibrator = false
+        sut.setChoice(occlusion, AlertChoice.VIBRATE)
+
+        sut.raise(alert(kind = occlusion))
+
+        assertThat(card().vibrateOnly).isFalse()
+        assertThat(systemPlatform.vibrates).isFalse()
+        assertThat(card().sound).isEqualTo(AlarmSound.ALARM)
+    }
+
+    @Test
+    fun `a paused kind set to vibrate is silent while the pause lasts`() {
+        sut.setChoice(BgAlert.LOW, AlertChoice.VIBRATE)
+        sut.pause(listOf(BgAlert.LOW), now + 60 * 60_000L)
+
+        sut.raise(bgLow())
+
+        assertThat(card().sound).isNull()
+        assertThat(card().vibrateOnly).isFalse()
+    }
+
+    @Test
+    fun `a kind of a group plays the sound of its group`() {
+        sut.setSound(AlertGroup.PUMP_ACTION, AlertSound.Bundled(AlarmSound.ERROR))
+
+        sut.raise(reminderAlert())
+
+        assertThat(card().sound).isEqualTo(AlarmSound.ERROR)
+    }
+
+    @Test
+    fun `the test of a kind of a group plays the sound of its group`() {
+        sut.setSound(AlertGroup.PUMP_ACTION, AlertSound.Bundled(AlarmSound.BOLUS_ERROR))
+
+        sut.test(reminder, AlertSeverity.CRITICAL)
+
+        verify(soundPlayer).play(eq(AlarmSound.BOLUS_ERROR), any(), eq(true), eq(null))
+    }
+
     @Test
     fun `an info alert is not announced`() {
         sut.raise(alert(severity = AlertSeverity.INFO))
@@ -446,6 +635,45 @@ class AlertsImplTest : TestBase() {
 
         assertThat(cards()).hasSize(1)
         assertThat(alertPlatform.screens).hasSize(1)
+    }
+
+    /**
+     * Worse now - a rule changed from Warning to Alarm while its alert is on: it rings as a new occurrence would. Before,
+     * the URGENT card played the alarm with no alarm screen to answer it (iOS, 2026-11-27).
+     */
+    @Test
+    fun `the same occurrence raised as worse rings with its alarm screen`() {
+        sut.raise(alert(severity = AlertSeverity.WARNING))
+        assertThat(alertPlatform.screens).isEmpty()
+
+        sut.raise(alert(severity = AlertSeverity.CRITICAL))
+
+        assertThat(alertPlatform.screens).containsExactly("occlusion")
+        assertThat(card().sound).isEqualTo(AlarmSound.ALARM)
+    }
+
+    /** Better now: the card changes, and it does not ring again. */
+    @Test
+    fun `the same occurrence raised as less bad does not ring again`() {
+        sut.raise(alert(severity = AlertSeverity.CRITICAL))
+
+        sut.raise(alert(severity = AlertSeverity.WARNING))
+
+        assertThat(alertPlatform.screens).containsExactly("occlusion")
+        assertThat(alertPlatform.chimes).isEmpty()
+        assertThat(card().level).isEqualTo(NotificationLevel.IMPORTANT)
+    }
+
+    /** Worse while silenced: the silence the user gave holds. */
+    @Test
+    fun `the same occurrence raised as worse while silenced stays silent`() {
+        sut.raise(alert(severity = AlertSeverity.WARNING))
+        sut.silence("pump", "occlusion", 30)
+
+        sut.raise(alert(severity = AlertSeverity.CRITICAL))
+
+        assertThat(alertPlatform.screens).isEmpty()
+        assertThat(card().sound).isNull()
     }
 
     @Test
@@ -494,7 +722,8 @@ class AlertsImplTest : TestBase() {
     fun `the alarm screen offers a protected kind only the short silences`() {
         val stopped = TestKind("pump", AlertOrigin.PUMP, "occlusion", isProtected = true)
 
-        assertThat(Alerts.silenceLengths(occlusion)).containsExactly(15, 30, 60, 120, 240).inOrder()
+        // One button each, one tap (decided 2026-11-26)
+        assertThat(Alerts.silenceLengths(occlusion)).containsExactly(15, 30, 60).inOrder()
         assertThat(Alerts.silenceLengths(stopped)).containsExactly(15, 30).inOrder()
         assertThat(Alerts.silenceLengths(occlusion)).contains(Alerts.SILENCE_MINUTES)
     }
@@ -577,9 +806,10 @@ class AlertsImplTest : TestBase() {
         assertThat(cards()).hasSize(1)
     }
 
+    /** A safety kind keeps its card for as long as it lasts. */
     @Test
     fun `a card cleared by another alarm screen comes back silenced`() {
-        sut.raise(alert())
+        sut.raise(alert(kind = TestKind("pump", AlertOrigin.PUMP, "occlusion", isProtected = true)))
         scope.runCurrent()
 
         // OK on the alarm screen of some other alarm clears every ringing card.
@@ -838,15 +1068,62 @@ class AlertsImplTest : TestBase() {
         assertThat(cards()).isEmpty()
     }
 
-    /** The pump still holds it, so the card comes back - silenced, not ringing. */
+    /** The pump still holds it, and it is a safety kind, so the card comes back - silenced, not ringing. */
     @Test
     fun `a condition alert whose card is removed comes back without sound`() {
-        sut.raise(alert())
+        sut.raise(alert(kind = TestKind("pump", AlertOrigin.PUMP, "occlusion", isProtected = true)))
         notificationManager.muteAllAlarms()
         scope.runCurrent()
 
         assertThat(sut.active.value.map { it.key }).containsExactly("occlusion")
         assertThat(card().sound).isNull()
+    }
+
+    /** Carbs required could not be cleared: its card came back at once (2026-11-25). Dismiss means "not now". */
+    @Test
+    fun `a dismissed card of a kind that may be silenced stays away until its silence ends`() {
+        sut.raise(alert(key = "carbs", source = "aaps", severity = AlertSeverity.WARNING))
+        scope.runCurrent()
+
+        notificationManager.dismiss(NotificationId.ALERT)
+        scope.runCurrent()
+
+        assertThat(cards()).isEmpty()
+        assertThat(sut.active.value.map { it.key }).containsExactly("carbs")
+        assertThat(sut.silencedUntil("aaps", "carbs")).isEqualTo(now + Alerts.SILENCE_MINUTES * 60_000L)
+        assertThat(alertPlatform.withdrawals).contains("carbs")
+        assertThat(alertPlatform.snoozes.last()).isEqualTo("carbs" to now + Alerts.SILENCE_MINUTES * 60_000L)
+    }
+
+    @Test
+    fun `a hidden card comes back with the ring when the silence ends`() {
+        sut.raise(alert(key = "carbs", source = "aaps", severity = AlertSeverity.WARNING))
+        scope.runCurrent()
+        notificationManager.dismiss(NotificationId.ALERT)
+        scope.runCurrent()
+
+        now += Alerts.SILENCE_MINUTES * 60_000L
+        scope.advanceTimeBy(Alerts.SILENCE_MINUTES * 60_000L + 1)
+
+        assertThat(cards()).hasSize(1)
+        assertThat(alertPlatform.chimes).containsExactly("carbs", "carbs")
+    }
+
+    /** A new value while hidden must not bring the card back early; the booked re-ring takes the new text. */
+    @Test
+    fun `a hidden card stays hidden when its text changes and its re-ring is booked again`() {
+        val kind = TestKind("aaps", AlertOrigin.APP, "carbs")
+        sut.raise(Alert(kind = kind, key = "carbs", severity = AlertSeverity.WARNING, title = TextRef.Literal("carbs"), text = TextRef.Literal("42 g"), raisedAt = 500L))
+        scope.runCurrent()
+        notificationManager.dismiss(NotificationId.ALERT)
+        scope.runCurrent()
+        val booked = alertPlatform.snoozes.size
+
+        sut.raise(Alert(kind = kind, key = "carbs", severity = AlertSeverity.WARNING, title = TextRef.Literal("carbs"), text = TextRef.Literal("44 g"), raisedAt = 500L))
+        scope.runCurrent()
+
+        assertThat(cards()).isEmpty()
+        assertThat(alertPlatform.snoozes).hasSize(booked + 1)
     }
 
     /**
@@ -1021,6 +1298,63 @@ class AlertsImplTest : TestBase() {
         assertThat(alertPlatform.bookings["automation-timer"]).isEqualTo((now + minute) to false)
     }
 
+    /** Off is not shown: nothing may come on the phone's screen at the booked time either (iOS showed a silent card). */
+    @Test
+    fun `a booking of a kind that is off books nothing on the phone`() {
+        sut.setChoice(CoreAlert.AUTOMATION_ALARM, AlertChoice.OFF)
+
+        assertThat(sut.schedule(reminder(), now + minute)).isTrue()
+
+        assertThat(alertPlatform.bookings).isEmpty()
+        // The core's own timer still raises it, and it is not shown
+        now += minute
+        scope.advanceTimeBy(minute + 1)
+        scope.runCurrent()
+        assertThat(sut.active.value.single().key).isEqualTo("automation-timer")
+        assertThat(cards()).isEmpty()
+    }
+
+    /** The phone holds what was booked with the old choice: a change books it again as it is now. */
+    @Test
+    fun `a choice change books a booking again`() {
+        sut.setChoice(CoreAlert.AUTOMATION_ALARM, AlertChoice.OFF)
+        sut.schedule(reminder(), now + minute)
+
+        sut.setChoice(CoreAlert.AUTOMATION_ALARM, AlertChoice.SILENT)
+        assertThat(alertPlatform.bookings["automation-timer"]).isEqualTo((now + minute) to false)
+
+        sut.setChoice(CoreAlert.AUTOMATION_ALARM, AlertChoice.RING)
+        assertThat(alertPlatform.bookings["automation-timer"]).isEqualTo((now + minute) to true)
+
+        sut.setChoice(CoreAlert.AUTOMATION_ALARM, AlertChoice.OFF)
+        assertThat(alertPlatform.bookings).isEmpty()
+    }
+
+    // ---- a kind that is off until the user turns it on (missed BG readings, 2026-11-26) ------------
+
+    private fun stale() = Alert(kind = BgAlert.STALE, key = "stale", severity = AlertSeverity.CRITICAL, title = BgAlert.STALE.title, raisedAt = 500L)
+
+    @Test
+    fun `missed BG readings is off until the user turns it on`() {
+        sut.raise(stale())
+
+        assertThat(cards()).isEmpty()
+        assertThat(alertPlatform.screens).isEmpty()
+    }
+
+    /** Ring is not its default, so it is stored; Off is, so it is not. */
+    @Test
+    fun `turning missed BG readings on stores Ring, and off removes it`() {
+        sut.setChoice(BgAlert.STALE, AlertChoice.RING)
+        assertThat(sut.choices.value).containsExactly(BgAlert.STALE.id, AlertChoice.RING)
+
+        sut.raise(stale())
+        assertThat(alertPlatform.screens).containsExactly("stale")
+
+        sut.setChoice(BgAlert.STALE, AlertChoice.OFF)
+        assertThat(sut.choices.value).isEmpty()
+    }
+
     // ---- pauses (step 2d) ---------------------------------------------------------------------------
 
     @Test
@@ -1072,6 +1406,26 @@ class AlertsImplTest : TestBase() {
 
         assertThat(alertPlatform.screens).containsExactly("occlusion")
         assertThat(sut.pauses.value).isEmpty()
+    }
+
+    /**
+     * The pause moved the silenced alert's booked re-ring to the pause end. Resumed early, it is booked at the end of the
+     * user's silence again; else it rang late when the app did not run (16 minutes on iOS, 2026-11-27).
+     */
+    @Test
+    fun `resume books a silenced alert again at the end of its silence`() {
+        val a = alert()
+        sut.raise(a)
+        sut.silence("pump", "occlusion", 15)
+        sut.pause(listOf(a.kind), now + 30 * 60_000L)
+        assertThat(alertPlatform.snoozes.last()).isEqualTo("occlusion" to now + 30 * 60_000L)
+
+        sut.resume(listOf(a.kind))
+
+        assertThat(alertPlatform.snoozes.last()).isEqualTo("occlusion" to now + 15 * 60_000L)
+        // Still silenced: no second alarm screen
+        assertThat(alertPlatform.screens).containsExactly("occlusion")
+        assertThat(card().sound).isNull()
     }
 
     /** A silence the user gave holds after the pause: the pause end does not ring over it. */
@@ -1157,14 +1511,15 @@ class AlertsImplTest : TestBase() {
         assertThat(card().sound).isEqualTo(AlarmSound.ALARM)
     }
 
+    /** The user asked for the test: in Do Not Disturb, with the override off, they would hear nothing and not know why. */
     @Test
-    fun `the test plays the alarm sound for a few seconds`() {
+    fun `the test plays the alarm sound for a few seconds, also in Do Not Disturb`() {
         val kind = TestKind("pump", AlertOrigin.PUMP, "occlusion")
         sut.setSound(kind, AlertSound.Bundled(AlarmSound.BOLUS_ERROR))
 
         assertThat(sut.test(kind, AlertSeverity.CRITICAL)).isTrue()
 
-        verify(soundPlayer).play(eq(AlarmSound.BOLUS_ERROR), any(), eq(false), eq(null))
+        verify(soundPlayer).play(eq(AlarmSound.BOLUS_ERROR), any(), eq(true), eq(null))
         scope.advanceTimeBy(Alerts.TEST_SECONDS * 1000L + 1)
         verify(soundPlayer).stop(any())
         // A test is not an alert: no card, no announcement
@@ -1173,12 +1528,45 @@ class AlertsImplTest : TestBase() {
     }
 
     @Test
-    fun `the test of a warning chimes`() {
+    fun `the test of a warning chimes, also in Do Not Disturb`() {
         val kind = TestKind("pump", AlertOrigin.PUMP, "occlusion")
 
         sut.test(kind, AlertSeverity.WARNING)
 
         assertThat(alertPlatform.chimeSounds).containsExactly(AlarmSound.ALARM)
+        assertThat(alertPlatform.chimeBreaksThrough).containsExactly(true)
+        assertThat(alertPlatform.chimeVibrations).containsExactly(false)
+    }
+
+    /** The Test of a row set to Vibrate does what the row does: it vibrates for a few seconds, with no sound. */
+    @Test
+    fun `the test of vibrate vibrates for a few seconds`() {
+        val kind = TestKind("pump", AlertOrigin.PUMP, "occlusion")
+
+        assertThat(sut.test(kind, AlertSeverity.CRITICAL, vibrate = true)).isTrue()
+
+        verify(soundPlayer).vibrate(eq(AlarmSound.ALARM), any())
+        verify(soundPlayer, never()).play(any(), any(), any(), anyOrNull())
+        scope.advanceTimeBy(Alerts.TEST_SECONDS * 1000L + 1)
+        verify(soundPlayer).stop(any())
+    }
+
+    @Test
+    fun `the test of vibrate as a warning vibrates once`() {
+        sut.test(TestKind("pump", AlertOrigin.PUMP, "occlusion"), AlertSeverity.WARNING, vibrate = true)
+
+        assertThat(alertPlatform.chimeVibrations).containsExactly(true)
+    }
+
+    /** As a real alert: a phone that cannot vibrate plays the sound. */
+    @Test
+    fun `the test of vibrate plays the sound where the phone cannot vibrate`() {
+        alertPlatform.vibrator = false
+
+        sut.test(TestKind("pump", AlertOrigin.PUMP, "occlusion"), AlertSeverity.CRITICAL, vibrate = true)
+
+        verify(soundPlayer).play(eq(AlarmSound.ALARM), any(), eq(true), eq(null))
+        verify(soundPlayer, never()).vibrate(any(), any())
     }
 
     /** The player plays one sound at a time: a test while an alarm rings would stop the alarm. */
@@ -1231,7 +1619,7 @@ class AlertsImplTest : TestBase() {
 
         sut.test(kind, AlertSeverity.CRITICAL)
 
-        verify(soundPlayer).play(eq(AlarmSound.ALARM), any(), eq(false), eq(ringtone.uri))
+        verify(soundPlayer).play(eq(AlarmSound.ALARM), any(), eq(true), eq(ringtone.uri))
     }
 
     @Test

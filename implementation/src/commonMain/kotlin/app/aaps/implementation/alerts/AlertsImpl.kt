@@ -11,6 +11,7 @@ import app.aaps.core.interfaces.alerts.AlertKindCatalogue
 import app.aaps.core.interfaces.alerts.AlertLifetime
 import app.aaps.core.interfaces.alerts.AlertOrigin
 import app.aaps.core.interfaces.alerts.AlertPlatform
+import app.aaps.core.interfaces.alerts.AlertSetting
 import app.aaps.core.interfaces.alerts.AlertSeverity
 import app.aaps.core.interfaces.alerts.AlertSound
 import app.aaps.core.interfaces.alerts.BgAlert
@@ -180,10 +181,10 @@ class AlertsImpl(
             return soundsView
         }
 
-    override fun setSound(kind: AlertKind, sound: AlertSound?): Unit = lock.withLock {
+    override fun setSound(setting: AlertSetting, sound: AlertSound?): Unit = lock.withLock {
         val map = storedSounds()
-        if (map[kind.id] == sound) return@withLock
-        if (sound == null) map.remove(kind.id) else map[kind.id] = sound
+        if (map[setting.id] == sound) return@withLock
+        if (sound == null) map.remove(setting.id) else map[setting.id] = sound
         preferences.put(StringNonKey.AlertSounds, buildJsonObject {
             map.forEach { (id, s) ->
                 when (s) {
@@ -196,10 +197,10 @@ class AlertsImpl(
             }
         }.toString())
         _sounds.value = map.toMap()
-        aapsLogger.info(LTag.NOTIFICATION, "Alert kind ${kind.id} sound on this phone: ${sound ?: "its own"}")
+        aapsLogger.info(LTag.NOTIFICATION, "Alert setting ${setting.id} sound on this phone: ${sound ?: "its own"}")
     }
 
-    override fun test(kind: AlertKind, severity: AlertSeverity): Boolean {
+    override fun test(kind: AlertKind, severity: AlertSeverity, vibrate: Boolean): Boolean {
         val testAlert = Alert(kind = kind, key = TEST_KEY, severity = severity, title = kind.title, raisedAt = dateUtil.now())
         // A test must never stop a real alarm: the player plays one sound at a time
         if (sounding != null) {
@@ -207,16 +208,20 @@ class AlertsImpl(
             return false
         }
         val (sound, ringtone) = lock.withLock { soundFor(testAlert) to ringtoneFor(testAlert) }
-        aapsLogger.info(LTag.NOTIFICATION, "Alert test of ${kind.id}: $severity, $sound${ringtone?.let { ", ringtone $it" } ?: ""}")
+        // As a real alert: Vibrate rings where the phone can vibrate
+        val vibrates = vibrate && platform.canVibrate
+        aapsLogger.info(LTag.NOTIFICATION, "Alert test of ${kind.id}: $severity, $sound${ringtone?.let { ", ringtone $it" } ?: ""}${if (vibrates) ", vibrate" else ""}")
+        // The user asked for the test: it sounds in Do Not Disturb too, or they would hear nothing and not know why
         if (severity == AlertSeverity.CRITICAL) {
-            soundPlayer.play(sound, OWNER_TEST, breakThroughDnd = false, ringtoneUri = ringtone)
+            if (vibrates) soundPlayer.vibrate(sound, OWNER_TEST)
+            else soundPlayer.play(sound, OWNER_TEST, breakThroughDnd = true, ringtoneUri = ringtone)
             // Owner-scoped: a real alarm that started meanwhile took the player over and is not stopped here
             appScope.launch {
                 delay(Alerts.TEST_SECONDS * 1000L)
                 soundPlayer.stop(OWNER_TEST)
             }
         } else {
-            platform.chime(testAlert, sound, ringtone)
+            platform.chime(testAlert, sound, ringtone, vibrateOnly = vibrates, breakThroughDnd = true)
             appScope.launch {
                 delay(Alerts.TEST_SECONDS * 1000L)
                 platform.withdrawn(kind.source, TEST_KEY)
@@ -226,14 +231,18 @@ class AlertsImpl(
     }
 
     /**
-     * Caller holds [lock]. The bundled sound an alert plays on this phone: the user's for its kind, else its own. With a
-     * ringtone chosen, the alert's own: the fallback when the ringtone cannot be played.
+     * Caller holds [lock]. The bundled sound an alert plays on this phone: the user's for its kind's group, or for the
+     * kind when it has none, else its own. With a ringtone chosen, the alert's own: the fallback when the ringtone
+     * cannot be played.
      */
     private fun soundFor(alert: Alert): AlarmSound =
-        (storedSounds()[alert.kind.id] as? AlertSound.Bundled)?.sound ?: alert.sound ?: AlarmSound.ALARM
+        (storedSounds()[soundId(alert.kind)] as? AlertSound.Bundled)?.sound ?: alert.sound ?: AlarmSound.ALARM
 
     /** Caller holds [lock]. The phone ringtone the user chose for the alert's kind (Android), or null. */
-    private fun ringtoneFor(alert: Alert): String? = (storedSounds()[alert.kind.id] as? AlertSound.Ringtone)?.uri
+    private fun ringtoneFor(alert: Alert): String? = (storedSounds()[soundId(alert.kind)] as? AlertSound.Ringtone)?.uri
+
+    /** Where the sound of [kind] is stored: a kind of a group has its group's, there is no exception for a sound. */
+    private fun soundId(kind: AlertKind): String = kind.group?.id ?: kind.id
 
     /** Caller holds [lock]. The stored sound choices, read on first use. */
     private fun storedSounds(): MutableMap<String, AlertSound> =
@@ -351,30 +360,48 @@ class AlertsImpl(
             entries.values
                 .filter {
                     it.card != null && it.silencedUntil <= now && it.alert.severity == AlertSeverity.CRITICAL &&
-                        choiceFor(it.alert) == AlertChoice.RING
+                        choiceFor(it.alert).rings
                 }
                 .maxByOrNull { it.alert.raisedAt }
                 ?.alert
         }
 
-    override fun setChoice(kind: AlertKind, choice: AlertChoice) {
-        if (kind.isProtected) {
-            aapsLogger.warn(LTag.NOTIFICATION, "Alert kind ${kind.id} is protected, it always rings: $choice ignored")
+    override fun setChoice(setting: AlertSetting, choice: AlertChoice) {
+        if (setting.isProtected) {
+            aapsLogger.warn(LTag.NOTIFICATION, "Alert setting ${setting.id} is protected, it always rings: $choice ignored")
             return
         }
-        lock.withLock {
-            val map = storedChoices()
-            // Not the same choice again: below, a kind set to Ring rings what is active of it
-            if ((map[kind.id] ?: AlertChoice.RING) == choice) return
-            if (choice == AlertChoice.RING) map.remove(kind.id) else map[kind.id] = choice
-            saveChoices(map)
-            _choices.value = map.toMap()
-            aapsLogger.info(LTag.NOTIFICATION, "Alert kind ${kind.id} is now $choice on this phone")
-            // At once for what is active now. A kind set back to Ring rings as a new alert does, with the alarm screen,
-            // because sound with nothing on the screen to answer it is worse than both. One the user has answered is
-            // silenced and stays quiet until its silence ends.
-            entries.values.filter { it.alert.kind.id == kind.id }.forEach { showCard(it, ring = choice == AlertChoice.RING) }
+        // An exception is kept also as Ring: it is set against its group's choice
+        val exception = setting is AlertKind && setting.group != null
+        changeChoices("Alert setting ${setting.id} is now $choice on this phone${if (exception) ", an exception" else ""}") { map ->
+            if (choice == setting.defaultChoice && !exception) map.remove(setting.id) else map[setting.id] = choice
         }
+    }
+
+    override fun clearChoice(kind: AlertKind) =
+        changeChoices("Alert kind ${kind.id} follows ${kind.group?.id ?: "the default"} again on this phone") { it.remove(kind.id) }
+
+    /**
+     * Changes the stored choices with [change] and applies the result at once to what is active now. An alert whose
+     * choice became Ring rings as a new alert does, with the alarm screen, because sound with nothing on the screen to
+     * answer it is worse than both. One the user has answered is silenced and stays quiet until its silence ends.
+     */
+    private fun changeChoices(log: String, change: (MutableMap<String, AlertChoice>) -> Unit): Unit = lock.withLock {
+        val map = storedChoices()
+        val before = map.toMap()
+        change(map)
+        // Not the same choice again: below, an alert that rings now rings what is active of it
+        if (map == before) return@withLock
+        val wasChoice = entries.values.associateWith { choiceFor(it.alert, before) }
+        val bookingWas = storedBookings().values.associateWith { choiceFor(it.alert, before) }
+        saveChoices(map)
+        _choices.value = map.toMap()
+        aapsLogger.info(LTag.NOTIFICATION, log)
+        entries.values
+            .filter { choiceFor(it.alert) != wasChoice[it] }
+            .forEach { showCard(it, ring = choiceFor(it.alert).rings) }
+        // What the phone holds for a booking was made with the old choice: it rings by itself only as it is now
+        bookingWas.filter { (booking, was) -> choiceFor(booking.alert) != was }.keys.forEach { bookOnPlatform(it.alert, it.at) }
     }
 
     override fun raise(alert: Alert) {
@@ -384,21 +411,32 @@ class AlertsImpl(
             val existing = entries[id]
             // Published before the card, so the alarm screen the card may open finds the alert in [active].
             if (existing != null && existing.alert.raisedAt == alert.raisedAt) {
-                // The same occurrence again: new text or action perhaps, but it does not ring again.
+                // The same occurrence again: new text or action perhaps, but it does not ring again - unless it is worse
+                // now (a rule changed from Warning to Alarm while it is on). Then it rings as a new one would, the alarm
+                // screen included: the URGENT card played the alarm with no screen to answer it (iOS, 2026-11-27). Not
+                // over a silence or a pause, which the card keeps.
                 val changed = cardChanged(existing.alert, alert)
+                val worse = alert.severity < existing.alert.severity
                 existing.alert = alert
                 publish()
                 // Not posted again when nothing on the card changed: a raiser repeats itself (the BG alarms 5 times in
                 // 30 ms at a start), and on iOS the removal of each old card lost the race with the new one, so the
                 // old cards stayed in the tray after the alert ended (2026-11-25).
-                if (existing.card != null && changed) {
-                    showCard(existing, ring = false)
+                if (changed) {
+                    if (existing.card != null) showCard(existing, ring = worse)
                     // A silenced alert rings again from a booking made with the text it had then (iOS showed a BG of
-                    // the time of the silence, 2026-11-25): booked again, the booking replaces the old one.
-                    if (existing.silencedUntil > dateUtil.now()) platform.snoozed(alert, existing.silencedUntil)
+                    // the time of the silence, 2026-11-25): booked again, the booking replaces the old one. Also while
+                    // its card is hidden: the re-ring brings the card back.
+                    if (existing.silencedUntil > dateUtil.now() && choiceFor(alert) != AlertChoice.OFF) platform.snoozed(alert, existing.silencedUntil)
                 }
             } else {
-                existing?.let { removeCard(it) }
+                // A new occurrence replaces the old one. What the platform holds for the old one goes too, before the
+                // new one's silence and card: its booked re-ring came back with the old text on iOS, and on Android its
+                // chime stayed in the tray (a "Low, BG 95" next to the urgent low at BG 48, 2026-11-26).
+                existing?.let {
+                    removeCard(it)
+                    platform.withdrawn(it.alert.source, it.alert.key)
+                }
                 val entry = Entry(alert, silencedUntil = maxOf(storedSilence(alert), takePendingShared(alert), takePendingTap(alert)))
                 entries[id] = entry
                 publish()
@@ -503,12 +541,18 @@ class AlertsImpl(
         schedulePauseEnd()
     }
 
-    /** Caller holds [lock]. The pause of [ids] is over: their active alerts ring, unless the user silenced one. */
+    /**
+     * Caller holds [lock]. The pause of [ids] is over: their active alerts ring, unless the user silenced one. That one
+     * is booked again at the end of its silence: the pause had moved its re-ring to the pause end, so after an early
+     * Resume it rang late when the app did not run - 16 minutes on iOS (2026-11-27). The new booking replaces the old.
+     */
     private fun ringAfterPause(ids: Set<String>) {
         val now = dateUtil.now()
         entries.values.filter { it.alert.kind.id in ids }.forEach { entry ->
-            if (entry.silencedUntil > now) showCard(entry, ring = false)
-            else {
+            if (entry.silencedUntil > now) {
+                if (choiceFor(entry.alert).rings) platform.snoozed(entry.alert, entry.silencedUntil)
+                showCard(entry, ring = false)
+            } else {
                 platform.withdrawn(entry.alert.source, entry.alert.key)
                 showCard(entry, ring = true)
             }
@@ -531,9 +575,7 @@ class AlertsImpl(
     override fun schedule(alert: Alert, at: Long): Boolean = lock.withLock {
         val id = alert.source to alert.key
         val map = storedBookings()
-        // A kind the user made silent or turned off books nothing that rings by itself (iOS); the core still raises it
-        val ring = choiceFor(alert) == AlertChoice.RING && alert.severity != AlertSeverity.INFO
-        if (!platform.book(alert, at, ring)) {
+        if (!bookOnPlatform(alert, at)) {
             aapsLogger.warn(LTag.NOTIFICATION, "Alert ${alert.source}/${alert.key} not booked: the phone cannot book it")
             return false
         }
@@ -544,6 +586,22 @@ class AlertsImpl(
         startTimer(booking)
         aapsLogger.debug(LTag.NOTIFICATION, "Alert ${alert.source}/${alert.key} booked for ${dateUtil.dateAndTimeString(at)}")
         true
+    }
+
+    /**
+     * Caller holds [lock]. What the phone holds for a booking, by this phone's choice now. A kind the user made silent
+     * books nothing that rings by itself (iOS). A kind that is off books nothing at all: it is not shown, so nothing may
+     * come on the phone's screen at that time either; the core's own timer still raises it. False: the phone cannot
+     * book it.
+     */
+    private fun bookOnPlatform(alert: Alert, at: Long): Boolean {
+        val choice = choiceFor(alert)
+        if (choice == AlertChoice.OFF) {
+            // One booked while the kind was on may still be set on the phone
+            platform.unbook(alert.source, alert.key)
+            return true
+        }
+        return platform.book(alert, at, ring = choice.rings && alert.severity != AlertSeverity.INFO)
     }
 
     override fun unschedule(source: String, key: String) = lock.withLock {
@@ -624,6 +682,8 @@ class AlertsImpl(
             return
         }
         val quiet = choice == AlertChoice.SILENT
+        // Rings as usual, alarm screen and chime included, but the phone and the watch only vibrate
+        val vibrate = choice == AlertChoice.VIBRATE
         val silenced = entry.silencedUntil > dateUtil.now()
         val level = when {
             // A silent kind is never the alarm tier: an URGENT card is only the card of an alert that rings
@@ -648,7 +708,8 @@ class AlertsImpl(
             canMute = alert.canMute,
             tellWatch = alert.tellWatch,
             breakThroughDnd = alert.breakThroughDnd,
-            systemText = systemText(alert)
+            systemText = systemText(alert),
+            vibrateOnly = vibrate
         )
         val pausedUntil = storedPauses()[alert.kind.id] ?: 0L
         when {
@@ -658,7 +719,7 @@ class AlertsImpl(
             silenced                                                -> scheduleSilenceEnd(entry)
             !ring                                                   -> Unit
             alert.severity == AlertSeverity.CRITICAL -> platform.showAlarmScreen(alert)
-            alert.severity == AlertSeverity.WARNING  -> platform.chime(alert, soundFor(alert), ringtoneFor(alert))
+            alert.severity == AlertSeverity.WARNING  -> platform.chime(alert, soundFor(alert), ringtoneFor(alert), vibrateOnly = vibrate)
             else                                                    -> Unit
         }
     }
@@ -708,6 +769,22 @@ class AlertsImpl(
         platform.withdrawn(entry.alert.source, entry.alert.key)
         aapsLogger.debug(LTag.PUMP, "Pump alert silence ended, it rings again: ${entry.alert.source}/${entry.alert.key}")
         showCard(entry, ring = true)
+    }
+
+    /**
+     * Caller holds [lock]. [entry] has no card now and keeps none until its silence ends: silenced for its usual length
+     * unless it already is, its chime taken back with the card, and its re-ring booked. When the silence ends,
+     * [endSilence] shows the card again and rings.
+     */
+    private fun hideUntilSilenceEnds(entry: Entry) {
+        if (entry.silencedUntil <= dateUtil.now()) {
+            entry.silencedUntil = dateUtil.now() + entry.alert.silenceMinutes * 60_000L
+            rememberSilence(entry.alert, entry.silencedUntil)
+        }
+        // Withdrawn first: it takes the booking of the re-ring as well, which is then made again
+        platform.withdrawn(entry.alert.source, entry.alert.key)
+        platform.snoozed(entry.alert, entry.silencedUntil)
+        scheduleSilenceEnd(entry)
     }
 
     /** Caller holds [lock]. */
@@ -781,8 +858,17 @@ class AlertsImpl(
                 // Read, and nothing to do about it.
                 alert.severity == AlertSeverity.INFO && alert.action == null -> Unit
 
-                else                                                             -> {
-                    aapsLogger.debug(LTag.PUMP, "Pump alert card removed while active, shown again silenced: ${alert.source}/${alert.key}")
+                // A kind the user may silence: removing its card means "not now". It stays away while it is silenced
+                // and comes back with the ring when the silence ends, if it is still active. Shown again at once, the
+                // carbs required card could not be cleared at all (decided 2026-11-25).
+                !alert.kind.isProtected                                      -> {
+                    aapsLogger.debug(LTag.NOTIFICATION, "Alert card removed, hidden until its silence ends: ${alert.source}/${alert.key}")
+                    hideUntilSilenceEnds(entry)
+                }
+
+                // A safety kind keeps its card for as long as it lasts.
+                else                                                         -> {
+                    aapsLogger.debug(LTag.NOTIFICATION, "Protected alert card removed while active, shown again silenced: ${alert.source}/${alert.key}")
                     if (entry.silencedUntil > dateUtil.now()) showCard(entry, ring = false)
                     else silenceEntry(entry, alert.silenceMinutes)
                 }
@@ -868,13 +954,20 @@ class AlertsImpl(
             _choices.value = it.toMap()
         }
 
-    /** Caller holds [lock]. What this phone does with [alert]; a protected kind always rings. */
-    /** Caller holds [lock]. A paused kind that rings is Silent while its pause lasts. */
-    private fun choiceFor(alert: Alert): AlertChoice {
-        if (alert.kind.isProtected) return AlertChoice.RING
-        val chosen = storedChoices()[alert.kind.id] ?: AlertChoice.RING
-        val paused = (storedPauses()[alert.kind.id] ?: 0L) > dateUtil.now()
-        return if (chosen == AlertChoice.RING && paused) AlertChoice.SILENT else chosen
+    /**
+     * Caller holds [lock]. What this phone does with [alert] by [choices]: its kind's own choice (an exception, or the
+     * choice of a kind with no group), else its group's, else its kind's default (Ring; Off for missed BG readings). A
+     * protected kind always rings. Vibrate rings where
+     * the phone cannot vibrate (a choice imported from another phone). A paused kind that rings is Silent while its
+     * pause lasts.
+     */
+    private fun choiceFor(alert: Alert, choices: Map<String, AlertChoice> = storedChoices()): AlertChoice {
+        val kind = alert.kind
+        if (kind.isProtected) return AlertChoice.RING
+        val stored = choices[kind.id] ?: kind.group?.let { choices[it.id] } ?: kind.defaultChoice
+        val chosen = if (stored == AlertChoice.VIBRATE && !platform.canVibrate) AlertChoice.RING else stored
+        val paused = (storedPauses()[kind.id] ?: 0L) > dateUtil.now()
+        return if (chosen.rings && paused) AlertChoice.SILENT else chosen
     }
 
     // ---- the pauses -----------------------------------------------------------------------------
@@ -906,8 +999,8 @@ class AlertsImpl(
 
     private fun loadChoices(): MutableMap<String, AlertChoice> = try {
         Json.parseToJsonElement(preferences.get(StringNonKey.AlertChoices)).jsonObject
+            // Ring stays: it is how an exception rings while its group does not
             .mapNotNull { (id, value) -> AlertChoice.entries.firstOrNull { it.name == value.jsonPrimitive.content }?.let { id to it } }
-            .filter { it.second != AlertChoice.RING }
             .toMap(mutableMapOf())
     } catch (e: Exception) {
         aapsLogger.error(LTag.NOTIFICATION, "Stored alert choices unreadable, every kind rings", e)

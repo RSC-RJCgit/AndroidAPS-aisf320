@@ -186,8 +186,13 @@ enum class StringNonKey(
     AlertBookings(key = "alert_bookings", defaultValue = "[]", exportable = false),
     // The user's own BG rules (BgAlarmRules), a JSON list. One list for every phone, so a silence given everywhere is
     // for the same alarm (step 2f): set on the master or by an Admin client (Bidirectional, the master decides last
-    // writer wins) and synced to every phone; exported with the master's settings.
-    BgAlarmRules(key = "bg_alarm_rules", defaultValue = "[]", exportable = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // writer wins) and synced to every phone; exported with the master's settings. Empty: never set, so the default
+    // rules (`BgAlarmRules.DEFAULT`, decided 2026-11-26); "[]" is a list the user emptied, which stays empty.
+    BgAlarmRules(key = "bg_alarm_rules", defaultValue = "", exportable = true, sync = SyncSpec(SyncChannel.Cold, SyncDirection.Bidirectional)),
+    // The optional permissions the user declined with "Not now" on this phone (PermissionGroup.optional), the
+    // permission names one per line. Such a one no longer opens the permissions sheet by itself. Not exportable and not
+    // synced: a permission belongs to this phone.
+    PermissionsDeclined(key = "permissions_declined", defaultValue = "", exportable = false),
 
     // Source profile units for Trio status conversion, scoped to its Nightscout URL and profile start time.
     NsClientTrioProfileUnits(key = "nsclient_trio_profile_units", defaultValue = "", exportable = false),

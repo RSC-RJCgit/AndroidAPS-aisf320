@@ -1,7 +1,6 @@
 package app.aaps.implementation.alerts
 
 import app.aaps.core.interfaces.alerts.AlertSeverity
-import app.aaps.core.interfaces.alerts.Alerts
 import app.aaps.core.interfaces.alerts.BgAlarmRule
 import app.aaps.core.interfaces.alerts.BgAlarmRules
 import app.aaps.core.interfaces.alerts.BgDirection
@@ -34,7 +33,8 @@ import kotlinx.serialization.json.put
 
 /**
  * The user's BG level rules, stored as a JSON list in [StringNonKey.BgAlarmRules]. The key is synced from the master,
- * so a client sees the master's rules here too, and a change from the master comes through [rules].
+ * so a client sees the master's rules here too, and a change from the master comes through [rules]. Never stored: the
+ * default rules ([BgAlarmRules.DEFAULT]); a list the user emptied stays empty.
  *
  * Read on first use, not when the object graph is built.
  */
@@ -57,7 +57,7 @@ class BgAlarmRulesImpl(
         preferences.put(StringNonKey.BgAlarmRules, toJson(rules))
     }
 
-    internal fun parse(raw: String): List<BgAlarmRule> = try {
+    internal fun parse(raw: String): List<BgAlarmRule> = if (raw.isEmpty()) BgAlarmRules.DEFAULT else try {
         Json.parseToJsonElement(raw).jsonArray.mapNotNull { element ->
             val o = element.jsonObject
             // One rule that cannot be read is dropped, not the whole list
@@ -68,19 +68,31 @@ class BgAlarmRulesImpl(
         emptyList()
     }
 
-    private fun JsonObject.toRule() = BgAlarmRule(
-        id = getValue("id").jsonPrimitive.content,
-        direction = BgDirection.valueOf(getValue("direction").jsonPrimitive.content),
-        thresholdMgdl = getValue("thresholdMgdl").jsonPrimitive.double,
-        severity = AlertSeverity.valueOf(getValue("severity").jsonPrimitive.content),
-        fromMinute = get("fromMinute")?.jsonPrimitive?.int,
-        toMinute = get("toMinute")?.jsonPrimitive?.int,
-        durationMinutes = get("durationMinutes")?.jsonPrimitive?.int ?: 0,
-        silenceMinutes = get("silenceMinutes")?.jsonPrimitive?.int ?: Alerts.SILENCE_MINUTES,
-        enabled = get("enabled")?.jsonPrimitive?.boolean ?: true,
+    private fun JsonObject.toRule(): BgAlarmRule {
+        val direction = BgDirection.valueOf(getValue("direction").jsonPrimitive.content)
         // Stored before there were types: a level rule
-        type = get("type")?.jsonPrimitive?.content?.let { BgRuleType.valueOf(it) } ?: BgRuleType.LEVEL
-    )
+        val type = get("type")?.jsonPrimitive?.content?.let { BgRuleType.valueOf(it) } ?: BgRuleType.LEVEL
+        val duration = get("durationMinutes")?.jsonPrimitive?.int ?: 0
+        // A level rule has no delay any more (decided 2026-11-27). A high stored with one meant "only if it stays
+        // high", which is persistent high now; a low rings at once, the safe side.
+        val delayedHigh = type == BgRuleType.LEVEL && direction == BgDirection.HIGH && duration > 0
+        return BgAlarmRule(
+            id = getValue("id").jsonPrimitive.content,
+            direction = direction,
+            thresholdMgdl = getValue("thresholdMgdl").jsonPrimitive.double,
+            severity = AlertSeverity.valueOf(getValue("severity").jsonPrimitive.content),
+            fromMinute = get("fromMinute")?.jsonPrimitive?.int,
+            toMinute = get("toMinute")?.jsonPrimitive?.int,
+            durationMinutes = when {
+                delayedHigh              -> maxOf(duration, BgAlarmRule.PERSISTENT_HIGH_MIN_MINUTES)
+                type == BgRuleType.LEVEL -> 0
+                else                     -> duration
+            },
+            // "silenceMinutes" of an older rule is not read: the kind decides now (BgAlert.silenceMinutes)
+            enabled = get("enabled")?.jsonPrimitive?.boolean ?: true,
+            type = if (delayedHigh) BgRuleType.PERSISTENT_HIGH else type
+        )
+    }
 
     internal fun toJson(rules: List<BgAlarmRule>): String = buildJsonArray {
         rules.forEach { r ->
@@ -92,7 +104,6 @@ class BgAlarmRulesImpl(
                 r.fromMinute?.let { put("fromMinute", it) }
                 r.toMinute?.let { put("toMinute", it) }
                 put("durationMinutes", r.durationMinutes)
-                put("silenceMinutes", r.silenceMinutes)
                 put("enabled", r.enabled)
                 put("type", r.type.name)
             })

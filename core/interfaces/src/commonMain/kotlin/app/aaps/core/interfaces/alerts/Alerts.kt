@@ -31,9 +31,10 @@ enum class AlertSeverity {
 enum class AlertLifetime {
 
     /**
-     * The raiser owns it: it lasts until the pump drops it or its action clears it. Removing its card - a swipe,
-     * "mute all alarms", the sheet closing - does not end it; it counts as a silence and the card comes back without
-     * sound, because the condition is still there. Every pump alert is one of these.
+     * The raiser owns it: it lasts until the pump drops it or its action clears it. Removing its card - Dismiss, a
+     * swipe, "mute all alarms" - does not end it; it counts as a silence. A protected kind's card comes back at once
+     * without sound, because the condition is still there; any other kind's card stays away until the silence ends
+     * and comes back with the ring (decided 2026-11-25). Every pump alert is one of these.
      */
     CONDITION,
 
@@ -69,13 +70,20 @@ enum class AlertOrigin {
 }
 
 /**
- * A kind of alert, as the user sees it in the alert settings. On each phone the user chooses [AlertChoice] per kind
- * (`_docs/ALARMS.md`, section 6). Each raiser has its own catalogue: [CoreAlert] for the app, one for each driver.
+ * A kind of alert. On each phone the user chooses [AlertChoice] for its [group], or for the kind itself when it has no
+ * group or is an exception (`_docs/ALARMS.md`, section 6). Each raiser has its own catalogue: [CoreAlert] for the app,
+ * one for each driver.
  */
-interface AlertKind {
+interface AlertKind : AlertSetting {
 
-    /** Unique in the whole app and stable: the user's choice is stored under it. Never change it. */
-    val id: String
+    /** Unique in the whole app and stable: an exception the user set for it is stored under it. Never change it. */
+    override val id: String
+
+    /** The group whose choice and sound it follows, or null for a kind that is its own row in the settings. */
+    val group: AlertGroup? get() = null
+
+    /** Where the settings show it: its group's section, else the app's. */
+    val section: AlertSection get() = group?.section ?: AlertSection.APP
 
     /** Who raises alerts of this kind: "aaps", or a driver's id ("carelevo"). */
     val source: String
@@ -84,14 +92,14 @@ interface AlertKind {
     val origin: AlertOrigin
 
     /** Its name in the alert settings. */
-    val title: TextRef
+    override val title: TextRef
 
     /**
      * A safety kind: urgent low, or a kind with an event that affects dosing ([DosingEffect.affectsDosing]: insulin
      * delivery stopped or not safe, no BG or a BG that cannot be trusted). It always rings: the user cannot set it to
-     * Silent or Off. A ringing one is still silenced for a while, as every alert.
+     * Silent or Off. A ringing one is still silenced for a while, as every alert. The same as its group's.
      */
-    val isProtected: Boolean
+    override val isProtected: Boolean
 
     /**
      * Whether the core writes the announcement of an alert of this kind (on the master, while "Create announcements
@@ -101,17 +109,27 @@ interface AlertKind {
     val announced: Boolean get() = true
 }
 
-/** What the user chose for a kind of alert, on this phone only. */
+/** What the user chose for a kind of alert, on this phone only. Stored by name: never rename one. */
 enum class AlertChoice {
 
     /** The default: as its severity says. */
     RING,
 
+    /**
+     * As [RING], with the phone and the watch vibrating instead of making a sound (decided 2026-11-26): an alarm
+     * vibrates until it is answered, a chime once. Only where the phone can vibrate ([AlertPlatform.canVibrate]); where
+     * it cannot, it rings.
+     */
+    VIBRATE,
+
     /** A card only: no sound, no alarm screen, and the watch is not told. */
     SILENT,
 
     /** Not shown. It is still written to the log and the history. */
-    OFF
+    OFF;
+
+    /** It rings, by sound or by vibration: its alarm screen and chime come as usual. */
+    val rings: Boolean get() = this == RING || this == VIBRATE
 }
 
 /** A step the user can start from the alert, for example "clear the alarm on the patch" or "+5 min". */
@@ -148,7 +166,8 @@ class Alert(
      */
     val notificationTitle: String? = null,
     /**
-     * Whether this alarm can be delayed: the "Mute 5 min" button on the alarm screen, and Mute on the watch.
+     * Whether this alarm can be delayed: the "Mute 5 min" button on the alarm screen of an alarm that ends when it is
+     * answered ([AlertLifetime.EVENT]; one that lasts has a button per silence length instead), and Mute on the watch.
      *
      * False for an alarm whose own action is already the delay - the "time to eat" timer, where "+5 min" moves the
      * timer rather than ringing the same reminder again, and two buttons five minutes apart would only confuse.
@@ -170,8 +189,9 @@ class Alert(
      */
     val sound: AlarmSound? = null,
     /**
-     * How long Silence lasts when the user does not pick a length: the alarm screen starts from it, and a swipe, the
-     * watch and the card use it. A BG alarm takes it from its rule (an urgent low short, a high longer).
+     * How long a silence lasts where the user does not pick a length: a swipe, the watch and the card. The alarm screen
+     * has a button per length instead. A BG alarm takes it from its kind (`BgAlert.silenceMinutes`: an urgent low short,
+     * a high longer).
      */
     val silenceMinutes: Int = Alerts.SILENCE_MINUTES,
     /** Rings in Do Not Disturb and silent mode whatever the user's override setting says. Urgent low only. */
@@ -198,14 +218,22 @@ interface Alerts {
      */
     val active: StateFlow<List<Alert>>
 
-    /** The user's choices on this phone, by [AlertKind.id]. A kind that is not in it rings. */
+    /**
+     * The user's choices on this phone, by [AlertSetting.id]: of a group, of a kind with no group, and of a kind set
+     * apart from its group (an exception, which may also be Ring). A kind does what its own entry, else its group's,
+     * says, else its [AlertSetting.defaultChoice].
+     */
     val choices: StateFlow<Map<String, AlertChoice>>
 
     /**
-     * Sets what this phone does with alerts of [kind], and applies it at once to the ones that are active. A protected
-     * kind always rings, so the call is ignored for it.
+     * Sets what this phone does with alerts of [setting], and applies it at once to the ones that are active. For a
+     * kind of a group it is an exception, kept until [clearChoice]. A protected one always rings, so the call is
+     * ignored for it.
      */
-    fun setChoice(kind: AlertKind, choice: AlertChoice)
+    fun setChoice(setting: AlertSetting, choice: AlertChoice)
+
+    /** Removes the exception of [kind]: it follows its group again, or rings when it has none. Applied at once. */
+    fun clearChoice(kind: AlertKind)
 
     /**
      * The pauses on this phone: kind id to the end of its pause (epoch ms). A paused kind that rings is
@@ -224,22 +252,25 @@ interface Alerts {
     fun resume(kinds: Collection<AlertKind>)
 
     /**
-     * The sound the user chose for each kind on this phone (`_docs/ALARMS.md`, step 2e), by kind id. A kind that is not
-     * in it plays its alert's own sound. Each phone its own, as the choice to ring.
+     * The sound the user chose on this phone (`_docs/ALARMS.md`, step 2e), by [AlertSetting.id]: a kind of a group
+     * plays its group's, any other kind its own. One that is not in it plays its alert's own sound. Each phone its own,
+     * as the choice to ring.
      */
     val sounds: StateFlow<Map<String, AlertSound>>
 
-    /** Sets the sound of [kind] on this phone; null: the alert's own sound again. It applies from the next ring. */
-    fun setSound(kind: AlertKind, sound: AlertSound?)
+    /** Sets the sound of [setting] on this phone; null: the alert's own sound again. It applies from the next ring. */
+    fun setSound(setting: AlertSetting, sound: AlertSound?)
 
     /**
-     * Plays [kind]'s sound on this phone as an alert of [severity] would ring, for [TEST_SECONDS]: CRITICAL the alarm
-     * sound, WARNING the chime. It follows the same Do Not Disturb rule as a real alert. Nothing is played while an
-     * alarm is sounding: a test must never stop a real one.
+     * Plays [kind]'s sound on this phone (its group's, when it has one) as an alert of [severity] would ring, for
+     * [TEST_SECONDS]: CRITICAL the alarm sound, WARNING the chime. The user asked for it, so it sounds also in Do Not
+     * Disturb, whatever the override says (decided 2026-11-26). [vibrate]: it vibrates instead, with no sound, as a
+     * kind set to Vibrate rings; where the phone cannot vibrate it plays the sound. Nothing is played while an alarm
+     * is sounding: a test must never stop a real one.
      *
      * @return false when nothing was played because an alarm is sounding
      */
-    fun test(kind: AlertKind, severity: AlertSeverity): Boolean
+    fun test(kind: AlertKind, severity: AlertSeverity, vibrate: Boolean = false): Boolean
 
     /**
      * "Silence everywhere" (`_docs/ALARMS.md`, step 2f): silences the alert on this phone at once, as [silence] does,
@@ -333,8 +364,14 @@ interface Alerts {
         /** The longest silence of a protected kind: insulin delivery stopped or not safe must not wait long. */
         const val PROTECTED_SILENCE_MAX_MINUTES = 30
 
-        /** The silence lengths the alarm screen offers, in minutes (decided 2026-11-22). */
-        private val SILENCE_LENGTHS = listOf(15, 30, 60, 120, 240)
+        /**
+         * The silence lengths the alarm screen offers, in minutes: one button each, one tap silences and closes
+         * (decided 2026-11-26; it was a row of five to pick from, then a button).
+         */
+        private val SILENCE_LENGTHS = listOf(15, 30, 60)
+
+        /** How long "Silence all BG alarms" on the alarm screen pauses them, in minutes (decided 2026-11-26). */
+        const val SILENCE_ALL_MINUTES = 60
 
         /**
          * The silence buttons on the notification of a WARNING alert that lasts (CONDITION), in minutes: the three
@@ -354,14 +391,22 @@ interface Alerts {
  */
 interface AlertPlatform {
 
+    /**
+     * Whether the phone can vibrate without a sound, also from the background, for [AlertChoice.VIBRATE]. Android
+     * can. iOS cannot (a notification without a sound does not vibrate) and the desktop has nothing to vibrate, so
+     * they do not offer the choice, and a Vibrate stored on another phone rings there.
+     */
+    val canVibrate: Boolean get() = false
+
     /** A CRITICAL alert rings: bring up the alarm screen for it, also when the app is in the background. */
     fun showAlarmScreen(alert: Alert)
 
     /**
      * A WARNING alert: show it as a system notification with one sound: [sound], or on Android the user's ringtone
-     * [ringtoneUri], with [sound] as its fallback.
+     * [ringtoneUri], with [sound] as its fallback. [vibrateOnly]: it vibrates once instead, with no sound.
+     * [breakThroughDnd]: it sounds in Do Not Disturb whatever the override says, for a test the user asked for.
      */
-    fun chime(alert: Alert, sound: AlarmSound, ringtoneUri: String? = null)
+    fun chime(alert: Alert, sound: AlarmSound, ringtoneUri: String? = null, vibrateOnly: Boolean = false, breakThroughDnd: Boolean = false)
 
     /**
      * The alert is silenced until [until] (epoch ms). The core rings it again itself when the time comes, but only

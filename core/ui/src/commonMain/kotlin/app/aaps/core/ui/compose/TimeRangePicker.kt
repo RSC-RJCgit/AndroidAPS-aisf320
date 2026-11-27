@@ -26,7 +26,7 @@ import app.aaps.core.ui.compose.dialogs.TimePickerModal
  * Time range picker for selecting a start and end time (e.g., valid hours for QuickWizard).
  * Displays the selected range and opens dialogs to edit start/end times.
  *
- * @param label Label text displayed above the picker
+ * @param label Label text displayed above the picker; null shows none, as where a checkbox above already says it
  * @param startSeconds Start time in seconds from midnight
  * @param endSeconds End time in seconds from midnight
  * @param onStartChange Callback when start time changes
@@ -35,7 +35,7 @@ import app.aaps.core.ui.compose.dialogs.TimePickerModal
  */
 @Composable
 fun TimeRangePicker(
-    label: String,
+    label: String?,
     startSeconds: Int,
     endSeconds: Int,
     onStartChange: (Int) -> Unit,
@@ -43,6 +43,8 @@ fun TimeRangePicker(
     modifier: Modifier = Modifier
 ) {
     val dateUtil = LocalDateUtil.current
+    // The clock as the phone shows time, as the times above it: a 24-hour dial under "10:00 PM" was wrong (2026-11-27)
+    val is24Hour = is24HourClock()
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
 
@@ -51,12 +53,14 @@ fun TimeRangePicker(
     val endTimeString = dateUtil.timeString(dateUtil.secondsOfTheDayToMillisecondsOfHoursAndMinutes(endSeconds))
 
     Column(modifier = modifier) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+        if (label != null) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         OutlinedCard(
             modifier = Modifier.fillMaxWidth()
@@ -127,7 +131,7 @@ fun TimeRangePicker(
             onDismiss = { showStartPicker = false },
             initialHour = currentHour,
             initialMinute = currentMinute,
-            is24Hour = true
+            is24Hour = is24Hour
         )
     }
 
@@ -144,7 +148,7 @@ fun TimeRangePicker(
             onDismiss = { showEndPicker = false },
             initialHour = currentHour,
             initialMinute = currentMinute,
-            is24Hour = true
+            is24Hour = is24Hour
         )
     }
 }

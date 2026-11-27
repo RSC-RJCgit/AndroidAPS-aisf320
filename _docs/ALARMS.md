@@ -85,8 +85,10 @@ which ring only while the app runs. Its only sound is the system beep.
 - **The alarm screen over another app (Android).** Android does not let an app in the background put a screen over
   another app (#5338): the alarm rings, its notification pops up with Mute, and the alarm screen shows when AAPS is
   opened. On a locked phone the screen wake brings it up. Since 2026-11-22 the user can allow "Display over other
-  apps" (Settings > Local alerts), and then the alarm screen opens at once also over another app (checked on the
-  Pixel, Android 16: `BAL_ALLOW_SAW_PERMISSION`). It is optional: AAPS does not ask for it.
+  apps" (Settings > Alerts), and then the alarm screen opens at once also over another app (checked on the
+  Pixel, Android 16: `BAL_ALLOW_SAW_PERMISSION`). It is optional, but recommended since 2026-11-26: the permissions
+  sheet lists it as "Recommended" with "Not now" (`PermissionGroup.optional`). Declined, it no longer opens the sheet
+  by itself, and stays in the list and under Alerts.
 - **Eversense** raises its transmitter's alarms as alerts since 2026-11-24 (step 5), sorted by what they do to
   dosing. Its glucose alarms went: AAPS's own BG alarms raise those.
 - **Nightscout alarms** were the glucose alarms of an AAPSClient until 2026-11-23. Every phone has its own BG alarms
@@ -133,6 +135,12 @@ Alerts keep their three severities: CRITICAL, WARNING, INFO. The list of cards h
   15 and 30 min, and the core never silences it for longer than 30 min, whoever asks. A swipe, the watch and the card
   silence for 30 min. One of the app's own alarms ends when it is answered, so it has no row. The alert's own
   default (a high longer, an urgent low shorter) comes with the BG alarms, its first user.
+  Changed 2026-11-26 (the user: "you have to decide upfront snooze time"): one button per length, 15 min, 30 min and
+  1 h (a protected kind 15 and 30), and one tap silences and closes; no row to pick from, no Mute 5 min. A BG alarm
+  adds "On every phone", a checkbox for those buttons, and "Silence all BG alarms for 1 h", a pause of this phone
+  that never takes urgent low (`AlertScreen`). A rule has no silence length any more: where there is no button (a
+  swipe, the watch, Mute), the BG kind decides (`BgAlert.silenceMinutes`: urgent low 15 min, lows and missed
+  readings 30 min, highs 1 h). The pause planned ahead is only "Pause all for…" on the BG alarms screen.
 - **Scheduled alerts: ring at a time, unless cancelled before.** The platform books it in advance (a local
   notification on iOS, `AlarmManager` on Android), so it rings also when the app cannot run. It replaces four
   mechanisms of their own: `IosMissedReadingAlarm`, the eat reminder alarms, the automation reminder
@@ -177,6 +185,60 @@ that fails rings before the next try succeeds.
     Six names still show two or three times ("Low Insulin", "Low Battery", "Patch Error", ...) because the patch has
     a string per tier; every such row is protected, so none can be silenced without its twin.
   - The ids are pinned by tests (`CoreAlertTest`, `CarelevoAlertKindTest`): a renamed id would drop what users chose.
+- **Groups, not one row per kind** (decided 2026-11-26). One row per kind was 78 rows, most of them vendor names and
+  most of them protected. The settings now have four sections:
+  - **Pump** and **CGM**, each with three groups (`AlertGroup`):
+    - Critical: dosing affected now or soon, protected.
+    - Needs action: a reminder, something to check.
+    - Info: Show or Off only, because an info card has no sound.
+
+    A driver's kind is in the group of its effects (`AlertGroup.of`, decision 14), so a new driver needs no settings
+    of its own, and the settings stay when the user changes the pump. The app's own alerts about the pump (bolus
+    failed, profile not set, pump unreachable, ...) are in the pump's groups: for the user they are the pump's alerts.
+  - **BG alarms**: urgent low (protected), the lows and the highs as groups (the same sets the Pause buttons pause),
+    missed readings. Each card holds when the alarm rings next to how this phone rings it (decided 2026-11-26, it
+    was in three places): urgent low its threshold, the lows and the highs their rules, missed readings its minutes.
+    The rules and the urgent low threshold are the same on every phone, so the card says so and draws a line above
+    "On this phone"; on a client without the Admin role they are read-only, how it rings is not. The pause planned
+    ahead is "Pause all for…", a dialog that says how a pause works, with one tap per length (decided 2026-11-26: a
+    card of chips picked in advance looked as if something was paused; a pause per card went again the same day, as
+    a ringing alarm is silenced from its own screen). It and "Reset rules to default" are the screen's actions,
+    pinned at the bottom with the shared `ActionButtons`, as on the pump and sync screens (decided 2026-11-27: they
+    were an outlined button on top and a text button at the end, neither like the rest of AAPS). While a pause
+    lasts, "Paused until 21:30" is over them, and the pause button is Resume. The urgent low threshold and the
+    missed readings left Local alerts, and the BG alarm rules screen is this one.
+    **Default rules** (decided 2026-11-26): a phone that never stored rules has low below 70 mg/dl as an alarm, high
+    above 250 mg/dl and predicted low below 70 within 20 minutes with one sound (`BgAlarmRules.DEFAULT`, fixed ids);
+    also a phone updated from a version without rules. A list the user emptied stays empty. "Reset rules to default"
+    (asks first, hidden on a read-only client) stores them, so they sync as any change does. It is always there,
+    greyed when it would change nothing (decided 2026-11-27: hidden then, nobody found it). A rule row is as in Automation and Scenes: a checkbox to turn it on and off first, a
+    pencil at the end, and a tap on the row opens it (it had a switch only, and did not look as if it could be opened).
+  - **AAPS**: the app's other alerts, one row each (time to eat, automation alarm, carbs not saved, carbs required),
+    and the Nightscout announcement. Hard limit is not an alert any more (decided 2026-11-26): it comes right after the
+    user changed a setting (patient age, profile, profile switch, imported settings), so it is a card, not an alarm
+    that chimed at every loop run. A red card with no sound while the loop does not run for it, which says what to
+    change; a plain card for a target limited to the limit; each goes by itself when the value is back
+    (`HardLimitsImpl`). A stored choice of the old kind is removed (`PreferenceMigrations.hardLimitAlertRetired`).
+  - Alert kinds is a list of these four parts, each opening its own screen, as the settings of AAPS are (decided
+    2026-11-26). The entry of a part says its devices or what it holds, and how many of its settings are silent or
+    off on this phone. Each row of a part is a card, as the other lists of AAPS (with only spacing, a row's sound
+    line ran into the next row).
+  - **Exceptions:** one kind of a group can be set apart, from the alarm screen ("Silence this kind") or with "Add
+    exception" in its group's card, where it is then listed. Its own choice wins over its group's, also when it is Ring. The ✕ removes it. The
+    choice of a kind is its exception, else its group's, else its default (`AlertsImpl.choiceFor`): Ring, but Off for
+    missed readings (`AlertSetting.defaultChoice`), which was off until the user turned it on. Choices and sounds of
+    groups and kinds share the same stored maps, under the `AlertSetting` id; a group's id starts with `group.`.
+  - **Missed BG readings** lost its switch "Alert if no BG data is received" (decided 2026-11-26): Off is its
+    choice, so it was off twice. A phone that had the switch on gets Ring stored, one that had it off stays Off
+    (`PreferenceMigrations.missedBgReadingsAlert`, also on an import). A kind that is Off books nothing on the phone
+    (`AlertsImpl.bookOnPlatform`): iOS showed a silent notice for it at the booked time.
+- **Vibrate** (decided 2026-11-26), a fourth choice between Ring and Silent: it rings as Ring does (alarm screen,
+  urgent card, chime), but the phone and the watch make no sound. An alarm vibrates in a loop until it is answered
+  (`AlarmSoundPlayer.vibrate`, on the alarm usage); a chime vibrates once (the silent chime channel); the watch gets
+  `AlarmRinging.vibrateOnly` and posts on its vibration-only channel. Offered only where `AlertPlatform.canVibrate`:
+  Android with a vibrator. iOS cannot vibrate without a sound from a background notification and the desktop has
+  nothing to vibrate, so they do not offer it, and a Vibrate that came with settings from another phone rings there
+  (the core maps it to Ring, the players play the sound). Not counted as silent or off.
 - **Three choices per kind:** Ring (the default), Silent (a card, no sound, no alarm screen, the watch not told), Off
   (not shown). A silent card is IMPORTANT at most, never URGENT. An alert that is off stays in `Alerts.active`, so its
   raiser resolves it as any other. A choice changed while the alert is active applies at once. Stored in
@@ -190,7 +252,7 @@ that fails rings before the next try succeeds.
 - **Applied in one place**, the alert core. A driver or a rule does nothing for it.
 - **Off is not lost.** An alert that is off is still written to the log and the history; it is only not shown.
 - **Visible.** The alert settings and a line at the top of the notification sheet say how many kinds are silent or
-  off, so a choice is not forgotten (decided 2026-11-22: the sheet, not a new icon on the overview). The line leads to
+  off (since 2026-11-26: groups, kinds and exceptions that are not Ring, and paused kinds), so a choice is not forgotten (decided 2026-11-22: the sheet, not a new icon on the overview). The line leads to
   the list. It shows only while the sheet has cards, because the sheet does not open without them.
 - **Where the user chooses** (decided 2026-11-22): the list in the settings, and on the alarm screen of a kind that is
   not protected, "Silence this kind on this phone": the moment it rings is when the user wants to say "not this
@@ -201,8 +263,8 @@ that fails rings before the next try succeeds.
   its silence ends (found on the Pixel, 2026-11-22).
 - **No delay in the core.** An alert is shown when it is raised. A kind that is noise for one user is silenced by
   that user. The trade-off: a user who silences "profile update failed" also gets a real, lasting failure as a silent
-  card only. (The BG rules keep their own "how long the condition must last"; that is part of a rule, not of the
-  core.)
+  card only. (Persistent high keeps its own "how long the condition must last"; that is part of the rule, not of
+  the core.)
 
 ### Review of today's notification ids (2026-11-21)
 
@@ -306,7 +368,7 @@ rings because of it (decided 2026-11-21: acceptable).
 
 | Source | Raises | Lifetime | Severity |
 |---|---|---|---|
-| A pump driver (`"carelevo"`, ...) | Its pump's alerts (`PUMP_DRIVER_ACCEPTANCE.md`, A1-A6) | CONDITION | From the pump |
+| A pump driver (`"carelevo"`, ...) | Its pump's alerts (`PUMP_DRIVER_ACCEPTANCE.md`, A1-A10) | CONDITION, or EVENT for a message only to read | From the pump's `DosingEffect` |
 | A CGM driver (`"eversense"`, ...) | **Device and error states only**: sensor failed or expired, battery, calibration, transmitter off the sensor. **Never** a glucose or a missed-readings alarm | CONDITION, or EVENT when the transmitter never says an alarm ended | From the transmitter |
 | `"bg"`: AAPS's own BG alarms | Urgent low, low, high, urgent high, stale data, falling or rising fast, predictive low | CONDITION, with a margin so it does not flap | Urgent low always CRITICAL; the others as the user sets them; never INFO |
 | `"aaps"`: the core | Pump unreachable, the pump driver not responding, zero delivery not set | CONDITION | CRITICAL or WARNING |
@@ -330,8 +392,12 @@ rings because of it (decided 2026-11-21: acceptable).
 #### The rules (the master's, synced to the clients)
 
 - **Level rules are a list.** Any number of low and high rules. Each has a threshold, a time-of-day window (all day,
-  or from and to, also across midnight: a night profile), how long the condition must last, its default silence
-  length, and its severity (WARNING or CRITICAL).
+  or from and to, also across midnight: a night profile), and its severity (WARNING or CRITICAL). A level rule rings at
+  the first reading past its threshold and ends by itself once BG is back past it by the end margin: the sound stops,
+  the alarm screen closes, the card goes. Decided 2026-11-27, it had a delay before ("Rings after"), which was taken
+  out: waiting is the worst thing to do with a low, and a false low (lying on the sensor) ends by itself anyway;
+  "only if it stays high" is persistent high. A high stored with a delay is read as persistent high (at least 15
+  minutes), a low stored with one rings at once. The silence length is no longer a rule's either (2026-11-26).
 - **Urgent low is always there.** It is protected: it cannot be set to Silent or Off, and it is not paused. When it
   rings, the user silences it as any alert, for a short time. It is CRITICAL and all day; the user sets only its
   threshold.
@@ -367,9 +433,9 @@ rings because of it (decided 2026-11-21: acceptable).
   Built (2d) as a timed Silent choice in the core (`Alerts.pause`, `resume`, `pauses`), per phone, not synced: the
   card is shown, nothing rings, and what is still on rings when the pause ends (booked, so also when the app does not
   run); a silence longer than the pause still holds. "Until switched on again" is the Silent choice in Alert kinds.
-  The pause before an alert rings is the same pause. It is on top of the BG alarm rules screen, also on a client:
-  lows (low, falling fast, predicted low), highs (high, persistent high, rising fast) or all but urgent low, for 30
-  minutes to 4 hours.
+  The pause before an alert rings is the same pause. It is at the bottom of the BG alarms screen, also on a client: all
+  but urgent low, for 30 minutes to 4 hours. "Silence all BG alarms for 1 h" on a ringing BG alarm gives the same
+  pause.
 - **Noisy readings** may be marked on the alert, but never hold back urgent low.
 
 #### The ringing (each phone's own)
@@ -383,9 +449,10 @@ rings because of it (decided 2026-11-21: acceptable).
   `StringNonKey.AlertSounds`, exported, not synced), in Alert kinds; "Its own sound" is the alert's default. It is
   the alarm's sound, and on Android also the chime's (one channel per sound already exists). On iOS the chime keeps
   the system sound: iOS cannot play an mp3 as a notification sound. `Alerts.test` plays a kind as an alert of a
-  severity would ring, for 5 seconds, with the same Do Not Disturb rule, and nothing while an alarm is sounding
-  (the player plays one sound at a time). Test buttons: per kind in Alert kinds (as an alarm), and in the rule
-  dialog (at the severity picked there). The sound names moved from `:implementation` to `:core:interfaces`
+  severity would ring, for 5 seconds, and nothing while an alarm is sounding (the player plays one sound at a time).
+  Changed 2026-11-26: the user asked for the test, so it sounds also in Do Not Disturb with the override off (it was
+  quiet then, with no word why), and on a row set to Vibrate it vibrates. Test buttons: per kind in Alert kinds (as
+  an alarm), and in the rule dialog (at the severity picked there). The sound names moved from `:implementation` to `:core:interfaces`
   (`AlarmSound.title`). 2e-2: on Android any sound of the phone (the system ringtone picker, "Sound of the phone…";
   `AlertSound.Ringtone` with its uri and name). The alarm player plays it and falls back to the alert's own sound
   when it cannot be opened or fails while playing (deleted, or a file in the phone's storage the app may not read):
@@ -512,7 +579,8 @@ The order matters: step 3 must not come before step 2.
    2a urgent low (on by default at 54 mg/dl, always rings, also in Do Not Disturb; a one-time card) and the user's own
    low and high rules with their screen (`BgAlarmsImpl`, `BgAlarmRules`); 2b stale data as a booked alert at the last
    reading plus the threshold, with a 5-minute grace after a start (replaces `checkStaleBGAlert` and
-   `IosMissedReadingAlarm`; the setting "Alert if no BG data is received" and its threshold stay); 2c persistent high,
+   `IosMissedReadingAlarm`; the setting "Alert if no BG data is received" and its threshold stayed, until the switch
+   became the choice of the kind on 2026-11-26, section 6); 2c persistent high,
    falling and rising fast and predicted low as rule types of the same screen; 2d smart silence and the pause;
    2e the sound per kind and the Test button; 2f the silence on every phone. The escalation comes
    later, after the basics work.
@@ -529,7 +597,9 @@ The order matters: step 3 must not come before step 2.
    with the silence buttons and the card without them (found on iOS 2026-11-25; since then the card is titled by
    the alert, no longer "Info"; the system notification has the alert's text alone under it). Done on the way
    (2026-11-25): the cards a previous run left in the tray are cleared at start (`NotificationManager.clearLeftovers`),
-   and a silenced alert whose text changes books its re-ring again, so the re-ring shows the latest value.
+   and a silenced alert whose text changes books its re-ring again, so the re-ring shows the latest value. And
+   Dismiss on the card of a kind that is not protected hides it until its silence ends (30 min), like the old
+   "Ignore 30 min" of carbs required; a protected kind keeps its card.
 
 ### Decisions (2026-11-21)
 
@@ -542,7 +612,7 @@ The order matters: step 3 must not come before step 2.
 5. **A Nightscout announcement is a WARNING alert:** one chime and a card.
 6. **Four card levels:** URGENT (only from the alert core), IMPORTANT (orange), NORMAL, INFO. LOW and ANNOUNCEMENT go.
 7. **The user chooses Ring, Silent or Off per kind of alert, per phone**, from a catalogue of alert kinds (an enum per
-   module behind `AlertKind`).
+   module behind `AlertKind`). Since 2026-11-26 (decision 15) mostly per group of kinds, with exceptions per kind.
 8. **The safety kinds are protected:** urgent low and insulin delivery stopped or not safe can be neither silenced
    nor turned off.
 9. **No "raise after" delay in the alert core.** Noise for one user is that user's choice to silence.
@@ -550,11 +620,24 @@ The order matters: step 3 must not come before step 2.
     per direction.
 11. **A silence is shared between the phones**, and each phone chooses whether it takes silences from the others.
 12. **Escalation** (a client rings when the master did not answer, an SMS) is designed now and built later.
-13. **The sound per kind, per phone:** a bundled AAPS sound, or on Android any ringtone of the phone.
+13. **The sound per kind, per phone:** a bundled AAPS sound, or on Android any ringtone of the phone. Since 2026-11-26
+    a kind of a group plays its group's sound; there is no sound per exception.
 14. **A driver sorts its events by what they do to dosing** (2026-11-24, `DosingEffect`): dosing affected now is
     CRITICAL, affected soon unless the user acts is WARNING, both protected; an action that does not affect dosing is
     WARNING, the rest INFO, and the user may set those Silent or Off. A CGM's glucose alarms are not raised. One kind
     per alarm name. Eversense was the first; every other driver follows when it moves (`PUMP_DESIGN.md`, section 4).
+15. **The settings are groups, with exceptions** (2026-11-26, section 6): the pump and the CGM by Critical, Needs
+    action and Info (from decision 14), the BG alarms by urgent low, lows, highs and missed readings, and the app's
+    other alerts one by one. The app's alerts about the pump are in the pump's groups. One kind can be set apart from
+    its group, from the alarm screen or the settings.
+16. **Vibrate is a choice** (2026-11-26, section 6): as Ring without sound, on the phone and the watch; an alarm
+    vibrates until it is answered. Android only; where the phone cannot vibrate it is not offered and rings.
+17. **When and how, side by side** (2026-11-26, section 6): Alert kinds is a list of four parts, each its own screen.
+    The BG alarms part holds the rules, the urgent low threshold and the missed readings minutes next to how this
+    phone rings each; nothing of the BG alarms is left in Local alerts. Missed readings has no switch of its own: Off
+    is its default choice. The Test plays also in Do Not Disturb: the user asked for it. A phone with no rules of its
+    own has the default ones (low, high, predicted low), also after an update, and they can be reset to. The settings
+    category "Local alerts" is "Alerts" and comes right after Safety: at the end of the list it was missed.
 
 Open, with a recommendation:
 
@@ -562,6 +645,7 @@ Open, with a recommendation:
 
 Decided: the silence lengths the alarm screen offers (2026-11-22): 15 min to 4 h, a protected kind 15 and 30 min
 only (xDrip offers 10 minutes to 12 hours, with 35 minutes for a low and 2 hours for a high as the defaults).
+Changed 2026-11-26: 15 min, 30 min and 1 h, one tap each, and "Silence all BG alarms for 1 h" (section above).
 
 ## 7. How to find them again
 

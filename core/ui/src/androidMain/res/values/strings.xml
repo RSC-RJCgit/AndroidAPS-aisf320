@@ -45,9 +45,6 @@
     <string name="skip">Skip</string>
     <string name="switch_to_edit">Edit</string>
     <string name="snooze">Snooze</string>
-    <string name="snooze_15m">Snooze 15m</string>
-    <string name="snooze_30m">Snooze 30m</string>
-    <string name="snooze_60m">Snooze 60m</string>
     <string name="virtual_pump">Virtual Pump</string>
     <string name="constraints">Constraints</string>
     <string name="superbolus">Superbolus</string>
@@ -100,8 +97,7 @@
     <string name="alarm_silence" comment="Button on the alarm screen. It stops the sound, and the alarm screen stays open.">Silence alarm</string>
     <string name="alarm_silence_and_close" comment="Button on the alarm screen. It stops the sound and closes the alarm screen.">Silence and close</string>
     <string name="alarm_silence_for" comment="Button on the alarm screen of a pump alarm. It stops the sound for a time, and the screen stays open. %1$s=time, for example: 30 min">Silence for %1$s</string>
-    <string name="alarm_silence_for_and_close" comment="Button on the alarm screen of a pump alarm. It stops the sound for a time and closes the screen. %1$s=time, for example: 30 min">Silence for %1$s and close</string>
-    <string name="alarm_silence_length" comment="Label on the alarm screen above a row of times (15 min, 30 min, 1 h...). The time picked is how long the Silence buttons below stop the sound.">How long to silence</string>
+    <string name="alarm_silence_for_label" comment="Label on the alarm screen above a row of buttons with times (15 min, 30 min, 1 h). One tap stops the sound for that time and closes the screen.">Silence for</string>
     <string name="pump_alert_action_failed">The pump did not confirm. Try again.</string>
     <string name="pump_alert_text" comment="Text of the card of a pump alarm. %1$s=title of the alarm, for example: Occlusion. %2$s=what to do, for example: Replace the patch.">%1$s\n%2$s</string>
     <string name="success">Success</string>
@@ -751,8 +747,9 @@
     <string name="insulin_peak">Insulin Peak value</string>
     <string name="profile_max_daily_basal_value">Maximal profile basal value</string>
     <string name="current_basal_value">Current basal value</string>
-    <string name="valuelimitedto">%1$.2f limited to %2$.2f</string>
     <string name="valueoutofrange">»%1$s« is out of hard limits</string>
+    <string name="hard_limit_loop_stopped" comment="Red card when the loop does not run because a setting is outside the safety limits of AAPS. %1$s=name of the value, %2$.2f=its value, %3$.2f=the lowest allowed, %4$.2f=the highest allowed. Example: Loop stopped: »Max daily basal« 12.00 is outside the safety limits 0.02 – 10.00. Change the profile, or the patient age in the safety settings.">Loop stopped: »%1$s« %2$.2f is outside the safety limits %3$.2f – %4$.2f. Change the profile, or the patient age in the safety settings.</string>
+    <string name="hard_limit_value_limited" comment="Card when a value (for example a temp target) is outside the safety limits, and the loop uses the limit instead. %1$s=name of the value, %2$.2f=its value, %3$.2f=the value used. Example: »Temp target« 3.00 is outside the safety limits, so 4.40 is used.">»%1$s« %2$.2f is outside the safety limits, so %3$.2f is used.</string>
 
     <!-- Profile validation -->
     <string name="no_profile_selected">No profile selected</string>
@@ -1048,7 +1045,7 @@
     <string name="quick_launch_configure_desc">Customize quick-action buttons on overview</string>
 
     <!-- Alerts -->
-    <string name="localalertsettings_title">Local alerts</string>
+    <string name="alerts_settings_title" comment="Title of the settings category of all alerts and alarms: BG alarms, how each alert rings, pump unreachable">Alerts</string>
 
     <!-- Actions Screen -->
     <string name="add">Add</string>

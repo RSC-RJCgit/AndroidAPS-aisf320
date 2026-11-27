@@ -195,14 +195,17 @@ class BuiltInSearchables(
     )
 
     /**
-     * Alerts preferences (missed BG, pump unreachable, etc.)
+     * The alerts: Alert kinds with the BG alarms, pump unreachable, and how alarms ring. Shown right after Safety
+     * (decided 2026-11-26): alerts are a matter of safety, and at the end of the list they were missed. Its key stays
+     * "alerts": the alert kinds are opened by it.
      */
     val alerts = PreferenceSubScreenDef(
         key = "alerts",
-        title = CoreUiStrings.localalertsettings_title,
-        items = listOf(
-            BooleanKey.AlertMissedBgReading,
-            IntKey.AlertsStaleDataThreshold,
+        title = CoreUiStrings.alerts_settings_title,
+        // First how each alert rings, with the BG alarms and their rules, the urgent low threshold and the missed
+        // readings (decided 2026-11-26: when an alarm rings is set next to how it rings): the main entry, and so the
+        // start of the category's summary
+        items = listOfNotNull(alertKindsSettings.settingsItem) + listOf(
             BooleanKey.AlertPumpUnreachable,
             IntKey.AlertsPumpUnreachableThreshold,
             BooleanKey.AlertBasalProfileUpdated,
@@ -222,11 +225,6 @@ class BuiltInSearchables(
                 refresh = merge(preferences.observe(StringNonKey.IosHeartbeatSeen), preferences.observe(StringNonKey.IosHeartbeatRejected))
             ),
             BooleanKey.IosReloadWhenNoBg
-            // Ring, Silent or Off per kind of alert (carbs required too, which had a setting of its own), and the BG alarms
-        ) + listOfNotNull(
-            UnitDoubleKey.AlertUrgentLow.takeIf { alertKindsSettings.settingsItem != null },
-            alertKindsSettings.bgAlarmRulesItem,
-            alertKindsSettings.settingsItem
         ) + alertKindsSettings.platformItems,
         icon = Icons.Default.Notifications
     )
