@@ -103,6 +103,9 @@ enum class BooleanNonKey(
     // Simple graphs (2026-11-21, per explicit request): the chip next to AIV switches the overview graphs between Simple and
     // Detailed. Display only, this device only; the saved graph heights are not changed.
     ApsAutoIsfSimpleGraphs("autoisf_simple_graphs", false, exportable = false),
+    // 2026-11-27, per explicit request: the "U" graph mode, the main and IOB graphs drawn by upstream's own code (graphs/upstream).
+    // Only while Simple graphs is off. This phone only.
+    ApsAutoIsfUpstreamGraphs("autoisf_upstream_graphs", false, exportable = false),
 
     // The one card that says AAPS has its own BG alarms now, shown once after the update (`_docs/ALARMS.md`, step 2).
     BgAlarmsIntroShown("bg_alarms_intro_shown", false, exportable = false),

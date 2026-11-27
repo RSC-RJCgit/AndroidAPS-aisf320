@@ -84,6 +84,8 @@ import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.keys.interfaces.AppPlatform
 import app.aaps.core.ui.CoreUiStrings
+import app.aaps.ui.compose.overview.graphs.upstream.BgGraphCompose as UpstreamBgGraphCompose
+import app.aaps.ui.compose.overview.graphs.upstream.SecondaryGraphCompose as UpstreamSecondaryGraphCompose
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.ui.UiStrings
@@ -352,6 +354,10 @@ fun GraphsSection(
     // SIMPLE_IOB_HEIGHT_DP, G2 onwards curves only at SIMPLE_SECONDARY_HEIGHT_DP, without their heading and time rows. The last
     // graph (the BG copy) is unchanged. Display only: the saved heights stay for Detailed.
     val simpleGraphs by LocalPreferences.current.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
+    // "U" graphs (2026-11-27, per explicit request): the main and IOB graphs drawn by upstream's own code (graphs/upstream).
+    // G2 and below stay as in Detailed. Simple wins when both are set.
+    val upstreamGraphs by LocalPreferences.current.observe(BooleanNonKey.ApsAutoIsfUpstreamGraphs).collectAsStateWithLifecycle()
+    val upstreamMode = upstreamGraphs && !simpleGraphs
     val hideG2ThroughG4InSimple by LocalPreferences.current.observe(BooleanKey.HideG2G3InSimpleGraphs).collectAsStateWithLifecycle()
     val hideG2ThroughG4 = graphViewModel.hasNonAutoIsfGraphSource() || (simpleGraphs && hideG2ThroughG4InSimple)
     // iOS and Windows have their own Simple heights (2026-11-21, per explicit request), see simpleSecondaryHeightDp
@@ -470,8 +476,11 @@ fun GraphsSection(
         mutableStateOf(emptyMap<Int, Boolean>())
     }
     val expectedGraphs = buildSet {
-        add(-1) // Main BG
-        add(-2) // Fixed IOB
+        // Upstream's main and IOB graphs (U mode) do not report when they are drawn
+        if (!upstreamMode) {
+            add(-1) // Main BG
+            add(-2) // Fixed IOB
+        }
         for (i in 0 until activeCount) {
             if ((!hideG2ThroughG4 || i >= 3) && graphConfig.secondaryGraphs[i].series.isNotEmpty()) add(i)
         }
@@ -482,7 +491,8 @@ fun GraphsSection(
     var graphsReady by remember(bgScrollState, bgZoomState, graphConfig, showGraph5, basalSnapshot, derivedTimeRange) { mutableStateOf(false) }
     val graphsHiddenSince = remember(bgScrollState, bgZoomState) { dateUtil.now() }
     val positionSettled = placedOnNow || (bgScrollState.maxValue.isFinite() && bgScrollState.maxValue <= 24f)
-    val graphsSettled = positionSettled && derivedTimeRange != null && iobVisibleRangeSettled != null
+    // U mode: upstream's IOB graph does not report its visible range
+    val graphsSettled = positionSettled && derivedTimeRange != null && (upstreamMode || iobVisibleRangeSettled != null)
     LaunchedEffect(bgScrollState, bgZoomState, graphConfig, showGraph5, basalSnapshot, derivedTimeRange, graphsSettled, allGraphsRendered) {
         if (graphsReady || !allGraphsRendered) return@LaunchedEffect
         if (!graphsSettled) {
@@ -1312,7 +1322,24 @@ fun GraphsSection(
                 }
                 .graphInspectTouch(inspect)
         ) {
-            BgGraphCompose(
+            if (upstreamMode) UpstreamBgGraphCompose(
+                viewModel = graphViewModel,
+                bgOverlays = graphConfig.bgOverlays,
+                scrollState = bgScrollState,
+                zoomState = bgZoomState,
+                derivedTimeRange = derivedTimeRange,
+                nowTimestamp = nowTimestamp,
+                visibleTimeRange = bgVisibleTimeRange,
+                inspect = inspect,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(graphConfig.bgHeight.dp * graphHeightScale * desktopGraphScale * iosDetailedMainScale)
+                    .onScrollOrZoomGesture {
+                        graphViewModel.onGraphInteraction()
+                        followNow = false
+                        drivingScroll[0] = null
+                    }
+            ) else BgGraphCompose(
                 viewModel = graphViewModel,
                 basalSnapshot = basalSnapshot,
                 onRenderReady = { renderedGraphs = renderedGraphs + (-1 to it) },
@@ -1476,7 +1503,18 @@ fun GraphsSection(
         // Fork (restored after the 2026-10-16 merge): the graphs below BG keep their time labels and full height,
         // each drawn 8 dp higher as before. Upstream's pull-up covered the BG graph's own time labels.
         Box(modifier = Modifier.offset(y = (-8).dp).graphInspectTouch(inspect)) {
-            SecondaryGraphCompose(
+            if (upstreamMode) UpstreamSecondaryGraphCompose(
+                viewModel = graphViewModel,
+                seriesTypes = listOf(SeriesType.IOB),
+                scrollState = iobScrollState,
+                zoomState = iobZoomState,
+                derivedTimeRange = derivedTimeRange,
+                nowTimestamp = nowTimestamp,
+                inspect = inspect,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(graphConfig.iobHeight.dp * graphHeightScale * desktopGraphScale * iosDetailedMainScale)
+            ) else SecondaryGraphCompose(
                 viewModel = graphViewModel,
                 masterZone = masterZone,
                 seriesTypes = listOf(SeriesType.IOB),

@@ -250,18 +250,41 @@ private fun GlucoseChipTooltip(description: String, modifier: Modifier, content:
  * The mode a tap switches to (2026-11-21, per explicit request; it showed the current mode before): "D" while the graphs are
  * Simple, "S" while they are Detailed. Screen readers hear "Switch to detailed graphs" or "Switch to simple graphs".
  */
+// 2026-11-27, per explicit request: three modes, D -> S -> U -> D. U draws the main and IOB graphs with upstream's own code.
 @Composable
 private fun SimpleGraphsSwitch() {
     if (LocalInspectionMode.current) return
     val preferences = LocalPreferences.current
     val simpleGraphs by preferences.observe(BooleanNonKey.ApsAutoIsfSimpleGraphs).collectAsStateWithLifecycle()
-    val name = stringResource(if (simpleGraphs) UiStrings.graph_mode_detailed else UiStrings.graph_mode_simple)
+    val upstreamGraphs by preferences.observe(BooleanNonKey.ApsAutoIsfUpstreamGraphs).collectAsStateWithLifecycle()
+    val upstreamMode = upstreamGraphs && !simpleGraphs
+    val name = when {
+        simpleGraphs -> "Switch to upstream graphs"
+        upstreamMode -> stringResource(UiStrings.graph_mode_detailed)
+        else         -> stringResource(UiStrings.graph_mode_simple)
+    }
     Text(
-        text = stringResource(if (simpleGraphs) UiStrings.graph_mode_detailed_short else UiStrings.graph_mode_simple_short),
+        text = when {
+            simpleGraphs -> "U"
+            upstreamMode -> stringResource(UiStrings.graph_mode_detailed_short)
+            else         -> stringResource(UiStrings.graph_mode_simple_short)
+        },
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
-            .clickable(role = Role.Button) { preferences.put(BooleanNonKey.ApsAutoIsfSimpleGraphs, !simpleGraphs) }
+            .clickable(role = Role.Button) {
+                when {
+                    simpleGraphs -> {
+                        preferences.put(BooleanNonKey.ApsAutoIsfUpstreamGraphs, true)
+                        preferences.put(BooleanNonKey.ApsAutoIsfSimpleGraphs, false)
+                    }
+                    upstreamMode -> preferences.put(BooleanNonKey.ApsAutoIsfUpstreamGraphs, false)
+                    else         -> {
+                        preferences.put(BooleanNonKey.ApsAutoIsfUpstreamGraphs, false)
+                        preferences.put(BooleanNonKey.ApsAutoIsfSimpleGraphs, true)
+                    }
+                }
+            }
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .semantics { contentDescription = name }
     )

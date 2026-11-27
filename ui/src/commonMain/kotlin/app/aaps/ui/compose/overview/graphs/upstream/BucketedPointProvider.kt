@@ -1,0 +1,62 @@
+package app.aaps.ui.compose.overview.graphs.upstream
+
+// Upstream's own BucketedPointProvider.kt (nightscout/AndroidAPS dev at 08ac1c2337, the commit this branch last merged), copied unchanged
+// apart from this package line and the import below (2026-11-27, per explicit request: the "U" graph mode draws the main and IOB
+// graphs exactly as upstream does). Its own package keeps every name apart from the fork's graph files; anything it does not
+// define itself comes from the fork's graph package. To refresh after an upstream merge: copy the file again and redo these lines.
+import app.aaps.ui.compose.overview.graphs.*
+
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.Immutable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import app.aaps.core.interfaces.overview.graph.BgDataPoint
+import app.aaps.core.interfaces.overview.graph.BgRange
+import com.patrykandpatrick.vico.compose.cartesian.data.LineCartesianLayerModel
+import com.patrykandpatrick.vico.compose.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.compose.common.Fill
+import com.patrykandpatrick.vico.compose.common.component.ShapeComponent
+import com.patrykandpatrick.vico.compose.common.data.ExtraStore
+
+/**
+ * PointProvider for BUCKETED BG data - colors points by range (LOW/IN_RANGE/HIGH).
+ * Uses lookup map keyed by x-value to find the original BgDataPoint.
+ */
+@Immutable
+class BucketedPointProvider(
+    private val dataLookup: Map<Double, BgDataPoint>,
+    lowColor: Color,
+    inRangeColor: Color,
+    highColor: Color
+) : LineCartesianLayer.PointProvider {
+
+    // Pre-build point components for efficiency
+    private val lowPoint = createFilledPoint(lowColor)
+    private val inRangePoint = createFilledPoint(inRangeColor)
+    private val highPoint = createFilledPoint(highColor)
+
+    private fun createFilledPoint(color: Color) = LineCartesianLayer.Point(
+        component = ShapeComponent(
+            fill = Fill(color),
+            shape = CircleShape
+        ),
+        // The strongest marks on the graph with the boluses and carbs, bigger than the 3 dp predictions;
+        // small enough that 5-minute readings still read as a curve, not a bead chain
+        size = 5.dp
+    )
+
+    override fun getPoint(
+        entry: LineCartesianLayerModel.Entry,
+        extraStore: ExtraStore
+    ): LineCartesianLayer.Point? {
+        val dataPoint = dataLookup[entry.x] ?: return inRangePoint // fallback
+
+        return when (dataPoint.range) {
+            BgRange.LOW      -> lowPoint
+            BgRange.IN_RANGE -> inRangePoint
+            BgRange.HIGH     -> highPoint
+        }
+    }
+
+    override fun getLargestPoint(extraStore: ExtraStore): LineCartesianLayer.Point = inRangePoint
+}
