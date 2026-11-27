@@ -18,6 +18,10 @@ enum class IntNonKey(
     GraphScaleLookbackHours("graph_scale_lookback_hours", 6),
     // Statistics, Sensor tab: how many of the newest sensors to skip
     SensorCycleOffset("sensor_cycle_offset", 0),
+    /** Where the quick-launch bar was dragged to, in pixels from the top left of the screen area; -1 = its normal place at the
+     *  bottom (2026-11-27, per explicit request). Portrait, this phone only. */
+    QuickLaunchX("quick_launch_x", -1),
+    QuickLaunchY("quick_launch_y", -1),
     // Statistics, Pod tab: how many of the newest pods to skip
 
     // How many morning role changes have happened. Cleared after a profile-batch step down. Local only.

@@ -1995,7 +1995,7 @@ fun rememberSeriesColors(): SeriesColors {
  * Step count line colours, S5, S15, S30, S60 (2026-10-19): four clearly different colours, so the lines can be told
  * apart. S5 keeps the usual steps colour. The legend above the graph uses the same list.
  */
-private val STEPS_LINE_COLORS = listOf(
+internal val STEPS_LINE_COLORS = listOf(
     Color(0xFF66FFB8),   // S5  mint green (matches @color/steps)
     Color(0xFFFFD600),   // S15 yellow
     Color(0xFFFF6D00),   // S30 deep orange

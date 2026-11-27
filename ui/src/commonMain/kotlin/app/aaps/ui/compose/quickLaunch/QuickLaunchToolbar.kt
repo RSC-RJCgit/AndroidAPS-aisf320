@@ -1,5 +1,8 @@
 package app.aaps.ui.compose.quickLaunch
 
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,12 +34,15 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -83,7 +89,13 @@ fun QuickLaunchToolbar(
     onActionClick: (QuickLaunchAction) -> Unit,
     modifier: Modifier = Modifier,
     vertical: Boolean = false,
-    large: Boolean = false
+    large: Boolean = false,
+    // 2026-11-27, per explicit request: a grip at the start of the bar. Hold and drag it to move the bar ([onGripDrag] gets each
+    // move, [onGripDragEnd] the end); double-tap it to turn the bar between horizontal and vertical ([onGripDoubleTap]).
+    // No grip when [onGripDrag] is null (the landscape rail).
+    onGripDrag: ((Offset) -> Unit)? = null,
+    onGripDragEnd: () -> Unit = {},
+    onGripDoubleTap: () -> Unit = {},
 ) {
     if (items.isEmpty()) return
     val buttonSize = if (large) QuickLaunchLargeButtonSize else QuickLaunchButtonSize
@@ -102,7 +114,8 @@ fun QuickLaunchToolbar(
         BoxWithConstraints(if (vertical) Modifier.width(buttonSize) else Modifier.height(buttonSize)) {
             val itemSizePx = with(LocalDensity.current) { buttonSize.toPx() }
             val contentPaddingPx = with(LocalDensity.current) { 8.dp.toPx() }
-            val availablePx = if (vertical) constraints.maxHeight else constraints.maxWidth
+            val gripPx = if (onGripDrag != null) with(LocalDensity.current) { QuickLaunchGripLength.toPx() } else 0f
+            val availablePx = (if (vertical) constraints.maxHeight else constraints.maxWidth) - gripPx
             val maxItems = ((availablePx - contentPaddingPx) / itemSizePx).toInt()
                 .coerceAtLeast(1)
 
@@ -115,6 +128,7 @@ fun QuickLaunchToolbar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(vertical = 4.dp)
                 ) {
+                    if (onGripDrag != null) QuickLaunchGrip(vertical = true, buttonSize, onGripDrag, onGripDragEnd, onGripDoubleTap)
                     visibleItems.forEach { item ->
                         ToolbarIconButton(item, onActionClick, buttonSize, iconSize, tooltipBeside = true)
                     }
@@ -123,17 +137,21 @@ fun QuickLaunchToolbar(
                     }
                 }
             } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 4.dp)
-                ) {
-                    visibleItems.forEach { item ->
-                        ToolbarIconButton(item, onActionClick, buttonSize, iconSize)
-                    }
-                    if (needsOverflow) {
-                        OverflowMenuButton(overflowItems, onActionClick, buttonSize, iconSize)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // The grip stays put while the icons scroll
+                    if (onGripDrag != null) QuickLaunchGrip(vertical = false, buttonSize, onGripDrag, onGripDragEnd, onGripDoubleTap)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        visibleItems.forEach { item ->
+                            ToolbarIconButton(item, onActionClick, buttonSize, iconSize)
+                        }
+                        if (needsOverflow) {
+                            OverflowMenuButton(overflowItems, onActionClick, buttonSize, iconSize)
+                        }
                     }
                 }
             }
@@ -212,6 +230,48 @@ private fun ToolbarIconButton(
                     tint = resolveItemColor(item),
                     modifier = Modifier.size(iconSize)
                 )
+            }
+        }
+    }
+}
+
+private val QuickLaunchGripLength = 22.dp
+
+/** Six dots: hold and drag to move the bar, double-tap to turn it (2026-11-27, per explicit request). */
+@Composable
+private fun QuickLaunchGrip(
+    vertical: Boolean,
+    buttonSize: Dp,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDoubleTap: () -> Unit,
+) {
+    val dotColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val gripName = "Move quick launch (double-tap to turn)"
+    // The gesture blocks below start once; these keep them calling the newest callbacks (positions change every frame)
+    val drag by rememberUpdatedState(onDrag)
+    val dragEnd by rememberUpdatedState(onDragEnd)
+    val doubleTap by rememberUpdatedState(onDoubleTap)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .then(if (vertical) Modifier.width(buttonSize).height(QuickLaunchGripLength) else Modifier.width(QuickLaunchGripLength).height(buttonSize))
+            .pointerInput(Unit) {
+                detectDragGestures(onDragEnd = { dragEnd() }, onDragCancel = { dragEnd() }) { change, amount ->
+                    change.consume()
+                    drag(amount)
+                }
+            }
+            .pointerInput(Unit) { detectTapGestures(onDoubleTap = { doubleTap() }) }
+            .clearAndSetSemantics { contentDescription = gripName }
+    ) {
+        Canvas(modifier = Modifier.size(if (vertical) 18.dp else 10.dp, if (vertical) 10.dp else 18.dp)) {
+            val r = 1.6.dp.toPx()
+            // 2 x 3 dots across the bar's direction
+            for (a in 0..1) for (b in 0..2) {
+                val along = size.width * (if (vertical) (b + 0.5f) / 3f else (a + 0.5f) / 2f)
+                val across = size.height * (if (vertical) (a + 0.5f) / 2f else (b + 0.5f) / 3f)
+                drawCircle(dotColor, r, Offset(along, across))
             }
         }
     }

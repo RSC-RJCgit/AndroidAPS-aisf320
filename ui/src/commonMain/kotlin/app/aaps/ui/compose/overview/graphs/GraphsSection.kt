@@ -1598,6 +1598,25 @@ fun GraphsSection(
                         .align(Alignment.TopStart)
                         .padding(start = 36.dp, top = 2.dp)
                 )
+                // Simple graphs (2026-11-27, per explicit request): the steps graph keeps its name and the coloured S5/S15/S30/S60
+                // legend, drawn over the top of the plot so the graph keeps its Simple height. The other Simple graphs stay bare.
+                if (simpleGraphs && SeriesType.STEPS in secondary.series) Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 36.dp, top = 2.dp)
+                ) {
+                    GraphLabel(number = i + 2, names = secondary.series.map { stringResource(seriesShortNameId(it)) })
+                    listOf(CoreUiStrings.graph_steps_s5, CoreUiStrings.graph_steps_s15, CoreUiStrings.graph_steps_s30, CoreUiStrings.graph_steps_s60)
+                        .forEachIndexed { index, label ->
+                            Text(
+                                text = stringResource(label),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = STEPS_LINE_COLORS[index],
+                                maxLines = 1
+                            )
+                        }
+                }
                 if (showZoomButtons && !simpleGraphs) GraphZoomButtons(zoomStep, Modifier.align(Alignment.TopEnd).padding(end = zoomEndPadding))
                 if (!isSimpleMode && !simpleGraphs) {
                     GraphEditButton(

@@ -38,6 +38,10 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.IntNonKey
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -239,6 +243,15 @@ fun MainScreen(
     val quickLaunchLarge by remember { mainViewModel.preferences.observe(BooleanNonKey.QuickLaunchLargeButtons) }
         .collectAsStateWithLifecycle()
     val quickLaunchButtonSize = if (quickLaunchLarge) QuickLaunchLargeButtonSize else QuickLaunchButtonSize
+    // 2026-11-27, per explicit request: the portrait quick-launch bar can be dragged by its grip and turned vertical
+    val quickLaunchVertical by remember { mainViewModel.preferences.observe(BooleanNonKey.QuickLaunchVertical) }
+        .collectAsStateWithLifecycle()
+    val quickLaunchSavedX by remember { mainViewModel.preferences.observe(IntNonKey.QuickLaunchX) }.collectAsStateWithLifecycle()
+    val quickLaunchSavedY by remember { mainViewModel.preferences.observe(IntNonKey.QuickLaunchY) }.collectAsStateWithLifecycle()
+    var quickLaunchDragPos by remember { mutableStateOf<Offset?>(null) }
+    var quickLaunchPlacedAt by remember { mutableStateOf(Offset.Zero) }
+    var quickLaunchBarSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    var quickLaunchAreaSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val automationState by scenesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = LocalSnackbarHostState.current
 
@@ -762,20 +775,54 @@ fun MainScreen(
 
                     // Quick launch stays on the bottom in portrait only. Landscape puts it in the rail.
                     // With the bottom bar hidden, bottomBarHeight is 0 and it moves down into the bar's place.
+                    // 2026-11-27, per explicit request: once dragged by its grip, the bar sits where it was left (kept on screen)
+                    fun clampQuickLaunch(p: Offset): Offset = Offset(
+                        p.x.coerceIn(0f, (quickLaunchAreaSize.width - quickLaunchBarSize.width).coerceAtLeast(0).toFloat()),
+                        p.y.coerceIn(0f, (quickLaunchAreaSize.height - quickLaunchBarSize.height).coerceAtLeast(0).toFloat())
+                    )
+                    val quickLaunchSaved = if (quickLaunchSavedX >= 0 && quickLaunchSavedY >= 0)
+                        Offset(quickLaunchSavedX.toFloat(), quickLaunchSavedY.toFloat()) else null
+                    val quickLaunchAt = (quickLaunchDragPos ?: quickLaunchSaved)?.let { clampQuickLaunch(it) }
                     AnimatedVisibility(
                         visible = hasToolbar && showChrome && !landscapeNavigation,
                         enter = slideInVertically { it },
                         exit = slideOutVertically { it },
-                        modifier = Modifier
+                        modifier = (if (quickLaunchAt != null) Modifier
+                            .align(Alignment.TopStart)
+                            .offset { IntOffset(quickLaunchAt.x.roundToInt(), quickLaunchAt.y.roundToInt()) }
+                        else Modifier
                             .align(Alignment.BottomCenter)
                             .padding(
                                 bottom = scaffoldPadding.calculateBottomPadding() + bottomBarHeight + 8.dp
-                            )
+                            ))
+                            .onGloballyPositioned { coords ->
+                                quickLaunchPlacedAt = coords.positionInParent()
+                                quickLaunchBarSize = coords.size
+                                coords.parentLayoutCoordinates?.size?.let { quickLaunchAreaSize = it }
+                            }
                     ) {
                         QuickLaunchToolbar(
                             items = visibleQuickLaunchItems,
                             onActionClick = handleQuickLaunch,
+                            vertical = quickLaunchVertical,
                             large = quickLaunchLarge,
+                            onGripDrag = { amount ->
+                                quickLaunchDragPos = clampQuickLaunch((quickLaunchDragPos ?: quickLaunchAt ?: quickLaunchPlacedAt) + amount)
+                            },
+                            onGripDragEnd = {
+                                quickLaunchDragPos?.let {
+                                    mainViewModel.preferences.put(IntNonKey.QuickLaunchX, it.x.roundToInt())
+                                    mainViewModel.preferences.put(IntNonKey.QuickLaunchY, it.y.roundToInt())
+                                }
+                            },
+                            onGripDoubleTap = {
+                                // Turning it keeps the top-left corner where it is
+                                if (quickLaunchAt == null) {
+                                    mainViewModel.preferences.put(IntNonKey.QuickLaunchX, quickLaunchPlacedAt.x.roundToInt())
+                                    mainViewModel.preferences.put(IntNonKey.QuickLaunchY, quickLaunchPlacedAt.y.roundToInt())
+                                }
+                                mainViewModel.preferences.put(BooleanNonKey.QuickLaunchVertical, !quickLaunchVertical)
+                            },
                         )
                     }
 

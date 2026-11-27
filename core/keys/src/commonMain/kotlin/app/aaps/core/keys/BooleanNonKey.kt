@@ -19,6 +19,8 @@ enum class BooleanNonKey(
     StatsSensorRaw("stats_sensor_raw", true),
     /** Quick-launch bar with larger buttons (2026-11-26, per explicit request, List 2 "Quick-launch buttons"). This phone only. */
     QuickLaunchLargeButtons("quick_launch_large_buttons", false),
+    /** Quick-launch bar turned vertical by a double-tap on its grip (2026-11-27, per explicit request). Portrait, this phone only. */
+    QuickLaunchVertical("quick_launch_vertical", false),
     ObjectivesLoopUsed("ObjectivesLoopUsed", false),
     ObjectivesScaleUsed("ObjectivesScaleUsed", false),
     // Objectives screen, master on VirtualPump only: objectives no longer limit anything. Local only.
