@@ -508,6 +508,24 @@ fun GraphsSection(
         graphsReady = true
         graphViewModel.graphSyncLog("ready", "all graph models drawn after ${dateUtil.now() - graphsHiddenSince} ms")
     }
+    // 2026-11-27, per explicit request: never stay hidden. 27 Nov 21:53 (Windows client) the graphs stayed hidden for 3 minutes
+    // because one graph never reported it was drawn, until a D/S/U switch rebuilt them. With data in place, they are shown
+    // GRAPHS_READY_TIMEOUT_MS later whatever is still missing, and the log names what was missing.
+    val latestExpectedGraphs by rememberUpdatedState(expectedGraphs)
+    val latestPositionSettled by rememberUpdatedState(positionSettled)
+    val latestIobRangeSettled by rememberUpdatedState(iobVisibleRangeSettled != null)
+    LaunchedEffect(bgScrollState, bgZoomState, graphConfig, showGraph5, basalSnapshot, derivedTimeRange) {
+        if (derivedTimeRange == null) return@LaunchedEffect
+        delay(GRAPHS_READY_TIMEOUT_MS)
+        if (graphsReady) return@LaunchedEffect
+        val missing = latestExpectedGraphs.filter { renderedGraphs[it] != true }.sorted()
+        graphsReady = true
+        graphViewModel.graphSyncLog(
+            "ready",
+            "by timeout after ${dateUtil.now() - graphsHiddenSince} ms: missing $missing positionSettled=$latestPositionSettled " +
+                "iobRangeSettled=$latestIobRangeSettled upstreamMode=$upstreamMode simple=$simpleGraphs"
+        )
+    }
     // The basal scroll hold of 17 Nov (chk516) is gone again (2026-11-17, per explicit request): it froze the graphs during a
     // pinch or a drag (iPhone 05:54-05:55, 44 pinches in a row). Graph 1 now fits its basal with look-ahead while scrolling
     // instead, see SecondaryGraphCompose's basalMaxY.
