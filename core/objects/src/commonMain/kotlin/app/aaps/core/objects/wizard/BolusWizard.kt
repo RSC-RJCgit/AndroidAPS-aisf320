@@ -704,11 +704,16 @@ class BolusWizard(
      * ("openaps://") already hold the bins.
      */
     private suspend fun walkingFactorNow(): Double =
-        walkingStepsNow()?.let { delayedDoseWalkingFactor(it[0], it[1], it[2], it[3], it[4]) } ?: 1.0
+        if (highFastRiseNow()) 1.0 else walkingStepsNow()?.let { delayedDoseWalkingFactor(it[0], it[1], it[2], it[3], it[4]) } ?: 1.0
 
     /** Super heavy activity now (see [delayedDoseSuperHeavy]); false with no step row in the last 20 minutes. */
     private suspend fun superHeavyNow(): Boolean =
-        walkingStepsNow()?.let { delayedDoseSuperHeavy(it[0], it[1], it[2], it[3], it[4]) } ?: false
+        !highFastRiseNow() && (walkingStepsNow()?.let { delayedDoseSuperHeavy(it[0], it[1], it[2], it[3], it[4]) } ?: false)
+
+    /** See [followUpHighFastRise]: no steps cut on a later dose during a high fast rise (2026-11-27). */
+    private fun highFastRiseNow(): Boolean = glucoseStatusProvider.glucoseStatusData.let {
+        followUpHighFastRise(it?.glucose, it?.delta, it?.shortAvgDelta)
+    }
 
     /** S5, the S10 and S15 bins, S30, S60; null with no step row in the last 20 minutes. */
     private suspend fun walkingStepsNow(): List<Int>? {
@@ -1125,7 +1130,9 @@ class BolusWizard(
             return
         }
         val cob = iobCobCalculator.getCobInfo("DelayedBolus").displayCob ?: 0.0
-        val cobFraction = DelayedBolus.cobFraction(cob, plan.carbs)
+        // 2026-11-27, per explicit request (same as 3426): no carbs-on-board shrink. The amount held back is for carbs already entered
+        // with this bolus, absorbed or not (27 Nov Db50: x0.41 dropped 0.49 U at BG 10.5 and rising). COB is still logged.
+        val cobFraction = 1.0
         val raw = DelayedBolus.checkDose(plan.heldUnits, deliveredSoFar, cobFraction)
         val step = ch.bolusStep(max(raw, 0.05))
         if (raw < step / 2.0) {
@@ -1136,7 +1143,11 @@ class BolusWizard(
         // Cut while walking, as the other later doses; the cut part is dropped
         val walkFactor = walkingFactorNow()
         val walked = Round.roundTo(raw * walkFactor, step)
-        val capped = cappedFollowUpDose(walked, step)
+        // 2026-11-27, per explicit request (same as 3426): no insulinReq cap at BG 6.5 or more with HP1 6.0 or more (as the carb
+        // split), or at the first check after the hypo wait with BG 6.0 or more and rising (the whole remainder at once).
+        val (releaseHpAt, releaseHp) = trioLater?.lowestPrediction() ?: (hpAt to hpValue)
+        val capped = if (followUpCapWaived() || delayedFullRelease(gs?.glucose, gs?.delta, gs?.shortAvgDelta, releaseHp, releaseHpAt, now))
+            walked else cappedFollowUpDose(walked, step)
         if (capped == null) {
             checkAgain("insulinReq missing or stale")
             return

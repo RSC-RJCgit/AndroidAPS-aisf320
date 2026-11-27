@@ -3032,7 +3032,11 @@ open class OpenAPSAutoISFPlugin(
             steroidsOff = statesOn && store.inState("Steroids", "Steroids Off"),
             nightHighTag = statesOn && store.inState("Profile", "HnAM"),
         )
-        if (offHigh != null && offHighShouldAct(minuteOfDay, hp)) {
+        // 2026-11-27, per explicit request (same as 3426): not within 30 min of a suspected compression low (CompSusp). 27 Nov 02:29
+        // Live: a compression drop 8.3 -> 6.0 set OffP-1 at 02:33 and Live stayed on Profile70 (Low Tier A) for the rest of the night.
+        val compressionRecent = compressionSuspectedWithin(now, 30)
+        if (offHigh != null && compressionRecent) aapsLogger.debug(LTag.APS, "OffHighProf [b$offHigh] skipped: compression suspected within 30 min")
+        if (offHigh != null && !compressionRecent && offHighShouldAct(minuteOfDay, hp)) {
             val rescue = preferences.get(LongNonKey.ApsAutoIsfOvernightRescueUntil) > now
             if (!rescue) switchToLowAtSharedTier(now, "AutoISF: off high", 30)
             preferences.put(DoubleKey.ApsAutoIsfBgAccelWeight, 0.18)
@@ -6774,6 +6778,12 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(LongNonKey.ApsAutoIsfAlarmStatePendingAt, now)
             preferences.put(LongNonKey.ApsAutoIsfAlarmStateStepsBlocked, if (alarmStateBlocked(now, bg)) 1L else 0L)
         }
+    }
+
+    /** A CompSusp in the last [minutes] minutes (OffHighProf, 2026-11-27). */
+    private fun compressionSuspectedWithin(now: Long, minutes: Long): Boolean {
+        val raisedAt = preferences.get(LongNonKey.ApsAutoIsfCompressionSuspectAt)
+        return raisedAt > 0L && now - raisedAt in 0..T.mins(minutes).msecs()
     }
 
     private fun compressionWarningWithinHour(now: Long): Boolean {
