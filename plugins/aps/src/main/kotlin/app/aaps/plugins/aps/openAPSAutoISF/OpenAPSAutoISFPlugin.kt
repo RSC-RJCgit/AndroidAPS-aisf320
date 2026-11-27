@@ -750,14 +750,14 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 addGraphAnnouncement("MJ")
                 setBgAccelIsfWeight(0.35)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
-                switchToLowAtSharedTier()
+                switchToLowAtSharedTier(evenOnSteroid = true)
                 setAutomationState("MJ", "MJ active")
                 addCarePortalNote("MJ active")
             }
 
             EventMjUserAction.Action.RESTORE -> {
                 sendSms("MJ dose 4+ days old")
-                switchToStandardAtSharedTier()
+                switchToStandardAtSharedTier(evenOnSteroid = true)
                 setBgAccelIsfWeight(0.50)
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 70)
                 setAutomationState("MJ", "NOMJremains")
@@ -1454,22 +1454,78 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
 
     // Overnight / MJ / hypo Standard↔Low: align both Currents to the letter already in force,
     // then switch to that role. No new StandardCurrentTier key — the letter is sourceRoleRung().
-    private fun switchToLowAtSharedTier(durationInMinutes: Int = 0) {
+    // 2026-11-27, per explicit request: the automatic Low/Standard switches leave a running Steroid profile (110-250) alone.
+    // [evenOnSteroid] is for the deliberate ones: StepsSteroidsOff (it ends steroids), the MJ buttons and List 1's Standard/Low codes.
+    private fun switchToLowAtSharedTier(durationInMinutes: Int = 0, evenOnSteroid: Boolean = false) {
+        if (!evenOnSteroid && steroidTierProfileRunning()) {
+            aapsLogger.debug(LTag.APS, "switchToLowAtSharedTier: Steroid profile ${profileFunction.getOriginalProfileName()} runs - left as it is")
+            return
+        }
         val idx = sourceRoleRung()
         if (idx < 0) return
         val target = preferences.get(lowRoleLadder[idx]).trim()
         if (target.isNotBlank()) switchProfileIfNeeded(target, durationInMinutes)
     }
 
-    private fun switchToStandardAtSharedTier(durationInMinutes: Int = 0) {
+    private fun switchToStandardAtSharedTier(durationInMinutes: Int = 0, evenOnSteroid: Boolean = false) {
+        if (!evenOnSteroid && steroidTierProfileRunning()) {
+            aapsLogger.debug(LTag.APS, "switchToStandardAtSharedTier: Steroid profile ${profileFunction.getOriginalProfileName()} runs - left as it is")
+            return
+        }
         val idx = sourceRoleRung()
         if (idx < 0) return
         val target = preferences.get(standardRoleLadder[idx]).trim()
         if (target.isNotBlank()) switchProfileIfNeeded(target, durationInMinutes)
     }
 
+    /**
+     * 2026-11-27, per explicit request: the running profile is one of the Steroid 110/130/150/190/250 profiles (Steroid 100 is the
+     * "Steroids OFF" profile) and not also a Standard/Low ladder profile.
+     */
+    private fun steroidTierProfileRunning(): Boolean {
+        val running = profileFunction.getOriginalProfileName().trim()
+        if (running.isBlank()) return false
+        val steroidNames = listOf(
+            StringKey.ApsAutoIsfSteroid110ProfileName, StringKey.ApsAutoIsfSteroid130ProfileName, StringKey.ApsAutoIsfSteroid150ProfileName,
+            StringKey.ApsAutoIsfSteroid190ProfileName, StringKey.ApsAutoIsfSteroid250ProfileName
+        ).map { preferences.get(it).trim() }.filter { it.isNotBlank() }
+        if (running !in steroidNames) return false
+        return (standardRoleLadder + lowRoleLadder).none { preferences.get(it).trim() == running }
+    }
+
+    /**
+     * Steroid-day IobTH floor (2026-11-27, per explicit request), the companion of iobTHDaytimeFloor (which needs Steroids Off).
+     * 08:00-22:00, a Steroid profile at 100%, LowBG NO50rec, no TT, BG 6.5 mmol or more and not falling: an IobTH below the running
+     * tier's own level goes back to it (Steroid 110 75, 130 78, 150 81, 190 84, 250 88 - what the steroid buttons set). On steroid
+     * days Set50/Extra50/GentleHypoRisk/EveningTH and the evening/night ceilings lowered it and every other daytime restore needs
+     * Steroids Off. At most every 30 minutes. Outside invoke() (JVM method size).
+     */
+    private fun applySteroidIobThFloor(g: Double, delta: Double, profilePercent: Int, iobTh: Int) {
+        if (!readyToRun("SteroidIobThFloor", 30) || !isTimeBetween(8, 0, 22, 0) || profilePercent != 100) return
+        if (!checkAutomationState("LowBG", "NO50rec") || activeTtMgdl() != null) return
+        if (g < 117.1 /* 6.5 mmol */ || delta < 0.0 || !steroidTierProfileRunning()) return
+        val running = profileFunction.getOriginalProfileName().trim()
+        val level = listOf(
+            StringKey.ApsAutoIsfSteroid110ProfileName to 75, StringKey.ApsAutoIsfSteroid130ProfileName to 78,
+            StringKey.ApsAutoIsfSteroid150ProfileName to 81, StringKey.ApsAutoIsfSteroid190ProfileName to 84,
+            StringKey.ApsAutoIsfSteroid250ProfileName to 88
+        ).firstOrNull { preferences.get(it.first).trim() == running }?.second ?: return
+        if (iobTh >= level) return
+        preferences.put(IntKey.ApsAutoIsfIobThPercent, level)
+        sendSms("steroid iobTHfloor: iobTH $iobTh->$level% ($running)", noteTag = true)
+        addCarePortalNote("THstr", smsText = lastSmsText)
+        aapsLogger.debug(LTag.APS, "SteroidIobThFloor: $running iobTH $iobTh -> $level (g=${String.format("%.1f", g / 18.016)}mmol)")
+        markRun("SteroidIobThFloor")
+    }
+
+    /** Set50's profile (2026-11-27, per explicit request): on a Steroid profile that profile itself at 50%, else the Low rung. */
+    private fun set50ProfileName(): String =
+        if (steroidTierProfileRunning()) profileFunction.getOriginalProfileName() else lowNameForRunningTier()
+
     // Standard/Low role writes stay on the Steroids Off protocol. Never invent SteroidsON from these.
+    // 2026-11-27, per explicit request: except while a Steroid profile runs - the roles are still written, the state stays ON.
     private fun keepSteroidsOff() {
+        if (steroidTierProfileRunning()) return
         try {
             if (!checkAutomationState("Steroids", "Steroids Off")) {
                 setAutomationState("Steroids", "Steroids Off")
@@ -4537,7 +4593,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         // without editing anything. List 1's own row presents both as one Strong/Low choice dialog (see
         // OverviewFragment.kt's ttCodesList()), each button relaying whichever of these two TT codes.
         if (readyToRun("ProfileStandardTT", 2) && activeTtNear(5.148, 0.0001)) {
-            switchToStandardAtSharedTier()
+            switchToStandardAtSharedTier(evenOnSteroid = true)
             cancelCurrentTempTarget()
             sendSms("Profile: Standard (${preferences.get(StringKey.ApsAutoIsfStandardProfileName)})", noteTag = true)
             addCarePortalNote("PrSt", smsText = lastSmsText)
@@ -4545,7 +4601,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         }
 
         if (readyToRun("ProfileLowTT", 2) && activeTtNear(5.150, 0.0001)) {
-            switchToLowAtSharedTier()
+            switchToLowAtSharedTier(evenOnSteroid = true)
             cancelCurrentTempTarget()
             sendSms("Profile: Low (${preferences.get(StringKey.ApsAutoIsfLowProfileName)})", noteTag = true)
             addCarePortalNote("PrLow", smsText = lastSmsText)
@@ -6253,7 +6309,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                                             // keep BolusGiven's strengthened SMB delivery
                 preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))   // restore ppWeight baseline
                 markSet50FromStandard()   // 2026-11-27: before the drop, see applyCurrentProfileAt100
-                startProfilePercentFor(50, 360, lowNameForRunningTier())   // force onto the MJ/night profile, then hold 50% for 360 min as usual
+                startProfilePercentFor(50, 360, set50ProfileName())   // the Low rung (a Steroid profile: itself), then 50% for 360 min as usual
                 setAutomationState("LowBG", "50recent")
                 sendSms("prepare Set50% [b$p50block]: g=${String.format("%.1f", g / 18.016)} d=${String.format("%.2f", d / 18.016)}", noteTag = true)
                 addCarePortalNote("Set50-$p50block", smsText = lastSmsText)
@@ -7030,6 +7086,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             aapsLogger.debug(LTag.APS, "iobTHDaytimeFloor: restored iobTH $prevTh -> 70 (g=${String.format("%.1f", glucoseStatus.glucose / 18.016)}mmol)")
             markRun("iobTHDaytimeFloor")
         }
+        applySteroidIobThFloor(glucoseStatus.glucose, glucoseStatus.delta, profile_percentage, iobThresholdPercent)
 
         // --- Extra50%: deepens hypo protection (acce→0.07, iobTH→50%) when BGL falling on 100% profile ---
         // 5-min floor throttle added on top of the state guard (see readyToRun() usage note).
@@ -10453,7 +10510,7 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
                 && g <= 144.1 /* 8.0 mmol */ && d >= 9.0 /* 0.5 mmol */ && mealData.mealCOB == 0.0) {
                 sendSms("Steps Steroids OFF")
                 setAutomationState("Steroids", "Steroids Off")
-                switchToLowAtSharedTier()
+                switchToLowAtSharedTier(evenOnSteroid = true)
                 setBgAccelIsfWeight(preferences.get(DoubleKey.ApsAutoIsfBgAccelWeightNormal))
                 preferences.put(IntKey.ApsAutoIsfIobThPercent, 50)
                 addCarePortalNote("Steps Steroids OFF")
