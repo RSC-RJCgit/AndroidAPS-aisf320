@@ -106,7 +106,7 @@ class UploaderBatteryEstimate {
             // On charge: when 1% would be reached if unplugged now, at the last discharge's rate. With an old reading
             // (2026-11-26, per explicit request) it is counted from now with the last known level instead of left out.
             val from = if (fresh) latest.time else now
-            return "$percent chg, off now to ${hhmm(from + (latest.percent - 1L) * rate, now, dateUtil)}"
+            return "$percent till ${hhmm(from + (latest.percent - 1L) * rate, now, dateUtil)}"
         }
         if (lastForecastStart != unplugged.time) {
             lastForecast = null
@@ -125,7 +125,7 @@ class UploaderBatteryEstimate {
             lastForecastStart = unplugged.time
         }
         val forecast = lastForecast ?: return percent
-        return "$percent to ${hhmm(forecast, now, dateUtil)}" + if (forecast < now) "!" else ""
+        return "$percent till ${hhmm(forecast, now, dateUtil)}" + if (forecast < now) "!" else ""
     }
 
     /**
