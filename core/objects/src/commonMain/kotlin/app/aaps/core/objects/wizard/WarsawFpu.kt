@@ -24,6 +24,10 @@ data class WarsawFpuPlan(
     val fullTierInsulin: Double,
     val capped: Boolean,
     val intervalMinutes: Int = 30,
+    /** 2026-11-28, per explicit request: the IC (at 100%) and profile the series was sized at, for its resize when a part is
+     *  due on another profile (see ProfileIcResize). 0 / "" (the Tier 3 automation's series) never resizes. */
+    val sizingIc: Double = 0.0,
+    val sizingProfile: String = "",
 )
 
 fun warsawFpuPlan(proteinGrams: Int, fatGrams: Int, ic: Double, durationHoursCap: Double = 5.0, intervalMinutes: Int = 30): WarsawFpuPlan? {

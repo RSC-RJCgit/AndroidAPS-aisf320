@@ -75,6 +75,9 @@ data class DelayedBolusPlan(
     /** The carb ratio the held part was worked out with, and whether it is the Standard profile's (else the fallback). */
     val ic: Double,
     val fromStandardProfile: Boolean,
+    /** 2026-11-28, per explicit request: the profile [ic] came from, for the resize when a check is due on another profile
+     *  (see ProfileIcResize). "" (a check saved before this change) never resizes. */
+    val sizingProfile: String = "",
 )
 
 /** Why part of the carb insulin was held back. [label] is the 3426 app's trigger name, kept for the logs. */

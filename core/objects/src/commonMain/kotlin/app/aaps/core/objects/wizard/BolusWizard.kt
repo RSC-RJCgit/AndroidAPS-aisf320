@@ -9,6 +9,7 @@ import app.aaps.core.data.model.IDs
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TE
 import app.aaps.core.data.model.TT
+import app.aaps.core.data.time.AppTimeZone
 import app.aaps.core.data.time.T
 import app.aaps.core.data.ue.Action
 import app.aaps.core.data.ue.Sources
@@ -39,9 +40,11 @@ import app.aaps.core.interfaces.pump.DetailedBolusInfo
 import app.aaps.core.interfaces.resources.TextResolver
 import app.aaps.core.interfaces.rx.weardata.EventData
 import app.aaps.core.interfaces.utils.DateUtil
+import app.aaps.core.interfaces.utils.MidnightTime
 import app.aaps.core.interfaces.utils.Round
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.LongNonKey
+import app.aaps.core.keys.StringKey
 import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.objects.aps.IsfForCarbs
@@ -163,7 +166,27 @@ class BolusWizard(
         val inputs = warsawInputs ?: return
         val useIc = standardIc?.takeIf { it > 0.0 } ?: return
         warsawPlan = warsawFpuPlan(inputs.protein, inputs.fat, useIc, inputs.durationHours, inputs.intervalMinutes)
+            ?.copy(sizingIc = useIc, sizingProfile = preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim())
         aapsLogger.info(LTag.CORE, "Warsaw at 50% profile: sized at the Standard IC $useIc, ${warsawPlan?.totalInsulin} U")
+    }
+
+    // 2026-11-28, per explicit request (same as 3426): what this wizard's carb split and protein/fat parts were sized at (IC at
+    // 100% and its profile), for their resize when the profile changed by the time they are due (see ProfileIcResize). Saved
+    // with each pending part. 0 / "" never resizes.
+    private var splitSizingIc = 0.0
+    private var splitSizingProfile = ""
+    private var fpuSizingIc = 0.0
+    private var fpuSizingProfile = ""
+
+    /** [profileIcResizeFactor] against the running profile's IC at 100% at the bolus's time of day, with its note text. */
+    private suspend fun partIcResize(sizingProfile: String, sizingIc: Double, upOnly: Boolean = false): Pair<Double, String> {
+        val profile = profileFunction.getProfile() ?: return 1.0 to ""
+        val runningIc = profile.getIcTimeFromMidnight(MidnightTime.secondsFromMidnight(timeStamp, AppTimeZone.current())) *
+            profileSwitchPercent(profile) / 100.0
+        val running = profileFunction.getOriginalProfileName()
+        val factor = profileIcResizeFactor(sizingProfile, sizingIc, running, runningIc, upOnly)
+        if (factor != 1.0) aapsLogger.info(LTag.CORE, "Follow-up resize x$factor: sized at IC $sizingIc on $sizingProfile, running $running IC $runningIc")
+        return factor to profileIcResizeNote(factor, sizingProfile, running)
     }
     var warsawIobBaseline: Double = 0.0
         private set
@@ -337,6 +360,8 @@ class BolusWizard(
         // this profile's own ratio with the 50% taken off, and [sizeWarsawAtStandard] then resizes it at the Standard profile.
         warsawInputs = WarsawInputs(protein, fat, warsawDurationHours, fpuIntervalMinutes)
         warsawPlan = warsawFpuPlan(protein, fat, if (activePct == 50) ic / 2.0 else ic, warsawDurationHours, fpuIntervalMinutes)
+            // 2026-11-28, per explicit request: what the series is sized at, for its resize when due (see ProfileIcResize)
+            ?.copy(sizingIc = if (activePct == 50) ic / 2.0 else ic, sizingProfile = profileFunction.getOriginalProfileName())
         if (!warsawAllowedAt(activePct) || useSuperBolus || loop.runningMode() == RM.Mode.SUPER_BOLUS) warsawPlan = null
         insulinFromCarbs = carbs / ic
         val status = glucoseStatus
@@ -566,6 +591,8 @@ class BolusWizard(
         if (!warsawPercentOk(profileSwitchPercent(profile), allowProfile50)) return
         val token = WarsawScheduleGate.next()
         val scheduledAt = dateUtil.now()
+        fpuSizingIc = plan.sizingIc
+        fpuSizingProfile = plan.sizingProfile
         aapsLogger.info(
             LTag.CORE,
             "Warsaw: ${plan.numDoses} doses of ${plan.perDoseInsulin} U over ${plan.durationMinutes} min, retry=$retryLater"
@@ -623,7 +650,7 @@ class BolusWizard(
             if (trioLater == null) PendingFollowUps.save(preferences, pendingKey, pendingEntry("fpu", token, source) {
                 put("planned", planned); put("iobBaseline", iobBaseline); put("firstDueAt", firstDueAt); nextDueAt?.let { put("nextDueAt", it) }
                 put("retryLater", retryLater); put("label", label); put("dueAt", dueAt); put("allowProfile50", allowProfile50)
-                put("deferralNoted", deferralNoted)
+                put("deferralNoted", deferralNoted); put("fpuSizingIc", fpuSizingIc); put("fpuSizingProfile", fpuSizingProfile)
             })
             // Wait for the due time in steps of at most 2 minutes, so a newer confirm cancels this dose at once.
             while (true) {
@@ -746,8 +773,13 @@ class BolusWizard(
         // 2026-10-18, per explicit request: no IOB-rise cut. The insulinReq cap below already counts all insulin on board
         // (less the same-cycle SMB), so cutting an IOB rise as well counted it twice.
         // 2026-10-19, per explicit request: cut while walking. The cut part is dropped: capRemaining below uses the cut dose.
+        // 2026-11-28, per explicit request: [planned] stays in the units it was sized at; on another profile it is resized for
+        // this dose (see ProfileIcResize). What the cap leaves goes back in the sized units.
+        val (icFactor, icNote) = partIcResize(fpuSizingProfile, fpuSizingIc)
+        val sizedPlanned = Round.roundTo(planned * icFactor, step)
+        if (icNote.isNotEmpty()) aapsLogger.info(LTag.CORE, "Warsaw dose:$icNote $planned U -> $sizedPlanned U")
         val walkFactor = walkingFactorNow()
-        val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(planned * walkFactor, step) else planned
+        val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(sizedPlanned * walkFactor, step) else sizedPlanned
         // 2026-11-20, per explicit request: the full insulinReq cap, not half the gap; the rest is checked again (onCappedRemainder)
         // 2026-11-26, per explicit request (same as 3426): no insulinReq cap at BG 7.5 or more with HP1 6.0 or more
         val dose = (if (followUpCapWaived()) walkingPlanned else cappedFollowUpDose(walkingPlanned, step, halfReduction = false))
@@ -755,10 +787,10 @@ class BolusWizard(
         if (dose <= 0.0) return "insulinReq cap is below one pump step"
         val capRemaining = Round.roundTo(max(0.0, walkingPlanned - dose), 0.001)
         if (walkFactor < 1.0)
-            aapsLogger.info(LTag.CORE, "Warsaw dose: ${delayedDoseWalkingLevel(walkFactor)} (steps), dose x$walkFactor, ${Round.roundTo(planned - walkingPlanned, 0.001)} U dropped")
+            aapsLogger.info(LTag.CORE, "Warsaw dose: ${delayedDoseWalkingLevel(walkFactor)} (steps), dose x$walkFactor, ${Round.roundTo(sizedPlanned - walkingPlanned, 0.001)} U dropped")
         deliverLaterDose(dose, source, rh.gs(InterfacesStrings.wizard_warsaw_dose), "Warsaw dose") {
             preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
-            if (capRemaining >= step / 2.0) onCappedRemainder(capRemaining, liveIob + dose)
+            if (capRemaining >= step / 2.0) onCappedRemainder(capRemaining / icFactor, liveIob + dose)
         }
         return null
     }
@@ -980,7 +1012,8 @@ class BolusWizard(
         val useIc = standard ?: if (activeProfilePct == 50) ic / 2.0 else ic
         val held = DelayedBolus.heldUnits(carbs, useIc, insulinFromCarbs, immediatePercent)
         if (held < ch.bolusStep(max(held, 0.05)) / 2.0) return
-        delayedPlan = DelayedBolusPlan(heldBy, Round.roundTo(held, 0.001), carbs, useIc, fromStandard)
+        val sizingProfile = if (fromStandard) preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim() else profileFunction.getOriginalProfileName()
+        delayedPlan = DelayedBolusPlan(heldBy, Round.roundTo(held, 0.001), carbs, useIc, fromStandard, sizingProfile)
         aapsLogger.info(
             LTag.CORE,
             "Delayed bolus plan: ${heldBy.label} held=${Round.roundTo(held, 0.001)}U carbs=${carbs}g IC=$useIc " +
@@ -1007,6 +1040,7 @@ class BolusWizard(
         val entry = if (trioLater != null) null else pendingEntry("delayed", token, source) {
             put("heldBy", plan.heldBy.name); put("heldUnits", plan.heldUnits); put("carbs", plan.carbs); put("planIc", plan.ic)
             put("fromStandardProfile", plan.fromStandardProfile); put("attempt", attempt); put("deliveredSoFar", deliveredSoFar); put("dueAt", dueAt)
+            put("sizingProfile", plan.sizingProfile)
         }
         appScope.launch {
             entry?.let { PendingFollowUps.save(preferences, pendingKey, it) }
@@ -1054,6 +1088,7 @@ class BolusWizard(
         when (s("kind")) {
             "fpu"     -> {
                 aapsLogger.info(LTag.CORE, "Warsaw dose ${s("label")}: resumed after an app restart, ${d("planned")} U")
+                fpuSizingIc = d("fpuSizingIc"); fpuSizingProfile = s("fpuSizingProfile")
                 appScope.launch {
                     runWarsawDose(
                         d("planned"), d("iobBaseline"), source, token, l("firstDueAt"), entry["nextDueAt"]?.jsonPrimitive?.longOrNull,
@@ -1064,6 +1099,7 @@ class BolusWizard(
             }
             "split"   -> {
                 aapsLogger.info(LTag.CORE, "Split leftover resumed after an app restart, ${d("remaining")} U left")
+                splitSizingIc = d("splitSizingIc"); splitSizingProfile = s("splitSizingProfile")
                 launchSplitPart(
                     d("remaining"), d("previousPart"), d("iobBaseline"), token, source, l("deliverAt"), l("deadline"), i("unsafeCount"),
                     i("intervalMinutes"), i("unsafeLimit"), b("walkingCutAllowed", true)
@@ -1077,7 +1113,7 @@ class BolusWizard(
                 }
                 aapsLogger.info(LTag.CORE, "Delayed bolus check ${i("attempt")} resumed after an app restart")
                 launchDelayedCheck(
-                    DelayedBolusPlan(heldBy, d("heldUnits"), i("carbs"), d("planIc"), b("fromStandardProfile", true)),
+                    DelayedBolusPlan(heldBy, d("heldUnits"), i("carbs"), d("planIc"), b("fromStandardProfile", true), s("sizingProfile")),
                     source, token, i("attempt"), d("deliveredSoFar"), l("dueAt")
                 )
             }
@@ -1133,7 +1169,10 @@ class BolusWizard(
         // 2026-11-27, per explicit request (same as 3426): no carbs-on-board shrink. The amount held back is for carbs already entered
         // with this bolus, absorbed or not (27 Nov Db50: x0.41 dropped 0.49 U at BG 10.5 and rising). COB is still logged.
         val cobFraction = 1.0
-        val raw = DelayedBolus.checkDose(plan.heldUnits, deliveredSoFar, cobFraction)
+        // 2026-11-28, per explicit request (same as 3426): the held part was sized at plan.ic on plan.sizingProfile; on another
+        // profile it is resized (see ProfileIcResize). Sized at the Standard IC, a weaker (Low) profile does not shrink it.
+        val (icFactor, icNote) = partIcResize(plan.sizingProfile, plan.ic, upOnly = plan.fromStandardProfile)
+        val raw = DelayedBolus.checkDose(plan.heldUnits * icFactor, deliveredSoFar, cobFraction)
         val step = ch.bolusStep(max(raw, 0.05))
         if (raw < step / 2.0) {
             aapsLogger.info(LTag.CORE, "Delayed bolus $db: covered, COB $cob of ${plan.carbs} g leaves $raw U")
@@ -1162,7 +1201,7 @@ class BolusWizard(
         aapsLogger.info(
             LTag.CORE,
             "Delayed bolus $db: giving ${capped}U (held ${plan.heldUnits}U, given before ${deliveredSoFar}U, COB x${Round.roundTo(cobFraction, 0.01)}, " +
-                "walking x$walkFactor, insulinReq-limited=$insulinReqLimited)"
+                "walking x$walkFactor, insulinReq-limited=$insulinReqLimited)$icNote"
         )
         delayedNote("$db ${warsawNoteAmount(capped)} U${if (continues) ", insulinReq-limited, the rest checked again in ${DelayedBolus.POLL_MINUTES} min" else ""}", source)
         // Unsaved before the dose can reach the pump, so an app killed during the bolus can never give it twice
@@ -1207,6 +1246,9 @@ class BolusWizard(
         val token = SplitScheduleGate.next()
         val profile = profileFunction.getProfile() ?: return
         if (profileSwitchPercent(profile) < 100) return
+        // 2026-11-28, per explicit request (same as 3426): the split is sized at this profile's IC at 100% (it runs at 100% or more)
+        splitSizingIc = profile.getIcTimeFromMidnight(MidnightTime.secondsFromMidnight(timeStamp, AppTimeZone.current())) * profileSwitchPercent(profile) / 100.0
+        splitSizingProfile = profileFunction.getOriginalProfileName()
         val step = ch.bolusStep(max(delivered, walkingSoonHeld).coerceAtLeast(0.05))
         val aboveMax = if (splitOverMax) splitLeftover(requested, delivered, step) ?: 0.0 else 0.0
         val walkLeft = Round.roundTo(walkingSoonHeld, 0.001).let { held ->
@@ -1276,7 +1318,7 @@ class BolusWizard(
         val entry = if (trioLater != null) null else pendingEntry("split", token, source) {
             put("remaining", remaining); put("previousPart", previousPart); put("iobBaseline", iobBaseline); put("deliverAt", deliverAt)
             put("deadline", deadline); put("unsafeCount", unsafeCount); put("intervalMinutes", intervalMinutes); put("unsafeLimit", unsafeLimit)
-            put("walkingCutAllowed", walkingCutAllowed)
+            put("walkingCutAllowed", walkingCutAllowed); put("splitSizingIc", splitSizingIc); put("splitSizingProfile", splitSizingProfile)
         }
         appScope.launch {
             entry?.let { PendingFollowUps.save(preferences, pendingKey, it) }
@@ -1377,7 +1419,11 @@ class BolusWizard(
                 SplitBgCheck.Allowed -> {
                     val liveIob = iobCobCalculator.calculateFromTreatmentsAndTemps(now, profile).iob
                     // 2026-10-18: no IOB credit, see splitBolusBudget. The insulinReq cap counts insulin on board.
-                    val budget = splitBolusBudget(remaining, previousPart, step)
+                    // 2026-11-28, per explicit request (same as 3426): [remaining] stays in the units it was sized at; on another
+                    // profile it is resized for this part (see ProfileIcResize), and what is left goes back in the sized units
+                    val (icFactor, icNote) = partIcResize(splitSizingProfile, splitSizingIc)
+                    if (icNote.isNotEmpty()) aapsLogger.info(LTag.CORE, "Split leftover part:$icNote")
+                    val budget = splitBolusBudget(remaining * icFactor, previousPart, step)
                     val reducedRemaining = budget.remaining
                     // 2026-10-19, per explicit request: cut while walking. The cut part is dropped from the total. Not for a
                     // series that holds insulin walking soon kept back: walking soon already cut the first bolus.
@@ -1393,7 +1439,7 @@ class BolusWizard(
                         aapsLogger.info(LTag.CORE, "Split leftover waiting: $reason, ${reducedRemaining} U left")
                         val retryMinutes = if (budget.dose > 0.0) 2 else intervalMinutes
                         launchSplitPart(
-                            reducedRemaining, previousPart, max(iobBaseline, liveIob), token, source,
+                            reducedRemaining / icFactor, previousPart, max(iobBaseline, liveIob), token, source,
                             now + retryMinutes * 60_000L, deadline, 0, intervalMinutes, unsafeLimit,
                             walkingCutAllowed,
                         )
@@ -1416,7 +1462,7 @@ class BolusWizard(
                         val left = leftAfterPart
                         if (left >= step / 2.0) {
                             launchSplitPart(
-                                remaining = left,
+                                remaining = left / icFactor,   // back in the sized units (2026-11-28)
                                 // The next part keeps the size it had before the walking cut.
                                 previousPart = dose + walkingCut,
                                 iobBaseline = liveIob + dose,
