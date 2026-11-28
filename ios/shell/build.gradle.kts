@@ -103,8 +103,9 @@ val checkMigratedModules = tasks.register("checkMigratedModules") {
             .map { ":" + it.parentFile.relativeTo(rootDir).invariantSeparatorsPath.replace('/', ':') }
             // :ios:shell is this module. :shared:tests builds for iOS so that shared test fixtures
             // are available to common tests, but it is fixtures, not product - linking it would put
-            // test helpers into the framework header Swift sees.
-            .filterNot { it == ":ios:shell" || it == ":shared:tests" }
+            // test helpers into the framework header Swift sees. :pump:omnipod:dashctl:emulator is the
+            // simulated Dash pod, for tests only, and is left out for the same reason.
+            .filterNot { it == ":ios:shell" || it == ":shared:tests" || it == ":pump:omnipod:dashctl:emulator" }
             .toSet()
 
         val missing = withIosTargets - listed
