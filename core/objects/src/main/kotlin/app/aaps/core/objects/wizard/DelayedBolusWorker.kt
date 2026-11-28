@@ -155,7 +155,7 @@ class DelayedBolusWorker(
         // shrink the true remaining need over time, InsReq capping a check must not discard the undelivered
         // portion. When InsReq was the binding constraint this check, the sequence continues (residualAfter carried
         // to the next attempt via deliveredSoFar) instead of declaring completion.
-        val trailer = if (insReqLimited) "Still ${Round.roundTo(residualAfter, 0.01)}U pending (InsReq-limited this check) -- continuing"
+        val trailer = if (insReqLimited) "Still ${Round.roundTo(residualAfter, 0.01)}U pending (InsReq-limited or still moving this check) -- continuing"
             else "Delayed sequence complete; no residual pending"
         val note = "$dbLabel delayed bolus (held back by $heldBack): ${Round.roundTo(delayedDose, 0.01)}U delivered\n" +
             "Gate BG ${Round.roundTo(gs.glucose / 18.0182, 0.01)}, D ${Round.roundTo(gs.delta / 18.0182, 0.01)}, " +
@@ -536,7 +536,11 @@ class DelayedBolusWorker(
             // the delayed top-up decision is still pending, not resolved.
             val newDeliveredSoFar = deliveredSoFar + delayedDose
             val residualAfter = (heldBackSized - splitShare - newDeliveredSoFar).coerceAtLeast(0.0)
-            val willContinue = insReqLimited && attempt < MAX_ATTEMPTS && residualAfter > 0.0
+            // 2026-11-28, per explicit request: the part "still moving" held back (the walking cut) also keeps the checks going,
+            // as an InsReq-limited check does, instead of being dropped when the sequence ended here
+            val walkingHeld = multiplier < 1.0
+            val willContinue = (insReqLimited || walkingHeld) && attempt < MAX_ATTEMPTS &&
+                residualAfter >= activePlugin.activePump.pumpDescription.bolusStep / 2.0
             aapsLogger.info(LTag.CORE, "Delayed bolus attempt $attempt (${elapsedMin}min): criteria met BGL=$bglStr — delivering ${delayedDose}U (fullRequired=${fullRequired}U given=${originalDose}U cobFraction=${Round.roundTo(cobFraction, 0.01)} remainder=${Round.roundTo(rawDose, 0.01)}U liveInsReqCap=${liveInsulinReqCap?.let { Round.roundTo(it, 0.01) } ?: "n/a"} capped=${Round.roundTo(cappedRawDose, 0.01)}U pendingSplit=${Round.roundTo(pendingSplit, 0.01)}U pendingWarsaw=${Round.roundTo(pendingWarsaw, 0.01)}U × ${(multiplier*100).toInt()}% ${if (movingNow) "still moving" else "seated"}${if (willContinue) " -- InsReq-limited, ${Round.roundTo(residualAfter, 0.01)}U will remain pending" else ""})")
             addCheckNote("$dbLabel ${delayedDose}U")
             if (!willContinue) unblockSmb("delivering")

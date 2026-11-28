@@ -2052,9 +2052,9 @@ class BolusWizard @Inject constructor(
             val reducedResidual = budget.remaining
             val walkFactor = walkingFactorNow()
             val partDose = if (walkFactor < 1.0) Round.roundTo(budget.dose * walkFactor, pumpStepForResidual) else budget.dose
-            // Dropped, not given later (2026-10-18, per explicit request).
+            // 2026-11-28, per explicit request: held, not dropped - it stays in what is left for the next part (was dropped since 2026-10-18)
             val walkingCut = Round.roundTo(max(0.0, budget.dose - partDose), 0.001)
-            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): part x$walkFactor, ${decimalFormatter.to2Decimal(walkingCut)}U dropped." else ""
+            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): part x$walkFactor, ${decimalFormatter.to2Decimal(walkingCut)}U held for the next part." else ""
             val capWaived = followUpCapWaived()
             val cappedDose = if (capWaived) partDose else cappedFollowUpDose(partDose, pumpStepForResidual)
             val thisDose = cappedDose ?: 0.0
@@ -2104,10 +2104,11 @@ class BolusWizard @Inject constructor(
                         else {
                             // Rounded to 0.001 so floating-point dust (5.2 - 5.0 - 0.2 = 1.7e-16) is not mistaken for a remainder;
                             // the guard at the top of this function then finishes anything under half a pump step.
-                            // The walking cut is dropped from the total. The next part keeps the size it had before the cut.
-                            val newResidual = Round.roundTo(reducedResidual - thisDose - walkingCut, 0.001)
-                            // What the split dealt with, for the delayed bolus (2026-10-23, per explicit request): given, plus the dropped walking cut
-                            addSplitHandled(result.bolusDelivered + walkingCut)
+                            // 2026-11-28, per explicit request: the walking cut stays in what is left (it was dropped). The next part keeps
+                            // the size it had before the cut.
+                            val newResidual = Round.roundTo(reducedResidual - thisDose, 0.001)
+                            // What the split dealt with, for the delayed bolus (2026-10-23, per explicit request): what was given
+                            addSplitHandled(result.bolusDelivered)
                             if (newResidual > 0.0)
                                 scheduleReducedPartsSplitBolus(newResidual / icFactor, thisDose + walkingCut, liveIob + thisDose, intervalMins, schedulingPct, myScheduleToken, retryDeadline = retryDeadline)
                             else
@@ -2263,26 +2264,33 @@ class BolusWizard @Inject constructor(
             // 2026-11-28, per explicit request: [dose] stays in the units it was sized at; on another profile it is resized for
             // this part (see ProfileIcResize). What the cap leaves goes back in the sized units below.
             val (icFactor, icNote) = partIcResize(fpuSizingProfile, fpuSizingIc)
-            val sizedDose = dose * icFactor
+            // 2026-11-28, per explicit request: what an earlier part of this meal could not give in its own window comes on top
+            val carried = FpuCarryOver.take(myScheduleToken)
+            val partDose = dose + carried
+            val carriedNote = if (carried >= pumpStep / 2.0) " Includes ${decimalFormatter.to2Decimal(carried * icFactor)}U carried from an earlier part." else ""
+            val sizedDose = partDose * icFactor
             val walkFactor = walkingFactorNow()
             val iobAdjustedDose = Round.roundTo(sizedDose * walkFactor, pumpStep)
-            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): dose x$walkFactor, ${decimalFormatter.to2Decimal(max(0.0, sizedDose - iobAdjustedDose))}U dropped." else ""
+            // 2026-11-28, per explicit request: the walking cut is held (checked again with what the cap leaves), no longer dropped
+            val walkingNote = if (walkFactor < 1.0) " ${delayedDoseWalkingLevel(walkFactor)} (steps): dose x$walkFactor, ${decimalFormatter.to2Decimal(max(0.0, sizedDose - iobAdjustedDose))}U held." else ""
             // 2026-11-20, per explicit request: protein/fat parts take the full insulinReq cap, not half the gap; what the cap
             // leaves is checked again in 10 minutes as before (capRemaining below)
             val capWaived = followUpCapWaived()
             val thisDose = if (capWaived) iobAdjustedDose else cappedFollowUpDose(iobAdjustedDose, pumpStep, halfReduction = false)
             if (thisDose == null || thisDose <= 0.0) {
+                FpuCarryOver.add(myScheduleToken, carried)   // not used now: stays for this part's next check or the next part
                 val reason = if (thisDose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
                 deferOrCancel(reason, reason, forceRetry = true)
                 return@postDelayed
             }
-            val capResidual = Round.roundTo(max(0.0, iobAdjustedDose - thisDose), 0.001)
+            // What the cap leaves and the walking cut, both held (2026-11-28; the walking cut was dropped before)
+            val capResidual = Round.roundTo(max(0.0, sizedDose - thisDose), 0.001)
             val capRemaining = if (capResidual >= pumpStep / 2.0) capResidual else 0.0
             DetailedBolusInfo().apply {
                 eventType = TE.Type.CORRECTION_BOLUS
                 insulin = thisDose
                 notes = "Delayed $label dose"
-                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "${if (capWaived) "Dose without insulinReq cap (BG >= 6.5, HP1 >= 6.0)" else "Dose after insulinReq cap"}; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote$icNote", useIobRise = false)
+                val calculation = followUpCalculation(timestamp, "Delayed $label dose", dose, iobBaseline, liveIob, thisDose, "${if (capWaived) "Dose without insulinReq cap (BG >= 6.5, HP1 >= 6.0)" else "Dose after insulinReq cap"}; ${decimalFormatter.to2Decimal(capRemaining)}U remains pending from this part.$walkingNote$icNote$carriedNote", useIobRise = false)
                 uel.log(
                     action = Action.BOLUS,
                     source = if (quickWizard) Sources.QuickWizard else Sources.WizardDialog,
@@ -2291,7 +2299,7 @@ class BolusWizard @Inject constructor(
                 )
                 // The pending total is in the sized units: the part less what the cap leaves, in those units
                 val capRemainingSized = capRemaining / icFactor
-                decrementWarsawPendingRemaining(dose - capRemainingSized)
+                decrementWarsawPendingRemaining(partDose - capRemainingSized)
                 commandQueue.bolus(this, object : Callback() {
                     override fun run() {
                         calculation.note += " Pump result: success=${result.success}, delivered=${decimalFormatter.to2Decimal(result.bolusDelivered)}U. ${result.comment}"
@@ -2306,8 +2314,12 @@ class BolusWizard @Inject constructor(
                             if (retryAt <= deadline) {
                                 scheduleSingleDelayedDose(capRemainingSized, delayMins, label, schedulingPct, liveIob + thisDose, myScheduleToken,
                                     retryAt, isLast, nextDueAt, firstDueAt, false, retryLater)
+                            } else if (nextDueAt != null) {
+                                // 2026-11-28, per explicit request: this part's window is over, so what it still holds goes onto the next part
+                                FpuCarryOver.add(myScheduleToken, capRemainingSized)
+                                aapsLogger.info(LTag.CORE, "DelayedDose($label): ${capRemaining}U held (walking/insulinReq) carried to the next part")
                             } else {
-                                cancelDoseNote(fpuWhat(label, capRemaining), capRemaining, "insulinReq-limited remainder expired", label, liveIob + thisDose, useIobRise = false)
+                                cancelDoseNote(fpuWhat(label, capRemaining), capRemaining, "walking/insulinReq-limited remainder of the last part expired", label, liveIob + thisDose, useIobRise = false)
                                 decrementWarsawPendingRemaining(capRemainingSized)
                             }
                         }
@@ -2455,4 +2467,20 @@ class BolusWizard @Inject constructor(
         calculatedCorrection = max(-constraintChecker.getMaxBolusAllowed().value(), calculatedCorrection)
     }
 
+}
+
+/**
+ * 2026-11-28, per explicit request: protein/fat (FPU) units a part held (walking cut and what the insulinReq cap left) and could
+ * not give within its own window, by the meal's schedule token, in the units the series was sized at. The meal's next part takes
+ * them on top of its own. In memory only: an app restart loses them.
+ */
+internal object FpuCarryOver {
+
+    private val carry = HashMap<Long, Double>()
+
+    @Synchronized fun add(token: Long, units: Double) {
+        if (units > 0.0) carry[token] = (carry[token] ?: 0.0) + units
+    }
+
+    @Synchronized fun take(token: Long): Double = carry.remove(token) ?: 0.0
 }
