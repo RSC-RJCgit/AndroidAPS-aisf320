@@ -2,6 +2,8 @@ package app.aaps.plugins.source
 
 import androidx.compose.runtime.remember
 import app.aaps.core.data.plugin.PluginType
+import app.aaps.core.interfaces.alerts.AlertChoice
+import app.aaps.core.interfaces.alerts.BgAlert
 import app.aaps.core.interfaces.concurrent.AapsLock
 import app.aaps.core.interfaces.concurrent.withLock
 import app.aaps.core.interfaces.configuration.ConfigBuilder
@@ -14,6 +16,7 @@ import app.aaps.core.interfaces.source.SensorSlot
 import app.aaps.core.interfaces.utils.DateUtil
 import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.IntKey
+import app.aaps.core.keys.StringNonKey
 import app.aaps.core.keys.interfaces.PreferenceItem
 import app.aaps.core.keys.interfaces.Preferences
 import app.aaps.core.keys.interfaces.TextRef
@@ -45,6 +48,10 @@ import dev.zacsweers.metro.SingleIn
 import dev.zacsweers.metro.binding
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * [DexcomOnePlusHost] on iPhone.
@@ -241,6 +248,18 @@ class DexcomOnePlusIosHost(
     }
 
     /**
+     * Whether the missed BG readings alarm is on (2026-11-28, dev41 merge): the old switch `AlertMissedBgReading` became
+     * the alert kind [BgAlert.STALE], chosen per phone in [StringNonKey.AlertChoices] and Off when not chosen (its
+     * default). On means any choice other than Off. An unreadable list counts as off.
+     */
+    private fun missedReadingAlertOn(prefs: Preferences): Boolean = try {
+        Json.parseToJsonElement(prefs.get(StringNonKey.AlertChoices)).jsonObject[BgAlert.STALE.id]
+            ?.jsonPrimitive?.contentOrNull?.let { it != AlertChoice.OFF.name } ?: false
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
      * Moves the missed-reading alarm to "this reading + stale limit".
      *
      * Reads the same two settings as `LocalAlertUtils.checkStaleBGAlert`: whether the alarm is on,
@@ -248,7 +267,7 @@ class DexcomOnePlusIosHost(
      */
     override fun onReadingStored(timestampMs: Long) {
         val prefs = preferences()
-        if (!prefs.get(BooleanKey.AlertMissedBgReading)) {
+        if (!missedReadingAlertOn(prefs)) {
             missedReadingAlarm.disarm()
             return
         }
