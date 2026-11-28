@@ -249,6 +249,7 @@ fun MainScreen(
     val quickLaunchSavedX by remember { mainViewModel.preferences.observe(IntNonKey.QuickLaunchX) }.collectAsStateWithLifecycle()
     val quickLaunchSavedY by remember { mainViewModel.preferences.observe(IntNonKey.QuickLaunchY) }.collectAsStateWithLifecycle()
     var quickLaunchDragPos by remember { mutableStateOf<Offset?>(null) }
+    var quickLaunchDragging by remember { mutableStateOf(false) }
     var quickLaunchPlacedAt by remember { mutableStateOf(Offset.Zero) }
     var quickLaunchBarSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var quickLaunchAreaSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
@@ -786,22 +787,31 @@ fun MainScreen(
                     val qlInsetRight = qlSafe.getRight(quickLaunchDensity, quickLaunchDirection).toFloat()
                     val qlInsetTop = qlSafe.getTop(quickLaunchDensity).toFloat()
                     val qlInsetBottom = qlSafe.getBottom(quickLaunchDensity).toFloat()
-                    fun clampQuickLaunch(p: Offset): Offset {
-                        val maxX = (quickLaunchAreaSize.width - quickLaunchBarSize.width - qlInsetRight).coerceAtLeast(qlInsetLeft)
+                    // 2026-11-28, per explicit request: the grip alone decides a side, so while dragging a horizontal bar only its
+                    // grip has to stay on screen - the rest may slide past the right edge until the grip reaches it
+                    val quickLaunchGripSpanPx = with(LocalDensity.current) { QUICK_LAUNCH_GRIP_SPAN.toPx() }
+                    fun clampQuickLaunch(p: Offset, gripOnly: Boolean = false): Offset {
+                        val keptWidth = if (gripOnly && !quickLaunchVertical) quickLaunchGripSpanPx else quickLaunchBarSize.width.toFloat()
+                        val maxX = (quickLaunchAreaSize.width - keptWidth - qlInsetRight).coerceAtLeast(qlInsetLeft)
                         val maxY = (quickLaunchAreaSize.height - quickLaunchBarSize.height - qlInsetBottom).coerceAtLeast(qlInsetTop)
                         return Offset(p.x.coerceIn(qlInsetLeft, maxX), p.y.coerceIn(qlInsetTop, maxY))
                     }
                     val quickLaunchSaved = if (quickLaunchSavedX >= 0 && quickLaunchSavedY >= 0)
                         Offset(quickLaunchSavedX.toFloat(), quickLaunchSavedY.toFloat()) else null
-                    val quickLaunchAt = (quickLaunchDragPos ?: quickLaunchSaved)?.let { clampQuickLaunch(it) }
+                    val quickLaunchAt = (quickLaunchDragPos ?: quickLaunchSaved)?.let { clampQuickLaunch(it, gripOnly = quickLaunchDragging) }
                     // 2026-11-27, per explicit request: left touching the left or right edge, the bar turns vertical and stays on that
                     // side (a right-side bar is saved as QUICK_LAUNCH_RIGHT_EDGE, which the clamp puts at the edge whatever its width)
                     val quickLaunchEdgePx = with(LocalDensity.current) { QUICK_LAUNCH_EDGE_SNAP.toPx() }
-                    fun quickLaunchSide(x: Float): Int = when {
-                        quickLaunchAreaSize.width <= 0 || quickLaunchBarSize.width <= 0               -> 0
-                        x <= qlInsetLeft + quickLaunchEdgePx                                                         -> -1
-                        x >= quickLaunchAreaSize.width - quickLaunchBarSize.width - qlInsetRight - quickLaunchEdgePx -> 1
-                        else                                                                           -> 0
+                    // 2026-11-28, per explicit request: decided by where the grip is, never by the far end of a wide bar. The grip
+                    // is the left end of a horizontal bar; a vertical bar is as narrow as its grip.
+                    fun quickLaunchSide(x: Float): Int {
+                        if (quickLaunchAreaSize.width <= 0 || quickLaunchBarSize.width <= 0) return 0
+                        val gripWidth = if (quickLaunchVertical) quickLaunchBarSize.width.toFloat() else quickLaunchGripSpanPx
+                        return when {
+                            x <= qlInsetLeft + quickLaunchEdgePx                                           -> -1
+                            x >= quickLaunchAreaSize.width - gripWidth - qlInsetRight - quickLaunchEdgePx -> 1
+                            else                                                                           -> 0
+                        }
                     }
                     fun snapQuickLaunchToSide(side: Int, y: Float) {
                         val x = if (side < 0) 0 else QUICK_LAUNCH_RIGHT_EDGE
@@ -810,10 +820,13 @@ fun MainScreen(
                         mainViewModel.preferences.put(IntNonKey.QuickLaunchY, y.roundToInt())
                         mainViewModel.preferences.put(BooleanNonKey.QuickLaunchVertical, true)
                     }
-                    // At startup: a horizontal bar saved against a side edge (also one saved before this rule) turns vertical once
+                    // At startup: a horizontal bar saved against a side edge (also one saved before this rule) turns vertical once.
+                    // 2026-11-28, per explicit request: decided by where its grip was saved, not by the whole bar. A vertical bar
+                    // dragged off a side is saved at its grip and turns horizontal; a wide bar then reaches the far edge once the clamp
+                    // fits it on screen, which this used to read as a side touch, turning it vertical again at the next start.
                     LaunchedEffect(quickLaunchSavedX, quickLaunchSavedY, quickLaunchVertical, quickLaunchAreaSize, quickLaunchBarSize) {
                         if (quickLaunchVertical || quickLaunchSaved == null || quickLaunchDragPos != null) return@LaunchedEffect
-                        val side = quickLaunchSide(clampQuickLaunch(quickLaunchSaved).x)
+                        val side = quickLaunchSide(quickLaunchSaved.x)
                         if (side != 0) snapQuickLaunchToSide(side, quickLaunchSaved.y)
                     }
                     AnimatedVisibility(
@@ -841,15 +854,21 @@ fun MainScreen(
                             large = quickLaunchLarge,
                             onGripDrag = { amount ->
                                 // From where the bar really is (a right-edge mark is far beyond the screen until clamped)
-                                quickLaunchDragPos = clampQuickLaunch((quickLaunchDragPos?.let { clampQuickLaunch(it) } ?: quickLaunchAt ?: quickLaunchPlacedAt) + amount)
+                                val from = quickLaunchDragPos?.let { clampQuickLaunch(it, gripOnly = true) } ?: quickLaunchAt ?: quickLaunchPlacedAt
+                                quickLaunchDragPos = clampQuickLaunch(from + amount, gripOnly = true)
+                                quickLaunchDragging = true
                             },
                             onGripDragEnd = {
+                                quickLaunchDragging = false
                                 quickLaunchDragPos?.let {
                                     val side = quickLaunchSide(it.x)
                                     if (side != 0) snapQuickLaunchToSide(side, it.y)
                                     else {
-                                        mainViewModel.preferences.put(IntNonKey.QuickLaunchX, it.x.roundToInt())
-                                        mainViewModel.preferences.put(IntNonKey.QuickLaunchY, it.y.roundToInt())
+                                        // Let go away from both sides: the whole bar is pulled back on screen
+                                        val placed = clampQuickLaunch(it)
+                                        quickLaunchDragPos = placed
+                                        mainViewModel.preferences.put(IntNonKey.QuickLaunchX, placed.x.roundToInt())
+                                        mainViewModel.preferences.put(IntNonKey.QuickLaunchY, placed.y.roundToInt())
                                         // 2026-11-28, per explicit request: let go away from both sides, a vertical bar turns
                                         // horizontal again (double-tap still turns it either way until the next drag)
                                         if (quickLaunchVertical) mainViewModel.preferences.put(BooleanNonKey.QuickLaunchVertical, false)
@@ -989,6 +1008,9 @@ private val PREVIEW_MODE_MIN_HEIGHT: Dp = 500.dp
 
 /** A quick-launch bar let go this close to the left or right edge turns vertical on that side (2026-11-27, per explicit request) */
 private val QUICK_LAUNCH_EDGE_SNAP: Dp = 8.dp
+
+/** From the left end of a horizontal quick launch bar to the far side of its grip: the bar's 16 dp padding and the 22 dp grip. */
+private val QUICK_LAUNCH_GRIP_SPAN: Dp = 38.dp
 
 /** Saved x of a bar on the right edge: far past any screen, so the clamp puts it at the edge whatever its width */
 private const val QUICK_LAUNCH_RIGHT_EDGE = 100_000
