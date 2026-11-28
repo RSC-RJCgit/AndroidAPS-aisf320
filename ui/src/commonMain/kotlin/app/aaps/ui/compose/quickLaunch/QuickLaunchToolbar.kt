@@ -58,6 +58,7 @@ import app.aaps.core.ui.compose.icons.IcTtEatingSoon
 import app.aaps.core.ui.compose.icons.IcTtHypo
 import app.aaps.core.ui.compose.navigation.color
 import app.aaps.core.ui.compose.stringResource
+import app.aaps.ui.compose.boundedHeight
 
 @Immutable
 data class ResolvedQuickLaunchItem(
@@ -299,7 +300,11 @@ private fun OverflowMenuButton(
         }
         DropdownMenu(
             expanded = showMenu,
-            onDismissRequest = { showMenu = false }
+            onDismissRequest = { showMenu = false },
+            // 2026-11-28: the iPhone client crashed with "Vertically scrollable component was measured with an infinity
+            // maximum height" from this menu (the vertical bar in landscape, the phone just turned). The menu scrolls, so
+            // it needs a height limit; the window height stands in when the popup hands down none.
+            modifier = Modifier.boundedHeight()
         ) {
             overflowItems.forEach { item ->
                 DropdownMenuItem(
