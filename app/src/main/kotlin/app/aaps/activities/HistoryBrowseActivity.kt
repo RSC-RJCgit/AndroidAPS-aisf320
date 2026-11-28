@@ -704,8 +704,11 @@ class HistoryBrowseActivity : TranslatedDaggerAppCompatActivity() {
         }
         for (g in 0 until min(secondaryGraphs.size, menuChartSettings.size + 1)) {
             secondaryGraphsLabel[g].text = stepsLinesLabel(overviewMenus.enabledTypes(g + 1), rh, this)
-            // Simple graphs: G2 onwards without their label (G1 keeps its own)
-            secondaryGraphsLabel[g].visibility = if (preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs) && g > 0) View.GONE else View.VISIBLE
+            // Simple graphs: G2 onwards without their label (G1 keeps its own). A steps graph keeps its label, with the
+            // S5/S15/S30/S60 names (2026-11-26, per explicit request, same as the overview).
+            val stepsGraph = overviewMenus.isActiveCharTypeData(g + 1, OverviewMenus.CharType.STEPS.ordinal) ||
+                overviewMenus.isActiveCharTypeData(g + 1, OverviewMenus.CharType.STEPS_LINES.ordinal)
+            secondaryGraphsLabel[g].visibility = if (preferences.get(BooleanKey.ApsAutoIsfSimpleGraphs) && g > 0 && !stepsGraph) View.GONE else View.VISIBLE
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal) ||

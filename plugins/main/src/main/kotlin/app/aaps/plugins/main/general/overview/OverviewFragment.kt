@@ -4179,8 +4179,11 @@ class OverviewFragment : DaggerFragment(), View.OnClickListener, OnLongClickList
             graphLabel.append(graphCurrentTime)
             graphLabel.setSpan(RelativeSizeSpan(0.8f), timeStart, graphLabel.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             secondaryGraphsLabel[g].text = graphLabel
-            // Simple graphs: G2 onwards without their label (G1 keeps its own)
-            secondaryGraphsLabel[g].visibility = if (simpleGraphs && g > 0) View.GONE else View.VISIBLE
+            // Simple graphs: G2 onwards without their label (G1 keeps its own). A steps graph keeps its label, with the
+            // S5/S15/S30/S60 names (2026-11-26, per explicit request).
+            val stepsGraph = overviewMenus.isActiveCharTypeData(g + 1, OverviewMenus.CharType.STEPS.ordinal) ||
+                overviewMenus.isActiveCharTypeData(g + 1, OverviewMenus.CharType.STEPS_LINES.ordinal)
+            secondaryGraphsLabel[g].visibility = if (simpleGraphs && g > 0 && !stepsGraph) View.GONE else View.VISIBLE
             secondaryGraphs[g].visibility = (
                 overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.ABS.ordinal) ||
                     overviewMenus.isActiveCharTypeData(g+1,OverviewMenus.CharType.IOB.ordinal) ||
