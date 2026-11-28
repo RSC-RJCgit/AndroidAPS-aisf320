@@ -219,6 +219,12 @@ private class ShortRangeTimeAxisPlacer(
 const val DEFAULT_GRAPH_ZOOM_MINUTES = 180.0
 
 /**
+ * What the overview graphs show when they open: 2 hours, ending at the current time (2026-11-28, per explicit request). The
+ * 3 hour default above stays the measure for the clean-graph and label rules.
+ */
+const val OVERVIEW_START_ZOOM_MINUTES = 120.0
+
+/**
  * Maximum zoom-in level — never show fewer than this many minutes.
  * Prevents Vico's internal label/constraint math from overflowing at extreme zoom
  * (Compose `Constraints` can't represent the resulting data-label widths → crash).

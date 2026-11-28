@@ -40,6 +40,7 @@ import app.aaps.core.keys.BooleanKey
 import app.aaps.core.keys.BooleanNonKey
 import app.aaps.core.keys.IntNonKey
 import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.runtime.Composable
@@ -109,7 +110,9 @@ import app.aaps.ui.compose.overview.graphs.GraphViewModel
 import app.aaps.ui.compose.overview.graphs.TopBarPillHost
 import app.aaps.ui.compose.overview.graphs.LocalTopBarPillHost
 import app.aaps.ui.compose.overview.statusLights.StatusViewModel
+import app.aaps.ui.compose.quickLaunch.LocalQuickLaunchAnchor
 import app.aaps.ui.compose.quickLaunch.QuickLaunchAction
+import app.aaps.ui.compose.quickLaunch.QuickLaunchAnchor
 import app.aaps.ui.compose.quickLaunch.QuickLaunchButtonSize
 import app.aaps.ui.compose.quickLaunch.QuickLaunchLargeButtonSize
 import app.aaps.ui.compose.quickLaunch.QuickLaunchToolbar
@@ -253,6 +256,11 @@ fun MainScreen(
     var quickLaunchPlacedAt by remember { mutableStateOf(Offset.Zero) }
     var quickLaunchBarSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     var quickLaunchAreaSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    // 2026-11-28, per explicit request: each time the overview opens, the bar starts horizontal, level with the TT row (and the
+    // delta beside it). The anchor is where that row is; the flag makes it happen once per opening, so a drag afterwards stays.
+    val quickLaunchAnchor = remember { QuickLaunchAnchor() }
+    var quickLaunchAreaTopInRoot by remember { mutableStateOf<Float?>(null) }
+    var quickLaunchPlacedOnOpen by remember { mutableStateOf(false) }
     val automationState by scenesViewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = LocalSnackbarHostState.current
 
@@ -415,7 +423,7 @@ fun MainScreen(
                 // masterReachable for its own gating.)
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Main content. The graphs hand their press-and-hold pill to the top bar below (2026-10-27).
-                    CompositionLocalProvider(LocalTopBarPillHost provides topBarPillHost) {
+                    CompositionLocalProvider(LocalTopBarPillHost provides topBarPillHost, LocalQuickLaunchAnchor provides quickLaunchAnchor) {
                     OverviewScreen(
                         profileName = uiState.profileName,
                         profilePsId = uiState.profilePsId,
@@ -829,6 +837,25 @@ fun MainScreen(
                         val side = quickLaunchSide(quickLaunchSaved.x)
                         if (side != 0) snapQuickLaunchToSide(side, quickLaunchSaved.y)
                     }
+                    // 2026-11-28, per explicit request: when the overview opens, the bar is horizontal and level with the TT row
+                    // (the delta sits beside it in the BG circle), centred across. Once per opening: a later drag or double-tap
+                    // stays until the overview is opened again. First turns the bar horizontal, then places it once the
+                    // horizontal bar has been measured, so the centring uses its real width.
+                    LaunchedEffect(quickLaunchAnchor.rowTopInRoot, quickLaunchAreaTopInRoot, quickLaunchAreaSize, quickLaunchBarSize, quickLaunchVertical) {
+                        if (quickLaunchPlacedOnOpen || landscapeNavigation) return@LaunchedEffect
+                        val rowTop = quickLaunchAnchor.rowTopInRoot ?: return@LaunchedEffect
+                        val areaTop = quickLaunchAreaTopInRoot ?: return@LaunchedEffect
+                        if (quickLaunchAreaSize.width <= 0 || quickLaunchBarSize.width <= 0) return@LaunchedEffect
+                        if (quickLaunchVertical) {
+                            mainViewModel.preferences.put(BooleanNonKey.QuickLaunchVertical, false)
+                            return@LaunchedEffect
+                        }
+                        val placed = clampQuickLaunch(Offset((quickLaunchAreaSize.width - quickLaunchBarSize.width) / 2f, rowTop - areaTop))
+                        quickLaunchDragPos = placed
+                        mainViewModel.preferences.put(IntNonKey.QuickLaunchX, placed.x.roundToInt())
+                        mainViewModel.preferences.put(IntNonKey.QuickLaunchY, placed.y.roundToInt())
+                        quickLaunchPlacedOnOpen = true
+                    }
                     AnimatedVisibility(
                         visible = hasToolbar && showChrome && !landscapeNavigation,
                         enter = slideInVertically { it },
@@ -844,7 +871,10 @@ fun MainScreen(
                             .onGloballyPositioned { coords ->
                                 quickLaunchPlacedAt = coords.positionInParent()
                                 quickLaunchBarSize = coords.size
-                                coords.parentLayoutCoordinates?.size?.let { quickLaunchAreaSize = it }
+                                coords.parentLayoutCoordinates?.let {
+                                    quickLaunchAreaSize = it.size
+                                    quickLaunchAreaTopInRoot = it.positionInRoot().y
+                                }
                             }
                     ) {
                         QuickLaunchToolbar(
