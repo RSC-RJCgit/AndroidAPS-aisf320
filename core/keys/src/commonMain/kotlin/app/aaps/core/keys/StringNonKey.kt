@@ -234,6 +234,12 @@ enum class StringNonKey(
      */
     ApsAutoIsfActivityPrevStandardRole("autoisf_activity_prev_standard_role", "", exportable = false),
     ApsAutoIsfActivityPrevLowRole("autoisf_activity_prev_low_role", "", exportable = false),
+    /**
+     * The exact profile that ran when Set50 fired (2026-11-28, per explicit request): a Steroid tier profile, or the Standard-role
+     * profile of any tier (B included). The end of the 50% resumes this one, not whatever the Standard role is by then. Blank when
+     * neither ran. Goes with ApsAutoIsfSet50FromStandardAt. Local only.
+     */
+    ApsAutoIsfSet50ResumeProfile("autoisf_set50_resume_profile", "", exportable = false),
     /** This phone's battery discharge start as "time:percent" (UploaderBatteryEstimate.unpluggedSnapshot), kept over restarts (2026-11-25). */
     UploaderBatteryUnplugged("uploader_battery_unplugged", "", exportable = false),
 

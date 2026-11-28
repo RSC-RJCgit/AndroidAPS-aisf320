@@ -136,6 +136,9 @@ private val HYPO_ALARM_ANNOUNCEMENTS = setOf("_____H4", "__________A4", "H4")
  *  not fire (2026-10-28, per explicit request). */
 private const val MEAL_BOOST_CAP_MINUTES = 45
 
+/** How far back LowBgTierAReset looks for a low of more than 10 min below 4.0 (2026-11-28, per explicit request: 3 h, was 12 h). */
+private const val LOW_BG_TIER_A_LOOKBACK_MS = 3 * 3_600_000L
+
 @SingleIn(AppScope::class)
 @Inject
 open class OpenAPSAutoISFPlugin(
@@ -3321,16 +3324,19 @@ open class OpenAPSAutoISFPlugin(
         }
         if (!runMarks.ready(RunMark.LOW_BG_TIER_A_SCAN, 5, now)) return
         runMarks.mark(RunMark.LOW_BG_TIER_A_SCAN, now)
-        val from = now - 12 * 3_600_000L
+        // 2026-11-28, per explicit request: a 3 hour lookback (was 12). With 12 hours, one low in the morning kept resetting the
+        // roles to Tier A every 30 min into the evening, undoing a Tier B Standard chosen by SetRole 87 s later (Live 28 Nov 16:45).
+        val from = now - LOW_BG_TIER_A_LOOKBACK_MS
         val steps = persistenceLayer.getStepsCountFromTimeToTime(from, now).map { it.timestamp to it.steps60min }
         val loopSeries = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
             .map { it.timestamp to it.value }
         // 2026-10-07: readings between 01:00 and 07:00 do not count toward an episode, so an overnight compression low
-        // cannot trigger this reset later in the 12 hour lookback. Episodes with 60 minute steps over 1000 are already skipped.
+        // cannot trigger this reset later in the lookback. Episodes with 60 minute steps over 1000 are already skipped.
         val zone = AppTimeZone.current()
         val overnight = { ts: Long -> Instant.fromEpochMilliseconds(ts).toLocalDateTime(zone).let { inHypoIgnoreWindow(it.hour * 60 + it.minute) } }
         val loopHit = sustainedLowEpisode(loopSeries, steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = overnight)
-        val ukfHit = sustainedLowEpisode(ukf1Series(now), steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = overnight)
+        // UKF1 is still smoothed over 12 hours (the filter needs that history to settle); only its last 3 hours count here
+        val ukfHit = sustainedLowEpisode(ukf1Series(now).filter { it.first >= from }, steps, sustainedMinutes = 10, maxMgdl = 72.1, maxSteps60 = 1000, ignoreAt = overnight)
         if ((loopHit || ukfHit) && resetToRung(now, 0, runMarks.ready(RunMark.LOW_BG_TIER_A, 30, now))) {
             runMarks.mark(RunMark.LOW_BG_TIER_A, now)
             aapsLogger.debug(LTag.APS, "Low BG tier A reset loop=$loopHit ukf=$ukfHit")
@@ -5961,15 +5967,21 @@ open class OpenAPSAutoISFPlugin(
             preferences.put(DoubleKey.ApsAutoIsfPpWeight, preferences.get(DoubleKey.ApsAutoIsfPpWeightNormal))
             // 2026-10-07: the Low rung of the tier being run (see lowNameForRunning), not just Low current, which can lag.
             // 2026-11-27, per explicit request (same as 3426): on a Steroid profile, that profile itself at 50%
-            val lowName = if (steroidTierProfileRunning()) profileFunction.getOriginalProfileName() else lowNameForRunning(
+            val steroidBefore = steroidTierProfileRunning()
+            val runningBefore = profileFunction.getOriginalProfileName().trim()
+            val lowName = if (steroidBefore) profileFunction.getOriginalProfileName() else lowNameForRunning(
                 running = profileFunction.getOriginalProfileName(),
                 standardRungs = standardLadderNames(),
                 lowRungs = lowLadderNames(),
                 lowCurrent = preferences.get(StringKey.ApsAutoIsfLowProfileName).trim(),
             )
             // 2026-11-27, per explicit request: remember whether Standard ran before this drop (see set50Restore)
-            val set50FromStandard = configuredProfileRole(profileFunction.getOriginalProfileName().trim(), standardLadderNames(), lowLadderNames())?.low == false
-            preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, if (set50FromStandard) now else 0L)
+            val set50FromStandard = configuredProfileRole(runningBefore, standardLadderNames(), lowLadderNames())?.low == false
+            // 2026-11-28, per explicit request: and which profile exactly - a Steroid tier profile, or the Standard profile of
+            // whatever tier ran (B included) - so the end of the 50% resumes that one (see set50StandardName)
+            val resumeAfter = steroidBefore || set50FromStandard
+            preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, if (resumeAfter) now else 0L)
+            preferences.put(StringNonKey.ApsAutoIsfSet50ResumeProfile, if (resumeAfter) runningBefore else "")
             if (!writeNamedPercent(now, lowName, 50, 360, "AutoISF: prepare 50%")) {
                 aapsLogger.debug(LTag.APS, "PrepareSet50 did not write a profile switch")
             }
@@ -6319,20 +6331,31 @@ open class OpenAPSAutoISFPlugin(
     }
 
     /**
-     * The current Standard role after a Set50 from Standard (see [set50Restore]), or null to restore as before. The mark is cleared
+     * The profile to resume after a Set50 from a Steroid tier profile or from Standard (see [set50Restore]): the one saved at Set50
+     * (2026-11-28, per explicit request; before, the current Standard role), or null to restore as before. The mark is cleared
      * when Standard is picked or no longer applies; overnight it is kept for the first daytime restore.
      */
     private suspend fun set50StandardName(now: Long, minuteOfDay: Int): String? {
         val markAt = preferences.get(LongNonKey.ApsAutoIsfSet50FromStandardAt)
         if (markAt == 0L) return null
         val running = profileFunction.getOriginalProfileName().trim()
-        val lowRole = configuredProfileRole(running, standardLadderNames(), lowLadderNames())?.low == true
-        return when (set50Restore(markAt, now, lowRole, minuteOfDay)) {
+        // 2026-11-28, per explicit request: the profile saved at Set50. A Steroid drop keeps that same profile (at 50%), so it
+        // counts as still dropped like a Low-role profile does.
+        val saved = preferences.get(StringNonKey.ApsAutoIsfSet50ResumeProfile).trim()
+        val inStore: (String) -> Boolean = { it.isNotBlank() && profileRepository.profile.value?.getSpecificProfile(it) != null }
+        val stillDropped = configuredProfileRole(running, standardLadderNames(), lowLadderNames())?.low == true ||
+            (saved.isNotBlank() && running == saved && steroidTierProfileRunning())
+        val clear = {
+            preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, 0L)
+            preferences.put(StringNonKey.ApsAutoIsfSet50ResumeProfile, "")
+        }
+        return when (set50Restore(markAt, now, stillDropped, minuteOfDay)) {
             Set50Restore.KeepLow  -> null
-            Set50Restore.None     -> null.also { preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, 0L) }
-            Set50Restore.Standard -> preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
-                .takeIf { it.isNotBlank() && profileRepository.profile.value?.getSpecificProfile(it) != null }
-                .also { preferences.put(LongNonKey.ApsAutoIsfSet50FromStandardAt, 0L) }
+            Set50Restore.None     -> null.also { clear() }
+            // The saved profile (Steroid tier, or the Standard of the tier that ran, B included); the current Standard role only
+            // when nothing was saved or the saved profile is no longer in the store.
+            Set50Restore.Standard -> (saved.takeIf(inStore) ?: preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim().takeIf(inStore))
+                .also { clear() }
         }
     }
 
