@@ -332,8 +332,8 @@ private class MutableYRangeProvider(
  *
  * Basal Y-axis is scaled so maxBasal occupies [BASAL_HEIGHT_FRACTION] of the chart height (maxY = maxBasal / BASAL_HEIGHT_FRACTION).
  *
- * The insulin activity overlay has no axis of its own: it starts at the bottom of the panel and peaks at 80% of its
- * height, as on 3426 (fork, kept over upstream's low-mark scaling in the 2026-10-16 merge), and never changes the BG scale.
+ * The insulin activity overlay has no axis of its own: since 2026-11-28 (per explicit request) it follows upstream's rule, zero on
+ * the low mark and scaled from the visible window into the room up to the visible BG top, and never changes the BG scale.
  *
  * Scroll/Zoom:
  * - Accepts external scroll/zoom states for synchronization with secondary graphs
@@ -553,6 +553,7 @@ fun BgGraphCompose(
         currentMaxBgY: Double,
         currentMarkers: TreatmentMarkers,
         currentVisibleTimeRange: Pair<Long, Long>?,
+        currentActivityScale: ActivityOverlayScale,
         bolusPoints: List<Pair<Long, Double>>,
         carbPoints: List<Pair<Long, Double>>,
         axisMin: Double,
@@ -721,28 +722,21 @@ fun BgGraphCompose(
                 val floor = 0.0
                 val headroom = (currentMaxBgY - floor).coerceAtLeast(1.0)
                 val activityTop = headroom * 0.8
-                // 2026-11-28, per explicit request (as upstream): the peak is the highest activity in the visible window (history and
-                // prediction), so the curve fills its height when zoomed in; the whole range's peak when the window has none.
-                val windowMaxAct = currentVisibleTimeRange?.let { (from, to) ->
-                    (currentActivityData.activity + currentActivityData.activityPrediction)
-                        .filter { it.timestamp in from..to }
-                        .maxOfOrNull { kotlin.math.abs(it.value) }
-                }?.takeIf { it > 0.0 }
-                val maxAct = windowMaxAct ?: currentActivityData.maxActivity
-                if (!showActivity || maxAct <= 0.0 || currentActivityData.activity.size < 2) {
+                // 2026-11-28, per explicit request: the insulin activity follows upstream's rule (replaces the 2026-11-17 v3 height):
+                // zero on the low mark, the visible window's peak rounded up, at most 80% of the room up to the visible BG top
+                // (see currentActivityScale). The carb model below keeps the v3 height.
+                if (!showActivity || currentActivityScale.scale <= 0.0 || currentActivityData.activity.size < 2) {
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                     series(x = listOf(0.0, 1.0), y = listOf(0.0, 0.0))
                 } else {
-                    val scaleFactor = activityTop / maxAct
-
                     val pts = currentActivityData.activity
-                        .map { timestampToX(it.timestamp, minTimestamp) to (floor + it.value * scaleFactor) }
+                        .map { timestampToX(it.timestamp, minTimestamp) to currentActivityScale.map(it.value) }
                         .sortedBy { it.first }
                     series(x = pts.map { it.first }, y = pts.map { it.second })
 
                     if (currentActivityData.activityPrediction.size >= 2) {
                         val predPts = currentActivityData.activityPrediction
-                            .map { timestampToX(it.timestamp, minTimestamp) to (floor + it.value * scaleFactor) }
+                            .map { timestampToX(it.timestamp, minTimestamp) to currentActivityScale.map(it.value) }
                             .sortedBy { it.first }
                         series(x = predPts.map { it.first }, y = predPts.map { it.second })
                     } else {
@@ -904,9 +898,8 @@ fun BgGraphCompose(
         val windowedOrFull = windowedValues.ifEmpty { allBgAndPredictionValues }
         val dataMax = maxOf(windowedOrFull.maxOrNull() ?: chartConfig.highMark, chartConfig.highMark)
         val dataMin = minOf(windowedOrFull.minOrNull() ?: chartConfig.lowMark, chartConfig.lowMark)
-        // Activity overlay on: the panel top is the 3426 one (24 h highest or high mark, rounded, plus a margin), and the
-        // activity peak sits at 80% of the panel height, so it ends up above the green range as on 3426.
-        val axisDataMax = if (showActivity) maxOf(dataMax, activityChartTop(maxBgY, chartConfig.highMark, chartConfig.lowMark > 30.0)) else dataMax
+        // 2026-11-28, per explicit request (upstream rule): the activity overlay no longer raises the axis to the 3426 panel top
+        val axisDataMax = dataMax
         // Graph 5: raise the top so the four top band lanes sit above the green range and the curve, not on them.
         // Main graph (2026-10-16, per explicit request): always 2.0 to 12.0 mmol/L, readings outside are cut off.
         // Graph 5 keeps the range that follows the data.
@@ -952,8 +945,22 @@ fun BgGraphCompose(
             gap = 0.0,
             fallbackY = niceBgScale.min + axisSpan * MARKER_FALLBACK_FRACTION
         )
+        // 2026-11-28, per explicit request (as upstream): insulin activity with zero on the low mark, scaled from the visible window
+        // (history and prediction), at most 80% of the room between the low mark and the top of the visible BG (as upstream's own
+        // axis, never above this graph's axis). Below the low mark only down to where upstream's basal ends (60% of the low mark).
+        val windowedActivity = (activityData.activity + activityData.activityPrediction)
+            .filter { inWindow(it.timestamp) }.map { it.value }
+            .ifEmpty { (activityData.activity + activityData.activityPrediction).map { it.value } }
+        val activityRoomTop = minOf(niceScale(0.0, dataMax).max, if (topBandLines) niceScale(dataMin, axisDataMax).max else niceBgScale.max)
+        val activityScale = activityOverlayScale(
+            activityMin = windowedActivity.minOrNull() ?: 0.0,
+            activityMax = windowedActivity.maxOrNull() ?: 0.0,
+            zeroLevel = chartConfig.lowMark,
+            roomAbove = (activityRoomTop - chartConfig.lowMark).coerceAtLeast(0.0),
+            roomBelow = chartConfig.lowMark * 0.4
+        )
         rebuildChart(
-            basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, markers, visibleTimeRange,
+            basalData, targetData, epsPoints, activityData, minBgY, activityAxisMax, markers, visibleTimeRange, activityScale,
             bolusPoints, carbPoints, niceBgScale.min, niceBgScale.max, renderToken
         )
     })

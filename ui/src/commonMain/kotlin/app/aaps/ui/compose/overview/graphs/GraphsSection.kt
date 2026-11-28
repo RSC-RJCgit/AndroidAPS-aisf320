@@ -637,6 +637,32 @@ fun GraphsSection(
         bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, nowMs))
     }
 
+    // 2026-11-28, per explicit request: a D/S/U switch builds another main graph, which kept no place or opened elsewhere. As on a
+    // return to the foreground, it follows the current time again and puts now on the right edge, once the new graph has its
+    // layout; the sync above copies that to the other graphs.
+    val graphModeKey = when {
+        upstreamMode -> "U"
+        simpleGraphs -> "S"
+        else         -> "D"
+    }
+    // The mode last placed (a plain holder, not state): the first composition and a recomposition in the same mode move nothing
+    val placedGraphMode = remember { arrayOf(graphModeKey) }
+    LaunchedEffect(bgScrollState, graphModeKey) {
+        if (graphModeKey == placedGraphMode[0]) return@LaunchedEffect
+        placedGraphMode[0] = graphModeKey
+        if (fitWholeWindow) return@LaunchedEffect
+        // The new chart has no width yet: wait up to 3 s for its layout
+        val waitUntil = dateUtil.now() + 3_000L
+        while (bgScrollState.maxValue <= 24f && dateUtil.now() < waitUntil) delay(100L)
+        val nowMs = dateUtil.now()
+        followNow = true
+        val range = latestTimeRange.value
+        graphViewModel.graphSyncLog("mode", "graph mode $graphModeKey - rangeFirst=${range?.first} bgScroll=${bgScrollState.value} bgMax=${bgScrollState.maxValue}")
+        if (range == null) return@LaunchedEffect
+        skipInteractionUntilMs[0] = nowMs + 1000L
+        bgScrollState.scroll(scrollSoNowIsAtEnd(range.first, nowMs))
+    }
+
     // Startup guard (2026-10-07): a cold start sometimes left every graph on the OLDEST hours, with the current time off
     // the right edge, and neither the placement below nor the next reading moved it back. For the first
     // STARTUP_GUARD_MS, while the user has not touched a graph (followNow) and the visible window ends well before

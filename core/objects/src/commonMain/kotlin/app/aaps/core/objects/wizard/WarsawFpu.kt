@@ -6,6 +6,7 @@ import app.aaps.core.objects.profile.ProfileSealed
 import kotlin.concurrent.atomics.AtomicLong
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlin.math.floor
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Protein and fat insulin, spread every 30 minutes by default, or every 60 minutes.
@@ -163,4 +164,20 @@ internal object WarsawScheduleGate {
 
     /** At app start: carry on from the token saved before the restart. Does nothing once a token was handed out since. */
     fun restore(saved: Long): Boolean = saved > 0 && generation.compareAndSet(0, saved)
+}
+
+/**
+ * 2026-11-28, per explicit request (same as 3426): protein/fat units a part held (walking cut and what the insulinReq cap left)
+ * and could not give within its own window, by the meal's schedule token, in the units the series was sized at. The meal's next
+ * part takes them on top of its own. In memory only: an app restart loses them.
+ */
+internal object WarsawCarryOver {
+    private val mutex = kotlinx.coroutines.sync.Mutex()
+    private val carry = HashMap<Long, Double>()
+
+    suspend fun add(token: Long, units: Double) {
+        if (units > 0.0) mutex.withLock { carry[token] = (carry[token] ?: 0.0) + units }
+    }
+
+    suspend fun take(token: Long): Double = mutex.withLock { carry.remove(token) ?: 0.0 }
 }

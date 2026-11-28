@@ -691,14 +691,19 @@ class BolusWizard(
             // Unsaved before the dose can reach the pump, so an app killed during the bolus can never give it twice. A deferral
             // saves it again at the top of the loop.
             PendingFollowUps.remove(preferences, pendingKey)
-            val reason = tryDeliverWarsawDose(planned, iobBaseline, source, allowProfile50) { remaining, nextBaseline ->
+            val reason = tryDeliverWarsawDose(planned, iobBaseline, source, allowProfile50, token) { remaining, nextBaseline ->
                 appScope.launch {
                     val now = dateUtil.now()
                     if (warsawCanRetry(now, firstDueAt, nextDueAt)) {
                         runWarsawDose(remaining, nextBaseline, source, token, firstDueAt, nextDueAt, retryLater, label,
                             initialDueAt = now + WARSAW_RETRY_MINUTES * 60_000L, allowProfile50 = allowProfile50)
+                    } else if (nextDueAt != null) {
+                        // 2026-11-28, per explicit request (same as 3426): this part's window is over, so what it still holds
+                        // (walking cut and what the cap left) goes onto the meal's next part instead of being dropped
+                        WarsawCarryOver.add(token, remaining)
+                        aapsLogger.info(LTag.CORE, "Warsaw dose $label: $remaining U held (walking/insulinReq) carried to the next part")
                     } else {
-                        val expired = "insulinReq-limited remainder expired"
+                        val expired = "walking/insulinReq-limited remainder of the last part expired"
                         warsawNote("C", remaining, expired, source, fpuWhat(label, remaining))
                         recordCancelledDose(label, remaining, expired, nextBaseline, source, useIobRise = false)
                     }
@@ -757,7 +762,7 @@ class BolusWizard(
         if (allowProfile50) warsawAllowedAt(percent) else percent >= 100
 
     private suspend fun tryDeliverWarsawDose(
-        planned: Double, iobBaseline: Double, source: Sources, allowProfile50: Boolean, onCappedRemainder: (Double, Double) -> Unit
+        planned: Double, iobBaseline: Double, source: Sources, allowProfile50: Boolean, token: Long, onCappedRemainder: (Double, Double) -> Unit
     ): String? {
         if (loop.runningMode() == RM.Mode.SUPER_BOLUS) return "superbolus active"
         val profile = profileFunction.getProfile() ?: return "no profile"
@@ -776,18 +781,25 @@ class BolusWizard(
         // 2026-11-28, per explicit request: [planned] stays in the units it was sized at; on another profile it is resized for
         // this dose (see ProfileIcResize). What the cap leaves goes back in the sized units.
         val (icFactor, icNote) = partIcResize(fpuSizingProfile, fpuSizingIc)
-        val sizedPlanned = Round.roundTo(planned * icFactor, step)
-        if (icNote.isNotEmpty()) aapsLogger.info(LTag.CORE, "Warsaw dose:$icNote $planned U -> $sizedPlanned U")
+        // 2026-11-28, per explicit request (same as 3426): what an earlier part of this meal could not give in its window comes on top
+        val carried = WarsawCarryOver.take(token)
+        val partPlanned = planned + carried
+        if (carried > 0.0) aapsLogger.info(LTag.CORE, "Warsaw dose: $carried U carried from an earlier part")
+        val sizedPlanned = Round.roundTo(partPlanned * icFactor, step)
+        if (icNote.isNotEmpty()) aapsLogger.info(LTag.CORE, "Warsaw dose:$icNote $partPlanned U -> $sizedPlanned U")
         val walkFactor = walkingFactorNow()
         val walkingPlanned = if (walkFactor < 1.0) Round.roundTo(sizedPlanned * walkFactor, step) else sizedPlanned
         // 2026-11-20, per explicit request: the full insulinReq cap, not half the gap; the rest is checked again (onCappedRemainder)
         // 2026-11-26, per explicit request (same as 3426): no insulinReq cap at BG 7.5 or more with HP1 6.0 or more
-        val dose = (if (followUpCapWaived()) walkingPlanned else cappedFollowUpDose(walkingPlanned, step, halfReduction = false))
-            ?: return "insulinReq missing or stale"
-        if (dose <= 0.0) return "insulinReq cap is below one pump step"
-        val capRemaining = Round.roundTo(max(0.0, walkingPlanned - dose), 0.001)
+        val dose = if (followUpCapWaived()) walkingPlanned else cappedFollowUpDose(walkingPlanned, step, halfReduction = false)
+        if (dose == null || dose <= 0.0) {
+            WarsawCarryOver.add(token, carried)   // not used now: stays for this part's next check or the next part
+            return if (dose == null) "insulinReq missing or stale" else "insulinReq cap is below one pump step"
+        }
+        // 2026-11-28, per explicit request: the walking cut is held with what the cap leaves (it was dropped since 2026-10-19)
+        val capRemaining = Round.roundTo(max(0.0, sizedPlanned - dose), 0.001)
         if (walkFactor < 1.0)
-            aapsLogger.info(LTag.CORE, "Warsaw dose: ${delayedDoseWalkingLevel(walkFactor)} (steps), dose x$walkFactor, ${Round.roundTo(sizedPlanned - walkingPlanned, 0.001)} U dropped")
+            aapsLogger.info(LTag.CORE, "Warsaw dose: ${delayedDoseWalkingLevel(walkFactor)} (steps), dose x$walkFactor, ${Round.roundTo(sizedPlanned - walkingPlanned, 0.001)} U held")
         deliverLaterDose(dose, source, rh.gs(InterfacesStrings.wizard_warsaw_dose), "Warsaw dose") {
             preferences.put(LongNonKey.ApsAutoIsfLastDelayedBolusAt, dateUtil.now())
             if (capRemaining >= step / 2.0) onCappedRemainder(capRemaining / icFactor, liveIob + dose)
@@ -1179,7 +1191,8 @@ class BolusWizard(
             finish("$db covered: carbs on board ${Round.roundTo(cob, 0.1)} of ${plan.carbs} g leave nothing to give")
             return
         }
-        // Cut while walking, as the other later doses; the cut part is dropped
+        // Cut while walking, as the other later doses. 2026-11-28, per explicit request: the cut part is held for the next check
+        // (it was dropped), see continues below
         val walkFactor = walkingFactorNow()
         val walked = Round.roundTo(raw * walkFactor, step)
         // 2026-11-27, per explicit request (same as 3426): no insulinReq cap at BG 6.5 or more with HP1 6.0 or more (as the carb
@@ -1195,15 +1208,17 @@ class BolusWizard(
             checkAgain("insulinReq cap is below one pump step")
             return
         }
-        // Only insulinReq keeps the series going after a dose: carbs absorbed and walking are real reasons to give less
+        // insulinReq and, since 2026-11-28 (per explicit request), the walking cut keep the series going after a dose: what they held
+        // back is checked again in 5 minutes instead of being dropped
         val insulinReqLimited = capped < walked - step / 2.0
-        val continues = insulinReqLimited && attempt < DelayedBolus.MAX_ATTEMPTS
+        val walkingHeld = walkFactor < 1.0 && raw - capped >= step / 2.0
+        val continues = (insulinReqLimited || walkingHeld) && attempt < DelayedBolus.MAX_ATTEMPTS
         aapsLogger.info(
             LTag.CORE,
             "Delayed bolus $db: giving ${capped}U (held ${plan.heldUnits}U, given before ${deliveredSoFar}U, COB x${Round.roundTo(cobFraction, 0.01)}, " +
                 "walking x$walkFactor, insulinReq-limited=$insulinReqLimited)$icNote"
         )
-        delayedNote("$db ${warsawNoteAmount(capped)} U${if (continues) ", insulinReq-limited, the rest checked again in ${DelayedBolus.POLL_MINUTES} min" else ""}", source)
+        delayedNote("$db ${warsawNoteAmount(capped)} U${if (continues) ", ${if (insulinReqLimited) "insulinReq-limited" else "walking"}, the rest checked again in ${DelayedBolus.POLL_MINUTES} min" else ""}", source)
         // Unsaved before the dose can reach the pump, so an app killed during the bolus can never give it twice
         PendingFollowUps.remove(preferences, pendingKey)
         deliverLaterDose(capped, source, rh.gs(InterfacesStrings.wizard_delayed_dose, minutes, plan.heldBy.text), "Delayed bolus") {
@@ -1453,8 +1468,9 @@ class BolusWizard(
                         return
                     }
                     if (walkFactor < 1.0)
-                        aapsLogger.info(LTag.CORE, "Split leftover part: ${delayedDoseWalkingLevel(walkFactor)} (steps), part x$walkFactor, $walkingCut U dropped")
-                    val leftAfterPart = Round.roundTo(max(0.0, reducedRemaining - dose - walkingCut), 0.001)
+                        aapsLogger.info(LTag.CORE, "Split leftover part: ${delayedDoseWalkingLevel(walkFactor)} (steps), part x$walkFactor, $walkingCut U held for the next part")
+                    // 2026-11-28, per explicit request (same as 3426): the walking cut stays in what is left (it was dropped)
+                    val leftAfterPart = Round.roundTo(max(0.0, reducedRemaining - dose), 0.001)
                     // Unsaved before the dose can reach the pump, so an app killed during the bolus can never give it twice
                     PendingFollowUps.remove(preferences, pendingKey)
                     deliverLaterDose(dose, source, rh.gs(InterfacesStrings.wizard_split_leftover, leftAfterPart, intervalMinutes), "Split leftover part") {
