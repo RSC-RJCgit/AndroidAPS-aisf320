@@ -1788,14 +1788,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
         val now = dateUtil.now()
         val set50At = preferences.get(LongKey.ApsAutoIsfSet50FromStandardAt)
         val set50Live = set50At > 0L && set50At <= now && now - set50At <= T.hours(12).msecs()
+        // 2026-11-28, per explicit request: the profile saved at Set50 (a Steroid tier profile, or the Standard of the tier that ran,
+        // B included). A Steroid drop keeps that same profile at 50%, so it counts as still dropped like a Low-role profile does.
+        val set50Saved = preferences.get(StringKey.ApsAutoIsfSet50ResumeProfile).trim()
+        val set50Dropped = role?.low == true || (set50Saved.isNotBlank() && originalName.trim() == set50Saved && steroidTierProfileRunning())
         var keepSet50Mark = !set50Standard
-        if (set50Standard && set50Live && role?.low == true) {
+        if (set50Standard && set50Live && set50Dropped) {
             if (isTimeBetween(22, 0, 6, 0)) keepSet50Mark = true
-            else preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
-                .takeIf { it.isNotBlank() && profileStore.getSpecificProfile(it) != null }
+            else (set50Saved.takeIf { it.isNotBlank() && profileStore.getSpecificProfile(it) != null }
+                ?: preferences.get(StringKey.ApsAutoIsfStandardProfileName).trim()
+                    .takeIf { it.isNotBlank() && profileStore.getSpecificProfile(it) != null })
                 ?.let { profileName = it }
         }
-        if (set50Standard && set50At != 0L && !keepSet50Mark && (!set50Live || role?.low != true)) preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, 0L)
+        if (set50Standard && set50At != 0L && !keepSet50Mark && (!set50Live || !set50Dropped)) {
+            preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, 0L)
+            preferences.put(StringKey.ApsAutoIsfSet50ResumeProfile, "")
+        }
         // 2026-11-22, per explicit request: no new switch when this profile already runs permanently at 100% (Extra50% at 02:17:58
         // on Live 22 Nov re-issued one) - it wrote a switch, sent the basal program to the pod and set off autosens reruns.
         val running = (profileFunction.getProfile() as? ProfileSealed.EPS)?.value
@@ -1813,14 +1821,22 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             listValues = listOf(ValueWithUnit.SimpleString(profileName), ValueWithUnit.Percent(100))
         )
         if (requested) preferences.put(StringKey.ApsAutoIsfLastReductionRoleKey, "")
-        if (requested && !keepSet50Mark) preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, 0L)
+        if (requested && !keepSet50Mark) {
+            preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, 0L)
+            preferences.put(StringKey.ApsAutoIsfSet50ResumeProfile, "")
+        }
     }
 
     // 2026-11-27, per explicit request: remember whether a Standard-role profile ran when Set50 fired (0 when not), so the daytime
     // end of the 50% (PP50.Off, Usual2forTH) goes back to Standard. Kept out of invoke() (JVM method size).
     private fun markSet50FromStandard() {
-        val fromStandard = roleKeyForProfileName(profileFunction.getOriginalProfileName()) == StringKey.ApsAutoIsfStandardProfileName
-        preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, if (fromStandard) dateUtil.now() else 0L)
+        val running = profileFunction.getOriginalProfileName().trim()
+        val fromStandard = roleKeyForProfileName(running) == StringKey.ApsAutoIsfStandardProfileName
+        // 2026-11-28, per explicit request: a Steroid tier profile is remembered too, and the exact profile is saved (any tier,
+        // B included), so the end of the 50% resumes it - see applyCurrentProfileAt100
+        val resumeAfter = fromStandard || steroidTierProfileRunning()
+        preferences.put(LongKey.ApsAutoIsfSet50FromStandardAt, if (resumeAfter) dateUtil.now() else 0L)
+        preferences.put(StringKey.ApsAutoIsfSet50ResumeProfile, if (resumeAfter) running else "")
     }
 
     // Temporary percentage-only profile boost for a fixed duration, at profileName (defaults to
@@ -10162,12 +10178,15 @@ open class OpenAPSAutoISFPlugin @Inject constructor(
             if (!readyToRun("LowBgTierAResetScan", 5)) return@run
             markRun("LowBgTierAResetScan")
             val now = dateUtil.now()
-            val from = now - T.hours(12).msecs()
+            // 2026-11-28, per explicit request: a 3 hour lookback (was 12). With 12 hours one morning low kept resetting the roles to
+            // Tier A every 30 min into the evening, undoing a Tier B Standard from SetRole 87 s later (Live 28 Nov 16:44 -> 16:45).
+            val from = now - T.hours(3).msecs()
             val below4 = 72.1 /* 4.0 mmol */
             val steps = if (useLiveStepsOnVirtual()) emptyList() else persistenceLayer.getStepsCountFromTimeToTime(from, now)
             val loopSeries = persistenceLayer.getBgReadingsDataFromTimeToTime(from, now, ascending = true)
                 .map { it.timestamp to it.value }
-            val ukf1Series = ukf1RecentHistory(12 * 60L).asReversed()
+            // UKF1 is still smoothed over 12 hours (the filter needs that history to settle); only its last 3 hours count
+            val ukf1Series = ukf1RecentHistory(12 * 60L).asReversed().filter { it.first >= from }
             val loopHit = sustainedLowEpisodeWithoutHighSteps(loopSeries, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000, ignoreAt = { inHypoIgnoreWindowAt(it) })
             val ukf1Hit = sustainedLowEpisodeWithoutHighSteps(ukf1Series, steps, sustainedMinutes = 10, maxMgdl = below4, maxSteps60 = 1000, ignoreAt = { inHypoIgnoreWindowAt(it) })
             if (loopHit || ukf1Hit) {

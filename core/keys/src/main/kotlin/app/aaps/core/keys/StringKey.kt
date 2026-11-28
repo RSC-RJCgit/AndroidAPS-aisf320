@@ -151,6 +151,10 @@ enum class StringKey(
     // replaying the frozen name a reduction started with, which goes stale the moment the role is
     // re-picked to a different profile mid-reduction. Purely internal bookkeeping; never user-visible.
     ApsAutoIsfLastReductionRoleKey("autoisf_last_reduction_role_key", ""),
+    // 2026-11-28, per explicit request: the exact profile that ran when Set50 fired - a Steroid tier profile, or the Standard-role
+    // profile of any tier (B included) - so the daytime end of the 50% resumes that one, not whatever the Standard role is by then.
+    // Blank when neither ran. Goes with LongKey.ApsAutoIsfSet50FromStandardAt. Internal bookkeeping.
+    ApsAutoIsfSet50ResumeProfile("autoisf_set50_resume_profile", ""),
     // Added 2026-08-27: Battery1pc/BatteryOver1pc (OpenAPSAutoISFPlugin.kt) previously hardcoded the
     // literal string "Current Profile50" for the low-battery safety-profile switch -- the one coded
     // profile role with no configurability or setup validation at all, unlike Standard/Low above.
