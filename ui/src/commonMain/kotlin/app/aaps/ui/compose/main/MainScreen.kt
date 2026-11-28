@@ -423,7 +423,7 @@ fun MainScreen(
                 // masterReachable for its own gating.)
                 Box(modifier = Modifier.fillMaxSize()) {
                     // Main content. The graphs hand their press-and-hold pill to the top bar below (2026-10-27).
-                    CompositionLocalProvider(LocalTopBarPillHost provides topBarPillHost, LocalQuickLaunchAnchor provides quickLaunchAnchor) {
+                    CompositionLocalProvider(LocalTopBarPillHost provides topBarPillHost) {
                     OverviewScreen(
                         profileName = uiState.profileName,
                         profilePsId = uiState.profilePsId,
@@ -592,6 +592,7 @@ fun MainScreen(
                             // Clipped under the status bar: it slid over the clock while it went away
                             .clipToBounds()
                     ) {
+                        CompositionLocalProvider(LocalQuickLaunchAnchor provides quickLaunchAnchor) {
                         MainTopBar(
                             searchUiState = searchUiState,
                             onMenuClick = {
@@ -615,6 +616,7 @@ fun MainScreen(
                                 if (it.height > 0 && it.height != topBarHeightPx) topBarHeightPx = it.height
                             }
                         )
+                        }
                     }
 
                     // The press-and-hold pill of the graphs, over the top bar while a finger is down (2026-10-27, per explicit
@@ -837,13 +839,14 @@ fun MainScreen(
                         val side = quickLaunchSide(quickLaunchSaved.x)
                         if (side != 0) snapQuickLaunchToSide(side, quickLaunchSaved.y)
                     }
-                    // 2026-11-28, per explicit request: when the overview opens, the bar is horizontal and level with the TT row
-                    // (the delta sits beside it in the BG circle), centred across. Once per opening: a later drag or double-tap
-                    // stays until the overview is opened again. First turns the bar horizontal, then places it once the
-                    // horizontal bar has been measured, so the centring uses its real width.
-                    LaunchedEffect(quickLaunchAnchor.rowTopInRoot, quickLaunchAreaTopInRoot, quickLaunchAreaSize, quickLaunchBarSize, quickLaunchVertical) {
+                    // 2026-11-28, per explicit request: when the overview opens, the bar is horizontal and centred across, with its
+                    // top at the middle of the top bar's search bar - it covers the bottom half, the top half stays visible (first
+                    // it was level with the TT row). Once per opening: a later drag or double-tap stays until the overview is
+                    // opened again. First turns the bar horizontal, then places it once the horizontal bar has been measured, so
+                    // the centring uses its real width.
+                    LaunchedEffect(quickLaunchAnchor.searchBarMidInRoot, quickLaunchAreaTopInRoot, quickLaunchAreaSize, quickLaunchBarSize, quickLaunchVertical) {
                         if (quickLaunchPlacedOnOpen || landscapeNavigation) return@LaunchedEffect
-                        val rowTop = quickLaunchAnchor.rowTopInRoot ?: return@LaunchedEffect
+                        val rowTop = quickLaunchAnchor.searchBarMidInRoot ?: return@LaunchedEffect
                         val areaTop = quickLaunchAreaTopInRoot ?: return@LaunchedEffect
                         if (quickLaunchAreaSize.width <= 0 || quickLaunchBarSize.width <= 0) return@LaunchedEffect
                         if (quickLaunchVertical) {

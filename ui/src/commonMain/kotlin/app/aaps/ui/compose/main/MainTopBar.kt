@@ -1,13 +1,13 @@
 package app.aaps.ui.compose.main
 
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Settings
@@ -24,32 +24,35 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.data.model.TrendArrow
 import app.aaps.core.interfaces.overview.graph.BgInfoData
 import app.aaps.core.interfaces.overview.graph.BgRange
+import app.aaps.core.keys.StringNonKey
+import app.aaps.core.objects.overview.MasterFreeStorage
+import app.aaps.core.ui.CoreUiStrings
 import app.aaps.core.ui.compose.AapsSpacing
 import app.aaps.core.ui.compose.AapsTheme
 import app.aaps.core.ui.compose.LocalConfig
 import app.aaps.core.ui.compose.LocalDateUtil
 import app.aaps.core.ui.compose.LocalPreferences
-import app.aaps.core.keys.StringNonKey
-import app.aaps.core.objects.overview.MasterFreeStorage
 import app.aaps.core.ui.compose.icons.IcSettingsOff
 import app.aaps.core.ui.compose.stringResource
-import app.aaps.ui.search.M3SearchBar
-import app.aaps.ui.search.SearchUiState
 import app.aaps.ui.compose.overview.graphs.graphTimestamp
 import app.aaps.ui.compose.overview.graphs.rememberMasterGraphTimeZone
+import app.aaps.ui.compose.quickLaunch.LocalQuickLaunchAnchor
+import app.aaps.ui.search.M3SearchBar
+import app.aaps.ui.search.SearchUiState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
 
@@ -94,6 +97,11 @@ fun MainTopBar(
         }
     }
     val now by clock.collectAsStateWithLifecycle(initialValue = dateUtil.now())
+    // 2026-11-28, per explicit request: the search bar's middle, so the quick launch bar can open over its bottom half
+    val quickLaunchAnchor = LocalQuickLaunchAnchor.current
+    val searchBarAnchor = if (quickLaunchAnchor != null) Modifier.onGloballyPositioned {
+        quickLaunchAnchor.searchBarMidInRoot = it.positionInRoot().y + it.size.height / 2f
+    } else Modifier
     // The master's free storage after the clock (2026-11-14, per explicit request); a master shows its own.
     val isMaster = !LocalInspectionMode.current && LocalConfig.current.APS && !LocalConfig.current.AAPSCLIENT
     // The saved value is read here at once (2026-11-15, per explicit request): the NS handler restored it only when it first
@@ -134,7 +142,7 @@ fun MainTopBar(
                 onClearClick = onSearchClear,
                 onActiveChange = onSearchActiveChange,
                 compact = true,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f).then(searchBarAnchor)
             )
             TopBarBg(bgInfo, compact = true, timeText = timeText)
             IconButton(onClick = onPreferencesClick) {
@@ -158,7 +166,7 @@ fun MainTopBar(
                     onQueryChange = onSearchQueryChange,
                     onClearClick = onSearchClear,
                     onActiveChange = onSearchActiveChange,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f).then(searchBarAnchor)
                 )
             }
         },

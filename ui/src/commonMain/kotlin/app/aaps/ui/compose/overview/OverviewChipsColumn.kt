@@ -1,30 +1,29 @@
 package app.aaps.ui.compose.overview
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -33,23 +32,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.aaps.core.keys.BooleanNonKey
+import app.aaps.core.keys.IntNonKey
+import app.aaps.core.ui.compose.LocalPreferences
+import app.aaps.ui.UiStrings
 import app.aaps.core.data.model.RM
 import app.aaps.core.data.model.TT
 import app.aaps.core.interfaces.navigation.ElementType
 import app.aaps.core.interfaces.overview.graph.TbrState
-import app.aaps.core.keys.BooleanNonKey
-import app.aaps.core.keys.IntNonKey
-import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.CoreUiStrings
+import app.aaps.core.keys.interfaces.TextRef
 import app.aaps.core.ui.compose.AapsSpacing
-import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.LocalDecimalFormatter
-import app.aaps.core.ui.compose.LocalPreferences
+import app.aaps.ui.compose.overview.graphs.GraphViewModel
+import app.aaps.core.ui.compose.LocalClientRole
 import app.aaps.core.ui.compose.LocalReadOnlyClient
 import app.aaps.core.ui.compose.navigation.NavigationRequest
 import app.aaps.core.ui.compose.navigation.color
 import app.aaps.core.ui.compose.stringResource
-import app.aaps.ui.UiStrings
 import app.aaps.ui.compose.main.TempTargetChipState
 import app.aaps.ui.compose.overview.chips.CobUiState
 import app.aaps.ui.compose.overview.chips.IobCobChipsRow
@@ -60,9 +60,6 @@ import app.aaps.ui.compose.overview.chips.SensitivityUiState
 import app.aaps.ui.compose.overview.chips.TbrChip
 import app.aaps.ui.compose.overview.chips.TempTargetChip
 import app.aaps.ui.compose.overview.chips.TierChip
-import app.aaps.ui.compose.overview.graphs.GraphViewModel
-import app.aaps.ui.compose.quickLaunch.LocalQuickLaunchAnchor
-import kotlinx.coroutines.launch
 
 @Composable
 fun OverviewChipsColumn(
@@ -359,11 +356,7 @@ private fun NarrowChips(
             TierChip(label = tierLabel, onClick = onTierChipClick, modifier = Modifier.padding(start = AapsSpacing.small))
         }
     }
-    // 2026-11-28, per explicit request: this TT row's place on screen opens the quick launch bar level with it (see MainScreen)
-    val quickLaunchAnchor = LocalQuickLaunchAnchor.current
     Row(
-        modifier = if (quickLaunchAnchor != null) Modifier.onGloballyPositioned { quickLaunchAnchor.rowTopInRoot = it.positionInRoot().y }
-        else Modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AapsSpacing.small)
     ) {
